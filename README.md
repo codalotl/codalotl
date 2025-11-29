@@ -1,6 +1,16 @@
 # codalotl
 Coding agent for Go
 
+## Supported Languages
+
+codalotl has a generic agent mode that supports all languages. However, it only has special features for Go.
+
+## Supported Platforms
+
+- OSX
+- Linux
+- Windows (aspirational - needs more testing. WSL2 is fully supported)
+
 ## Dependencies
 
 This repository strives for minimal dependencies. Any dependency that can plausibly be re-implementied in this repo, will be. A new dependency will only be added with the greatest of regret. A few reasons:
