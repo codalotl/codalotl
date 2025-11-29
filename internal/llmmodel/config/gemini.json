@@ -1,0 +1,37 @@
+{
+  "id": "gemini",
+  "types": [
+    "gemini"
+  ],
+  "api_endpoint_url": "https://generativelanguage.googleapis.com",
+  "api_key": "$GEMINI_API_KEY",
+  "default_model_id": "gemini-2.5-pro",
+  "models": [
+    {
+      "id": "gemini-2.5-pro",
+      "cost_per_1m_in": 1.25,
+      "cost_per_1m_out": 10,
+      "cost_per_1m_in_cached": 1.625,
+      "cost_per_1m_out_cached": 0.31,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 1048576,
+      "max_output": 50000,
+      "can_reason": true,
+      "has_reasoning_effort": false,
+      "supports_images": true
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "cost_per_1m_in": 0.3,
+      "cost_per_1m_out": 2.5,
+      "cost_per_1m_in_cached": 0.3833,
+      "cost_per_1m_out_cached": 0.075,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 1048576,
+      "max_output": 50000,
+      "can_reason": true,
+      "has_reasoning_effort": false,
+      "supports_images": true
+    }
+  ]
+}

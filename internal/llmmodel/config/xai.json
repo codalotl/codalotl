@@ -1,0 +1,79 @@
+{
+  "id": "xai",
+  "types": [
+    "openai_responses",
+    "openai_completions"
+  ],
+  "api_endpoint_url": "https://api.x.ai/v1",
+  "api_key": "$XAI_API_KEY",
+  "default_model_id": "grok-code-fast",
+  "models": [
+    {
+      "id": "grok-code-fast",
+      "cost_per_1m_in": 0.2,
+      "cost_per_1m_out": 1.5,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.02,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 256000,
+      "max_output": 20000,
+      "can_reason": true,
+      "has_reasoning_effort": false,
+      "supports_images": false
+    },
+    {
+      "id": "grok-4",
+      "cost_per_1m_in": 3,
+      "cost_per_1m_out": 15,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.75,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 256000,
+      "max_output": 20000,
+      "can_reason": true,
+      "has_reasoning_effort": false,
+      "supports_images": true
+    },
+    {
+      "id": "grok-4-fast",
+      "cost_per_1m_in": 0.2,
+      "cost_per_1m_out": 0.5,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.05,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 2000000,
+      "max_output": 200000,
+      "can_reason": true,
+      "has_reasoning_effort": false,
+      "supports_images": true
+    },
+    {
+      "id": "grok-3-mini",
+      "cost_per_1m_in": 0.3,
+      "cost_per_1m_out": 0.5,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.075,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 131072,
+      "max_output": 20000,
+      "can_reason": true,
+      "has_reasoning_effort": false,
+      "supports_images": false,
+      "is_legacy": true
+    },
+    {
+      "id": "grok-3",
+      "cost_per_1m_in": 3,
+      "cost_per_1m_out": 15,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.75,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 131072,
+      "max_output": 20000,
+      "can_reason": false,
+      "has_reasoning_effort": false,
+      "supports_images": false,
+      "is_legacy": true
+    }
+  ]
+}

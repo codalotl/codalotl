@@ -1,0 +1,36 @@
+*** Begin Patch
+*** Update File: src/main.go
+@@
+ func main() {
+-    fmt.Println("hello from before")
++    fmt.Println("hello from after")
+     helper()
+ }
+@@
+ func helper() {
+-    fmt.Println("helper")
++    fmt.Println("helper updated")
+ }
+*** Update File: docs/readme.txt
+*** Move to: docs/README.md
+@@
+-This is the README.
++This is the README.
++
++Updated details.
+*** Delete File: docs/old.txt
+*** Add File: assets/config.json
++{
++  "name": "demo",
++  "enabled": true
++}
+*** Update File: templates/base.tmpl
+@@
+-{{ define "body" }}
+-Hello
+-{{ end }}
++{{ define "body" }}
++Welcome!
++{{ end }}
+*** End of File
+*** End Patch

@@ -1,0 +1,37 @@
+{
+  "id": "groq",
+  "types": [
+    "openai_completions"
+  ],
+  "api_endpoint_url": "https://api.groq.com/openai/v1",
+  "api_key": "$GROQ_API_KEY",
+  "default_model_id": "moonshotai/kimi-k2-instruct-0905",
+  "models": [
+    {
+      "id": "moonshotai/kimi-k2-instruct-0905",
+      "cost_per_1m_in": 1,
+      "cost_per_1m_out": 3,
+      "cost_per_1m_in_cached": 0.5,
+      "cost_per_1m_out_cached": 0.5,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 131072,
+      "max_output": 10000,
+      "can_reason": false,
+      "has_reasoning_effort": false,
+      "supports_images": false
+    },
+    {
+      "id": "qwen/qwen3-32b",
+      "cost_per_1m_in": 0.29,
+      "cost_per_1m_out": 0.59,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "cost_per_1m_in_save_to_cache": 0,
+      "context_window": 131072,
+      "max_output": 10000,
+      "can_reason": false,
+      "has_reasoning_effort": false,
+      "supports_images": false
+    }
+  ]
+}
