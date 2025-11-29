@@ -18,6 +18,10 @@ var prefixMap = []struct {
 	new string
 }{
 	{"axi/codeai/", "github.com/codalotl/codalotl/internal/"},
+	{"axi/health", "github.com/codalotl/codalotl/internal/q/health"},
+	{"axi/cascade", "github.com/codalotl/codalotl/internal/q/cascade"},
+	{"axi/semver", "github.com/codalotl/codalotl/internal/q/semver"},
+	{"axi/remotemonitor", "github.com/codalotl/codalotl/internal/q/remotemonitor"},
 	{"axi/q/", "github.com/codalotl/codalotl/internal/q/"},
 }
 
