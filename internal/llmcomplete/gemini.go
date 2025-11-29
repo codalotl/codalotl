@@ -1,10 +1,10 @@
 package llmcomplete
 
 import (
-	"github.com/codalotl/codalotl/internal/llmcomplete/internal/gemini"
-	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
 	"context"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmcomplete/internal/gemini"
+	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
 	"os"
 	"strings"
 	"time"

@@ -1,11 +1,11 @@
 package docubot
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/llmcomplete"
-	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 )

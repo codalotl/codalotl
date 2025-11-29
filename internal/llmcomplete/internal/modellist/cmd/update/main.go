@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
 	"io"
 	"net/http"
 	"os"

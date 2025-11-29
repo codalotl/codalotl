@@ -1,8 +1,8 @@
 package renamebot
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

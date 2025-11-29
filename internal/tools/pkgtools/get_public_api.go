@@ -1,16 +1,16 @@
 package pkgtools
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/gocodecontext"
-	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
-	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gocodecontext"
+	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"path"
 	"path/filepath"
 	"strings"

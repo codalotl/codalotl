@@ -11,8 +11,8 @@ import (
 	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
 	"github.com/codalotl/codalotl/internal/q/termformat"
+	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"

@@ -1,8 +1,8 @@
 package docubot
 
 import (
-	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"sort"
 )
 

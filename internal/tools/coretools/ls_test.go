@@ -1,9 +1,9 @@
 package coretools
 
 import (
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"context"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"os"
 	"path/filepath"
 	"strings"

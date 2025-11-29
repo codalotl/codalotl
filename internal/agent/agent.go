@@ -1,13 +1,13 @@
 package agent
 
 import (
-	"github.com/codalotl/codalotl/internal/llmmodel"
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"sync"
 )
 

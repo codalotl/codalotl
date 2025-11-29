@@ -1,16 +1,16 @@
 package pkgtools
 
 import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	clarify "github.com/codalotl/codalotl/internal/subagents/clarifydocs"
 	"github.com/codalotl/codalotl/internal/tools/auth"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"context"
-	_ "embed"
-	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 )

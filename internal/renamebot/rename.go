@@ -1,11 +1,11 @@
 package renamebot
 
 import (
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gorenamer"
 	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"github.com/codalotl/codalotl/internal/q/health"
-	"fmt"
 	"sync"
 )
 

@@ -1,9 +1,9 @@
 package agent
 
 import (
+	"context"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"context"
 	"sync"
 )
 

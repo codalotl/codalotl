@@ -1,8 +1,8 @@
 package gotypes
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"go/types"
 	"os"
 	"strings"

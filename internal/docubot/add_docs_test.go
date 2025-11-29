@@ -1,9 +1,9 @@
 package docubot
 
 import (
+	"errors"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"

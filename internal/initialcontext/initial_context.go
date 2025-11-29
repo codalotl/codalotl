@@ -1,13 +1,13 @@
 package initialcontext
 
 import (
+	"context"
+	"flag"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
-	"context"
-	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"

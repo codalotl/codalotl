@@ -1,12 +1,12 @@
 package docubot
 
 import (
+	"errors"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
 	"github.com/codalotl/codalotl/internal/updatedocs"
-	"errors"
-	"fmt"
 	"strings"
 )
 

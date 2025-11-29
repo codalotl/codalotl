@@ -1,8 +1,8 @@
 package llmcomplete
 
 import (
-	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
 	"os"
 	"strings"
 )

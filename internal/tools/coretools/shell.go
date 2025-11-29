@@ -1,12 +1,12 @@
 package coretools
 
 import (
-	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/auth"
 	"os/exec"
 	"path/filepath"
 	"strings"

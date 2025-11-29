@@ -1,9 +1,9 @@
 package updatedocs
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
 	"bytes"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"go/ast"
 	"go/format"
 	"regexp"

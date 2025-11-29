@@ -1,10 +1,10 @@
 package docubot
 
 import (
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
-	"fmt"
 	"strings"
 	"testing"
 

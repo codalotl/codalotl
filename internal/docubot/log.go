@@ -1,8 +1,8 @@
 package docubot
 
 import (
-	"github.com/codalotl/codalotl/internal/updatedocs"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/updatedocs"
 	"log/slog"
 	"strings"
 )

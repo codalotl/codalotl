@@ -1,13 +1,13 @@
 package reorgbot
 
 import (
+	_ "embed"
+	"encoding/json"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"github.com/codalotl/codalotl/internal/q/health"
-	_ "embed"
-	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 )

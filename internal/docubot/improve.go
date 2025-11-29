@@ -1,12 +1,12 @@
 package docubot
 
 import (
+	"encoding/json"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
 	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"github.com/codalotl/codalotl/internal/updatedocs"
-	"encoding/json"
 	"strings"
 )
 

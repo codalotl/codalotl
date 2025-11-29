@@ -1,9 +1,9 @@
 package gocodecontext
 
 import (
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
-	"fmt"
 	"strings"
 	"testing"
 

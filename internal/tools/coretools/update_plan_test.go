@@ -1,8 +1,8 @@
 package coretools
 
 import (
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"context"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

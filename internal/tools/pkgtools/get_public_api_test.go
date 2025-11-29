@@ -1,11 +1,11 @@
 package pkgtools
 
 import (
+	"context"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

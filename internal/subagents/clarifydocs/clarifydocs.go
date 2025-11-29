@@ -15,10 +15,10 @@ import (
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/prompt"
+	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/codalotl/codalotl/internal/tools/auth"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 )
 
 const (

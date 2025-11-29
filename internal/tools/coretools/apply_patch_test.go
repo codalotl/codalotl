@@ -1,13 +1,13 @@
 package coretools
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"context"
-	"encoding/json"
-	"fmt"
 	"go/format"
 	"os"
 	"path/filepath"

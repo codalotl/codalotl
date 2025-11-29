@@ -1,10 +1,10 @@
 package reorgbot
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/gograph"
 	"bytes"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gograph"
 	"sort"
 	"strings"
 )

@@ -1,8 +1,8 @@
 package gocodecontext
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"slices"
 	"sort"
 	"strings"

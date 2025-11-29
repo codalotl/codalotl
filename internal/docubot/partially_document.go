@@ -1,9 +1,9 @@
 package docubot
 
 import (
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/updatedocs"
-	"fmt"
 	"sort"
 	"strings"
 )

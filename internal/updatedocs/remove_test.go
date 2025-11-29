@@ -1,8 +1,8 @@
 package updatedocs
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"go/token"
 	"os"
 	"path/filepath"

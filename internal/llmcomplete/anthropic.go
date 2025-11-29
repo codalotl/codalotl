@@ -1,9 +1,9 @@
 package llmcomplete
 
 import (
-	"github.com/codalotl/codalotl/internal/llmcomplete/internal/anthropic"
 	"context"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmcomplete/internal/anthropic"
 	"os"
 	"strings"
 	"time"

@@ -1,10 +1,10 @@
 package coretools
 
 import (
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"os/exec"
 	"path/filepath"
 	"runtime"

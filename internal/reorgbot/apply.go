@@ -1,10 +1,10 @@
 package reorgbot
 
 import (
-	"github.com/codalotl/codalotl/internal/goclitools"
-	"github.com/codalotl/codalotl/internal/gocode"
 	"bytes"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/goclitools"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"os"
 	"path/filepath"
 	"sort"

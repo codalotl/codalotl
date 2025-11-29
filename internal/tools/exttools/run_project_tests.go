@@ -1,13 +1,13 @@
 package exttools
 
 import (
-	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
-	"github.com/codalotl/codalotl/internal/tools/coretools"
-	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"context"
 	_ "embed"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/cmdrunner"
+	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"strings"
 )
 

@@ -1,9 +1,9 @@
 package renamebot
 
 import (
-	"github.com/codalotl/codalotl/internal/llmcomplete"
 	_ "embed"
 	"encoding/json"
+	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"strings"
 )
 

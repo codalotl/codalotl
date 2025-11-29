@@ -1,8 +1,8 @@
 package reorgbot
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
 	"bytes"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"go/ast"
 	"go/token"
 	"path/filepath"

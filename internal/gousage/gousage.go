@@ -1,8 +1,8 @@
 package gousage
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"sort"
 )
 

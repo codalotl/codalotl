@@ -1,10 +1,10 @@
 package agent
 
 import (
-	"github.com/codalotl/codalotl/internal/llmmodel"
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"context"
 	"errors"
+	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"math"
 	"sync"
 	"testing"

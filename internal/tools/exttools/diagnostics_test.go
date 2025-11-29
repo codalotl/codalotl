@@ -1,10 +1,10 @@
 package exttools
 
 import (
+	"context"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

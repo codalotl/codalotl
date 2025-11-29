@@ -1,6 +1,10 @@
 package pkgtools
 
 import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -11,10 +15,6 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"context"
-	_ "embed"
-	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 )

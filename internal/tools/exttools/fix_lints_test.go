@@ -1,11 +1,11 @@
 package exttools
 
 import (
+	"context"
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"

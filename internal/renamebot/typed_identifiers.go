@@ -1,9 +1,9 @@
 package renamebot
 
 import (
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gotypes"
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"

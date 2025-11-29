@@ -6,10 +6,10 @@
 package llmcomplete
 
 import (
-	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
-	"github.com/codalotl/codalotl/internal/q/health"
 	"errors"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
+	"github.com/codalotl/codalotl/internal/q/health"
 	"log/slog"
 	"strings"
 	"time"

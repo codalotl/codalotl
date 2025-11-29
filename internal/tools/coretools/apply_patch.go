@@ -1,14 +1,14 @@
 package coretools
 
 import (
-	"github.com/codalotl/codalotl/internal/applypatch"
-	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
 	"bufio"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/applypatch"
+	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/auth"
 	"path/filepath"
 	"strings"
 )

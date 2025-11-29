@@ -1,12 +1,12 @@
 package docubot
 
 import (
+	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/llmcomplete"
-	"github.com/codalotl/codalotl/internal/updatedocs"
 	"github.com/codalotl/codalotl/internal/q/health"
-	"fmt"
+	"github.com/codalotl/codalotl/internal/updatedocs"
 	"strings"
 )
 

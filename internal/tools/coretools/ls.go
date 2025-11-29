@@ -1,13 +1,13 @@
 package coretools
 
 import (
-	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
-	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/cmdrunner"
+	"github.com/codalotl/codalotl/internal/tools/auth"
 	"os"
 	"sort"
 	"strings"
