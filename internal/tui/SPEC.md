@@ -1,0 +1,179 @@
+# tui
+
+The tui package is the primary package that implements the coding agent TUI, bringing together the `codeai/agent` package and `codeai/tool/...` into a UI. This UI will enable users to access things like `codeai/docubot` for auto documentation, `codeai/reorgbot` for file organization, and so on.
+
+## Dependencies
+
+- `codeai/agent` is the main agent loop.
+- `codeai/agentformatter` formats events from the agent.
+- `codeai/llmstream` is the library to communicate with LLMs.
+- `q/termformat` should be used where possible for terminal formatting.
+
+NOTE: the long-term plan is to remove charmbracelet/* from the repo, bringing in-house a lightweight TUI framework and a few common components. `q/termformat` already exists in this repo and is the replacement for `lipgloss`. However, for the time being, we will use bubbletea as the TUI framework, bubbles for a few common components, and lipgloss when it's necessary to work with those other components. Use `q/termformat` otherwise.
+
+## Implementation Details
+
+This spec should be implemented in phases. The spec will document things that we'll do later. Don't implement these for now:
+- SKIP for now: Cycling Mode, the /model command, the Info Panel.
+- SKIP any sort of docubot/reorgbot functionality.
+- SKIP package mode
+- Working Indicator:
+    - SKIP the "If the last message is a reasoning message less than one line" part of Working Indicator (for now). Only implement the generic "• Working (1m 34s • ESC to interrupt)" even if the last message is a Reasoning message.
+    - SKIP any sort of animation
+    - However, DO use a working indicator with runtime.
+
+Bubble Tea Implementation
+- Bubble Tea recommends an Update function that returns tea.Cmd.
+- However, given we plan to ditch Bubble Tea, we want to minimize the use of this.
+- For any Bubble we use, continue to use tea.Cmd, as that's what's expected. Fine.
+- **However, AVOID DOING OUR I/O THROUGH tea.Cmd** -- Instead, use `*Program.Send`. For instance, our agent event loop should live in its own goroutine, and send agent events to the program using `*Program.Send`.
+
+## Basic Agent
+
+There's a Messages Area on top to see chat history and agent activity. On the bottom is a Text Area to enter commands. Entering a message and hitting the Enter key will send a message to the agent. The agent loop will work on it for a while, outputting thoughts, issuing tool calls, and sending messages. The user will see this activity in the Messages Area.
+
+At any point in time, the agent is either Running or Idle.
+- If the agent is Idle, sending a message causes it to be Running.
+- If the agent is Running, the user may still type a message and send it (press ENTER). This enqueues the message to be sent at the next opportunity (for instance, a tool call result can be sent WITH this message).
+    - This enqueued message will be reflected in the Messages Area immediately, and the Text Area will be cleared.
+    - It will be re-reflected in the Messages Area when it is actually sent.
+- If the user types a message and wants the agent to stop what it's doing and process the new message right away, they'd need to press ESC to stop the agent and then ENTER to send the message.
+    - Pressing ESC to stop the agent while a message is enqueued will cause all enqueued-but-unsent messages to appear in the Text Area. Pressing ENTER will then send this new message as per normal.
+
+Basic controls:
+- Pressing ENTER sends a message. The message is reflected in the Messages Area, and the Text Area is cleared. ENTER does nothing if the Text Area is empty.
+- Ctrl-J enters a newline.
+- ESC stops the agent if it's Running
+    - ESC is overloaded. It may apply to other scenarios before stopping the agent. Ex: exiting Cycle Mode; exiting edit-previous-message-mode; closing a "dialog", if we had a dialog up.
+    - Spamming ESC should be safe and should eventually stop the agent. Extra ESC when the agent is stopped does nothing.
+- Ctrl-C terminates the process. Typing "/quit", "/exit", or "/logout" also terminates the process.
+- Basic text navigation should work. For instance, on OSX, option-left/right jumps the cursor left/right to word boundaries.
+
+## Messages Area
+
+- Each discrete message is separated by a blank line.
+- Tools have a Call and a Result.
+    - When a Call comes in, we print it.
+    - When a paired Result in, we replace the Call message with the Result.
+- User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
+- When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.
+- The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").
+- Shift Page Up/Page Down should also scroll the Messages Area.
+
+## Working Indicator
+
+- If the agent is Running, it has a Working Indicator visible with the amount of time it's been working. Otherwise it doesn't.
+- If present, the Working Indicator is always the last message of the Messages Area.
+- By default it will say (for instance): "• Working (1m 34s • ESC to interrupt)"
+- The non-parenthetical part is animated: each letter's FG color is highlighted in turn, as if a spotlight is passing over it. The spotlight has a width of 5 characters, brightest on the center character. The spotlight sits on a letter for 120ms before shifting to the next letter. The letters form a ring (the spotlight centered on the last letter also illuminates 2 letters at the start of the indicator).
+    - The "spotlight" is theme-dependent. If the BG color is light-mode, the FB highlighting makes it darker. Otherwise, it makes it lighter.
+- If the last message is a reasoning message less than one line (including the parenthetical with run time), that reasoning message **becomes** the Working Indicator, and is animated and gets the run time parenthetical.
+- Otherwise, the Working Indicator is a new line with the generic text "Working".
+
+## Cycling Mode
+
+Up/Down cycle through previous/next messages that user previously sent. Messages include non-trivial slash commands (For the sake of argument, imagine there's a "/refactor <detailed message>" command. That can be cycled through. But "/new" or "/model gemini-2.5" can't be).
+- The user is either in Cycling Mode or not. Defaults to not.
+- If not in Cycling Mode, pressing Up when the Text Area is blank enters Cycling Mode if there's previous messages.
+    - (If there were no previous messages, nothing happens - Cycling Mode not entered.)
+    - The Text Area shows the previous message the user entered, with the typing cursor remaining at the start.
+- If in Cycling Mode, pressing Down shows the next message. If the Text Area was showing the most recent message, pressing Down exits Cycling Mode and the Text Area goes to its default state.
+- If in Cycling Mode, pressing Up shows the previous message. Pressing Up when Cycling Mode is showing the first message does nothing.
+- If in Cycling Mode, typing or moving the cursor exits Cycling Mode. The Text Area is now filled with the previous message and the user can edit it and send it.
+- If in Cycling Mode, pressing ESC exits Cycling Mode, as if the user pressed Down on the last message. (ESC does not stop the agent here).
+- If not in Cycling Mode, but editing a previous message, pressing ESC jumps the cursor to the start and re-enters Cycling Mode (ESC does not stop the agent here). If the message was edited before re-entering
+    Cycling Mode, the edited version will be remembered if the user goes back/forth.
+- Upon sending a message, all edited-but-unsent messages will be forgotten. Cycling mode will again cycle through actually-sent messages.
+
+## Granting Permission
+
+If the agent needs permission to use some tool, a Permission Area will be shown above the Text Area and below the Messages Area. It should show a message with a Yes or No option.
+- pressing Y or N resolves the permission check and hides the Permission Area.
+- ESC stops the agent. If the request is to do X, X must not happen after ESC is pressed (ESC is semantically deny-and-stop-agent).
+- the Y or N should not be echoed to the Text Area (the Permission Area receives all key input).
+
+## Slash Commands
+
+- /quit, /exit, /logout - terminates process.
+- /new - Makes a new session. The Messages Area is also cleared (Cycling Mode will still remember previous message history).
+- /model - Configures model.
+- /package path/to/pkg - enter Package Mode for a given package.
+- /package - exit Package Mode. Prints a message indicating how Package Mode works.
+- /generic - exists Package Mode. Enters generic mode.
+
+## Package Mode
+
+The TUI is either in Package Mode or Generic Mode. It starts in Generic Mode. Being in Package Mode requires a "package" (a path relative to the sandbox root) be selected. To enter Package Mode, enter the slash command "/package path/to/package". This command also makes a new session. To exit Package Mode, use the /package command with no argument. Alternatively, use /generic. Exiting Package Mode also make a new session.
+
+Currently, Package Mode is only implemented for Go. (In the future, I can image something like "code unit mode" [needs better naming] that restricts operations in a similar way.)
+
+While in Package Mode with a given package:
+- The agent is mostly restricted to read/write in a given package.
+- A custom prompt is used.
+- Custom tools are used.
+
+Other notes:
+- /new while in Package Mode retains the active package.
+- Package Mode does not require a real, working Go package. It only requires a path ("." is possible). This is because the user may want to use this TUI to make a *new* package from scratch.
+
+## Color Palette
+
+There exists a non-colorized mode. In this mode, no colors will be applied. Text may still be styled to be bold, etc.
+
+In a colorized mode, there exists a palette. **All colors used must be defined in the palette** (see caveat on text animation). Callers of this package may specify a palette by name (they cannot indicate individual colors). By default, the palette will be based on the default terminal palette, as determined by `q/termformat`.
+
+Supported palette names:
+- `auto` - derive colors from the terminal (default)
+- `dark` - force the built-in dark palette
+- `light` - force the built-in light palette
+- `plain` - disable colors entirely
+
+Palette Colors:
+- Primary Background Color (most of the screen will be this color)
+- Accent Background Color (secondary color for various areas. Example: Text Area background)
+- Primary Foreground Color (normal text)
+- Accent Foreground Color (less important text. Example: help hints)
+- Red Foreground Color (text for error statuses, error messages, diff removals)
+- Green Foreground Color (text for success statuses, diff additions)
+- Colorful Foreground Color (used to highlight important words, tool calls)
+
+All foreground colors in a palette must be readable on all background colors.
+
+Caveat for text animation: some text will be animated (example: Working Indicator). In such cases, colors may be computed based on the configured palette.
+
+## Info Panel
+
+There's an info panel to the right of the Messages Area, shown if there's sufficient width.
+
+### Tokens / Cost
+
+The top of the panel shows the tokens and cost:
+- Context window (ex: "100% context left", "82% context left", etc)
+- Cost
+- Total input tokens (including cached). This token count rounded as necessary (ex: 313, 1.4k, 520k, 1.2M, etc).
+- Total cached tokens
+- Total output tokens (including reasoning tokens)
+
+Display format:
+
+```
+Context: 32% left   |   Cost: $3.24
+Tokens: 123k (input: 42k, cached: 60k, output: 21k)
+```
+
+This information is reset when the /new command is run.
+
+### Package Mode
+
+While in Package Mode, the UI will say so:
+
+```
+Package: path/to/package
+```
+
+When not in package mode, the UI will say:
+
+```
+Package: <none>
+Use `/package path/to/pkg` to select a package.
+```

@@ -1,0 +1,51 @@
+package clarifydocs_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/subagents/clarifydocs"
+	"github.com/codalotl/codalotl/internal/tools/toolsets"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestClarifyAPIIntegration(t *testing.T) {
+	if os.Getenv("INTEGRATION_TEST") != "1" {
+		t.Skip("integration test disabled; set INTEGRATION_TEST=1 to enable")
+	}
+
+	modelID := llmmodel.ModelID("gpt-5")
+	if !modelID.Valid() {
+		t.Skip("model gpt-5 is not registered")
+	}
+
+	if strings.TrimSpace(llmmodel.GetAPIKey(modelID)) == "" {
+		t.Skip("no API key configured for gpt-5 model")
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working dir: %v", err)
+	}
+
+	sandboxAbsDir := wd
+	targetPath, err := filepath.Abs(filepath.Join(".", "clarifydocs.go"))
+	assert.NoError(t, err)
+
+	question := "What does the ClarifyAPI function return when it successfully answers a question?"
+	answer, err := clarifydocs.ClarifyAPI(context.Background(), agent.NewAgentCreator(), sandboxAbsDir, nil, toolsets.SimpleReadOnlyTools, targetPath, "ClarifyAPI", question)
+	if err != nil {
+		t.Fatalf("ClarifyAPI: %v", err)
+	}
+	if strings.TrimSpace(answer) == "" {
+		t.Fatal("ClarifyAPI returned an empty answer")
+	}
+
+	// t.Logf("ClarifyAPI response: %s", answer)
+}
