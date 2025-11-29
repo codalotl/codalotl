@@ -22,11 +22,16 @@ require (
 // (these deps often have good value, but come with too many transitive deps)
 require (
 	github.com/openai/openai-go/v3 v3.7.0 // MANY transitive deps :(
+	github.com/sergi/go-diff v1.4.0 // only deps are testify->many things
 	github.com/stretchr/testify v1.11.1 // MANY transitive deps :(
 )
 
+// Dependencies we want to delete:
+require github.com/tiktoken-go/tokenizer v0.6.2 // 1 transitive dep on github.com/dlclark/regexp2. But, I don't think we need this functionality at all.
+
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
