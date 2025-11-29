@@ -1,7 +1,13 @@
 package main
 
-import "fmt"
+import (
+	"log"
+
+	"github.com/codalotl/codalotl/internal/tui"
+)
 
 func main() {
-	fmt.Println("codalotl")
+	if err := tui.Run(); err != nil {
+		log.Fatal(err)
+	}
 }
