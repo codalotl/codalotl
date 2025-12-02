@@ -11,7 +11,7 @@ import (
 
 const (
 	cursorHome            = "\x1b[H"
-	clearToEnd            = "\x1b[0J"
+	clearLine             = "\x1b[2K"
 	altScreenEnter        = "\x1b[?1049h" + cursorHome
 	altScreenExit         = "\x1b[?1049l"
 	hideCursor            = "\x1b[?25l"

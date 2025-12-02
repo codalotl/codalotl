@@ -38,6 +38,7 @@ func (t *TUI) resumeFromSuspend() {
 		t.stop(err)
 		return
 	}
+	t.invalidateRenderCache(true)
 	t.triggerResizeEvent()
 	t.Send(SigResumeEvent{})
 }

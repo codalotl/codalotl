@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,6 +37,136 @@ func runTUITest(t *testing.T, m Model, configure ...func(*Options)) error {
 		t.Fatal("RunTUI timed out")
 		return nil
 	}
+}
+
+type recordingWriter struct {
+	mu     sync.Mutex
+	writes []string
+	times  []time.Time
+}
+
+func (w *recordingWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.writes = append(w.writes, string(p))
+	w.times = append(w.times, time.Now())
+	return len(p), nil
+}
+
+func (w *recordingWriter) snapshot() ([]string, []time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	copiedWrites := append([]string(nil), w.writes...)
+	copiedTimes := append([]time.Time(nil), w.times...)
+	return copiedWrites, copiedTimes
+}
+
+type repaintModel struct {
+	mu    sync.Mutex
+	views []string
+	idx   int
+}
+
+func newRepaintModel(views []string) *repaintModel {
+	return &repaintModel{views: append([]string(nil), views...)}
+}
+
+func (m *repaintModel) Init(t *TUI) {
+	t.Send("advance")
+}
+
+func (m *repaintModel) Update(t *TUI, msg Message) {
+	switch v := msg.(type) {
+	case string:
+		switch v {
+		case "advance":
+			m.mu.Lock()
+			length := len(m.views)
+			if length == 0 {
+				m.mu.Unlock()
+				t.Send("quit")
+				return
+			}
+			if m.idx < length-1 {
+				m.idx++
+				hasMore := m.idx < length-1
+				m.mu.Unlock()
+				if hasMore {
+					t.Send("advance")
+				} else {
+					t.Send("quit")
+				}
+			} else {
+				m.mu.Unlock()
+				t.Send("quit")
+			}
+		case "quit":
+			t.Quit()
+		}
+	case ResizeEvent:
+		// ignore
+	case SigTermEvent:
+		// ignore
+	}
+}
+
+func (m *repaintModel) View() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.views) == 0 {
+		return ""
+	}
+	if m.idx >= len(m.views) {
+		return m.views[len(m.views)-1]
+	}
+	return m.views[m.idx]
+}
+
+func runRenderSequence(t *testing.T, views []string, configure ...func(*Options)) ([]string, []time.Time) {
+	t.Helper()
+
+	writer := &recordingWriter{}
+	model := newRepaintModel(views)
+
+	configs := append([]func(*Options){
+		func(opts *Options) {
+			opts.Output = writer
+			opts.sizeProvider = func() (int, int, error) { return 80, 24, nil }
+		},
+	}, configure...)
+
+	err := runTUITest(t, model, configs...)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return writer.snapshot()
+}
+
+type resizeInvalidationModel struct{}
+
+func (m *resizeInvalidationModel) Init(t *TUI) {
+	t.Send("resize")
+}
+
+func (m *resizeInvalidationModel) Update(t *TUI, msg Message) {
+	switch v := msg.(type) {
+	case string:
+		switch v {
+		case "resize":
+			t.handleResizeSignal()
+			t.Send("quit")
+		case "quit":
+			t.Quit()
+		}
+	case ResizeEvent:
+		// ignore
+	case SigTermEvent:
+		// ignore
+	}
+}
+
+func (m *resizeInvalidationModel) View() string {
+	return "resize\nmodel"
 }
 
 type quitModel struct {
@@ -490,4 +621,119 @@ func TestTerminalExitOnPanic(t *testing.T) {
 	}()
 
 	RunTUI(&panicModel{}, opts)
+}
+
+func TestRenderLineDiffing(t *testing.T) {
+	writes, _ := runRenderSequence(t,
+		[]string{
+			"line 1\nline 2",
+			"line 1\nline 2 updated",
+		},
+		func(opts *Options) {
+			opts.Framerate = 120
+		},
+	)
+
+	if len(writes) != 2 {
+		t.Fatalf("expected 2 render writes, got %d", len(writes))
+	}
+
+	first, second := writes[0], writes[1]
+	if !strings.Contains(first, clearScreen) {
+		t.Fatalf("expected first write to contain clearScreen sequence, got %q", first)
+	}
+	if strings.Contains(second, "\x1b[1;1H") {
+		t.Fatalf("expected second frame to skip line 1 update, got %q", second)
+	}
+	if !strings.Contains(second, "\x1b[2;1H") || !strings.Contains(second, clearLine) {
+		t.Fatalf("expected second frame to position and clear line 2, got %q", second)
+	}
+	if !strings.Contains(second, "line 2 updated") {
+		t.Fatalf("expected updated content in second frame, got %q", second)
+	}
+	if strings.Contains(second, "line 1") {
+		t.Fatalf("unexpected line 1 contents in diffed frame: %q", second)
+	}
+}
+
+func TestRenderClearsRemovedLines(t *testing.T) {
+	writes, _ := runRenderSequence(t,
+		[]string{
+			"line 1\nline to clear",
+			"line 1",
+		},
+		func(opts *Options) {
+			opts.Framerate = 120
+		},
+	)
+
+	if len(writes) != 2 {
+		t.Fatalf("expected 2 render writes, got %d", len(writes))
+	}
+
+	second := writes[1]
+	if !strings.Contains(second, "\x1b[2;1H"+clearLine) {
+		t.Fatalf("expected second frame to clear removed line, got %q", second)
+	}
+	if strings.Contains(second, "line to clear") {
+		t.Fatalf("expected removed content to be cleared, got %q", second)
+	}
+}
+
+func TestRenderFullRedrawAfterResize(t *testing.T) {
+	writer := &recordingWriter{}
+	model := &resizeInvalidationModel{}
+
+	var mu sync.Mutex
+	widths := []int{80, 81}
+	var idx int
+
+	err := runTUITest(t, model, func(opts *Options) {
+		opts.Output = writer
+		opts.Framerate = 120
+		opts.sizeProvider = func() (int, int, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if idx >= len(widths) {
+				return widths[len(widths)-1], 24, nil
+			}
+			w := widths[idx]
+			idx++
+			return w, 24, nil
+		}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	writes, _ := writer.snapshot()
+	if len(writes) != 2 {
+		t.Fatalf("expected 2 render writes, got %d", len(writes))
+	}
+	second := writes[1]
+	if !strings.Contains(second, clearScreen) {
+		t.Fatalf("expected full redraw after resize, got %q", second)
+	}
+}
+
+func TestRenderThrottlesFramerate(t *testing.T) {
+	writes, times := runRenderSequence(t,
+		[]string{
+			"frame one",
+			"frame two",
+		},
+		func(opts *Options) {
+			opts.Framerate = 120
+		},
+	)
+
+	if len(writes) != 2 || len(times) != 2 {
+		t.Fatalf("expected 2 render writes and timestamps, got %d writes and %d times", len(writes), len(times))
+	}
+
+	frameInterval := times[1].Sub(times[0])
+	minFrame := time.Second / 120
+	if frameInterval < minFrame-time.Millisecond {
+		t.Fatalf("expected frame interval >= %v, got %v", minFrame, frameInterval)
+	}
 }

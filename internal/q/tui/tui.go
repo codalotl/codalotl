@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -152,6 +154,13 @@ func (k KeyEvent) IsRunes() bool {
 	return k.ControlKey == ControlKeyNone && len(k.Runes) > 0
 }
 
+func (k KeyEvent) Rune() rune {
+	if len(k.Runes) > 0 {
+		return k.Runes[0]
+	}
+	return 0
+}
+
 // ResizeEvent is sent during startup and when the terminal window is resized.
 type ResizeEvent struct {
 	Width  int
@@ -195,6 +204,9 @@ type terminalFactory func(input io.Reader, output io.Writer) (terminalController
 type Options struct {
 	Input  io.Reader
 	Output io.Writer
+	// If Framerate is between 60 and 120 inclusive, rendering is throttled to that
+	// refresh rate. Otherwise, a default of 60 FPS is used.
+	Framerate int
 
 	skipTTYValidation bool
 	terminalFactory   terminalFactory
@@ -262,6 +274,8 @@ type TUI struct {
 
 	opts Options
 
+	frameDuration time.Duration
+
 	term         terminalController
 	termFactory  terminalFactory
 	sizeProvider func() (int, int, error)
@@ -292,6 +306,16 @@ type TUI struct {
 	suspended bool
 
 	wg sync.WaitGroup
+
+	panicOnce  sync.Once
+	panicMu    sync.Mutex
+	panicValue any
+	panicStack []byte
+
+	renderMu   sync.Mutex
+	prevLines  []string
+	fullRedraw bool
+	lastRender time.Time
 }
 
 func newTUI(m Model, opts Options) *TUI {
@@ -302,15 +326,23 @@ func newTUI(m Model, opts Options) *TUI {
 		factory = defaultTerminalFactory
 	}
 
+	framerate := opts.Framerate
+	if framerate < 60 || framerate > 120 {
+		framerate = 60
+	}
+	frameDuration := time.Second / time.Duration(framerate)
+
 	return &TUI{
-		model:        m,
-		opts:         opts,
-		termFactory:  factory,
-		sizeProvider: opts.sizeProvider,
-		ctx:          ctx,
-		cancel:       cancel,
-		panicWriter:  os.Stderr,
-		messages:     make(chan messageEnvelope, 64),
+		model:         m,
+		opts:          opts,
+		termFactory:   factory,
+		sizeProvider:  opts.sizeProvider,
+		ctx:           ctx,
+		cancel:        cancel,
+		panicWriter:   os.Stderr,
+		messages:      make(chan messageEnvelope, 64),
+		frameDuration: frameDuration,
+		fullRedraw:    true,
 	}
 }
 
@@ -452,27 +484,45 @@ func onceFunc(fn func()) func() {
 	}
 }
 
-func (t *TUI) run() (err error) {
-	var panicValue any
-	var stack []byte
+func (t *TUI) capturePanic(value any, stack []byte) {
+	if value == nil {
+		return
+	}
+	if stack == nil {
+		stack = debug.Stack()
+	}
+	t.panicOnce.Do(func() {
+		t.panicMu.Lock()
+		t.panicValue = value
+		t.panicStack = append([]byte(nil), stack...)
+		t.panicMu.Unlock()
+		t.stop(nil)
+	})
+}
 
+func (t *TUI) panicInfo() (any, []byte) {
+	t.panicMu.Lock()
+	defer t.panicMu.Unlock()
+	return t.panicValue, t.panicStack
+}
+
+func (t *TUI) run() (err error) {
 	defer func() {
 		t.cleanup()
-		if panicValue != nil {
-			fmt.Fprintf(t.panicWriter, "panic: %v\n%s", panicValue, stack)
-			panic(panicValue)
+		if value, stack := t.panicInfo(); value != nil {
+			fmt.Fprintf(t.panicWriter, "panic: %v\n%s", value, stack)
+			panic(value)
 		}
 	}()
 
-	err = t.loop(&panicValue, &stack)
+	err = t.loop()
 	return err
 }
 
-func (t *TUI) loop(panicValue *any, stack *[]byte) (err error) {
+func (t *TUI) loop() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			*panicValue = r
-			*stack = debug.Stack()
+			t.capturePanic(r, debug.Stack())
 		}
 	}()
 
@@ -519,12 +569,110 @@ func (t *TUI) render() {
 	if t.output == nil {
 		return
 	}
-	view := t.model.View()
-	_, _ = io.WriteString(t.output, cursorHome)
-	if view != "" {
-		_, _ = io.WriteString(t.output, view)
+	lines := splitViewLines(t.model.View())
+
+	for {
+		t.renderMu.Lock()
+
+		if t.frameDuration > 0 && !t.lastRender.IsZero() {
+			if remaining := t.frameDuration - time.Since(t.lastRender); remaining > 0 {
+				t.renderMu.Unlock()
+				time.Sleep(remaining)
+				continue
+			}
+		}
+
+		output, changed := t.buildRenderOutputLocked(lines)
+		if len(lines) == 0 {
+			t.prevLines = nil
+		} else {
+			t.prevLines = append(t.prevLines[:0], lines...)
+		}
+
+		if !changed {
+			t.renderMu.Unlock()
+			return
+		}
+
+		_, _ = io.WriteString(t.output, output)
+		t.lastRender = time.Now()
+		t.renderMu.Unlock()
+		return
 	}
-	_, _ = io.WriteString(t.output, clearToEnd)
+}
+
+func splitViewLines(view string) []string {
+	if view == "" {
+		return nil
+	}
+	return strings.Split(view, "\n")
+}
+
+func (t *TUI) buildRenderOutputLocked(lines []string) (string, bool) {
+	prevLen := len(t.prevLines)
+	full := t.fullRedraw
+	t.fullRedraw = false
+
+	var b strings.Builder
+	if full {
+		b.WriteString(clearScreen)
+	}
+
+	maxLen := len(lines)
+	if !full && prevLen > maxLen {
+		maxLen = prevLen
+	}
+	for i := 0; i < maxLen; i++ {
+		var newLine string
+		if i < len(lines) {
+			newLine = lines[i]
+		}
+
+		if full {
+			if newLine == "" {
+				continue
+			}
+			appendMoveToLine(&b, i+1)
+			b.WriteString(clearLine)
+			b.WriteString(newLine)
+			continue
+		}
+
+		var prevLine string
+		if i < prevLen {
+			prevLine = t.prevLines[i]
+		}
+
+		if newLine == prevLine && !(i >= len(lines) && i < prevLen) {
+			continue
+		}
+
+		appendMoveToLine(&b, i+1)
+		b.WriteString(clearLine)
+		if newLine != "" {
+			b.WriteString(newLine)
+		}
+	}
+
+	if b.Len() == 0 {
+		return "", false
+	}
+	return b.String(), true
+}
+
+func appendMoveToLine(b *strings.Builder, row int) {
+	b.WriteString("\x1b[")
+	b.WriteString(strconv.Itoa(row))
+	b.WriteString(";1H")
+}
+
+func (t *TUI) invalidateRenderCache(forceFull bool) {
+	t.renderMu.Lock()
+	if forceFull {
+		t.fullRedraw = true
+	}
+	t.prevLines = nil
+	t.renderMu.Unlock()
 }
 
 // Quit sends a SigTermEvent to the model. Unless canceled, RunTUI returns nil.
@@ -608,12 +756,19 @@ func (t *TUI) Go(f func(ctx context.Context) Message) {
 	go func() {
 		defer t.wg.Done()
 		defer cancel()
+		defer t.handleGoPanic()
 
 		msg := f(ctx)
 		if msg != nil {
 			t.Send(msg)
 		}
 	}()
+}
+
+func (t *TUI) handleGoPanic() {
+	if r := recover(); r != nil {
+		t.capturePanic(r, debug.Stack())
+	}
 }
 
 func (t *TUI) enqueueSignal(kind signalKind) {
@@ -730,6 +885,7 @@ func (t *TUI) triggerResizeEvent() {
 	if !t.storeSize(width, height) {
 		return
 	}
+	t.invalidateRenderCache(true)
 	t.Send(ResizeEvent{Width: width, Height: height})
 }
 
