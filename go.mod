@@ -14,6 +14,7 @@ require (
 // (these deps must have 0 transitive deps and/or be difficult to reproduce)
 require (
 	github.com/clipperhouse/uax29/v2 v2.2.0 // 0 transitive deps!
+	github.com/creack/pty v1.1.24 // 0 transitive deps! (ONLY used for testing, so we could potentially get rid of it)
 	github.com/mattn/go-runewidth v0.0.19 // 1 transitive dep: github.com/clipperhouse/uax29
 	github.com/yuin/goldmark v1.7.13 // 0 transitive deps!
 )
