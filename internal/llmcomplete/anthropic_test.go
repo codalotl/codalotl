@@ -8,8 +8,8 @@ import (
 )
 
 func TestAnthropic(t *testing.T) {
-	if !HasDefaultKey(ProviderIDAnthropic) {
-		t.Skip("No Anthropic key in env")
+	if !runIntegrationTest(t, ProviderKeyEnvVars()[ProviderIDAnthropic]) {
+		return
 	}
 
 	withCustomModel(t, ModelIDClaude35Haiku, ProviderIDAnthropic, "claude-3-5-haiku-20241022", ModelOverrides{}, func() {

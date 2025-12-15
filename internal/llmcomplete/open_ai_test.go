@@ -14,8 +14,8 @@ import (
 )
 
 func TestOpenAI(t *testing.T) {
-	if !HasDefaultKey(ProviderIDOpenAI) {
-		t.Skip("No OpenAI key in env")
+	if !runIntegrationTest(t, ProviderKeyEnvVars()[ProviderIDOpenAI]) {
+		return
 	}
 
 	c := NewConversation(ModelIDGPT5Nano, "Follow user instructions.")
@@ -66,8 +66,8 @@ func TestOpenAI(t *testing.T) {
 }
 
 func TestOpenAIFailure(t *testing.T) {
-	if !HasDefaultKey(ProviderIDOpenAI) {
-		t.Skip("No OpenAI key in env")
+	if !runIntegrationTest(t, ProviderKeyEnvVars()[ProviderIDOpenAI]) {
+		return
 	}
 
 	c := NewConversation(ModelIDGPT5Nano, "Follow user instructions.")

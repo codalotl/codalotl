@@ -9,8 +9,8 @@ import (
 )
 
 func TestProvider_OpenRouter_Basic(t *testing.T) {
-	if !HasDefaultKey(ProviderIDOpenRouter) {
-		t.Skip("No OpenRouter key in env")
+	if !runIntegrationTest(t, ProviderKeyEnvVars()[ProviderIDOpenRouter]) {
+		return
 	}
 
 	mid := ModelID("my-model")
@@ -45,8 +45,8 @@ func TestProvider_OpenRouter_Basic(t *testing.T) {
 }
 
 func TestProvider_XAI(t *testing.T) {
-	if !HasDefaultKey(ProviderIDXAI) {
-		t.Skip("No XAI key in env")
+	if !runIntegrationTest(t, ProviderKeyEnvVars()[ProviderIDXAI]) {
+		return
 	}
 
 	c := NewConversation(ModelIDGrok4Fast, "Follow user instructions.")

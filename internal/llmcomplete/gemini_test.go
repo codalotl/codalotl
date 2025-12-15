@@ -9,8 +9,8 @@ import (
 )
 
 func TestProvider_Gemini(t *testing.T) {
-	if !HasDefaultKey(ProviderIDGemini) {
-		t.Skip("No Gemini key in env")
+	if !runIntegrationTest(t, ProviderKeyEnvVars()[ProviderIDGemini]) {
+		return
 	}
 
 	defaultID := DefaultModelIDForProvider(ProviderIDGemini)
