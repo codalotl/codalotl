@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	defaultModelID = llmmodel.ModelID("gpt-5-codex-high")
+	defaultModelID = llmmodel.DefaultModel
 	tuiAgentName   = "codalotl"
 )
 

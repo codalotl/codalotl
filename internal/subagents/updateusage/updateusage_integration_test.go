@@ -20,13 +20,13 @@ func TestUpdateUsageIntegration(t *testing.T) {
 		t.Skip("integration test disabled; set INTEGRATION_TEST=1 to enable")
 	}
 
-	modelID := llmmodel.ModelID("gpt-5")
+	modelID := llmmodel.DefaultModel
 	if !modelID.Valid() {
-		t.Skip("model gpt-5 is not registered")
+		t.Skipf("model %s is not registered", modelID)
 	}
 
 	if strings.TrimSpace(llmmodel.GetAPIKey(modelID)) == "" {
-		t.Skip("no API key configured for gpt-5 model")
+		t.Skipf("no API key configured for %s model", modelID)
 	}
 
 	mod, err := gocode.NewModule(gocode.MustCwd())

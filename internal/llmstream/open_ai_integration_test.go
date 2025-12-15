@@ -149,7 +149,7 @@ Rules:
 - Call exactly one tool (store_message) once.
 - Do not ask questions or add extra text after the tool call.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5"), instructions)
+	conv := NewConversation(llmmodel.DefaultModel, instructions)
 	require.NoError(t, conv.AddUserTurn("Hello Mr. Automaton."))
 
 	// Register tool with the conversation so the provider can call it
@@ -303,7 +303,7 @@ func TestOpenAIResponsesProvider_CustomToolGrammar(t *testing.T) {
 Provide the number requested by the user through the tool input, and avoid additional assistant text in the same turn.
 After the tool result is supplied, reply with "Final answer: <value>" where <value> is exactly the number returned by the tool result.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5"), systemPrompt)
+	conv := NewConversation(llmmodel.DefaultModel, systemPrompt)
 	require.NoError(t, conv.AddUserTurn("Use the structured tool to report the integer 7."))
 
 	tool := grammarTestTool{name: toolName}
@@ -406,7 +406,7 @@ func TestOpenAIResponsesProvider_Reasoning(t *testing.T) {
 		return
 	}
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5"), "You are a precise assistant. Follow the user's instructions exactly.")
+	conv := NewConversation(llmmodel.DefaultModel, "You are a precise assistant. Follow the user's instructions exactly.")
 	require.NoError(t, conv.AddUserTurn("Reply with only the numeric answer to (393 + 16 / 8). Do not add words, punctuation, whitespace, or newlines."))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -514,7 +514,7 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 	)
 
 	// Instruct the model to call the tool and then reply with only the tool result
-	conv := NewConversation(llmmodel.ModelID("gpt-5"), "You are a precise assistant. Use the available tool to answer and then reply ONLY with the tool result string.")
+	conv := NewConversation(llmmodel.DefaultModel, "You are a precise assistant. Use the available tool to answer and then reply ONLY with the tool result string.")
 	require.NoError(t, conv.AddUserTurn("Call the tool named get_weather with the JSON {\"location\":\"San Francisco\"}. After you receive the result, reply with exactly the function call result and nothing else."))
 
 	// Register the weather tool
@@ -738,7 +738,7 @@ In your FIRST response, call the tool 'two_param_tool' exactly once with this JS
 {"first":"hello"}  // do NOT include "second".
 Do not include any assistant text outside of the tool call.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{twoParamTool{name: toolName}}))
 
@@ -806,7 +806,7 @@ func TestOpenAIResponsesProvider_ToolWithNoParams(t *testing.T) {
 In your FIRST response, invoke the tool 'noop_tool' exactly once with no arguments.
 Do not include any assistant text outside of the tool call.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{noParamTool{name: toolName}}))
 
