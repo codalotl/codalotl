@@ -107,6 +107,8 @@ func (v *View) Height() int
 //
 // If a line does not extend all the way to v.Width() (including if a line is just a newline), this background color is NOT set. It's only
 // used if there aren't enough lines in the view to fill v.Height().
+//
+// If v's content is "", this color is used for all lines in the view.
 func (v *View) SetEmptyLineBackgroundColor(c termformat.Color)
 
 // Offset returns the offset of the view in lines (e.g. 0 -> unscrolled; 1 -> scrolled down 1 line).
