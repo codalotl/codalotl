@@ -5,70 +5,85 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/q/tui"
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
 )
 
-type tickMsg struct{}
-
 type model struct {
 	view *tuicontrols.View
+	ta   *tuicontrols.TextArea
 
 	bg termformat.Color
 
 	rawLines []string
-	tick     int
-
-	cancelTick tui.CancelFunc
 }
 
 func newModel() *model {
 	bg := termformat.ANSIWhite
 	v := tuicontrols.NewView(40, 15)
 	v.SetEmptyLineBackgroundColor(bg)
+
+	ta := tuicontrols.NewTextArea(40, 4)
+	ta.Prompt = "› "
+	ta.Placeholder = "Type a message… (Enter to send, Alt+Enter for newline)"
+	ta.BackgroundColor = bg
+	ta.ForegroundColor = termformat.ANSIBlack
+	ta.PlaceholderColor = termformat.ANSIBrightBlack
+	ta.CaretColor = termformat.ANSIBrightBlue
+
 	return &model{
 		view: v,
+		ta:   ta,
 		bg:   bg,
 	}
 }
 
 func (m *model) Init(t *tui.TUI) {
-	m.cancelTick = t.SendPeriodically(tickMsg{}, 2*time.Second)
 }
 
 func (m *model) Update(t *tui.TUI, msg tui.Message) {
 	switch v := msg.(type) {
 	case tui.ResizeEvent:
-		// m.view.SetSize(v.Width, v.Height)
-		// m.rebuildContent()
+		m.applySize(v.Width, v.Height)
 		return
 	case tui.KeyEvent:
 		if v.ControlKey == tui.ControlKeyCtrlC {
-			if m.cancelTick != nil {
-				m.cancelTick()
-			}
 			t.Interrupt()
 			return
 		}
-	case tickMsg:
-		isAtBottom := m.view.AtBottom()
-		m.tick++
-		m.rawLines = append(m.rawLines, nextSampleLine(m.tick))
-		m.rebuildContent()
-		if isAtBottom {
-			m.view.ScrollToBottom()
+		if v.ControlKey == tui.ControlKeyEnter {
+			if v.Alt {
+				m.ta.InsertString("\n")
+				return
+			}
+			m.submitTextArea()
+			return
 		}
-		return
 	}
 
-	m.view.Update(t, msg)
+	m.ta.Update(t, msg)
+
+	// Allow scrolling the view without interfering with text editing.
+	if key, ok := msg.(tui.KeyEvent); ok {
+		switch key.ControlKey {
+		case tui.ControlKeyPageUp, tui.ControlKeyPageDown, tui.ControlKeyHome, tui.ControlKeyEnd:
+			m.view.Update(t, msg)
+		}
+	}
 }
 
 func (m *model) View() string {
-	return m.view.View()
+	top := m.view.View()
+	bottom := m.ta.View()
+	if top == "" {
+		return bottom
+	}
+	if bottom == "" {
+		return top
+	}
+	return top + "\n" + bottom
 }
 
 func (m *model) rebuildContent() {
@@ -78,6 +93,51 @@ func (m *model) rebuildContent() {
 		lines = append(lines, formatBGLine(raw, width, m.bg))
 	}
 	m.view.SetContent(strings.Join(lines, "\n"))
+}
+
+func (m *model) applySize(width, height int) {
+	if width < 0 {
+		width = 0
+	}
+	if height < 0 {
+		height = 0
+	}
+
+	taHeight := 4
+	if height < taHeight {
+		taHeight = height
+	}
+	viewHeight := height - taHeight
+	if viewHeight < 0 {
+		viewHeight = 0
+	}
+
+	m.view.SetSize(width, viewHeight)
+	m.ta.SetSize(width, taHeight)
+	m.rebuildContent()
+}
+
+func (m *model) submitTextArea() {
+	if m.ta == nil {
+		return
+	}
+	text := m.ta.Contents()
+	if strings.TrimSpace(text) == "" {
+		m.ta.SetContents("")
+		return
+	}
+
+	isAtBottom := m.view.AtBottom()
+
+	for _, line := range strings.Split(text, "\n") {
+		m.rawLines = append(m.rawLines, line)
+	}
+	m.ta.SetContents("")
+
+	m.rebuildContent()
+	if isAtBottom {
+		m.view.ScrollToBottom()
+	}
 }
 
 func formatBGLine(s string, width int, bg termformat.Color) string {
@@ -102,19 +162,6 @@ func formatBGLine(s string, width int, bg termformat.Color) string {
 		return text
 	}
 	return bgSeq + text + strings.Repeat(" ", pad) + termformat.ANSIReset
-}
-
-func nextSampleLine(i int) string {
-	samples := []string{
-		"short",
-		"some medium text",
-		"wide chars: 世a界",
-		"greek: λλ λ",
-		"accents: café",
-		"numbers: 1234567890",
-		"longer line that will likely be clipped by the current terminal width",
-	}
-	return fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), samples[i%len(samples)])
 }
 
 func main() {

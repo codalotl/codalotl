@@ -8,8 +8,10 @@ The tui package is the primary package that implements the coding agent TUI, bri
 - `codeai/agentformatter` formats events from the agent.
 - `codeai/llmstream` is the library to communicate with LLMs.
 - `q/termformat` should be used where possible for terminal formatting.
+- `q/tui` is the TUI runtime (raw mode, alt screen, input, resize, render loop).
+- `q/tui/tuicontrols` provides common controls like a scrollable view and text area.
 
-NOTE: the long-term plan is to remove charmbracelet/* from the repo, bringing in-house a lightweight TUI framework and a few common components. `q/termformat` already exists in this repo and is the replacement for `lipgloss`. However, for the time being, we will use bubbletea as the TUI framework, bubbles for a few common components, and lipgloss when it's necessary to work with those other components. Use `q/termformat` otherwise.
+NOTE: this package intentionally avoids charmbracelet/*; `q/tui` and `q/termformat` are the in-repo replacements.
 
 ## Implementation Details
 
@@ -22,11 +24,9 @@ This spec should be implemented in phases. The spec will document things that we
     - SKIP any sort of animation
     - However, DO use a working indicator with runtime.
 
-Bubble Tea Implementation
-- Bubble Tea recommends an Update function that returns tea.Cmd.
-- However, given we plan to ditch Bubble Tea, we want to minimize the use of this.
-- For any Bubble we use, continue to use tea.Cmd, as that's what's expected. Fine.
-- **However, AVOID DOING OUR I/O THROUGH tea.Cmd** -- Instead, use `*Program.Send`. For instance, our agent event loop should live in its own goroutine, and send agent events to the program using `*Program.Send`.
+q/tui Implementation
+- `q/tui` models update in response to messages and render synchronously after each update.
+- Background work (agent streams, permission requests, timers) should send messages via `*tui.TUI.Send` or helpers like `SendPeriodically`.
 
 ## Basic Agent
 
