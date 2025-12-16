@@ -54,6 +54,8 @@ func TestKeyboardInput(t *testing.T) {
 		{sequence: []byte{0x1b, 'Z'}, want: tui.KeyEvent{ControlKey: tui.ControlKeyNone, Runes: []rune{'Z'}, Alt: true}},
 		{sequence: []byte{0x1b, 'b'}, want: tui.KeyEvent{ControlKey: tui.ControlKeyNone, Runes: []rune{'b'}, Alt: true}}, // on osx: alt + left arrow
 		{sequence: []byte{0x1b, 'f'}, want: tui.KeyEvent{ControlKey: tui.ControlKeyNone, Runes: []rune{'f'}, Alt: true}}, // on osx: alt + right arrow
+		{sequence: []byte{0x1b, 0x7f}, want: tui.KeyEvent{ControlKey: tui.ControlKeyBackspace, Alt: true}},               // common: Alt-Backspace sends ESC DEL
+		{sequence: []byte{0x1b, 0x08}, want: tui.KeyEvent{ControlKey: tui.ControlKeyBackspace, Alt: true}},               // some terminals: Alt-Backspace sends ESC BS
 
 		//
 		// CSI sequences:

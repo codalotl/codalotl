@@ -19,6 +19,8 @@ type controlSequence struct {
 }
 
 var controlSequenceMap = map[string]controlSequence{
+	"\x1b\x7f":   {key: ControlKeyBackspace, alt: true}, // common: Alt-Backspace sends ESC DEL
+	"\x1b\x08":   {key: ControlKeyBackspace, alt: true}, // some terminals: Alt-Backspace sends ESC BS
 	"\x1b[A":     {key: ControlKeyUp},
 	"\x1b[B":     {key: ControlKeyDown},
 	"\x1b[C":     {key: ControlKeyRight},
