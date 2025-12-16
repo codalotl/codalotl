@@ -163,12 +163,25 @@ func (v *View) SetContent(s string)
 
 A text area lets users enter multi-line text, and navigate it with common keyboard navigation.
 
-The caret is implemented as a background color. It locates where the next character will go. It does not blink. Since the next character is typically a blank space, it looks like a chunky rectangular block after the last letter. If contents is "", it is the first character of Placeholder with CaretColor background color.
+The caret is implemented as a background color. It indicates where the next character will be inserted. It does not blink. Since the next character is typically a blank space, it looks like a chunky rectangular block after the last letter. If the contents are empty, it is the first cell of Placeholder (or a blank cell if Placeholder is empty) with CaretColor as the background color.
+
+If BackgroundColor is set, the rendered output pads every row with spaces so the full (width x height) area is that background color.
+
+Performance is critical.
 
 Public API:
 
 ```go
-
+// TextArea lets users enter multi-line text in a terminal area. The text is represented as UTF-8, interpreted as grapheme clusters, and displayed in cells (a cluster's width is given by `uni.TextWidth`).
+//
+// Text is wrapped at word boundaries, falling back to grapheme boundaries to prevent overflowing. This means there are logical lines (divided by \n in the contents) and display lines (what the user sees).
+//
+// If the number of display lines exceeds height, some text will be clipped out of view.
+//
+// Invariants:
+//   - Stored contents must be valid UTF-8 and cannot contain ASCII control characters (bytes <= 0x1F or 0x7F), except for \n.
+//   - Input is sanitized: \t is converted to 4 spaces, \r is removed, and other ASCII control characters are escaped (e.g. "\x1B").
+//   - If text is clipped vertically, all height rows of the text area show display lines of contents (i.e. there are no completely blank rows). As contents change (e.g. deletions), the vertical clip/scroll is adjusted to preserve this.
 type TextArea struct {
     // Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
     Placeholder string
@@ -176,6 +189,8 @@ type TextArea struct {
     BackgroundColor termformat.Color
     ForegroundColor termformat.Color
     PlaceholderColor termformat.Color
+
+    // CaretColor is the color of the caret/cursor. It should be visible on the background color.
     CaretColor termformat.Color
 
     // Prompt is the first characters to display in the upper-left of the box. The user's first character typed would immediately follow it.
@@ -188,7 +203,7 @@ type TextArea struct {
     Prompt string
 }
 
-// NewView returns a new view of the given size.
+// NewTextArea returns a new TextArea of the given size.
 func NewTextArea(width, height int) *TextArea
 
 // SetSize sets the width and height of the ta to w, h.
@@ -200,5 +215,134 @@ func (ta *TextArea) Width() int
 // Height returns the height.
 func (ta *TextArea) Height() int
 
-// Implements tui.Model (Init, Update, View)
+// Init implements tui.Model's Init.
+func (ta *TextArea) Init(t *tui.TUI)
+
+// Update implements tui.Model's Update.
+//
+// Default KeyMap:
+//   - Rune input and paste insert at the caret.
+//   - Left/Right move by grapheme cluster.
+//   - Ctrl-B/Ctrl-F alias Left/Right.
+//   - Up/Down move by display lines (wrapped lines), preserving visual column.
+//   - Ctrl-P/Ctrl-N alias Up/Down.
+//   - Home/End move to beginning/end of the current logical line.
+//   - Ctrl-A/Ctrl-E alias Home/End.
+//   - Alt-Left/Alt-B move to beginning of previous word (whitespace-delimited). Newlines are treated as whitespace.
+//   - Alt-Right/Alt-F move to end of next word (whitespace-delimited). Newlines are treated as whitespace.
+//   - Ctrl-Home/Ctrl-End move to beginning/end of text.
+//   - Backspace/Ctrl-H delete one grapheme cluster left (or newline).
+//   - Delete/Ctrl-D delete one grapheme cluster right (or newline).
+//   - Alt-Backspace/Ctrl-W delete the previous word (whitespace-delimited). Newlines are treated as whitespace.
+//   - Alt-D/Alt-Delete delete the next word (whitespace-delimited). Newlines are treated as whitespace.
+//   - Ctrl-U deletes to beginning of line; Ctrl-K deletes to end of line.
+//   - Enter and Ctrl-J insert "\n".
+//   - Tab inserts "\t" (sanitized to 4 spaces).
+func (ta *TextArea) Update(t *tui.TUI, m tui.Message)
+
+// View implements tui.Model's View.
+//
+// The rendered output always contains exactly Height() rows.
+//
+// If BackgroundColor is set, each rendered row is padded with spaces to exactly Width() visible cells so the full (width x height) area has that background.
+func (ta *TextArea) View() string
+
+// SetContents sets the contents of ta to s. Input is sanitized (tabs become 4 spaces; \r removed; other ASCII control characters escaped) before being stored.
+func (ta *TextArea) SetContents(s string)
+
+// Contents returns the contents of the text area (only user content - not placeholder/prompt/styles).
+func (ta *TextArea) Contents() string
+
+// ClippedDisplayContents returns the per-display-line user text that is currently displayed in the text area view (contains no \n). It reflects Contents() after wrapping and vertical clipping.
+//
+// This is useful as a testing hook.
+func (ta *TextArea) ClippedDisplayContents() []string
+
+// DisplayLines returns the number of display lines (accounting for wrapping), including those clipped out of view.
+func (ta *TextArea) DisplayLines() int
+
+// CaretPositionByteOffset returns the position of the caret (the location of the next inserted character) in Contents(), measured in bytes. This position must fall on a grapheme cluster boundary.
+func (ta *TextArea) CaretPositionByteOffset() int
+
+// CaretPositionCurrentLineByteOffset returns the byte index of the caret on the current logical line.
+func (ta *TextArea) CaretPositionCurrentLineByteOffset() int
+
+// CaretPositionRowCol returns the logical position of the caret based on 0-indexed rows/cols of terminal cells. Note that 0,0 is not necessarily the top-left of the TextArea itself, due to Prompt.
+// The row is equivalent to the current logical-line index.
+func (ta *TextArea) CaretPositionRowCol() (int, int)
+
+// CaretDisplayPositionRowCol returns the caret position by display row/col. The row is in [0, DisplayLines()).
+func (ta *TextArea) CaretDisplayPositionRowCol() (int, int)
+
+// InsertString inserts a string at the caret position.
+func (ta *TextArea) InsertString(s string)
+
+// InsertRune inserts a rune at the caret position.
+func (ta *TextArea) InsertRune(r rune)
+
+// SetCaretPosition sets the caret position to the logical row, col, clamping invalid values. CaretPositionRowCol returns the same values, assuming they are valid.
+func (ta *TextArea) SetCaretPosition(row, col int)
+
+// MoveLeft moves the caret one grapheme cluster to the left.
+func (ta *TextArea) MoveLeft()
+
+// MoveRight moves the caret one grapheme cluster to the right.
+func (ta *TextArea) MoveRight()
+
+// MoveUp moves the caret up by one display line (wrapped line), preserving visual column.
+func (ta *TextArea) MoveUp()
+
+// MoveDown moves the caret down by one display line (wrapped line), preserving visual column.
+func (ta *TextArea) MoveDown()
+
+// MoveToBeginningOfLine moves the caret to the beginning of the current logical line.
+func (ta *TextArea) MoveToBeginningOfLine()
+
+// MoveToEndOfLine moves the caret to the end of the current logical line.
+func (ta *TextArea) MoveToEndOfLine()
+
+// MoveToBeginningOfText moves the caret to the beginning of the text.
+func (ta *TextArea) MoveToBeginningOfText()
+
+// MoveToEndOfText moves the caret to the end of the text.
+func (ta *TextArea) MoveToEndOfText()
+
+// MoveWordLeft moves the caret to the beginning of the previous word (whitespace-delimited).
+//
+// Newlines are treated as whitespace, so word motion can cross logical line boundaries.
+func (ta *TextArea) MoveWordLeft()
+
+// MoveWordRight moves the caret to the end of the next word (whitespace-delimited).
+//
+// Concretely:
+//   - if the caret is in whitespace, skip whitespace then skip the next word.
+//   - if the caret is in a word, skip to the end of the current word.
+//
+// Newlines are treated as whitespace, so word motion can cross logical line boundaries.
+func (ta *TextArea) MoveWordRight()
+
+// Deleting text
+
+// DeleteLeft deletes one grapheme cluster to the left of the caret (or a newline).
+func (ta *TextArea) DeleteLeft()
+
+// DeleteRight deletes one grapheme cluster to the right of the caret (or a newline).
+func (ta *TextArea) DeleteRight()
+
+// DeleteWordLeft deletes the previous word (whitespace-delimited).
+//
+// Newlines are treated as whitespace, so word deletion can cross logical line boundaries.
+func (ta *TextArea) DeleteWordLeft()
+
+// DeleteWordRight deletes the next word (whitespace-delimited).
+//
+// Newlines are treated as whitespace, so word deletion can cross logical line boundaries.
+func (ta *TextArea) DeleteWordRight()
+
+// DeleteToEndOfLine deletes from the caret to the end of the current logical line.
+func (ta *TextArea) DeleteToEndOfLine()
+
+// DeleteToBeginningOfLine deletes from the caret to the beginning of the current logical line.
+func (ta *TextArea) DeleteToBeginningOfLine()
+
 ```
