@@ -42,7 +42,7 @@ func (v *SomeControl) Update(t *tui.TUI, m tui.Message) {
 }
 ```
 
-## Scrollable View
+## View
 
 A scrollable view has a fixed size (width, height), and is filled with lines of text. The view shows up to `height` lines at once. Text is clipped horizontally (no word wrapping).
 
@@ -157,4 +157,48 @@ func (v *View) AtBottom() bool
 //   - if background colors are used, applications must pad each line with spaces to width characters.
 //   - SetEmptyLineBackgroundColor can be used for content whose height is less than Height().
 func (v *View) SetContent(s string)
+```
+
+## Text Area
+
+A text area lets users enter multi-line text, and navigate it with common keyboard navigation.
+
+The caret is implemented as a background color. It locates where the next character will go. It does not blink. Since the next character is typically a blank space, it looks like a chunky rectangular block after the last letter. If contents is "", it is the first character of Placeholder with CaretColor background color.
+
+Public API:
+
+```go
+
+type TextArea struct {
+    // Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
+    Placeholder string
+
+    BackgroundColor termformat.Color
+    ForegroundColor termformat.Color
+    PlaceholderColor termformat.Color
+    CaretColor termformat.Color
+
+    // Prompt is the first characters to display in the upper-left of the box. The user's first character typed would immediately follow it.
+    // Subsequent lines don't have Prompt, but the user's text is aligned to the column of their first character.
+    //
+    // For example, if Prompt is "› ", and the user types "hello\nworld", the text area would show:
+    //
+    //	› hello
+    //	  world
+    Prompt string
+}
+
+// NewView returns a new view of the given size.
+func NewTextArea(width, height int) *TextArea
+
+// SetSize sets the width and height of the ta to w, h.
+func (ta *TextArea) SetSize(w, h int)
+
+// Width returns the width.
+func (ta *TextArea) Width() int
+
+// Height returns the height.
+func (ta *TextArea) Height() int
+
+// Implements tui.Model (Init, Update, View)
 ```
