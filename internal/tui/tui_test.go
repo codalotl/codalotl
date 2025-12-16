@@ -6,8 +6,8 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/q/termformat"
+	qtui "github.com/codalotl/codalotl/internal/q/tui"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +35,7 @@ func TestModelViewAfterResize(t *testing.T) {
 
 	const width = 100
 	const height = 40
-	_, _ = m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	m.Update(nil, qtui.ResizeEvent{Width: width, Height: height})
 
 	assert.Equal(t, height, m.windowHeight)
 	assert.Equal(t, width, m.windowWidth)
@@ -44,8 +44,8 @@ func TestModelViewAfterResize(t *testing.T) {
 	assert.Equal(t, 4, m.textAreaHeight)
 	assert.Equal(t, 35, m.viewportHeight)
 	assert.Equal(t, 0, m.permissionViewHeight)
-	assert.Equal(t, 60, m.viewport.Width)
-	assert.Equal(t, 35, m.viewport.Height)
+	assert.Equal(t, 60, m.viewport.Width())
+	assert.Equal(t, 35, m.viewport.Height())
 
 	view := m.View()
 	rectWidth := termformat.BlockWidth(view)
@@ -114,11 +114,10 @@ func TestPermissionCommandTriggersView(t *testing.T) {
 	}
 	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil)
 	m.viewportWidth = 80
-	m.viewport.Width = 80
+	m.viewport.SetSize(80, 0)
 
-	handled, cmd := m.handleSlashCommand("/permission")
+	handled := m.handleSlashCommand("/permission")
 	require.True(t, handled)
-	require.Nil(t, cmd)
 	require.NotNil(t, m.activePermission)
 
 	view := stripAnsi(m.permissionView())
@@ -138,27 +137,26 @@ func TestCyclingModeNavigation(t *testing.T) {
 	m.windowWidth = 80
 	m.windowHeight = 20
 	m.updateSizes()
-	m.textarea.Focus()
 
 	m.recordSubmittedMessage("first message")
 	m.recordSubmittedMessage("second message")
-	m.textarea.Reset()
+	m.textarea.SetContents("")
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyUp})
 	require.True(t, m.cyclingMode)
-	assert.Equal(t, "second message", m.textarea.Value())
+	assert.Equal(t, "second message", m.textarea.Contents())
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyUp})
 	require.True(t, m.cyclingMode)
-	assert.Equal(t, "first message", m.textarea.Value())
+	assert.Equal(t, "first message", m.textarea.Contents())
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyDown})
 	require.True(t, m.cyclingMode)
-	assert.Equal(t, "second message", m.textarea.Value())
+	assert.Equal(t, "second message", m.textarea.Contents())
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyDown})
 	assert.False(t, m.cyclingMode)
-	assert.Equal(t, "", m.textarea.Value())
+	assert.Equal(t, "", m.textarea.Contents())
 }
 
 func TestCyclingModeEditsExitAndReturn(t *testing.T) {
@@ -167,27 +165,26 @@ func TestCyclingModeEditsExitAndReturn(t *testing.T) {
 	m.windowWidth = 80
 	m.windowHeight = 20
 	m.updateSizes()
-	m.textarea.Focus()
 
 	m.recordSubmittedMessage("first message")
 	m.recordSubmittedMessage("second message")
-	m.textarea.Reset()
+	m.textarea.SetContents("")
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyUp})
 	require.True(t, m.cyclingMode)
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'!'}})
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyNone, Runes: []rune{'!'}})
 	require.False(t, m.cyclingMode)
 	require.True(t, m.isEditingHistory())
 
-	editedValue := m.textarea.Value()
+	editedValue := m.textarea.Contents()
 	require.Equal(t, "!second message", editedValue)
 	require.Equal(t, editedValue, m.historyValue(1))
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyEsc})
 	require.True(t, m.cyclingMode)
 	require.False(t, m.isEditingHistory())
-	assert.Equal(t, editedValue, m.textarea.Value())
+	assert.Equal(t, editedValue, m.textarea.Contents())
 }
 
 func TestCyclingHistoryFiltersSlashCommands(t *testing.T) {

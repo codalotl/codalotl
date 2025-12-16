@@ -43,7 +43,7 @@ func TestInspectingDefaultModels(t *testing.T) {
 }
 
 func TestDefaultModelsLoaded(t *testing.T) {
-	gpt5 := ModelID("gpt-5")
+	gpt5 := ModelID("gpt-5.2")
 	claude := ModelID("claude-sonnet-4-5")
 	gemini := ModelID("gemini-2.5-pro")
 	grok := ModelID("grok-4")
@@ -61,22 +61,31 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, claudeInfo.SupportedTypes)
 
 	gptInfo := GetModelInfo(gpt5)
-	require.Empty(t, gptInfo.ReasoningEffort)
+	require.Equal(t, "high", gptInfo.ReasoningEffort)
 	require.True(t, gptInfo.IsDefault)
 	require.Equal(t, gpt5, ProviderIDOpenAI.DefaultModel())
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses, ProviderTypeOpenAICompletions}, gptInfo.SupportedTypes)
 
 	require.False(t, ModelID("gpt-5-codex").Valid())
-	codexMinimal := ModelID("gpt-5-codex-minimal")
+	require.False(t, ModelID("gpt-5.1-codex").Valid())
+	codexMinimal := ModelID("gpt-5.1-codex-minimal")
 	require.True(t, codexMinimal.Valid())
 	codexMinimalInfo := GetModelInfo(codexMinimal)
 	require.Equal(t, ProviderIDOpenAI, codexMinimalInfo.ProviderID)
-	require.Equal(t, "gpt-5-codex", codexMinimalInfo.ProviderModelID)
+	require.Equal(t, "gpt-5.1-codex", codexMinimalInfo.ProviderModelID)
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, codexMinimalInfo.SupportedTypes)
 	require.Equal(t, "minimal", codexMinimalInfo.ReasoningEffort)
-	codexHigh := ModelID("gpt-5-codex-high")
+	codexHigh := ModelID("gpt-5.1-codex-high")
 	require.True(t, codexHigh.Valid())
 	require.Equal(t, "high", GetModelInfo(codexHigh).ReasoningEffort)
+
+	gptMinimal := ModelID("gpt-5.2-minimal")
+	require.True(t, gptMinimal.Valid())
+	gptMinimalInfo := GetModelInfo(gptMinimal)
+	require.Equal(t, ProviderIDOpenAI, gptMinimalInfo.ProviderID)
+	require.Equal(t, "gpt-5.2", gptMinimalInfo.ProviderModelID)
+	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptMinimalInfo.SupportedTypes)
+	require.Equal(t, "minimal", gptMinimalInfo.ReasoningEffort)
 
 	require.Equal(t, gpt5, ModelIDOrFallback(ModelIDUnknown))
 	require.Equal(t, gpt5, ModelIDOrFallback(ModelID("unknown-model")))
@@ -91,25 +100,25 @@ func TestDefaultModelsLoaded(t *testing.T) {
 }
 
 func TestAddCustomModelCopiesProviderData(t *testing.T) {
-	customID := ModelID("custom-openrouter-claude-opus")
+	customID := ModelID("custom-anthropic-claude-opus")
 	require.False(t, customID.Valid())
 
-	err := AddCustomModel(customID, ProviderIDOpenRouter, "anthropic/claude-3-opus", ModelOverrides{})
+	err := AddCustomModel(customID, ProviderIDAnthropic, "claude-opus-4-1-20250805", ModelOverrides{})
 	require.NoError(t, err)
 	require.True(t, customID.Valid())
 
 	info := GetModelInfo(customID)
-	require.Equal(t, ProviderIDOpenRouter, info.ProviderID)
-	require.Equal(t, "anthropic/claude-3-opus", info.ProviderModelID)
+	require.Equal(t, ProviderIDAnthropic, info.ProviderID)
+	require.Equal(t, "claude-opus-4-1-20250805", info.ProviderModelID)
 	require.InDelta(t, 15.0, info.CostPer1MIn, 0)
 	require.InDelta(t, 75.0, info.CostPer1MOut, 0)
 	require.False(t, info.IsDefault)
-	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAICompletions}, info.SupportedTypes)
+	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, info.SupportedTypes)
 	require.Contains(t, AvailableModelIDs(), customID)
 }
 
 func TestGetAPIKeyPrecedence(t *testing.T) {
-	id := ModelID("gpt-5")
+	id := DefaultModel
 	require.True(t, id.Valid())
 
 	ConfigureProviderKey(ProviderIDOpenAI, "")
@@ -131,13 +140,13 @@ func TestGetAPIKeyPrecedence(t *testing.T) {
 
 	customEnvID := ModelID("custom-openai-env")
 	t.Setenv("ALT_OPENAI_KEY", "")
-	err := AddCustomModel(customEnvID, ProviderIDOpenAI, "gpt-5", ModelOverrides{APIEnvKey: "$ALT_OPENAI_KEY"})
+	err := AddCustomModel(customEnvID, ProviderIDOpenAI, "gpt-5.2", ModelOverrides{APIEnvKey: "$ALT_OPENAI_KEY"})
 	require.NoError(t, err)
 	t.Setenv("ALT_OPENAI_KEY", "alt")
 	require.Equal(t, "alt", GetAPIKey(customEnvID))
 
 	customActualID := ModelID("custom-openai-actual")
-	err = AddCustomModel(customActualID, ProviderIDOpenAI, "gpt-5", ModelOverrides{APIActualKey: "literal"})
+	err = AddCustomModel(customActualID, ProviderIDOpenAI, "gpt-5.2", ModelOverrides{APIActualKey: "literal"})
 	require.NoError(t, err)
 	ConfigureProviderKey(ProviderIDOpenAI, "configured2")
 	t.Setenv("ALT_OPENAI_KEY", "alt2")

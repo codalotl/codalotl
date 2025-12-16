@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -12,11 +13,9 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
+	qtui "github.com/codalotl/codalotl/internal/q/tui"
+	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
 	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
-
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 const (
@@ -104,10 +103,11 @@ func RunWithConfig(cfg Config) error {
 
 	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession)
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
-	model.setProgram(p)
-	_, err = p.Run()
-	return err
+	return qtui.RunTUI(model, qtui.Options{
+		Input:     os.Stdin,
+		Output:    os.Stdout,
+		Framerate: 60,
+	})
 }
 
 type model struct {
@@ -144,9 +144,9 @@ type model struct {
 	cycleIndex          int
 	editingHistoryIndex int
 
-	viewport viewport.Model
-	textarea textarea.Model
-	program  *tea.Program
+	viewport *tuicontrols.View
+	textarea *tuicontrols.TextArea
+	tui      *qtui.TUI
 
 	session        *session
 	sessionConfig  sessionConfig
@@ -160,7 +160,7 @@ type model struct {
 	nextAgentRunID int
 
 	workingIndicatorAnimationPos int
-	workingIndicatorTickerCancel context.CancelFunc
+	workingIndicatorTickerCancel qtui.CancelFunc
 
 	// When `/new` is invoked mid-run we mark the reset as pending so the cleanup
 	// happens only after `agentStreamClosedMsg` fires; that way we don't tear
@@ -181,8 +181,8 @@ type model struct {
 
 func newModel(palette colorPalette, formatter agentformatter.Formatter, initialSession *session, initialCfg sessionConfig, factory func(sessionConfig) (*session, error)) *model {
 	ti := newTextArea()
-
-	vp := viewport.New(0, 0)
+	vp := tuicontrols.NewView(0, 0)
+	vp.SetEmptyLineBackgroundColor(palette.primaryBackground)
 
 	activeCfg := initialCfg
 	if initialSession != nil {
@@ -210,59 +210,57 @@ func newModel(palette colorPalette, formatter agentformatter.Formatter, initialS
 		m.requests = initialSession.UserRequests()
 		m.messages = append(m.messages, chatMessage{kind: messageKindWelcome})
 	}
+	m.updatePlaceholder()
 	return m
 }
 
-func (m *model) setProgram(p *tea.Program) {
-	m.program = p
+func (m *model) Init(t *qtui.TUI) {
+	m.tui = t
 	if m.requests != nil {
 		m.startUserRequestListener(m.requestSource, m.requests)
 	}
 }
 
-func (m *model) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.textarea.Focus(), textarea.Blink}
-	return tea.Batch(cmds...)
-}
+func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
+	if m.tui == nil && t != nil {
+		m.tui = t
+	}
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	var cmd tea.Cmd
-
-	// Only send certain KeyMsg to viewport.
+	// Only send certain key events to viewport.
 	sendMsgToViewport := false
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyPgUp, tea.KeyPgDown: // NOTE: shift+up/down don't work (usually not mapped; just sends Up/Down)
+	switch ev := msg.(type) {
+	case qtui.KeyEvent:
+		switch ev.ControlKey {
+		case qtui.ControlKeyPageUp, qtui.ControlKeyPageDown: // NOTE: shift+up/down don't work (usually not mapped; just sends Up/Down)
 			sendMsgToViewport = true
 		}
-	}
-	if sendMsgToViewport {
-		m.viewport, cmd = m.viewport.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
+		if sendMsgToViewport && m.viewport != nil {
+			m.viewport.Update(t, ev)
 		}
-	}
-
-	skipTextarea := false
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		var keyCmd tea.Cmd
-		skipTextarea, keyCmd = m.handleKeyMsg(msg)
-		if keyCmd != nil {
-			cmds = append(cmds, keyCmd)
+		skipTextarea := m.handleKeyEvent(ev)
+		if !skipTextarea && !sendMsgToViewport && m.textarea != nil {
+			m.textarea.Update(t, ev)
 		}
-	case tea.WindowSizeMsg:
-		m.handleWindowSize(msg)
+	case qtui.ResizeEvent:
+		m.handleWindowSize(ev)
+	case qtui.SigTermEvent:
+		m.stopAgentRun()
+		m.stopUserRequestListener()
+		if m.session != nil {
+			m.session.Close()
+		}
+	case qtui.SigIntEvent:
+		m.stopAgentRun()
+		m.stopUserRequestListener()
+		if m.session != nil {
+			m.session.Close()
+		}
 	case agentEventMsg:
-		if m.currentRun != nil && msg.runID == m.currentRun.id {
-			m.handleAgentEvent(msg.event)
+		if m.currentRun != nil && ev.runID == m.currentRun.id {
+			m.handleAgentEvent(ev.event)
 		}
 	case agentStreamClosedMsg:
-		if m.currentRun != nil && msg.runID == m.currentRun.id {
+		if m.currentRun != nil && ev.runID == m.currentRun.id {
 			pendingCfg := m.pendingSessionConfig
 			if pendingCfg == nil {
 				m.pendingResetMessage = ""
@@ -280,21 +278,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshViewport(false)
 		}
 	case userRequestMsg:
-		if msg.sourceID == m.requestSource {
-			m.enqueuePermissionRequest(msg.request)
+		if ev.sourceID == m.requestSource {
+			m.enqueuePermissionRequest(ev.request)
 		}
 	}
 
-	if !skipTextarea && !sendMsgToViewport {
-		m.textarea, cmd = m.textarea.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
 	m.persistEditedHistoryDraft()
 	m.updateTextareaHeight()
-
-	return m, tea.Batch(cmds...)
 }
 
 func (m *model) View() string {
@@ -309,16 +299,20 @@ func (m *model) View() string {
 
 	var b strings.Builder
 
-	viewportBlock := m.viewport.View()
-
-	// NOTE: manually apply styling to m.textarea (lipgloss and m.textarea are unbearable to work with)
-	textAreaBlock := m.textarea.View()
-	textAreaStyle := termformat.Style{Background: m.palette.accentBackground, Foreground: m.palette.primaryForeground}
-	if m.textarea.Value() == "" {
-		textAreaStyle.Foreground = m.palette.accentForeground
+	viewportBlock := ""
+	if m.viewport != nil {
+		viewportBlock = m.viewport.View()
 	}
-	textAreaBlock = termformat.BlockStylePerLine(textAreaStyle.Apply(textAreaBlock))
-	textAreaBlock = termformat.BlockStyle{MarginTop: 1, MarginLeft: 1, MarginRight: 1, MarginBackground: m.palette.primaryBackground}.Apply(textAreaBlock)
+
+	textAreaBlock := ""
+	if m.textarea != nil {
+		m.textarea.BackgroundColor = m.palette.accentBackground
+		m.textarea.ForegroundColor = m.palette.primaryForeground
+		m.textarea.PlaceholderColor = m.palette.accentForeground
+		m.textarea.CaretColor = m.palette.primaryForeground
+		textAreaBlock = m.textarea.View()
+		textAreaBlock = termformat.BlockStyle{MarginTop: 1, MarginLeft: 1, MarginRight: 1, MarginBackground: m.palette.primaryBackground}.Apply(textAreaBlock)
+	}
 
 	b.WriteString(viewportBlock)
 	b.WriteString("\n")
@@ -351,12 +345,14 @@ func (m *model) View() string {
 	}
 }
 
-func (m *model) handleWindowSize(msg tea.WindowSizeMsg) {
+func (m *model) handleWindowSize(msg qtui.ResizeEvent) {
 	debugLogf("resize event: w=%v h=%v\n", msg.Width, msg.Height)
 	m.windowHeight = msg.Height
 	m.windowWidth = msg.Width
 	m.updateSizes()
-	m.viewport.GotoBottom()
+	if m.viewport != nil {
+		m.viewport.ScrollToBottom()
+	}
 	m.refreshPermissionView()
 	m.refreshViewport(true)
 	m.ready = true
@@ -384,10 +380,13 @@ func (m *model) updateSizes() {
 
 	// debugLogf("sizes: w=%d h=%d vph=%d permH=%d taH=%d\n", m.windowHeight, m.windowHeight, m.viewportHeight, m.permissionViewHeight, m.textAreaHeight)
 
-	m.viewport.Width = m.viewportWidth
-	m.viewport.Height = m.viewportHeight
-	m.textarea.SetWidth(m.viewportWidth - 2)   // 2: margin left/right
-	m.textarea.SetHeight(m.textAreaHeight - 1) // 1: margin top
+	if m.viewport != nil {
+		m.viewport.SetSize(m.viewportWidth, m.viewportHeight)
+		m.viewport.SetEmptyLineBackgroundColor(m.palette.primaryBackground)
+	}
+	if m.textarea != nil {
+		m.textarea.SetSize(m.viewportWidth-2, m.textAreaHeight-1) // 2: margin left/right; 1: margin top
+	}
 }
 
 // viewportInfoPanelWidths returns the viewport width (messages area - left) and info panel width (right area).
@@ -408,31 +407,36 @@ func viewportInfoPanelWidths(terminalWidth int) (int, int) {
 	return viewport, info
 }
 
-// handleKeyMsg only yields a command when quitting: it batches tea.Quit with m.closeSessionCmd().
-func (m *model) handleKeyMsg(msg tea.KeyMsg) (bool, tea.Cmd) {
-	if msg.Type == tea.KeyCtrlC {
+func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
+	if key.ControlKey == qtui.ControlKeyCtrlC {
 		m.stopAgentRun()
 		m.stopUserRequestListener()
-		return true, tea.Batch(tea.Quit, m.closeSessionCmd())
+		if m.session != nil {
+			m.session.Close()
+		}
+		if m.tui != nil {
+			m.tui.Quit()
+		}
+		return true
 	}
 
 	if m.activePermission != nil {
-		return m.handlePermissionKey(msg), nil
+		return m.handlePermissionKey(key)
 	}
 
-	if m.cyclingMode && m.shouldExitCyclingForKey(msg) {
+	if m.cyclingMode && m.shouldExitCyclingForKey(key) {
 		m.exitCyclingModeForEditing()
 	}
 
-	switch msg.Type {
-	case tea.KeyEsc:
+	switch key.ControlKey {
+	case qtui.ControlKeyEsc:
 		if m.cyclingMode {
 			m.exitCyclingModeToDefault()
-			return true, nil
+			return true
 		}
 		if m.isEditingHistory() {
 			m.reenterCyclingModeFromEditing()
-			return true, nil
+			return true
 		}
 		if m.isAgentRunning() {
 			m.stopAgentRun()
@@ -440,53 +444,62 @@ func (m *model) handleKeyMsg(msg tea.KeyMsg) (bool, tea.Cmd) {
 				m.restoreQueuedMessagesToInput()
 			}
 		}
-		return true, nil
-	case tea.KeyEnter:
-		value := m.textarea.Value()
+		return true
+	case qtui.ControlKeyEnter:
+		value := ""
+		if m.textarea != nil {
+			value = m.textarea.Contents()
+		}
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
-			m.textarea.Reset()
+			if m.textarea != nil {
+				m.textarea.SetContents("")
+			}
 			m.exitEditingState()
-			return true, nil
+			return true
 		}
 		if strings.HasPrefix(trimmed, "/") {
 			m.recordSubmittedMessage(value)
-			if handled, cmd := m.handleSlashCommand(trimmed); handled {
-				m.textarea.Reset()
-				return true, cmd
+			handled := m.handleSlashCommand(trimmed)
+			if m.textarea != nil {
+				m.textarea.SetContents("")
 			}
-			m.textarea.Reset()
-			return true, nil
+			if handled {
+				return true
+			}
+			return true
 		}
 		m.recordSubmittedMessage(value)
-		m.textarea.Reset()
+		if m.textarea != nil {
+			m.textarea.SetContents("")
+		}
 		m.sendOrQueueMessage(value)
 		m.startAgentRunIfPossible(value)
-		return true, nil
-	case tea.KeyUp:
+		return true
+	case qtui.ControlKeyUp:
 		if m.cyclingMode {
 			m.cyclePrevious()
-			return true, nil
+			return true
 		}
-		if m.textarea.Value() == "" && m.enterCyclingMode() {
-			return true, nil
+		if m.textarea != nil && m.textarea.Contents() == "" && m.enterCyclingMode() {
+			return true
 		}
-		return false, nil
-	case tea.KeyDown:
+		return false
+	case qtui.ControlKeyDown:
 		if m.cyclingMode {
 			m.cycleNext()
-			return true, nil
+			return true
 		}
-		return false, nil
+		return false
 	}
 
-	return false, nil
+	return false
 }
 
-func (m *model) handleSlashCommand(cmd string) (bool, tea.Cmd) {
+func (m *model) handleSlashCommand(cmd string) bool {
 	fields := strings.Fields(cmd)
 	if len(fields) == 0 {
-		return true, nil
+		return true
 	}
 
 	switch fields[0] {
@@ -496,37 +509,49 @@ func (m *model) handleSlashCommand(cmd string) (bool, tea.Cmd) {
 		m.pendingSessionConfig = nil
 		m.appendSystemMessage("Ending session.")
 		m.refreshViewport(true)
-		m.viewport.GotoBottom()
-		return true, tea.Batch(tea.Quit, m.closeSessionCmd())
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		if m.session != nil {
+			m.session.Close()
+		}
+		if m.tui != nil {
+			m.tui.Quit()
+		}
+		return true
 	case "/new":
 		m.handleNewSessionCommand()
-		return true, nil
+		return true
 	case "/package":
 		packageArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/package"))
 		m.handlePackageCommand(packageArg)
-		return true, nil
+		return true
 	case "/generic":
 		m.handleGenericCommand()
-		return true, nil
+		return true
 	case "/fake":
 		if m.isAgentRunning() {
 			m.appendSystemMessage("Finish the current run before starting /fake.")
 			m.refreshViewport(true)
-			m.viewport.GotoBottom()
-			return true, nil
+			if m.viewport != nil {
+				m.viewport.ScrollToBottom()
+			}
+			return true
 		}
 		m.appendSystemMessage("Simulating agent activity...")
 		m.refreshViewport(true)
-		m.viewport.GotoBottom()
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
 		m.startFakeAgentRun()
-		return true, nil
+		return true
 	case "/permission":
 		m.triggerPermissionDemo()
-		return true, nil
+		return true
 	default:
 		m.appendSystemMessage(fmt.Sprintf("Command %s not supported.", cmd))
 		m.refreshViewport(true)
-		return true, nil
+		return true
 	}
 }
 
@@ -554,7 +579,9 @@ func (m *model) handlePackageCommand(arg string) {
 	if err != nil {
 		m.appendSystemMessage(fmt.Sprintf("Cannot enter package mode: %v", err))
 		m.refreshViewport(true)
-		m.viewport.GotoBottom()
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
 		return
 	}
 
@@ -576,7 +603,9 @@ func (m *model) requestSessionReset(cfg sessionConfig, message string) {
 		if message != "" {
 			m.appendSystemMessage(message)
 			m.refreshViewport(true)
-			m.viewport.GotoBottom()
+			if m.viewport != nil {
+				m.viewport.ScrollToBottom()
+			}
 		}
 		m.stopAgentRun()
 		return
@@ -603,34 +632,37 @@ func (m *model) normalizeConfigForCurrentSandbox(cfg sessionConfig) (sessionConf
 	return normalizedCfg, err
 }
 
-func (m *model) shouldExitCyclingForKey(msg tea.KeyMsg) bool {
+func (m *model) shouldExitCyclingForKey(msg qtui.KeyEvent) bool {
 	if !m.cyclingMode {
 		return false
 	}
 
-	switch msg.Type {
-	case tea.KeyUp, tea.KeyDown, tea.KeyEsc, tea.KeyEnter, tea.KeyPgUp, tea.KeyPgDown:
+	switch msg.ControlKey {
+	case qtui.ControlKeyUp, qtui.ControlKeyDown, qtui.ControlKeyEsc, qtui.ControlKeyEnter, qtui.ControlKeyPageUp, qtui.ControlKeyPageDown:
 		return false
 	}
 
 	return true
 }
 
-func (m *model) handlePermissionKey(msg tea.KeyMsg) bool {
+func (m *model) handlePermissionKey(msg qtui.KeyEvent) bool {
 	if m.activePermission == nil {
 		return true
 	}
 
-	switch msg.Type {
-	case tea.KeyEsc:
+	switch msg.ControlKey {
+	case qtui.ControlKeyEsc:
 		m.resolvePermission(false)
 		m.stopAgentRun()
 		if len(m.messageQueue) > 0 {
 			m.restoreQueuedMessagesToInput()
 		}
 		return true
-	case tea.KeyRunes:
-		switch strings.ToLower(msg.String()) {
+	case qtui.ControlKeyNone:
+		if !msg.IsRunes() {
+			return true
+		}
+		switch strings.ToLower(string(msg.Runes)) {
 		case "y":
 			m.resolvePermission(true)
 			return true
@@ -726,7 +758,9 @@ func (m *model) cycleNext() {
 
 func (m *model) exitCyclingModeToDefault() {
 	m.exitEditingState()
-	m.textarea.Reset()
+	if m.textarea != nil {
+		m.textarea.SetContents("")
+	}
 	m.updateTextareaHeight()
 }
 
@@ -768,8 +802,10 @@ func (m *model) showHistoryEntry(index int) {
 		return
 	}
 	value := m.historyValue(index)
-	m.textarea.SetValue(value)
-	m.textarea.CursorStart()
+	if m.textarea != nil {
+		m.textarea.SetContents(value)
+		m.textarea.MoveToBeginningOfText()
+	}
 	m.updateTextareaHeight()
 }
 
@@ -794,7 +830,9 @@ func (m *model) persistEditedHistoryDraft() {
 	if m.editedHistoryDrafts == nil {
 		m.editedHistoryDrafts = make(map[int]string)
 	}
-	m.editedHistoryDrafts[m.editingHistoryIndex] = m.textarea.Value()
+	if m.textarea != nil {
+		m.editedHistoryDrafts[m.editingHistoryIndex] = m.textarea.Contents()
+	}
 }
 
 func (m *model) sendOrQueueMessage(value string) {
@@ -802,13 +840,17 @@ func (m *model) sendOrQueueMessage(value string) {
 		m.messageQueue = append(m.messageQueue, value)
 		m.appendUserMessage(value, true)
 		m.refreshViewport(true)
-		m.viewport.GotoBottom()
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
 		return
 	}
 
 	m.appendUserMessage(value, false)
 	m.refreshViewport(true)
-	m.viewport.GotoBottom()
+	if m.viewport != nil {
+		m.viewport.ScrollToBottom()
+	}
 }
 
 func (m *model) startAgentRunIfPossible(value string) {
@@ -819,7 +861,7 @@ func (m *model) startAgentRunIfPossible(value string) {
 }
 
 func (m *model) startAgentRun(value string) {
-	if m.session == nil || m.program == nil {
+	if m.session == nil || m.tui == nil {
 		return
 	}
 
@@ -845,7 +887,7 @@ func (m *model) startAgentRun(value string) {
 }
 
 func (m *model) startFakeAgentRun() {
-	if m.program == nil || m.isAgentRunning() {
+	if m.tui == nil || m.isAgentRunning() {
 		return
 	}
 
@@ -888,15 +930,16 @@ func (m *model) startFakeAgentRun() {
 }
 
 func (m *model) forwardAgentEvents(runID int, events <-chan agent.Event) {
-	if events == nil || m.program == nil {
+	if events == nil || m.tui == nil {
 		return
 	}
-	go func(run int, ch <-chan agent.Event, prog *tea.Program) {
+	prog := m.tui
+	go func(run int, ch <-chan agent.Event) {
 		for ev := range ch {
 			prog.Send(agentEventMsg{event: ev, runID: run})
 		}
 		prog.Send(agentStreamClosedMsg{runID: run})
-	}(runID, events, m.program)
+	}(runID, events)
 }
 
 func (m *model) stopAgentRun() {
@@ -916,20 +959,10 @@ func (m *model) finishAgentRun() {
 
 func (m *model) startWorkingIndicatorTicker() {
 	m.stopWorkingIndicatorTicker()
-	ctx, cancel := context.WithCancel(context.Background())
-	m.workingIndicatorTickerCancel = cancel
-	go func(prog *tea.Program, c context.Context) {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-c.Done():
-				return
-			case <-ticker.C:
-				prog.Send(workingIndicatorTickMsg{})
-			}
-		}
-	}(m.program, ctx)
+	if m.tui == nil {
+		return
+	}
+	m.workingIndicatorTickerCancel = m.tui.SendPeriodically(workingIndicatorTickMsg{}, time.Second)
 }
 
 func (m *model) stopWorkingIndicatorTicker() {
@@ -948,18 +981,21 @@ func (m *model) startNextQueuedMessage() {
 	m.messageQueue = m.messageQueue[1:]
 	m.appendUserMessage(next, false)
 	m.refreshViewport(true)
-	m.viewport.GotoBottom()
+	if m.viewport != nil {
+		m.viewport.ScrollToBottom()
+	}
 	m.startAgentRun(next)
 }
 
 func (m *model) startUserRequestListener(sourceID int, requests <-chan sandboxauth.UserRequest) {
 	m.stopUserRequestListener()
-	if requests == nil || m.program == nil {
+	if requests == nil || m.tui == nil {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.requestCancel = cancel
-	go func(id int, ch <-chan sandboxauth.UserRequest, prog *tea.Program, c context.Context) {
+	prog := m.tui
+	go func(id int, ch <-chan sandboxauth.UserRequest, c context.Context) {
 		for {
 			select {
 			case <-c.Done():
@@ -971,7 +1007,7 @@ func (m *model) startUserRequestListener(sourceID int, requests <-chan sandboxau
 				prog.Send(userRequestMsg{request: req, sourceID: id})
 			}
 		}
-	}(sourceID, requests, m.program, ctx)
+	}(sourceID, requests, ctx)
 }
 
 func (m *model) stopUserRequestListener() {
@@ -986,8 +1022,10 @@ func (m *model) restoreQueuedMessagesToInput() {
 		return
 	}
 	m.exitEditingState()
-	m.textarea.SetValue(strings.Join(m.messageQueue, "\n"))
-	m.textarea.CursorEnd()
+	if m.textarea != nil {
+		m.textarea.SetContents(strings.Join(m.messageQueue, "\n"))
+		m.textarea.MoveToEndOfText()
+	}
 	m.messageQueue = nil
 	m.updateTextareaHeight()
 }
@@ -1076,9 +1114,13 @@ func eventToolCallID(ev agent.Event) string {
 
 // refreshViewport calculates the contents of the viewport, calls SetContent on it, and optionally scrolls to the bottom.
 func (m *model) refreshViewport(autoScroll bool) {
-	width := m.viewport.Width
-	if width <= 0 {
-		width = agentformatter.MinTerminalWidth
+	width := agentformatter.MinTerminalWidth
+	height := 0
+	if m.viewport != nil {
+		if w := m.viewport.Width(); w > 0 {
+			width = w
+		}
+		height = m.viewport.Height()
 	}
 
 	// Ensure all messaages have .formatted set on it for the given width (which we will essentially just concatenate).
@@ -1094,10 +1136,12 @@ func (m *model) refreshViewport(autoScroll bool) {
 	rendered = m.applyWorkingIndicator(rendered, width)
 	rendered = append(rendered, m.blankRow(width, m.palette.primaryBackground)) // always have one blank line at the end
 	content := m.joinRenderedBlocks(rendered, width)
-	content = m.padViewportContentHeight(content, m.viewport.Height, width)
-	m.viewport.SetContent(content)
-	if autoScroll {
-		m.viewport.GotoBottom()
+	content = m.padViewportContentHeight(content, height, width)
+	if m.viewport != nil {
+		m.viewport.SetContent(content)
+		if autoScroll {
+			m.viewport.ScrollToBottom()
+		}
 	}
 }
 
@@ -1279,7 +1323,11 @@ func (m *model) blankRow(width int, background termformat.Color) string {
 }
 
 func (m *model) updateTextareaHeight() {
-	lines := strings.Count(m.textarea.Value(), "\n") + 1
+	contents := ""
+	if m.textarea != nil {
+		contents = m.textarea.Contents()
+	}
+	lines := strings.Count(contents, "\n") + 1
 	height := clamp(lines, minInputLines, maxInputLines)
 	newHeight := height + 1 // 1: margin top
 
@@ -1287,14 +1335,17 @@ func (m *model) updateTextareaHeight() {
 		return
 	}
 
-	wasAtBottom := m.viewport.AtBottom()
+	wasAtBottom := false
+	if m.viewport != nil {
+		wasAtBottom = m.viewport.AtBottom()
+	}
 	m.textAreaHeight = newHeight
 	m.updateSizes()
 	m.refreshViewport(false) // need to refresh viewport because it may have too many blank lines of padding now
 
 	// if text area high increases, that makes the viewport smaller. By default, that caused the last part of the content to be cut off. So this keep the content at bottom.
-	if wasAtBottom {
-		m.viewport.GotoBottom()
+	if wasAtBottom && m.viewport != nil {
+		m.viewport.ScrollToBottom()
 	}
 }
 
@@ -1438,6 +1489,9 @@ func (m *model) isAgentRunning() bool {
 }
 
 func (m *model) updatePlaceholder() {
+	if m.textarea == nil {
+		return
+	}
 	if m.isAgentRunning() {
 		m.textarea.Placeholder = "Agent running... (ESC to stop)"
 	} else {
@@ -1459,7 +1513,9 @@ func (m *model) triggerPermissionDemo() {
 	if m.activePermission != nil || len(m.permissionQueue) > 0 {
 		m.appendSystemMessage("Resolve pending permissions before starting /permission.")
 		m.refreshViewport(true)
-		m.viewport.GotoBottom()
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
 		return
 	}
 
@@ -1478,7 +1534,9 @@ func (m *model) triggerPermissionDemo() {
 		mu.Unlock()
 		m.appendSystemMessage(message)
 		m.refreshViewport(true)
-		m.viewport.GotoBottom()
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
 	}
 
 	req := sandboxauth.UserRequest{
@@ -1496,7 +1554,9 @@ func (m *model) triggerPermissionDemo() {
 	m.enqueuePermissionRequest(req)
 	m.refreshPermissionView()
 	m.refreshViewport(true)
-	m.viewport.GotoBottom()
+	if m.viewport != nil {
+		m.viewport.ScrollToBottom()
+	}
 }
 
 func (m *model) advancePermissionQueue() {
@@ -1566,7 +1626,9 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.pendingSessionConfig = nil
 	m.exitEditingState()
 	m.editedHistoryDrafts = nil
-	m.textarea.Reset()
+	if m.textarea != nil {
+		m.textarea.SetContents("")
+	}
 	m.updateTextareaHeight()
 	m.refreshPermissionView()
 	m.updatePlaceholder()
@@ -1581,27 +1643,11 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	}
 }
 
-func (m *model) closeSessionCmd() tea.Cmd {
-	session := m.session
-	return func() tea.Msg {
-		if session != nil {
-			session.Close()
-		}
-		return nil
-	}
-}
-
 // newTextArea makes a new textarea.
-//
-// NOTE: i was having trouble styling the textarea using lipgloss. it's all very frustrating.
-// so we're going to use default styles here, and apply our own styling to the text afterwards.
-func newTextArea() textarea.Model {
-	ti := textarea.New()
+func newTextArea() *tuicontrols.TextArea {
+	ti := tuicontrols.NewTextArea(0, 0)
 	ti.Placeholder = "Ready"
 	ti.Prompt = "› "
-	ti.ShowLineNumbers = false
-	ti.KeyMap.InsertNewline.SetKeys("ctrl+j")
-
 	return ti
 }
 

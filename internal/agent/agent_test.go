@@ -3,12 +3,13 @@ package agent
 import (
 	"context"
 	"errors"
-	"github.com/codalotl/codalotl/internal/llmmodel"
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"math"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
 func TestSendUserMessageSimple(t *testing.T) {
@@ -215,7 +216,7 @@ func TestSendUserMessageWithToolUse(t *testing.T) {
 }
 
 func TestContextUsagePercentTracksTurnUsage(t *testing.T) {
-	model := llmmodel.ModelID("gpt-5")
+	model := llmmodel.DefaultModel
 	info := llmmodel.GetModelInfo(model)
 	if info.ContextWindow <= 0 {
 		t.Fatalf("model %q missing context window", model)
@@ -237,7 +238,7 @@ func TestContextUsagePercentTracksTurnUsage(t *testing.T) {
 }
 
 func TestContextUsagePercentIncludesCachedTokens(t *testing.T) {
-	model := llmmodel.ModelID("gpt-5")
+	model := llmmodel.DefaultModel
 	info := llmmodel.GetModelInfo(model)
 	if info.ContextWindow <= 0 {
 		t.Fatalf("model %q missing context window", model)
@@ -267,7 +268,7 @@ func TestContextUsagePercentIncludesCachedTokens(t *testing.T) {
 }
 
 func TestContextUsagePercentClampsToFull(t *testing.T) {
-	model := llmmodel.ModelID("gpt-5")
+	model := llmmodel.DefaultModel
 	info := llmmodel.GetModelInfo(model)
 	if info.ContextWindow <= 0 {
 		t.Fatalf("model %q missing context window", model)
