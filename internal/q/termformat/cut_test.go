@@ -94,4 +94,3 @@ func TestCut(t *testing.T) {
 		})
 	}
 }
-

@@ -116,4 +116,3 @@ func Cut(s string, left, right int) string {
 
 	return b.String()
 }
-
