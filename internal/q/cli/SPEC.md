@@ -126,6 +126,7 @@ If a local flag for a descendant command appears before that descendant command 
 After command selection and flag parsing, the remaining tokens are positional args for the selected command.
 
 If `Command.Args` is non-nil, it is called to validate the args before `Run` is invoked.
+If it returns a non-nil error, the error is treated as a usage error by default (exit code `2`, prints the executed command’s usage), unless the error implements `ExitCoder` with a non-`2` exit code.
 
 ### Help / Usage
 
