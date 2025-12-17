@@ -127,11 +127,11 @@ func (c *Command) activeFlags() activeFlags {
 	byShort := map[rune]*flagDef{}
 
 	for _, cmd := range c.pathFromRoot() {
-			if cmd.persistentFlags != nil {
-				for _, def := range cmd.persistentFlags.byLong {
-					addActiveFlag(byLong, byShort, def)
-				}
+		if cmd.persistentFlags != nil {
+			for _, def := range cmd.persistentFlags.byLong {
+				addActiveFlag(byLong, byShort, def)
 			}
+		}
 	}
 
 	if c.localFlags != nil {

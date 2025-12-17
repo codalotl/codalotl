@@ -92,4 +92,3 @@ func (c *Command) pathFromRoot() []*Command {
 	}
 	return reversed
 }
-

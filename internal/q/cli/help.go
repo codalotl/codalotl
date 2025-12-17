@@ -108,4 +108,3 @@ func formatFlagHelpLine(fh flagHelp) string {
 	}
 	return fmt.Sprintf("  %s%s\t%s", names, suffix, usage)
 }
-

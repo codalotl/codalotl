@@ -35,4 +35,3 @@ func (e ExitError) Error() string {
 
 func (e ExitError) Unwrap() error { return e.Err }
 func (e ExitError) ExitCode() int { return e.Code }
-

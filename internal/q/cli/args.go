@@ -46,4 +46,3 @@ func pluralArgs(n int) string {
 	}
 	return fmt.Sprintf("%d args", n)
 }
-

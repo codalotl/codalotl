@@ -232,4 +232,3 @@ func TestRun_HandlerUsageErrorPrintsUsage(t *testing.T) {
 		t.Fatalf("expected usage error message and usage; stderr=%q", stderr)
 	}
 }
-
