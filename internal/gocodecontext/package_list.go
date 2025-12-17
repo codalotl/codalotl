@@ -336,12 +336,12 @@ type pkgTrie struct {
 }
 
 type pkgTrieNode struct {
-	segment            string
-	fullPrefix         string
-	children           map[string]*pkgTrieNode
-	isPackage          bool
+	segment             string
+	fullPrefix          string
+	children            map[string]*pkgTrieNode
+	isPackage           bool
 	subtreePackageCount int
-	parent             *pkgTrieNode
+	parent              *pkgTrieNode
 }
 
 func newPkgTrie(modulePath string, pkgs []string) *pkgTrie {

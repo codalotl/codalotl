@@ -116,9 +116,39 @@ func TestPackageList_ContextCollapsesLargeSubtree(t *testing.T) {
 	assert.NotContains(t, ctx, "- example.com/coll/internal/gen/p000")
 }
 
+func TestModuleInfo_ReturnsGoMod(t *testing.T) {
+	modDir := t.TempDir()
+
+	goMod := strings.Join([]string{
+		"module example.com/m",
+		"",
+		"go 1.22",
+		"",
+		"require example.com/dep v0.0.0",
+		"",
+	}, "\n")
+	writeFile(t, filepath.Join(modDir, "go.mod"), goMod)
+	writeFile(t, filepath.Join(modDir, "p", "p.go"), "package p\n")
+
+	gotFromDir, err := ModuleInfo(filepath.Join(modDir, "p"))
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimSpace(goMod), gotFromDir)
+
+	gotFromFile, err := ModuleInfo(filepath.Join(modDir, "p", "p.go"))
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimSpace(goMod), gotFromFile)
+}
+
+func TestModuleInfo_NoGoMod(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "p", "p.go"), "package p\n")
+
+	_, err := ModuleInfo(filepath.Join(dir, "p"))
+	require.Error(t, err)
+}
+
 func writeFile(t *testing.T, path string, contents string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o644))
 }
-
