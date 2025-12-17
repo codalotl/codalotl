@@ -1,19 +1,247 @@
 # cli
 
-cli is our standard library for making CLI applications:
-- command/arg/flag parsing
-- Automatic help/usage generation.
+`cli` is a small standard library for building command-line applications with:
+- Nested subcommands (a command tree)
+- GNU-style flags (`--flag`, `-f`, `--flag=value`)
+- Positional args (validated, passed to handlers)
+- Automatic help/usage output
+
+The core model is “git/go style”: a root program name, then a command path, then args/flags. For example:
+- `git checkout mybranch`
+- `go test . -v -run=TestThing`
+- `./mycodingagent doc add ./some/pkg`
+
+## Usage
+
+```go
+root := &cli.Command{
+	Name:  "mycodingagent",
+	Short: "A coding agent",
+}
+
+verbose := root.PersistentFlags().Bool("verbose", 'v', false, "Enable verbose logging")
+
+doc := &cli.Command{
+	Name:  "doc",
+	Short: "Documentation tools",
+}
+
+add := &cli.Command{
+	Name:  "add",
+	Short: "Add docs for a package",
+	Args:  cli.ExactArgs(1),
+	Run: func(c *cli.Context) error {
+		pkg := c.Args[0]
+		if *verbose {
+			fmt.Fprintln(c.Err, "adding docs for", pkg)
+		}
+		// ...
+		return nil
+	},
+}
+
+fix := &cli.Command{
+	Name:  "fix",
+	Short: "Fix docs for a package",
+	Args:  cli.ExactArgs(1),
+	Run: func(c *cli.Context) error {
+		// ...
+		return nil
+	},
+}
+
+doc.AddCommand(add, fix)
+root.AddCommand(doc)
+
+os.Exit(cli.Run(context.Background(), root, cli.Options{
+	Args: os.Args[1:],
+}))
+```
 
 ## Concepts
 
-We support making CLI apps in the git/go style. Examples:
-- `git checkout mybranch`
-- `go test . -v -run=TestThing`
+### Command Tree (Namespacing)
 
-The pattern is APPNAME COMMAND ARG --FLAG.
+Commands form a tree rooted at `root`. Each command has a `Name` and can have children.
 
-## Not In Scope
+Invocation selects the *deepest matching* command path:
+- `mycodingagent doc add ./some/pkg` selects the `doc add` command and passes `./some/pkg` as a positional arg.
 
-This may change later, but for now, these are not in scope:
-- completions
-- man pages
+A command can be:
+- Runnable: `Run != nil`
+- A namespace: it has child commands
+
+Both are allowed (e.g. a command that has subcommands but also does something when invoked directly).
+
+### Flags
+
+Each command has two flag sets:
+- `Flags()` are local to that command.
+- `PersistentFlags()` apply to the command and all of its descendants.
+
+Flag parsing is intended to be familiar to users of Git/Cobra/pflag:
+- Long flags: `--name`, `--name=value`
+- Short flags: `-n`, `-n=value`
+- Flags may be interspersed with positional args.
+- `--` ends flag parsing; everything after is positional args for the executed command.
+
+Placement rules (to keep parsing predictable):
+- Persistent flags may appear anywhere after the program name (until `--`).
+- Local flags should appear after their command’s name appears in argv (typically after the full command path).
+
+### Positional Args
+
+After command selection and flag parsing, the remaining tokens are positional args for the selected command.
+
+If `Command.Args` is non-nil, it is called to validate the args before `Run` is invoked.
+
+### Help / Usage
+
+Every command supports `-h` / `--help`. When requested, `cli.Run` prints help for the relevant command and does not run a handler.
+
+By default, help/usage is generated from the command tree (names, short/long descriptions, flags, and direct subcommands).
+
+## Exit Codes
+
+`cli.Run` never calls `os.Exit`. It returns an exit code suitable for `os.Exit(...)`.
+
+Core exit code policy:
+- `0`: success (including printing help)
+- `2`: usage error (unknown command/flag, arg validation failure, missing required subcommand)
+- `1`: handler error (a command’s `Run` returned a non-usage error)
+
+Handlers can control exit codes by returning an error that implements `ExitCoder`. If a handler returns an `ExitCoder` with exit code `2`, `cli.Run` treats it as a usage error (i.e., it prints usage/help for the executed command).
+
+## Not In Scope (Core)
+
+The first pass intentionally excludes:
+- Shell completions
+- Manpage/markdown doc generation
+- Help template engines / extensive help customization hooks
+- Global/package-level behavior toggles
+- Process-exiting helpers (library APIs must not `os.Exit`)
+
+## Public Interface
+
+```go {api}
+package cli
+
+type Options struct {
+	// Args is the argv excluding the program name (typically os.Args[1:]).
+	Args []string
+
+	// In/Out/Err override standard I/O. If nil, defaults are used.
+	In  io.Reader
+	Out io.Writer
+	Err io.Writer
+}
+```
+
+```go {api}
+// Context is passed to a command handler.
+//
+// Positional args are in Args. Flag values are typically read via variables bound
+// at command construction time (e.g. fs.Bool(...)).
+type Context struct {
+	context.Context
+
+	Command *Command
+	Args    []string
+
+	In  io.Reader
+	Out io.Writer
+	Err io.Writer
+}
+```
+
+```go {api}
+// RunFunc is a command handler.
+type RunFunc func(c *Context) error
+
+// ArgsFunc validates positional args. It should return a UsageError (or any
+// ExitCoder with code 2) for user-facing usage mistakes.
+type ArgsFunc func(args []string) error
+```
+
+```go {api}
+// Command defines one CLI command in a command tree.
+type Command struct {
+	// Name is the token used to invoke this command (e.g. "add" in "doc add").
+	Name string
+
+	// Aliases are additional tokens that invoke this command.
+	Aliases []string
+
+	Short   string
+	Long    string
+	Example string
+
+	Args ArgsFunc // optional
+	Run  RunFunc  // optional
+
+	// ...
+}
+
+// AddCommand adds child commands under c.
+func (c *Command) AddCommand(children ...*Command)
+
+// Commands returns the direct children of c.
+func (c *Command) Commands() []*Command
+
+// Flags returns c's local flags.
+func (c *Command) Flags() *FlagSet
+
+// PersistentFlags returns flags inherited by c and its descendants.
+func (c *Command) PersistentFlags() *FlagSet
+```
+
+```go {api}
+// FlagSet is a typed flag registry for a command.
+type FlagSet struct {
+	// ...
+}
+
+func (fs *FlagSet) Bool(name string, shorthand rune, def bool, usage string) *bool
+func (fs *FlagSet) String(name string, shorthand rune, def string, usage string) *string
+func (fs *FlagSet) Int(name string, shorthand rune, def int, usage string) *int
+func (fs *FlagSet) Duration(name string, shorthand rune, def time.Duration, usage string) *time.Duration
+```
+
+```go {api}
+// Run executes a command tree as a CLI program and returns a process exit code.
+func Run(ctx context.Context, root *Command, opts Options) int
+```
+
+```go {api}
+// ExitCoder is an error with an explicit process exit code.
+type ExitCoder interface {
+	error
+	ExitCode() int
+}
+
+// UsageError indicates a user-facing mistake (exit code 2).
+type UsageError struct {
+	Message string
+}
+
+func (e UsageError) Error() string
+func (e UsageError) ExitCode() int
+
+// ExitError wraps an error with a specific exit code.
+type ExitError struct {
+	Code int
+	Err  error
+}
+
+func (e ExitError) Error() string
+func (e ExitError) Unwrap() error
+func (e ExitError) ExitCode() int
+```
+
+```go {api}
+// Args helpers.
+func NoArgs(args []string) error
+func ExactArgs(n int) ArgsFunc
+func MinimumArgs(n int) ArgsFunc
+func RangeArgs(min, max int) ArgsFunc
+```
