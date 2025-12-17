@@ -1,9 +1,10 @@
 # gocodecontext
 
-This package creates bundles of context for LLMs to understand Go code. It does this with three main mechanims:
+This package creates bundles of context for LLMs to understand Go code. It does this with these main mechanims:
 1. Per-identifier context: get intra-package context for one or more identifiers in a package.
 2. Package documentation: get public API with docs (possibly limited to specific identifiers); get all identifiers (incl. private), with or without docs.
 3. Cross-package usage: get usage information from other packages that use an identifier.
+4. Package list and module info: list and search through available packages, including those in the go.mod file. Includes module info.
 
 ## Per-identifier context
 
@@ -164,3 +165,33 @@ func createContext(pkg *gocode.Package) (string, error) {
    - Only list a function if its less than 200 lines (configurable via const).
    - Chose the 3 smallest snippets
 - If there's no snippets, don't display the corresponding banner.
+
+## Package lists
+
+```go {api exact_docs}
+// PackageListAndModuleInfo returns a list of packages available in the project, as well as some module info. It identifies the go.mod file by starting at absDir and
+// walking up until it finds a go.mod file. If search is given, it filters the results by interpreting it as a Go regexp (this works nicely as a substring filter for
+// typical package fragments like "somepkg").
+//
+// It returns a slice of sorted packages; a string that can be dropped in as context to an LLM; an error, if any.
+//
+// The packages returned in the slice and LLM context do NOT include transitive deps from the go.mod/go.sum; only direct deps and packages defined in the module.
+//
+// The LLM context string is intentionally opquely defined (callers should not rely on parsing it). That said, it gives the name of the module, other module info like go version,
+// a list of direct go.mod dependencies, and a list of packages defined in this module. If these are filtered by the search param, that is indicated.
+//
+// Conceptually, it might look like:
+//
+//	module name: github.com/someuser/myproj
+//  go version 1.25
+//	
+//	These external package are required in go.mod:
+//	- golang.org/x/mod v0.30.0
+//	
+//	These packages are defined in the project:
+//	- github.com/someuser/myproj/foo
+//	- github.com/someuser/myproj/bar
+//
+// IDEA: in the future, we may want to provide a short description of each package, and have that be searchable.
+func PackageListAndModuleInfo(absDir, search string) ([]string, string, error)
+```
