@@ -87,6 +87,12 @@ Command selection proceeds left-to-right from the root command:
 
 This implies a predictable rule of thumb: subcommand names are read until the first “real argument”, and later tokens that happen to equal a subcommand name are treated as positional args.
 
+Namespace-only commands:
+- If the final selected command is not runnable (`Run == nil`), it does not accept positional args.
+- If there are remaining tokens (including after `--`), the invocation is a usage error:
+  - If there is at least one remaining token, it is treated as an *unknown subcommand* of the selected command.
+  - If there are no remaining tokens, it is a *missing required subcommand* error.
+
 ### Flags
 
 Each command has two flag sets:
@@ -99,6 +105,11 @@ Flag parsing is intended to be familiar to users of Git/Cobra/pflag:
 - Flag values may also be provided as the next token: `--name value`, `-n value`.
 - Flags may be interspersed with positional args.
 - `--` ends flag parsing; everything after is positional args for the executed command.
+
+Flag value rules:
+- Bool flags set to `true` when provided without a value (e.g. `--verbose`, `-v`).
+- Non-bool flags require an explicit value; providing `--name` / `-n` without a value is a usage error.
+- If a flag is provided multiple times, the last value wins.
 
 Placement rules (to keep parsing predictable):
 - Persistent flags may appear anywhere after the program name (until `--`).
@@ -125,11 +136,21 @@ By default, help/usage is generated from the command tree (names, short/long des
 Help resolution:
 - If `-h/--help` is encountered while parsing, help is printed for the deepest command selected *so far*.
 - Help output is written to `Options.Out`.
+- `-h`/`--help` are built-in and reserved (they do not need to be registered on a `FlagSet`).
+- After `--`, `-h/--help` are treated as positional args (i.e. they do not trigger help).
 
 Usage errors:
 - Usage/error output is written to `Options.Err`.
 - For unknown subcommands, usage is printed for the nearest existing parent command.
 - For unknown flags or arg validation failures, usage is printed for the command being executed.
+- For usage errors, an error message is also printed to `Options.Err` and includes the specific reason:
+  - For `UsageError`, the message includes `UsageError.Message`.
+  - Otherwise, the message includes the triggering error string.
+  - For unknown flags/subcommands, the message includes the unknown token verbatim.
+
+Help/usage output is intended to be stable for testing:
+- It is plain text (no ANSI color/terminal control sequences) and ends with a trailing newline.
+- When listing subcommands or flags, ordering is deterministic (subcommands by `Name`, flags by long name).
 
 ## Exit Codes
 
@@ -137,7 +158,7 @@ Usage errors:
 
 Core exit code policy:
 - `0`: success (including printing help)
-- `2`: usage error (unknown command/flag, arg validation failure, missing required subcommand)
+- `2`: usage error (unknown subcommand/flag, arg validation failure, missing required subcommand)
 - `1`: handler error (a command’s `Run` returned a non-usage error)
 
 Handlers can control exit codes by returning an error that implements `ExitCoder`. If a handler returns an `ExitCoder` with exit code `2`, `cli.Run` treats it as a usage error (i.e., it prints usage/help for the executed command).
