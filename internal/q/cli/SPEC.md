@@ -11,6 +11,8 @@ The core model is “git/go style”: a root program name, then a command path, 
 - `go test . -v -run=TestThing`
 - `./mycodingagent doc add ./some/pkg`
 
+In help/usage output, the displayed program name is `root.Name`.
+
 ## Usage
 
 ```go
@@ -73,6 +75,18 @@ A command can be:
 
 Both are allowed (e.g. a command that has subcommands but also does something when invoked directly).
 
+If a selected command has no handler (`Run == nil`), it requires a subcommand. Invoking it directly is a usage error (it prints that command’s help/usage).
+
+#### Command Selection (Resolution)
+
+Command selection proceeds left-to-right from the root command:
+- A token matching a child command name or alias descends into that child.
+- Flag tokens are parsed against the *current* command (see below) and do not affect command selection.
+- `--` ends both command selection and flag parsing; everything after is positional args for the selected command.
+- The first non-flag token that does not match a child command ends command selection. After command selection ends, later tokens are never considered subcommand names (but flags may still appear; see below).
+
+This implies a predictable rule of thumb: subcommand names are read until the first “real argument”, and later tokens that happen to equal a subcommand name are treated as positional args.
+
 ### Flags
 
 Each command has two flag sets:
@@ -82,12 +96,19 @@ Each command has two flag sets:
 Flag parsing is intended to be familiar to users of Git/Cobra/pflag:
 - Long flags: `--name`, `--name=value`
 - Short flags: `-n`, `-n=value`
+- Flag values may also be provided as the next token: `--name value`, `-n value`.
 - Flags may be interspersed with positional args.
 - `--` ends flag parsing; everything after is positional args for the executed command.
 
 Placement rules (to keep parsing predictable):
 - Persistent flags may appear anywhere after the program name (until `--`).
 - Local flags should appear after their command’s name appears in argv (typically after the full command path).
+
+In other words: when parsing flags, the active flag set is the union of:
+- All persistent flags on the path from the root to the currently-selected command, and
+- The local flags of the currently-selected command.
+
+If a local flag for a descendant command appears before that descendant command is selected, it is treated as an unknown flag (usage error). To pass a positional argument that begins with `-`, use `--`.
 
 ### Positional Args
 
@@ -101,6 +122,15 @@ Every command supports `-h` / `--help`. When requested, `cli.Run` prints help fo
 
 By default, help/usage is generated from the command tree (names, short/long descriptions, flags, and direct subcommands).
 
+Help resolution:
+- If `-h/--help` is encountered while parsing, help is printed for the deepest command selected *so far*.
+- Help output is written to `Options.Out`.
+
+Usage errors:
+- Usage/error output is written to `Options.Err`.
+- For unknown subcommands, usage is printed for the nearest existing parent command.
+- For unknown flags or arg validation failures, usage is printed for the command being executed.
+
 ## Exit Codes
 
 `cli.Run` never calls `os.Exit`. It returns an exit code suitable for `os.Exit(...)`.
@@ -111,6 +141,10 @@ Core exit code policy:
 - `1`: handler error (a command’s `Run` returned a non-usage error)
 
 Handlers can control exit codes by returning an error that implements `ExitCoder`. If a handler returns an `ExitCoder` with exit code `2`, `cli.Run` treats it as a usage error (i.e., it prints usage/help for the executed command).
+
+On a handler error (exit code 1), `cli.Run` prints the error message to `Options.Err` and does not print usage.
+
+Command trees are intended to be constructed once per process invocation. `Run` is not safe for concurrent use of the same command tree.
 
 ## Not In Scope (Core)
 
