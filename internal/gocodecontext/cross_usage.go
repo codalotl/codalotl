@@ -124,7 +124,7 @@ func CrossPackageUsage(packageAbsDir string, identifier string) ([]CrossRefUsage
 }
 
 // CrossRefUsage holds a single usage location for an identifier from another package.
-// This matches the SPEC fields for CrossPackageUsage.
+// This matches the SPEC fields for CrossRefUsage.
 type CrossRefUsage struct {
 	ImportPath       string // using package's import path
 	AbsFilePath      string // using file's absolute path
