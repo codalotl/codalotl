@@ -49,6 +49,7 @@ func TestPackageAgentTools(t *testing.T) {
 		exttools.ToolNameFixLints,
 		exttools.ToolNameRunTests,
 		exttools.ToolNameRunProjectTests,
+		pkgtools.ToolNameModuleInfo,
 		pkgtools.ToolNameGetPublicAPI,
 		pkgtools.ToolNameClarifyPublicAPI,
 		pkgtools.ToolNameGetUsage,
