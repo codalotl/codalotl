@@ -28,6 +28,15 @@ Prints out the public API of the package (see the `internal/gocodecontext` packa
 
 Prints out the initial context to LLMs for the package (see the `internal/initialcontext` package).
 
+### codalotl context packages [--search <go_regexp>] [--deps]
+
+Prints a list of packages available in the module containing the current working directory, as LLM-ready context (see `internal/gocodecontext.PackageList`).
+
+Notes:
+- `--search` filters packages by interpreting `<go_regexp>` as a Go regexp.
+- If `--deps` is set, packages from direct (non-`// indirect`) module dependencies are also included.
+- The output format is intentionally opaque and may change; callers should treat it as text intended to be copied into an LLM prompt rather than parsed.
+
 ## Public API
 
 ```go

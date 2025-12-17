@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/gocodecontext"
@@ -59,7 +60,27 @@ func newRootCommand() *qcli.Command {
 		},
 	}
 
-	contextCmd.AddCommand(publicCmd, initialCmd)
+	packagesCmd := &qcli.Command{
+		Name:  "packages",
+		Short: "Print an LLM-friendly list of packages available in the current module.",
+		Args:  qcli.NoArgs,
+	}
+	fs := packagesCmd.Flags()
+	search := fs.String("search", 's', "", "Filter packages by Go regexp.")
+	deps := fs.Bool("deps", 0, false, "Include packages from direct module dependencies.")
+	packagesCmd.Run = func(c *qcli.Context) error {
+		wd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		_, llmContext, err := gocodecontext.PackageList(wd, *search, *deps)
+		if err != nil {
+			return err
+		}
+		return writeStringln(c.Out, llmContext)
+	}
+
+	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
 	root.AddCommand(contextCmd)
 	return root
 }
