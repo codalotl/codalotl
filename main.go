@@ -1,13 +1,12 @@
 package main
 
 import (
-	"log"
+	"os"
 
-	"github.com/codalotl/codalotl/internal/tui"
+	"github.com/codalotl/codalotl/internal/cli"
 )
 
 func main() {
-	if err := tui.Run(); err != nil {
-		log.Fatal(err)
-	}
+	exitCode, _ := cli.Run(os.Args, nil)
+	os.Exit(exitCode)
 }
