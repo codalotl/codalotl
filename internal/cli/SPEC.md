@@ -4,6 +4,8 @@ The `cli` package represents the codalotl CLI. It should be used by a very thin 
 
 We assume the app is named `codalotl`.
 
+We use the `internal/q/cli` CLI framework to implement it.
+
 ## Commands
 
 Notes:
@@ -20,11 +22,11 @@ The naked `codalotl` launches the TUI (`internal/tui`).
 
 ### codalotl context public <path/to/pkg>
 
-Prints out the public API of the package (see the `gocodecontext` package).
+Prints out the public API of the package (see the `internal/gocodecontext` package).
 
 ### codalotl context initial <path/to/pkg>
 
-Prints out the initial context to LLMs for the package (see the `initialcontext` package).
+Prints out the initial context to LLMs for the package (see the `internal/initialcontext` package).
 
 ## Public API
 
