@@ -1,9 +1,10 @@
 # gocodecontext
 
-This package creates bundles of context for LLMs to understand Go code. It does this with three main mechanims:
+This package creates bundles of context for LLMs to understand Go code. It does this with these main mechanisms:
 1. Per-identifier context: get intra-package context for one or more identifiers in a package.
 2. Package documentation: get public API with docs (possibly limited to specific identifiers); get all identifiers (incl. private), with or without docs.
 3. Cross-package usage: get usage information from other packages that use an identifier.
+4. Package list and module info: list and search through available packages; get module info, like dep modules.
 
 ## Per-identifier context
 
@@ -12,13 +13,13 @@ Given a list of package-level identifiers in a package (functions/methods, types
 - If an identifier X's code **depends on** (i.e., calls, uses, references) another identifier Y, then Y will be in the context.
     - If Y is a documented function or in another package, then only the docs+signature will be in the context.
     - Otherwise, all of Y will be in the context.
-- If an identifier Z is **depended on* (i.e., called by, used by, referenced by) X, then Z will be in the context (full bytes, even if documented).
+- If an identifier Z is **depended on** (i.e., called by, used by, referenced by) X, then Z will be in the context (full bytes, even if documented).
 
 To do this, we use an `IdentifierGroup`. The `IdentifierGroup` is a bundle of identifiers. Usually, there's only one identifier in an `IdentifierGroup`, but identifiers are grouped together if:
 - They occur in the same block (ex: same var block).
 - They are in a SCC.
 
-Identifiers are grouped because `gocode.Snippet`s are thing we add to contexts, and because once SCCs go into groups, the `IdentifierGroups` from a DAG, making things easier.
+Identifiers are grouped because `gocode.Snippet`s are the things we add to contexts, and because once SCCs go into groups, the `IdentifierGroup`s form a DAG, making things easier.
 
 ### Usage
 
@@ -73,7 +74,7 @@ ctxMap := NewContextsForIdentifiers(targets, ids)
 
 ## Package documentation
 
-During their exploration phase, agent-based LLMs typically `ls` directories and `read` a few .go files in it, then use some form of `grep` to find related code that they're curious about. Intead, we can provide tools for them to get a 'lay of the land' much more quickly:
+During their exploration phase, agent-based LLMs typically `ls` directories and `read` a few .go files in it, then use some form of `grep` to find related code that they're curious about. Instead, we can provide tools for them to get a 'lay of the land' much more quickly:
 
 
 ```go {api exact_docs}
@@ -82,10 +83,10 @@ During their exploration phase, agent-based LLMs typically `ls` directories and 
 //   - Each file only has public snippets (no imports; no package-private vars/etc).
 //   - Snippets are sorted by the order they appear in the actual file.
 //   - Functions only have docs+signatures (even if not documented).
-//   - blocks and structs with unexported elements have those elements elided.
+//   - Blocks and structs with unexported elements have those elements elided.
 //   - No "floating" comments.
 //
-// If identifiers are present, documentation is limited identifiers:
+// If identifiers are present, documentation is limited to those identifiers:
 //   - If any identifier is a type, we also include all public methods on that type.
 //   - Most identifiers are just their name. Methods are identified like "*SomePtrType.SomeMethod" or "SomeType.SomeMethod".
 //
@@ -108,8 +109,10 @@ func InternalPackageSignatures(pkg *gocode.Package, tests bool, includeDocs bool
 
 ## Cross-package usage
 
+TODO at some point: I think CrossRefUsage should be renamed CrossPackageRef (or just PackageRef).
+
 ```go {api exact_docs}
-type CrossPackageUsage struct {
+type CrossRefUsage struct {
     ImportPath string // using package's import path
     AbsFilePath string // using file's absolute path
     Line int // line (1 based) where the usage occurs
@@ -130,7 +133,7 @@ type CrossPackageUsage struct {
 //   - Specifics are an implementation detail. Callers should just pass this opaque blob to an LLM.
 //
 // If packageAbsDir is invalid, or identifier is not defined in packageAbsDir, an error will be returned.
-func CrossPackageUsage(packageAbsDir, identifier string) ([]CrossPackageUsage, string, error)
+func CrossPackageUsage(packageAbsDir, identifier string) ([]CrossRefUsage, string, error)
 ```
 
 Even though `CrossPackageUsage`'s string return parameter must be **documented** as being opaque, here is the format to use for now:
@@ -160,7 +163,58 @@ func createContext(pkg *gocode.Package) (string, error) {
 ```
 
 - First, list all references in a manner similar to `rg`.
-- List up to 3 snippets of full context (often functions). Criteria for chosing snippets:
-   - Only list a function if its less than 200 lines (configurable via const).
-   - Chose the 3 smallest snippets
-- If there's no snippets, don't display the corresponding banner.
+- List up to 3 snippets of full context (often functions). Criteria for choosing snippets:
+   - Only list a function if it's less than 200 lines (configurable via const).
+   - Choose the 3 smallest snippets.
+- If there are no snippets, don't display the corresponding banner.
+
+## Package lists and module info
+
+```go {api exact_docs}
+// PackageList returns a list of packages available in the current module. It identifies the go.mod file by starting at absDir and
+// walking up until it finds a go.mod file.
+// 
+// main and _test packages are included. _test packages listed by their "import path" - if a directory contains a non-test and a test package, the path is only listed once.
+//
+// If search is given, it filters the results by interpreting it as a Go regexp.
+//
+// If !includeDepPackages, it only includes packages defined in this module. Otherwise, it includes packages in **direct** module dependencies (dependency internal packages excluded).
+// "Direct module dependencies" means modules listed in the go.mod `require` block(s) that are NOT annotated with `// indirect` (go.sum is ignored).
+//
+// It returns a slice of sorted packages; a string that can be dropped in as context to an LLM; an error, if any.
+//
+// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it might look like:
+//
+//	These packages are defined in the current module (github.com/someuser/myproj):
+//	- github.com/someuser/myproj/foo
+//	- github.com/someuser/myproj/bar
+//	- github.com/someuser/myproj/internal/api
+//	- github.com/someuser/myproj/internal/gen/... (232 packages omitted; expand with search="^github\\.com/someuser/myproj/internal/gen(/|$)")
+//	- github.com/someuser/myproj/internal/schema
+//
+//	Defined in golang.org/x/mod:
+//	- golang.org/x/mod/gosumcheck
+//	- golang.org/x/mod/modfile
+//
+// The returned slice will never be truncated. However, if there are too many packages, the LLM context may collapse large nodes with a message indicating how to access them (see example above).
+//
+// IDEA: in the future, we may want to provide a short description of each package, and have that be searchable.
+func PackageList(absDir, search string, includeDepPackages bool) ([]string, string, error)
+```
+
+```go {api exact_docs}
+// ModuleInfo returns information about the current Go module. It identifies the go.mod file by starting at absDir and walking up until it finds a go.mod file.
+//
+// It returns an LLM context string that can be directly dropped into an LLM, and an error, if any.
+//
+// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it might look like:
+//
+//	module github.com/someuser/myproj
+//
+//	go 1.24
+//
+// NOTES:
+//   - For now, this just returns the go.mod file itself.
+//   - Need to do more research about how big these can get. We may want to implement things like limiting deps to direct dependencies; stripping comments; being more concise; module search.
+func ModuleInfo(absDir string) (string, error)
+```

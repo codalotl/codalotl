@@ -33,7 +33,7 @@ func CoreAgentTools(sandboxDir string, authorizer auth.Authorizer) ([]llmstream.
 // PackageAgentTools offers tools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
 //   - core tools: read_file, ls, apply_patch, update_plan
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests, run_project_tests
-//   - package tools: get_public_api, clarify_public_api, get_usage, update_usage
+//   - package tools: module_info, get_public_api, clarify_public_api, get_usage, update_usage
 //
 // Note that this set of tools requires two authorizers:
 //   - authorizer is the package-jail authorizer that prevents the agent from directly accessing files outside the package.
@@ -57,6 +57,7 @@ func PackageAgentTools(sandboxDir string, authorizer auth.Authorizer, sandboxAut
 		exttools.NewFixLintsTool(sandboxDir, authorizer),
 		exttools.NewRunTestsTool(sandboxDir, authorizer),
 		exttools.NewRunProjectTestsTool(sandboxDir, goPkgAbsDir, authorizer),
+		pkgtools.NewModuleInfoTool(sandboxDir, authorizer),
 		pkgtools.NewGetPublicAPITool(sandboxDir, authorizer),
 		pkgtools.NewClarifyPublicAPITool(sandboxDir, sandboxAuthorizer, SimpleReadOnlyTools),
 		pkgtools.NewGetUsageTool(sandboxDir, authorizer),
