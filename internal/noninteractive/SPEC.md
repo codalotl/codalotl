@@ -17,7 +17,7 @@ To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, firs
 
 Upon finishing a session, print a line like this:
 
-`• Agent finished the turn. Session tokens: input=42042 cached_input=32000 output=1043 total=75085`
+`• Agent finished the turn. Tokens: input=10042 cached_input=32000 output=1043 total=43085`
 
 ## Public API
 

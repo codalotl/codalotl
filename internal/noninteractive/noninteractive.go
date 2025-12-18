@@ -398,15 +398,24 @@ func shouldSuppressFormattedOutput(s string) bool {
 
 func formatAgentFinishedTurnLine(u llmstream.TokenUsage) string {
 	// Keep the phrasing stable; callers/tests rely on this being a single line.
-	return fmt.Sprintf("• Agent finished the turn. Session tokens: %s", formatSessionTokenUsage(u))
+	return fmt.Sprintf("• Agent finished the turn. Tokens: %s", formatSessionTokenUsage(u))
 }
 
 func formatSessionTokenUsage(u llmstream.TokenUsage) string {
-	// Note: provider semantics vary about whether TotalInputTokens already includes
-	// CachedInputTokens. We still report both and include them in the displayed total
-	// since the goal is a "headline" accounting for the session.
-	total := u.TotalInputTokens + u.CachedInputTokens + u.TotalOutputTokens
-	return fmt.Sprintf("input=%d cached_input=%d output=%d total=%d", u.TotalInputTokens, u.CachedInputTokens, u.TotalOutputTokens, total)
+	// Provider semantics vary about whether TotalInputTokens already includes CachedInputTokens.
+	//
+	// For CLI display, we want:
+	// - input = non-cached input tokens
+	// - cached_input = cached/reused input tokens
+	//
+	// We treat TotalInputTokens as "possibly inclusive" and subtract cached input,
+	// clamping at 0 for safety.
+	nonCachedInput := u.TotalInputTokens - u.CachedInputTokens
+	if nonCachedInput < 0 {
+		nonCachedInput = 0
+	}
+	total := nonCachedInput + u.CachedInputTokens + u.TotalOutputTokens
+	return fmt.Sprintf("input=%d cached_input=%d output=%d total=%d", nonCachedInput, u.CachedInputTokens, u.TotalOutputTokens, total)
 }
 
 func autoRespondToUserRequests(requests <-chan sandboxauth.UserRequest, out io.Writer, autoYes bool) {

@@ -20,6 +20,10 @@ Prints standard usage.
 
 The naked `codalotl` launches the TUI (`internal/tui`).
 
+### codalotl version
+
+Prints the codalotl version to stdout.
+
 ### codalotl context public <path/to/pkg>
 
 Prints out the public API of the package (see the `internal/gocodecontext` package).
@@ -40,6 +44,9 @@ Notes:
 ## Public API
 
 ```go
+// Version is the codalotl version. It is a var (not a const) so build tooling can override it.
+var Version = "0.1.0"
+
 // In/Out/Err override standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
 // Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably print to Stdout.

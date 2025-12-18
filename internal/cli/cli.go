@@ -11,6 +11,10 @@ import (
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 )
 
+// Version is the codalotl version. It is a var (not a const) so build tooling can
+// override it (for example via `-ldflags "-X .../internal/cli.Version=1.2.3"`).
+var Version = "0.1.0"
+
 // RunOptions overrides standard I/O. If nil, defaults are used. Overriding is
 // useful for testing.
 //

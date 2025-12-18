@@ -26,6 +26,58 @@ func TestRun_Help(t *testing.T) {
 	}
 }
 
+func TestRun_Exec_AcceptsModelFlag(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "exec", "--model", "anything"}, &RunOptions{Out: &out, Err: &errOut})
+	if err == nil {
+		t.Fatalf("expected non-nil error")
+	}
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d (err=%v)", code, err)
+	}
+	if strings.Contains(strings.ToLower(errOut.String()), "unknown flag") {
+		t.Fatalf("expected --model to be accepted, got stderr: %q", errOut.String())
+	}
+}
+
+func TestRun_Version_PrintsVersion(t *testing.T) {
+	orig := Version
+	Version = "9.9.9-test"
+	t.Cleanup(func() { Version = orig })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "version"}, &RunOptions{Out: &out, Err: &errOut})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v (stderr=%q)", err, errOut.String())
+	}
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (stderr=%q)", code, errOut.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %q", errOut.String())
+	}
+	if got := out.String(); got != "9.9.9-test\n" {
+		t.Fatalf("unexpected stdout: %q", got)
+	}
+}
+
+func TestRun_Version_ExtraArg_IsUsageError(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "version", "nope"}, &RunOptions{Out: &out, Err: &errOut})
+	if err == nil {
+		t.Fatalf("expected non-nil error")
+	}
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d (err=%v)", code, err)
+	}
+	if errOut.Len() == 0 {
+		t.Fatalf("expected stderr output for usage error")
+	}
+}
+
 func TestRun_ContextPublic_MissingArg_IsUsageError(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer

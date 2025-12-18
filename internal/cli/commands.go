@@ -33,13 +33,14 @@ func newRootCommand() *qcli.Command {
 	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode, rooted at this package path (must be within cwd).")
 	execYes := execFlags.Bool("yes", 'y', false, "Auto-approve any permission checks (noninteractive).")
 	execNoColor := execFlags.Bool("no-color", 0, false, "Disable ANSI colors and formatting.")
+	execFlags.String("model", 0, "", "Model to use (placeholder; currently ignored).")
 	execCmd.Run = func(c *qcli.Context) error {
 		userPrompt := strings.TrimSpace(strings.Join(c.Args, " "))
 		err := noninteractive.Exec(userPrompt, noninteractive.Options{
-			PackagePath:   *execPackage,
-			AutoYes:       *execYes,
-			NoFormatting:  *execNoColor,
-			Out:           c.Out,
+			PackagePath:  *execPackage,
+			AutoYes:      *execYes,
+			NoFormatting: *execNoColor,
+			Out:          c.Out,
 		})
 		if err == nil {
 			return nil
@@ -53,6 +54,15 @@ func newRootCommand() *qcli.Command {
 	contextCmd := &qcli.Command{
 		Name:  "context",
 		Short: "Print code contexts suitable for sending to an LLM.",
+	}
+
+	versionCmd := &qcli.Command{
+		Name:  "version",
+		Short: "Print codalotl version.",
+		Args:  qcli.NoArgs,
+		Run: func(c *qcli.Context) error {
+			return writeStringln(c.Out, Version)
+		},
 	}
 
 	publicCmd := &qcli.Command{
@@ -110,7 +120,7 @@ func newRootCommand() *qcli.Command {
 	}
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd)
+	root.AddCommand(execCmd, contextCmd, versionCmd)
 	return root
 }
 

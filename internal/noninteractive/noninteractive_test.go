@@ -92,7 +92,7 @@ func TestFormatAgentFinishedTurnLineIncludesTokens(t *testing.T) {
 		TotalOutputTokens: 7,
 	})
 
-	want := "• Agent finished the turn. Session tokens: input=10 cached_input=3 output=7 total=20"
+	want := "• Agent finished the turn. Tokens: input=7 cached_input=3 output=7 total=17"
 	if line != want {
 		t.Fatalf("got %q, want %q", line, want)
 	}
