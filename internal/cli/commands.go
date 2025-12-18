@@ -16,6 +16,7 @@ func newRootCommand() *qcli.Command {
 	root := &qcli.Command{
 		Name:  "codalotl",
 		Short: "codalotl is an LLM-assisted Go coding agent.",
+		Args:  qcli.NoArgs,
 		Run: func(c *qcli.Context) error {
 			return tui.Run()
 		},
