@@ -234,11 +234,15 @@ func exitForHandlerError(root, cmd *Command, err error, errOut io.Writer) int {
 		if code == 0 {
 			return 0
 		}
-		fmt.Fprintln(errOut, err.Error())
+		if msg := err.Error(); msg != "" {
+			fmt.Fprintln(errOut, msg)
+		}
 		return code
 	}
 
-	fmt.Fprintln(errOut, err.Error())
+	if msg := err.Error(); msg != "" {
+		fmt.Fprintln(errOut, msg)
+	}
 	return 1
 }
 
@@ -253,7 +257,9 @@ func exitForArgsError(root, cmd *Command, err error, errOut io.Writer) int {
 		if code == 0 {
 			return 0
 		}
-		fmt.Fprintln(errOut, err.Error())
+		if msg := err.Error(); msg != "" {
+			fmt.Fprintln(errOut, msg)
+		}
 		return code
 	}
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/tui"
 )
@@ -20,6 +22,32 @@ func newRootCommand() *qcli.Command {
 		Run: func(c *qcli.Context) error {
 			return tui.Run()
 		},
+	}
+
+	execCmd := &qcli.Command{
+		Name:  "exec",
+		Short: "Run codalotl noninteractively with a prompt.",
+		Args:  qcli.MinimumArgs(1),
+	}
+	execFlags := execCmd.Flags()
+	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode, rooted at this package path (must be within cwd).")
+	execYes := execFlags.Bool("yes", 'y', false, "Auto-approve any permission checks (noninteractive).")
+	execNoColor := execFlags.Bool("no-color", 0, false, "Disable ANSI colors and formatting.")
+	execCmd.Run = func(c *qcli.Context) error {
+		userPrompt := strings.TrimSpace(strings.Join(c.Args, " "))
+		err := noninteractive.Exec(userPrompt, noninteractive.Options{
+			PackagePath:   *execPackage,
+			AutoYes:       *execYes,
+			NoFormatting:  *execNoColor,
+			Out:           c.Out,
+		})
+		if err == nil {
+			return nil
+		}
+		if noninteractive.IsPrinted(err) {
+			return qcli.ExitError{Code: 1, Err: errors.New("")}
+		}
+		return err
 	}
 
 	contextCmd := &qcli.Command{
@@ -82,7 +110,7 @@ func newRootCommand() *qcli.Command {
 	}
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(contextCmd)
+	root.AddCommand(execCmd, contextCmd)
 	return root
 }
 
