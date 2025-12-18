@@ -260,6 +260,8 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiClarifyPublicAPIToolCall(e, width)
 	case "get_usage":
 		return f.tuiGetUsageToolCall(e, width)
+	case "module_info":
+		return f.tuiModuleInfoToolCall(e, width)
 	case "run_tests":
 		return f.tuiRunTestsToolCall(e, width)
 	case "run_project_tests":
@@ -289,6 +291,8 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliClarifyPublicAPIToolCall(e)
 	case "get_usage":
 		return f.cliGetUsageToolCall(e)
+	case "module_info":
+		return f.cliModuleInfoToolCall(e)
 	case "run_tests":
 		return f.cliRunTestsToolCall(e)
 	case "run_project_tests":
@@ -443,6 +447,8 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiClarifyPublicAPIToolComplete(e, width, success, cmd, outputLines)
 	case "get_usage":
 		return f.tuiGetUsageToolComplete(e, width, success, cmd, outputLines)
+	case "module_info":
+		return f.tuiModuleInfoToolComplete(e, width, success, cmd, outputLines)
 	case "run_tests":
 		return f.tuiRunTestsToolComplete(e, width, success, cmd, outputLines)
 	case "run_project_tests":
@@ -473,6 +479,8 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliClarifyPublicAPIToolComplete(e, success, cmd, outputLines)
 	case "get_usage":
 		return f.cliGetUsageToolComplete(e, success, cmd, outputLines)
+	case "module_info":
+		return f.cliModuleInfoToolComplete(e, success, cmd, outputLines)
 	case "run_tests":
 		return f.cliRunTestsToolComplete(e, success, cmd, outputLines)
 	case "run_project_tests":
@@ -1244,6 +1252,114 @@ func (f *textTUIFormatter) cliGetUsageToolCall(e agent.Event) string {
 		segments = append(segments, textSegment{text: " " + id})
 	}
 	return f.cliBulletLine(colorAccent, segments...)
+}
+
+// -------- module_info formatting --------
+
+func extractModuleInfo(call *llmstream.ToolCall) (packageSearch string, includeDeps bool, ok bool) {
+	if call == nil {
+		return "", false, false
+	}
+	var payload struct {
+		PackageSearch         string `json:"package_search"`
+		IncludeDependencyPkgs bool   `json:"include_dependency_packages"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
+		// No options is a valid/expected case for module_info, so failure to parse isn't fatal.
+		return "", false, false
+	}
+	packageSearch = strings.TrimSpace(payload.PackageSearch)
+	includeDeps = payload.IncludeDependencyPkgs
+	return sanitizeText(packageSearch), includeDeps, true
+}
+
+func moduleInfoOptionsLine(call *llmstream.ToolCall) (string, bool) {
+	search, deps, ok := extractModuleInfo(call)
+	_ = ok // parsing is best-effort; absence/invalid JSON means no options line.
+
+	var parts []string
+	if strings.TrimSpace(search) != "" {
+		parts = append(parts, "Search: "+strings.TrimSpace(search))
+	}
+	if deps {
+		parts = append(parts, "Deps: true")
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "; "), true
+}
+
+func (f *textTUIFormatter) tuiModuleInfoToolCall(e agent.Event, width int) string {
+	segments := []textSegment{
+		{text: "Read Module Info", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, colorAccent, segments...))
+	if options, ok := moduleInfoOptionsLine(e.ToolCall); ok {
+		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
+			text:          options,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		}})
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliModuleInfoToolCall(e agent.Event) string {
+	segments := []textSegment{
+		{text: "Read Module Info", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	lines := []string{f.cliBulletLine(colorAccent, segments...)}
+	if options, ok := moduleInfoOptionsLine(e.ToolCall); ok {
+		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
+			text:          options,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		}})...)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (f *textTUIFormatter) tuiModuleInfoToolComplete(e agent.Event, width int, success bool, _ string, _ []toolOutputLine) string {
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := []textSegment{
+		{text: "Read Module Info", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
+	// Per SPEC, completion mirrors the call (except status), and does not print the tool output.
+	if options, ok := moduleInfoOptionsLine(e.ToolCall); ok {
+		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
+			text:          options,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		}})
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliModuleInfoToolComplete(e agent.Event, success bool, _ string, _ []toolOutputLine) string {
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := []textSegment{
+		{text: "Read Module Info", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	lines := []string{f.cliBulletLine(bullet, segments...)}
+	// Per SPEC, completion mirrors the call (except status), and does not print the tool output.
+	if options, ok := moduleInfoOptionsLine(e.ToolCall); ok {
+		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
+			text:          options,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		}})...)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (f *textTUIFormatter) tuiGetUsageToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {

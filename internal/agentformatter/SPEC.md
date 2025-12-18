@@ -236,6 +236,28 @@ The EventTypeToolComplete looks like this:
 ```
 - The number of results is determined by counting the number of matches of this regexp: /^\d+:/ (beginning of line, number followed by colon)
 
+### EventTypeToolCall and EventTypeToolComplete - module_info
+
+The EventTypeToolCall looks like this:
+
+```
+• Read Module Info
+```
+
+- Read Module Info is Bold, Colorful.
+
+If either option is provided and non-zero-value, print a single Accent line underneath with the selected options:
+
+```
+• Read Module Info
+  └ Search: agentformatter; Deps: true
+```
+
+- The `└` and the entire options line are Accent.
+- Only show a Search if it's present and non empty. Only show Deps if it's true.
+- EventTypeToolComplete is the same as the Call (except it resolves to a status).
+- Bullet indicates status (Green on success; Red on error).
+
 ### EventTypeToolCall and EventTypeToolComplete - run_tests
 
 ```

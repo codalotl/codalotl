@@ -866,6 +866,119 @@ func TestUpdateUsageCompleteErrorShowsOutput(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure should use red bullet")
 }
 
+func TestModuleInfoToolCallNoOptions(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "module_info",
+		Input: `{}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "module_info",
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Read Module Info",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "), "in-progress bullet should be accent")
+	assert.Contains(t, out, ansiWrap("Read Module Info", pal, colorColorful, false, true), "header should be bold and colorful")
+}
+
+func TestModuleInfoToolCallWithOptions(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	call := llmstream.ToolCall{
+		Name:  "module_info",
+		Input: `{"package_search":"agentformatter","include_dependency_packages":true}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "module_info",
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Read Module Info",
+		"  └ Search: agentformatter; Deps: true",
+	}, lines)
+}
+
+func TestModuleInfoToolCompleteSuccessMirrorsCall(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "module_info",
+		Input: `{"package_search":"agentformatter","include_dependency_packages":true}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true,"content":"(big payload elided)"}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "module_info",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Read Module Info",
+		"  └ Search: agentformatter; Deps: true",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "success bullet should be green")
+}
+
+func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "module_info",
+		Input: `{"package_search":"agentformatter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "go mod parse error",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "module_info",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Read Module Info",
+		"  └ Search: agentformatter",
+	}, lines)
+	assert.NotContains(t, stripANSI(out), "Error:", "module_info completion should not include tool output per SPEC")
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure bullet should be red")
+}
+
 func TestGetPublicAPICallWithIdentifiers(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
