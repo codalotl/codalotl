@@ -51,6 +51,36 @@ There are two layers:
 - In other words, this authorizer is strictly more restrictive - it never allows new things, but might flatly block
   reads/writes that the fallback would allow or ask about.
 
+## Grants
+
+Grants enable an agent to access files they wouldn't otherwise have access to. For example: if the end-user creates a code unit authorizer at `internal/foo` and prompts "Read @README.md, then
+implement this package", it would allow an agent to issue a `read_file` tool call for `README.md`, even though normally that's outside of the code unit jail. Grants also allow accessing files
+outside of the sandbox dir when using the permissive sandbox policy (strict sandbox cannot grant outside of the sandbox dir).
+
+Design choice: we choose to be permissive and allow access to files, even if that wasn't the user's intention. In practice, given "myname@gmail.com", an LLM will not try to read a `gmail.com` file,
+and that file likely doesn't exist either. In the case of code units, code units are more about keeping the LLM focused on a package (they're not security). Folks who care about security should
+run agents in a real sandbox.
+
+Details:
+- **For the time being, this applies to reading via the `read_file` and `ls` tools only.** (This can be extended/relaxed in the future, if needed).
+- If a grant applies, the user is never asked for permission, even if requestPermission.
+- Grants can be Go-style `filepath.Match` globs.
+- If a directory is granted without globs (no `filepath.Match` metacharacters), the grant applies to the entire tree of files/directories rooted at the directory (recursively).
+    - Yes, this requirement changes authorizers from mostly pure functions over path strings to requiring `os.Stat`.
+- To grant access to files in a directory non-recursively, use, e.g., `@src/*`.
+- Grant paths are relative to the sandbox dir, or absolute.
+- Strict sandbox: grants never authorize reads outside of the sandbox dir.
+- Permissive sandbox: grants may authorize reads outside of the sandbox dir.
+- Grants can accumulate in an agent session (the agent must replace the authorizer in a `/new` session).
+- The directory `/` cannot be granted (ex: `in @/ myfile.txt, please...`).
+
+`AddGrantsFromUserMessage` is lazy:
+- Because user messages are messy and inexact, adding grants is **lazy**. We cannot immediately parse the message to extract grants.
+- Instead, if we get `IsAuthorizedForRead` for a specific file, for instance, we examine the user message grants and see if the file is granted by the message.
+- This allows messages like `Read @README.md. Then ...` to accept either `README.md` or `README.md.` as grants.
+    - Similarly, `in @my file.txt, read the docs` allows files `my`, `my file`, `my file.txt`, and others.
+- No `os.Stat` may occur during AddGrantsFromUserMessage.
+
 ## User permission requests
 
 Each authorizer constructor that can prompt returns a non-nil, buffered (<-chan UserRequest) that carries
@@ -93,6 +123,16 @@ func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCom
 func NewAutoApproveAuthorizer(sandboxDir string) Authorizer
 func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer
 
+
+// AddGrantsFromUserMessage adds grants from userMessage to the authorizer. Grants in userMessage are of the form `@relative/path/to/file`, `@/path/to/file`, or `@"path with spaces"`. Note that
+// userMessage is a full message typed by the user to the agent, and may contain no grants, errant `@` signs, bad syntax, commas or other punctuation after the grant, and so on.
+// This means AddGrantsFromUserMessage needs to robustly handle anything the user may type, and may not know **at the time of calling** what grants are actually being made.
+//
+// The grants are added to the authorizer as well as its fallback, if present.
+// Note: strict sandbox authorizers never allow grants to authorize reads outside of their sandbox dir.
+//
+// An error is only returned if authorizer is not capable of accepting grants. Any other "errors" simply result in no grants being added (ex: file doesn't exist; bad glob format).
+func AddGrantsFromUserMessage(authorizer Authorizer, userMessage string) error
 
 // ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands. All methods are thread-safe.
 //
