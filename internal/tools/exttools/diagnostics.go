@@ -26,7 +26,8 @@ type diagnosticsParams struct {
 	Path string `json:"path"`
 }
 
-func NewDiagnosticsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewDiagnosticsTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolDiagnostics{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

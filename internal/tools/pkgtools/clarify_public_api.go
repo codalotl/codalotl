@@ -33,9 +33,10 @@ type clarifyPublicAPIParams struct {
 }
 
 // authorizer is what the **subagent** is authorized to do, which is usually more than a package-jailed agent.
-func NewClarifyPublicAPITool(sandboxAbsDir string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
+func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolClarifyPublicAPI{
-		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
+		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 		toolset:       toolset,
 	}

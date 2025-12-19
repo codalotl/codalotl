@@ -6,6 +6,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,8 @@ import (
 
 func TestGetPublicAPI_RunRelativeImport(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewGetPublicAPITool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewGetPublicAPITool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-relative",
 			Name:   ToolNameGetPublicAPI,
@@ -31,7 +33,8 @@ func TestGetPublicAPI_RunRelativeImport(t *testing.T) {
 
 func TestGetPublicAPI_RunQualifiedImport(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewGetPublicAPITool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewGetPublicAPITool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-qualified",
 			Name:   ToolNameGetPublicAPI,
@@ -49,7 +52,8 @@ func TestGetPublicAPI_RunQualifiedImport(t *testing.T) {
 
 func TestGetPublicAPI_RunInvalidOutsideModule(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewGetPublicAPITool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewGetPublicAPITool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-invalid",
 			Name:   ToolNameGetPublicAPI,

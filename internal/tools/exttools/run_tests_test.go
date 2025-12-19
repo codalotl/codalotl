@@ -5,6 +5,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,7 +38,8 @@ func TestRunTests_Run_VerboseSingleTest(t *testing.T) {
 			}
 		`),
 	}, func(pkg *gocode.Package) {
-		tool := NewRunTestsTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewRunTestsTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call1",
 			Name:   ToolNameRunTests,

@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -30,9 +29,10 @@ type moduleInfoParams struct {
 	IncludeDependencyPackages bool   `json:"include_dependency_packages"`
 }
 
-func NewModuleInfoTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewModuleInfoTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolModuleInfo{
-		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
+		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 	}
 }

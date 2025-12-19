@@ -17,7 +17,8 @@ type toolUpdatePlan struct {
 	authorizer    authdomain.Authorizer
 }
 
-func NewUpdatePlanTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewUpdatePlanTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolUpdatePlan{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

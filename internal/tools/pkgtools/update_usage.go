@@ -38,9 +38,10 @@ type updateUsageParams struct {
 // authorizer here should be the "sandbox" authorizer, not a package-jailed authorizer.
 // pkgDirAbsPath here is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it)
 // toolset is the tools that the subagent doing the updating will ahve access to.
-func NewUpdateUsageTool(sandboxAbsDir string, pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.PackageToolset) llmstream.Tool {
+func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.PackageToolset) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolUpdateUsage{
-		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
+		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 		toolset:       toolset,
 		pkgDirAbsPath: filepath.Clean(pkgDirAbsPath),

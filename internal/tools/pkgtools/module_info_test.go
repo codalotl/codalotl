@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,7 +12,8 @@ import (
 
 func TestModuleInfo_RunDefault(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewModuleInfoTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewModuleInfoTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-module-info",
 			Name:   ToolNameModuleInfo,
@@ -33,7 +35,8 @@ func TestModuleInfo_RunDefault(t *testing.T) {
 
 func TestModuleInfo_RunSearchFilter(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewModuleInfoTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewModuleInfoTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-module-info-search",
 			Name:   ToolNameModuleInfo,
@@ -51,7 +54,8 @@ func TestModuleInfo_RunSearchFilter(t *testing.T) {
 func TestModuleInfo_RunIncludeDepPackages_NoDepsIsOK(t *testing.T) {
 	// The fixture module has no explicit direct deps; this test just asserts the flag is accepted.
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewModuleInfoTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewModuleInfoTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-module-info-deps",
 			Name:   ToolNameModuleInfo,
@@ -68,7 +72,8 @@ func TestModuleInfo_RunIncludeDepPackages_NoDepsIsOK(t *testing.T) {
 
 func TestModuleInfo_RunEmptyInputIsOK(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewModuleInfoTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewModuleInfoTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-module-info-empty",
 			Name:   ToolNameModuleInfo,
@@ -85,7 +90,8 @@ func TestModuleInfo_RunEmptyInputIsOK(t *testing.T) {
 
 func TestModuleInfo_RunSearchNoMatches(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
-		tool := NewModuleInfoTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewModuleInfoTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call-module-info-no-matches",
 			Name:   ToolNameModuleInfo,

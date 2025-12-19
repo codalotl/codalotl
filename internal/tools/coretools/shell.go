@@ -36,13 +36,8 @@ type shellParams struct {
 	RequestPermission bool     `json:"request_permission"`
 }
 
-func NewShellTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
-	abs := filepath.Clean(sandboxAbsDir)
-	if !filepath.IsAbs(abs) {
-		if resolved, err := filepath.Abs(abs); err == nil {
-			abs = resolved
-		}
-	}
+func NewShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	abs := authorizer.SandboxDir()
 	return &toolShell{
 		sandboxAbsDir: abs,
 		authorizer:    authorizer,

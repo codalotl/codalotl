@@ -26,7 +26,8 @@ type toolRunProjectTests struct {
 
 // NewRunProjectTestsTool runs `go test ./...`.
 // if pkgDirAbsPath is set, we run the project tests with respect to that dir's containing Go module. Otherwise, run the command in sandboxAbsDir hope for the best.
-func NewRunProjectTestsTool(sandboxAbsDir string, pkgDirAbsPath string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewRunProjectTestsTool(pkgDirAbsPath string, authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolRunProjectTests{
 		sandboxAbsDir: sandboxAbsDir,
 		pkgDirAbsPath: pkgDirAbsPath,

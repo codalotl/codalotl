@@ -30,7 +30,8 @@ type getUsageParams struct {
 	Identifier      string `json:"identifier"`
 }
 
-func NewGetUsageTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewGetUsageTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolGetUsage{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

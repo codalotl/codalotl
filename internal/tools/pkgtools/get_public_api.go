@@ -31,9 +31,10 @@ type getPublicAPIParams struct {
 	Identifiers []string `json:"identifiers"`
 }
 
-func NewGetPublicAPITool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewGetPublicAPITool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolGetPublicAPI{
-		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
+		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 	}
 }

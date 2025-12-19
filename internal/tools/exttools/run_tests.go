@@ -28,7 +28,8 @@ type runTestsParams struct {
 	Verbose  bool   `json:"verbose"`
 }
 
-func NewRunTestsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewRunTestsTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolRunTests{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

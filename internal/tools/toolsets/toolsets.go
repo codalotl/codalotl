@@ -21,11 +21,11 @@ func CoreAgentTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llms
 	}
 
 	tools := []llmstream.Tool{
-		coretools.NewReadFileTool(sandboxDir, authorizer),
-		coretools.NewLsTool(sandboxDir, authorizer),
-		coretools.NewApplyPatchTool(sandboxDir, authorizer, true, nil),
-		coretools.NewShellTool(sandboxDir, authorizer),
-		coretools.NewUpdatePlanTool(sandboxDir, authorizer),
+		coretools.NewReadFileTool(authorizer),
+		coretools.NewLsTool(authorizer),
+		coretools.NewApplyPatchTool(authorizer, true, nil),
+		coretools.NewShellTool(authorizer),
+		coretools.NewUpdatePlanTool(authorizer),
 	}
 	return tools, nil
 }
@@ -54,19 +54,19 @@ func PackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPk
 	}
 
 	tools := []llmstream.Tool{
-		coretools.NewReadFileTool(sandboxDir, authorizer),
-		coretools.NewLsTool(sandboxDir, authorizer),
-		coretools.NewApplyPatchTool(sandboxDir, authorizer, true, packageApplyPatchPostChecks()),
-		coretools.NewUpdatePlanTool(sandboxDir, authorizer),
-		exttools.NewDiagnosticsTool(sandboxDir, authorizer),
-		exttools.NewFixLintsTool(sandboxDir, authorizer),
-		exttools.NewRunTestsTool(sandboxDir, authorizer),
-		exttools.NewRunProjectTestsTool(sandboxDir, goPkgAbsDir, authorizer),
-		pkgtools.NewModuleInfoTool(sandboxDir, authorizer),
-		pkgtools.NewGetPublicAPITool(sandboxDir, authorizer),
-		pkgtools.NewClarifyPublicAPITool(sandboxDir, sandboxAuthorizer, SimpleReadOnlyTools),
-		pkgtools.NewGetUsageTool(sandboxDir, authorizer),
-		pkgtools.NewUpdateUsageTool(sandboxDir, goPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools),
+		coretools.NewReadFileTool(authorizer),
+		coretools.NewLsTool(authorizer),
+		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks()),
+		coretools.NewUpdatePlanTool(authorizer),
+		exttools.NewDiagnosticsTool(authorizer),
+		exttools.NewFixLintsTool(authorizer),
+		exttools.NewRunTestsTool(authorizer),
+		exttools.NewRunProjectTestsTool(goPkgAbsDir, authorizer),
+		pkgtools.NewModuleInfoTool(authorizer),
+		pkgtools.NewGetPublicAPITool(authorizer),
+		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
+		pkgtools.NewGetUsageTool(authorizer),
+		pkgtools.NewUpdateUsageTool(goPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools),
 	}
 	return tools, nil
 }
@@ -81,8 +81,8 @@ func SimpleReadOnlyTools(sandboxDir string, authorizer authdomain.Authorizer) ([
 	}
 
 	tools := []llmstream.Tool{
-		coretools.NewLsTool(sandboxDir, authorizer),
-		coretools.NewReadFileTool(sandboxDir, authorizer),
+		coretools.NewLsTool(authorizer),
+		coretools.NewReadFileTool(authorizer),
 	}
 	return tools, nil
 }
@@ -110,14 +110,14 @@ func LimitedPackageAgentTools(sandboxDir string, authorizer authdomain.Authorize
 	}
 
 	tools := []llmstream.Tool{
-		coretools.NewReadFileTool(sandboxDir, authorizer),
-		coretools.NewLsTool(sandboxDir, authorizer),
-		coretools.NewApplyPatchTool(sandboxDir, authorizer, true, packageApplyPatchPostChecks()),
-		exttools.NewDiagnosticsTool(sandboxDir, authorizer),
-		exttools.NewFixLintsTool(sandboxDir, authorizer),
-		exttools.NewRunTestsTool(sandboxDir, authorizer),
-		pkgtools.NewGetPublicAPITool(sandboxDir, authorizer),
-		pkgtools.NewClarifyPublicAPITool(sandboxDir, sandboxAuthorizer, SimpleReadOnlyTools),
+		coretools.NewReadFileTool(authorizer),
+		coretools.NewLsTool(authorizer),
+		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks()),
+		exttools.NewDiagnosticsTool(authorizer),
+		exttools.NewFixLintsTool(authorizer),
+		exttools.NewRunTestsTool(authorizer),
+		pkgtools.NewGetPublicAPITool(authorizer),
+		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
 	}
 	_ = goPkgAbsDir // ensure goPkgAbsDir is validated even though no tool currently uses it directly.
 	return tools, nil

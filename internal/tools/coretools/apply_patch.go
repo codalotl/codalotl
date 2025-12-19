@@ -26,9 +26,10 @@ type ApplyPatchPostChecks struct {
 	FixLints       func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
 }
 
-func NewApplyPatchTool(sandboxAbsDir string, authorizer authdomain.Authorizer, useFreeformTool bool, postChecks *ApplyPatchPostChecks) llmstream.Tool {
+func NewApplyPatchTool(authorizer authdomain.Authorizer, useFreeformTool bool, postChecks *ApplyPatchPostChecks) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolApplyPatch{
-		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
+		sandboxAbsDir: sandboxAbsDir,
 		useFreeform:   useFreeformTool,
 		authorizer:    authorizer,
 		postChecks:    postChecks,

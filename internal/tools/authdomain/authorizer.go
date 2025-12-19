@@ -32,7 +32,7 @@ type UserRequest struct {
 
 // An Authorizer answers whether a tool is allowed to be used with respect to configured domains.
 type Authorizer interface {
-	// SandboxDir returns the normalized sandbox root for this authorizer.
+	// SandboxDir returns the cleaned, absolute path of the sandbox root for this authorizer.
 	SandboxDir() string
 
 	// CodeUnitDir returns the code unit base dir if a code unit domain is active, else "".

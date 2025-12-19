@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,7 +21,8 @@ func TestReadFile_Basic_NoLineNumbers(t *testing.T) {
 	file := filepath.Join(sandbox, "afile.txt")
 	require.NoError(t, os.WriteFile(file, []byte(content), 0o644))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	call := llmstream.ToolCall{CallID: "call1", Name: ToolNameReadFile, Type: "function_call", Input: `{"path":"afile.txt"}`}
 
 	res := tool.Run(context.Background(), call)
@@ -46,7 +48,8 @@ func TestReadFile_WithLineNumbers(t *testing.T) {
 	file := filepath.Join(sandbox, "afile.txt")
 	require.NoError(t, os.WriteFile(file, []byte(content), 0o644))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	call := llmstream.ToolCall{CallID: "call2", Name: ToolNameReadFile, Type: "function_call", Input: `{"path":"afile.txt","line_numbers":true}`}
 
 	res := tool.Run(context.Background(), call)
@@ -85,7 +88,7 @@ func TestReadFile_Authorization(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			auth := &stubAuthorizer{}
+			auth := &stubAuthorizer{sandboxDir: sandbox}
 			auth.readResp = func(requestPermission bool, _ string, toolName string, absPath ...string) error {
 				assert.Equal(t, ToolNameReadFile, toolName)
 				assert.True(t, requestPermission)
@@ -96,7 +99,7 @@ func TestReadFile_Authorization(t *testing.T) {
 				return fmt.Errorf("read authorization denied")
 			}
 
-			tool := NewReadFileTool(sandbox, auth)
+			tool := NewReadFileTool(auth)
 			input := fmt.Sprintf(`{"path":%q,"request_permission":true}`, tc.path)
 			call := llmstream.ToolCall{CallID: "auth", Name: ToolNameReadFile, Type: "function_call", Input: input}
 
@@ -121,7 +124,8 @@ func TestReadFile_PathIsDirectory(t *testing.T) {
 	sandbox := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(sandbox, "adir"), 0o755))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	call := llmstream.ToolCall{CallID: "call4", Name: ToolNameReadFile, Type: "function_call", Input: `{"path":"adir"}`}
 
 	res := tool.Run(context.Background(), call)
@@ -141,7 +145,8 @@ func TestReadFile_FileTruncatedBySize(t *testing.T) {
 	file := filepath.Join(sandbox, "big.txt")
 	require.NoError(t, os.WriteFile(file, []byte(b.String()), 0o644))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	call := llmstream.ToolCall{CallID: "call5", Name: ToolNameReadFile, Type: "function_call", Input: `{"path":"big.txt"}`}
 
 	res := tool.Run(context.Background(), call)
@@ -166,7 +171,8 @@ func TestReadFile_AnyLineTruncated(t *testing.T) {
 	file := filepath.Join(sandbox, "longline.txt")
 	require.NoError(t, os.WriteFile(file, []byte(content), 0o644))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	call := llmstream.ToolCall{CallID: "call6", Name: ToolNameReadFile, Type: "function_call", Input: `{"path":"longline.txt"}`}
 
 	res := tool.Run(context.Background(), call)
@@ -190,7 +196,8 @@ func TestReadFile_LineCap_Truncated(t *testing.T) {
 	file := filepath.Join(sandbox, "manylines.txt")
 	require.NoError(t, os.WriteFile(file, []byte(b.String()), 0o644))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	call := llmstream.ToolCall{CallID: "call7", Name: ToolNameReadFile, Type: "function_call", Input: `{"path":"manylines.txt"}`}
 
 	res := tool.Run(context.Background(), call)
@@ -210,7 +217,8 @@ func TestReadFile_AbsolutePath_NameIsRelative(t *testing.T) {
 	file := filepath.Join(dir, "x.txt")
 	require.NoError(t, os.WriteFile(file, []byte("a\n"), 0o644))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	input := `{"path":"` + strings.ReplaceAll(file, "\\", "\\\\") + `"}`
 	call := llmstream.ToolCall{CallID: "call8", Name: ToolNameReadFile, Type: "function_call", Input: input}
 
@@ -230,7 +238,8 @@ func TestReadFile_NonUTF8_TrailingTrim(t *testing.T) {
 	file := filepath.Join(sandbox, "bin.dat")
 	require.NoError(t, os.WriteFile(file, data, 0o644))
 
-	tool := NewReadFileTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
 	call := llmstream.ToolCall{CallID: "call9", Name: ToolNameReadFile, Type: "function_call", Input: `{"path":"bin.dat"}`}
 
 	res := tool.Run(context.Background(), call)

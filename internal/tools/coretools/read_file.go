@@ -36,7 +36,8 @@ const (
 	maxLineLengthChars int   = 2000
 )
 
-func NewReadFileTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewReadFileTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolReadFile{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

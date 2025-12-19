@@ -5,6 +5,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,8 @@ func TestDiagnostics_Run_SuccessfulBuild(t *testing.T) {
 			}
 		`),
 	}, func(pkg *gocode.Package) {
-		tool := NewDiagnosticsTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewDiagnosticsTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call1",
 			Name:   ToolNameDiagnostics,
@@ -50,7 +52,8 @@ func TestDiagnostics_Run_BuildError(t *testing.T) {
 			}
 		`),
 	}, func(pkg *gocode.Package) {
-		tool := NewDiagnosticsTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewDiagnosticsTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call2",
 			Name:   ToolNameDiagnostics,

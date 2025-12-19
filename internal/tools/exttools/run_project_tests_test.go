@@ -5,6 +5,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +28,8 @@ func TestRunProjectTests_SimpleModule(t *testing.T) {
 			}
 		`),
 	}, func(pkg *gocode.Package) {
-		tool := NewRunProjectTestsTool(pkg.Module.AbsolutePath, pkg.AbsolutePath(), nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewRunProjectTestsTool(pkg.AbsolutePath(), auth)
 		call := llmstream.ToolCall{
 			CallID: "call1",
 			Name:   ToolNameRunProjectTests,

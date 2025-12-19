@@ -26,7 +26,8 @@ type fixLintsParams struct {
 	Path string `json:"path"`
 }
 
-func NewFixLintsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewFixLintsTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolFixLints{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

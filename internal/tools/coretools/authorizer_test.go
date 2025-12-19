@@ -21,6 +21,7 @@ type authorizerShellCall struct {
 }
 
 type stubAuthorizer struct {
+	sandboxDir string
 	readCalls  []authorizerReadCall
 	writeCalls []authorizerWriteCall
 	shellCalls []authorizerShellCall
@@ -31,7 +32,7 @@ type stubAuthorizer struct {
 }
 
 func (s *stubAuthorizer) SandboxDir() string {
-	return ""
+	return s.sandboxDir
 }
 
 func (s *stubAuthorizer) CodeUnitDir() string {

@@ -30,7 +30,8 @@ const (
 	ToolNameLS = "ls"
 )
 
-func NewLsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
+func NewLsTool(authorizer authdomain.Authorizer) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolLs{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

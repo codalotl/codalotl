@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
@@ -13,8 +14,9 @@ import (
 
 func TestCoreAgentTools(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
-	tools, err := CoreAgentTools(sandbox, nil)
+	tools, err := CoreAgentTools(sandbox, auth)
 	if err != nil {
 		t.Fatalf("CoreAgentTools returned error: %v", err)
 	}
@@ -30,12 +32,13 @@ func TestCoreAgentTools(t *testing.T) {
 
 func TestPackageAgentTools(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 	goPkg := filepath.Join(sandbox, "pkg")
 	if err := os.MkdirAll(goPkg, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := PackageAgentTools(sandbox, nil, goPkg)
+	tools, err := PackageAgentTools(sandbox, auth, goPkg)
 	if err != nil {
 		t.Fatalf("PackageAgentTools returned error: %v", err)
 	}
@@ -59,8 +62,9 @@ func TestPackageAgentTools(t *testing.T) {
 
 func TestSimpleReadOnlyTools(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
-	tools, err := SimpleReadOnlyTools(sandbox, nil)
+	tools, err := SimpleReadOnlyTools(sandbox, auth)
 	if err != nil {
 		t.Fatalf("SimpleReadOnlyTools returned error: %v", err)
 	}
@@ -73,12 +77,13 @@ func TestSimpleReadOnlyTools(t *testing.T) {
 
 func TestLimitedPackageAgentTools(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 	goPkg := filepath.Join(sandbox, "pkg")
 	if err := os.MkdirAll(goPkg, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := LimitedPackageAgentTools(sandbox, nil, goPkg)
+	tools, err := LimitedPackageAgentTools(sandbox, auth, goPkg)
 	if err != nil {
 		t.Fatalf("LimitedPackageAgentTools returned error: %v", err)
 	}

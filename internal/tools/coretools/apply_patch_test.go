@@ -8,6 +8,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"go/format"
 	"os"
 	"path/filepath"
@@ -20,7 +21,9 @@ import (
 
 func TestApplyPatch_Info(t *testing.T) {
 	t.Run("freeform", func(t *testing.T) {
-		tool := NewApplyPatchTool("/sandbox", nil, true, nil)
+		sandbox := t.TempDir()
+		auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+		tool := NewApplyPatchTool(auth, true, nil)
 		info := tool.Info()
 
 		assert.Equal(t, ToolNameApplyPatch, info.Name)
@@ -33,7 +36,9 @@ func TestApplyPatch_Info(t *testing.T) {
 	})
 
 	t.Run("function", func(t *testing.T) {
-		tool := NewApplyPatchTool("/sandbox", nil, false, nil)
+		sandbox := t.TempDir()
+		auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+		tool := NewApplyPatchTool(auth, false, nil)
 		info := tool.Info()
 
 		assert.Equal(t, ToolNameApplyPatch, info.Name)
@@ -48,6 +53,7 @@ func TestApplyPatch_Info(t *testing.T) {
 
 func TestApplyPatch_Run_Success(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
 	tests := []struct {
 		name      string
@@ -94,7 +100,7 @@ func TestApplyPatch_Run_Success(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			tool := NewApplyPatchTool(sandbox, nil, tc.freeform, nil)
+			tool := NewApplyPatchTool(auth, tc.freeform, nil)
 
 			wdBefore, err := os.Getwd()
 			require.NoError(t, err)
@@ -166,7 +172,8 @@ func TestApplyPatch_Run_CheckErrors(t *testing.T) {
 			},
 		}
 
-		tool := NewApplyPatchTool(pkg.Module.AbsolutePath, nil, false, postChecks)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewApplyPatchTool(auth, false, postChecks)
 
 		patch := `*** Begin Patch
 *** Update File: mypkg/main.go
@@ -210,6 +217,7 @@ M mypkg/main.go
 
 func TestApplyPatch_Run_AcceptsAbsolutePaths(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
 	abs := filepath.Join(sandbox, "hello.txt")
 	patch := fmt.Sprintf(`*** Begin Patch
@@ -257,7 +265,7 @@ func TestApplyPatch_Run_AcceptsAbsolutePaths(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			tool := NewApplyPatchTool(sandbox, nil, tc.freeform, nil)
+			tool := NewApplyPatchTool(auth, tc.freeform, nil)
 			call := tc.buildCall(patch)
 			res := tool.Run(context.Background(), call)
 			assert.False(t, res.IsError)
@@ -274,6 +282,7 @@ func TestApplyPatch_Run_AcceptsAbsolutePaths(t *testing.T) {
 
 func TestApplyPatch_Run_PathOutsideSandbox(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
 	testPatch := `*** Begin Patch
 *** Add File: ../escape.txt
@@ -315,7 +324,7 @@ func TestApplyPatch_Run_PathOutsideSandbox(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			tool := NewApplyPatchTool(sandbox, nil, tc.freeform, nil)
+			tool := NewApplyPatchTool(auth, tc.freeform, nil)
 			res := tool.Run(context.Background(), tc.call)
 			assert.True(t, res.IsError)
 			assert.NotNil(t, res.SourceErr)
@@ -326,6 +335,7 @@ func TestApplyPatch_Run_PathOutsideSandbox(t *testing.T) {
 
 func TestApplyPatch_Run_PathOutsideSandboxAbsolute(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
 	outside := filepath.Join(sandbox, "..", "escape.txt")
 	patch := fmt.Sprintf(`*** Begin Patch
@@ -368,7 +378,7 @@ func TestApplyPatch_Run_PathOutsideSandboxAbsolute(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			tool := NewApplyPatchTool(sandbox, nil, tc.freeform, nil)
+			tool := NewApplyPatchTool(auth, tc.freeform, nil)
 			res := tool.Run(context.Background(), tc.call)
 			assert.True(t, res.IsError)
 			assert.NotNil(t, res.SourceErr)
@@ -379,6 +389,7 @@ func TestApplyPatch_Run_PathOutsideSandboxAbsolute(t *testing.T) {
 
 func TestApplyPatch_Run_ApplyError(t *testing.T) {
 	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
 	testPatch := `*** Begin Patch
 *** Update File: missing.txt
@@ -422,7 +433,7 @@ func TestApplyPatch_Run_ApplyError(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			tool := NewApplyPatchTool(sandbox, nil, tc.freeform, nil)
+			tool := NewApplyPatchTool(auth, tc.freeform, nil)
 			res := tool.Run(context.Background(), tc.call)
 			assert.True(t, res.IsError)
 			assert.NotNil(t, res.SourceErr)
@@ -457,7 +468,7 @@ func TestApplyPatch_Run_Authorization(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			sandbox := t.TempDir()
-			auth := &stubAuthorizer{}
+			auth := &stubAuthorizer{sandboxDir: sandbox}
 			auth.writeResp = func(requestPermission bool, _ string, toolName string, absPath ...string) error {
 				assert.Equal(t, ToolNameApplyPatch, toolName)
 				expected := filepath.Join(sandbox, "hello.txt")
@@ -468,7 +479,7 @@ func TestApplyPatch_Run_Authorization(t *testing.T) {
 				}
 				return fmt.Errorf("apply_patch authorization denied")
 			}
-			tool := NewApplyPatchTool(sandbox, auth, tc.freeform, nil)
+			tool := NewApplyPatchTool(auth, tc.freeform, nil)
 
 			var call llmstream.ToolCall
 			if tc.freeform {
