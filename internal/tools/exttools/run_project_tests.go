@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"strings"
 )
@@ -19,14 +19,14 @@ const ToolNameRunProjectTests = "run_project_tests"
 type toolRunProjectTests struct {
 	sandboxAbsDir string
 	pkgDirAbsPath string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 // type runProjectTestsParams struct{}
 
 // NewRunProjectTestsTool runs `go test ./...`.
 // if pkgDirAbsPath is set, we run the project tests with respect to that dir's containing Go module. Otherwise, run the command in sandboxAbsDir hope for the best.
-func NewRunProjectTestsTool(sandboxAbsDir string, pkgDirAbsPath string, authorizer auth.Authorizer) llmstream.Tool {
+func NewRunProjectTestsTool(sandboxAbsDir string, pkgDirAbsPath string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolRunProjectTests{
 		sandboxAbsDir: sandboxAbsDir,
 		pkgDirAbsPath: pkgDirAbsPath,

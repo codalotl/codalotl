@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"strings"
 )
 
@@ -14,10 +14,10 @@ const ToolNameUpdatePlan = "update_plan"
 // toolUpdatePlan communicates plan updates to the harness. It does not read or write files.
 type toolUpdatePlan struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
-func NewUpdatePlanTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewUpdatePlanTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolUpdatePlan{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"strings"
 )
@@ -19,7 +19,7 @@ const ToolNameRunTests = "run_tests"
 
 type toolRunTests struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type runTestsParams struct {
@@ -28,7 +28,7 @@ type runTestsParams struct {
 	Verbose  bool   `json:"verbose"`
 }
 
-func NewRunTestsTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewRunTestsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolRunTests{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
@@ -77,7 +77,7 @@ func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameRunTests, t.sandboxAbsDir, absPkgPath); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameRunTests, absPkgPath); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

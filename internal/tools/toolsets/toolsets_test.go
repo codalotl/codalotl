@@ -35,7 +35,7 @@ func TestPackageAgentTools(t *testing.T) {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := PackageAgentTools(sandbox, nil, nil, goPkg)
+	tools, err := PackageAgentTools(sandbox, nil, goPkg)
 	if err != nil {
 		t.Fatalf("PackageAgentTools returned error: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestLimitedPackageAgentTools(t *testing.T) {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := LimitedPackageAgentTools(sandbox, nil, nil, goPkg)
+	tools, err := LimitedPackageAgentTools(sandbox, nil, goPkg)
 	if err != nil {
 		t.Fatalf("LimitedPackageAgentTools returned error: %v", err)
 	}

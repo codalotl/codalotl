@@ -107,11 +107,10 @@ func TestLs_Run_Authorization(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			auth := &stubAuthorizer{}
-			auth.readResp = func(requestPermission bool, _ string, toolName string, sandboxDir string, absPath ...string) error {
+			auth.readResp = func(requestPermission bool, _ string, toolName string, absPath ...string) error {
 				assert.Equal(t, ToolNameLS, toolName)
-				assert.Equal(t, sandbox, sandboxDir)
 				assert.True(t, requestPermission)
-				expected := filepath.Clean(filepath.Join(sandboxDir, tc.path))
+				expected := filepath.Clean(filepath.Join(sandbox, tc.path))
 				require.Equal(t, []string{expected}, absPath)
 				if tc.allow {
 					return nil

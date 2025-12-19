@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"strings"
 )
@@ -19,14 +19,14 @@ const ToolNameDiagnostics = "diagnostics"
 
 type toolDiagnostics struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type diagnosticsParams struct {
 	Path string `json:"path"`
 }
 
-func NewDiagnosticsTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewDiagnosticsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolDiagnostics{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
@@ -67,7 +67,7 @@ func (t *toolDiagnostics) Run(ctx context.Context, call llmstream.ToolCall) llms
 	}
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameDiagnostics, t.sandboxAbsDir, absPkgPath); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameDiagnostics, absPkgPath); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

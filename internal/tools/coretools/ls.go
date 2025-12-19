@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"os"
 	"sort"
 	"strings"
@@ -18,7 +18,7 @@ var descriptionLs string
 
 type toolLs struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type ParamsLS struct {
@@ -30,7 +30,7 @@ const (
 	ToolNameLS = "ls"
 )
 
-func NewLsTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewLsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolLs{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
@@ -77,7 +77,7 @@ func (t *toolLs) Run(ctx context.Context, call llmstream.ToolCall) llmstream.Too
 	}
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(params.RequestPermission, "", ToolNameLS, t.sandboxAbsDir, absResolved); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(params.RequestPermission, "", ToolNameLS, absResolved); authErr != nil {
 			return NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

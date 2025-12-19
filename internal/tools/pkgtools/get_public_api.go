@@ -9,7 +9,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"path"
 	"path/filepath"
@@ -23,7 +23,7 @@ const ToolNameGetPublicAPI = "get_public_api"
 
 type toolGetPublicAPI struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type getPublicAPIParams struct {
@@ -31,7 +31,7 @@ type getPublicAPIParams struct {
 	Identifiers []string `json:"identifiers"`
 }
 
-func NewGetPublicAPITool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewGetPublicAPITool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolGetPublicAPI{
 		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
 		authorizer:    authorizer,
@@ -91,7 +91,7 @@ func (t *toolGetPublicAPI) Run(ctx context.Context, call llmstream.ToolCall) llm
 	}
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetPublicAPI, t.sandboxAbsDir, absPackageDir); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetPublicAPI, absPackageDir); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

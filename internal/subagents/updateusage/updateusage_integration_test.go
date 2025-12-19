@@ -36,7 +36,7 @@ func TestUpdateUsageIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	instructions := "Don't make any changes. Instead, describe the tests."
-	answer, err := updateusage.UpdateUsage(context.Background(), agent.NewAgentCreator(), mod.AbsolutePath, nil, nil, pkg.AbsolutePath(), toolsets.LimitedPackageAgentTools, instructions)
+	answer, err := updateusage.UpdateUsage(context.Background(), agent.NewAgentCreator(), mod.AbsolutePath, nil, pkg.AbsolutePath(), toolsets.LimitedPackageAgentTools, instructions)
 	if err != nil {
 		t.Fatalf("UpdateUsage: %v", err)
 	}

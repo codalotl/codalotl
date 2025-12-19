@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"io"
 	"os"
 	"strconv"
@@ -20,7 +20,7 @@ var descriptionReadFile string
 
 type toolReadFile struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type ParamsReadFile struct {
@@ -36,7 +36,7 @@ const (
 	maxLineLengthChars int   = 2000
 )
 
-func NewReadFileTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewReadFileTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolReadFile{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
@@ -85,7 +85,7 @@ func (t *toolReadFile) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(params.RequestPermission, "", ToolNameReadFile, t.sandboxAbsDir, absPath); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(params.RequestPermission, "", ToolNameReadFile, absPath); authErr != nil {
 			return NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

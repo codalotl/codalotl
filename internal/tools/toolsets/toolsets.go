@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
@@ -15,7 +15,7 @@ import (
 //
 // sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually
 // **implements** the jail. The purpose of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
-func CoreAgentTools(sandboxDir string, authorizer auth.Authorizer) ([]llmstream.Tool, error) {
+func CoreAgentTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error) {
 	if !filepath.IsAbs(sandboxDir) {
 		return nil, fmt.Errorf("sandboxDir must be an absolute path")
 	}
@@ -35,17 +35,22 @@ func CoreAgentTools(sandboxDir string, authorizer auth.Authorizer) ([]llmstream.
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests, run_project_tests
 //   - package tools: module_info, get_public_api, clarify_public_api, get_usage, update_usage
 //
-// Note that this set of tools requires two authorizers:
-//   - authorizer is the package-jail authorizer that prevents the agent from directly accessing files outside the package.
-//   - sandboxAuthorizer is the sandboxDir jail. This comes into play when for tools designed to operate outside the package. Notably, `clarify_public_api`, `update_usage`, etc.
+// Note that this set of tools requires a package-jail authorizer that prevents the agent from directly
+// accessing files outside the package. Tools that need broader sandbox access derive it via
+// authorizer.WithoutCodeUnit().
 //
 // sandboxDir is simply the absolute path that relative paths received by the LLM are relative to. It is NOT the package jail dir.
-func PackageAgentTools(sandboxDir string, authorizer auth.Authorizer, sandboxAuthorizer auth.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error) {
+func PackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error) {
 	if !filepath.IsAbs(sandboxDir) {
 		return nil, fmt.Errorf("sandboxDir must be an absolute path")
 	}
 	if !filepath.IsAbs(goPkgAbsDir) {
 		return nil, fmt.Errorf("goPkgAbsDir must be an absolute path")
+	}
+
+	sandboxAuthorizer := authorizer
+	if sandboxAuthorizer != nil {
+		sandboxAuthorizer = sandboxAuthorizer.WithoutCodeUnit()
 	}
 
 	tools := []llmstream.Tool{
@@ -70,7 +75,7 @@ func PackageAgentTools(sandboxDir string, authorizer auth.Authorizer, sandboxAut
 //
 // sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually
 // **implements** the jail. The purpose of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
-func SimpleReadOnlyTools(sandboxDir string, authorizer auth.Authorizer) ([]llmstream.Tool, error) {
+func SimpleReadOnlyTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error) {
 	if !filepath.IsAbs(sandboxDir) {
 		return nil, fmt.Errorf("sandboxDir must be an absolute path")
 	}
@@ -91,12 +96,17 @@ func SimpleReadOnlyTools(sandboxDir string, authorizer auth.Authorizer) ([]llmst
 // are intended to be used for subagents running update_usage. In other words, they target small, simple, mechanical code changes on a single package.
 //
 // See PackageAgentTools for other param descriptions.
-func LimitedPackageAgentTools(sandboxDir string, authorizer auth.Authorizer, sandboxAuthorizer auth.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error) {
+func LimitedPackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error) {
 	if !filepath.IsAbs(sandboxDir) {
 		return nil, fmt.Errorf("sandboxDir must be an absolute path")
 	}
 	if !filepath.IsAbs(goPkgAbsDir) {
 		return nil, fmt.Errorf("goPkgAbsDir must be an absolute path")
+	}
+
+	sandboxAuthorizer := authorizer
+	if sandboxAuthorizer != nil {
+		sandboxAuthorizer = sandboxAuthorizer.WithoutCodeUnit()
 	}
 
 	tools := []llmstream.Tool{

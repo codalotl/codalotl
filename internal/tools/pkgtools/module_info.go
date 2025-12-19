@@ -11,7 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 )
 
@@ -22,7 +22,7 @@ const ToolNameModuleInfo = "module_info"
 
 type toolModuleInfo struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type moduleInfoParams struct {
@@ -30,7 +30,7 @@ type moduleInfoParams struct {
 	IncludeDependencyPackages bool   `json:"include_dependency_packages"`
 }
 
-func NewModuleInfoTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewModuleInfoTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolModuleInfo{
 		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
 		authorizer:    authorizer,
@@ -79,7 +79,7 @@ func (t *toolModuleInfo) Run(ctx context.Context, call llmstream.ToolCall) llmst
 	// module_info is intentionally module-scoped, not package-scoped.
 	// Some environments may prompt for permission if dependency packages are included.
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(params.IncludeDependencyPackages, "", ToolNameModuleInfo, t.sandboxAbsDir, mod.AbsolutePath); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(params.IncludeDependencyPackages, "", ToolNameModuleInfo, mod.AbsolutePath); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

@@ -152,9 +152,8 @@ func TestShell_Run_CwdOutsideSandbox(t *testing.T) {
 		t.Skip("unable to determine directory outside sandbox")
 	}
 	auth := &stubAuthorizer{}
-	auth.shellResp = func(requestPermission bool, _ string, sandboxDir string, cwd string, command []string) error {
+	auth.shellResp = func(requestPermission bool, _ string, cwd string, command []string) error {
 		assert.False(t, requestPermission)
-		assert.Equal(t, sandbox, sandboxDir)
 		assert.Equal(t, filepath.Clean(outside), filepath.Clean(cwd))
 		return assert.AnError
 	}
@@ -190,9 +189,8 @@ func TestShell_Run_Authorization(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			auth := &stubAuthorizer{}
-			auth.shellResp = func(requestPermission bool, _ string, sandboxDir string, cwd string, command []string) error {
+			auth.shellResp = func(requestPermission bool, _ string, cwd string, command []string) error {
 				assert.True(t, requestPermission)
-				assert.Equal(t, sandbox, sandboxDir)
 				assert.Equal(t, filepath.Clean(sandbox), filepath.Clean(cwd))
 				require.Equal(t, []string{"go", "version"}, command)
 				if tc.allow {

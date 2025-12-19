@@ -16,7 +16,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
@@ -35,7 +35,7 @@ const (
 //
 // Example question: "What does the first return parameter (a string) look like in the ClarifyAPI func?". Example answer that might be returned: "The ClarifyAPI func
 // returns a human- or LLM-readable answer to the specified question. It will be the empty string if an error occurred."
-func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbsDir string, authorizer auth.Authorizer, toolset toolsetinterface.Toolset, path string, identifier string, question string) (string, error) {
+func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbsDir string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, path string, identifier string, question string) (string, error) {
 	if agentCreator == nil {
 		return "", errors.New("agentCreator is required")
 	}

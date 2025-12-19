@@ -9,20 +9,19 @@ package toolsetinterface
 
 import (
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
 // Toolset is a function that returns tools.
 //
 // sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually
 // **implements** the jail. The purpose of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
-type Toolset func(sandboxDir string, authorizer auth.Authorizer) ([]llmstream.Tool, error)
+type Toolset func(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error)
 
 // PackageToolset is a function that returns tools for that operate on a package located at goPkgAbsDir.
 //
-// Note that this set of tools requires two authorizers:
-//   - authorizer is the package-jail authorizer that prevents the agent from directly accessing files outside the package.
-//   - sandboxAuthorizer is the sandboxDir jail. This comes into play when for tools designed to operate outside the package. Notably, `clarify_public_api`, `update_usage`, etc.
+// Note that the package-jail authorizer prevents the agent from directly accessing files outside the package.
+// Tools that need broader sandbox access should derive it from authorizer.WithoutCodeUnit().
 //
 // sandboxDir is simply the absolute path that relative paths received by the LLM are relative to. It is NOT the package jail dir.
-type PackageToolset func(sandboxDir string, authorizer auth.Authorizer, sandboxAuthorizer auth.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error)
+type PackageToolset func(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error)

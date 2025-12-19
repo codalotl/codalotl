@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"strings"
 )
@@ -19,14 +19,14 @@ const ToolNameFixLints = "fix_lints"
 
 type toolFixLints struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type fixLintsParams struct {
 	Path string `json:"path"`
 }
 
-func NewFixLintsTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewFixLintsTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolFixLints{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
@@ -69,7 +69,7 @@ func (t *toolFixLints) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameFixLints, t.sandboxAbsDir, absPkgPath); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameFixLints, absPkgPath); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

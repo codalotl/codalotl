@@ -11,7 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 )
 
@@ -22,7 +22,7 @@ const ToolNameGetUsage = "get_usage"
 
 type toolGetUsage struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type getUsageParams struct {
@@ -30,7 +30,7 @@ type getUsageParams struct {
 	Identifier      string `json:"identifier"`
 }
 
-func NewGetUsageTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewGetUsageTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	return &toolGetUsage{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
@@ -91,7 +91,7 @@ func (t *toolGetUsage) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetUsage, t.sandboxAbsDir, absPackageDir); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetUsage, absPackageDir); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

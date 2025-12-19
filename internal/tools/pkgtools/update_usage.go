@@ -11,9 +11,8 @@ import (
 	"github.com/codalotl/codalotl/internal/gousage"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	updateusageagent "github.com/codalotl/codalotl/internal/subagents/updateusage"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
-	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"path/filepath"
 	"strings"
@@ -26,43 +25,9 @@ const ToolNameUpdateUsage = "update_usage"
 
 type toolUpdateUsage struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 	toolset       toolsetinterface.PackageToolset
 	pkgDirAbsPath string
-}
-
-type codeUnitAuthorizerAdapter struct {
-	base auth.Authorizer
-}
-
-func (a *codeUnitAuthorizerAdapter) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
-	if a == nil || a.base == nil {
-		return nil
-	}
-	return a.base.IsAuthorizedForRead(requestPermission, requestReason, toolName, sandboxDir, absPath...)
-}
-
-func (a *codeUnitAuthorizerAdapter) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
-	if a == nil || a.base == nil {
-		return nil
-	}
-	return a.base.IsAuthorizedForWrite(requestPermission, requestReason, toolName, sandboxDir, absPath...)
-}
-
-func (a *codeUnitAuthorizerAdapter) IsShellAuthorized(requestPermission bool, requestReason string, sandboxDir string, cwd string, command []string) error {
-	if a == nil || a.base == nil {
-		return nil
-	}
-	return a.base.IsShellAuthorized(requestPermission, requestReason, sandboxDir, cwd, command)
-}
-
-func (a *codeUnitAuthorizerAdapter) Close() {
-	if a == nil || a.base == nil {
-		return
-	}
-	if closer, ok := a.base.(interface{ Close() }); ok {
-		closer.Close()
-	}
 }
 
 type updateUsageParams struct {
@@ -73,7 +38,7 @@ type updateUsageParams struct {
 // authorizer here should be the "sandbox" authorizer, not a package-jailed authorizer.
 // pkgDirAbsPath here is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it)
 // toolset is the tools that the subagent doing the updating will ahve access to.
-func NewUpdateUsageTool(sandboxAbsDir string, pkgDirAbsPath string, authorizer auth.Authorizer, toolset toolsetinterface.PackageToolset) llmstream.Tool {
+func NewUpdateUsageTool(sandboxAbsDir string, pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.PackageToolset) llmstream.Tool {
 	return &toolUpdateUsage{
 		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
 		authorizer:    authorizer,
@@ -142,7 +107,7 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 	pkgAbsDir = filepath.Clean(pkgAbsDir)
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameUpdateUsage, t.sandboxAbsDir, pkgAbsDir); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameUpdateUsage, pkgAbsDir); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}
@@ -249,7 +214,7 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 		usage := usageByAbsPath[targetAbsPath]
 
 		if t.authorizer != nil {
-			if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameUpdateUsage, t.sandboxAbsDir, targetAbsPath); authErr != nil {
+			if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameUpdateUsage, targetAbsPath); authErr != nil {
 				return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 			}
 		}
@@ -260,7 +225,7 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 		}
 		unit.IncludeEntireSubtree()
 
-		pkgAuthorizer := sandboxauth.NewCodeUnitAuthorizer(unit, t.authorizer)
+		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, t.authorizer)
 
 		targetPaths := packagePaths[targetAbsPath]
 		targetLines := make([]string, 0, len(targetPaths))
@@ -278,7 +243,7 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 			packageInstructions = fmt.Sprintf("%s\n\nTarget paths for this package:\n- %s", instructions, strings.Join(targetLines, "\n- "))
 		}
 
-		answer, err := updateusageagent.UpdateUsage(ctx, agentCreator, t.sandboxAbsDir, pkgAuthorizer, t.authorizer, targetAbsPath, t.toolset, packageInstructions)
+		answer, err := updateusageagent.UpdateUsage(ctx, agentCreator, t.sandboxAbsDir, pkgAuthorizer, targetAbsPath, t.toolset, packageInstructions)
 		if err != nil {
 			return coretools.NewToolErrorResult(call, err.Error(), err)
 		}

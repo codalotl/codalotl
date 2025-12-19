@@ -86,9 +86,8 @@ func TestReadFile_Authorization(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			auth := &stubAuthorizer{}
-			auth.readResp = func(requestPermission bool, _ string, toolName string, sandboxDir string, absPath ...string) error {
+			auth.readResp = func(requestPermission bool, _ string, toolName string, absPath ...string) error {
 				assert.Equal(t, ToolNameReadFile, toolName)
-				assert.Equal(t, sandbox, sandboxDir)
 				assert.True(t, requestPermission)
 				require.Equal(t, []string{tc.expectedAuthPath}, absPath)
 				if tc.allow {

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -26,7 +26,7 @@ const (
 
 type toolShell struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 }
 
 type shellParams struct {
@@ -36,7 +36,7 @@ type shellParams struct {
 	RequestPermission bool     `json:"request_permission"`
 }
 
-func NewShellTool(sandboxAbsDir string, authorizer auth.Authorizer) llmstream.Tool {
+func NewShellTool(sandboxAbsDir string, authorizer authdomain.Authorizer) llmstream.Tool {
 	abs := filepath.Clean(sandboxAbsDir)
 	if !filepath.IsAbs(abs) {
 		if resolved, err := filepath.Abs(abs); err == nil {
@@ -127,7 +127,7 @@ func (t *toolShell) Run(ctx context.Context, call llmstream.ToolCall) llmstream.
 	}
 	cmd.Dir = dir
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsShellAuthorized(params.RequestPermission, "", t.sandboxAbsDir, dir, params.Command); authErr != nil {
+		if authErr := t.authorizer.IsShellAuthorized(params.RequestPermission, "", dir, params.Command); authErr != nil {
 			return NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

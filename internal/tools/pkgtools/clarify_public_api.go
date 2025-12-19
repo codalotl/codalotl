@@ -8,7 +8,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	clarify "github.com/codalotl/codalotl/internal/subagents/clarifydocs"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"path/filepath"
@@ -22,7 +22,7 @@ const ToolNameClarifyPublicAPI = "clarify_public_api"
 
 type toolClarifyPublicAPI struct {
 	sandboxAbsDir string
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 	toolset       toolsetinterface.Toolset
 }
 
@@ -33,7 +33,7 @@ type clarifyPublicAPIParams struct {
 }
 
 // authorizer is what the **subagent** is authorized to do, which is usually more than a package-jailed agent.
-func NewClarifyPublicAPITool(sandboxAbsDir string, authorizer auth.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
+func NewClarifyPublicAPITool(sandboxAbsDir string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
 	return &toolClarifyPublicAPI{
 		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
 		authorizer:    authorizer,
@@ -91,7 +91,7 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 	absPath = filepath.Clean(absPath)
 
 	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameClarifyPublicAPI, t.sandboxAbsDir, absPath); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameClarifyPublicAPI, absPath); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

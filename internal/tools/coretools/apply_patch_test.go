@@ -458,10 +458,9 @@ func TestApplyPatch_Run_Authorization(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sandbox := t.TempDir()
 			auth := &stubAuthorizer{}
-			auth.writeResp = func(requestPermission bool, _ string, toolName string, sandboxDir string, absPath ...string) error {
+			auth.writeResp = func(requestPermission bool, _ string, toolName string, absPath ...string) error {
 				assert.Equal(t, ToolNameApplyPatch, toolName)
-				assert.Equal(t, sandbox, sandboxDir)
-				expected := filepath.Join(sandboxDir, "hello.txt")
+				expected := filepath.Join(sandbox, "hello.txt")
 				require.Equal(t, []string{expected}, absPath)
 				assert.Equal(t, tc.requestsPermission, requestPermission)
 				if tc.allow {
