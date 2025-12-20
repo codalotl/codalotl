@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -247,4 +249,46 @@ func TestApplyGrantsFromUserPrompt(t *testing.T) {
 			t.Fatalf("got %v, want %v", err, want)
 		}
 	})
+}
+
+func TestBuildAuthorizerForToolsAppliesGrantsToCodeUnitAuthorizer(t *testing.T) {
+	t.Parallel()
+
+	sandbox := t.TempDir()
+	pkgRelPath := "internal/mypkg"
+	pkgAbsPath := filepath.Join(sandbox, filepath.FromSlash(pkgRelPath))
+	if err := os.MkdirAll(pkgAbsPath, 0o755); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+
+	sandboxAuthorizer := authdomain.NewAutoApproveAuthorizer(sandbox)
+
+	called := 0
+	add := func(a authdomain.Authorizer, msg string) error {
+		called++
+		if !a.IsCodeUnitDomain() {
+			t.Fatalf("expected code-unit authorizer, got non-code-unit")
+		}
+		if strings.TrimSpace(a.CodeUnitDir()) == "" {
+			t.Fatalf("expected CodeUnitDir to be non-empty")
+		}
+		if filepath.Clean(a.CodeUnitDir()) != filepath.Clean(pkgAbsPath) {
+			t.Fatalf("CodeUnitDir=%q, want %q", a.CodeUnitDir(), pkgAbsPath)
+		}
+		if msg != "Read @README.md" {
+			t.Fatalf("msg=%q, want %q", msg, "Read @README.md")
+		}
+		return nil
+	}
+
+	a, err := buildAuthorizerForTools(true, pkgRelPath, pkgAbsPath, sandboxAuthorizer, "Read @README.md", add)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a == nil || !a.IsCodeUnitDomain() {
+		t.Fatalf("expected code-unit authorizer result")
+	}
+	if called != 1 {
+		t.Fatalf("called=%d, want 1", called)
+	}
 }

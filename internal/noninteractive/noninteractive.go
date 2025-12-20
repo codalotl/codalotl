@@ -258,15 +258,16 @@ func Exec(userPrompt string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	defer sandboxAuthorizer.Close()
-
-	if err := applyGrantsFromUserPrompt(sandboxAuthorizer, userPrompt, authdomain.AddGrantsFromUserMessage); err != nil {
+	authorizerForTools, err := buildAuthorizerForTools(pkgMode, pkgRelPath, pkgAbsPath, sandboxAuthorizer, userPrompt, authdomain.AddGrantsFromUserMessage)
+	if err != nil {
+		sandboxAuthorizer.Close()
 		return err
 	}
+	defer authorizerForTools.Close()
 
 	go autoRespondToUserRequests(userRequests, out, opts.AutoYes)
 
-	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgRelPath, pkgAbsPath, sandboxAuthorizer)
+	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgAbsPath, authorizerForTools)
 	if err != nil {
 		return err
 	}
@@ -387,6 +388,26 @@ func Exec(userPrompt string, opts Options) error {
 }
 
 type grantsAdder func(authorizer authdomain.Authorizer, userMessage string) error
+
+func buildAuthorizerForTools(pkgMode bool, pkgRelPath string, pkgAbsPath string, sandboxAuthorizer authdomain.Authorizer, userPrompt string, add grantsAdder) (authdomain.Authorizer, error) {
+	authorizerForTools := sandboxAuthorizer
+	if pkgMode {
+		unitName := codeUnitName(pkgRelPath)
+		unit, err := codeunit.NewCodeUnit(unitName, pkgAbsPath)
+		if err != nil {
+			return nil, fmt.Errorf("build code unit: %w", err)
+		}
+		authorizerForTools = authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
+	}
+
+	// Apply grants to the active authorizer (including the code-unit wrapper), so that
+	// `@...` paths in the user prompt are honored even in package mode.
+	if err := applyGrantsFromUserPrompt(authorizerForTools, userPrompt, add); err != nil {
+		return nil, err
+	}
+
+	return authorizerForTools, nil
+}
 
 func applyGrantsFromUserPrompt(authorizer authdomain.Authorizer, userPrompt string, add grantsAdder) error {
 	if authorizer == nil || add == nil {
@@ -567,15 +588,9 @@ func detectTerminalWidth(out io.Writer) int {
 	return 0
 }
 
-func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath string, authorizer authdomain.Authorizer) ([]llmstream.Tool, string, error) {
+func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, authorizer authdomain.Authorizer) ([]llmstream.Tool, string, error) {
 	if pkgMode {
 		systemPrompt := prompt.GetGoPackageModeModePrompt(noninteractiveAgentName, defaultModelID)
-		unitName := codeUnitName(pkgRelPath)
-		unit, err := codeunit.NewCodeUnit(unitName, pkgAbsPath)
-		if err != nil {
-			return nil, "", fmt.Errorf("build code unit: %w", err)
-		}
-		authorizer = authdomain.NewCodeUnitAuthorizer(unit, authorizer)
 		tools, err := toolsets.PackageAgentTools(sandboxDir, authorizer, pkgAbsPath)
 		if err != nil {
 			return nil, "", fmt.Errorf("build package toolset: %w", err)
