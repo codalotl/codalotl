@@ -119,6 +119,7 @@ func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authori
 	return &codeUnitAuthorizer{
 		unit:     unit,
 		fallback: fallback,
+		grants:   newGrantStore(),
 	}
 }
 
@@ -163,6 +164,7 @@ func (a *sandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestR
 	}
 
 	if requestPermission && len(inside) > 0 {
+		inside = filterGrantedReadPaths(a.baseAuthorizer.grants, sandbox, toolName, false, inside)
 		return a.promptForPaths(toolName, "read", scopeInsideSandbox, sandbox, inside, requestReason, true)
 	}
 
@@ -271,10 +273,14 @@ func (a *permissiveSandboxAuthorizer) IsAuthorizedForRead(requestPermission bool
 	}
 
 	if len(outside) > 0 {
-		return a.promptForPaths(toolName, "read", scopeOutsideSandbox, sandbox, outside, requestReason, requestPermission)
+		outside = filterGrantedReadPaths(a.baseAuthorizer.grants, sandbox, toolName, true, outside)
+		if len(outside) > 0 {
+			return a.promptForPaths(toolName, "read", scopeOutsideSandbox, sandbox, outside, requestReason, requestPermission)
+		}
 	}
 
 	if requestPermission && len(inside) > 0 {
+		inside = filterGrantedReadPaths(a.baseAuthorizer.grants, sandbox, toolName, true, inside)
 		return a.promptForPaths(toolName, "read", scopeInsideSandbox, sandbox, inside, requestReason, true)
 	}
 
@@ -363,6 +369,8 @@ func (a autoApproveAuthorizer) SandboxDir() string {
 	return a.sandboxDir
 }
 
+func (autoApproveAuthorizer) addGrantUserMessage(string) {}
+
 func (autoApproveAuthorizer) CodeUnitDir() string {
 	return ""
 }
@@ -392,6 +400,14 @@ func (autoApproveAuthorizer) Close() {}
 type codeUnitAuthorizer struct {
 	unit     *codeunit.CodeUnit
 	fallback Authorizer
+	grants   *grantStore
+}
+
+func (a *codeUnitAuthorizer) addGrantUserMessage(userMessage string) {
+	if a.grants == nil {
+		return
+	}
+	a.grants.addGrantUserMessage(userMessage)
 }
 
 func (a *codeUnitAuthorizer) SandboxDir() string {
@@ -418,8 +434,14 @@ func toolRequiresStrictReads(toolName string) bool {
 
 func (a *codeUnitAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if toolRequiresStrictReads(toolName) {
-		if err := a.ensurePathsIncluded(absPath...); err != nil {
-			return err
+		if toolAllowsReadGrants(toolName) {
+			if err := a.ensurePathsIncludedOrGranted(toolName, absPath...); err != nil {
+				return err
+			}
+		} else {
+			if err := a.ensurePathsIncluded(absPath...); err != nil {
+				return err
+			}
 		}
 	}
 	return a.fallback.IsAuthorizedForRead(requestPermission, requestReason, toolName, absPath...)
@@ -454,8 +476,30 @@ func (a *codeUnitAuthorizer) ensurePathsIncluded(paths ...string) error {
 	return nil
 }
 
+func (a *codeUnitAuthorizer) ensurePathsIncludedOrGranted(toolName string, paths ...string) error {
+	for _, path := range paths {
+		if a.unit.Includes(path) {
+			continue
+		}
+
+		canonical := path
+		if !filepath.IsAbs(path) {
+			canonical = filepath.Join(a.unit.BaseDir(), path)
+		}
+		canonical = filepath.Clean(canonical)
+
+		if a.grants != nil && a.grants.isGrantedForRead(a.SandboxDir(), canonical, toolName, true) {
+			continue
+		}
+
+		return fmt.Errorf("path %q is outside %q rooted at %q. Consider using other tools (ex: 'get_public_api' provides docs for a package; 'clarify_public_api' can answer questions about poorly written docs)", canonical, a.unit.Name(), a.unit.BaseDir())
+	}
+	return nil
+}
+
 type baseAuthorizer struct {
 	requests chan UserRequest
+	grants   *grantStore
 
 	mu       sync.Mutex
 	isClosed bool
@@ -469,9 +513,17 @@ type baseAuthorizer struct {
 func newBaseAuthorizer() *baseAuthorizer {
 	return &baseAuthorizer{
 		requests: make(chan UserRequest, userRequestBufferSize),
+		grants:   newGrantStore(),
 		pending:  make(map[*pendingRequest]struct{}),
 		closedCh: make(chan struct{}),
 	}
+}
+
+func (b *baseAuthorizer) addGrantUserMessage(userMessage string) {
+	if b.grants == nil {
+		return
+	}
+	b.grants.addGrantUserMessage(userMessage)
 }
 
 func (b *baseAuthorizer) checkOpen() error {
