@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
 func TestIsPrinted(t *testing.T) {
@@ -169,4 +170,81 @@ func TestDelayedToolCallPrinterCloseStopsPendingPrints(t *testing.T) {
 	if buf.Len() != 0 {
 		t.Fatalf("expected no output after Close, got %q", buf.String())
 	}
+}
+
+func TestApplyGrantsFromUserPrompt(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty prompt does not call adder", func(t *testing.T) {
+		t.Parallel()
+
+		a := authdomain.NewAutoApproveAuthorizer(t.TempDir())
+		called := 0
+		add := func(_ authdomain.Authorizer, _ string) error {
+			called++
+			return nil
+		}
+
+		if err := applyGrantsFromUserPrompt(a, "   \n\t", add); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if called != 0 {
+			t.Fatalf("called=%d, want 0", called)
+		}
+	})
+
+	t.Run("calls adder with prompt", func(t *testing.T) {
+		t.Parallel()
+
+		a := authdomain.NewAutoApproveAuthorizer(t.TempDir())
+		called := 0
+		var gotAuthorizer authdomain.Authorizer
+		var gotPrompt string
+		add := func(auth authdomain.Authorizer, msg string) error {
+			called++
+			gotAuthorizer = auth
+			gotPrompt = msg
+			return nil
+		}
+
+		if err := applyGrantsFromUserPrompt(a, "grant read ./foo", add); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if called != 1 {
+			t.Fatalf("called=%d, want 1", called)
+		}
+		if gotAuthorizer != a {
+			t.Fatalf("gotAuthorizer != a")
+		}
+		if gotPrompt != "grant read ./foo" {
+			t.Fatalf("gotPrompt=%q, want %q", gotPrompt, "grant read ./foo")
+		}
+	})
+
+	t.Run("ErrAuthorizerCannotAcceptGrants is ignored", func(t *testing.T) {
+		t.Parallel()
+
+		a := authdomain.NewAutoApproveAuthorizer(t.TempDir())
+		add := func(_ authdomain.Authorizer, _ string) error {
+			return authdomain.ErrAuthorizerCannotAcceptGrants
+		}
+
+		if err := applyGrantsFromUserPrompt(a, "grant read ./foo", add); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("other errors are returned", func(t *testing.T) {
+		t.Parallel()
+
+		a := authdomain.NewAutoApproveAuthorizer(t.TempDir())
+		want := errors.New("boom")
+		add := func(_ authdomain.Authorizer, _ string) error {
+			return want
+		}
+
+		if err := applyGrantsFromUserPrompt(a, "grant read ./foo", add); !errors.Is(err, want) {
+			t.Fatalf("got %v, want %v", err, want)
+		}
+	})
 }

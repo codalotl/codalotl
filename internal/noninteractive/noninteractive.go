@@ -260,6 +260,10 @@ func Exec(userPrompt string, opts Options) error {
 	}
 	defer sandboxAuthorizer.Close()
 
+	if err := applyGrantsFromUserPrompt(sandboxAuthorizer, userPrompt, authdomain.AddGrantsFromUserMessage); err != nil {
+		return err
+	}
+
 	go autoRespondToUserRequests(userRequests, out, opts.AutoYes)
 
 	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgRelPath, pkgAbsPath, sandboxAuthorizer)
@@ -378,6 +382,26 @@ func Exec(userPrompt string, opts Options) error {
 
 	if terminalErr != nil {
 		return &printedError{err: terminalErr}
+	}
+	return nil
+}
+
+type grantsAdder func(authorizer authdomain.Authorizer, userMessage string) error
+
+func applyGrantsFromUserPrompt(authorizer authdomain.Authorizer, userPrompt string, add grantsAdder) error {
+	if authorizer == nil || add == nil {
+		return nil
+	}
+	if strings.TrimSpace(userPrompt) == "" {
+		return nil
+	}
+
+	// Best-effort: if the current authorizer policy doesn't support grants, just ignore.
+	if err := add(authorizer, userPrompt); err != nil {
+		if errors.Is(err, authdomain.ErrAuthorizerCannotAcceptGrants) {
+			return nil
+		}
+		return err
 	}
 	return nil
 }
