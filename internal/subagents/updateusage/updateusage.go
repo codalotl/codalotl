@@ -14,7 +14,7 @@ import (
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
@@ -22,14 +22,13 @@ import (
 // If the LLM can't find the make the updates as per instructions, it may say so in its answer, which doesn't produce an error.
 //   - sandboxAbsDir is used for tool construction and relative path resolution, not as a confinement mechanism.
 //   - authorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind).
-//   - sandboxAuthorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind).
 //   - goPkgAbsDir is the absolute path to a package.
 //   - toolset toolsetinterface.Toolset are the tools available for use. Injected to cut dependencies. Should be ls/read_file.
 //   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling agent). The instructions should often have **selection** instructions:
 //     update this package IF it uses Xyz function.
 //
 // Example instructions: "Update the package to use testify."
-func UpdateUsage(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbsDir string, authorizer auth.Authorizer, sandboxAuthorizer auth.Authorizer, goPkgAbsDir string, toolset toolsetinterface.PackageToolset, instructions string) (string, error) {
+func UpdateUsage(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbsDir string, authorizer authdomain.Authorizer, goPkgAbsDir string, toolset toolsetinterface.PackageToolset, instructions string) (string, error) {
 	if agentCreator == nil {
 		return "", errors.New("agentCreator is required")
 	}
@@ -66,7 +65,7 @@ func UpdateUsage(ctx context.Context, agentCreator agent.AgentCreator, sandboxAb
 		return "", fmt.Errorf("only go is supported right now")
 	}
 
-	tools, err := toolset(sandboxAbsDir, authorizer, sandboxAuthorizer, goPkgAbsDir)
+	tools, err := toolset(sandboxAbsDir, authorizer, goPkgAbsDir)
 	if err != nil {
 		return "", err
 	}

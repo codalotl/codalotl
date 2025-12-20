@@ -1,4 +1,4 @@
-package sandboxauth
+package authdomain
 
 import (
 	"sort"

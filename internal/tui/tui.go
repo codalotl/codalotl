@@ -15,7 +15,7 @@ import (
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
-	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
 const (
@@ -56,7 +56,7 @@ type agentRun struct {
 }
 
 type permissionPrompt struct {
-	request sandboxauth.UserRequest
+	request authdomain.UserRequest
 }
 
 type agentEventMsg struct {
@@ -71,7 +71,7 @@ type agentStreamClosedMsg struct {
 type workingIndicatorTickMsg struct{}
 
 type userRequestMsg struct {
-	request  sandboxauth.UserRequest
+	request  authdomain.UserRequest
 	sourceID int
 }
 
@@ -172,7 +172,7 @@ type model struct {
 	activePermission   *permissionPrompt
 	permissionViewText string
 
-	requests      <-chan sandboxauth.UserRequest
+	requests      <-chan authdomain.UserRequest
 	requestSource int
 	requestCancel context.CancelFunc
 
@@ -865,6 +865,8 @@ func (m *model) startAgentRun(value string) {
 		return
 	}
 
+	_ = m.session.AddGrantsFromUserMessage(value)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	events := m.session.SendMessage(ctx, value)
 	if events == nil {
@@ -987,7 +989,7 @@ func (m *model) startNextQueuedMessage() {
 	m.startAgentRun(next)
 }
 
-func (m *model) startUserRequestListener(sourceID int, requests <-chan sandboxauth.UserRequest) {
+func (m *model) startUserRequestListener(sourceID int, requests <-chan authdomain.UserRequest) {
 	m.stopUserRequestListener()
 	if requests == nil || m.tui == nil {
 		return
@@ -995,7 +997,7 @@ func (m *model) startUserRequestListener(sourceID int, requests <-chan sandboxau
 	ctx, cancel := context.WithCancel(context.Background())
 	m.requestCancel = cancel
 	prog := m.tui
-	go func(id int, ch <-chan sandboxauth.UserRequest, c context.Context) {
+	go func(id int, ch <-chan authdomain.UserRequest, c context.Context) {
 		for {
 			select {
 			case <-c.Done():
@@ -1499,7 +1501,7 @@ func (m *model) updatePlaceholder() {
 	}
 }
 
-func (m *model) enqueuePermissionRequest(req sandboxauth.UserRequest) {
+func (m *model) enqueuePermissionRequest(req authdomain.UserRequest) {
 	prompt := &permissionPrompt{request: req}
 	if m.activePermission == nil {
 		m.activePermission = prompt
@@ -1539,7 +1541,7 @@ func (m *model) triggerPermissionDemo() {
 		}
 	}
 
-	req := sandboxauth.UserRequest{
+	req := authdomain.UserRequest{
 		ToolName: "demo-permission",
 		Argv:     []string{"echo", "permission-demo"},
 		Prompt:   "Allow the demo permission request?",

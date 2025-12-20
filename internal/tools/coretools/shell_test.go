@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -16,7 +17,9 @@ import (
 )
 
 func TestShell_Run_Success(t *testing.T) {
-	tool := NewShellTool(t.TempDir(), nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewShellTool(auth)
 	call := llmstream.ToolCall{CallID: "call1", Name: ToolNameShell, Type: "function_call", Input: `{"command":["go","version"]}`}
 
 	res := tool.Run(context.Background(), call)
@@ -48,7 +51,9 @@ func TestShell_Run_Success(t *testing.T) {
 }
 
 func TestShell_Run_NonZeroExit(t *testing.T) {
-	tool := NewShellTool(t.TempDir(), nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewShellTool(auth)
 	// Use a command that reliably exits non-zero across platforms
 	var input string
 	if runtime.GOOS == "windows" {
@@ -77,7 +82,9 @@ func TestShell_Run_Timeout(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("timeout test is unix-oriented")
 	}
-	tool := NewShellTool(t.TempDir(), nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewShellTool(auth)
 	// sleep 1s, but give 10ms timeout
 	call := llmstream.ToolCall{CallID: "call3", Name: ToolNameShell, Type: "function_call", Input: `{"command":["sleep","1"],"timeout_ms":10}`}
 
@@ -99,7 +106,8 @@ func TestShell_Run_Timeout(t *testing.T) {
 
 func TestShell_Run_Cwd(t *testing.T) {
 	sandbox := t.TempDir()
-	tool := NewShellTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewShellTool(auth)
 	// Use 'pwd' (posix) or 'cd' via cmd on windows
 	var input string
 	if runtime.GOOS == "windows" {
@@ -151,14 +159,13 @@ func TestShell_Run_CwdOutsideSandbox(t *testing.T) {
 	if outside == sandbox {
 		t.Skip("unable to determine directory outside sandbox")
 	}
-	auth := &stubAuthorizer{}
-	auth.shellResp = func(requestPermission bool, _ string, sandboxDir string, cwd string, command []string) error {
+	auth := &stubAuthorizer{sandboxDir: sandbox}
+	auth.shellResp = func(requestPermission bool, _ string, cwd string, command []string) error {
 		assert.False(t, requestPermission)
-		assert.Equal(t, sandbox, sandboxDir)
 		assert.Equal(t, filepath.Clean(outside), filepath.Clean(cwd))
 		return assert.AnError
 	}
-	tool := NewShellTool(sandbox, auth)
+	tool := NewShellTool(auth)
 
 	var input string
 	if runtime.GOOS == "windows" {
@@ -189,10 +196,9 @@ func TestShell_Run_Authorization(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			auth := &stubAuthorizer{}
-			auth.shellResp = func(requestPermission bool, _ string, sandboxDir string, cwd string, command []string) error {
+			auth := &stubAuthorizer{sandboxDir: sandbox}
+			auth.shellResp = func(requestPermission bool, _ string, cwd string, command []string) error {
 				assert.True(t, requestPermission)
-				assert.Equal(t, sandbox, sandboxDir)
 				assert.Equal(t, filepath.Clean(sandbox), filepath.Clean(cwd))
 				require.Equal(t, []string{"go", "version"}, command)
 				if tc.allow {
@@ -200,7 +206,7 @@ func TestShell_Run_Authorization(t *testing.T) {
 				}
 				return fmt.Errorf("shell authorization denied")
 			}
-			tool := NewShellTool(sandbox, auth)
+			tool := NewShellTool(auth)
 			call := llmstream.ToolCall{
 				CallID: "auth",
 				Name:   ToolNameShell,

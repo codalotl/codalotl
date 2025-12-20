@@ -7,7 +7,7 @@ This package must be at least functional for all languages. Certain languages ma
 ## Dependencies
 
 - `codeai/tools/coretools`
-- `codeai/tools/auth`
+- `codeai/tools/authdomain`
 - `codeai/agent`
 - `codeai/initialcontext`
 - `codeai/detectlang`
@@ -43,5 +43,5 @@ NOTE: in the future, we may want to give the LLM a `find` tool to execute more `
 //
 // Example question: "What does the first return parameter (a string) look like in the ClarifyAPI func?". Example answer that might be returned: "The ClarifyAPI func
 // returns a human- or LLM-readable answer to the specified question. It will be the empty string if an error occurred."
-func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbsDir string, authorizer auth.Authorizer, toolset toolsetinterface.Toolset, path string, identifier string, question string) (string, error)
+func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbsDir string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, path string, identifier string, question string) (string, error)
 ```

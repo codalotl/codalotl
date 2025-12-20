@@ -16,8 +16,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/tools/auth"
-	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsets"
 )
 
@@ -36,8 +35,8 @@ type session struct {
 	packagePath    string
 	packageAbsPath string
 
-	authorizer   sandboxauth.AuthorizerCloser
-	userRequests <-chan sandboxauth.UserRequest
+	authorizer   authdomain.Authorizer
+	userRequests <-chan authdomain.UserRequest
 
 	config sessionConfig
 }
@@ -61,13 +60,13 @@ func newSession(cfg sessionConfig) (*session, error) {
 		return nil, err
 	}
 
-	sandboxAuthorizer, userRequests, err := sandboxauth.NewPermissiveSandboxAuthorizer(nil)
+	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	authorizer := auth.Authorizer(sandboxAuthorizer)
 	var tools []llmstream.Tool
+	toolAuthorizer := authdomain.Authorizer(sandboxAuthorizer)
 
 	var systemPrompt string
 	if cfg.packageMode() {
@@ -78,15 +77,16 @@ func newSession(cfg sessionConfig) (*session, error) {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build code unit: %w", err)
 		}
-		authorizer = sandboxauth.NewCodeUnitAuthorizer(unit, authorizer)
-		tools, err = toolsets.PackageAgentTools(sandboxDir, authorizer, sandboxAuthorizer, pkgAbsPath)
+		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
+		toolAuthorizer = pkgAuthorizer
+		tools, err = toolsets.PackageAgentTools(sandboxDir, pkgAuthorizer, pkgAbsPath)
 		if err != nil {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build package toolset: %w", err)
 		}
 	} else {
 		systemPrompt = prompt.GetFullPrompt(tuiAgentName, defaultModelID)
-		tools, err = toolsets.CoreAgentTools(sandboxDir, authorizer)
+		tools, err = toolsets.CoreAgentTools(sandboxDir, sandboxAuthorizer)
 		if err != nil {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build toolset: %w", err)
@@ -116,7 +116,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 		sandboxDir:     sandboxDir,
 		packagePath:    cfg.packagePath,
 		packageAbsPath: pkgAbsPath,
-		authorizer:     sandboxAuthorizer,
+		authorizer:     toolAuthorizer,
 		userRequests:   userRequests,
 		config:         cfg,
 	}, nil
@@ -146,7 +146,14 @@ func (s *session) SendMessage(ctx context.Context, message string) <-chan agent.
 	return s.agent.SendUserMessage(ctx, message)
 }
 
-func (s *session) UserRequests() <-chan sandboxauth.UserRequest {
+func (s *session) AddGrantsFromUserMessage(message string) error {
+	if s == nil || s.authorizer == nil {
+		return authdomain.ErrAuthorizerCannotAcceptGrants
+	}
+	return authdomain.AddGrantsFromUserMessage(s.authorizer, message)
+}
+
+func (s *session) UserRequests() <-chan authdomain.UserRequest {
 	return s.userRequests
 }
 

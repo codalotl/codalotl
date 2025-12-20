@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +25,8 @@ func TestLs_Run_BasicListingAndFormatting(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(sandbox, ".hidden"), []byte("secret"), 0o644))
 	require.NoError(t, os.Mkdir(filepath.Join(sandbox, ".hdir"), 0o755))
 
-	tool := NewLsTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewLsTool(auth)
 	call := llmstream.ToolCall{CallID: "call1", Name: ToolNameLS, Type: "function_call", Input: `{"path":"."}`}
 
 	res := tool.Run(context.Background(), call)
@@ -46,7 +48,8 @@ func TestLs_Run_BasicListingAndFormatting(t *testing.T) {
 
 func TestLs_Run_PathDoesNotExist(t *testing.T) {
 	sandbox := t.TempDir()
-	tool := NewLsTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewLsTool(auth)
 
 	call := llmstream.ToolCall{CallID: "call3", Name: ToolNameLS, Type: "function_call", Input: `{"path":"does-not-exist"}`}
 	res := tool.Run(context.Background(), call)
@@ -60,7 +63,8 @@ func TestLs_Run_PathIsFile(t *testing.T) {
 	f := filepath.Join(sandbox, "afile.txt")
 	require.NoError(t, os.WriteFile(f, []byte("a"), 0o644))
 
-	tool := NewLsTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewLsTool(auth)
 	call := llmstream.ToolCall{CallID: "call4", Name: ToolNameLS, Type: "function_call", Input: `{"path":"afile.txt"}`}
 	res := tool.Run(context.Background(), call)
 	assert.False(t, res.IsError)
@@ -74,7 +78,8 @@ func TestLs_Run_AbsolutePathInsideSandbox(t *testing.T) {
 	require.NoError(t, os.Mkdir(sub, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(sub, "x.txt"), []byte("x"), 0o644))
 
-	tool := NewLsTool(sandbox, nil)
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewLsTool(auth)
 	input := `{"path":"` + strings.ReplaceAll(sub, "\\", "\\\\") + `"}`
 	call := llmstream.ToolCall{CallID: "call5", Name: ToolNameLS, Type: "function_call", Input: input}
 
@@ -106,19 +111,18 @@ func TestLs_Run_Authorization(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			auth := &stubAuthorizer{}
-			auth.readResp = func(requestPermission bool, _ string, toolName string, sandboxDir string, absPath ...string) error {
+			auth := &stubAuthorizer{sandboxDir: sandbox}
+			auth.readResp = func(requestPermission bool, _ string, toolName string, absPath ...string) error {
 				assert.Equal(t, ToolNameLS, toolName)
-				assert.Equal(t, sandbox, sandboxDir)
 				assert.True(t, requestPermission)
-				expected := filepath.Clean(filepath.Join(sandboxDir, tc.path))
+				expected := filepath.Clean(filepath.Join(sandbox, tc.path))
 				require.Equal(t, []string{expected}, absPath)
 				if tc.allow {
 					return nil
 				}
 				return fmt.Errorf("ls authorization denied")
 			}
-			tool := NewLsTool(sandbox, auth)
+			tool := NewLsTool(auth)
 			input := fmt.Sprintf(`{"path":%q,"request_permission":true}`, tc.path)
 			call := llmstream.ToolCall{CallID: "auth", Name: ToolNameLS, Type: "function_call", Input: input}
 

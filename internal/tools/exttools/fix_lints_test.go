@@ -6,6 +6,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,7 +26,8 @@ func TestFixLints_Run_FixesFormatting(t *testing.T) {
 			}
 		`),
 	}, func(pkg *gocode.Package) {
-		tool := NewFixLintsTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewFixLintsTool(auth)
 		call := llmstream.ToolCall{
 			CallID: "call1",
 			Name:   ToolNameFixLints,
@@ -60,7 +62,8 @@ func TestFixLints_Run_NoChangesNeeded(t *testing.T) {
 			func main() {}
 		`),
 	}, func(pkg *gocode.Package) {
-		tool := NewFixLintsTool(pkg.Module.AbsolutePath, nil)
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewFixLintsTool(auth)
 		input := fmt.Sprintf(`{"path":%q}`, filepath.Join("mypkg", "main.go"))
 		call := llmstream.ToolCall{
 			CallID: "call2",

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/auth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"path/filepath"
 	"strings"
 )
@@ -26,9 +26,10 @@ type ApplyPatchPostChecks struct {
 	FixLints       func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
 }
 
-func NewApplyPatchTool(sandboxAbsDir string, authorizer auth.Authorizer, useFreeformTool bool, postChecks *ApplyPatchPostChecks) llmstream.Tool {
+func NewApplyPatchTool(authorizer authdomain.Authorizer, useFreeformTool bool, postChecks *ApplyPatchPostChecks) llmstream.Tool {
+	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolApplyPatch{
-		sandboxAbsDir: filepath.Clean(sandboxAbsDir),
+		sandboxAbsDir: sandboxAbsDir,
 		useFreeform:   useFreeformTool,
 		authorizer:    authorizer,
 		postChecks:    postChecks,
@@ -38,7 +39,7 @@ func NewApplyPatchTool(sandboxAbsDir string, authorizer auth.Authorizer, useFree
 type toolApplyPatch struct {
 	sandboxAbsDir string
 	useFreeform   bool
-	authorizer    auth.Authorizer
+	authorizer    authdomain.Authorizer
 	postChecks    *ApplyPatchPostChecks
 }
 
@@ -89,7 +90,7 @@ func (t *toolApplyPatch) Run(ctx context.Context, call llmstream.ToolCall) llmst
 	}
 
 	if t.authorizer != nil && len(paths) > 0 {
-		if authErr := t.authorizer.IsAuthorizedForWrite(requestPermission, "", ToolNameApplyPatch, t.sandboxAbsDir, paths...); authErr != nil {
+		if authErr := t.authorizer.IsAuthorizedForWrite(requestPermission, "", ToolNameApplyPatch, paths...); authErr != nil {
 			return NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}

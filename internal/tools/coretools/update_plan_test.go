@@ -3,6 +3,7 @@ package coretools
 import (
 	"context"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +11,9 @@ import (
 )
 
 func TestUpdatePlanInfo(t *testing.T) {
-	tool := NewUpdatePlanTool("", nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
 	info := tool.Info()
 
 	assert.Equal(t, ToolNameUpdatePlan, info.Name)
@@ -45,7 +48,9 @@ func TestUpdatePlanInfo(t *testing.T) {
 }
 
 func TestUpdatePlanRunSuccess(t *testing.T) {
-	tool := NewUpdatePlanTool("", nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
 	call := llmstream.ToolCall{
 		CallID: "call-success",
 		Name:   ToolNameUpdatePlan,
@@ -60,7 +65,9 @@ func TestUpdatePlanRunSuccess(t *testing.T) {
 }
 
 func TestUpdatePlanRunMissingPlan(t *testing.T) {
-	tool := NewUpdatePlanTool("", nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
 	call := llmstream.ToolCall{
 		CallID: "call-missing-plan",
 		Name:   ToolNameUpdatePlan,
@@ -75,7 +82,9 @@ func TestUpdatePlanRunMissingPlan(t *testing.T) {
 }
 
 func TestUpdatePlanRunMultipleInProgress(t *testing.T) {
-	tool := NewUpdatePlanTool("", nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
 	call := llmstream.ToolCall{
 		CallID: "call-multi-progress",
 		Name:   ToolNameUpdatePlan,
@@ -90,7 +99,9 @@ func TestUpdatePlanRunMultipleInProgress(t *testing.T) {
 }
 
 func TestUpdatePlanRunInvalidStatus(t *testing.T) {
-	tool := NewUpdatePlanTool("", nil)
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
 	call := llmstream.ToolCall{
 		CallID: "call-invalid-status",
 		Name:   ToolNameUpdatePlan,

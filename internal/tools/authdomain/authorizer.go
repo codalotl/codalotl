@@ -1,4 +1,4 @@
-package sandboxauth
+package authdomain
 
 import (
 	"errors"
@@ -10,14 +10,13 @@ import (
 	"sync"
 
 	"github.com/codalotl/codalotl/internal/codeunit"
-	"github.com/codalotl/codalotl/internal/tools/auth"
 )
 
 // ErrAuthorizerClosed is returned when an authorization request is made after Close.
-var ErrAuthorizerClosed = errors.New("toolauth: authorizer closed")
+var ErrAuthorizerClosed = errors.New("authdomain: authorizer closed")
 
 // ErrAuthorizationDenied is returned when the user declines a pending authorization request.
-var ErrAuthorizationDenied = errors.New("toolauth: authorization denied")
+var ErrAuthorizationDenied = errors.New("authdomain: authorization denied")
 
 const userRequestBufferSize = 16
 
@@ -31,64 +30,122 @@ type UserRequest struct {
 	Disallow   func()
 }
 
-// AuthorizerCloser answers authorization questions for tools.
-type AuthorizerCloser interface {
-	auth.Authorizer
+// An Authorizer answers whether a tool is allowed to be used with respect to configured domains.
+type Authorizer interface {
+	// SandboxDir returns the cleaned, absolute path of the sandbox root for this authorizer.
+	SandboxDir() string
+
+	// CodeUnitDir returns the code unit base dir if a code unit domain is active, else "".
+	CodeUnitDir() string
+
+	// IsCodeUnitDomain reports whether this authorizer enforces a code unit domain.
+	IsCodeUnitDomain() bool
+
+	// WithoutCodeUnit returns an authorizer with code-unit restrictions removed.
+	WithoutCodeUnit() Authorizer
+
+	// IsAuthorizedForRead returns nil if all absPath are authorized to be read.
+	// It returns an error otherwise, where the error explains why authorization was denied.
+	IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error
+
+	// IsAuthorizedForWrite returns nil if all absPath are authorized to be written.
+	// It returns an error otherwise, where the error explains why authorization was denied.
+	IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error
+
+	// IsShellAuthorized returns nil if the shell command is authorized; otherwise, the error explains why authorization was denied.
+	IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error
+
+	// Close will close all channels and do any other cleanup. Cause any outstanding user requests to auto-disallow.
 	Close()
 }
 
 // NewSandboxAuthorizer constructs an Authorizer implementing the Sandbox policy.
-func NewSandboxAuthorizer(commands *ShellAllowedCommands) (AuthorizerCloser, <-chan UserRequest, error) {
+func NewSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error) {
 	if commands == nil {
 		commands = NewShellAllowedCommands()
+	}
+
+	sandbox, err := normalizeSandboxDir(sandboxDir)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	base := newBaseAuthorizer()
 	auth := &sandboxAuthorizer{
 		baseAuthorizer: base,
+		sandboxDir:     sandbox,
 		commands:       commands,
 	}
 	return auth, base.requests, nil
 }
 
 // NewPermissiveSandboxAuthorizer constructs an Authorizer implementing the Permissive Sandbox policy.
-func NewPermissiveSandboxAuthorizer(commands *ShellAllowedCommands) (AuthorizerCloser, <-chan UserRequest, error) {
+func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error) {
 	if commands == nil {
 		commands = NewShellAllowedCommands()
+	}
+
+	sandbox, err := normalizeSandboxDir(sandboxDir)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	base := newBaseAuthorizer()
 	auth := &permissiveSandboxAuthorizer{
 		baseAuthorizer: base,
+		sandboxDir:     sandbox,
 		commands:       commands,
 	}
 	return auth, base.requests, nil
 }
 
 // NewAutoApproveAuthorizer constructs the AutoApprove policy Authorizer.
-func NewAutoApproveAuthorizer() AuthorizerCloser {
-	return autoApproveAuthorizer{}
+func NewAutoApproveAuthorizer(sandboxDir string) Authorizer {
+	sandbox, err := normalizeSandboxDir(sandboxDir)
+	if err != nil {
+		panic(fmt.Sprintf("authdomain: invalid sandbox dir: %v", err))
+	}
+	return autoApproveAuthorizer{sandboxDir: sandbox}
 }
 
-// NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in codeUnit before delegating to fallback.
-//
-// Note that the fallback should be Close()'ed, not the code unit authorizer.
-func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback auth.Authorizer) auth.Authorizer {
+// NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback. Close also closes fallback.
+func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer {
 	if unit == nil {
-		panic("toolauth: code unit is nil")
+		panic("authdomain: code unit is nil")
+	}
+	if fallback == nil {
+		panic("authdomain: fallback authorizer is nil")
 	}
 	return &codeUnitAuthorizer{
 		unit:     unit,
 		fallback: fallback,
+		grants:   newGrantStore(),
 	}
 }
 
 type sandboxAuthorizer struct {
 	*baseAuthorizer
-	commands *ShellAllowedCommands
+	sandboxDir string
+	commands   *ShellAllowedCommands
 }
 
-func (a *sandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
+func (a *sandboxAuthorizer) SandboxDir() string {
+	return a.sandboxDir
+}
+
+func (a *sandboxAuthorizer) CodeUnitDir() string {
+	return ""
+}
+
+func (a *sandboxAuthorizer) IsCodeUnitDomain() bool {
+	return false
+}
+
+func (a *sandboxAuthorizer) WithoutCodeUnit() Authorizer {
+	return a
+}
+
+func (a *sandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
 	}
@@ -96,11 +153,7 @@ func (a *sandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestR
 		return nil
 	}
 
-	sandbox, err := normalizeSandboxDir(sandboxDir)
-	if err != nil {
-		return err
-	}
-
+	sandbox := a.sandboxDir
 	inside, outside, err := classifyPaths(sandbox, absPath)
 	if err != nil {
 		return err
@@ -111,13 +164,14 @@ func (a *sandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestR
 	}
 
 	if requestPermission && len(inside) > 0 {
+		inside = filterGrantedReadPaths(a.baseAuthorizer.grants, sandbox, toolName, false, inside)
 		return a.promptForPaths(toolName, "read", scopeInsideSandbox, sandbox, inside, requestReason, true)
 	}
 
 	return nil
 }
 
-func (a *sandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
+func (a *sandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
 	}
@@ -125,11 +179,7 @@ func (a *sandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, request
 		return nil
 	}
 
-	sandbox, err := normalizeSandboxDir(sandboxDir)
-	if err != nil {
-		return err
-	}
-
+	sandbox := a.sandboxDir
 	inside, outside, err := classifyPaths(sandbox, absPath)
 	if err != nil {
 		return err
@@ -146,16 +196,12 @@ func (a *sandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, request
 	return nil
 }
 
-func (a *sandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, sandboxDir string, cwd string, command []string) error {
+func (a *sandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
 	}
 
-	sandbox, err := normalizeSandboxDir(sandboxDir)
-	if err != nil {
-		return err
-	}
-
+	sandbox := a.sandboxDir
 	if cwd != "" {
 		cleanCwd, err := normalizeAbsolutePath(cwd)
 		if err != nil {
@@ -186,7 +232,33 @@ func (a *sandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestRea
 	}
 }
 
-func (a *permissiveSandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
+func (a *sandboxAuthorizer) Close() {
+	a.baseAuthorizer.Close()
+}
+
+type permissiveSandboxAuthorizer struct {
+	*baseAuthorizer
+	sandboxDir string
+	commands   *ShellAllowedCommands
+}
+
+func (a *permissiveSandboxAuthorizer) SandboxDir() string {
+	return a.sandboxDir
+}
+
+func (a *permissiveSandboxAuthorizer) CodeUnitDir() string {
+	return ""
+}
+
+func (a *permissiveSandboxAuthorizer) IsCodeUnitDomain() bool {
+	return false
+}
+
+func (a *permissiveSandboxAuthorizer) WithoutCodeUnit() Authorizer {
+	return a
+}
+
+func (a *permissiveSandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
 	}
@@ -194,28 +266,28 @@ func (a *permissiveSandboxAuthorizer) IsAuthorizedForRead(requestPermission bool
 		return nil
 	}
 
-	sandbox, err := normalizeSandboxDir(sandboxDir)
-	if err != nil {
-		return err
-	}
-
+	sandbox := a.sandboxDir
 	inside, outside, err := classifyPaths(sandbox, absPath)
 	if err != nil {
 		return err
 	}
 
 	if len(outside) > 0 {
-		return a.promptForPaths(toolName, "read", scopeOutsideSandbox, sandbox, outside, requestReason, requestPermission)
+		outside = filterGrantedReadPaths(a.baseAuthorizer.grants, sandbox, toolName, true, outside)
+		if len(outside) > 0 {
+			return a.promptForPaths(toolName, "read", scopeOutsideSandbox, sandbox, outside, requestReason, requestPermission)
+		}
 	}
 
 	if requestPermission && len(inside) > 0 {
+		inside = filterGrantedReadPaths(a.baseAuthorizer.grants, sandbox, toolName, true, inside)
 		return a.promptForPaths(toolName, "read", scopeInsideSandbox, sandbox, inside, requestReason, true)
 	}
 
 	return nil
 }
 
-func (a *permissiveSandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
+func (a *permissiveSandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
 	}
@@ -223,11 +295,7 @@ func (a *permissiveSandboxAuthorizer) IsAuthorizedForWrite(requestPermission boo
 		return nil
 	}
 
-	sandbox, err := normalizeSandboxDir(sandboxDir)
-	if err != nil {
-		return err
-	}
-
+	sandbox := a.sandboxDir
 	inside, outside, err := classifyPaths(sandbox, absPath)
 	if err != nil {
 		return err
@@ -244,16 +312,12 @@ func (a *permissiveSandboxAuthorizer) IsAuthorizedForWrite(requestPermission boo
 	return nil
 }
 
-func (a *permissiveSandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, sandboxDir string, cwd string, command []string) error {
+func (a *permissiveSandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
 	}
 
-	sandbox, err := normalizeSandboxDir(sandboxDir)
-	if err != nil {
-		return err
-	}
-
+	sandbox := a.sandboxDir
 	cwdOutside := false
 	if cwd != "" {
 		cleanCwd, err := normalizeAbsolutePath(cwd)
@@ -293,30 +357,41 @@ func (a *permissiveSandboxAuthorizer) IsShellAuthorized(requestPermission bool, 
 	}
 }
 
-func (a *sandboxAuthorizer) Close() {
-	a.baseAuthorizer.Close()
-}
-
-type permissiveSandboxAuthorizer struct {
-	*baseAuthorizer
-	commands *ShellAllowedCommands
-}
-
 func (a *permissiveSandboxAuthorizer) Close() {
 	a.baseAuthorizer.Close()
 }
 
-type autoApproveAuthorizer struct{}
+type autoApproveAuthorizer struct {
+	sandboxDir string
+}
 
-func (autoApproveAuthorizer) IsAuthorizedForRead(bool, string, string, string, ...string) error {
+func (a autoApproveAuthorizer) SandboxDir() string {
+	return a.sandboxDir
+}
+
+func (autoApproveAuthorizer) addGrantUserMessage(string) {}
+
+func (autoApproveAuthorizer) CodeUnitDir() string {
+	return ""
+}
+
+func (autoApproveAuthorizer) IsCodeUnitDomain() bool {
+	return false
+}
+
+func (a autoApproveAuthorizer) WithoutCodeUnit() Authorizer {
+	return a
+}
+
+func (autoApproveAuthorizer) IsAuthorizedForRead(bool, string, string, ...string) error {
 	return nil
 }
 
-func (autoApproveAuthorizer) IsAuthorizedForWrite(bool, string, string, string, ...string) error {
+func (autoApproveAuthorizer) IsAuthorizedForWrite(bool, string, string, ...string) error {
 	return nil
 }
 
-func (autoApproveAuthorizer) IsShellAuthorized(bool, string, string, string, []string) error {
+func (autoApproveAuthorizer) IsShellAuthorized(bool, string, string, []string) error {
 	return nil
 }
 
@@ -324,7 +399,31 @@ func (autoApproveAuthorizer) Close() {}
 
 type codeUnitAuthorizer struct {
 	unit     *codeunit.CodeUnit
-	fallback auth.Authorizer
+	fallback Authorizer
+	grants   *grantStore
+}
+
+func (a *codeUnitAuthorizer) addGrantUserMessage(userMessage string) {
+	if a.grants == nil {
+		return
+	}
+	a.grants.addGrantUserMessage(userMessage)
+}
+
+func (a *codeUnitAuthorizer) SandboxDir() string {
+	return a.fallback.SandboxDir()
+}
+
+func (a *codeUnitAuthorizer) CodeUnitDir() string {
+	return a.unit.BaseDir()
+}
+
+func (a *codeUnitAuthorizer) IsCodeUnitDomain() bool {
+	return true
+}
+
+func (a *codeUnitAuthorizer) WithoutCodeUnit() Authorizer {
+	return a.fallback
 }
 
 var codeUnitStrictReadToolNames = []string{"read_file", "ls", "diagnostics", "run_tests"}
@@ -333,24 +432,34 @@ func toolRequiresStrictReads(toolName string) bool {
 	return slices.Contains(codeUnitStrictReadToolNames, toolName)
 }
 
-func (a *codeUnitAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
+func (a *codeUnitAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if toolRequiresStrictReads(toolName) {
-		if err := a.ensurePathsIncluded(absPath...); err != nil {
-			return err
+		if toolAllowsReadGrants(toolName) {
+			if err := a.ensurePathsIncludedOrGranted(toolName, absPath...); err != nil {
+				return err
+			}
+		} else {
+			if err := a.ensurePathsIncluded(absPath...); err != nil {
+				return err
+			}
 		}
 	}
-	return a.fallback.IsAuthorizedForRead(requestPermission, requestReason, toolName, sandboxDir, absPath...)
+	return a.fallback.IsAuthorizedForRead(requestPermission, requestReason, toolName, absPath...)
 }
 
-func (a *codeUnitAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, sandboxDir string, absPath ...string) error {
+func (a *codeUnitAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.ensurePathsIncluded(absPath...); err != nil {
 		return err
 	}
-	return a.fallback.IsAuthorizedForWrite(requestPermission, requestReason, toolName, sandboxDir, absPath...)
+	return a.fallback.IsAuthorizedForWrite(requestPermission, requestReason, toolName, absPath...)
 }
 
-func (a *codeUnitAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, sandboxDir string, cwd string, command []string) error {
-	return a.fallback.IsShellAuthorized(requestPermission, requestReason, sandboxDir, cwd, command)
+func (a *codeUnitAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
+	return a.fallback.IsShellAuthorized(requestPermission, requestReason, cwd, command)
+}
+
+func (a *codeUnitAuthorizer) Close() {
+	a.fallback.Close()
 }
 
 func (a *codeUnitAuthorizer) ensurePathsIncluded(paths ...string) error {
@@ -367,8 +476,30 @@ func (a *codeUnitAuthorizer) ensurePathsIncluded(paths ...string) error {
 	return nil
 }
 
+func (a *codeUnitAuthorizer) ensurePathsIncludedOrGranted(toolName string, paths ...string) error {
+	for _, path := range paths {
+		if a.unit.Includes(path) {
+			continue
+		}
+
+		canonical := path
+		if !filepath.IsAbs(path) {
+			canonical = filepath.Join(a.unit.BaseDir(), path)
+		}
+		canonical = filepath.Clean(canonical)
+
+		if a.grants != nil && a.grants.isGrantedForRead(a.SandboxDir(), canonical, toolName, true) {
+			continue
+		}
+
+		return fmt.Errorf("path %q is outside %q rooted at %q. Consider using other tools (ex: 'get_public_api' provides docs for a package; 'clarify_public_api' can answer questions about poorly written docs)", canonical, a.unit.Name(), a.unit.BaseDir())
+	}
+	return nil
+}
+
 type baseAuthorizer struct {
 	requests chan UserRequest
+	grants   *grantStore
 
 	mu       sync.Mutex
 	isClosed bool
@@ -382,9 +513,17 @@ type baseAuthorizer struct {
 func newBaseAuthorizer() *baseAuthorizer {
 	return &baseAuthorizer{
 		requests: make(chan UserRequest, userRequestBufferSize),
+		grants:   newGrantStore(),
 		pending:  make(map[*pendingRequest]struct{}),
 		closedCh: make(chan struct{}),
 	}
+}
+
+func (b *baseAuthorizer) addGrantUserMessage(userMessage string) {
+	if b.grants == nil {
+		return
+	}
+	b.grants.addGrantUserMessage(userMessage)
 }
 
 func (b *baseAuthorizer) checkOpen() error {
@@ -593,7 +732,6 @@ func buildPathPrompt(toolName string, operation string, scope pathScope, reason 
 }
 
 func buildCommandPrompt(command string, reason string, result CommandCheckResult, requestPermission bool, cwdOutside bool) string {
-
 	var builder strings.Builder
 	builder.WriteString("Allow execution of `")
 	builder.WriteString(command)

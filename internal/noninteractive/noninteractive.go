@@ -22,8 +22,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/tools/auth"
-	"github.com/codalotl/codalotl/internal/tools/sandboxauth"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsets"
 	"golang.org/x/term"
 )
@@ -255,16 +254,19 @@ func Exec(userPrompt string, opts Options) error {
 	})
 	terminalWidth := detectTerminalWidth(rawOut)
 
-	sandboxAuthorizer, userRequests, err := sandboxauth.NewPermissiveSandboxAuthorizer(nil)
+	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
 	if err != nil {
 		return err
 	}
 	defer sandboxAuthorizer.Close()
 
+	if err := applyGrantsFromUserPrompt(sandboxAuthorizer, userPrompt, authdomain.AddGrantsFromUserMessage); err != nil {
+		return err
+	}
+
 	go autoRespondToUserRequests(userRequests, out, opts.AutoYes)
 
-	authorizer := auth.Authorizer(sandboxAuthorizer)
-	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgRelPath, pkgAbsPath, authorizer, sandboxAuthorizer)
+	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgRelPath, pkgAbsPath, sandboxAuthorizer)
 	if err != nil {
 		return err
 	}
@@ -384,6 +386,26 @@ func Exec(userPrompt string, opts Options) error {
 	return nil
 }
 
+type grantsAdder func(authorizer authdomain.Authorizer, userMessage string) error
+
+func applyGrantsFromUserPrompt(authorizer authdomain.Authorizer, userPrompt string, add grantsAdder) error {
+	if authorizer == nil || add == nil {
+		return nil
+	}
+	if strings.TrimSpace(userPrompt) == "" {
+		return nil
+	}
+
+	// Best-effort: if the current authorizer policy doesn't support grants, just ignore.
+	if err := add(authorizer, userPrompt); err != nil {
+		if errors.Is(err, authdomain.ErrAuthorizerCannotAcceptGrants) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func shouldSuppressFormattedOutput(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -418,7 +440,7 @@ func formatSessionTokenUsage(u llmstream.TokenUsage) string {
 	return fmt.Sprintf("input=%d cached_input=%d output=%d total=%d", nonCachedInput, u.CachedInputTokens, u.TotalOutputTokens, total)
 }
 
-func autoRespondToUserRequests(requests <-chan sandboxauth.UserRequest, out io.Writer, autoYes bool) {
+func autoRespondToUserRequests(requests <-chan authdomain.UserRequest, out io.Writer, autoYes bool) {
 	for req := range requests {
 		if out != nil && strings.TrimSpace(req.Prompt) != "" {
 			decision := "NO"
@@ -545,7 +567,7 @@ func detectTerminalWidth(out io.Writer) int {
 	return 0
 }
 
-func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath string, authorizer auth.Authorizer, sandboxAuthorizer sandboxauth.AuthorizerCloser) ([]llmstream.Tool, string, error) {
+func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath string, authorizer authdomain.Authorizer) ([]llmstream.Tool, string, error) {
 	if pkgMode {
 		systemPrompt := prompt.GetGoPackageModeModePrompt(noninteractiveAgentName, defaultModelID)
 		unitName := codeUnitName(pkgRelPath)
@@ -553,8 +575,8 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgRelPath str
 		if err != nil {
 			return nil, "", fmt.Errorf("build code unit: %w", err)
 		}
-		authorizer = sandboxauth.NewCodeUnitAuthorizer(unit, authorizer)
-		tools, err := toolsets.PackageAgentTools(sandboxDir, authorizer, sandboxAuthorizer, pkgAbsPath)
+		authorizer = authdomain.NewCodeUnitAuthorizer(unit, authorizer)
+		tools, err := toolsets.PackageAgentTools(sandboxDir, authorizer, pkgAbsPath)
 		if err != nil {
 			return nil, "", fmt.Errorf("build package toolset: %w", err)
 		}
