@@ -108,7 +108,7 @@ func NewAutoApproveAuthorizer(sandboxDir string) Authorizer {
 	return autoApproveAuthorizer{sandboxDir: sandbox}
 }
 
-// NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback.
+// NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback. Close also closes fallback.
 func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer {
 	if unit == nil {
 		panic("authdomain: code unit is nil")
