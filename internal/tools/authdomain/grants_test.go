@@ -99,6 +99,35 @@ func TestPermissiveReadFileGrantAuthorizesOutsideSandboxWithoutPrompt(t *testing
 	}
 }
 
+func TestSandboxLsGlobGrantSkipsRequestPermissionPrompt(t *testing.T) {
+	t.Parallel()
+
+	sandbox := t.TempDir()
+	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	require.NoError(t, err)
+	defer auth.Close()
+
+	srcDir := filepath.Join(sandbox, "src")
+	require.NoError(t, os.MkdirAll(srcDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(srcDir, "main.go"), []byte("package main"), 0o644))
+
+	require.NoError(t, AddGrantsFromUserMessage(auth, "please read @src/*.go."))
+
+	done := make(chan error, 1)
+	go func() {
+		done <- auth.IsAuthorizedForRead(true, "explicit", "ls", srcDir)
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case req := <-requests:
+		t.Fatalf("unexpected prompt: %#v", req)
+	case <-time.After(time.Second):
+		t.Fatal("authorization call blocked unexpectedly")
+	}
+}
+
 func TestCodeUnitGrantsReadOnlyToolsTableDriven(t *testing.T) {
 	t.Parallel()
 
@@ -158,6 +187,44 @@ func TestCodeUnitGrantsReadOnlyToolsTableDriven(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatalf("authorization call blocked for %s", tc.name)
 			}
+		})
+	}
+}
+
+func TestCodeUnitGlobGrantAlsoAllowsLsOnGlobParentDir(t *testing.T) {
+	t.Parallel()
+
+	sandbox := t.TempDir()
+	unitDir := filepath.Join(sandbox, "unit")
+	require.NoError(t, os.MkdirAll(unitDir, 0o755))
+
+	docsDir := filepath.Join(sandbox, "docs")
+	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "top.md"), []byte("top"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(docsDir, "nested"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "nested", "child.md"), []byte("child"), 0o644))
+
+	unit, err := codeunit.NewCodeUnit("package unit", unitDir)
+	require.NoError(t, err)
+
+	cases := []struct {
+		name    string
+		userMsg string
+	}{
+		{name: "WildcardInFilenameSegment", userMsg: "read @docs/*.md"},
+		{name: "WildcardInPathSegment", userMsg: "read @docs/*/child.md"},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			auth := NewCodeUnitAuthorizer(unit, NewAutoApproveAuthorizer(sandbox))
+			defer auth.Close()
+
+			require.NoError(t, AddGrantsFromUserMessage(auth, tc.userMsg))
+			require.NoError(t, auth.IsAuthorizedForRead(false, "", "ls", docsDir))
 		})
 	}
 }

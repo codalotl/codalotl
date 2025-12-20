@@ -68,6 +68,7 @@ Details:
 - If a directory is granted without globs (no `filepath.Match` metacharacters), the grant applies to the entire tree of files/directories rooted at the directory (recursively).
     - Yes, this requirement changes authorizers from mostly pure functions over path strings to requiring `os.Stat`.
 - To grant access to files in a directory non-recursively, use, e.g., `@src/*`.
+- If a grant uses glob metacharacters (`*`, `?`, `[...]`), it also grants `ls` on the directory segment that contains the first metacharacter (so the agent can discover matching entries). For example, `@src/*.go` implies `ls @src`.
 - Grant paths are relative to the sandbox dir, or absolute.
 - Strict sandbox: grants never authorize reads outside of the sandbox dir.
 - Permissive sandbox: grants may authorize reads outside of the sandbox dir.

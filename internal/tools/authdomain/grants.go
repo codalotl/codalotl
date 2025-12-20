@@ -103,6 +103,9 @@ func (g *grantStore) isGrantedForRead(sandboxDir string, absPath string, toolNam
 			}
 		}
 
+		if toolName == "ls" && g.globGrantAllowsLsOnSegment(absPath, msg, allowOutsideSandbox, sandboxDir) {
+			return true
+		}
 		if g.globGrantAllowsPath(absPath, relPath, msg, allowOutsideSandbox, sandboxDir) {
 			return true
 		}
@@ -217,6 +220,50 @@ func (g *grantStore) globGrantAllowsPath(absPath string, relPath string, message
 		return true
 	}
 	return false
+}
+
+func (g *grantStore) globGrantAllowsLsOnSegment(absPath string, message string, allowOutsideSandbox bool, sandboxDir string) bool {
+	cleanAbsPath := filepath.Clean(absPath)
+
+	for _, pattern := range extractGrantPatterns(message) {
+		if pattern == "" || !containsGlobMetachar(pattern) {
+			continue
+		}
+
+		listableDir := listableDirForGlobPattern(pattern)
+		if listableDir == "" {
+			continue
+		}
+
+		listableAbs := listableDir
+		if !filepath.IsAbs(pattern) {
+			listableAbs = filepath.Join(sandboxDir, listableDir)
+		}
+		listableAbs = filepath.Clean(listableAbs)
+
+		if isFilesystemRoot(listableAbs) {
+			continue
+		}
+		if !allowOutsideSandbox && !withinSandbox(sandboxDir, listableAbs) {
+			continue
+		}
+
+		if cleanAbsPath == listableAbs {
+			return true
+		}
+	}
+
+	return false
+}
+
+func listableDirForGlobPattern(pattern string) string {
+	first := strings.IndexAny(pattern, "*?[")
+	if first == -1 {
+		return ""
+	}
+
+	prefix := pattern[:first]
+	return filepath.Dir(prefix)
 }
 
 func filterGrantedReadPaths(grants *grantStore, sandboxDir string, toolName string, allowOutsideSandbox bool, paths []string) []string {
