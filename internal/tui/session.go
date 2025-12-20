@@ -66,6 +66,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 
 	var tools []llmstream.Tool
+	toolAuthorizer := authdomain.Authorizer(sandboxAuthorizer)
 
 	var systemPrompt string
 	if cfg.packageMode() {
@@ -77,6 +78,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 			return nil, fmt.Errorf("build code unit: %w", err)
 		}
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
+		toolAuthorizer = pkgAuthorizer
 		tools, err = toolsets.PackageAgentTools(sandboxDir, pkgAuthorizer, pkgAbsPath)
 		if err != nil {
 			sandboxAuthorizer.Close()
@@ -114,7 +116,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 		sandboxDir:     sandboxDir,
 		packagePath:    cfg.packagePath,
 		packageAbsPath: pkgAbsPath,
-		authorizer:     sandboxAuthorizer,
+		authorizer:     toolAuthorizer,
 		userRequests:   userRequests,
 		config:         cfg,
 	}, nil
@@ -142,6 +144,13 @@ func (s *session) SendMessage(ctx context.Context, message string) <-chan agent.
 		return nil
 	}
 	return s.agent.SendUserMessage(ctx, message)
+}
+
+func (s *session) AddGrantsFromUserMessage(message string) error {
+	if s == nil || s.authorizer == nil {
+		return authdomain.ErrAuthorizerCannotAcceptGrants
+	}
+	return authdomain.AddGrantsFromUserMessage(s.authorizer, message)
 }
 
 func (s *session) UserRequests() <-chan authdomain.UserRequest {

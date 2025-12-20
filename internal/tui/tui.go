@@ -865,6 +865,8 @@ func (m *model) startAgentRun(value string) {
 		return
 	}
 
+	_ = m.session.AddGrantsFromUserMessage(value)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	events := m.session.SendMessage(ctx, value)
 	if events == nil {
