@@ -116,6 +116,13 @@ func buildPrompt(goPkgAbsDir, instructions, initialContext string) string {
 	buf.WriteString("You are a small agent designed to make targeted, mechanical changes to a single package.\n")
 	buf.WriteString("Your task is to make the indicated changes as per the instructions below.\n\n")
 
+	buf.WriteString("Scope constraints (IMPORTANT):\n")
+	buf.WriteString("- You are operating on exactly ONE Go package rooted at:\n")
+	buf.WriteString("  " + goPkgAbsDir + "\n")
+	buf.WriteString("- Only read/modify files within that package directory.\n")
+	buf.WriteString("- The instructions may mention multiple packages/files/callsites. Apply ONLY the subset of the instructions that is relevant to this package.\n")
+	buf.WriteString("- If the instructions mention changes to other packages or file paths outside this package, do NOT attempt them. Briefly note they were skipped as out-of-scope.\n\n")
+
 	buf.WriteString(initialContext)
 	buf.WriteString("\n\n")
 
