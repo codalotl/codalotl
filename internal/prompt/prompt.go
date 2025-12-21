@@ -85,9 +85,9 @@ func GetFullPrompt(agentName string, modelID llmmodel.ModelID) string {
 	return strings.Join(rendered, "\n\n")
 }
 
-// GetFullPrompt returns a prompt for modelID, where the agent is named agentName.
-// Different models have are best prompted in different ways, often based on how they were RL'ed. This method
-// returns a prompt well-suited for that model.
+// GetGoPackageModeModePrompt returns a system prompt for agentName/modelID that extends GetFullPrompt with an explanation of the full/default package mode.
+//
+// Any limited package-mode (ex: update_usage, clarify_docs) may be better off using GetFullPrompt and then adding their own limited package-mode explanation.
 func GetGoPackageModeModePrompt(agentName string, modelID llmmodel.ModelID) string {
 	data := map[string]any{
 		"AgentName": agentName,
