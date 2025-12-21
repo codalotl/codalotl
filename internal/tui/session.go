@@ -70,7 +70,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 
 	var systemPrompt string
 	if cfg.packageMode() {
-		systemPrompt = prompt.GetGoPackageModeModePrompt(tuiAgentName, defaultModelID)
+		systemPrompt = prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull)
 		unitName := codeUnitName(cfg.packagePath)
 		unit, err := codeunit.NewCodeUnit(unitName, pkgAbsPath)
 		if err != nil {
@@ -85,7 +85,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 			return nil, fmt.Errorf("build package toolset: %w", err)
 		}
 	} else {
-		systemPrompt = prompt.GetFullPrompt(tuiAgentName, defaultModelID)
+		systemPrompt = prompt.GetFullPrompt()
 		tools, err = toolsets.CoreAgentTools(sandboxDir, sandboxAuthorizer)
 		if err != nil {
 			sandboxAuthorizer.Close()

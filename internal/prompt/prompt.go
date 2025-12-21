@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -51,12 +52,56 @@ var (
 
 	//go:embed fragments/go-package-mode.md
 	goPackageModeSection string
+
+	//go:embed fragments/go-package-mode-update_usage.md
+	goPackageModeUpdateUsageSection string
 )
 
-// GetFullPrompt returns a prompt for modelID, where the agent is named agentName.
+var (
+	cfgMu        sync.RWMutex
+	cfgAgentName = "Codalotl"
+	cfgModelID   = llmmodel.DefaultModel
+)
+
+// SetAgentName sets the globally configured agent name used when rendering prompts.
+//
+// This is expected to be called once by internal/cli during startup.
+func SetAgentName(agentName string) {
+	cfgMu.Lock()
+	cfgAgentName = strings.TrimSpace(agentName)
+	cfgMu.Unlock()
+}
+
+// SetModel sets the globally configured model used when rendering prompts.
+//
+// This is expected to be called once by internal/cli during startup.
+func SetModel(modelID llmmodel.ModelID) {
+	cfgMu.Lock()
+	cfgModelID = modelID
+	cfgMu.Unlock()
+}
+
+func getConfig() (agentName string, modelID llmmodel.ModelID) {
+	cfgMu.RLock()
+	agentName = cfgAgentName
+	modelID = cfgModelID
+	cfgMu.RUnlock()
+
+	agentName = strings.TrimSpace(agentName)
+	if agentName == "" {
+		agentName = "Codalotl"
+	}
+	if strings.TrimSpace(string(modelID)) == "" {
+		modelID = llmmodel.DefaultModel
+	}
+	return agentName, modelID
+}
+
+// GetFullPrompt returns a prompt using the globally configured agent name and model.
 // Different models have are best prompted in different ways, often based on how they were RL'ed. This method
 // returns a prompt well-suited for that model.
-func GetFullPrompt(agentName string, modelID llmmodel.ModelID) string {
+func GetFullPrompt() string {
+	agentName, modelID := getConfig()
 	data := map[string]any{
 		"AgentName": agentName,
 		"ModelName": modelDisplayName(modelID),
@@ -85,35 +130,39 @@ func GetFullPrompt(agentName string, modelID llmmodel.ModelID) string {
 	return strings.Join(rendered, "\n\n")
 }
 
-// GetGoPackageModeModePrompt returns a system prompt for agentName/modelID that extends GetFullPrompt with an explanation of the full/default package mode.
+type GoPackageModePromptKind string
+
+const (
+	GoPackageModePromptKindFull        GoPackageModePromptKind = "full"
+	GoPackageModePromptKindUpdateUsage GoPackageModePromptKind = "update_usage"
+)
+
+// GetGoPackageModeModePrompt returns a system prompt using the globally configured agent name and model that
+// extends GetFullPrompt with a package mode of the requested kind (GoPackageModePromptKindFull is the full,
+// default package mode).
 //
-// Any limited package-mode (ex: update_usage, clarify_docs) may be better off using GetFullPrompt and then adding their own limited package-mode explanation.
-func GetGoPackageModeModePrompt(agentName string, modelID llmmodel.ModelID) string {
+// To make subagents with a subset of tools/capabilities, add a GoPackageModePromptKind with a custom explanation.
+func GetGoPackageModeModePrompt(kind GoPackageModePromptKind) string {
+	agentName, modelID := getConfig()
+	base := GetFullPrompt()
+
 	data := map[string]any{
 		"AgentName": agentName,
 		"ModelName": modelDisplayName(modelID),
 	}
 
-	sections := []string{
-		codexHeader,
-		capabilitiesSection,
-		personalitySection,
-		codeEditingSection,
-		sandboxApprovalsSafetySection,
-		toolsSection,
-		planningSection,
-		gitAndVersionControlSection,
-		finalMessageSection,
-		messageFormattingSection,
-		goPackageModeSection,
-	}
-	rendered := make([]string, 0, len(sections))
-	for _, fragment := range sections {
-		fragment = strings.TrimSpace(fragment)
-		rendered = append(rendered, renderFragment(fragment, data))
+	var snippet string
+
+	switch kind {
+	case GoPackageModePromptKindFull:
+		snippet = goPackageModeSection
+	case GoPackageModePromptKindUpdateUsage:
+		snippet = goPackageModeUpdateUsageSection
+	default:
+		panic("unhandled package mode kind")
 	}
 
-	return strings.Join(rendered, "\n\n")
+	return base + "\n\n" + renderFragment(strings.TrimSpace(snippet), data)
 }
 
 func renderFragment(fragment string, data any) string {

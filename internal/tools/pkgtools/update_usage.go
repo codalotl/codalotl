@@ -5,17 +5,19 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strings"
+
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gousage"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	updateusageagent "github.com/codalotl/codalotl/internal/subagents/updateusage"
+	"github.com/codalotl/codalotl/internal/prompt"
+	"github.com/codalotl/codalotl/internal/subagents/packagemode"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"path/filepath"
-	"strings"
 )
 
 //go:embed update_usage.md
@@ -244,7 +246,15 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 			packageInstructions = fmt.Sprintf("%s\n\nTarget paths for this package:\n- %s", instructions, strings.Join(targetLines, "\n- "))
 		}
 
-		answer, err := updateusageagent.UpdateUsage(ctx, agentCreator, t.sandboxAbsDir, pkgAuthorizer, targetAbsPath, t.toolset, packageInstructions)
+		answer, err := packagemode.Run(
+			ctx,
+			agentCreator,
+			pkgAuthorizer,
+			targetAbsPath,
+			t.toolset,
+			packageInstructions,
+			prompt.GoPackageModePromptKindUpdateUsage,
+		)
 		if err != nil {
 			return coretools.NewToolErrorResult(call, err.Error(), err)
 		}
