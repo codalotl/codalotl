@@ -25,6 +25,10 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "error: python3 is required" >&2
   exit 1
 fi
+if ! command -v gofmt >/dev/null 2>&1; then
+  echo "error: gofmt is required" >&2
+  exit 1
+fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "${repo_root}" ]]; then
@@ -138,6 +142,8 @@ if updated == text:
 
 path.write_text(updated, encoding="utf-8")
 PY
+
+gofmt -w "$version_file"
 
 if git diff --quiet -- "$version_file"; then
   echo "error: version bump produced no git diff in $version_file" >&2
