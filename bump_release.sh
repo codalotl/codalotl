@@ -101,7 +101,7 @@ new = f"{major}.{minor}.{fix}"
 print(f"{current} {new}")
 PY
 )"
-read -r current_version new_version <<<"$versions_out"
+IFS=' ' read -r current_version new_version <<<"$versions_out"
 if [[ -z "${current_version}" || -z "${new_version}" || "${current_version}" == "${new_version}" ]]; then
   echo "error: failed to compute next version (got: '${versions_out}')" >&2
   exit 1
