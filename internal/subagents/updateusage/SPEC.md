@@ -21,7 +21,7 @@ The toolset will be injected. It is expected to be `toolsets.LimitedPackageAgent
 // UpdateUsage updates a package according to the given instructions. It returns the agent's last message. An error is returned for invalid inputs, failure to communicate with the LLM, etc.
 // If the LLM can't find the make the updates as per instructions, it may say so in its answer, which doesn't produce an error.
 //   - sandboxAbsDir is used for tool construction and relative path resolution, not as a confinement mechanism.
-//   - authorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind).
+//   - authorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind). Should be a code unit authorizer.
 //   - goPkgAbsDir is the absolute path to a package.
 //   - toolset toolsetinterface.Toolset are the tools available for use. Injected to cut dependencies. Should be ls/read_file.
 //   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling agent). The instructions should often have **selection** instructions:
