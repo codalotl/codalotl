@@ -116,8 +116,49 @@ func (a *Agent) AddUserTurn(text string) error {
 	return nil
 }
 
-// SendUserMessage appends a user turn and starts processing it. Events describing the
-// assistant's behaviour are delivered on the returned channel.
+// SendUserMessage appends message as a user turn and starts processing it asynchronously.
+// It returns an event stream describing the agent's progress (assistant output, tool calls,
+// and terminal status).
+//
+// Concurrency:
+// Only one turn may be processed at a time. It is safe to call SendUserMessage from
+// multiple goroutines, but if a turn is already running the returned channel will
+// synchronously receive exactly one EventTypeError with ErrAlreadyRunning and then be
+// closed. No background goroutine is started in that case.
+//
+// Channel lifecycle:
+// The returned channel is always non-nil and is always closed when processing ends.
+// Callers may safely range over it until closed. The channel is buffered (currently size 32);
+// if the caller stops reading, the agent (and any subagents) may block while emitting events.
+//
+// Event ordering and invariants:
+// For each provider send, zero or more intermediate events may be emitted, followed by
+// EventTypeAssistantTurnComplete for the completed assistant turn (when a completed turn is
+// available and has been appended to the agent's internal history).
+//
+// Typical events include:
+//   - EventTypeAssistantText / EventTypeAssistantReasoning when a content block is complete
+//     (this implementation does not emit token-by-token deltas; it emits only when the
+//     provider marks the block as done).
+//   - EventTypeToolCall when the provider requests a tool.
+//   - EventTypeToolComplete after each tool returns a ToolResult (and after any subagent
+//     activity performed by that tool).
+//   - EventTypeWarning / EventTypeRetry as reported by the provider.
+//
+// The stream terminates with exactly one terminal event: EventTypeDoneSuccess on a normal
+// end-of-turn, EventTypeCanceled when ctx is canceled / deadline exceeded (or the provider
+// reports cancellation), or EventTypeError for all other errors. The channel is closed
+// immediately after the terminal event is emitted.
+//
+// Note: tool execution may create subagents. Subagent events are mirrored into the same
+// returned channel (distinguished by Event.Agent.Depth/ID) and may interleave with the
+// parent agent's events; consumers should not assume a total ordering across different
+// agents.
+//
+// Context cancellation:
+// Cancellation is surfaced as an EventTypeCanceled terminal event. Depending on when ctx
+// is canceled and when the underlying provider/tool stops, some non-terminal events may be
+// delivered before the cancellation is observed.
 func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Event {
 	out := make(chan Event, 32)
 
