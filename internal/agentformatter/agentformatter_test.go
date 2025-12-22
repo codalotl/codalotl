@@ -866,6 +866,105 @@ func TestUpdateUsageCompleteErrorShowsOutput(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure should use red bullet")
 }
 
+func TestChangeAPICallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name: "change_api",
+		Input: `{
+  "import_path": "axi/some/pkg",
+  "instructions": "Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic."
+}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "change_api",
+		ToolCall: &call,
+	}
+	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
+	require.NotEmpty(t, out)
+
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Changing API in axi/some/pkg",
+		"  └ Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic.",
+	}, lines)
+
+	assert.Contains(t, out, ansiWrap("Changing API", pal, colorColorful, false, true), "verb should be colorful and bold")
+	assert.Contains(t, out, ansiWrap(" in", pal, colorAccent, false, false), "`in` keyword should be accented")
+}
+
+func TestChangeAPICompleteSuccess(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name: "change_api",
+		Input: `{
+  "import_path": "axi/some/pkg",
+  "instructions": "Do not repeat instructions on complete."
+}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "change_api",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
+	require.NotEmpty(t, out)
+
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Changed API in axi/some/pkg",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "success bullet should be green")
+	assert.NotContains(t, out, "└", "success output should not include a body")
+}
+
+func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name: "change_api",
+		Input: `{
+  "import_path": "axi/some/pkg",
+  "instructions": "Add method."
+}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "failed to change api",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "change_api",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
+	require.NotEmpty(t, out)
+
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Changed API in axi/some/pkg",
+		"  └ Error: failed to change api",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure should use red bullet")
+}
+
 func TestModuleInfoToolCallNoOptions(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),

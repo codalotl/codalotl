@@ -13,7 +13,6 @@ import (
 	"github.com/codalotl/codalotl/internal/detectlang"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
-	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -22,7 +21,6 @@ import (
 )
 
 const (
-	agentName      = "ClarifyDocs"
 	rgContextLines = "4"
 )
 
@@ -101,7 +99,7 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 		return "", err
 	}
 
-	systemPrompt := prompt.GetFullPrompt(agentName, llmmodel.ModelIDUnknown) // TODO: fix this
+	systemPrompt := prompt.GetFullPrompt()
 
 	ag, err := agentCreator.NewWithDefaultModel(systemPrompt, tools)
 	if err != nil {
@@ -140,7 +138,6 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 
 func buildPrompt(absPath, identifier, question, initialContext string) string {
 	var buf strings.Builder
-	buf.WriteString("You are ClarifyDocs, a documentation clarification sub-agent.\n")
 	buf.WriteString("Your task is to answer the user's question about the specified identifier using the provided context and available tools (`ls`, `read_file`).\n")
 	buf.WriteString("If information is missing or the identifier cannot be found, clearly state that and explain what would be needed.\n\n")
 

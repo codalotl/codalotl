@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +19,25 @@ type noopFormatter struct{}
 func (noopFormatter) FormatEvent(agent.Event, int) string {
 	return ""
 }
+
+type stubAuthorizer struct {
+	closed bool
+}
+
+var _ authdomain.Authorizer = (*stubAuthorizer)(nil)
+
+func (a *stubAuthorizer) SandboxDir() string { return "" }
+func (a *stubAuthorizer) CodeUnitDir() string {
+	return ""
+}
+func (a *stubAuthorizer) IsCodeUnitDomain() bool { return false }
+func (a *stubAuthorizer) WithoutCodeUnit() authdomain.Authorizer {
+	return a
+}
+func (a *stubAuthorizer) IsAuthorizedForRead(bool, string, string, ...string) error  { return nil }
+func (a *stubAuthorizer) IsAuthorizedForWrite(bool, string, string, ...string) error { return nil }
+func (a *stubAuthorizer) IsShellAuthorized(bool, string, string, []string) error     { return nil }
+func (a *stubAuthorizer) Close()                                                     { a.closed = true }
 
 func TestModelViewAfterResize(t *testing.T) {
 	palette := colorPalette{
@@ -240,4 +261,93 @@ func TestPackageSectionFallback(t *testing.T) {
 	m.session = &session{packagePath: "foo/bar", config: sessionConfig{packagePath: "foo/bar"}}
 
 	assert.Equal(t, "Package: foo/bar", m.packageSection())
+}
+
+func TestCtrlCStopsAgentWhenRunning(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+
+	cancelCalled := false
+	m.currentRun = &agentRun{
+		cancel: func() { cancelCalled = true },
+		events: nil,
+		id:     1,
+	}
+
+	// If there are queued messages, stopping the agent should restore them to the input.
+	m.messageQueue = []string{"one", "two"}
+	m.textarea.SetContents("")
+
+	requestCancelCalled := false
+	m.requestCancel = func() { requestCancelCalled = true }
+	auth := &stubAuthorizer{}
+	m.session = &session{authorizer: auth}
+
+	handled := m.handleKeyEvent(qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlC})
+	require.True(t, handled)
+	require.True(t, cancelCalled)
+
+	// Should not quit the app when running: do not tear down session/user-request listener here.
+	require.False(t, requestCancelCalled)
+	require.False(t, auth.closed)
+
+	require.Equal(t, "", strings.Join(m.messageQueue, ",")) // messageQueue cleared
+	require.Equal(t, "one\ntwo", m.textarea.Contents())
+}
+
+func TestCtrlCQuitsWhenIdle(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+
+	// No currentRun => idle.
+	require.False(t, m.isAgentRunning())
+
+	requestCancelCalled := false
+	m.requestCancel = func() { requestCancelCalled = true }
+	auth := &stubAuthorizer{}
+	m.session = &session{authorizer: auth}
+
+	handled := m.handleKeyEvent(qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlC})
+	require.True(t, handled)
+
+	require.True(t, requestCancelCalled)
+	require.Nil(t, m.requestCancel)
+	require.True(t, auth.closed)
+}
+
+func TestToolResultReplacesCallByDefault(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+
+	callID := "call-1"
+	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "read_file"}
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "read_file", ToolCall: call})
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "read_file", ToolCall: call, ToolResult: result})
+
+	// Default behavior: the tool call entry is replaced by the result entry.
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[0].event.Type)
+	require.NotNil(t, m.messages[0].event.ToolResult)
+	require.Equal(t, callID, m.messages[0].event.ToolResult.CallID)
+}
+
+func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+
+	callID := "call-2"
+	call := &llmstream.ToolCall{CallID: callID, Name: "change_api"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "change_api"}
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "change_api", ToolCall: call})
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "change_api", ToolCall: call, ToolResult: result})
+
+	// Exception behavior: for SubAgent tools, keep the call and append the result.
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 }

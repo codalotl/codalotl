@@ -28,8 +28,7 @@ import (
 )
 
 const (
-	defaultModelID          = llmmodel.DefaultModel
-	noninteractiveAgentName = "codalotl"
+	defaultModelID = llmmodel.DefaultModel
 )
 
 var toolCallPrintDelay = 3 * time.Second
@@ -590,7 +589,7 @@ func detectTerminalWidth(out io.Writer) int {
 
 func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, authorizer authdomain.Authorizer) ([]llmstream.Tool, string, error) {
 	if pkgMode {
-		systemPrompt := prompt.GetGoPackageModeModePrompt(noninteractiveAgentName, defaultModelID)
+		systemPrompt := prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull)
 		tools, err := toolsets.PackageAgentTools(sandboxDir, authorizer, pkgAbsPath)
 		if err != nil {
 			return nil, "", fmt.Errorf("build package toolset: %w", err)
@@ -598,7 +597,7 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 		return tools, systemPrompt, nil
 	}
 
-	systemPrompt := prompt.GetFullPrompt(noninteractiveAgentName, defaultModelID)
+	systemPrompt := prompt.GetFullPrompt()
 	tools, err := toolsets.CoreAgentTools(sandboxDir, authorizer)
 	if err != nil {
 		return nil, "", fmt.Errorf("build toolset: %w", err)

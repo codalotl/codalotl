@@ -46,7 +46,8 @@ Basic controls:
 - ESC stops the agent if it's Running
     - ESC is overloaded. It may apply to other scenarios before stopping the agent. Ex: exiting Cycle Mode; exiting edit-previous-message-mode; closing a "dialog", if we had a dialog up.
     - Spamming ESC should be safe and should eventually stop the agent. Extra ESC when the agent is stopped does nothing.
-- Ctrl-C terminates the process. Typing "/quit", "/exit", or "/logout" also terminates the process.
+- Ctrl-C stops the agent if it's Running. If the agent is Idle, Ctrl-C terminates the process.
+  Typing "/quit", "/exit", or "/logout" also terminates the process.
 - Basic text navigation should work. For instance, on OSX, option-left/right jumps the cursor left/right to word boundaries.
 
 ## Messages Area
@@ -55,6 +56,7 @@ Basic controls:
 - Tools have a Call and a Result.
     - When a Call comes in, we print it.
     - When a paired Result in, we replace the Call message with the Result.
+    - Exception: SubAgent calls (change_api, update_usage, clarify_public_api) should NOT replace the Call with Result (it just prints both).
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.
 - The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").
