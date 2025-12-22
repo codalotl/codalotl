@@ -344,6 +344,15 @@ func (p *inputProcessor) handleEscape() bool {
 	}
 
 	if p.pending[1] == '[' {
+		handled, consumed, needMore := p.handleCSI(p.pending)
+		if needMore {
+			return false
+		}
+		if handled {
+			p.pending = p.pending[consumed:]
+			return true
+		}
+
 		seqLen := csiSequenceLength(p.pending)
 		if seqLen == 0 {
 			return false
@@ -426,8 +435,55 @@ func (p *inputProcessor) emitKey(ev KeyEvent) {
 	p.t.Send(ev)
 }
 
-func (p *inputProcessor) handleCSI(seq []byte) bool {
-	return false
+func (p *inputProcessor) emitMouse(ev MouseEvent) {
+	p.t.Send(ev)
+}
+
+func (p *inputProcessor) handleCSI(buf []byte) (handled bool, consumed int, needMore bool) {
+	if len(buf) < 2 || buf[0] != 0x1b || buf[1] != '[' {
+		return false, 0, false
+	}
+	if len(buf) < 3 {
+		return false, 0, true
+	}
+
+	// X10 mouse events: ESC [ M Cb Cx Cy
+	if buf[2] == 'M' {
+		const x10Len = 6
+		if len(buf) < x10Len {
+			return false, 0, true
+		}
+		if ev, ok := parseX10MouseEvent(buf[:x10Len]); ok {
+			p.emitMouse(ev)
+		}
+		return true, x10Len, false
+	}
+
+	// SGR mouse events: ESC [ < Cb ; Cx ; Cy (M or m)
+	if buf[2] == '<' {
+		ev, ok, needMore := parseSGRMouseEvent(buf)
+		if needMore {
+			return false, 0, true
+		}
+		if ok {
+			// parseSGRMouseEvent only returns ok when it saw a terminator.
+			for i := 3; i < len(buf); i++ {
+				if buf[i] == 'M' || buf[i] == 'm' {
+					p.emitMouse(ev)
+					return true, i + 1, false
+				}
+			}
+		}
+		// Terminator found but parse failed; consume the CSI sequence if possible.
+		for i := 3; i < len(buf); i++ {
+			if buf[i] == 'M' || buf[i] == 'm' {
+				return true, i + 1, false
+			}
+		}
+		return false, 0, true
+	}
+
+	return false, 0, false
 }
 
 func csiSequenceLength(buf []byte) int {

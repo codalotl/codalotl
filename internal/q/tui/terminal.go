@@ -10,15 +10,19 @@ import (
 )
 
 const (
-	cursorHome            = "\x1b[H"
-	clearLine             = "\x1b[2K"
-	altScreenEnter        = "\x1b[?1049h" + cursorHome
-	altScreenExit         = "\x1b[?1049l"
-	hideCursor            = "\x1b[?25l"
-	showCursor            = "\x1b[?25h"
-	clearScreen           = "\x1b[2J" + cursorHome
-	enableBracketedPaste  = "\x1b[?2004h"
-	disableBracketedPaste = "\x1b[?2004l"
+	cursorHome             = "\x1b[H"
+	clearLine              = "\x1b[2K"
+	altScreenEnter         = "\x1b[?1049h" + cursorHome
+	altScreenExit          = "\x1b[?1049l"
+	hideCursor             = "\x1b[?25l"
+	showCursor             = "\x1b[?25h"
+	clearScreen            = "\x1b[2J" + cursorHome
+	enableBracketedPaste   = "\x1b[?2004h"
+	disableBracketedPaste  = "\x1b[?2004l"
+	enableMouseCellMotion  = "\x1b[?1002h"
+	disableMouseCellMotion = "\x1b[?1002l"
+	enableMouseSGRMode     = "\x1b[?1006h"
+	disableMouseSGRMode    = "\x1b[?1006l"
 )
 
 var errNoFileDescriptor = errors.New("tui: raw mode requires *os.File input")
@@ -77,7 +81,7 @@ func (rt *realTerminal) Enter() error {
 		return err
 	}
 
-	if err := rt.writeString(altScreenEnter + clearScreen + hideCursor + enableBracketedPaste); err != nil {
+	if err := rt.writeString(altScreenEnter + clearScreen + hideCursor + enableBracketedPaste + enableMouseCellMotion + enableMouseSGRMode); err != nil {
 		_ = term.Restore(fd, state)
 		if restoreVT != nil {
 			_ = restoreVT()
@@ -112,7 +116,7 @@ func (rt *realTerminal) Exit() error {
 			firstErr = err
 		}
 	}
-	if err := rt.writeString(disableBracketedPaste + showCursor + altScreenExit); err != nil && firstErr == nil {
+	if err := rt.writeString(disableMouseSGRMode + disableMouseCellMotion + disableBracketedPaste + showCursor + altScreenExit); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if restoreVT != nil {
