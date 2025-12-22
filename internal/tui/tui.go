@@ -409,6 +409,16 @@ func viewportInfoPanelWidths(terminalWidth int) (int, int) {
 
 func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 	if key.ControlKey == qtui.ControlKeyCtrlC {
+		// Ctrl-C is "stop agent" when the agent is currently running; otherwise it quits
+		// the app (keeping the bottom help text intact as-is).
+		if m.isAgentRunning() {
+			m.stopAgentRun()
+			if len(m.messageQueue) > 0 {
+				m.restoreQueuedMessagesToInput()
+			}
+			return true
+		}
+
 		m.stopAgentRun()
 		m.stopUserRequestListener()
 		if m.session != nil {
