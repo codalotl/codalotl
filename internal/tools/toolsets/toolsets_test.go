@@ -57,6 +57,7 @@ func TestPackageAgentTools(t *testing.T) {
 		pkgtools.ToolNameClarifyPublicAPI,
 		pkgtools.ToolNameGetUsage,
 		pkgtools.ToolNameUpdateUsage,
+		pkgtools.ToolNameChangeAPI,
 	})
 }
 

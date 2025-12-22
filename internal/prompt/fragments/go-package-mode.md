@@ -37,6 +37,10 @@ If you want to **use** another Go package -- great! You may read its public API 
 
 You can list packages in the project with `module_info`.
 
+If you want to **change** an upstream Go package, use `change_api`. This tool launches a SubAgent to alter the package. `change_api` can:
+- Change the public API of a package (ex: add methods, change params, alter fields on structs).
+- Change the public behavior of a package (ex: API signatures don't change, but a func behaves differnetly; fix bug you're observing).
+
 # Downstream (consuming) packages
 
 In order to find out how other packages consume your package's API (be sure to check the list of all packages that import your package), use the `get_usage` tool with an identifier. You'll be given examples of how your package is used.
