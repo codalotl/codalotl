@@ -228,6 +228,28 @@ The EventTypeToolComplete looks like this:
 
 - NOTE: no body (i.e., no └ below the line). Might change later.
 
+### EventTypeToolCall and EventTypeToolComplete - change_api
+
+The EventTypeToolCall looks like this:
+
+```
+• Changing API in axi/some/pkg
+  └ Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic...
+```
+
+- Changing API is Bold, Colorful
+- "in" is Accent.
+- axi/some/pkg is normal
+- The instructions is Accent.
+
+The EventTypeToolComplete looks like this:
+
+```
+• Changed API in axi/some/pkg
+```
+
+- NOTE: no body (i.e., no └ below the line). Might change later.
+
 ### EventTypeToolCall and EventTypeToolComplete - get_usage
 
 ```

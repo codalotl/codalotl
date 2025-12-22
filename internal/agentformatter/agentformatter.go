@@ -272,6 +272,8 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiUpdatePlanToolCall(e, width)
 	case "update_usage":
 		return f.tuiUpdateUsageToolCall(e, width)
+	case "change_api":
+		return f.tuiChangeAPIToolCall(e, width)
 	default:
 		return f.tuiGenericToolCall(e, width)
 	}
@@ -303,6 +305,8 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliUpdatePlanToolCall(e)
 	case "update_usage":
 		return f.cliUpdateUsageToolCall(e)
+	case "change_api":
+		return f.cliChangeAPIToolCall(e)
 	default:
 		return f.cliGenericToolCall(e)
 	}
@@ -457,6 +461,8 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiUpdatePlanToolComplete(e, width, success, cmd, outputLines)
 	case "update_usage":
 		return f.tuiUpdateUsageToolComplete(e, width, success, cmd, outputLines)
+	case "change_api":
+		return f.tuiChangeAPIToolComplete(e, width, success, cmd, outputLines)
 	default:
 		return f.tuiGenericToolComplete(e, width, success, cmd, outputLines)
 	}
@@ -489,6 +495,8 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliUpdatePlanToolComplete(e, success, cmd, outputLines)
 	case "update_usage":
 		return f.cliUpdateUsageToolComplete(e, success, cmd, outputLines)
+	case "change_api":
+		return f.cliChangeAPIToolComplete(e, success, cmd, outputLines)
 	default:
 		return f.cliGenericToolComplete(e, success, cmd, outputLines)
 	}
@@ -1829,6 +1837,25 @@ func extractUpdateUsage(call *llmstream.ToolCall) (instructions string, paths []
 	return instructions, paths, true
 }
 
+func extractChangeAPI(call *llmstream.ToolCall) (importPath string, instructions string, ok bool) {
+	if call == nil {
+		return "", "", false
+	}
+	var payload struct {
+		ImportPath   string `json:"import_path"`
+		Instructions string `json:"instructions"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
+		return "", "", false
+	}
+	importPath = sanitizeText(strings.TrimSpace(payload.ImportPath))
+	instructions = sanitizeText(strings.TrimSpace(payload.Instructions))
+	if importPath == "" {
+		return "", "", false
+	}
+	return importPath, instructions, true
+}
+
 func summarizeUpdateUsagePaths(paths []string) (summary string, extra int) {
 	if len(paths) == 0 {
 		return "", 0
@@ -1927,6 +1954,93 @@ func (f *textTUIFormatter) cliUpdateUsageToolComplete(e agent.Event, success boo
 		bullet = colorRed
 	}
 	segments := f.updateUsageHeaderSegments("Updated Usage", paths)
+	lines := []string{f.cliBulletLine(bullet, segments...)}
+	if !success {
+		if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
+			lines = append(lines, rest...)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (f *textTUIFormatter) changeAPIHeaderSegments(verb string, importPath string) []textSegment {
+	segments := []textSegment{
+		{text: verb, style: runeStyle{color: colorColorful, bold: true}},
+	}
+	importPath = strings.TrimSpace(importPath)
+	if importPath == "" {
+		return segments
+	}
+	segments = append(segments, textSegment{text: " in", style: runeStyle{color: colorAccent}})
+	segments = append(segments, textSegment{text: " " + importPath})
+	return segments
+}
+
+func (f *textTUIFormatter) tuiChangeAPIToolCall(e agent.Event, width int) string {
+	importPath, instructions, ok := extractChangeAPI(e.ToolCall)
+	if !ok {
+		return f.tuiGenericToolCall(e, width)
+	}
+	segments := f.changeAPIHeaderSegments("Changing API", importPath)
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, colorAccent, segments...))
+	instructions = strings.TrimSpace(instructions)
+	if instructions != "" {
+		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
+			text:          instructions,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: true,
+		}})
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliChangeAPIToolCall(e agent.Event) string {
+	importPath, instructions, ok := extractChangeAPI(e.ToolCall)
+	if !ok {
+		return f.cliGenericToolCall(e)
+	}
+	segments := f.changeAPIHeaderSegments("Changing API", importPath)
+	lines := []string{f.cliBulletLine(colorAccent, segments...)}
+	instructions = strings.TrimSpace(instructions)
+	if instructions != "" {
+		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
+			text:          instructions,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: true,
+		}})...)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (f *textTUIFormatter) tuiChangeAPIToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+	importPath, _, ok := extractChangeAPI(e.ToolCall)
+	if !ok {
+		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := f.changeAPIHeaderSegments("Changed API", importPath)
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
+	if !success && len(outputLines) > 0 {
+		f.appendTUIToolOutput(&builder, width, outputLines)
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliChangeAPIToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+	importPath, _, ok := extractChangeAPI(e.ToolCall)
+	if !ok {
+		return f.cliGenericToolComplete(e, success, "", outputLines)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := f.changeAPIHeaderSegments("Changed API", importPath)
 	lines := []string{f.cliBulletLine(bullet, segments...)}
 	if !success {
 		if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
