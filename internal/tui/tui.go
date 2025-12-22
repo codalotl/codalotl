@@ -1070,7 +1070,7 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	}
 
 	if ev.Type == agent.EventTypeToolComplete {
-		if id := eventToolCallID(ev); id != "" && m.replaceToolEvent(id, ev) {
+		if id := eventToolCallID(ev); id != "" && shouldReplaceToolCallWithResult(ev) && m.replaceToolEvent(id, ev) {
 			m.refreshViewport(true)
 			return
 		}
@@ -1122,6 +1122,26 @@ func eventToolCallID(ev agent.Event) string {
 		return ev.ToolResult.CallID
 	}
 	return ""
+}
+
+func toolName(ev agent.Event) string {
+	if ev.ToolResult != nil && ev.ToolResult.Name != "" {
+		return ev.ToolResult.Name
+	}
+	if ev.ToolCall != nil && ev.ToolCall.Name != "" {
+		return ev.ToolCall.Name
+	}
+	return ev.Tool
+}
+
+func shouldReplaceToolCallWithResult(ev agent.Event) bool {
+	switch toolName(ev) {
+	case "change_api", "update_usage", "clarify_public_api":
+		// SubAgent tools: we want to show the call *and* the result as separate messages.
+		return false
+	default:
+		return true
+	}
 }
 
 // refreshViewport calculates the contents of the viewport, calls SetContent on it, and optionally scrolls to the bottom.

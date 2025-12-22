@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -310,4 +311,43 @@ func TestCtrlCQuitsWhenIdle(t *testing.T) {
 	require.True(t, requestCancelCalled)
 	require.Nil(t, m.requestCancel)
 	require.True(t, auth.closed)
+}
+
+func TestToolResultReplacesCallByDefault(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+
+	callID := "call-1"
+	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "read_file"}
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "read_file", ToolCall: call})
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "read_file", ToolCall: call, ToolResult: result})
+
+	// Default behavior: the tool call entry is replaced by the result entry.
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[0].event.Type)
+	require.NotNil(t, m.messages[0].event.ToolResult)
+	require.Equal(t, callID, m.messages[0].event.ToolResult.CallID)
+}
+
+func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+
+	callID := "call-2"
+	call := &llmstream.ToolCall{CallID: callID, Name: "change_api"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "change_api"}
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "change_api", ToolCall: call})
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "change_api", ToolCall: call, ToolResult: result})
+
+	// Exception behavior: for SubAgent tools, keep the call and append the result.
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 }
