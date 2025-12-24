@@ -23,6 +23,9 @@ const (
 	maxInputLines = 10
 
 	historyIndexNone = -1
+
+	// mouseWheelScrollLines is the number of lines to scroll per wheel "click".
+	mouseWheelScrollLines = 3
 )
 
 type messageKind int
@@ -104,9 +107,10 @@ func RunWithConfig(cfg Config) error {
 	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession)
 
 	return qtui.RunTUI(model, qtui.Options{
-		Input:     os.Stdin,
-		Output:    os.Stdout,
-		Framerate: 60,
+		Input:       os.Stdin,
+		Output:      os.Stdout,
+		Framerate:   60,
+		EnableMouse: true, // required for wheel scrolling / MouseEvent delivery
 	})
 }
 
@@ -241,6 +245,8 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 		if !skipTextarea && !sendMsgToViewport && m.textarea != nil {
 			m.textarea.Update(t, ev)
 		}
+	case qtui.MouseEvent:
+		m.handleMouseEvent(ev)
 	case qtui.ResizeEvent:
 		m.handleWindowSize(ev)
 	case qtui.SigTermEvent:
@@ -356,6 +362,22 @@ func (m *model) handleWindowSize(msg qtui.ResizeEvent) {
 	m.refreshPermissionView()
 	m.refreshViewport(true)
 	m.ready = true
+}
+
+func (m *model) handleMouseEvent(ev qtui.MouseEvent) {
+	if m.viewport == nil {
+		return
+	}
+	if !ev.IsWheel() {
+		return
+	}
+
+	switch ev.Button {
+	case qtui.MouseButtonWheelUp:
+		m.viewport.ScrollUp(mouseWheelScrollLines)
+	case qtui.MouseButtonWheelDown:
+		m.viewport.ScrollDown(mouseWheelScrollLines)
+	}
 }
 
 // updateSizes calculates all sizes (dimensions) on m based on m.windowHeight and m.windowWidth.
@@ -894,7 +916,7 @@ func (m *model) startAgentRun(value string) {
 	m.workingIndicatorAnimationPos = 0
 	m.startWorkingIndicatorTicker()
 	m.updatePlaceholder()
-	m.refreshViewport(true)
+	m.refreshViewport(m.shouldAutoScrollOnUpdate())
 	m.forwardAgentEvents(runID, events)
 }
 
@@ -918,7 +940,7 @@ func (m *model) startFakeAgentRun() {
 	m.workingIndicatorAnimationPos = 0
 	m.startWorkingIndicatorTicker()
 	m.updatePlaceholder()
-	m.refreshViewport(true)
+	m.refreshViewport(m.shouldAutoScrollOnUpdate())
 	m.forwardAgentEvents(runID, ch)
 
 	go func() {
@@ -966,7 +988,7 @@ func (m *model) finishAgentRun() {
 	m.runStartedAt = time.Time{}
 	m.workingIndicatorAnimationPos = 0
 	m.updatePlaceholder()
-	m.refreshViewport(true)
+	m.refreshViewport(m.shouldAutoScrollOnUpdate())
 }
 
 func (m *model) startWorkingIndicatorTicker() {
@@ -1061,9 +1083,11 @@ func (m *model) appendSystemMessage(value string) {
 }
 
 func (m *model) handleAgentEvent(ev agent.Event) {
+	autoScroll := m.shouldAutoScrollOnUpdate()
+
 	switch ev.Type {
 	case agent.EventTypeAssistantTurnComplete:
-		m.refreshViewport(true)
+		m.refreshViewport(autoScroll)
 		return
 	case agent.EventTypeDoneSuccess:
 		return
@@ -1071,13 +1095,22 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 
 	if ev.Type == agent.EventTypeToolComplete {
 		if id := eventToolCallID(ev); id != "" && shouldReplaceToolCallWithResult(ev) && m.replaceToolEvent(id, ev) {
-			m.refreshViewport(true)
+			m.refreshViewport(autoScroll)
 			return
 		}
 	}
 
 	m.appendAgentEvent(ev)
-	m.refreshViewport(true)
+	m.refreshViewport(autoScroll)
+}
+
+func (m *model) shouldAutoScrollOnUpdate() bool {
+	// Only auto-scroll if the user was already at the bottom. This makes manual
+	// scrolling (mouse wheel / page up) usable during streaming output.
+	if m == nil || m.viewport == nil {
+		return true
+	}
+	return m.viewport.AtBottom()
 }
 
 // withForegroundColor wraps str with ANSI codes for foreground styling. If !accent, uses the primary foreground color. Otherwise, the background color.

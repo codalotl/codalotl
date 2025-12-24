@@ -143,6 +143,11 @@ All foreground colors in a palette must be readable on all background colors.
 
 Caveat for text animation: some text will be animated (example: Working Indicator). In such cases, colors may be computed based on the configured palette.
 
+## Mouse
+
+Capture mouse events. Handle as follows:
+- Scroll wheel always scrolls Messages Area.
+
 ## Info Panel
 
 There's an info panel to the right of the Messages Area, shown if there's sufficient width.
