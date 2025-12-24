@@ -154,7 +154,9 @@ type SigIntEvent struct {
 }
 ```
 
-Mouse events will be implemented at a later date.
+Mouse events are supported when enabled via `Options.EnableMouse`. When enabled,
+mouse input is delivered to `Update` as `MouseEvent` values (for example, wheel
+events can be used for scrolling).
 
 
 ## Public Interface
@@ -198,7 +200,9 @@ type Options struct {
     // If Framerate is between 60-120 inclusive, the terminal will be refreshed at this framerate (otherwise, it uses 60 FPS).
     Framerate int
 
-    // In the future may include things like EnableMouseSupport.
+    // EnableMouse enables mouse tracking and delivery of MouseEvent messages.
+    // Disabled by default.
+    EnableMouse bool
 }
 
 // CancelFunc cancels signal events (ex: SigTermEvent) and periodic send. It can be called idempotently and is always safe to call, even after the TUI has finished running.

@@ -453,8 +453,10 @@ func (p *inputProcessor) handleCSI(buf []byte) (handled bool, consumed int, need
 		if len(buf) < x10Len {
 			return false, 0, true
 		}
-		if ev, ok := parseX10MouseEvent(buf[:x10Len]); ok {
-			p.emitMouse(ev)
+		if p.t != nil && p.t.opts.EnableMouse {
+			if ev, ok := parseX10MouseEvent(buf[:x10Len]); ok {
+				p.emitMouse(ev)
+			}
 		}
 		return true, x10Len, false
 	}
@@ -465,18 +467,13 @@ func (p *inputProcessor) handleCSI(buf []byte) (handled bool, consumed int, need
 		if needMore {
 			return false, 0, true
 		}
-		if ok {
-			// parseSGRMouseEvent only returns ok when it saw a terminator.
-			for i := 3; i < len(buf); i++ {
-				if buf[i] == 'M' || buf[i] == 'm' {
-					p.emitMouse(ev)
-					return true, i + 1, false
-				}
-			}
-		}
-		// Terminator found but parse failed; consume the CSI sequence if possible.
+		// parseSGRMouseEvent only returns ok when it saw a terminator. Either way,
+		// once a terminator is seen, we should consume the sequence.
 		for i := 3; i < len(buf); i++ {
 			if buf[i] == 'M' || buf[i] == 'm' {
+				if ok && p.t != nil && p.t.opts.EnableMouse {
+					p.emitMouse(ev)
+				}
 				return true, i + 1, false
 			}
 		}

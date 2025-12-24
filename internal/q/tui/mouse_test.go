@@ -43,6 +43,33 @@ func (m *mouseCaptureModel) Events() []MouseEvent {
 	return out
 }
 
+type mouseIgnoreModel struct {
+	mu       sync.Mutex
+	sawMouse bool
+}
+
+func (m *mouseIgnoreModel) Init(t *TUI) {
+	t.SendOnceAfter("quit", 25*time.Millisecond)
+}
+
+func (m *mouseIgnoreModel) Update(t *TUI, msg Message) {
+	switch v := msg.(type) {
+	case MouseEvent:
+		m.mu.Lock()
+		m.sawMouse = true
+		m.mu.Unlock()
+		t.Quit()
+	case string:
+		if v == "quit" {
+			t.Quit()
+		}
+	case SigTermEvent:
+		// allow clean shutdown
+	}
+}
+
+func (m *mouseIgnoreModel) View() string { return "" }
+
 func TestParseX10MouseEvent(t *testing.T) {
 	encode := func(b byte, x, y int) []byte {
 		return []byte{
@@ -185,6 +212,7 @@ func TestInputDeliversMouseEvents(t *testing.T) {
 	err := runTUITest(t, model, func(opts *Options) {
 		opts.Input = reader
 		opts.Output = io.Discard
+		opts.EnableMouse = true
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -204,4 +232,34 @@ func TestInputDeliversMouseEvents(t *testing.T) {
 
 	// Ensure we didn't hang waiting for the input reader to stop.
 	time.Sleep(1 * time.Millisecond)
+}
+
+func TestInputIgnoresMouseEventsWhenDisabled(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer reader.Close()
+
+	model := &mouseIgnoreModel{}
+
+	go func() {
+		defer writer.Close()
+		// SGR: left press at (3,4).
+		_, _ = writer.Write([]byte("\x1b[<0;4;5M"))
+		// X10: wheel up at (1,2).
+		_, _ = writer.Write([]byte{0x1b, '[', 'M', byte(32) + 64, byte(1 + 32 + 1), byte(2 + 32 + 1)})
+	}()
+
+	err := runTUITest(t, model, func(opts *Options) {
+		opts.Input = reader
+		opts.Output = io.Discard
+		// EnableMouse left false (default).
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	if model.sawMouse {
+		t.Fatal("unexpected MouseEvent when mouse support is disabled")
+	}
 }
