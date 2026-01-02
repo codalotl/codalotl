@@ -10,15 +10,19 @@ import (
 )
 
 const (
-	cursorHome            = "\x1b[H"
-	clearLine             = "\x1b[2K"
-	altScreenEnter        = "\x1b[?1049h" + cursorHome
-	altScreenExit         = "\x1b[?1049l"
-	hideCursor            = "\x1b[?25l"
-	showCursor            = "\x1b[?25h"
-	clearScreen           = "\x1b[2J" + cursorHome
-	enableBracketedPaste  = "\x1b[?2004h"
-	disableBracketedPaste = "\x1b[?2004l"
+	cursorHome             = "\x1b[H"
+	clearLine              = "\x1b[2K"
+	altScreenEnter         = "\x1b[?1049h" + cursorHome
+	altScreenExit          = "\x1b[?1049l"
+	hideCursor             = "\x1b[?25l"
+	showCursor             = "\x1b[?25h"
+	clearScreen            = "\x1b[2J" + cursorHome
+	enableBracketedPaste   = "\x1b[?2004h"
+	disableBracketedPaste  = "\x1b[?2004l"
+	enableMouseCellMotion  = "\x1b[?1002h"
+	disableMouseCellMotion = "\x1b[?1002l"
+	enableMouseSGRMode     = "\x1b[?1006h"
+	disableMouseSGRMode    = "\x1b[?1006l"
 )
 
 var errNoFileDescriptor = errors.New("tui: raw mode requires *os.File input")
@@ -28,6 +32,12 @@ type noopTerminal struct{}
 func (n *noopTerminal) Enter() error { return nil }
 
 func (n *noopTerminal) Exit() error { return nil }
+
+// mouseModeSetter is an internal hook used by the default terminal controller
+// to optionally enable mouse tracking based on Options.
+type mouseModeSetter interface {
+	setMouseEnabled(enabled bool)
+}
 
 func defaultTerminalFactory(input io.Reader, output io.Writer) (terminalController, error) {
 	file, ok := input.(*os.File)
@@ -41,13 +51,16 @@ func defaultTerminalFactory(input io.Reader, output io.Writer) (terminalControll
 }
 
 type realTerminal struct {
-	in        *os.File
-	out       io.Writer
-	state     *term.State
-	vtRestore func() error
+	in          *os.File
+	out         io.Writer
+	state       *term.State
+	vtRestore   func() error
+	mouseActive bool
 
 	mu      sync.Mutex
 	entered bool
+
+	enableMouse bool
 }
 
 func newRealTerminal(in *os.File, out io.Writer) *realTerminal {
@@ -55,6 +68,12 @@ func newRealTerminal(in *os.File, out io.Writer) *realTerminal {
 		in:  in,
 		out: out,
 	}
+}
+
+func (rt *realTerminal) setMouseEnabled(enabled bool) {
+	rt.mu.Lock()
+	rt.enableMouse = enabled
+	rt.mu.Unlock()
 }
 
 func (rt *realTerminal) Enter() error {
@@ -77,7 +96,11 @@ func (rt *realTerminal) Enter() error {
 		return err
 	}
 
-	if err := rt.writeString(altScreenEnter + clearScreen + hideCursor + enableBracketedPaste); err != nil {
+	seq := altScreenEnter + clearScreen + hideCursor + enableBracketedPaste
+	if rt.enableMouse {
+		seq += enableMouseCellMotion + enableMouseSGRMode
+	}
+	if err := rt.writeString(seq); err != nil {
 		_ = term.Restore(fd, state)
 		if restoreVT != nil {
 			_ = restoreVT()
@@ -87,6 +110,7 @@ func (rt *realTerminal) Enter() error {
 
 	rt.state = state
 	rt.vtRestore = restoreVT
+	rt.mouseActive = rt.enableMouse
 	rt.entered = true
 	return nil
 }
@@ -100,8 +124,10 @@ func (rt *realTerminal) Exit() error {
 	fd := int(rt.in.Fd())
 	state := rt.state
 	restoreVT := rt.vtRestore
+	mouseActive := rt.mouseActive
 	rt.state = nil
 	rt.vtRestore = nil
+	rt.mouseActive = false
 	rt.entered = false
 	rt.mu.Unlock()
 
@@ -112,7 +138,12 @@ func (rt *realTerminal) Exit() error {
 			firstErr = err
 		}
 	}
-	if err := rt.writeString(disableBracketedPaste + showCursor + altScreenExit); err != nil && firstErr == nil {
+
+	seq := disableBracketedPaste + showCursor + altScreenExit
+	if mouseActive {
+		seq = disableMouseSGRMode + disableMouseCellMotion + seq
+	}
+	if err := rt.writeString(seq); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if restoreVT != nil {

@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/codalotl/codalotl/internal/q/termformat"
 	"golang.org/x/term"
 )
 
@@ -204,6 +205,9 @@ type terminalFactory func(input io.Reader, output io.Writer) (terminalController
 type Options struct {
 	Input  io.Reader
 	Output io.Writer
+	// EnableMouse enables mouse tracking and delivery of MouseEvent messages.
+	// Disabled by default.
+	EnableMouse bool
 	// If Framerate is between 60 and 120 inclusive, rendering is throttled to that
 	// refresh rate. Otherwise, a default of 60 FPS is used.
 	Framerate int
@@ -321,9 +325,21 @@ type TUI struct {
 func newTUI(m Model, opts Options) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	factory := opts.terminalFactory
-	if factory == nil {
-		factory = defaultTerminalFactory
+	baseFactory := opts.terminalFactory
+	if baseFactory == nil {
+		baseFactory = defaultTerminalFactory
+	}
+	factory := func(input io.Reader, output io.Writer) (terminalController, error) {
+		term, err := baseFactory(input, output)
+		if err != nil {
+			return term, err
+		}
+		if term != nil {
+			if setter, ok := term.(mouseModeSetter); ok {
+				setter.setMouseEnabled(opts.EnableMouse)
+			}
+		}
+		return term, nil
 	}
 
 	framerate := opts.Framerate
@@ -633,7 +649,6 @@ func (t *TUI) buildRenderOutputLocked(lines []string) (string, bool) {
 				continue
 			}
 			appendMoveToLine(&b, i+1)
-			b.WriteString(clearLine)
 			b.WriteString(newLine)
 			continue
 		}
@@ -648,10 +663,12 @@ func (t *TUI) buildRenderOutputLocked(lines []string) (string, bool) {
 		}
 
 		appendMoveToLine(&b, i+1)
-		b.WriteString(clearLine)
-		if newLine != "" {
-			b.WriteString(newLine)
+		// If the terminal cell width didn't change, we can overwrite in-place
+		// without clearing the whole line first.
+		if newLine == "" || termformat.TextWidthWithANSICodes(newLine) != termformat.TextWidthWithANSICodes(prevLine) {
+			b.WriteString(clearLine)
 		}
+		b.WriteString(newLine)
 	}
 
 	if b.Len() == 0 {
