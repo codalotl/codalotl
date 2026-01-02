@@ -102,9 +102,6 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 
 	envMsg := buildEnvironmentInfo(sandboxDir)
-	if cfg.packageMode() {
-		envMsg = buildPackageEnvironmentInfo(sandboxDir, cfg.packagePath, pkgAbsPath)
-	}
 	if err := agentInstance.AddUserTurn(envMsg); err != nil {
 		sandboxAuthorizer.Close()
 		return nil, fmt.Errorf("add environment info: %w", err)
@@ -267,17 +264,12 @@ func codeUnitName(pkgPath string) string {
 func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string) string {
 	baseInfo := buildEnvironmentInfo(sandboxDir)
 
-	pkg, err := loadGoPackage(pkgAbsPath)
+	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath)
 	if err != nil {
-		return baseInfo + "\n\n" + packagePathSection(pkgRelPath, pkgAbsPath, err)
+		return baseInfo + "\n\n" + initialContext
 	}
 
-	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg)
-	if err != nil {
-		return baseInfo + "\n\n" + packagePathSection(pkgRelPath, pkgAbsPath, err)
-	}
-
-	return baseInfo + "\n" + pkgModeInfo
+	return baseInfo + "\n" + initialContext
 }
 
 func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
@@ -303,6 +295,20 @@ func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
 	}
 
 	return pkg, nil
+}
+
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string) (string, error) {
+	pkg, err := loadGoPackage(pkgAbsPath)
+	if err != nil {
+		return packagePathSection(pkgRelPath, pkgAbsPath, err), err
+	}
+
+	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg)
+	if err != nil {
+		return packagePathSection(pkgRelPath, pkgAbsPath, err), err
+	}
+
+	return pkgModeInfo, nil
 }
 
 func packagePathSection(pkgRelPath string, pkgAbsPath string, err error) string {

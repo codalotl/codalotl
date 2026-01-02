@@ -36,13 +36,35 @@ const (
 	messageKindUser
 	messageKindQueuedUser
 	messageKindAgent
+	messageKindContextStatus
 )
 
+type packageContextStatus int
+
+const (
+	packageContextStatusPending packageContextStatus = iota
+	packageContextStatusSuccess
+	packageContextStatusFailure
+)
+
+type contextStatusLine struct {
+	text   string
+	status packageContextStatus
+}
+
+type packageContextState struct {
+	runID        int
+	messageIndex int
+	status       packageContextStatus
+	packagePath  string
+}
+
 type chatMessage struct {
-	kind        messageKind
-	userMessage string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
-	event       agent.Event
-	toolCallID  string
+	kind          messageKind
+	userMessage   string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
+	event         agent.Event
+	toolCallID    string
+	contextStatus *contextStatusLine
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it.
 	// It must be the correct block width (all lines padded with spaces to equal width of the viewport.
@@ -76,6 +98,12 @@ type workingIndicatorTickMsg struct{}
 type userRequestMsg struct {
 	request  authdomain.UserRequest
 	sourceID int
+}
+
+type packageContextResultMsg struct {
+	runID  int
+	status packageContextStatus
+	text   string
 }
 
 // Run launches the TUI in an alternate screen buffer.
@@ -181,6 +209,9 @@ type model struct {
 	requestCancel context.CancelFunc
 
 	palette colorPalette
+
+	packageContext       *packageContextState
+	nextPackageContextID int
 }
 
 func newModel(palette colorPalette, formatter agentformatter.Formatter, initialSession *session, initialCfg sessionConfig, factory func(sessionConfig) (*session, error)) *model {
@@ -287,6 +318,8 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 		if ev.sourceID == m.requestSource {
 			m.enqueuePermissionRequest(ev.request)
 		}
+	case packageContextResultMsg:
+		m.handlePackageContextResult(ev)
 	}
 
 	m.persistEditedHistoryDraft()
@@ -868,7 +901,7 @@ func (m *model) persistEditedHistoryDraft() {
 }
 
 func (m *model) sendOrQueueMessage(value string) {
-	if m.isAgentRunning() {
+	if m.isAgentRunning() || m.packageContextPending() {
 		m.messageQueue = append(m.messageQueue, value)
 		m.appendUserMessage(value, true)
 		m.refreshViewport(true)
@@ -886,7 +919,7 @@ func (m *model) sendOrQueueMessage(value string) {
 }
 
 func (m *model) startAgentRunIfPossible(value string) {
-	if m.session == nil || m.isAgentRunning() {
+	if m.session == nil || m.isAgentRunning() || m.packageContextPending() {
 		return
 	}
 	m.startAgentRun(value)
@@ -1007,7 +1040,7 @@ func (m *model) stopWorkingIndicatorTicker() {
 }
 
 func (m *model) startNextQueuedMessage() {
-	if len(m.messageQueue) == 0 || m.session == nil {
+	if len(m.messageQueue) == 0 || m.session == nil || m.packageContextPending() {
 		return
 	}
 
@@ -1082,6 +1115,30 @@ func (m *model) appendSystemMessage(value string) {
 	})
 }
 
+func (m *model) appendContextStatusMessage(text string, status packageContextStatus) int {
+	msg := chatMessage{
+		kind:          messageKindContextStatus,
+		userMessage:   text,
+		contextStatus: &contextStatusLine{text: text, status: status},
+	}
+	m.messages = append(m.messages, msg)
+	return len(m.messages) - 1
+}
+
+func (m *model) updateContextStatusMessage(index int, status packageContextStatus) {
+	if index < 0 || index >= len(m.messages) {
+		return
+	}
+	msg := &m.messages[index]
+	if msg.contextStatus == nil {
+		msg.contextStatus = &contextStatusLine{text: msg.userMessage, status: status}
+	} else {
+		msg.contextStatus.status = status
+	}
+	msg.formatted = ""
+	msg.formattedWidth = 0
+}
+
 func (m *model) handleAgentEvent(ev agent.Event) {
 	autoScroll := m.shouldAutoScrollOnUpdate()
 
@@ -1102,6 +1159,27 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 
 	m.appendAgentEvent(ev)
 	m.refreshViewport(autoScroll)
+}
+
+func (m *model) handlePackageContextResult(msg packageContextResultMsg) {
+	if m.packageContext == nil || m.packageContext.runID != msg.runID {
+		return
+	}
+
+	m.packageContext.status = msg.status
+	m.updateContextStatusMessage(m.packageContext.messageIndex, msg.status)
+
+	if msg.text != "" && m.session != nil && m.session.agent != nil {
+		if err := m.session.agent.AddUserTurn(msg.text); err != nil {
+			m.appendSystemMessage(fmt.Sprintf("Failed to apply package context: %v", err))
+			m.updateContextStatusMessage(m.packageContext.messageIndex, packageContextStatusFailure)
+		}
+	}
+
+	if !m.isAgentRunning() {
+		m.startNextQueuedMessage()
+	}
+	m.refreshViewport(true)
 }
 
 func (m *model) shouldAutoScrollOnUpdate() bool {
@@ -1227,6 +1305,9 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 	case messageKindSystem:
 		content = m.withForegroundColor(termformat.Sanitize(msg.userMessage, 4), true)
 		needBgAndWidth = true
+	case messageKindContextStatus:
+		content = m.renderContextStatusLine(msg.contextStatus)
+		needBgAndWidth = true
 	case messageKindUser:
 		content = m.renderUserMessageBlock(msg.userMessage, false, width)
 	case messageKindQueuedUser:
@@ -1304,6 +1385,30 @@ func (m *model) renderWorkingIndicator(width int) string {
 	}.Wrap(termformat.Sanitize(text, 4))
 	background := m.palette.primaryBackground
 	return m.setMessageWidthBG(styled, width, background)
+}
+
+func (m *model) renderContextStatusLine(line *contextStatusLine) string {
+	if line == nil {
+		return ""
+	}
+	text := strings.TrimSpace(line.text)
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = termformat.Sanitize(text, 4)
+
+	bulletColor := m.palette.accentForeground
+	switch line.status {
+	case packageContextStatusSuccess:
+		bulletColor = m.palette.greenForeground
+	case packageContextStatusFailure:
+		bulletColor = m.palette.redForeground
+	}
+
+	bullet := termformat.Style{Foreground: bulletColor}.Wrap("•")
+	rest := termformat.Style{Foreground: m.palette.accentForeground}.Wrap(text)
+	return bullet + " " + rest
 }
 
 func (m *model) workingIndicatorText() string {
@@ -1553,6 +1658,10 @@ func (m *model) isAgentRunning() bool {
 	return m.currentRun != nil
 }
 
+func (m *model) packageContextPending() bool {
+	return m.packageContext != nil && m.packageContext.status == packageContextStatusPending
+}
+
 func (m *model) updatePlaceholder() {
 	if m.textarea == nil {
 		return
@@ -1652,6 +1761,49 @@ func (m *model) resetSession() {
 	m.resetSessionWithConfig(m.sessionConfig)
 }
 
+func (m *model) startPackageContextGather() {
+	if m == nil || m.session == nil || !m.session.config.packageMode() {
+		m.packageContext = nil
+		return
+	}
+
+	pkgPath := strings.TrimSpace(m.session.packagePath)
+	if pkgPath == "" {
+		m.packageContext = nil
+		return
+	}
+
+	m.nextPackageContextID++
+	runID := m.nextPackageContextID
+	text := fmt.Sprintf("Gathering context for %s", pkgPath)
+	index := m.appendContextStatusMessage(text, packageContextStatusPending)
+	m.packageContext = &packageContextState{
+		runID:        runID,
+		messageIndex: index,
+		status:       packageContextStatusPending,
+		packagePath:  pkgPath,
+	}
+
+	if m.tui == nil {
+		return
+	}
+
+	sandboxDir := m.session.sandboxDir
+	pkgAbsPath := m.session.packageAbsPath
+	go func() {
+		contextText, err := buildPackageInitialContext(sandboxDir, pkgPath, pkgAbsPath)
+		status := packageContextStatusSuccess
+		if err != nil {
+			status = packageContextStatusFailure
+		}
+		m.tui.Send(packageContextResultMsg{
+			runID:  runID,
+			status: status,
+			text:   contextText,
+		})
+	}()
+}
+
 func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	if m.sessionFactory == nil {
 		m.appendSystemMessage("Failed to start new session: no session factory configured.")
@@ -1689,6 +1841,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.permissionQueue = nil
 	m.activePermission = nil
 	m.pendingSessionConfig = nil
+	m.packageContext = nil
 	m.exitEditingState()
 	m.editedHistoryDrafts = nil
 	if m.textarea != nil {
@@ -1702,6 +1855,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	}
 	m.pendingResetMessage = ""
 	m.appendSystemMessage(fmt.Sprintf("Session %s ready.", nextSession.ID()))
+	m.startPackageContextGather()
 	m.refreshViewport(true)
 	if m.requests != nil {
 		m.startUserRequestListener(m.requestSource, m.requests)

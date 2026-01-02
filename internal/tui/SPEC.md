@@ -117,6 +117,8 @@ While in Package Mode with a given package:
 Other notes:
 - /new while in Package Mode retains the active package.
 - Package Mode does not require a real, working Go package. It only requires a path ("." is possible). This is because the user may want to use this TUI to make a *new* package from scratch.
+- Package mode uses initialcontext for the agent's initial context. This can take time to run (it runs tests). Switching to package mode starts getting this context immediately, and does not block the UI. If the user sends a message before this completes, the intialcontext is allowed to complete and then used to as context for the User's message.
+    - Uses the message `• Gathering context for path/to/package`, where the bullet indicates status (Accent=in progress -> Red vs Green).
 
 ## Color Palette
 

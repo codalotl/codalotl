@@ -234,9 +234,12 @@ func TestPackageCommandStartsSession(t *testing.T) {
 	require.NotNil(t, m.session)
 	assert.Equal(t, ".", m.sessionConfig.packagePath)
 
-	require.Len(t, m.messages, 2)
+	require.Len(t, m.messages, 3)
 	assert.Contains(t, m.messages[0].userMessage, "Switching to package mode")
 	assert.Contains(t, m.messages[1].userMessage, "Session ")
+	if assert.NotNil(t, m.messages[2].contextStatus) {
+		assert.Contains(t, m.messages[2].contextStatus.text, "Gathering context for .")
+	}
 	assert.Equal(t, "Package: .", m.packageSection())
 }
 
