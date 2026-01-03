@@ -97,11 +97,20 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 ## Slash Commands
 
 - /quit, /exit, /logout - terminates process.
-- /new - Makes a new session. The Messages Area is also cleared (Cycling Mode will still remember previous message history).
+- /new - Makes a new session.
 - /model - Configures model.
 - /package path/to/pkg - enter Package Mode for a given package.
 - /package - exit Package Mode. Prints a message indicating how Package Mode works.
-- /generic - exists Package Mode. Enters generic mode.
+- /generic - exits Package Mode. Enters generic mode.
+
+## New Sessions
+
+When a new session is initiated (application startup; /new; /package; etc), the Message Area is cleared, and replaced with "new session text".
+- There are two types of new session text: generic, and Package Mode.
+- Both new session texts have ASCII art (ex: codalotl icon + codalotl word art).
+- The new session text will describe the currently active mode. For example: "Package mode is a Go-specific mode that..."
+- Non-package mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
+- Other than the mode, the new session text does not mention any configuration (ex: model, session ID, current package).
 
 ## Package Mode
 
