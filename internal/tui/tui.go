@@ -198,7 +198,6 @@ type model struct {
 	// happens only after `agentStreamClosedMsg` fires; that way we don't tear
 	// down session state while events are still draining from the agent.
 	pendingSessionConfig *sessionConfig
-	pendingResetMessage  string
 
 	permissionQueue    []*permissionPrompt
 	activePermission   *permissionPrompt
@@ -299,9 +298,6 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 	case agentStreamClosedMsg:
 		if m.currentRun != nil && ev.runID == m.currentRun.id {
 			pendingCfg := m.pendingSessionConfig
-			if pendingCfg == nil {
-				m.pendingResetMessage = ""
-			}
 			m.pendingSessionConfig = nil
 			m.finishAgentRun()
 			if pendingCfg != nil {
@@ -650,8 +646,7 @@ func (m *model) handlePackageCommand(arg string) {
 		return
 	}
 
-	msg := fmt.Sprintf("Switching to package mode at %q (relative to sandbox).", cfg.packagePath)
-	m.requestSessionReset(cfg, msg)
+	m.requestSessionReset(cfg, "Switching to package mode...")
 }
 
 func (m *model) requestSessionReset(cfg sessionConfig, message string) {
@@ -662,7 +657,6 @@ func (m *model) requestSessionReset(cfg sessionConfig, message string) {
 		}
 		pending := cfg
 		m.pendingSessionConfig = &pending
-		m.pendingResetMessage = message
 		m.messageQueue = nil
 		m.rejectOutstandingPermissions()
 		if message != "" {
@@ -676,7 +670,6 @@ func (m *model) requestSessionReset(cfg sessionConfig, message string) {
 		return
 	}
 
-	m.pendingResetMessage = message
 	m.resetSessionWithConfig(cfg)
 }
 
@@ -1301,7 +1294,7 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 
 	switch msg.kind {
 	case messageKindWelcome:
-		content = bannerBlock(width, m.palette, m.bannerModelName())
+		content = newSessionBlock(width, m.palette, m.sessionConfig)
 	case messageKindSystem:
 		content = m.withForegroundColor(termformat.Sanitize(msg.userMessage, 4), true)
 		needBgAndWidth = true
@@ -1328,16 +1321,6 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 		msg.formattedWidth = width
 	}
 
-}
-
-func (m *model) bannerModelName() string {
-	if m == nil {
-		return string(defaultModelID)
-	}
-	if m.session == nil {
-		return string(defaultModelID)
-	}
-	return m.session.ModelName()
 }
 
 // applyWorkingIndicator accepts the rendered list of messages in the viewport, returns a new list with a working indicator if the agent is running.
@@ -1808,7 +1791,6 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	if m.sessionFactory == nil {
 		m.appendSystemMessage("Failed to start new session: no session factory configured.")
 		m.refreshViewport(true)
-		m.pendingResetMessage = ""
 		return
 	}
 
@@ -1816,13 +1798,11 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	if err != nil {
 		m.appendSystemMessage(fmt.Sprintf("Failed to start new session: %v", err))
 		m.refreshViewport(true)
-		m.pendingResetMessage = ""
 		return
 	}
 	if nextSession == nil {
 		m.appendSystemMessage("Failed to start new session: factory returned nil session.")
 		m.refreshViewport(true)
-		m.pendingResetMessage = ""
 		return
 	}
 
@@ -1836,7 +1816,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.sessionConfig = nextSession.config
 	m.requests = nextSession.UserRequests()
 	m.requestSource++
-	m.messages = nil
+	m.messages = []chatMessage{{kind: messageKindWelcome}}
 	m.messageQueue = nil
 	m.permissionQueue = nil
 	m.activePermission = nil
@@ -1850,11 +1830,6 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.updateTextareaHeight()
 	m.refreshPermissionView()
 	m.updatePlaceholder()
-	if msg := strings.TrimSpace(m.pendingResetMessage); msg != "" {
-		m.appendSystemMessage(msg)
-	}
-	m.pendingResetMessage = ""
-	m.appendSystemMessage(fmt.Sprintf("Session %s ready.", nextSession.ID()))
 	m.startPackageContextGather()
 	m.refreshViewport(true)
 	if m.requests != nil {
