@@ -163,9 +163,11 @@ Capture mouse events. Handle as follows:
 
 There's an info panel to the right of the Messages Area, shown if there's sufficient width.
 
-### Tokens / Cost
+### Session / Model / Tokens / Cost
 
-The top of the panel shows the tokens and cost:
+The top of the panel shows the current session ID, model, tokens, and cost:
+- Session
+- Model
 - Context window (ex: "100% context left", "82% context left", etc)
 - Cost
 - Total input tokens (including cached). This token count rounded as necessary (ex: 313, 1.4k, 520k, 1.2M, etc).
@@ -175,6 +177,8 @@ The top of the panel shows the tokens and cost:
 Display format:
 
 ```
+Session: 123-abc
+Model: gpt-5.2-high
 Context: 32% left   |   Cost: $3.24
 Tokens: 123k (input: 42k, cached: 60k, output: 21k)
 ```

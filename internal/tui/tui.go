@@ -1555,6 +1555,17 @@ func (m *model) infoPanelContent() string {
 }
 
 func (m *model) tokensCostSection() string {
+	sessionID := "<none>"
+	modelName := string(defaultModelID)
+	if m != nil && m.session != nil {
+		if id := strings.TrimSpace(m.session.ID()); id != "" {
+			sessionID = id
+		}
+		if name := strings.TrimSpace(m.session.ModelName()); name != "" {
+			modelName = name
+		}
+	}
+
 	info := m.currentModelInfo()
 	var (
 		usage          llmstream.TokenUsage
@@ -1564,10 +1575,13 @@ func (m *model) tokensCostSection() string {
 		usage = agentInstance.TokenUsage()
 		contextPercent = agentInstance.ContextUsagePercent()
 	}
-	lines := tokensCostLines(info, usage, contextPercent)
-	if len(lines) == 0 {
-		return ""
-	}
+	lines := make([]string, 0, 4)
+	lines = append(lines,
+		termformat.Sanitize(fmt.Sprintf("Session: %s", sessionID), 4),
+		termformat.Sanitize(fmt.Sprintf("Model: %s", modelName), 4),
+	)
+	lines = append(lines, tokensCostLines(info, usage, contextPercent)...)
+
 	return strings.Join(lines, "\n")
 }
 
