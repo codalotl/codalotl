@@ -2,13 +2,23 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+func isolateUserConfig(t *testing.T) {
+	t.Helper()
+	// Prevent tests from reading developer machine config (ex: ~/.codalotl/config.json).
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+}
+
 func TestRun_Help(t *testing.T) {
+	isolateUserConfig(t)
+
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code, err := Run([]string{"codalotl", "-h"}, &RunOptions{Out: &out, Err: &errOut})
@@ -27,6 +37,8 @@ func TestRun_Help(t *testing.T) {
 }
 
 func TestRun_Exec_AcceptsModelFlag(t *testing.T) {
+	isolateUserConfig(t)
+
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code, err := Run([]string{"codalotl", "exec", "--model", "anything"}, &RunOptions{Out: &out, Err: &errOut})
@@ -42,6 +54,8 @@ func TestRun_Exec_AcceptsModelFlag(t *testing.T) {
 }
 
 func TestRun_Version_PrintsVersion(t *testing.T) {
+	isolateUserConfig(t)
+
 	orig := Version
 	Version = "9.9.9-test"
 	t.Cleanup(func() { Version = orig })
@@ -64,6 +78,8 @@ func TestRun_Version_PrintsVersion(t *testing.T) {
 }
 
 func TestRun_Version_ExtraArg_IsUsageError(t *testing.T) {
+	isolateUserConfig(t)
+
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code, err := Run([]string{"codalotl", "version", "nope"}, &RunOptions{Out: &out, Err: &errOut})
@@ -79,6 +95,8 @@ func TestRun_Version_ExtraArg_IsUsageError(t *testing.T) {
 }
 
 func TestRun_ContextPublic_MissingArg_IsUsageError(t *testing.T) {
+	isolateUserConfig(t)
+
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code, err := Run([]string{"codalotl", "context", "public"}, &RunOptions{Out: &out, Err: &errOut})
@@ -94,6 +112,8 @@ func TestRun_ContextPublic_MissingArg_IsUsageError(t *testing.T) {
 }
 
 func TestRun_ContextPublic_WritesDocs(t *testing.T) {
+	isolateUserConfig(t)
+
 	tmp := t.TempDir()
 
 	// Create a tiny module with one package.
@@ -131,6 +151,8 @@ func Foo() {}
 }
 
 func TestRun_ContextPackages_WritesList(t *testing.T) {
+	isolateUserConfig(t)
+
 	tmp := t.TempDir()
 
 	// Create a tiny module with two packages.
@@ -183,6 +205,8 @@ func TestRun_ContextPackages_WritesList(t *testing.T) {
 }
 
 func TestRun_ContextPackages_SearchFilters(t *testing.T) {
+	isolateUserConfig(t)
+
 	tmp := t.TempDir()
 
 	// Create a tiny module with two packages.
@@ -230,6 +254,8 @@ func TestRun_ContextPackages_SearchFilters(t *testing.T) {
 }
 
 func TestRun_ContextPackages_ExtraArg_IsUsageError(t *testing.T) {
+	isolateUserConfig(t)
+
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code, err := Run([]string{"codalotl", "context", "packages", "nope"}, &RunOptions{Out: &out, Err: &errOut})
@@ -241,5 +267,139 @@ func TestRun_ContextPackages_ExtraArg_IsUsageError(t *testing.T) {
 	}
 	if errOut.Len() == 0 {
 		t.Fatalf("expected stderr output for usage error")
+	}
+}
+
+func TestRun_Config_PrintsJSON(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755); err != nil {
+		t.Fatalf("mkdir .codalotl: %v", err)
+	}
+	cfg := `{
+  "providerkeys": { "openai": "sk-test" },
+  "maxwidth": 80
+}`
+	if err := os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(cfg), 0644); err != nil {
+		t.Fatalf("write config.json: %v", err)
+	}
+
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v (stderr=%q)", err, errOut.String())
+	}
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (stderr=%q)", code, errOut.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", errOut.String())
+	}
+
+	var got Config
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("expected JSON output, unmarshal error: %v\nstdout=%q", err, out.String())
+	}
+	if got.MaxWidth != 80 {
+		t.Fatalf("expected maxwidth=80, got %d", got.MaxWidth)
+	}
+	if got.ProviderKeys.OpenAI != "sk-test" {
+		t.Fatalf("expected providerkeys.openai to be set")
+	}
+}
+
+func TestRun_Config_Defaults(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v (stderr=%q)", err, errOut.String())
+	}
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (stderr=%q)", code, errOut.String())
+	}
+
+	var got Config
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("expected JSON output, unmarshal error: %v\nstdout=%q", err, out.String())
+	}
+	if got.MaxWidth != 120 {
+		t.Fatalf("expected default maxwidth=120, got %d", got.MaxWidth)
+	}
+}
+
+func TestRun_Config_InvalidProvider_IsExitCode1(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755); err != nil {
+		t.Fatalf("mkdir .codalotl: %v", err)
+	}
+	cfg := `{
+  "providerkeys": { "anthropic": "nope" }
+}`
+	if err := os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(cfg), 0644); err != nil {
+		t.Fatalf("write config.json: %v", err)
+	}
+
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	// `config` should fail because config validation runs for it.
+	{
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+		if err == nil {
+			t.Fatalf("expected non-nil error")
+		}
+		if code != 1 {
+			t.Fatalf("expected exit code 1, got %d (err=%v, stderr=%q)", code, err, errOut.String())
+		}
+		if !strings.Contains(strings.ToLower(errOut.String()), "openai") {
+			t.Fatalf("expected helpful error mentioning OpenAI, got stderr: %q", errOut.String())
+		}
+	}
+
+	// `version` should ignore config entirely.
+	{
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		code, err := Run([]string{"codalotl", "version"}, &RunOptions{Out: &out, Err: &errOut})
+		if err != nil {
+			t.Fatalf("expected nil error, got %v (stderr=%q)", err, errOut.String())
+		}
+		if code != 0 {
+			t.Fatalf("expected exit code 0, got %d (stderr=%q)", code, errOut.String())
+		}
 	}
 }

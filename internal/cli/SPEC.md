@@ -24,6 +24,10 @@ The naked `codalotl` launches the TUI (`internal/tui`).
 
 Prints the codalotl version to stdout.
 
+### codalotl config
+
+Prints the codalotl configuration to stdout.
+
 ### codalotl context public <path/to/pkg>
 
 Prints out the public API of the package (see the `internal/gocodecontext` package).
@@ -40,6 +44,46 @@ Notes:
 - `--search` filters packages by interpreting `<go_regexp>` as a Go regexp.
 - If `--deps` is set, packages from direct (non-`// indirect`) module dependencies are also included.
 - The output format is intentionally opaque and may change; callers should treat it as text intended to be copied into an LLM prompt rather than parsed.
+
+
+## Configuration
+
+This package is responsible for loading a configuation file and passing various configuration to other packages. The configuration is loaded with `internal/q/cascade`. The configuration is loaded and validated for all commands, except those that obviously don't need it, like `version` and `-h`. An invalid configuration prints out a helpful error message and returns with an non-zero exit code.
+
+The config file is loaded with this preference:
+- `.codalotl/config.json` (starting from the working directory, recursively checking the parent, until some reasonable stop condition).
+- `~/.codalotl/config.json` or `%LOCALAPPDATA%\.codalotl\config.json`.
+
+Config:
+
+```go
+// Note to self about how cascade currently maps to fields: it does NOT use json. It's just fieldname lowercase.
+type Config struct {
+	ProviderKeys          ProviderKeys       `json:"providerkeys"`
+	MaxWidth              int                `json:"maxwidth"` // Max width when reflowing documentation. Default to 120
+	MaxWidthProvidence    cascade.Providence `json:"-"`
+	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
+	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
+
+	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
+	PreferredProvider string `json:"preferredprovider"`
+
+	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().
+	PreferredModel string `json:"preferredmodel"`
+}
+
+// NOTE: separate struct so we can easily test zero value
+type ProviderKeys struct {
+	OpenAI      string `json:"openai"`
+	Anthropic   string `json:"anthropic"`
+	XAI         string `json:"xai"`
+	Gemini      string `json:"gemini"`
+}
+```
+
+Notes:
+- For now only OpenAI is allowed. If any other model/provider is configured, print out a helpeful error message and exit. But keep this OpenAI limit separate from the main validation, since it's temporary.
+
 
 ## Public API
 
