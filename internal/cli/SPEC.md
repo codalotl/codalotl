@@ -20,6 +20,11 @@ Prints standard usage.
 
 The naked `codalotl` launches the TUI (`internal/tui`).
 
+If the TUI requests that a newly selected model be persisted (via `tui.Config.PersistModelID`), the CLI writes the model to `preferredmodel` in a JSON config file:
+- If some config file explicitly set `preferredmodel` during load, update that same file.
+- Otherwise, update the highest-precedence config file that contributed any values.
+- If no config files contributed values, write to the global config at `~/.codalotl/config.json` (expanded cross-OS).
+
 ### codalotl version
 
 Prints the codalotl version to stdout.
@@ -31,6 +36,7 @@ Prints the codalotl configuration to stdout. Details:
 - Any present provider key is redacted. Uses reflection so any new provider added to the struct is automatically redacted.
 - If a provider key is "", prints the corresponding value from ENV (see `llmmodel.ProviderKeyEnvVars`). Again, uses reflection.
 - Below the printed `Config` struct, prints:
+	- Which file(s) actually store the config. If multiple do (`cascade` merges config data) they are all listed.
 	- The effective model (useful when no model is explicitely configured).
 	- List of provider ENV keys to set.
 	- Instructions on where the config file can be stored.
@@ -50,13 +56,12 @@ Current Configuration:
   "preferredmodel": ""
 }
 
+Current Config Location(s): /home/someuser/.codalotl/config.json
+
 Effective Model: gpt-5.2
 
 To set LLM provider API keys, set one of these ENV variables:
 - OPENAI_API_KEY
-- XAI_API_KEY
-- ANTHROPIC_API_KEY
-- GEMINI_API_KEY
 
 Global configuration can be stored in /home/someuser/.codalotl/config.json
 Project-specific configuration can be stored in .codalotl/config.json
@@ -104,6 +109,7 @@ type Config struct {
 
 	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().
 	PreferredModel string `json:"preferredmodel"`
+	PreferredModelProvidence cascade.Providence `json:"-"`
 }
 
 // NOTE: separate struct so we can easily test zero value

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -279,11 +280,12 @@ func TestRun_Config_PrintsJSON(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755); err != nil {
 		t.Fatalf("mkdir .codalotl: %v", err)
 	}
+	cfgPath := filepath.Join(tmp, ".codalotl", "config.json")
 	cfg := `{
   "providerkeys": { "openai": "sk-test" },
   "maxwidth": 80
 }`
-	if err := os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(cfg), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0644); err != nil {
 		t.Fatalf("write config.json: %v", err)
 	}
 
@@ -311,6 +313,12 @@ func TestRun_Config_PrintsJSON(t *testing.T) {
 
 	if !strings.Contains(out.String(), "Current Configuration:") {
 		t.Fatalf("expected output to include header, got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "Current Config Location(s):") {
+		t.Fatalf("expected output to include config locations header, got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), cfgPath) {
+		t.Fatalf("expected output to include config file path %q, got:\n%s", cfgPath, out.String())
 	}
 	if !strings.Contains(out.String(), "Effective Model:") {
 		t.Fatalf("expected output to include effective model, got:\n%s", out.String())
@@ -353,6 +361,10 @@ func TestRun_Config_Defaults(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d (stderr=%q)", code, errOut.String())
 	}
 
+	if !strings.Contains(out.String(), "Current Config Location(s): (none") {
+		t.Fatalf("expected output to mention no config locations, got:\n%s", out.String())
+	}
+
 	cfgJSON := extractConfigJSON(t, out.String())
 
 	var got Config
@@ -366,6 +378,61 @@ func TestRun_Config_Defaults(t *testing.T) {
 	wantEffective := string(llmmodel.ModelIDOrFallback(""))
 	if !strings.Contains(out.String(), "Effective Model: "+wantEffective) {
 		t.Fatalf("expected output to mention effective model %q, got:\n%s", wantEffective, out.String())
+	}
+}
+
+func TestRun_Config_EnvVarsList_OnlyExposedProviders(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v (stderr=%q)", err, errOut.String())
+	}
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (stderr=%q)", code, errOut.String())
+	}
+
+	got := extractEnvVarsList(t, out.String())
+
+	want := map[string]bool{}
+	envVars := llmmodel.ProviderKeyEnvVars()
+	tpk := reflect.TypeOf(ProviderKeys{})
+	for i := 0; i < tpk.NumField(); i++ {
+		pid := providerIDFromProviderKeysField(tpk.Field(i))
+		if pid == llmmodel.ProviderIDUnknown || !isKnownProviderID(pid) {
+			continue
+		}
+		ev := strings.TrimSpace(envVars[pid])
+		if ev == "" {
+			continue
+		}
+		want[ev] = true
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected env var list.\nwant=%v\ngot=%v\nstdout=%q", keys(want), keys(got), out.String())
+	}
+	for ev := range want {
+		if !got[ev] {
+			t.Fatalf("expected env var list to include %q.\nwant=%v\ngot=%v\nstdout=%q", ev, keys(want), keys(got), out.String())
+		}
+	}
+	for ev := range got {
+		if !want[ev] {
+			t.Fatalf("expected env var list to omit %q.\nwant=%v\ngot=%v\nstdout=%q", ev, keys(want), keys(got), out.String())
+		}
 	}
 }
 
@@ -686,14 +753,52 @@ func extractConfigJSON(t *testing.T, stdout string) string {
 	if start < 0 {
 		t.Fatalf("expected output to contain JSON object, got:\n%s", stdout)
 	}
-	eff := strings.Index(stdout, "\n\nEffective Model:")
-	if eff < 0 {
-		t.Fatalf("expected output to contain 'Effective Model' separator, got:\n%s", stdout)
-	}
 
-	cfgJSON := strings.TrimSpace(stdout[start:eff])
+	dec := json.NewDecoder(strings.NewReader(stdout[start:]))
+	var raw json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
+		t.Fatalf("expected JSON object in output, decode error: %v\nstdout=%q", err, stdout)
+	}
+	cfgJSON := strings.TrimSpace(string(raw))
 	if !strings.HasPrefix(cfgJSON, "{") || !strings.HasSuffix(cfgJSON, "}") {
 		t.Fatalf("expected JSON block to be a single object, got:\n%s", cfgJSON)
 	}
 	return cfgJSON
+}
+
+func extractEnvVarsList(t *testing.T, stdout string) map[string]bool {
+	t.Helper()
+
+	const header = "To set LLM provider API keys, set one of these ENV variables:"
+	start := strings.Index(stdout, header)
+	if start < 0 {
+		t.Fatalf("expected output to contain env var list header %q, got:\n%s", header, stdout)
+	}
+
+	rest := stdout[start+len(header):]
+	rest = strings.TrimPrefix(rest, "\n")
+
+	got := map[string]bool{}
+	for _, line := range strings.Split(rest, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			break
+		}
+		if !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		ev := strings.TrimSpace(strings.TrimPrefix(line, "- "))
+		if ev != "" {
+			got[ev] = true
+		}
+	}
+	return got
+}
+
+func keys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

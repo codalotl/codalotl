@@ -10,6 +10,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/tui"
@@ -49,8 +50,16 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 		Name:  "codalotl",
 		Short: "codalotl is an LLM-assisted Go coding agent.",
 		Args:  qcli.NoArgs,
-		Run: runWithConfig(func(c *qcli.Context, _ Config) error {
-			return tui.Run()
+		Run: runWithConfig(func(c *qcli.Context, cfg Config) error {
+			// If PreferredModel is empty, pass the zero value so TUI keeps its
+			// default model behavior.
+			modelID := llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
+			return tui.RunWithConfig(tui.Config{
+				ModelID: modelID,
+				PersistModelID: func(newModelID llmmodel.ModelID) error {
+					return persistPreferredModelID(cfg, newModelID)
+				},
+			})
 		}),
 	}
 
