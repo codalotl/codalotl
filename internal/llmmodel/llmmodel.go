@@ -267,6 +267,31 @@ func ProviderKeyEnvVars() map[ProviderID]string {
 	return out
 }
 
+// ProviderHasConfiguredKey reports whether a key is configured for providerID via either:
+//   - ConfigureProviderKey(providerID, key) (in-memory override), or
+//   - the provider's default env var (ex: "OPENAI_API_KEY")
+//
+// If you need to consider per-model overrides (APIActualKey / APIEnvKey), filter at the
+// model level using GetAPIKey(modelID) instead.
+func ProviderHasConfiguredKey(providerID ProviderID) bool {
+	if providerID == ProviderIDUnknown {
+		return false
+	}
+
+	modelsMu.RLock()
+	override := providerKeyOverrides[providerID]
+	env := providerEnvVars[providerID]
+	modelsMu.RUnlock()
+
+	if override != "" {
+		return true
+	}
+	if env == "" {
+		return false
+	}
+	return os.Getenv(env) != ""
+}
+
 // GetAPIKey returns the API key for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIActualKey
 //  2. Env[ModelInfo.ModelOverrides.APIEnvKey]
@@ -296,6 +321,22 @@ func GetAPIKey(id ModelID) string {
 		return os.Getenv(env)
 	}
 	return ""
+}
+
+// AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty
+// effective API key (per GetAPIKey).
+//
+// This is useful for presenting an interactive model list that only includes models the
+// user can actually call in the current environment/configuration.
+func AvailableModelIDsWithAPIKey() []ModelID {
+	ids := AvailableModelIDs()
+	out := make([]ModelID, 0, len(ids))
+	for _, id := range ids {
+		if GetAPIKey(id) != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:

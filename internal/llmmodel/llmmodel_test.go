@@ -2,6 +2,7 @@ package llmmodel
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -151,4 +152,85 @@ func TestGetAPIKeyPrecedence(t *testing.T) {
 	ConfigureProviderKey(ProviderIDOpenAI, "configured2")
 	t.Setenv("ALT_OPENAI_KEY", "alt2")
 	require.Equal(t, "literal", GetAPIKey(customActualID))
+}
+
+func TestAvailableModelIDsWithAPIKeyAndProviderHasConfiguredKey(t *testing.T) {
+	// Clear any in-memory overrides that could leak in from other tests.
+	ConfigureProviderKey(ProviderIDOpenAI, "")
+	ConfigureProviderKey(ProviderIDAnthropic, "")
+	ConfigureProviderKey(ProviderIDGemini, "")
+	ConfigureProviderKey(ProviderIDXAI, "")
+	t.Cleanup(func() {
+		ConfigureProviderKey(ProviderIDOpenAI, "")
+		ConfigureProviderKey(ProviderIDAnthropic, "")
+		ConfigureProviderKey(ProviderIDGemini, "")
+		ConfigureProviderKey(ProviderIDXAI, "")
+	})
+
+	// No env keys => nothing should be considered configured.
+	env := ProviderKeyEnvVars()
+	for _, pid := range AllProviderIDs {
+		if k := env[pid]; k != "" {
+			t.Setenv(k, "")
+		}
+	}
+
+	require.False(t, ProviderHasConfiguredKey(ProviderIDOpenAI))
+	require.False(t, ProviderHasConfiguredKey(ProviderIDAnthropic))
+	require.False(t, ProviderHasConfiguredKey(ProviderIDGemini))
+	require.False(t, ProviderHasConfiguredKey(ProviderIDXAI))
+
+	// With no provider keys, the only models that should appear are ones with per-model
+	// overrides (ex: APIActualKey / APIEnvKey).
+	for _, id := range AvailableModelIDsWithAPIKey() {
+		info := GetModelInfo(id)
+		require.NotEqual(t, ModelIDUnknown, info.ID)
+		require.False(t, ProviderHasConfiguredKey(info.ProviderID))
+		require.True(t,
+			info.APIActualKey != "" || (info.APIEnvKey != "" && os.Getenv(info.APIEnvKey) != ""),
+			"unexpected key source for model %q (provider %q)", id, info.ProviderID,
+		)
+	}
+
+	// Configure only OpenAI via env => model list should only contain OpenAI models.
+	require.NotEmpty(t, env[ProviderIDOpenAI])
+	t.Setenv(env[ProviderIDOpenAI], "openai-key")
+
+	require.True(t, ProviderHasConfiguredKey(ProviderIDOpenAI))
+	require.False(t, ProviderHasConfiguredKey(ProviderIDAnthropic))
+
+	for _, id := range AvailableModelIDsWithAPIKey() {
+		info := GetModelInfo(id)
+		require.NotEqual(t, ModelIDUnknown, info.ID)
+		switch info.ProviderID {
+		case ProviderIDOpenAI:
+			// ok
+		case ProviderIDAnthropic, ProviderIDGemini, ProviderIDXAI:
+			require.True(t,
+				info.APIActualKey != "" || (info.APIEnvKey != "" && os.Getenv(info.APIEnvKey) != ""),
+				"model %q unexpectedly available without %q being configured", id, info.ProviderID,
+			)
+		default:
+			t.Fatalf("unexpected provider %q for model %q", info.ProviderID, id)
+		}
+	}
+
+	// Configure Anthropic via ConfigureProviderKey (not env) => list should now include Anthropic models too.
+	ConfigureProviderKey(ProviderIDAnthropic, "anthropic-key")
+	require.True(t, ProviderHasConfiguredKey(ProviderIDAnthropic))
+
+	seenOpenAI := false
+	seenAnthropic := false
+	for _, id := range AvailableModelIDsWithAPIKey() {
+		switch id.ProviderID() {
+		case ProviderIDOpenAI:
+			seenOpenAI = true
+		case ProviderIDAnthropic:
+			seenAnthropic = true
+		default:
+			t.Fatalf("unexpected provider %q in AvailableModelIDsWithAPIKey", id.ProviderID())
+		}
+	}
+	require.True(t, seenOpenAI)
+	require.True(t, seenAnthropic)
 }
