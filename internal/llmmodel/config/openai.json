@@ -32,7 +32,8 @@
       "max_output": 64000,
       "can_reason": true,
       "has_reasoning_effort": true,
-      "supports_images": true
+      "supports_images": true,
+      "is_legacy": true
     },
     {
       "id": "gpt-5-mini",
@@ -45,7 +46,8 @@
       "max_output": 128000,
       "can_reason": true,
       "has_reasoning_effort": true,
-      "supports_images": true
+      "supports_images": true,
+      "is_legacy": true
     },
     {
       "id": "gpt-5-nano",
@@ -58,7 +60,8 @@
       "max_output": 128000,
       "can_reason": true,
       "has_reasoning_effort": true,
-      "supports_images": true
+      "supports_images": true,
+      "is_legacy": true
     },
     {
       "id": "o4-mini",

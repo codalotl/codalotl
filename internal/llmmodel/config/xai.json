@@ -19,7 +19,8 @@
       "max_output": 20000,
       "can_reason": true,
       "has_reasoning_effort": false,
-      "supports_images": false
+      "supports_images": false,
+      "is_legacy": true
     },
     {
       "id": "grok-4",
@@ -32,7 +33,8 @@
       "max_output": 20000,
       "can_reason": true,
       "has_reasoning_effort": false,
-      "supports_images": true
+      "supports_images": true,
+      "is_legacy": true
     },
     {
       "id": "grok-4-fast",
@@ -45,7 +47,8 @@
       "max_output": 200000,
       "can_reason": true,
       "has_reasoning_effort": false,
-      "supports_images": true
+      "supports_images": true,
+      "is_legacy": true
     },
     {
       "id": "grok-3-mini",
