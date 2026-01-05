@@ -26,7 +26,41 @@ Prints the codalotl version to stdout.
 
 ### codalotl config
 
-Prints the codalotl configuration to stdout.
+Prints the codalotl configuration to stdout. Details:
+- Prints the `Config` struct, but with some modifications (see below).
+- Any present provider key is redacted. Uses reflection so any new provider added to the struct is automatically redacted.
+- If a provider key is "", prints the corresponding value from ENV (see `llmmodel.ProviderKeyEnvVars`). Again, uses reflection.
+- Below the printed `Config` struct, prints:
+	- The effective model (useful when no model is explicitely configured).
+	- List of provider ENV keys to set.
+	- Instructions on where the config file can be stored.
+
+Example Output:
+```
+Current Configuration:
+{
+  "providerkeys": {
+    "anthropic": "",
+    "openai": "sk-p..._LQA",
+    "xai": "",
+    "gemini": ""
+  },
+  "maxwidth": 160,
+  "preferredprovider": "",
+  "preferredmodel": ""
+}
+
+Effective Model: gpt-5.2
+
+To set LLM provider API keys, set one of these ENV variables:
+- OPENAI_API_KEY
+- XAI_API_KEY
+- ANTHROPIC_API_KEY
+- GEMINI_API_KEY
+
+Global configuration can be stored in /home/someuser/.codalotl/config.json
+Project-specific configuration can be stored in .codalotl/config.json
+```
 
 ### codalotl context public <path/to/pkg>
 
@@ -75,14 +109,16 @@ type Config struct {
 // NOTE: separate struct so we can easily test zero value
 type ProviderKeys struct {
 	OpenAI      string `json:"openai"`
-	Anthropic   string `json:"anthropic"`
-	XAI         string `json:"xai"`
-	Gemini      string `json:"gemini"`
+
+	// NOTE: in the future, we may add these:
+	// Anthropic   string `json:"anthropic"`
+	// XAI         string `json:"xai"`
+	// Gemini      string `json:"gemini"`
 }
 ```
 
 Notes:
-- For now only OpenAI is allowed. If any other model/provider is configured, print out a helpeful error message and exit. But keep this OpenAI limit separate from the main validation, since it's temporary.
+- If a provider's key is configured via the configuration file, call `llmmodel.ConfigureProviderKey` to use it.
 
 
 ## Public API

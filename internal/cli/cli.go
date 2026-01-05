@@ -37,12 +37,12 @@ type RunOptions struct {
 // Note that in cases of errors, Run has already displayed an error message to
 // opts.Err || Stderr. Callers may use os.Exit with the exit code.
 func Run(args []string, opts *RunOptions) (int, error) {
-	root := newRootCommand()
-
 	argv := args
 	if len(argv) > 0 {
 		argv = argv[1:]
 	}
+
+	root := newRootCommand(!hasHelpFlag(argv))
 
 	var in io.Reader = os.Stdin
 	var out io.Writer = os.Stdout
@@ -87,4 +87,13 @@ func Run(args []string, opts *RunOptions) (int, error) {
 		msg = "command failed"
 	}
 	return exitCode, errors.New(msg)
+}
+
+func hasHelpFlag(argv []string) bool {
+	for _, a := range argv {
+		if a == "-h" || a == "--help" {
+			return true
+		}
+	}
+	return false
 }

@@ -28,9 +28,14 @@ func (s *configState) get() (Config, error) {
 	return s.cfg, s.err
 }
 
-func newRootCommand() *qcli.Command {
+func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 	cfgState := &configState{}
 	runWithConfig := func(next func(c *qcli.Context, cfg Config) error) qcli.RunFunc {
+		if !loadConfigForRuns {
+			return func(c *qcli.Context) error {
+				return next(c, Config{})
+			}
+		}
 		return func(c *qcli.Context) error {
 			cfg, err := cfgState.get()
 			if err != nil {
@@ -95,7 +100,7 @@ func newRootCommand() *qcli.Command {
 		Short: "Print codalotl configuration.",
 		Args:  qcli.NoArgs,
 		Run: runWithConfig(func(c *qcli.Context, cfg Config) error {
-			return writeConfigJSON(c.Out, cfg)
+			return writeConfig(c.Out, cfg)
 		}),
 	}
 
