@@ -126,13 +126,13 @@ func RunWithConfig(cfg Config) error {
 		ErrorColor:      palette.redForeground,
 	}
 	agentFormatter := agentformatter.NewTUIFormatter(formatterCfg)
-	initialCfg := sessionConfig{}
+	initialCfg := sessionConfig{modelID: cfg.ModelID}
 	initialSession, err := newSession(initialCfg)
 	if err != nil {
 		return err
 	}
 
-	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession)
+	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession, cfg.PersistModelID)
 
 	return qtui.RunTUI(model, qtui.Options{
 		Input:       os.Stdin,
@@ -209,11 +209,26 @@ type model struct {
 
 	palette colorPalette
 
+	// If set, /model persists the selected model ID back to the caller's config source.
+	persistModelID func(newModelID llmmodel.ModelID) error
+
 	packageContext       *packageContextState
 	nextPackageContextID int
+
+	// pendingPostResetMessage is appended as a system message immediately after a session reset.
+	// This is primarily used by slash commands that start a new session (ex: /model) but still
+	// want to confirm what happened.
+	pendingPostResetMessage string
 }
 
-func newModel(palette colorPalette, formatter agentformatter.Formatter, initialSession *session, initialCfg sessionConfig, factory func(sessionConfig) (*session, error)) *model {
+func newModel(
+	palette colorPalette,
+	formatter agentformatter.Formatter,
+	initialSession *session,
+	initialCfg sessionConfig,
+	factory func(sessionConfig) (*session, error),
+	persistModelID func(newModelID llmmodel.ModelID) error,
+) *model {
 	ti := newTextArea()
 	vp := tuicontrols.NewView(0, 0)
 	vp.SetEmptyLineBackgroundColor(palette.primaryBackground)
@@ -230,6 +245,7 @@ func newModel(palette colorPalette, formatter agentformatter.Formatter, initialS
 		sessionFactory:      factory,
 		sessionConfig:       activeCfg,
 		agentFormatter:      formatter,
+		persistModelID:      persistModelID,
 		requestSource:       1,
 		nextAgentRunID:      1,
 		messages:            make([]chatMessage, 0, 32),
@@ -299,9 +315,18 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 		if m.currentRun != nil && ev.runID == m.currentRun.id {
 			pendingCfg := m.pendingSessionConfig
 			m.pendingSessionConfig = nil
+			postResetMsg := m.pendingPostResetMessage
+			m.pendingPostResetMessage = ""
 			m.finishAgentRun()
 			if pendingCfg != nil {
 				m.resetSessionWithConfig(*pendingCfg)
+				if postResetMsg != "" {
+					m.appendSystemMessage(postResetMsg)
+					m.refreshViewport(true)
+					if m.viewport != nil {
+						m.viewport.ScrollToBottom()
+					}
+				}
 			} else {
 				m.startNextQueuedMessage()
 			}
@@ -568,6 +593,7 @@ func (m *model) handleSlashCommand(cmd string) bool {
 		m.stopAgentRun()
 		m.stopUserRequestListener()
 		m.pendingSessionConfig = nil
+		m.pendingPostResetMessage = ""
 		m.appendSystemMessage("Ending session.")
 		m.refreshViewport(true)
 		if m.viewport != nil {
@@ -582,6 +608,24 @@ func (m *model) handleSlashCommand(cmd string) bool {
 		return true
 	case "/new":
 		m.handleNewSessionCommand()
+		return true
+	case "/model":
+		modelArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/model"))
+		m.handleModelCommand(modelArg)
+		return true
+	case "/models":
+		// `/models` is a read-only alias for `/model` (with no args). It intentionally
+		// does not accept a model parameter.
+		modelsArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/models"))
+		if modelsArg != "" {
+			m.appendSystemMessage("Usage: `/models` (lists available models). Use `/model <id>` to switch models.")
+			m.refreshViewport(true)
+			if m.viewport != nil {
+				m.viewport.ScrollToBottom()
+			}
+			return true
+		}
+		m.handleModelCommand("")
 		return true
 	case "/package":
 		packageArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/package"))
@@ -626,7 +670,130 @@ func (m *model) handleNewSessionCommand() {
 }
 
 func (m *model) handleGenericCommand() {
-	m.requestSessionReset(sessionConfig{}, "Package mode disabled. Use `/package path/to/pkg` (path relative to sandbox) to select a package.")
+	cfg := m.sessionConfig
+	cfg.packagePath = ""
+	m.requestSessionReset(cfg, "Package mode disabled. Use `/package path/to/pkg` (path relative to sandbox) to select a package.")
+}
+
+func (m *model) handleModelCommand(arg string) {
+	arg = strings.TrimSpace(arg)
+
+	// `/model` (no args): list models + usage help.
+	if arg == "" {
+		current := string(defaultModelID)
+		if m != nil && m.session != nil {
+			if name := strings.TrimSpace(m.session.ModelName()); name != "" {
+				current = name
+			}
+		}
+
+		// Only list models that are callable in the current environment (i.e., have an effective API key).
+		available := llmmodel.AvailableModelIDsWithAPIKey()
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "Current model: %s\n", current)
+		b.WriteString("Available models:\n")
+		if len(available) == 0 {
+			b.WriteString("• <none> (no configured API keys found)\n")
+			envVars := llmmodel.ProviderKeyEnvVars()
+			if len(envVars) > 0 {
+				var keys []string
+				for _, pid := range llmmodel.AllProviderIDs {
+					if key := strings.TrimSpace(envVars[pid]); key != "" {
+						keys = append(keys, key)
+					}
+				}
+				if len(keys) > 0 {
+					b.WriteString("Set an API key env var (ex: ")
+					b.WriteString(strings.Join(keys, ", "))
+					b.WriteString(") and restart.\n")
+				}
+			}
+		} else {
+			for _, id := range available {
+				line := "• " + string(id)
+				if string(id) == current {
+					line += " (current)"
+				}
+				b.WriteString(line)
+				b.WriteByte('\n')
+			}
+		}
+		b.WriteString("Use `/model <id>` to switch models (starts a new session).")
+
+		m.appendSystemMessage(strings.TrimSpace(b.String()))
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		return
+	}
+
+	fields := strings.Fields(arg)
+	if len(fields) != 1 {
+		m.appendSystemMessage("Usage: `/model <id>` (or `/model` to list available models).")
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		return
+	}
+
+	modelID := llmmodel.ModelID(strings.TrimSpace(fields[0]))
+	if modelID == "" || !modelID.Valid() {
+		m.appendSystemMessage(fmt.Sprintf("Unknown model %q. Use `/model` to list available models.", fields[0]))
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		return
+	}
+
+	current := defaultModelID
+	switch {
+	case m != nil && m.session != nil && m.session.modelID != "":
+		current = m.session.modelID
+	case m != nil && m.sessionConfig.modelID != "":
+		current = m.sessionConfig.modelID
+	}
+
+	if current == modelID {
+		m.appendSystemMessage(fmt.Sprintf("Model is already %s.", modelID))
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		return
+	}
+
+	if m.persistModelID != nil {
+		if err := m.persistModelID(modelID); err != nil {
+			// Best effort: still switch for this session.
+			m.appendSystemMessage(fmt.Sprintf("Failed to persist model %s: %v", modelID, err))
+			m.refreshViewport(true)
+			if m.viewport != nil {
+				m.viewport.ScrollToBottom()
+			}
+		}
+	}
+
+	cfg := m.sessionConfig
+	cfg.modelID = modelID
+	cfg, err := m.normalizeConfigForCurrentSandbox(cfg)
+	if err != nil {
+		m.appendSystemMessage(fmt.Sprintf("Cannot switch model: %v", err))
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		return
+	}
+
+	m.requestSessionResetWithPostMessage(
+		cfg,
+		fmt.Sprintf("Switching model to %s...", modelID),
+		fmt.Sprintf("Model set to %s.", modelID),
+	)
 }
 
 func (m *model) handlePackageCommand(arg string) {
@@ -636,7 +803,9 @@ func (m *model) handlePackageCommand(arg string) {
 		return
 	}
 
-	cfg, err := m.normalizeConfigForCurrentSandbox(sessionConfig{packagePath: arg})
+	cfg := m.sessionConfig
+	cfg.packagePath = arg
+	cfg, err := m.normalizeConfigForCurrentSandbox(cfg)
 	if err != nil {
 		m.appendSystemMessage(fmt.Sprintf("Cannot enter package mode: %v", err))
 		m.refreshViewport(true)
@@ -650,13 +819,20 @@ func (m *model) handlePackageCommand(arg string) {
 }
 
 func (m *model) requestSessionReset(cfg sessionConfig, message string) {
+	m.requestSessionResetWithPostMessage(cfg, message, "")
+}
+
+func (m *model) requestSessionResetWithPostMessage(cfg sessionConfig, message string, postResetMessage string) {
 	message = strings.TrimSpace(message)
+	postResetMessage = strings.TrimSpace(postResetMessage)
+
 	if m.isAgentRunning() {
 		if m.pendingSessionConfig != nil {
 			return
 		}
 		pending := cfg
 		m.pendingSessionConfig = &pending
+		m.pendingPostResetMessage = postResetMessage
 		m.messageQueue = nil
 		m.rejectOutstandingPermissions()
 		if message != "" {
@@ -671,6 +847,13 @@ func (m *model) requestSessionReset(cfg sessionConfig, message string) {
 	}
 
 	m.resetSessionWithConfig(cfg)
+	if postResetMessage != "" {
+		m.appendSystemMessage(postResetMessage)
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+	}
 }
 
 func (m *model) normalizeConfigForCurrentSandbox(cfg sessionConfig) (sessionConfig, error) {
@@ -772,7 +955,7 @@ func (m *model) shouldSaveToHistory(value string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/new", "/model", "/quit", "/exit", "/logout":
+	case "/new", "/model", "/models", "/quit", "/exit", "/logout":
 		return false
 	}
 	return len(fields) > 1
@@ -1835,6 +2018,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.permissionQueue = nil
 	m.activePermission = nil
 	m.pendingSessionConfig = nil
+	m.pendingPostResetMessage = ""
 	m.packageContext = nil
 	m.exitEditingState()
 	m.editedHistoryDrafts = nil

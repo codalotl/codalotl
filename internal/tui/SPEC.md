@@ -16,7 +16,7 @@ NOTE: this package intentionally avoids charmbracelet/*; `q/tui` and `q/termform
 ## Implementation Details
 
 This spec should be implemented in phases. The spec will document things that we'll do later. Don't implement these for now:
-- SKIP for now: Cycling Mode, the /model command, the Info Panel.
+- SKIP for now: none (Cycling Mode, /model, and the Info Panel are implemented).
 - SKIP any sort of docubot/reorgbot functionality.
 - SKIP package mode
 - Working Indicator:
@@ -98,7 +98,9 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 
 - /quit, /exit, /logout - terminates process.
 - /new - Makes a new session.
-- /model - Configures model.
+- /model - With no args, prints the available models and usage help.
+- /model <id> - Switches the active model (validated via `llmmodel`) and starts a new session.
+  If `tui.Config.PersistModelID` is set, the model selection is persisted.
 - /package path/to/pkg - enter Package Mode for a given package.
 - /package - exit Package Mode. Prints a message indicating how Package Mode works.
 - /generic - exits Package Mode. Enters generic mode.

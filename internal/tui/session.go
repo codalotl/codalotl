@@ -43,6 +43,7 @@ type session struct {
 
 type sessionConfig struct {
 	packagePath string
+	modelID     llmmodel.ModelID
 }
 
 func (cfg sessionConfig) packageMode() bool {
@@ -58,6 +59,14 @@ func newSession(cfg sessionConfig) (*session, error) {
 	cfg, pkgAbsPath, err := normalizeSessionConfig(cfg, sandboxDir)
 	if err != nil {
 		return nil, err
+	}
+
+	modelID := cfg.modelID
+	if modelID == "" {
+		modelID = defaultModelID
+	}
+	if modelID != "" && !modelID.Valid() {
+		return nil, fmt.Errorf("unknown model %q", modelID)
 	}
 
 	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
@@ -95,7 +104,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 
 	systemPrompt = strings.TrimSpace(systemPrompt)
 
-	agentInstance, err := agent.NewAgent(defaultModelID, systemPrompt, tools)
+	agentInstance, err := agent.NewAgent(modelID, systemPrompt, tools)
 	if err != nil {
 		sandboxAuthorizer.Close()
 		return nil, fmt.Errorf("construct agent: %w", err)
@@ -109,7 +118,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 
 	return &session{
 		agent:          agentInstance,
-		modelID:        defaultModelID,
+		modelID:        modelID,
 		sandboxDir:     sandboxDir,
 		packagePath:    cfg.packagePath,
 		packageAbsPath: pkgAbsPath,
@@ -202,6 +211,10 @@ func boolToYesNo(v bool) string {
 // config along with the absolute package path.
 func normalizeSessionConfig(cfg sessionConfig, sandboxDir string) (sessionConfig, string, error) {
 	cfg.packagePath = strings.TrimSpace(cfg.packagePath)
+	cfg.modelID = llmmodel.ModelID(strings.TrimSpace(string(cfg.modelID)))
+	if cfg.modelID == "" {
+		cfg.modelID = defaultModelID
+	}
 	if !cfg.packageMode() {
 		return cfg, "", nil
 	}
