@@ -60,6 +60,16 @@ type Providence struct {
 	SourceIdentifier string // ex: "/path/to/file.json". Can be "" for things without identifiers (default map, env).
 }
 
+// LoadReport describes which sources actually contributed values during a successful load, in low->high precedence order.
+//
+// A source is included only if it was readable/present (as applicable), successfully parsed, and assigned at least one value
+// into the destination struct during the load. Missing/unreadable files, empty files, and sources that only provided unknown
+// keys are excluded.
+type LoadReport struct {
+	// Sources are the contributing sources in low->high precedence order.
+	Sources []Providence
+}
+
 func (p Providence) IsSet() bool {
 	return p.SourceType != ""
 }
@@ -157,17 +167,29 @@ func (c *Loader) WithEnv(m map[string]string) *Loader {
 // StrictlyLoad does not error when a source is missing or not readable due to permissions, when a source is empty/whitespace-only, or when a source contains unknown keys. Errors from
 // individual sources include the source's name for context. On success, dest is populated and StrictlyLoad returns nil.
 func (c *Loader) StrictlyLoad(dest any) error {
+	_, err := c.StrictlyLoadWithReport(dest)
+	return err
+}
+
+// StrictlyLoadWithReport is like StrictlyLoad, but additionally returns a report describing which sources actually contributed
+// values during the load, in low->high precedence order.
+//
+// On success, report describes the contributing sources and err is nil.
+// On failure, err is non-nil and report includes sources that contributed values before the error was encountered.
+func (c *Loader) StrictlyLoadWithReport(dest any) (LoadReport, error) {
+	var report LoadReport
+
 	// Validate destination is a non-nil pointer to a struct:
 	if dest == nil {
-		return fmt.Errorf("dest must be a non-nil pointer to struct")
+		return report, fmt.Errorf("dest must be a non-nil pointer to struct")
 	}
 	destVal := reflect.ValueOf(dest)
 	if destVal.Kind() != reflect.Ptr || destVal.IsNil() {
-		return fmt.Errorf("dest must be a non-nil pointer to struct")
+		return report, fmt.Errorf("dest must be a non-nil pointer to struct")
 	}
 	structVal := reflect.Indirect(destVal)
 	if structVal.Kind() != reflect.Struct {
-		return fmt.Errorf("dest must be a pointer to struct, got %s", structVal.Kind())
+		return report, fmt.Errorf("dest must be a pointer to struct, got %s", structVal.Kind())
 	}
 
 	// Track which required fields were set by any source, using lowercased dot-paths.
@@ -180,43 +202,35 @@ func (c *Loader) StrictlyLoad(dest any) error {
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
 				continue
 			}
-			return fmt.Errorf("%s: %w", src.Name(), err)
+			return report, fmt.Errorf("%s: %w", src.Name(), err)
 		}
 		// Determine provenance for this source
-		var prov Providence
-		switch s := src.(type) {
-		case *sourceMap:
-			if s.isDefaults {
-				prov = Providence{SourceType: "default"}
-			} else {
-				prov = Providence{SourceType: "map"}
-			}
-		case *sourceJSONFile:
-			prov = Providence{SourceType: "json_file", SourceIdentifier: ExpandPath(s.path)}
-		case *sourceEnv:
-			prov = Providence{SourceType: "env"}
-		default:
-			// Fallback: use Name() so at least something is recorded
-			prov = Providence{SourceType: src.Name()}
+		prov := providenceForSource(src)
+
+		assignedAny := false
+		onAnyAssigned := func() { assignedAny = true }
+
+		if err := applyMapToStruct(structVal, m, "", present, prov, onAnyAssigned); err != nil {
+			return report, fmt.Errorf("%s: %w", src.Name(), err)
 		}
 
-		if err := applyMapToStruct(structVal, m, "", present, prov); err != nil {
-			return fmt.Errorf("%s: %w", src.Name(), err)
+		if assignedAny {
+			report.Sources = append(report.Sources, prov)
 		}
 	}
 
 	// Validate required fields after all sources are applied.
 	if err := validateRequiredFields(structVal, "", present); err != nil {
-		return err
+		return report, err
 	}
-	return nil
+	return report, nil
 }
 
 // applyMapToStruct writes values from m into structVal, matching keys to settable struct fields case-insensitively and recursing into nested objects. basePath is a dot-separated prefix
 // used in error messages and in the present map, which records lowercase paths for fields that were successfully assigned. Unknown keys are ignored. Values are assigned via setFieldValue,
 // which handles pointer allocation, recursion, and type coercion. Returns an error if a provided value has the wrong shape or cannot be coerced to the destination field type. The present
 // map must be non-nil. Case-insensitive field name collisions are not supported.
-func applyMapToStruct(structVal reflect.Value, m map[string]any, basePath string, present map[string]bool, prov Providence) error {
+func applyMapToStruct(structVal reflect.Value, m map[string]any, basePath string, present map[string]bool, prov Providence, onAnyAssigned func()) error {
 	structType := structVal.Type()
 
 	// Build case-insensitive index of fields: lower(key) -> index
@@ -274,7 +288,7 @@ func applyMapToStruct(structVal reflect.Value, m map[string]any, basePath string
 			}
 		}
 
-		if err := setFieldValue(fVal, fType, raw, childPath, present, prov, onAssigned); err != nil {
+		if err := setFieldValue(fVal, fType, raw, childPath, present, prov, onAssigned, onAnyAssigned); err != nil {
 			return err
 		}
 	}
@@ -290,13 +304,13 @@ func applyMapToStruct(structVal reflect.Value, m map[string]any, basePath string
 //
 // On mismatch of shape or type (after coercion), an error is returned with the offending path. Unsupported destination kinds or slice element kinds also return an error. The present
 // map must be non-nil.
-func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path string, present map[string]bool, prov Providence, onAssigned func()) error {
+func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path string, present map[string]bool, prov Providence, onAssigned func(), onAnyAssigned func()) error {
 	// Handle pointers by allocating as needed
 	if fVal.Kind() == reflect.Ptr {
 		if fVal.IsNil() {
 			fVal.Set(reflect.New(fVal.Type().Elem()))
 		}
-		return setFieldValue(fVal.Elem(), fType, raw, path, present, prov, onAssigned)
+		return setFieldValue(fVal.Elem(), fType, raw, path, present, prov, onAssigned, onAnyAssigned)
 	}
 
 	switch fVal.Kind() {
@@ -305,7 +319,7 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 		if !ok {
 			return fmt.Errorf("%s: expected object for struct field", path)
 		}
-		if err := applyMapToStruct(fVal, obj, path, present, prov); err != nil {
+		if err := applyMapToStruct(fVal, obj, path, present, prov, onAnyAssigned); err != nil {
 			return err
 		}
 		onAssigned()
@@ -327,6 +341,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 			fVal.SetFloat(coerced.(float64))
 		}
 		present[path] = true
+		if onAnyAssigned != nil {
+			onAnyAssigned()
+		}
 		onAssigned()
 		return nil
 
@@ -335,6 +352,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 		if rv := reflect.ValueOf(raw); rv.Kind() == reflect.Slice && rv.Len() == 0 {
 			fVal.Set(reflect.MakeSlice(fVal.Type(), 0, 0))
 			present[path] = true
+			if onAnyAssigned != nil {
+				onAnyAssigned()
+			}
 			onAssigned()
 			return nil
 		}
@@ -349,12 +369,15 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 			}
 			slice := reflect.MakeSlice(fVal.Type(), len(objArr), len(objArr))
 			for i := range objArr {
-				if err := applyMapToStruct(slice.Index(i), objArr[i], fmt.Sprintf("%s[%d]", path, i), present, prov); err != nil {
+				if err := applyMapToStruct(slice.Index(i), objArr[i], fmt.Sprintf("%s[%d]", path, i), present, prov, onAnyAssigned); err != nil {
 					return err
 				}
 			}
 			fVal.Set(slice)
 			present[path] = true
+			if onAnyAssigned != nil {
+				onAnyAssigned()
+			}
 			onAssigned()
 			return nil
 		case reflect.String:
@@ -370,6 +393,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []bool:
@@ -383,6 +409,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []int:
@@ -396,6 +425,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []float64:
@@ -409,6 +441,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			default:
@@ -427,6 +462,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []string:
@@ -440,6 +478,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			default:
@@ -458,6 +499,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []float64:
@@ -471,6 +515,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []string:
@@ -484,6 +531,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			default:
@@ -502,6 +552,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []int:
@@ -515,6 +568,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			case []string:
@@ -528,6 +584,9 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 				}
 				fVal.Set(slice)
 				present[path] = true
+				if onAnyAssigned != nil {
+					onAnyAssigned()
+				}
 				onAssigned()
 				return nil
 			default:
@@ -539,6 +598,24 @@ func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path 
 
 	default:
 		return fmt.Errorf("%s: unsupported field kind %s", path, fVal.Kind())
+	}
+}
+
+func providenceForSource(src cascadeSource) Providence {
+	switch s := src.(type) {
+	case *sourceMap:
+		if s.isDefaults {
+			return Providence{SourceType: "default"}
+		}
+		return Providence{SourceType: "map"}
+	case *sourceJSONFile:
+		// ExpandPath ensures SourceIdentifier is absolute and has "~" expanded when applicable.
+		return Providence{SourceType: "json_file", SourceIdentifier: ExpandPath(s.path)}
+	case *sourceEnv:
+		return Providence{SourceType: "env"}
+	default:
+		// Fallback: use Name() so at least something is recorded.
+		return Providence{SourceType: src.Name()}
 	}
 }
 
