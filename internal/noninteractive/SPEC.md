@@ -33,6 +33,9 @@ type Options struct {
     // PackagePath can be any filesystem path (ex: "."; "/foo/bar"; "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
     PackagePath string
 
+    // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
+    ModelID llmmodel.ModelID
+
     // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
     AutoYes bool
 

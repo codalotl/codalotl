@@ -72,11 +72,20 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode, rooted at this package path (must be within cwd).")
 	execYes := execFlags.Bool("yes", 'y', false, "Auto-approve any permission checks (noninteractive).")
 	execNoColor := execFlags.Bool("no-color", 0, false, "Disable ANSI colors and formatting.")
-	execFlags.String("model", 0, "", "Model to use (placeholder; currently ignored).")
-	execCmd.Run = runWithConfig(func(c *qcli.Context, _ Config) error {
+	execModel := execFlags.String("model", 0, "", "LLM model ID to use (overrides config preferredmodel; empty = default).")
+	execCmd.Run = runWithConfig(func(c *qcli.Context, cfg Config) error {
 		userPrompt := strings.TrimSpace(strings.Join(c.Args, " "))
+
+		// Match the TUI behavior: if the user hasn't explicitly selected a model
+		// on the command line, use the configured preferred model, and otherwise
+		// let noninteractive keep its default model behavior.
+		modelID := llmmodel.ModelID(strings.TrimSpace(*execModel))
+		if modelID == "" {
+			modelID = llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
+		}
 		err := noninteractive.Exec(userPrompt, noninteractive.Options{
 			PackagePath:  *execPackage,
+			ModelID:      modelID,
 			AutoYes:      *execYes,
 			NoFormatting: *execNoColor,
 			Out:          c.Out,

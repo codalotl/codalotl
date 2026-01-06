@@ -64,6 +64,9 @@ type Options struct {
 	// PackagePath can be any filesystem path (ex: "."; "/foo/bar"; "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
 	PackagePath string
 
+	// ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
+	ModelID llmmodel.ModelID
+
 	// Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
 	AutoYes bool
 
@@ -74,6 +77,13 @@ type Options struct {
 	// If Out != nil, any prints we do will use Out; otherwise will use Stdout.
 	// If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file), we'd still just print to Out (instead of something like Stderr).
 	Out io.Writer
+}
+
+func effectiveModelID(opts Options) llmmodel.ModelID {
+	if strings.TrimSpace(string(opts.ModelID)) != "" {
+		return llmmodel.ModelID(strings.TrimSpace(string(opts.ModelID)))
+	}
+	return defaultModelID
 }
 
 type lockedWriter struct {
@@ -271,7 +281,7 @@ func Exec(userPrompt string, opts Options) error {
 		return err
 	}
 
-	agentInstance, err := agent.NewAgent(defaultModelID, strings.TrimSpace(systemPrompt), toolsForAgent)
+	agentInstance, err := agent.NewAgent(effectiveModelID(opts), strings.TrimSpace(systemPrompt), toolsForAgent)
 	if err != nil {
 		return fmt.Errorf("construct agent: %w", err)
 	}
