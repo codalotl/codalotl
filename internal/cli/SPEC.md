@@ -6,6 +6,20 @@ We assume the app is named `codalotl`.
 
 We use the `internal/q/cli` CLI framework to implement it.
 
+## Startup and Environment Validation
+
+When codalotl starts, we load and validate configuration and required tools (exception: `version` and `-h` do not load/validate and always succeed).
+- If there's an error parsing the config file, or a config option is invalid, an error message is displayed and codalotl exits.
+- If there is no LLM configured (no LLM provider keys, including in ENV), an error message is displayed and codalotl exits.
+	- Note: a key must exist for **usable** models. The `llmmodel` package has more providers than we actually support right now.
+- Required tools are checked:
+	- `go`
+	- `gopls`
+	- `goimports`
+	- `gofmt`
+	- `git`
+- If these tools are missing, an error message is displayed and codalotl exits. Installation instructions are given for tools installable with `go install`.
+
 ## Commands
 
 Notes:

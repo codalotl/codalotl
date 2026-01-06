@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,10 +18,81 @@ func isolateUserConfig(t *testing.T) {
 	// Prevent tests from reading developer machine config (ex: ~/.codalotl/config.json).
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+
+	// llmmodel key overrides are process-global; ensure tests don't leak state.
+	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "")
+
+	// Keep tests hermetic: startup validation requires at least one provider key.
+	t.Setenv("OPENAI_API_KEY", "sk-test-default")
+
+	// Startup validation also requires a handful of tools. Ensure tests don't
+	// depend on whatever happens to be installed on the machine running them.
+	ensureToolStubs(t, "gopls", "goimports", "git")
+}
+
+func ensureToolStubs(t *testing.T, names ...string) {
+	t.Helper()
+
+	binDir := t.TempDir()
+
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+
+		if runtime.GOOS == "windows" {
+			// exec.LookPath honors PATHEXT, so a .bat is sufficient for tests.
+			p := filepath.Join(binDir, name+".bat")
+			if err := os.WriteFile(p, []byte("@echo off\r\nexit /b 0\r\n"), 0644); err != nil {
+				t.Fatalf("write stub %q: %v", p, err)
+			}
+			continue
+		}
+
+		p := filepath.Join(binDir, name)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\nexit 0\n"), 0644); err != nil {
+			t.Fatalf("write stub %q: %v", p, err)
+		}
+		if err := os.Chmod(p, 0755); err != nil {
+			t.Fatalf("chmod stub %q: %v", p, err)
+		}
+	}
+
+	orig := os.Getenv("PATH")
+	if orig == "" {
+		t.Setenv("PATH", binDir)
+	} else {
+		t.Setenv("PATH", binDir+string(os.PathListSeparator)+orig)
+	}
 }
 
 func TestRun_Help(t *testing.T) {
 	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "-h"}, &RunOptions{Out: &out, Err: &errOut})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d", code)
+	}
+	if out.Len() == 0 {
+		t.Fatalf("expected help output on stdout")
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %q", errOut.String())
+	}
+}
+
+func TestRun_Help_IgnoresStartupValidation(t *testing.T) {
+	isolateUserConfig(t)
+
+	// Deliberately break startup requirements; help should still succeed.
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PATH", "")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -77,6 +149,27 @@ func TestRun_Version_PrintsVersion(t *testing.T) {
 	}
 	if got := out.String(); got != "9.9.9-test\n" {
 		t.Fatalf("unexpected stdout: %q", got)
+	}
+}
+
+func TestRun_Version_IgnoresStartupValidation(t *testing.T) {
+	isolateUserConfig(t)
+
+	// Deliberately break startup requirements; version should still succeed.
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PATH", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "version"}, &RunOptions{Out: &out, Err: &errOut})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v (stderr=%q)", err, errOut.String())
+	}
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (stderr=%q)", code, errOut.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %q", errOut.String())
 	}
 }
 
@@ -378,6 +471,62 @@ func TestRun_Config_Defaults(t *testing.T) {
 	wantEffective := string(llmmodel.ModelIDOrFallback(""))
 	if !strings.Contains(out.String(), "Effective Model: "+wantEffective) {
 		t.Fatalf("expected output to mention effective model %q, got:\n%s", wantEffective, out.String())
+	}
+}
+
+func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
+	isolateUserConfig(t)
+
+	// Explicitly remove the default key provided by isolateUserConfig.
+	t.Setenv("OPENAI_API_KEY", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	if err == nil {
+		t.Fatalf("expected non-nil error")
+	}
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d (err=%v)", code, err)
+	}
+	if errOut.Len() == 0 {
+		t.Fatalf("expected stderr output")
+	}
+	if !strings.Contains(errOut.String(), "No LLM provider API key is configured") {
+		t.Fatalf("expected error to mention missing LLM key, got stderr:\n%s", errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "OPENAI_API_KEY") {
+		t.Fatalf("expected error to mention OPENAI_API_KEY, got stderr:\n%s", errOut.String())
+	}
+}
+
+func TestRun_Config_MissingTools_IsExitCode1(t *testing.T) {
+	isolateUserConfig(t)
+
+	// Deliberately make tools undiscoverable.
+	t.Setenv("PATH", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	if err == nil {
+		t.Fatalf("expected non-nil error")
+	}
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d (err=%v)", code, err)
+	}
+	if errOut.Len() == 0 {
+		t.Fatalf("expected stderr output")
+	}
+	if !strings.Contains(errOut.String(), "Missing required tools") {
+		t.Fatalf("expected error to mention missing tools, got stderr:\n%s", errOut.String())
+	}
+	// Ensure we include go-install hints for the tools we can.
+	if !strings.Contains(errOut.String(), "go install golang.org/x/tools/gopls@latest") {
+		t.Fatalf("expected error to include gopls install hint, got stderr:\n%s", errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "go install golang.org/x/tools/cmd/goimports@latest") {
+		t.Fatalf("expected error to include goimports install hint, got stderr:\n%s", errOut.String())
 	}
 }
 

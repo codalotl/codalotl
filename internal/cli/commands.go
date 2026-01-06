@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -29,8 +30,21 @@ func (s *configState) get() (Config, error) {
 	return s.cfg, s.err
 }
 
+type startupState struct {
+	once sync.Once
+	err  error
+}
+
+func (s *startupState) validate(cfg Config) error {
+	s.once.Do(func() {
+		s.err = validateStartup(cfg, goclitools.DefaultRequiredTools())
+	})
+	return s.err
+}
+
 func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 	cfgState := &configState{}
+	startup := &startupState{}
 	runWithConfig := func(next func(c *qcli.Context, cfg Config) error) qcli.RunFunc {
 		if !loadConfigForRuns {
 			return func(c *qcli.Context) error {
@@ -40,6 +54,9 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 		return func(c *qcli.Context) error {
 			cfg, err := cfgState.get()
 			if err != nil {
+				return qcli.ExitError{Code: 1, Err: err}
+			}
+			if err := startup.validate(cfg); err != nil {
 				return qcli.ExitError{Code: 1, Err: err}
 			}
 			return next(c, cfg)
