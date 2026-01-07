@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
@@ -114,6 +115,20 @@ func newSession(cfg sessionConfig) (*session, error) {
 	if err := agentInstance.AddUserTurn(envMsg); err != nil {
 		sandboxAuthorizer.Close()
 		return nil, fmt.Errorf("add environment info: %w", err)
+	}
+
+	// In generic mode we don't gather package initialcontext, so include AGENTS.md
+	// context up front if present.
+	if !cfg.packageMode() {
+		agentsMsg, err := agentsmd.Read(sandboxDir, sandboxDir)
+		if err != nil {
+			debugLogf("agentsmd.Read failed: %v", err)
+		} else if strings.TrimSpace(agentsMsg) != "" {
+			if err := agentInstance.AddUserTurn(agentsMsg); err != nil {
+				sandboxAuthorizer.Close()
+				return nil, fmt.Errorf("add AGENTS.md context: %w", err)
+			}
+		}
 	}
 
 	return &session{
@@ -311,17 +326,29 @@ func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
 }
 
 func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string) (string, error) {
+	agentsMsg, agentsErr := agentsmd.Read(sandboxDir, pkgAbsPath)
+	if agentsErr != nil {
+		debugLogf("agentsmd.Read failed: %v", agentsErr)
+	}
+
 	pkg, err := loadGoPackage(pkgAbsPath)
 	if err != nil {
-		return packagePathSection(pkgRelPath, pkgAbsPath, err), err
+		return joinContextBlocks(
+			agentsMsg,
+			packagePathSection(pkgRelPath, pkgAbsPath, err),
+		), err
 	}
 
 	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg)
 	if err != nil {
-		return packagePathSection(pkgRelPath, pkgAbsPath, err), err
+		return joinContextBlocks(
+			agentsMsg,
+			packagePathSection(pkgRelPath, pkgAbsPath, err),
+		), err
 	}
 
-	return pkgModeInfo, nil
+	// Always place AGENTS.md guidance before the rest of the generated initial context.
+	return joinContextBlocks(agentsMsg, pkgModeInfo), nil
 }
 
 func packagePathSection(pkgRelPath string, pkgAbsPath string, err error) string {
@@ -334,4 +361,15 @@ func packagePathSection(pkgRelPath string, pkgAbsPath string, err error) string 
 	}
 	b.WriteString("</package-mode>")
 	return b.String()
+}
+
+func joinContextBlocks(blocks ...string) string {
+	nonEmpty := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		if strings.TrimSpace(b) == "" {
+			continue
+		}
+		nonEmpty = append(nonEmpty, strings.TrimSpace(b))
+	}
+	return strings.Join(nonEmpty, "\n\n")
 }
