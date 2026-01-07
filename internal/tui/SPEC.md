@@ -16,7 +16,7 @@ NOTE: this package intentionally avoids charmbracelet/*; `q/tui` and `q/termform
 ## Implementation Details
 
 This spec should be implemented in phases. The spec will document things that we'll do later. Don't implement these for now:
-- SKIP for now: Cycling Mode, the /model command, the Info Panel.
+- SKIP for now: none (Cycling Mode, /model, and the Info Panel are implemented).
 - SKIP any sort of docubot/reorgbot functionality.
 - SKIP package mode
 - Working Indicator:
@@ -97,11 +97,22 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 ## Slash Commands
 
 - /quit, /exit, /logout - terminates process.
-- /new - Makes a new session. The Messages Area is also cleared (Cycling Mode will still remember previous message history).
-- /model - Configures model.
+- /new - Makes a new session.
+- /model - With no args, prints the available models and usage help.
+- /model <id> - Switches the active model (validated via `llmmodel`) and starts a new session.
+  If `tui.Config.PersistModelID` is set, the model selection is persisted.
 - /package path/to/pkg - enter Package Mode for a given package.
 - /package - exit Package Mode. Prints a message indicating how Package Mode works.
-- /generic - exists Package Mode. Enters generic mode.
+- /generic - exits Package Mode. Enters generic mode.
+
+## New Sessions
+
+When a new session is initiated (application startup; /new; /package; etc), the Message Area is cleared, and replaced with "new session text".
+- There are two types of new session text: generic, and Package Mode.
+- Both new session texts have ASCII art (ex: codalotl icon + codalotl word art).
+- The new session text will describe the currently active mode. For example: "Package mode is a Go-specific mode that..."
+- Non-package mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
+- Other than the mode, the new session text does not mention any configuration (ex: model, session ID, current package).
 
 ## Package Mode
 
@@ -154,9 +165,11 @@ Capture mouse events. Handle as follows:
 
 There's an info panel to the right of the Messages Area, shown if there's sufficient width.
 
-### Tokens / Cost
+### Session / Model / Tokens / Cost
 
-The top of the panel shows the tokens and cost:
+The top of the panel shows the current session ID, model, tokens, and cost:
+- Session
+- Model
 - Context window (ex: "100% context left", "82% context left", etc)
 - Cost
 - Total input tokens (including cached). This token count rounded as necessary (ex: 313, 1.4k, 520k, 1.2M, etc).
@@ -166,6 +179,8 @@ The top of the panel shows the tokens and cost:
 Display format:
 
 ```
+Session: 123-abc
+Model: gpt-5.2-high
 Context: 32% left   |   Cost: $3.24
 Tokens: 123k (input: 42k, cached: 60k, output: 21k)
 ```

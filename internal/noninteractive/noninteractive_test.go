@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
@@ -99,6 +100,31 @@ func TestFormatAgentFinishedTurnLineIncludesTokens(t *testing.T) {
 	if line != want {
 		t.Fatalf("got %q, want %q", line, want)
 	}
+}
+
+func TestEffectiveModelID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty uses default", func(t *testing.T) {
+		t.Parallel()
+		if got := effectiveModelID(Options{}); got != defaultModelID {
+			t.Fatalf("got %q, want %q", got, defaultModelID)
+		}
+	})
+
+	t.Run("non-empty uses provided", func(t *testing.T) {
+		t.Parallel()
+		if got := effectiveModelID(Options{ModelID: llmmodel.ModelID("my-model")}); got != "my-model" {
+			t.Fatalf("got %q, want %q", got, "my-model")
+		}
+	})
+
+	t.Run("trims whitespace", func(t *testing.T) {
+		t.Parallel()
+		if got := effectiveModelID(Options{ModelID: llmmodel.ModelID("  my-model \n")}); got != "my-model" {
+			t.Fatalf("got %q, want %q", got, "my-model")
+		}
+	})
 }
 
 func TestDelayedToolCallPrinterFastCompletePrintsOnlyResult(t *testing.T) {

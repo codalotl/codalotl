@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
@@ -49,7 +50,7 @@ func TestModelViewAfterResize(t *testing.T) {
 	}
 	palette.workingSeq = workingIndicatorSequences(palette)
 
-	m := newModel(palette, noopFormatter{}, &session{config: sessionConfig{}}, sessionConfig{}, nil)
+	m := newModel(palette, noopFormatter{}, &session{config: sessionConfig{}}, sessionConfig{}, nil, nil)
 
 	require.False(t, m.ready)
 	require.Equal(t, "initializing", m.View())
@@ -133,7 +134,7 @@ func TestPermissionCommandTriggersView(t *testing.T) {
 		primaryForeground: termformat.ANSIColor(2),
 		accentForeground:  termformat.ANSIColor(3),
 	}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 	m.viewportWidth = 80
 	m.viewport.SetSize(80, 0)
 
@@ -154,7 +155,7 @@ func TestPermissionCommandTriggersView(t *testing.T) {
 
 func TestCyclingModeNavigation(t *testing.T) {
 	palette := colorPalette{}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 	m.windowWidth = 80
 	m.windowHeight = 20
 	m.updateSizes()
@@ -182,7 +183,7 @@ func TestCyclingModeNavigation(t *testing.T) {
 
 func TestCyclingModeEditsExitAndReturn(t *testing.T) {
 	palette := colorPalette{}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 	m.windowWidth = 80
 	m.windowHeight = 20
 	m.updateSizes()
@@ -209,10 +210,12 @@ func TestCyclingModeEditsExitAndReturn(t *testing.T) {
 }
 
 func TestCyclingHistoryFiltersSlashCommands(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 
 	m.recordSubmittedMessage("/new")
 	m.recordSubmittedMessage("/model gemini-2.5")
+	m.recordSubmittedMessage("/models")
+	m.recordSubmittedMessage("/models gemini-2.5")
 	m.recordSubmittedMessage("/refactor fix it")
 	m.recordSubmittedMessage("regular input")
 
@@ -227,24 +230,23 @@ func TestPackageCommandStartsSession(t *testing.T) {
 		return &session{config: cfg, packagePath: cfg.packagePath}, nil
 	}
 
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, factory)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, factory, nil)
 	m.handlePackageCommand(".")
 
 	require.Equal(t, ".", factoryCfg.packagePath)
 	require.NotNil(t, m.session)
 	assert.Equal(t, ".", m.sessionConfig.packagePath)
 
-	require.Len(t, m.messages, 3)
-	assert.Contains(t, m.messages[0].userMessage, "Switching to package mode")
-	assert.Contains(t, m.messages[1].userMessage, "Session ")
-	if assert.NotNil(t, m.messages[2].contextStatus) {
-		assert.Contains(t, m.messages[2].contextStatus.text, "Gathering context for .")
+	require.Len(t, m.messages, 2)
+	assert.Equal(t, messageKindWelcome, m.messages[0].kind)
+	if assert.NotNil(t, m.messages[1].contextStatus) {
+		assert.Contains(t, m.messages[1].contextStatus.text, "Gathering context for .")
 	}
 	assert.Equal(t, "Package: .", m.packageSection())
 }
 
 func TestPackageCommandRejectsInvalidPath(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 
 	m.handlePackageCommand("no/such/package/path")
 
@@ -254,7 +256,7 @@ func TestPackageCommandRejectsInvalidPath(t *testing.T) {
 }
 
 func TestPackageSectionFallback(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 
 	section := m.packageSection()
 	assert.Contains(t, section, "<none>")
@@ -267,7 +269,7 @@ func TestPackageSectionFallback(t *testing.T) {
 }
 
 func TestCtrlCStopsAgentWhenRunning(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 
 	cancelCalled := false
 	m.currentRun = &agentRun{
@@ -298,7 +300,7 @@ func TestCtrlCStopsAgentWhenRunning(t *testing.T) {
 }
 
 func TestCtrlCQuitsWhenIdle(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 
 	// No currentRun => idle.
 	require.False(t, m.isAgentRunning())
@@ -317,7 +319,7 @@ func TestCtrlCQuitsWhenIdle(t *testing.T) {
 }
 
 func TestToolResultReplacesCallByDefault(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 
 	callID := "call-1"
 	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
@@ -337,7 +339,7 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 }
 
 func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
 
 	callID := "call-2"
 	call := &llmstream.ToolCall{CallID: callID, Name: "change_api"}
@@ -353,4 +355,151 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 	require.Len(t, m.messages, 2)
 	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+}
+
+func TestModelCommandListsAvailableModels(t *testing.T) {
+	// Ensure we have at least one usable model to list.
+	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "test-openai-key")
+	require.NotEmpty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+
+	handled := m.handleSlashCommand("/model")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 1)
+	msg := m.messages[0]
+	require.Equal(t, messageKindSystem, msg.kind)
+	assert.Contains(t, msg.userMessage, "Current model:")
+	assert.Contains(t, msg.userMessage, "Available models:")
+	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
+
+	// Only list models that have an effective API key.
+	for _, id := range listedModelIDs(msg.userMessage) {
+		require.Truef(t, id.Valid(), "listed invalid model id: %q", id)
+		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
+	}
+}
+
+func TestModelsCommandListsAvailableModels(t *testing.T) {
+	// Ensure we have at least one usable model to list.
+	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "test-openai-key")
+	require.NotEmpty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+
+	handled := m.handleSlashCommand("/models")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 1)
+	msg := m.messages[0]
+	require.Equal(t, messageKindSystem, msg.kind)
+	assert.Contains(t, msg.userMessage, "Current model:")
+	assert.Contains(t, msg.userMessage, "Available models:")
+	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
+
+	// Only list models that have an effective API key.
+	for _, id := range listedModelIDs(msg.userMessage) {
+		require.Truef(t, id.Valid(), "listed invalid model id: %q", id)
+		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
+	}
+}
+
+func TestModelsCommandRejectsArgs(t *testing.T) {
+	ids := llmmodel.AvailableModelIDs()
+	if len(ids) == 0 {
+		t.Skip("need at least one available model to test /models")
+	}
+	target := ids[0]
+
+	var (
+		persistCalled bool
+		factoryCalled bool
+	)
+	persist := func(id llmmodel.ModelID) error {
+		persistCalled = true
+		return nil
+	}
+	factory := func(cfg sessionConfig) (*session, error) {
+		factoryCalled = true
+		return &session{config: cfg, modelID: cfg.modelID}, nil
+	}
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, factory, persist)
+
+	handled := m.handleSlashCommand("/models " + string(target))
+	require.True(t, handled)
+	require.False(t, factoryCalled)
+	require.False(t, persistCalled)
+
+	require.Len(t, m.messages, 1)
+	assert.Contains(t, m.messages[0].userMessage, "Usage: `/models`")
+	assert.Contains(t, m.messages[0].userMessage, "`/model <id>`")
+}
+
+func TestModelCommandSwitchesAndPersistsWhenConfigured(t *testing.T) {
+	ids := llmmodel.AvailableModelIDs()
+	if len(ids) < 2 {
+		t.Skip("need at least two available models to test switching")
+	}
+	target := ids[0]
+	if target == llmmodel.DefaultModel {
+		target = ids[1]
+	}
+
+	var (
+		persistCalled bool
+		persistedID   llmmodel.ModelID
+		factoryCalled bool
+		factoryCfg    sessionConfig
+	)
+	persist := func(id llmmodel.ModelID) error {
+		persistCalled = true
+		persistedID = id
+		return nil
+	}
+	factory := func(cfg sessionConfig) (*session, error) {
+		factoryCalled = true
+		factoryCfg = cfg
+		return &session{config: cfg, modelID: cfg.modelID}, nil
+	}
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, factory, persist)
+
+	handled := m.handleSlashCommand("/model " + string(target))
+	require.True(t, handled)
+	require.True(t, factoryCalled)
+	require.Equal(t, target, factoryCfg.modelID)
+	require.True(t, persistCalled)
+	require.Equal(t, target, persistedID)
+
+	// Reset creates a new welcome message; /model then appends a confirmation.
+	require.GreaterOrEqual(t, len(m.messages), 2)
+	assert.Equal(t, messageKindWelcome, m.messages[0].kind)
+	assert.Equal(t, messageKindSystem, m.messages[1].kind)
+	assert.Contains(t, m.messages[1].userMessage, "Model set to")
+	assert.Contains(t, m.messages[1].userMessage, string(target))
+}
+
+func listedModelIDs(modelListText string) []llmmodel.ModelID {
+	var ids []llmmodel.ModelID
+	for _, line := range strings.Split(modelListText, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "• ") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(line, "• "))
+		if rest == "" || strings.HasPrefix(rest, "<none>") {
+			continue
+		}
+		// Lines look like: "<id>" or "<id> (current)".
+		if i := strings.IndexAny(rest, " ("); i >= 0 {
+			rest = strings.TrimSpace(rest[:i])
+		}
+		if rest == "" {
+			continue
+		}
+		ids = append(ids, llmmodel.ModelID(rest))
+	}
+	return ids
 }

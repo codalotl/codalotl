@@ -18,7 +18,8 @@
       "max_output": 50000,
       "can_reason": true,
       "has_reasoning_effort": false,
-      "supports_images": true
+      "supports_images": true,
+      "is_legacy": true
     },
     {
       "id": "claude-opus-4-1-20250805",
@@ -31,7 +32,8 @@
       "max_output": 32000,
       "can_reason": true,
       "has_reasoning_effort": false,
-      "supports_images": true
+      "supports_images": true,
+      "is_legacy": true
     },
     {
       "id": "claude-opus-4-20250514",

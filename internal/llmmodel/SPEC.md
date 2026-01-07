@@ -25,6 +25,13 @@ Consumers can then configure those:
     - Add custom params on a per-model basis (ex: reasoning effort)
     - Create custom ModelID aliases
     - Add custom providers. For instance, local inference can be used by setting APIEndpointURL and (APIActualKey or APIEnvKey). ProviderID would be an API-compatible provider (likely OpenAI).
+- To present a model picker that only shows models that can be called with the *current* configuration, call AvailableModelIDsWithAPIKey(). This filters models using GetAPIKey(modelID), so it respects:
+    - per-model overrides (APIActualKey / APIEnvKey)
+    - in-memory provider overrides (ConfigureProviderKey)
+    - provider default env vars (ex: "OPENAI_API_KEY")
+- To check if a provider has a configured key *at the provider level* (ConfigureProviderKey or default env var), call ProviderHasConfiguredKey(providerID).
+    - This does NOT consider per-model overrides; those are only visible when checking at the model level.
+- EnvHasDefaultKey(providerID) is a narrow helper: it checks only the provider's default env var and ignores ConfigureProviderKey and per-model overrides.
 
 Once configured, params of type ModelID can be passed around to select a model. A package that uses llmmodel to send API requests can accept this ModelID param, get the API key, and get relevant parameters (URL, ReasoningEffort overrides, etc).
 
@@ -119,11 +126,6 @@ const (
 	ProviderIDAnthropic   ProviderID = "anthropic"
 	ProviderIDGemini      ProviderID = "gemini"
 	ProviderIDXAI         ProviderID = "xai"
-	ProviderIDOpenRouter  ProviderID = "openrouter"
-	ProviderIDHuggingFace ProviderID = "huggingface"
-	ProviderIDDeepseek    ProviderID = "deepseek"
-	ProviderIDGroq        ProviderID = "groq"
-	ProviderIDZAI         ProviderID = "zai"
 )
 
 // AllProviderIDs are all provider ids. They are sorted by my personal opinion of importance.
@@ -132,11 +134,6 @@ var AllProviderIDs = []ProviderID{
 	ProviderIDXAI,
 	ProviderIDAnthropic,
 	ProviderIDGemini,
-	ProviderIDOpenRouter,
-	ProviderIDHuggingFace,
-	ProviderIDDeepseek,
-	ProviderIDGroq,
-	ProviderIDZAI,
 }
 
 // AddCustomModel adds the custom model to the available models. id is an opaque identifier that can be referred to later from consumers of this package.
@@ -204,12 +201,24 @@ func EnvHasDefaultKey(providerID ProviderID) bool
 // Ex: {ProviderIDOpenAI: "OPENAI_API_KEY", ...}
 func ProviderKeyEnvVars() map[ProviderID]string
 
+// ProviderHasConfiguredKey reports whether a key is configured for providerID via either:
+//   - ConfigureProviderKey(providerID, key) (in-memory override), or
+//   - the provider's default env var (ex: "OPENAI_API_KEY")
+//
+// If you need to consider per-model overrides (APIActualKey / APIEnvKey), filter at the
+// model level using GetAPIKey(modelID) instead.
+func ProviderHasConfiguredKey(providerID ProviderID) bool
+
 // GetAPIKey returns the API key for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIActualKey
 //  2. Env[ModelInfo.ModelOverrides.APIEnvKey]
 //  3. Value from ConfigureProviderKey for id.ProviderID()
 //  4. Env[ProviderKeyEnvVars()[id.ProviderID()]]
 func GetAPIKey(id ModelID) string
+
+// AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty
+// effective API key (per GetAPIKey).
+func AvailableModelIDsWithAPIKey() []ModelID
 
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIEndpointURL

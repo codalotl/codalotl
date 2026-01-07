@@ -4,6 +4,33 @@ This package offers select functionality found in Go CLI tools (ex: `gofmt`, `go
 
 ## Functionality
 
+### Tool discovery / startup validation
+
+```go {api}
+// ToolRequirement describes an external tool expected in PATH.
+// InstallHint is optional and should be a user-facing install command.
+type ToolRequirement struct {
+    Name string
+    InstallHint string
+}
+
+// ToolStatus is the result of resolving a ToolRequirement with exec.LookPath.
+// Path is empty when the tool is not found.
+type ToolStatus struct {
+    Name string
+    Path string
+    InstallHint string
+}
+
+// CheckTools resolves each tool name via exec.LookPath and returns a status for
+// each requirement. It never returns an error.
+func CheckTools(reqs []ToolRequirement) []ToolStatus
+
+// DefaultRequiredTools returns Codalotl's default set of Go workflow tools:
+// go, gopls, goimports, gofmt, git.
+func DefaultRequiredTools() []ToolRequirement
+```
+
 ### gofmt
 
 ```go {api}

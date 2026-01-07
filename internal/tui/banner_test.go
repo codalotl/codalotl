@@ -16,11 +16,10 @@ func TestBannerUsesWordArtWhenWidthAllows(t *testing.T) {
 	width := contentWidth + bannerMarginLeft + bannerMarginRight
 
 	pal := newColorPalette(Config{ColorProfile: termformat.ColorProfileANSI256, Palette: PaletteDark})
-	result := bannerBlock(width, pal, "gpt-5-max")
+	result := bannerBlock(width, pal)
 
 	require.Contains(t, result, "▄▀▀▀▀")
-	require.Contains(t, result, "Model: gpt-5-max")
-	require.Contains(t, result, "Start by describing a task")
+	require.NotContains(t, result, "Model:")
 }
 
 func TestBannerFallsBackToPlainNameWhenTight(t *testing.T) {
@@ -29,7 +28,7 @@ func TestBannerFallsBackToPlainNameWhenTight(t *testing.T) {
 	width := contentWidth + bannerMarginLeft + bannerMarginRight
 
 	pal := newColorPalette(Config{ColorProfile: termformat.ColorProfileANSI256, Palette: PaletteDark})
-	result := bannerBlock(width, pal, "gpt-4.1-mini")
+	result := bannerBlock(width, pal)
 
 	require.Contains(t, result, productNameLine)
 	require.NotContains(t, result, "▄▀▀▀▀")
@@ -41,7 +40,7 @@ func TestBannerStacksNameWhenExtremelyNarrow(t *testing.T) {
 	width := contentWidth + bannerMarginLeft + bannerMarginRight
 
 	pal := newColorPalette(Config{ColorProfile: termformat.ColorProfileANSI256, Palette: PaletteDark})
-	result := bannerBlock(width, pal, "gpt-4.1-mini")
+	result := bannerBlock(width, pal)
 
 	expectedLine := "\n" + strings.Repeat(" ", bannerMarginLeft) + productNameLine
 	require.Contains(t, stripANSI(result), expectedLine)

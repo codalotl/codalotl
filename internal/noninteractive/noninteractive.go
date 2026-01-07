@@ -16,6 +16,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentformatter"
+	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
@@ -64,6 +65,9 @@ type Options struct {
 	// PackagePath can be any filesystem path (ex: "."; "/foo/bar"; "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
 	PackagePath string
 
+	// ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
+	ModelID llmmodel.ModelID
+
 	// Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
 	AutoYes bool
 
@@ -74,6 +78,13 @@ type Options struct {
 	// If Out != nil, any prints we do will use Out; otherwise will use Stdout.
 	// If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file), we'd still just print to Out (instead of something like Stderr).
 	Out io.Writer
+}
+
+func effectiveModelID(opts Options) llmmodel.ModelID {
+	if strings.TrimSpace(string(opts.ModelID)) != "" {
+		return llmmodel.ModelID(strings.TrimSpace(string(opts.ModelID)))
+	}
+	return defaultModelID
 }
 
 type lockedWriter struct {
@@ -271,7 +282,7 @@ func Exec(userPrompt string, opts Options) error {
 		return err
 	}
 
-	agentInstance, err := agent.NewAgent(defaultModelID, strings.TrimSpace(systemPrompt), toolsForAgent)
+	agentInstance, err := agent.NewAgent(effectiveModelID(opts), strings.TrimSpace(systemPrompt), toolsForAgent)
 	if err != nil {
 		return fmt.Errorf("construct agent: %w", err)
 	}
@@ -282,6 +293,16 @@ func Exec(userPrompt string, opts Options) error {
 	}
 	if err := agentInstance.AddUserTurn(envMsg); err != nil {
 		return fmt.Errorf("add environment info: %w", err)
+	}
+
+	// In generic mode we don't gather package initialcontext, so include AGENTS.md
+	// context up front if present.
+	if !pkgMode {
+		if agentsMsg := readAgentsMDContextBestEffort(sandboxDir, sandboxDir); agentsMsg != "" {
+			if err := agentInstance.AddUserTurn(agentsMsg); err != nil {
+				return fmt.Errorf("add AGENTS.md context: %w", err)
+			}
+		}
 	}
 
 	if err := printUserPrompt(out, userPrompt); err != nil {
@@ -641,17 +662,12 @@ func codeUnitName(pkgPath string) string {
 func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string) string {
 	baseInfo := buildEnvironmentInfo(sandboxDir)
 
-	pkg, err := loadGoPackage(pkgAbsPath)
+	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath)
 	if err != nil {
-		return baseInfo + "\n\n" + packagePathSection(pkgRelPath, pkgAbsPath, err)
+		return baseInfo + "\n\n" + initialContext
 	}
 
-	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg)
-	if err != nil {
-		return baseInfo + "\n\n" + packagePathSection(pkgRelPath, pkgAbsPath, err)
-	}
-
-	return baseInfo + "\n" + pkgModeInfo
+	return baseInfo + "\n" + initialContext
 }
 
 func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
@@ -689,4 +705,46 @@ func packagePathSection(pkgRelPath string, pkgAbsPath string, err error) string 
 	}
 	b.WriteString("</package-mode>")
 	return b.String()
+}
+
+func readAgentsMDContextBestEffort(sandboxDir, cwd string) string {
+	msg, err := agentsmd.Read(sandboxDir, cwd)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(msg)
+}
+
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string) (string, error) {
+	agentsMsg := readAgentsMDContextBestEffort(sandboxDir, pkgAbsPath)
+
+	pkg, err := loadGoPackage(pkgAbsPath)
+	if err != nil {
+		return joinContextBlocks(
+			agentsMsg,
+			packagePathSection(pkgRelPath, pkgAbsPath, err),
+		), err
+	}
+
+	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg)
+	if err != nil {
+		return joinContextBlocks(
+			agentsMsg,
+			packagePathSection(pkgRelPath, pkgAbsPath, err),
+		), err
+	}
+
+	// Always place AGENTS.md guidance before the rest of the generated initial context.
+	return joinContextBlocks(agentsMsg, pkgModeInfo), nil
+}
+
+func joinContextBlocks(blocks ...string) string {
+	nonEmpty := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		if strings.TrimSpace(b) == "" {
+			continue
+		}
+		nonEmpty = append(nonEmpty, strings.TrimSpace(b))
+	}
+	return strings.Join(nonEmpty, "\n\n")
 }

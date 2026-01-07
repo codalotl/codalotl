@@ -1,0 +1,5 @@
+- Write tests with testify.
+    - DON'T supply string descriptions in asserts (ex: assert.True(t, someBool, "dont include this string")) UNLESS the assert has indirection of some kind where extra context is needed.
+- Misc Go coding guidelines:
+    - RARELY sanitize strings with strings.TrimSpace. You may ONLY use strings.TrimSpace as part of a deliberate algorithm, not "just to be sure".
+    - You probably don't need to use filepath.Clean: filepath's Join, Abs, Relative automatically Clean the result.
