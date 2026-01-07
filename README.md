@@ -1,6 +1,6 @@
 # codalotl
 
-Codalotl is a coding agent for Go. By focusing exclusively on Go, the same LLM can deliver better performance, faster, for a cheaper cost.
+Codalotl is a coding agent for Go (TUI + CLI). By focusing exclusively on Go, the same LLM can deliver better performance, faster, for a cheaper cost.
 
 ## Results
 
@@ -54,13 +54,14 @@ From there, type your prompt (ex: `implement xyz feature`). The agent will autom
 
 ## Status and Limitations
 
-Codalotl is **usable** and **effective** as-is: I have replaced most of my other Agent usage with it. There are some important limitations:
+Codalotl is **usable** and **effective** as-is: I have replaced most of my other agent usage with it. There are some important limitations:
 - Not extensively tested on various platforms/OSes. Works on OSX and Linux.
 - Not extensively tested on various repos/codebases/versions of Go. Untested in multi-module/go.work projects.
 - Has a number of UX issues (examples: poor copy/paste support; text input has some word wrapping bugs).
 - Some common agent features are unimplemented (session resumption; skills; custom commands).
 - Only OpenAI models are supported at the moment; you must bring your own key.
 
+All of these will be addressed over time.
 
 ## How Codalotl Works
 
@@ -82,6 +83,8 @@ That being said, the agent DOES have levers to work in a multi-package environme
     - Change packages that use the current package to use a new API that was just implemented (in the future, this will be parallelized).
     - In both of these examples, the subagent uses a separate context window, so the main agent's context is protected from getting watered down.
 - It can run the overall project tests.
+
+You can manually give the agent context outside its package by using `@` to mention specific files or directories - the agent will be able to directly read them, even if outside the package.
 
 ### Automatic context creation for a Go package
 
