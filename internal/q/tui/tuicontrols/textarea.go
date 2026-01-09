@@ -3,6 +3,7 @@ package tuicontrols
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/q/tui"
@@ -1082,131 +1083,249 @@ func wrapLineWordBoundary(line string, width int) []wrapSeg {
 		return []wrapSeg{{start: 0, end: len(line)}}
 	}
 
-	type token struct {
-		start   int
-		end     int
-		width   int
-		isSpace bool
-	}
-
-	var tokens []token
-	iter := uni.NewGraphemeIterator(line, nil)
-	for iter.Next() {
-		start, end := iter.Start(), iter.End()
-		gw := iter.TextWidth()
-		space := isBreakableGrapheme(line[start:end])
-		if len(tokens) == 0 || tokens[len(tokens)-1].isSpace != space {
-			tokens = append(tokens, token{start: start, end: end, width: gw, isSpace: space})
-			continue
-		}
-		tokens[len(tokens)-1].end = end
-		tokens[len(tokens)-1].width += gw
-	}
-
-	if len(tokens) == 0 {
+	// Wrapping follows SPEC.md:
+	//   - Wrap at UAX #14-like break opportunities (tailored) with a fallback to grapheme boundaries.
+	//   - The rightmost column is reserved for whitespace/caret: non-whitespace graphemes are wrapped
+	//     as if the width were (width-1), when width >= 2.
+	gs := graphemesForWrap(line)
+	if len(gs) == 0 {
 		return []wrapSeg{{start: 0, end: 0}}
 	}
 
-	var out []wrapSeg
-	curStart := tokens[0].start
-	curWidth := 0
-
-	flush := func(end int) {
-		if end <= curStart {
-			return
-		}
-		out = append(out, wrapSeg{start: curStart, end: end})
+	maxGraphicWidth := width
+	if width >= 2 {
+		maxGraphicWidth = width - 1
 	}
 
-	for _, tok := range tokens {
-		if tok.width > width {
-			flush(tok.start)
-			out = append(out, wrapByGraphemeWidth(line[tok.start:tok.end], width, tok.start)...)
-			curStart = tok.end
-			curWidth = 0
-			continue
-		}
-
-		if curWidth+tok.width <= width {
-			curWidth += tok.width
-			continue
-		}
-
-		if curWidth == 0 {
-			curWidth = tok.width
-			continue
-		}
-
-		flush(tok.start)
-		curStart = tok.start
-		curWidth = tok.width
-	}
-
-	flush(len(line))
-
-	if len(out) == 0 {
-		return []wrapSeg{{start: 0, end: 0}}
-	}
-	return out
-}
-
-func wrapByGraphemeWidth(s string, width int, base int) []wrapSeg {
-	if s == "" {
-		return []wrapSeg{{start: base, end: base}}
-	}
-	if width <= 0 {
-		return []wrapSeg{{start: base, end: base + len(s)}}
+	breakAfter := make([]bool, len(gs))
+	stickyToRight := make([]bool, len(gs))
+	for i := range gs {
+		breakAfter[i] = wrapBreakOpportunityAfter(gs, i)
+		stickyToRight[i] = wrapStickyToRight(gs, i)
 	}
 
 	var out []wrapSeg
-	segStart := 0
-	curWidth := 0
 
-	iter := uni.NewGraphemeIterator(s, nil)
-	for iter.Next() {
-		gStart, gEnd := iter.Start(), iter.End()
-		gw := iter.TextWidth()
+	segStartIdx := 0
+	segStartByte := gs[0].start
+	widthUsed := 0
 
-		if gw > width {
-			if segStart < gStart {
-				out = append(out, wrapSeg{start: base + segStart, end: base + gStart})
+	lastBreakNextIdx := -1 // index of next grapheme where a break is allowed (start of next segment)
+
+	for i := 0; i < len(gs); {
+		g := gs[i]
+
+		allowed := width
+		if g.width > 0 && !g.isSpace {
+			allowed = maxGraphicWidth
+		}
+
+		if widthUsed+g.width > allowed {
+			// If even the first grapheme can't fit, force it onto its own line to make forward progress.
+			if i == segStartIdx {
+				out = append(out, wrapSeg{start: segStartByte, end: g.end})
+				segStartIdx = i + 1
+				if segStartIdx >= len(gs) {
+					return out
+				}
+				segStartByte = gs[segStartIdx].start
+				i = segStartIdx
+				widthUsed = 0
+				lastBreakNextIdx = -1
+				continue
 			}
-			out = append(out, wrapSeg{start: base + gStart, end: base + gEnd})
-			segStart = gEnd
-			curWidth = 0
+
+			breakIdx := -1
+			if lastBreakNextIdx > segStartIdx {
+				breakIdx = lastBreakNextIdx
+			} else {
+				breakIdx = i // break before current grapheme
+
+				// Avoid ending a line with "." or "," when they are between alphanumerics; keep the
+				// punctuation with the following word instead.
+				prevIdx := i - 1
+				if prevIdx >= segStartIdx && stickyToRight[prevIdx] {
+					breakIdx = prevIdx
+				}
+			}
+
+			adjBreakIdx := adjustWrapBreakIndexForWordJoiner(gs, segStartIdx, breakIdx)
+			if adjBreakIdx > segStartIdx {
+				breakIdx = adjBreakIdx
+			}
+
+			// If we still can't produce a non-empty segment, fall back to breaking before the
+			// current grapheme.
+			if breakIdx <= segStartIdx {
+				breakIdx = i
+			}
+
+			out = append(out, wrapSeg{start: segStartByte, end: gs[breakIdx].start})
+			segStartIdx = breakIdx
+			segStartByte = gs[segStartIdx].start
+			i = segStartIdx
+			widthUsed = 0
+			lastBreakNextIdx = -1
 			continue
 		}
 
-		if curWidth+gw > width && segStart < gStart {
-			out = append(out, wrapSeg{start: base + segStart, end: base + gStart})
-			segStart = gStart
-			curWidth = 0
+		widthUsed += g.width
+		if i < len(gs)-1 && breakAfter[i] {
+			lastBreakNextIdx = i + 1
 		}
-
-		curWidth += gw
-		if curWidth == width {
-			out = append(out, wrapSeg{start: base + segStart, end: base + gEnd})
-			segStart = gEnd
-			curWidth = 0
-		}
+		i++
 	}
 
-	if segStart < len(s) {
-		out = append(out, wrapSeg{start: base + segStart, end: base + len(s)})
+	if segStartByte < len(line) {
+		out = append(out, wrapSeg{start: segStartByte, end: len(line)})
+	} else {
+		out = append(out, wrapSeg{start: len(line), end: len(line)})
 	}
-	if len(out) == 0 {
-		out = []wrapSeg{{start: base, end: base}}
+
+	return out
+}
+
+type wrapGrapheme struct {
+	start int
+	end   int
+	width int
+
+	isSpace  bool
+	isAlnum  bool
+	hasWJ    bool // U+2060 WORD JOINER
+	hasSHY   bool // U+00AD SOFT HYPHEN
+	ascii    byte // only if single-rune ASCII; otherwise 0
+	hasASCII bool
+}
+
+func graphemesForWrap(s string) []wrapGrapheme {
+	if s == "" {
+		return nil
+	}
+	iter := uni.NewGraphemeIterator(s, nil)
+	out := make([]wrapGrapheme, 0, 32)
+	for iter.Next() {
+		g := wrapGrapheme{start: iter.Start(), end: iter.End(), width: iter.TextWidth()}
+
+		// Fast path: single-rune ASCII graphemes are the common case for break rules.
+		gr := s[g.start:g.end]
+		if r, size := utf8.DecodeRuneInString(gr); r != utf8.RuneError && size == len(gr) && r < 0x80 {
+			g.ascii = byte(r)
+			g.hasASCII = true
+		}
+
+		for _, r := range gr {
+			if unicode.IsSpace(r) {
+				g.isSpace = true
+				// We still scan to pick up WORD JOINER, though it's unlikely to co-occur.
+			}
+			if r == '\u2060' {
+				g.hasWJ = true
+			}
+			if r == '\u00ad' {
+				g.hasSHY = true
+			}
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				g.isAlnum = true
+			}
+		}
+		out = append(out, g)
 	}
 	return out
 }
 
-func isBreakableGrapheme(gr string) bool {
-	for _, r := range gr {
-		if unicode.IsSpace(r) {
+func wrapBreakOpportunityAfter(gs []wrapGrapheme, i int) bool {
+	if i < 0 || i >= len(gs)-1 {
+		return false
+	}
+
+	// WORD JOINER prevents breaks between the surrounding characters.
+	if gs[i].hasWJ || gs[i+1].hasWJ {
+		return false
+	}
+
+	if gs[i].isSpace {
+		return true
+	}
+
+	if gs[i].hasASCII {
+		switch gs[i].ascii {
+		case '-':
+			// Tailoring: hyphen-minus isn't a break opportunity at the primary stage.
+			// Secondary rule: allow splitting after "-" only when between alphanumerics.
+			if i-1 >= 0 && i+1 < len(gs) && gs[i-1].isAlnum && gs[i+1].isAlnum {
+				return true
+			}
+			return false
+		case '/':
+			return true
+		case '|':
+			return true
+		case '!':
+			return true
+		case '?':
+			return true
+		case '}':
+			return true
+		case '.':
+			if i-1 >= 0 && i+1 < len(gs) && gs[i-1].isAlnum && gs[i+1].isAlnum {
+				return false
+			}
+			return true
+		case ',':
+			if i-1 >= 0 && i+1 < len(gs) && gs[i-1].isAlnum && gs[i+1].isAlnum {
+				return false
+			}
 			return true
 		}
 	}
+
+	// Soft hyphen tailoring: do not treat U+00AD as a break opportunity at this stage.
+	if gs[i].hasSHY {
+		return false
+	}
+
 	return false
+}
+
+func wrapStickyToRight(gs []wrapGrapheme, i int) bool {
+	if i < 0 || i >= len(gs) {
+		return false
+	}
+	if !gs[i].hasASCII {
+		return false
+	}
+	if gs[i].ascii != '.' && gs[i].ascii != ',' {
+		return false
+	}
+	if i-1 < 0 || i+1 >= len(gs) {
+		return false
+	}
+	return gs[i-1].isAlnum && gs[i+1].isAlnum
+}
+
+func adjustWrapBreakIndexForWordJoiner(gs []wrapGrapheme, segStartIdx, breakIdx int) int {
+	if breakIdx <= segStartIdx {
+		return breakIdx
+	}
+	if breakIdx > len(gs) {
+		return breakIdx
+	}
+	// Break index is the index of the first grapheme in the next segment; the break is between
+	// breakIdx-1 and breakIdx.
+	for breakIdx > segStartIdx {
+		left := breakIdx - 1
+		right := breakIdx
+		if right >= len(gs) {
+			return breakIdx
+		}
+		if gs[left].hasWJ || gs[right].hasWJ {
+			breakIdx--
+			continue
+		}
+		return breakIdx
+	}
+	return breakIdx
 }
 
 func sanitizeTextAreaInput(s string) string {
@@ -1346,10 +1465,27 @@ func clampToGraphemeBoundary(s string, pos int) int {
 }
 
 type graphemeToken struct {
-	start   int
-	end     int
-	isSpace bool
+	start int
+	end   int
+	kind  wordTokenKind
 }
+
+type wordTokenKind uint8
+
+const (
+	wordTokSpace wordTokenKind = iota
+	wordTokSeparator
+	wordTokOther
+)
+
+var asciiWordSeparator = func() [128]bool {
+	var t [128]bool
+	// Matches SPEC.md "Word separator" set (ASCII).
+	for _, b := range []byte("`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?") {
+		t[b] = true
+	}
+	return t
+}()
 
 func graphemeTokens(s string) []graphemeToken {
 	if s == "" {
@@ -1358,11 +1494,20 @@ func graphemeTokens(s string) []graphemeToken {
 	iter := uni.NewGraphemeIterator(s, nil)
 	out := make([]graphemeToken, 0, 16)
 	for iter.Next() {
-		token := graphemeToken{start: iter.Start(), end: iter.End()}
-		for _, r := range s[token.start:token.end] {
+		token := graphemeToken{start: iter.Start(), end: iter.End(), kind: wordTokOther}
+		gr := s[token.start:token.end]
+		for _, r := range gr {
 			if unicode.IsSpace(r) {
-				token.isSpace = true
+				token.kind = wordTokSpace
 				break
+			}
+		}
+		if token.kind != wordTokSpace {
+			for _, r := range gr {
+				if r < 0x80 && asciiWordSeparator[byte(r)] {
+					token.kind = wordTokSeparator
+					break
+				}
 			}
 		}
 		out = append(out, token)
@@ -1377,10 +1522,15 @@ func moveWordLeftInLine(prefix string) int {
 	}
 
 	i := len(toks) - 1
-	for i >= 0 && toks[i].isSpace {
+	for i >= 0 && toks[i].kind == wordTokSpace {
 		i--
 	}
-	for i >= 0 && !toks[i].isSpace {
+	if i < 0 {
+		return 0
+	}
+
+	target := toks[i].kind
+	for i >= 0 && toks[i].kind == target {
 		i--
 	}
 	if i < 0 {
@@ -1396,20 +1546,22 @@ func moveWordRightInLine(suffix string) int {
 	}
 
 	i := 0
-	for i < len(toks) && toks[i].isSpace {
+	if toks[i].kind == wordTokSpace {
+		for i < len(toks) && toks[i].kind == wordTokSpace {
+			i++
+		}
+		if i >= len(toks) {
+			return len(suffix)
+		}
+	}
+	target := toks[i].kind
+	for i < len(toks) && toks[i].kind == target {
 		i++
 	}
 	if i >= len(toks) {
 		return len(suffix)
 	}
-
-	for i < len(toks) && !toks[i].isSpace {
-		i++
-	}
-	if i >= len(toks) {
-		return len(suffix)
-	}
-	return toks[i].start
+	return toks[i-1].end
 }
 
 func cutPlainStringToWidth(s string, width int) string {

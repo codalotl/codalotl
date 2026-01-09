@@ -163,11 +163,30 @@ func (v *View) SetContent(s string)
 
 A text area lets users enter multi-line text, and navigate it with common keyboard navigation.
 
-The caret is implemented as a background color. It indicates where the next character will be inserted. It does not blink. Since the next character is typically a blank space, it looks like a chunky rectangular block after the last letter. If the contents are empty, it is the first cell of Placeholder (or a blank cell if Placeholder is empty) with CaretColor as the background color.
+The caret is implemented as a background color. It (usually) indicates where the next character will be inserted. It does not blink. Since the next character is typically "" (user types sequentially), it looks like a chunky rectangular block after the last letter.
 
 If BackgroundColor is set, the rendered output pads every row with spaces so the full (width x height) area is that background color.
 
 Performance is critical.
+
+Word wrapping details:
+- The rightmost column of the text area may never have a graphic character (putting pixels in the cell). It may have a whitespace character.
+    - However, the caret can be placed in this column. When it's in this column, typing a graphic character either places it in the leftmost column of the next line, or wraps the current word to the next line.
+- If a string is typed that doesn't have multiple successive whitespace characters, the leftmost column of the text area (following the prompt) will never have a space character in it.
+    - (The space is considered printed in the rightmost column).
+- Navigation (Option/Alt+Left/Right)
+      - Whitespace: treat any Unicode whitespace (spaces, tabs, newlines, etc.) as separators that are skipped over before selecting a target word unit.
+      - "Word separator" characters (ASCII):
+        ` ~ ! @ # $ % ^ & * ( ) - = + [ { ] } \ | ; : ' " , . < > / ?
+      - Word units: after skipping whitespace, group characters into the largest contiguous run where each character is either (a) in the "word separator" set, or (b) not in that set; i.e., punctuation-runs are a unit, and non-punctuation-runs are a unit.
+      - Option/Alt+Left: move to the start of the previous word unit (ignoring any whitespace immediately left of the cursor).
+      - Option/Alt+Right: move to the end of the next word unit (ignoring any whitespace immediately right of the cursor).
+  - Word breaks (line wrapping)
+      - Primary rule: compute line-break opportunities using the Unicode Line Breaking Algorithm (UAX #14) on the plain text.
+      - Hyphen tailoring: do not treat hyphen-minus - (U+002D) or soft hyphen (U+00AD) as break opportunities at the UAX #14 stage.
+      - Hyphen splitting (secondary rule): allow splitting inside a word at an existing - only when it is between two alphanumeric characters; the split point is after the - (so the hyphen stays at the end of the line).
+      - Empirical punctuation results (alnum–punct–alnum cases): breaks occur after `/` and `|` (also after `!`, `?`, and `}`); breaks do not occur at `.` or `,` in that context.
+      - Word-joiner: U+2060 (WORD JOINER) prevents breaks between the surrounding characters.
 
 Public API:
 
