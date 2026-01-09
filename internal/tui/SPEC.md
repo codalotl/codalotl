@@ -60,7 +60,7 @@ Basic controls:
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.
 - The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").
-- Shift Page Up/Page Down should also scroll the Messages Area.
+- Page Up/Page Down/Home/End should also scroll the Messages Area (and not the text area).
 
 ## Text Area
 

@@ -276,19 +276,10 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 		m.tui = t
 	}
 
-	// Only send certain key events to viewport.
-	sendMsgToViewport := false
 	switch ev := msg.(type) {
 	case qtui.KeyEvent:
-		switch ev.ControlKey {
-		case qtui.ControlKeyPageUp, qtui.ControlKeyPageDown: // NOTE: shift+up/down don't work (usually not mapped; just sends Up/Down)
-			sendMsgToViewport = true
-		}
-		if sendMsgToViewport && m.viewport != nil {
-			m.viewport.Update(t, ev)
-		}
 		skipTextarea := m.handleKeyEvent(ev)
-		if !skipTextarea && !sendMsgToViewport && m.textarea != nil {
+		if !skipTextarea && m.textarea != nil {
 			m.textarea.Update(t, ev)
 		}
 	case qtui.MouseEvent:
@@ -515,6 +506,27 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 	}
 
 	switch key.ControlKey {
+	// Spec: these keys scroll the message area (viewport), not the text area.
+	case qtui.ControlKeyPageUp, qtui.ControlKeyCtrlPageUp:
+		if m.viewport != nil {
+			m.viewport.PageUp()
+		}
+		return true
+	case qtui.ControlKeyPageDown, qtui.ControlKeyCtrlPageDown:
+		if m.viewport != nil {
+			m.viewport.PageDown()
+		}
+		return true
+	case qtui.ControlKeyHome, qtui.ControlKeyCtrlHome, qtui.ControlKeyShiftHome, qtui.ControlKeyCtrlShiftHome:
+		if m.viewport != nil {
+			m.viewport.ScrollToTop()
+		}
+		return true
+	case qtui.ControlKeyEnd, qtui.ControlKeyCtrlEnd, qtui.ControlKeyShiftEnd, qtui.ControlKeyCtrlShiftEnd:
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		return true
 	case qtui.ControlKeyEsc:
 		if m.cyclingMode {
 			m.exitCyclingModeToDefault()
@@ -879,7 +891,22 @@ func (m *model) shouldExitCyclingForKey(msg qtui.KeyEvent) bool {
 	}
 
 	switch msg.ControlKey {
-	case qtui.ControlKeyUp, qtui.ControlKeyDown, qtui.ControlKeyEsc, qtui.ControlKeyEnter, qtui.ControlKeyPageUp, qtui.ControlKeyPageDown:
+	case qtui.ControlKeyUp,
+		qtui.ControlKeyDown,
+		qtui.ControlKeyEsc,
+		qtui.ControlKeyEnter,
+		qtui.ControlKeyPageUp,
+		qtui.ControlKeyPageDown,
+		qtui.ControlKeyCtrlPageUp,
+		qtui.ControlKeyCtrlPageDown,
+		qtui.ControlKeyHome,
+		qtui.ControlKeyEnd,
+		qtui.ControlKeyCtrlHome,
+		qtui.ControlKeyCtrlEnd,
+		qtui.ControlKeyShiftHome,
+		qtui.ControlKeyShiftEnd,
+		qtui.ControlKeyCtrlShiftHome,
+		qtui.ControlKeyCtrlShiftEnd:
 		return false
 	}
 
