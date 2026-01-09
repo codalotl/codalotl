@@ -1659,11 +1659,20 @@ func (m *model) blankRow(width int, background termformat.Color) string {
 }
 
 func (m *model) updateTextareaHeight() {
-	contents := ""
+	lines := 1
 	if m.textarea != nil {
-		contents = m.textarea.Contents()
+		// Use display lines (wrap-aware) so the text area grows based on what the
+		// user actually sees, not just logical '\n' lines.
+		if m.textarea.Width() > 0 {
+			lines = m.textarea.DisplayLines()
+			if lines < 1 {
+				lines = 1
+			}
+		} else {
+			contents := m.textarea.Contents()
+			lines = strings.Count(contents, "\n") + 1
+		}
 	}
-	lines := strings.Count(contents, "\n") + 1
 	height := clamp(lines, minInputLines, maxInputLines)
 	newHeight := height + 1 // 1: margin top
 

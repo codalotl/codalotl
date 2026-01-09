@@ -62,6 +62,11 @@ Basic controls:
 - The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").
 - Shift Page Up/Page Down should also scroll the Messages Area.
 
+## Text Area
+
+- The text area consists of both user-visible lines (rows of characters) as well as logical lines (separated by \n). If the user enters a long line, they will perceive multiple lines, but there is just one logical line.
+- The Text Area adjusts in size from 3 user-visible lines by default, up to 10. It shows the most user-visible lines it can, within the limit.
+
 ## Working Indicator
 
 - If the agent is Running, it has a Working Indicator visible with the amount of time it's been working. Otherwise it doesn't.
