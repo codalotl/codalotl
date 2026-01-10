@@ -480,6 +480,18 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	// Explicitly remove the default key provided by isolateUserConfig.
 	t.Setenv("OPENAI_API_KEY", "")
 
+	// Ensure this test doesn't accidentally pick up a project config from the
+	// repo (ex: .codalotl/config.json).
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
