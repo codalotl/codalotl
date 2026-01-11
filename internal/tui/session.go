@@ -87,6 +87,17 @@ func newSession(cfg sessionConfig) (*session, error) {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build code unit: %w", err)
 		}
+		// Expand beyond the base package dir to include supporting data directories while
+		// excluding nested Go packages. This is snapshot-based: it is computed once at
+		// session creation time.
+		if err := unit.IncludeSubtreeUnlessContains("*.go"); err != nil {
+			sandboxAuthorizer.Close()
+			return nil, fmt.Errorf("expand code unit subtree: %w", err)
+		}
+		if err := includeReachableTestdataDirs(unit); err != nil {
+			sandboxAuthorizer.Close()
+			return nil, fmt.Errorf("include reachable testdata dirs: %w", err)
+		}
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
 		toolAuthorizer = pkgAuthorizer
 		tools, err = toolsets.PackageAgentTools(sandboxDir, pkgAuthorizer, pkgAbsPath)
@@ -141,6 +152,49 @@ func newSession(cfg sessionConfig) (*session, error) {
 		userRequests:   userRequests,
 		config:         cfg,
 	}, nil
+}
+
+// includeReachableTestdataDirs includes any "testdata" directory directly under an
+// already-included directory (recursively). This allows Go fixture files in testdata
+// to remain in-scope for a package-mode code unit even when they are "*.go" files.
+func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
+	if unit == nil {
+		return nil
+	}
+
+	// Iterate the current snapshot of included paths; this is intentionally not a
+	// filesystem walk from BaseDir() because we only want testdata under directories
+	// that are already reachable per the main code unit rules.
+	for _, absPath := range unit.IncludedFiles() {
+		info, err := os.Stat(absPath)
+		if err != nil {
+			// The code unit should only contain existing paths, but be tolerant.
+			continue
+		}
+		if !info.IsDir() {
+			continue
+		}
+
+		testdataPath := filepath.Join(absPath, "testdata")
+		tdInfo, err := os.Stat(testdataPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("stat %q: %w", testdataPath, err)
+		}
+		if !tdInfo.IsDir() {
+			continue
+		}
+		if unit.Includes(testdataPath) {
+			continue
+		}
+		if err := unit.IncludeDir(testdataPath, true); err != nil {
+			return fmt.Errorf("include %q: %w", testdataPath, err)
+		}
+	}
+
+	return nil
 }
 
 // Close releases resources acquired for the session, notably the sandbox authorizer.

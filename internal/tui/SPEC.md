@@ -130,6 +130,11 @@ While in Package Mode with a given package:
 - A custom prompt is used.
 - Custom tools are used.
 
+Package Mode file access boundaries are implemented via a "code unit" rooted at the selected package directory. The code unit is computed when the session starts (snapshot semantics):
+- The base package directory is included.
+- Subdirectories are recursively included iff they do not contain any `*.go` files (this allows access to supporting data dirs like fixtures and snapshots without allowing access to nested Go packages).
+- Exception: any `testdata` directory that is directly under an included directory is included entirely (even if it contains `*.go` fixture files).
+
 Other notes:
 - /new while in Package Mode retains the active package.
 - Package Mode does not require a real, working Go package. It only requires a path ("." is possible). This is because the user may want to use this TUI to make a *new* package from scratch.
