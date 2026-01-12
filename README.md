@@ -57,8 +57,8 @@ From there, type your prompt (ex: `implement xyz feature`). The agent will autom
 Codalotl is **usable** and **effective** as-is: I have replaced most of my other agent usage with it. There are some important limitations:
 - Not extensively tested on various platforms/OSes. Works on OSX and Linux.
 - Not extensively tested on various repos/codebases/versions of Go. Untested in multi-module/go.work projects.
-- Has a number of UX issues (examples: poor copy/paste support; text input has some word wrapping bugs).
-- Some common agent features are unimplemented (session resumption; skills; custom commands).
+- Has a number of UX issues (example: poor copy/paste support; onboarding; error messages).
+- Some common agent features are unimplemented (session resumption; mcp; skills; custom commands).
 - Only OpenAI models are supported at the moment; you must bring your own key.
 
 All of these will be addressed over time.
