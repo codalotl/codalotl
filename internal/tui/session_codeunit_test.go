@@ -34,12 +34,7 @@ func TestNewSession_PackageMode_IncludesDataDirsButNotNestedPackages(t *testing.
 	require.NoError(t, os.MkdirAll(bobTestdataDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(bobTestdataDir, "fixture.go"), []byte("package main\n"), 0o644))
 
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(sandboxDir))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	s, err := newSession(sessionConfig{packagePath: "foo/bar"})
+	s, err := newSession(sessionConfig{packagePath: "foo/bar", sandboxDir: sandboxDir})
 	require.NoError(t, err)
 	t.Cleanup(s.Close)
 

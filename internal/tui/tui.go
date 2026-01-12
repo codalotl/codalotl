@@ -869,19 +869,22 @@ func (m *model) requestSessionResetWithPostMessage(cfg sessionConfig, message st
 }
 
 func (m *model) normalizeConfigForCurrentSandbox(cfg sessionConfig) (sessionConfig, error) {
-	sandboxDir := ""
-	switch {
-	case m != nil && m.session != nil && m.session.sandboxDir != "":
-		sandboxDir = m.session.sandboxDir
-	default:
-		var err error
-		sandboxDir, err = determineSandboxDir()
-		if err != nil {
-			return cfg, err
+	sandboxDir := strings.TrimSpace(cfg.sandboxDir)
+	if sandboxDir == "" {
+		switch {
+		case m != nil && m.session != nil && m.session.sandboxDir != "":
+			sandboxDir = m.session.sandboxDir
+		default:
+			var err error
+			sandboxDir, err = determineSandboxDir()
+			if err != nil {
+				return cfg, err
+			}
 		}
 	}
 
 	normalizedCfg, _, err := normalizeSessionConfig(cfg, sandboxDir)
+	normalizedCfg.sandboxDir = sandboxDir
 	return normalizedCfg, err
 }
 

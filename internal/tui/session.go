@@ -45,6 +45,10 @@ type session struct {
 type sessionConfig struct {
 	packagePath string
 	modelID     llmmodel.ModelID
+	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd).
+	// This is primarily to make tests independent of process-wide working directory
+	// and to avoid path aliasing issues (ex: /var vs /private/var on macOS).
+	sandboxDir string
 }
 
 func (cfg sessionConfig) packageMode() bool {
@@ -52,15 +56,20 @@ func (cfg sessionConfig) packageMode() bool {
 }
 
 func newSession(cfg sessionConfig) (*session, error) {
-	sandboxDir, err := determineSandboxDir()
-	if err != nil {
-		return nil, err
+	sandboxDir := strings.TrimSpace(cfg.sandboxDir)
+	if sandboxDir == "" {
+		var err error
+		sandboxDir, err = determineSandboxDir()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cfg, pkgAbsPath, err := normalizeSessionConfig(cfg, sandboxDir)
 	if err != nil {
 		return nil, err
 	}
+	cfg.sandboxDir = sandboxDir
 
 	modelID := cfg.modelID
 	if modelID == "" {
