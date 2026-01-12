@@ -54,25 +54,8 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	if sc.providerConversationID != "" {
 		params.PreviousResponseID = param.NewOpt(sc.providerConversationID)
 	}
-	params.Store = param.NewOpt(true)
-	params.Reasoning.Summary = responses.ReasoningSummaryAuto
-	if eff := strings.TrimSpace(modelInfo.ReasoningEffort); eff != "" {
-		params.Reasoning.Effort = shared.ReasoningEffort(eff)
-	}
-
-	if opt != nil {
-		if opt.NoStore {
-			params.Store = param.NewOpt(false)
-		}
-		if opt.ReasoningEffort != "" {
-			params.Reasoning.Effort = shared.ReasoningEffort(opt.ReasoningEffort)
-		}
-		if opt.ReasoningSummary != "" {
-			params.Reasoning.Summary = shared.ReasoningSummary(opt.ReasoningSummary)
-		}
-		if opt.TemperaturePresent {
-			params.Temperature = param.NewOpt(opt.Temperature)
-		}
+	if err := openAIResponsesApplySendOptions(&params, modelInfo, opt); err != nil {
+		return Turn{}, sc.LogWrappedErr("open_ai_send_async.options", err)
 	}
 
 	params.ParallelToolCalls = param.NewOpt(false)
@@ -192,6 +175,42 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	resp := *finalResp
 	resp.Role = RoleAssistant
 	return resp, nil
+}
+
+func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelInfo llmmodel.ModelInfo, opt *SendOptions) error {
+	params.Store = param.NewOpt(true)
+	params.Reasoning.Summary = responses.ReasoningSummaryAuto
+	if eff := strings.TrimSpace(modelInfo.ReasoningEffort); eff != "" {
+		params.Reasoning.Effort = shared.ReasoningEffort(eff)
+	}
+
+	if opt == nil {
+		return nil
+	}
+
+	if opt.NoStore {
+		params.Store = param.NewOpt(false)
+	}
+	if opt.ReasoningEffort != "" {
+		params.Reasoning.Effort = shared.ReasoningEffort(opt.ReasoningEffort)
+	}
+	if opt.ReasoningSummary != "" {
+		params.Reasoning.Summary = shared.ReasoningSummary(opt.ReasoningSummary)
+	}
+	if opt.TemperaturePresent {
+		params.Temperature = param.NewOpt(opt.Temperature)
+	}
+
+	switch opt.ServiceTier {
+	case "", "auto":
+		// No-op: provider defaults to auto if unset.
+	case "priority", "flex":
+		params.ServiceTier = responses.ResponseNewParamsServiceTier(opt.ServiceTier)
+	default:
+		return fmt.Errorf("invalid service tier %q (must be \"\", \"auto\", \"priority\", or \"flex\")", opt.ServiceTier)
+	}
+
+	return nil
 }
 
 type openAIResponsesContentBuilders struct {

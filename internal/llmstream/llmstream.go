@@ -33,6 +33,11 @@ type SendOptions struct {
 	TemperaturePresent bool
 	Temperature        float64 // ex: 1.0
 
+	// ServiceTier may be "", "auto", "priority", or "flex".
+	// Provider behavior:
+	//   - OpenAI Responses: when set to "priority" or "flex", sets service_tier in the request.
+	ServiceTier string
+
 	// If true, we do not link turns via server persistence. The ONLY context the LLM will have is what is provided in Turns. Note that this
 	// still stores.
 	NoLink bool
