@@ -58,7 +58,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.options", err)
 	}
 
-	params.ParallelToolCalls = param.NewOpt(false)
+	params.ParallelToolCalls = param.NewOpt(true)
 
 	debugPrint(debugHTTPRequests, "HTTP REQUEST: create response(streaming=true)", params)
 
