@@ -20,9 +20,18 @@ func isolateUserConfig(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	// llmmodel key overrides are process-global; ensure tests don't leak state.
-	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "")
+	for _, pid := range llmmodel.AllProviderIDs {
+		llmmodel.ConfigureProviderKey(pid, "")
+	}
 
-	// Keep tests hermetic: startup validation requires at least one provider key.
+	// Keep tests hermetic: don't allow developer env vars to satisfy startup validation.
+	for _, ev := range llmmodel.ProviderKeyEnvVars() {
+		if strings.TrimSpace(ev) != "" {
+			t.Setenv(ev, "")
+		}
+	}
+
+	// Startup validation requires at least one provider key.
 	t.Setenv("OPENAI_API_KEY", "sk-test-default")
 
 	// Startup validation also requires a handful of tools. Ensure tests don't

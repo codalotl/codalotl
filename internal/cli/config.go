@@ -22,6 +22,8 @@ import (
 type Config struct {
 	ProviderKeys ProviderKeys `json:"providerkeys"`
 
+	CustomModels []CustomModel `json:"custommodels,omitempty"`
+
 	// MaxWidth is the max width when reflowing documentation.
 	// Defaults to 120.
 	MaxWidth           int                `json:"maxwidth"`
@@ -57,6 +59,19 @@ type ProviderKeys struct {
 	// Gemini    string `json:"gemini"`
 }
 
+type CustomModel struct {
+	ID       string `json:"id"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+
+	APIKeyEnv      string `json:"apikeyenv"`
+	APIEndpointEnv string `json:"apiendpointenv"`
+	APIEndpointURL string `json:"apiendpointurl"`
+
+	ReasoningEffort string `json:"reasoningeffort"`
+	ServiceTier     string `json:"servicetier"`
+}
+
 func loadConfig() (Config, error) {
 	loader := cascade.New().WithDefaults(map[string]any{
 		"maxwidth": 120,
@@ -77,6 +92,10 @@ func loadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("load configuration: %w", err)
 	}
 	cfg.configLocations = configLocationsFromReport(report)
+
+	if err := configureCustomModelsFromConfig(cfg.CustomModels); err != nil {
+		return Config{}, err
+	}
 	if err := validateConfig(cfg); err != nil {
 		return Config{}, err
 	}
@@ -143,15 +162,7 @@ func writeConfig(w io.Writer, cfg Config) error {
 	if _, err := fmt.Fprintln(w, "To set LLM provider API keys, set one of these ENV variables:"); err != nil {
 		return err
 	}
-	envVars := llmmodel.ProviderKeyEnvVars()
-	for _, pid := range providerIDsExposedByProviderKeys() {
-		if !isKnownProviderID(pid) {
-			continue
-		}
-		ev := strings.TrimSpace(envVars[pid])
-		if ev == "" {
-			continue
-		}
+	for _, ev := range llmProviderEnvVarsForDisplay(cfg) {
 		if _, err := fmt.Fprintf(w, "- %s\n", ev); err != nil {
 			return err
 		}
@@ -205,6 +216,91 @@ func effectiveModel(cfg Config) llmmodel.ModelID {
 	}
 
 	return llmmodel.ModelIDOrFallback("")
+}
+
+func configureCustomModelsFromConfig(models []CustomModel) error {
+	for i, m := range models {
+		id := llmmodel.ModelID(strings.TrimSpace(m.ID))
+		if id == "" {
+			return fmt.Errorf("invalid configuration: custommodels[%d].id must be non-empty", i)
+		}
+		pid := llmmodel.ProviderID(strings.TrimSpace(m.Provider))
+		if pid == "" {
+			return fmt.Errorf("invalid configuration: custommodels[%d].provider must be non-empty (id=%q)", i, id)
+		}
+		providerModelID := strings.TrimSpace(m.Model)
+		if providerModelID == "" {
+			return fmt.Errorf("invalid configuration: custommodels[%d].model must be non-empty (id=%q)", i, id)
+		}
+
+		overrides := llmmodel.ModelOverrides{
+			APIEnvKey:       strings.TrimSpace(m.APIKeyEnv),
+			ReasoningEffort: strings.TrimSpace(m.ReasoningEffort),
+			ServiceTier:     strings.TrimSpace(m.ServiceTier),
+		}
+
+		// Support env-driven API endpoint selection so users can keep URLs out
+		// of config files when desired (ex: using direnv).
+		overrides.APIEndpointURL = strings.TrimSpace(m.APIEndpointURL)
+		if ev := strings.TrimSpace(m.APIEndpointEnv); ev != "" {
+			// Allow "$FOO" as well as "FOO" for consistency with llmmodel's APIEnvKey.
+			ev = strings.TrimPrefix(ev, "$")
+			if v := strings.TrimSpace(os.Getenv(ev)); v != "" {
+				overrides.APIEndpointURL = v
+			}
+		}
+
+		// llmmodel's model registry is process-global. Make repeated config loads
+		// idempotent as long as the definition matches what is already registered.
+		if id.Valid() {
+			info := llmmodel.GetModelInfo(id)
+			if info.ProviderID == pid &&
+				strings.TrimSpace(info.ProviderModelID) == providerModelID &&
+				strings.TrimSpace(info.ModelOverrides.APIEnvKey) == strings.TrimSpace(overrides.APIEnvKey) &&
+				strings.TrimSpace(info.ModelOverrides.APIEndpointURL) == strings.TrimSpace(overrides.APIEndpointURL) &&
+				strings.TrimSpace(info.ModelOverrides.ReasoningEffort) == strings.TrimSpace(overrides.ReasoningEffort) &&
+				strings.TrimSpace(info.ModelOverrides.ServiceTier) == strings.TrimSpace(overrides.ServiceTier) {
+				continue
+			}
+			return fmt.Errorf("invalid configuration: custommodels[%d] defines id %q which already exists with a different definition", i, id)
+		}
+
+		if err := llmmodel.AddCustomModel(id, pid, providerModelID, overrides); err != nil {
+			return fmt.Errorf("invalid configuration: custommodels[%d] (id=%q): %w", i, id, err)
+		}
+	}
+	return nil
+}
+
+func llmProviderEnvVarsForDisplay(cfg Config) []string {
+	// Prefer stable output order.
+	seen := map[string]bool{}
+	var out []string
+
+	envVars := llmmodel.ProviderKeyEnvVars()
+	for _, pid := range providerIDsExposedByProviderKeys() {
+		if !isKnownProviderID(pid) {
+			continue
+		}
+		ev := strings.TrimSpace(envVars[pid])
+		if ev == "" || seen[ev] {
+			continue
+		}
+		seen[ev] = true
+		out = append(out, ev)
+	}
+
+	for _, m := range cfg.CustomModels {
+		ev := strings.TrimSpace(m.APIKeyEnv)
+		ev = strings.TrimPrefix(ev, "$")
+		if ev == "" || seen[ev] {
+			continue
+		}
+		seen[ev] = true
+		out = append(out, ev)
+	}
+
+	return out
 }
 
 func providerKeysForDisplay(pk ProviderKeys) ProviderKeys {

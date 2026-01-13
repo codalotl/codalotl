@@ -11,6 +11,7 @@ import (
 type startupValidationError struct {
 	MissingTools []goclitools.ToolStatus
 	MissingLLM   bool
+	LLMEnvVars   []string
 }
 
 func (e startupValidationError) Error() string {
@@ -54,18 +55,7 @@ func (e startupValidationError) Error() string {
 	if e.MissingLLM {
 		b.WriteString("\nNo LLM provider API key is configured.\n")
 
-		envVars := llmmodel.ProviderKeyEnvVars()
-		var relevant []string
-		for _, pid := range providerIDsExposedByProviderKeys() {
-			if !isKnownProviderID(pid) {
-				continue
-			}
-			ev := strings.TrimSpace(envVars[pid])
-			if ev == "" {
-				continue
-			}
-			relevant = append(relevant, ev)
-		}
+		relevant := e.LLMEnvVars
 		if len(relevant) > 0 {
 			b.WriteString("\nTo fix, set one of these ENV variables (recommended):\n")
 			for _, ev := range relevant {
@@ -108,16 +98,7 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 		}
 	}
 
-	missingLLM := true
-	for _, pid := range providerIDsExposedByProviderKeys() {
-		if !isKnownProviderID(pid) {
-			continue
-		}
-		if llmmodel.ProviderHasConfiguredKey(pid) {
-			missingLLM = false
-			break
-		}
-	}
+	missingLLM := len(llmmodel.AvailableModelIDsWithAPIKey()) == 0
 
 	if len(missingTools) == 0 && !missingLLM {
 		return nil
@@ -125,5 +106,6 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 	return startupValidationError{
 		MissingTools: missingTools,
 		MissingLLM:   missingLLM,
+		LLMEnvVars:   llmProviderEnvVarsForDisplay(cfg),
 	}
 }
