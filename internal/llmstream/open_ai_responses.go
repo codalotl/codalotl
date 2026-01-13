@@ -54,28 +54,11 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	if sc.providerConversationID != "" {
 		params.PreviousResponseID = param.NewOpt(sc.providerConversationID)
 	}
-	params.Store = param.NewOpt(true)
-	params.Reasoning.Summary = responses.ReasoningSummaryAuto
-	if eff := strings.TrimSpace(modelInfo.ReasoningEffort); eff != "" {
-		params.Reasoning.Effort = shared.ReasoningEffort(eff)
+	if err := openAIResponsesApplySendOptions(&params, modelInfo, opt); err != nil {
+		return Turn{}, sc.LogWrappedErr("open_ai_send_async.options", err)
 	}
 
-	if opt != nil {
-		if opt.NoStore {
-			params.Store = param.NewOpt(false)
-		}
-		if opt.ReasoningEffort != "" {
-			params.Reasoning.Effort = shared.ReasoningEffort(opt.ReasoningEffort)
-		}
-		if opt.ReasoningSummary != "" {
-			params.Reasoning.Summary = shared.ReasoningSummary(opt.ReasoningSummary)
-		}
-		if opt.TemperaturePresent {
-			params.Temperature = param.NewOpt(opt.Temperature)
-		}
-	}
-
-	params.ParallelToolCalls = param.NewOpt(false)
+	params.ParallelToolCalls = param.NewOpt(true)
 
 	debugPrint(debugHTTPRequests, "HTTP REQUEST: create response(streaming=true)", params)
 
@@ -192,6 +175,63 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	resp := *finalResp
 	resp.Role = RoleAssistant
 	return resp, nil
+}
+
+func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelInfo llmmodel.ModelInfo, opt *SendOptions) error {
+	params.Store = param.NewOpt(true)
+	params.Reasoning.Summary = responses.ReasoningSummaryAuto
+	if eff := strings.TrimSpace(modelInfo.ReasoningEffort); eff != "" {
+		params.Reasoning.Effort = shared.ReasoningEffort(eff)
+	}
+
+	// Apply service tier from the model registry as a default. This is important
+	// because most callers don't set SendOptions at all, and custom models are
+	// expected to carry their overrides via llmmodel.ModelInfo.
+	//
+	// Precedence:
+	//   1) modelInfo.ServiceTier (default)
+	//   2) opt.ServiceTier, when non-empty (explicit override)
+	//      - "auto" explicitly clears any default to provider behavior.
+	serviceTier := strings.TrimSpace(modelInfo.ServiceTier)
+	if serviceTier == "auto" {
+		serviceTier = ""
+	}
+	if opt != nil {
+		if st := strings.TrimSpace(opt.ServiceTier); st != "" {
+			if st == "auto" {
+				serviceTier = ""
+			} else {
+				serviceTier = st
+			}
+		}
+	}
+	switch serviceTier {
+	case "":
+		// No-op: provider defaults to auto if unset.
+	case "priority", "flex":
+		params.ServiceTier = responses.ResponseNewParamsServiceTier(serviceTier)
+	default:
+		return fmt.Errorf("invalid service tier %q (must be \"\", \"auto\", \"priority\", or \"flex\")", serviceTier)
+	}
+
+	if opt == nil {
+		return nil
+	}
+
+	if opt.NoStore {
+		params.Store = param.NewOpt(false)
+	}
+	if opt.ReasoningEffort != "" {
+		params.Reasoning.Effort = shared.ReasoningEffort(opt.ReasoningEffort)
+	}
+	if opt.ReasoningSummary != "" {
+		params.Reasoning.Summary = shared.ReasoningSummary(opt.ReasoningSummary)
+	}
+	if opt.TemperaturePresent {
+		params.Temperature = param.NewOpt(opt.Temperature)
+	}
+
+	return nil
 }
 
 type openAIResponsesContentBuilders struct {

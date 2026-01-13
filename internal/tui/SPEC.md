@@ -60,7 +60,12 @@ Basic controls:
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.
 - The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").
-- Shift Page Up/Page Down should also scroll the Messages Area.
+- Page Up/Page Down/Home/End should also scroll the Messages Area (and not the text area).
+
+## Text Area
+
+- The text area consists of both user-visible lines (rows of characters) as well as logical lines (separated by \n). If the user enters a long line, they will perceive multiple lines, but there is just one logical line.
+- The Text Area adjusts in size from 3 user-visible lines by default, up to 10. It shows the most user-visible lines it can, within the limit.
 
 ## Working Indicator
 
@@ -124,6 +129,11 @@ While in Package Mode with a given package:
 - The agent is mostly restricted to read/write in a given package.
 - A custom prompt is used.
 - Custom tools are used.
+
+Package Mode file access boundaries are implemented via a "code unit" rooted at the selected package directory. The code unit is computed when the session starts (snapshot semantics):
+- The base package directory is included.
+- Subdirectories are recursively included iff they do not contain any `*.go` files (this allows access to supporting data dirs like fixtures and snapshots without allowing access to nested Go packages).
+- Exception: any `testdata` directory that is directly under an included directory is included entirely (even if it contains `*.go` fixture files).
 
 Other notes:
 - /new while in Package Mode retains the active package.

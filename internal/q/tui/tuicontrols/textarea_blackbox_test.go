@@ -196,6 +196,37 @@ func TestTextArea_MoveWordLeft_BeginsPreviousWord(t *testing.T) {
 	require.Equal(t, 0, ta.CaretPositionByteOffset()) // "|hi"
 }
 
+func TestTextArea_MoveWord_PunctuationRunsAreWordUnits(t *testing.T) {
+	ta := tuicontrols.NewTextArea(80, 5)
+	ta.SetContents("foo..bar baz")
+
+	ta.SetCaretPosition(0, 0)
+	ta.MoveWordRight()
+	require.Equal(t, len("foo"), ta.CaretPositionByteOffset())
+
+	ta.MoveWordRight()
+	require.Equal(t, len("foo.."), ta.CaretPositionByteOffset())
+
+	ta.MoveWordRight()
+	require.Equal(t, len("foo..bar"), ta.CaretPositionByteOffset())
+
+	ta.MoveWordRight()
+	require.Equal(t, len("foo..bar baz"), ta.CaretPositionByteOffset())
+
+	ta.MoveToEndOfText()
+	ta.MoveWordLeft()
+	require.Equal(t, len("foo..bar "), ta.CaretPositionByteOffset())
+
+	ta.MoveWordLeft()
+	require.Equal(t, len("foo.."), ta.CaretPositionByteOffset()) // start of "bar"
+
+	ta.MoveWordLeft()
+	require.Equal(t, len("foo"), ta.CaretPositionByteOffset()) // start of ".."
+
+	ta.MoveWordLeft()
+	require.Equal(t, 0, ta.CaretPositionByteOffset()) // start of "foo"
+}
+
 func TestTextArea_DeleteLeftRight_DeletesByGraphemeCluster(t *testing.T) {
 	ta := tuicontrols.NewTextArea(20, 2)
 	ta.SetContents("a\u0301b")
@@ -262,7 +293,7 @@ func TestTextArea_DeleteToBeginningOfLine_DoesNotDeleteNewline(t *testing.T) {
 }
 
 func TestTextArea_MoveUpDown_ByDisplayLines_PreservesVisualColumn(t *testing.T) {
-	ta := tuicontrols.NewTextArea(4, 10)
+	ta := tuicontrols.NewTextArea(5, 10)
 	ta.SetContents("0123456789") // display lines: "0123", "4567", "89"
 
 	ta.SetCaretPosition(0, 3)
@@ -287,7 +318,7 @@ func TestTextArea_MoveUpDown_ByDisplayLines_PreservesVisualColumn(t *testing.T) 
 }
 
 func TestTextArea_Wrapping_WordBoundaryAndGraphemeFallback(t *testing.T) {
-	ta := tuicontrols.NewTextArea(5, 10)
+	ta := tuicontrols.NewTextArea(6, 10)
 	ta.SetContents("hi there")
 
 	lines := ta.ClippedDisplayContents()
@@ -295,7 +326,7 @@ func TestTextArea_Wrapping_WordBoundaryAndGraphemeFallback(t *testing.T) {
 	require.GreaterOrEqual(t, ta.DisplayLines(), 2)
 	hasThereInSingleSegment := false
 	for _, line := range lines {
-		require.LessOrEqual(t, uni.TextWidth(line, nil), 5)
+		require.LessOrEqual(t, uni.TextWidth(line, nil), 6)
 		if strings.Contains(line, "there") {
 			hasThereInSingleSegment = true
 		}
@@ -308,29 +339,59 @@ func TestTextArea_Wrapping_WordBoundaryAndGraphemeFallback(t *testing.T) {
 }
 
 func TestTextArea_Wrapping_UsesTerminalCellWidths(t *testing.T) {
-	ta := tuicontrols.NewTextArea(2, 10)
+	ta := tuicontrols.NewTextArea(3, 10)
 	ta.SetContents("世a") // "世" is width 2 (default locale)
 
 	require.Equal(t, 2, ta.DisplayLines())
 	require.Equal(t, []string{"世", "a"}, ta.ClippedDisplayContents())
 }
 
+func TestTextArea_Wrapping_BreaksAfterSlashPipeAndHyphenBetweenAlnum(t *testing.T) {
+	ta := tuicontrols.NewTextArea(4, 10)
+
+	ta.SetContents("aa/bb")
+	require.Equal(t, []string{"aa/", "bb"}, ta.ClippedDisplayContents())
+
+	ta.SetContents("aa|bb")
+	require.Equal(t, []string{"aa|", "bb"}, ta.ClippedDisplayContents())
+
+	ta.SetContents("aa-bb")
+	require.Equal(t, []string{"aa-", "bb"}, ta.ClippedDisplayContents())
+}
+
+func TestTextArea_Wrapping_DoesNotBreakAfterDotCommaBetweenAlnum(t *testing.T) {
+	ta := tuicontrols.NewTextArea(4, 10)
+
+	ta.SetContents("aa.bb")
+	require.Equal(t, []string{"aa", ".bb"}, ta.ClippedDisplayContents())
+
+	ta.SetContents("aa,bb")
+	require.Equal(t, []string{"aa", ",bb"}, ta.ClippedDisplayContents())
+}
+
+func TestTextArea_Wrapping_WordJoinerPreventsBreaksAroundIt(t *testing.T) {
+	ta := tuicontrols.NewTextArea(5, 10)
+	ta.SetContents("aa/\u2060bb")
+
+	require.Equal(t, []string{"aa", "/\u2060bb"}, ta.ClippedDisplayContents())
+}
+
 func TestTextArea_Prompt_ReducesAvailableWidth_AndAlignsSubsequentLines(t *testing.T) {
 	ta := tuicontrols.NewTextArea(6, 3)
 	ta.Prompt = ">>"
 	ta.CaretColor = termformat.ANSIRed
-	ta.SetContents("abcde") // effective user width is 4 => "abcd" + "e"
+	ta.SetContents("abcde") // effective user width is 4 (but max graphic width is 3)
 
 	require.Equal(t, 2, ta.DisplayLines())
-	require.Equal(t, []string{"abcd", "e"}, ta.ClippedDisplayContents())
+	require.Equal(t, []string{"abc", "de"}, ta.ClippedDisplayContents())
 
 	rows := splitRows(t, ta.View(), ta.Height())
 	r0 := stripANSICodes(rows[0])
 	r1 := stripANSICodes(rows[1])
 	require.True(t, strings.HasPrefix(r0, ">>"))
-	require.Contains(t, r0, "abcd")
+	require.Contains(t, r0, "abc")
 	require.True(t, strings.HasPrefix(r1, "  "))
-	require.Contains(t, r1, "e")
+	require.Contains(t, r1, "de")
 	require.NotContains(t, r1, ">>")
 }
 
@@ -370,7 +431,7 @@ func TestTextArea_BackgroundColor_PadsEachRowToWidth(t *testing.T) {
 }
 
 func TestTextArea_VerticalClipping_WhenClipped_NoBlankRowsInClippedDisplayContents(t *testing.T) {
-	ta := tuicontrols.NewTextArea(3, 2)
+	ta := tuicontrols.NewTextArea(4, 2)
 	ta.SetContents("abcdefg") // display lines: "abc", "def", "g" => clipped
 
 	require.Equal(t, 3, ta.DisplayLines())
@@ -379,12 +440,12 @@ func TestTextArea_VerticalClipping_WhenClipped_NoBlankRowsInClippedDisplayConten
 	for _, line := range got {
 		require.NotEqual(t, "", line)
 		require.False(t, strings.Contains(line, "\n"))
-		require.LessOrEqual(t, uni.TextWidth(line, nil), 3)
+		require.LessOrEqual(t, uni.TextWidth(line, nil), 4)
 	}
 }
 
 func TestTextArea_VerticalClipping_CaretRemainsVisibleInView(t *testing.T) {
-	ta := tuicontrols.NewTextArea(3, 2)
+	ta := tuicontrols.NewTextArea(4, 2)
 	ta.CaretColor = termformat.ANSIBlue
 	ta.SetContents("abcdefg") // clipped
 

@@ -113,6 +113,7 @@ Config:
 // Note to self about how cascade currently maps to fields: it does NOT use json. It's just fieldname lowercase.
 type Config struct {
 	ProviderKeys          ProviderKeys       `json:"providerkeys"`
+	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
 	MaxWidth              int                `json:"maxwidth"` // Max width when reflowing documentation. Default to 120
 	MaxWidthProvidence    cascade.Providence `json:"-"`
 	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
@@ -135,10 +136,23 @@ type ProviderKeys struct {
 	// XAI         string `json:"xai"`
 	// Gemini      string `json:"gemini"`
 }
+
+type CustomModel struct {
+	ID       string `json:"id"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+
+	APIKeyEnv       string `json:"apikeyenv"`
+	APIEndpointEnv  string `json:"apiendpointenv"`
+	APIEndpointURL  string `json:"apiendpointurl"`
+	ReasoningEffort string `json:"reasoningeffort"`
+	ServiceTier     string `json:"servicetier"`
+}
 ```
 
 Notes:
 - If a provider's key is configured via the configuration file, call `llmmodel.ConfigureProviderKey` to use it.
+- Custom models are listed, they may be referred to by ID with `PreferredModel` (also, see `llmmodel.AddCustomModel`).
 
 
 ## Public API

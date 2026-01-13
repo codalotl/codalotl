@@ -46,6 +46,7 @@ type ModelOverrides struct {
 	APIEnvKey       string // ex: "$ANTHROPIC_API_KEY" or "ANTHROPIC_API_KEY"
 	APIEndpointURL  string // ex: "https://api.anthropic.com" or "https://api.openai.com/v1"
 	ReasoningEffort string // ex: "medium"
+	ServiceTier     string // ex: "priority"
 }
 
 type ProviderID string
@@ -135,6 +136,7 @@ func AddCustomModel(id ModelID, providerID ProviderID, providerModelID string, o
 			APIEnvKey:       normalizeEnvKey(overrides.APIEnvKey),
 			APIEndpointURL:  overrides.APIEndpointURL,
 			ReasoningEffort: overrides.ReasoningEffort,
+			ServiceTier:     overrides.ServiceTier,
 		},
 	}
 
