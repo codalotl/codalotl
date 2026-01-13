@@ -184,6 +184,36 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 		params.Reasoning.Effort = shared.ReasoningEffort(eff)
 	}
 
+	// Apply service tier from the model registry as a default. This is important
+	// because most callers don't set SendOptions at all, and custom models are
+	// expected to carry their overrides via llmmodel.ModelInfo.
+	//
+	// Precedence:
+	//   1) modelInfo.ServiceTier (default)
+	//   2) opt.ServiceTier, when non-empty (explicit override)
+	//      - "auto" explicitly clears any default to provider behavior.
+	serviceTier := strings.TrimSpace(modelInfo.ServiceTier)
+	if serviceTier == "auto" {
+		serviceTier = ""
+	}
+	if opt != nil {
+		if st := strings.TrimSpace(opt.ServiceTier); st != "" {
+			if st == "auto" {
+				serviceTier = ""
+			} else {
+				serviceTier = st
+			}
+		}
+	}
+	switch serviceTier {
+	case "":
+		// No-op: provider defaults to auto if unset.
+	case "priority", "flex":
+		params.ServiceTier = responses.ResponseNewParamsServiceTier(serviceTier)
+	default:
+		return fmt.Errorf("invalid service tier %q (must be \"\", \"auto\", \"priority\", or \"flex\")", serviceTier)
+	}
+
 	if opt == nil {
 		return nil
 	}
@@ -199,15 +229,6 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	}
 	if opt.TemperaturePresent {
 		params.Temperature = param.NewOpt(opt.Temperature)
-	}
-
-	switch opt.ServiceTier {
-	case "", "auto":
-		// No-op: provider defaults to auto if unset.
-	case "priority", "flex":
-		params.ServiceTier = responses.ResponseNewParamsServiceTier(opt.ServiceTier)
-	default:
-		return fmt.Errorf("invalid service tier %q (must be \"\", \"auto\", \"priority\", or \"flex\")", opt.ServiceTier)
 	}
 
 	return nil
