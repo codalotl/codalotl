@@ -13,6 +13,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsPrinted(t *testing.T) {
@@ -100,6 +101,30 @@ func TestFormatAgentFinishedTurnLineIncludesTokens(t *testing.T) {
 	if line != want {
 		t.Fatalf("got %q, want %q", line, want)
 	}
+}
+
+func TestTurnSnapshotConversation_UsageAndCachingIncludesProviderID(t *testing.T) {
+	t.Parallel()
+
+	c := &turnSnapshotConversation{
+		turns: []llmstream.Turn{
+			{Role: llmstream.RoleSystem},
+			{Role: llmstream.RoleUser},
+			{
+				Role:         llmstream.RoleAssistant,
+				ProviderID:   "resp_1",
+				FinishReason: llmstream.FinishReasonEndTurn,
+				Usage: llmstream.TokenUsage{
+					TotalInputTokens:  10,
+					CachedInputTokens: 2,
+					TotalOutputTokens: 3,
+				},
+			},
+		},
+	}
+
+	out := llmstream.UsageAndCaching(c)
+	require.Contains(t, out, "resp_1")
 }
 
 func TestEffectiveModelID(t *testing.T) {

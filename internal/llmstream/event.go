@@ -73,7 +73,7 @@ func newErrorEvent(err error) Event {
 }
 
 type TokenUsage struct {
-	TotalInputTokens  int64 // Total input tokens for this turn (may exclude CachedInputTokens depending on provider semantics).
+	TotalInputTokens  int64 // Total input tokens for this turn (must include CachedInputTokens).
 	CachedInputTokens int64
 	ReasoningTokens   int64
 	TotalOutputTokens int64 // Total output tokens for this turn (may exclude ReasoningTokens depending on provider semantics).
@@ -92,16 +92,27 @@ const (
 	FinishReasonPermissionDenied FinishReason = "permission_denied" // Ex: content rejection.
 )
 
-// Turn represents a conversational turn. A turn is one party (user/system, assistant) conveying data - it's their turn to "talk". Turns from the assistant have more data:
-// usage, ProviderID, FinishReason.
+// Turn represents a conversational turn: one party (system/user or assistant) conveying data.
 //
-// Turns don't map perfectly to OpenAI's Responses API. A Turn is both an input (user message) as well as an OpenAI Response (assistant reply, including all the parts -- a message
-// [TextContent part], reasoning [ReasoningContent part], and tool calls [ToolCall parts]).
+// Turns don't map perfectly to OpenAI's Responses API. We model both local inputs (system/user/tool results) and provider outputs (assistant responses)
+// as Turns.
+//
+// Notes:
+//   - Locally-created turns (system/user/tool results) have ProviderID == "" and Usage is zero.
+//   - Provider-created turns (assistant responses) have ProviderID set (ex: "resp_1234") and include Usage/FinishReason.
+//   - Tool calls are ToolCall parts inside an assistant turn; tool results are ToolResult parts in a subsequent RoleUser turn.
+//
+// A conversation might look like:
+//   - Turn{Role: RoleSystem, ProviderID: ""}
+//   - Turn{Role: RoleUser, ProviderID: ""}
+//   - Turn{Role: RoleAssistant, ProviderID: "resp_aaaa"} // Parts may include ToolCall(s)
+//   - Turn{Role: RoleUser, ProviderID: ""}              // Parts contain ToolResult(s)
+//   - Turn{Role: RoleAssistant, ProviderID: "resp_bbbb", FinishReason: FinishReasonEndTurn}
 type Turn struct {
 	Role         Role          // Role taking this turn (user, system, assistant).
 	ProviderID   string        // ID of the turn from the LLM provider (ex: "resp_1234")
 	Parts        []ContentPart // All parts of the turn.
-	Usage        TokenUsage    // Tokens used in this turn (just this turn, not all turns - all turns are stored on the conversation).
+	Usage        TokenUsage    // Provider-reported token usage for this provider response; currently only populated on assistant turns.
 	FinishReason FinishReason  // Reason the turn is finished (unfinished turns: FinishReasonInProgress).
 }
 

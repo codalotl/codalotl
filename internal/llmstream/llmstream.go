@@ -74,6 +74,10 @@ type streamingConversation struct {
 	// conversationID is provider-specific.
 	// In the case of OpenAI's responses API, it's the ID received using the Conversations API.
 	providerConversationID string
+
+	// promptCacheKey is a stable identifier used by providers (ex: OpenAI Responses)
+	// to reuse cached prompt prefixes across requests.
+	promptCacheKey string
 }
 
 func NewConversation(modelID llmmodel.ModelID, systemMessage string) StreamingConversation {
@@ -82,6 +86,7 @@ func NewConversation(modelID llmmodel.ModelID, systemMessage string) StreamingCo
 		turns:     []Turn{newTextTurn(RoleSystem, systemMessage)},
 		toolCalls: make(map[string]toolCallResult),
 	}
+	sc.promptCacheKey = computePromptCacheKey(modelID, systemMessage)
 
 	return &sc
 }

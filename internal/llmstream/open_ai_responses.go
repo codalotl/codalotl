@@ -512,6 +512,9 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		Model: modelID,
 		Input: responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
 	}
+	if sc.promptCacheKey != "" {
+		req.PromptCacheKey = param.NewOpt(sc.promptCacheKey)
+	}
 
 	// Include tools if configured
 	if len(sc.tools) > 0 {

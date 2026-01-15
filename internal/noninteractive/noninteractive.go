@@ -326,6 +326,16 @@ func Exec(userPrompt string, opts Options) error {
 			// cumulative session token usage.
 			continue
 		case agent.EventTypeDoneSuccess:
+			usageAndCaching := llmstream.UsageAndCaching(&turnSnapshotConversation{turns: agentInstance.Turns()})
+			if strings.TrimSpace(usageAndCaching) != "" {
+				if !strings.HasSuffix(usageAndCaching, "\n") {
+					usageAndCaching += "\n"
+				}
+				if _, err := io.WriteString(out, usageAndCaching); err != nil {
+					return err
+				}
+			}
+
 			line := formatAgentFinishedTurnLine(agentInstance.TokenUsage())
 			if line != "" {
 				if !strings.HasSuffix(line, "\n") {
@@ -408,6 +418,46 @@ func Exec(userPrompt string, opts Options) error {
 }
 
 type grantsAdder func(authorizer authdomain.Authorizer, userMessage string) error
+
+// turnSnapshotConversation adapts an agent's turn history to llmstream.StreamingConversation.
+// It is intentionally read-only: it's only used for debugging/printing helpers.
+type turnSnapshotConversation struct {
+	turns []llmstream.Turn
+}
+
+var _ llmstream.StreamingConversation = (*turnSnapshotConversation)(nil)
+
+func (c *turnSnapshotConversation) LastTurn() llmstream.Turn {
+	if c == nil || len(c.turns) == 0 {
+		return llmstream.Turn{}
+	}
+	return c.turns[len(c.turns)-1]
+}
+
+func (c *turnSnapshotConversation) Turns() []llmstream.Turn {
+	if c == nil {
+		return nil
+	}
+	return c.turns
+}
+
+func (c *turnSnapshotConversation) AddTools(_ []llmstream.Tool) error {
+	return errors.New("turn snapshot conversation is read-only")
+}
+
+func (c *turnSnapshotConversation) AddUserTurn(_ string) error {
+	return errors.New("turn snapshot conversation is read-only")
+}
+
+func (c *turnSnapshotConversation) AddToolResults(_ []llmstream.ToolResult) error {
+	return errors.New("turn snapshot conversation is read-only")
+}
+
+func (c *turnSnapshotConversation) SendAsync(_ context.Context, _ ...llmstream.SendOptions) <-chan llmstream.Event {
+	ch := make(chan llmstream.Event)
+	close(ch)
+	return ch
+}
 
 func buildAuthorizerForTools(pkgMode bool, pkgRelPath string, pkgAbsPath string, sandboxAuthorizer authdomain.Authorizer, userPrompt string, add grantsAdder) (authdomain.Authorizer, error) {
 	authorizerForTools := sandboxAuthorizer
