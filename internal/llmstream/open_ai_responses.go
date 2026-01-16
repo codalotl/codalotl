@@ -577,6 +577,7 @@ func openaiResponesBuildResponse(resp responses.Response) *Turn {
 	}
 
 	return &Turn{
+		Role:         RoleAssistant,
 		ProviderID:   resp.ID,
 		Parts:        parts,
 		Usage:        openaiResponesConvertUsage(resp.Usage),
