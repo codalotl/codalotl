@@ -591,11 +591,15 @@ func providerAssistantTurns(turns []llmstream.Turn) []llmstream.Turn {
 }
 
 // idealCachingForProviderTurns recalculates CachedInputTokens assuming each request's prompt
-// is a prefix of the next request's prompt.
+// is a prefix of the next request's prompt, and that the previous response's output is
+// then included as input context for the next request.
 //
 // This models an "ideal" caching scenario where request N+1 can reuse the entire prompt
-// from request N, so CachedInputTokens(N+1)=TotalInputTokens(N). Values are clamped for
-// safety when prompts shrink between requests.
+// from request N plus the response content from request N, so:
+//
+//	CachedInputTokens(N+1)=TotalInputTokens(N)+TotalOutputTokens(N)
+//
+// Values are clamped for safety when prompts shrink between requests.
 //
 // This was implemented because I was trying to measure token/cost performances in a benchmark scenario, and seemingly
 // random cache misses in OpenAI were resulting in wildly different costs. For example, if one tool call result misses cache mid-conversation,
@@ -616,11 +620,12 @@ func idealCachingForProviderTurns(turns []llmstream.Turn) ([]llmstream.Turn, llm
 	var session llmstream.TokenUsage
 
 	var prevTotalInput int64
+	var prevTotalOutput int64
 	for i, t := range turns {
 		totalIn := t.Usage.TotalInputTokens
 		cached := int64(0)
 		if i > 0 {
-			cached = prevTotalInput
+			cached = prevTotalInput + prevTotalOutput
 			if cached > totalIn {
 				cached = totalIn
 			}
@@ -629,6 +634,7 @@ func idealCachingForProviderTurns(turns []llmstream.Turn) ([]llmstream.Turn, llm
 		out = append(out, t)
 
 		prevTotalInput = totalIn
+		prevTotalOutput = t.Usage.TotalOutputTokens
 
 		session.TotalInputTokens += totalIn
 		session.CachedInputTokens += cached

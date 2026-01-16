@@ -22,7 +22,7 @@ func TestReportIdealCachingEnabled_UsesLookupEnvPresence(t *testing.T) {
 	require.False(t, reportIdealCachingEnabled())
 }
 
-func TestIdealCachingForProviderTurns_RecalculatesCachedInputAsPreviousTotalInput(t *testing.T) {
+func TestIdealCachingForProviderTurns_RecalculatesCachedInputAsPreviousTurnInputPlusOutput(t *testing.T) {
 	t.Parallel()
 
 	turns := []llmstream.Turn{
@@ -72,11 +72,11 @@ func TestIdealCachingForProviderTurns_RecalculatesCachedInputAsPreviousTotalInpu
 	require.Len(t, idealTurns, 3)
 
 	require.EqualValues(t, 0, idealTurns[0].Usage.CachedInputTokens)
-	require.EqualValues(t, 10, idealTurns[1].Usage.CachedInputTokens)
+	require.EqualValues(t, 11, idealTurns[1].Usage.CachedInputTokens) // 10 input + 1 output from previous turn
 	require.EqualValues(t, 7, idealTurns[2].Usage.CachedInputTokens)
 
 	require.EqualValues(t, 31, usage.TotalInputTokens)  // 10+14+7
-	require.EqualValues(t, 17, usage.CachedInputTokens) // 0+10+7
+	require.EqualValues(t, 18, usage.CachedInputTokens) // 0+11+7
 	require.EqualValues(t, 6, usage.TotalOutputTokens)  // 1+2+3
 	require.EqualValues(t, 2, usage.ReasoningTokens)    // only first turn set it
 	require.EqualValues(t, "resp_1", idealTurns[0].ProviderID)

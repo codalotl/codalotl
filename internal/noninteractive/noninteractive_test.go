@@ -179,7 +179,7 @@ func TestBuildDoneSuccessReport_IdealCachingPrintsActualAndIdealAndDoesNotAffect
 
 	require.Len(t, withIdeal.Lines, 2)
 	require.Equal(t, "• actual token usage: input=60 cached_input=40 output=7 total=107", withIdeal.Lines[0])
-	require.Equal(t, "• Agent finished the turn. Tokens: input=14 cached_input=10 output=3 total=27", withIdeal.Lines[1])
+	require.Equal(t, "• Agent finished the turn. Tokens: input=13 cached_input=11 output=3 total=27", withIdeal.Lines[1])
 }
 
 func TestEffectiveModelID(t *testing.T) {
