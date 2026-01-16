@@ -127,6 +127,61 @@ func TestTurnSnapshotConversation_UsageAndCachingIncludesProviderID(t *testing.T
 	require.Contains(t, out, "resp_1")
 }
 
+func TestBuildDoneSuccessReport_IdealCachingPrintsActualAndIdealAndDoesNotAffectUsageAndCaching(t *testing.T) {
+	t.Parallel()
+
+	actualTurns := []llmstream.Turn{
+		{Role: llmstream.RoleSystem},
+		{Role: llmstream.RoleUser},
+		{
+			Role:         llmstream.RoleAssistant,
+			ProviderID:   "resp_actual",
+			FinishReason: llmstream.FinishReasonEndTurn,
+			Usage: llmstream.TokenUsage{
+				TotalInputTokens:  5,
+				CachedInputTokens: 1,
+				TotalOutputTokens: 2,
+			},
+		},
+	}
+	completedAssistantTurns := []llmstream.Turn{
+		{
+			Role:       llmstream.RoleAssistant,
+			ProviderID: "resp_1",
+			Usage: llmstream.TokenUsage{
+				TotalInputTokens:  10,
+				TotalOutputTokens: 1,
+			},
+		},
+		{
+			Role:       llmstream.RoleAssistant,
+			ProviderID: "resp_2",
+			Usage: llmstream.TokenUsage{
+				TotalInputTokens:  14,
+				TotalOutputTokens: 2,
+			},
+		},
+	}
+	actualUsage := llmstream.TokenUsage{
+		TotalInputTokens:  100,
+		CachedInputTokens: 40,
+		TotalOutputTokens: 7,
+	}
+
+	withoutIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurns, actualUsage, false)
+	withIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurns, actualUsage, true)
+
+	require.Contains(t, withoutIdeal.UsageAndCaching, "resp_actual")
+	require.Equal(t, withoutIdeal.UsageAndCaching, withIdeal.UsageAndCaching)
+
+	require.Len(t, withoutIdeal.Lines, 1)
+	require.Equal(t, "• Agent finished the turn. Tokens: input=60 cached_input=40 output=7 total=107", withoutIdeal.Lines[0])
+
+	require.Len(t, withIdeal.Lines, 2)
+	require.Equal(t, "• actual token usage: input=60 cached_input=40 output=7 total=107", withIdeal.Lines[0])
+	require.Equal(t, "• Agent finished the turn. Tokens: input=14 cached_input=10 output=3 total=27", withIdeal.Lines[1])
+}
+
 func TestEffectiveModelID(t *testing.T) {
 	t.Parallel()
 

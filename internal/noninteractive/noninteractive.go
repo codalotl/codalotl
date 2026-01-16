@@ -316,9 +316,15 @@ func Exec(userPrompt string, opts Options) error {
 	defer toolCallPrinter.Close()
 
 	var terminalErr error
+	var completedAssistantTurns []llmstream.Turn
 	for ev := range agentInstance.SendUserMessage(runCtx, userPrompt) {
 		switch ev.Type {
 		case agent.EventTypeAssistantTurnComplete:
+			// Capture all completed assistant turns (including subagents) so we can optionally
+			// report "ideal caching" token usage across the entire run.
+			if ev.Turn != nil {
+				completedAssistantTurns = append(completedAssistantTurns, *ev.Turn)
+			}
 			// Suppress verbose per-turn usage/debug output like:
 			// "• Turn complete: finish=... input=... output=... reasoning=... cached_input=..."
 			//
@@ -326,18 +332,22 @@ func Exec(userPrompt string, opts Options) error {
 			// cumulative session token usage.
 			continue
 		case agent.EventTypeDoneSuccess:
-			usageAndCaching := llmstream.UsageAndCaching(&turnSnapshotConversation{turns: agentInstance.Turns()})
-			if strings.TrimSpace(usageAndCaching) != "" {
-				if !strings.HasSuffix(usageAndCaching, "\n") {
-					usageAndCaching += "\n"
+			report := buildDoneSuccessReport(agentInstance.Turns(), completedAssistantTurns, agentInstance.TokenUsage(), reportIdealCachingEnabled())
+
+			if strings.TrimSpace(report.UsageAndCaching) != "" {
+				s := report.UsageAndCaching
+				if !strings.HasSuffix(s, "\n") {
+					s += "\n"
 				}
-				if _, err := io.WriteString(out, usageAndCaching); err != nil {
+				if _, err := io.WriteString(out, s); err != nil {
 					return err
 				}
 			}
 
-			line := formatAgentFinishedTurnLine(agentInstance.TokenUsage())
-			if line != "" {
+			for _, line := range report.Lines {
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
 				if !strings.HasSuffix(line, "\n") {
 					line += "\n"
 				}
@@ -559,6 +569,98 @@ func shouldSuppressFormattedOutput(s string) bool {
 		return true
 	}
 	return false
+}
+
+func reportIdealCachingEnabled() bool {
+	_, ok := os.LookupEnv("REPORT_IDEAL_CACHING")
+	return ok
+}
+
+func providerAssistantTurns(turns []llmstream.Turn) []llmstream.Turn {
+	out := make([]llmstream.Turn, 0, len(turns))
+	for _, t := range turns {
+		if t.Role != llmstream.RoleAssistant {
+			continue
+		}
+		if t.ProviderID == "" {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// idealCachingForProviderTurns recalculates CachedInputTokens assuming each request's prompt
+// is a prefix of the next request's prompt.
+//
+// This models an "ideal" caching scenario where request N+1 can reuse the entire prompt
+// from request N, so CachedInputTokens(N+1)=TotalInputTokens(N). Values are clamped for
+// safety when prompts shrink between requests.
+func idealCachingForProviderTurns(turns []llmstream.Turn) ([]llmstream.Turn, llmstream.TokenUsage) {
+	out := make([]llmstream.Turn, 0, len(turns))
+	var session llmstream.TokenUsage
+
+	var prevTotalInput int64
+	for i, t := range turns {
+		totalIn := t.Usage.TotalInputTokens
+		cached := int64(0)
+		if i > 0 {
+			cached = prevTotalInput
+			if cached > totalIn {
+				cached = totalIn
+			}
+		}
+		t.Usage.CachedInputTokens = cached
+		out = append(out, t)
+
+		prevTotalInput = totalIn
+
+		session.TotalInputTokens += totalIn
+		session.CachedInputTokens += cached
+		session.ReasoningTokens += t.Usage.ReasoningTokens
+		session.TotalOutputTokens += t.Usage.TotalOutputTokens
+	}
+
+	return out, session
+}
+
+type doneSuccessReport struct {
+	UsageAndCaching string
+	Lines           []string // lines are returned without trailing newlines
+}
+
+func buildDoneSuccessReport(actualTurns []llmstream.Turn, completedAssistantTurns []llmstream.Turn, actualUsage llmstream.TokenUsage, reportIdealCaching bool) doneSuccessReport {
+	// `UsageAndCaching` is a debug/trace output over the actual conversation and should not
+	// change based on any "ideal caching" visualization.
+	usageAndCaching := llmstream.UsageAndCaching(&turnSnapshotConversation{turns: actualTurns})
+
+	if !reportIdealCaching {
+		return doneSuccessReport{
+			UsageAndCaching: usageAndCaching,
+			Lines:           []string{formatAgentFinishedTurnLine(actualUsage)},
+		}
+	}
+
+	turnsForIdeal := completedAssistantTurns
+	if len(turnsForIdeal) == 0 {
+		// Best-effort: fall back to the main agent's snapshot if no per-request completion
+		// events were captured (should be rare).
+		turnsForIdeal = actualTurns
+	}
+
+	_, idealUsage := idealCachingForProviderTurns(providerAssistantTurns(turnsForIdeal))
+	return doneSuccessReport{
+		UsageAndCaching: usageAndCaching,
+		Lines: []string{
+			formatActualTokenUsageLine(actualUsage),
+			formatAgentFinishedTurnLine(idealUsage),
+		},
+	}
+}
+
+func formatActualTokenUsageLine(u llmstream.TokenUsage) string {
+	// Keep the phrasing stable; callers/tests rely on this being a single line.
+	return fmt.Sprintf("• actual token usage: %s", formatSessionTokenUsage(u))
 }
 
 func formatAgentFinishedTurnLine(u llmstream.TokenUsage) string {
