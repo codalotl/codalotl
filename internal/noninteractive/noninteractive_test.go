@@ -144,21 +144,23 @@ func TestBuildDoneSuccessReport_IdealCachingPrintsActualAndIdealAndDoesNotAffect
 			},
 		},
 	}
-	completedAssistantTurns := []llmstream.Turn{
-		{
-			Role:       llmstream.RoleAssistant,
-			ProviderID: "resp_1",
-			Usage: llmstream.TokenUsage{
-				TotalInputTokens:  10,
-				TotalOutputTokens: 1,
+	completedAssistantTurnsByAgent := map[string][]llmstream.Turn{
+		"agent_main": {
+			{
+				Role:       llmstream.RoleAssistant,
+				ProviderID: "resp_1",
+				Usage: llmstream.TokenUsage{
+					TotalInputTokens:  10,
+					TotalOutputTokens: 1,
+				},
 			},
-		},
-		{
-			Role:       llmstream.RoleAssistant,
-			ProviderID: "resp_2",
-			Usage: llmstream.TokenUsage{
-				TotalInputTokens:  14,
-				TotalOutputTokens: 2,
+			{
+				Role:       llmstream.RoleAssistant,
+				ProviderID: "resp_2",
+				Usage: llmstream.TokenUsage{
+					TotalInputTokens:  14,
+					TotalOutputTokens: 2,
+				},
 			},
 		},
 	}
@@ -168,8 +170,8 @@ func TestBuildDoneSuccessReport_IdealCachingPrintsActualAndIdealAndDoesNotAffect
 		TotalOutputTokens: 7,
 	}
 
-	withoutIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurns, actualUsage, false)
-	withIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurns, actualUsage, true)
+	withoutIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurnsByAgent, actualUsage, false)
+	withIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
 
 	require.Contains(t, withoutIdeal.UsageAndCaching, "resp_actual")
 	require.Equal(t, withoutIdeal.UsageAndCaching, withIdeal.UsageAndCaching)
@@ -180,6 +182,76 @@ func TestBuildDoneSuccessReport_IdealCachingPrintsActualAndIdealAndDoesNotAffect
 	require.Len(t, withIdeal.Lines, 2)
 	require.Equal(t, "• actual token usage: input=60 cached_input=40 output=7 total=107", withIdeal.Lines[0])
 	require.Equal(t, "• Agent finished the turn. Tokens: input=13 cached_input=11 output=3 total=27", withIdeal.Lines[1])
+}
+
+func TestBuildDoneSuccessReport_IdealCachingResetsAcrossAgents(t *testing.T) {
+	t.Parallel()
+
+	actualTurns := []llmstream.Turn{
+		{Role: llmstream.RoleSystem},
+		{Role: llmstream.RoleUser},
+		{
+			Role:         llmstream.RoleAssistant,
+			ProviderID:   "resp_actual",
+			FinishReason: llmstream.FinishReasonEndTurn,
+			Usage: llmstream.TokenUsage{
+				TotalInputTokens:  1,
+				CachedInputTokens: 0,
+				TotalOutputTokens: 1,
+			},
+		},
+	}
+
+	completedAssistantTurnsByAgent := map[string][]llmstream.Turn{
+		"agent_1": {
+			{
+				Role:       llmstream.RoleAssistant,
+				ProviderID: "resp_a1_1",
+				Usage: llmstream.TokenUsage{
+					TotalInputTokens:  10,
+					TotalOutputTokens: 1,
+				},
+			},
+			{
+				Role:       llmstream.RoleAssistant,
+				ProviderID: "resp_a1_2",
+				Usage: llmstream.TokenUsage{
+					TotalInputTokens:  14,
+					TotalOutputTokens: 2,
+				},
+			},
+		},
+		"agent_2": {
+			{
+				Role:       llmstream.RoleAssistant,
+				ProviderID: "resp_a2_1",
+				Usage: llmstream.TokenUsage{
+					TotalInputTokens:  100,
+					TotalOutputTokens: 5,
+				},
+			},
+			{
+				Role:       llmstream.RoleAssistant,
+				ProviderID: "resp_a2_2",
+				Usage: llmstream.TokenUsage{
+					TotalInputTokens:  90,
+					TotalOutputTokens: 7,
+				},
+			},
+		},
+	}
+
+	actualUsage := llmstream.TokenUsage{
+		TotalInputTokens:  214,
+		CachedInputTokens: 0,
+		TotalOutputTokens: 15,
+	}
+
+	report := buildDoneSuccessReport(actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
+	require.Contains(t, report.UsageAndCaching, "resp_actual")
+	require.Len(t, report.Lines, 2)
+	require.Equal(t, "• actual token usage: input=214 cached_input=0 output=15 total=229", report.Lines[0])
+	require.Equal(t, "• Agent finished the turn. Tokens: input=113 cached_input=101 output=15 total=229", report.Lines[1])
 }
 
 func TestEffectiveModelID(t *testing.T) {
