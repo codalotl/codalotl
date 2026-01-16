@@ -596,6 +596,21 @@ func providerAssistantTurns(turns []llmstream.Turn) []llmstream.Turn {
 // This models an "ideal" caching scenario where request N+1 can reuse the entire prompt
 // from request N, so CachedInputTokens(N+1)=TotalInputTokens(N). Values are clamped for
 // safety when prompts shrink between requests.
+//
+// This was implemented because I was trying to measure token/cost performances in a benchmark scenario, and seemingly
+// random cache misses in OpenAI were resulting in wildly different costs. For example, if one tool call result misses cache mid-conversation,
+// we are billed the entire prefix conversation at 10x the cost (input vs cached input prices are are 10x different). I assume this happens because
+// cache is best effort, caching servers can be created/destroyed due to scaling or natural cycling, cache entries evicted based on server load,
+// and things of that nature. Example:
+//
+//	turn  provider_id                                              in_uncached  in_cached  out  cum_in_uncached  cum_in_cached  cum_out  cache
+//	0     resp_00158c9a096bb94f00696a51f3d3c0819c89608cbc3d650b7c  2578         0          276  2578             0              276      n/a
+//	1     resp_00158c9a096bb94f00696a51fc6424819c81172b97e208dfc1  253          2688       50   2831             2688           326      hit 91%
+//	2     resp_00158c9a096bb94f00696a51ffa74c819c9737fb580126eec1  237          2816       57   3068             5504           383      hit 92%
+//	3     resp_00158c9a096bb94f00696a52014304819c8a1633fffa3ce044  393          2944       225  3461             8448           608      hit 88%
+//	4     resp_00158c9a096bb94f00696a520512f0819c970a4f932b257a28  143          3456       66   3604             11904          674      hit 96%
+//	5     resp_00158c9a096bb94f00696a520b6b28819cb020374ad3ce4050  7789         0          107  11393            11904          781      miss 0% <- WHY?! Massive jump in uncached input tokens
+//	6     resp_00158c9a096bb94f00696a5210d6ac819ca27291e4f259adcd  143          7808       146  11536            19712          927      hit 98%
 func idealCachingForProviderTurns(turns []llmstream.Turn) ([]llmstream.Turn, llmstream.TokenUsage) {
 	out := make([]llmstream.Turn, 0, len(turns))
 	var session llmstream.TokenUsage
