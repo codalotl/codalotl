@@ -2,6 +2,8 @@
 
 Codalotl is a coding agent for Go (TUI + CLI). By focusing exclusively on Go, the same LLM can deliver better performance, faster, for a cheaper cost.
 
+![Screenshot](screenshot.png)
+
 ## Results
 
 Top agents and LLMs have been benchmarked for Go-specific tasks. Codalotl with gpt-5.2-high has a similar success rate to codex, but is **42% cheaper** and **54% faster** with the same underlying LLM. I think that's pretty cool.
