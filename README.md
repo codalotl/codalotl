@@ -2,7 +2,7 @@
 
 Codalotl is a coding agent for Go (TUI + CLI). By focusing exclusively on Go, the same LLM can deliver better performance, faster, for a cheaper cost.
 
-(/../images/images/screenshot.png)
+![Screenshot](/../images/images/screenshot.png)
 
 ## Results
 
