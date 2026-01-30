@@ -153,8 +153,16 @@ fi
 git add "$version_file"
 git commit -m "bump version to ${new_version}"
 
-git push origin main
 git tag "${tag}"
+
+git push origin main
 git push origin "${tag}"
 
-echo "done: bumped to ${new_version} and pushed ${tag}"
+cat <<EOF
+done: bumped to ${new_version} and pushed main + ${tag}
+
+next:
+  - verify locally (ex: run goagentbench on it; manually test it)
+  - publish (update GitHub Pages latest_version.json):
+      ./publish_version.sh
+EOF
