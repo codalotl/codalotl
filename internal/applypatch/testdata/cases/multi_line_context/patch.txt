@@ -1,0 +1,9 @@
+*** Begin Patch
+*** Update File: story.txt
+@@
+ common
+ alpha
+-target
++target updated
+ gamma
+*** End Patch

@@ -1,0 +1,6 @@
+*** Begin Patch
+*** Update File: data.txt
+@@
+-theta
++delta
+*** End Patch

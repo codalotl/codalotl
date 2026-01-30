@@ -1,0 +1,8 @@
+*** Begin Patch
+*** Update File: repeat.txt
+@@
+ start
+-keep
++keep updated
+ end
+*** End Patch

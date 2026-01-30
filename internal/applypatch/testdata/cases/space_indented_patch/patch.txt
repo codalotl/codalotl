@@ -1,0 +1,10 @@
+*** Begin Patch
+*** Update File: main.txt
+@@
+-	line 1
+-	indented original
+-line 3
++line 1
++    indented original
++line 3
+*** End Patch
