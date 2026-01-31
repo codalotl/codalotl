@@ -7,6 +7,17 @@ import (
 	"strings"
 )
 
+func visibleChildren(cmd *Command) []*Command {
+	children := cmd.Commands()
+	out := make([]*Command, 0, len(children))
+	for _, child := range children {
+		if child != nil && !child.Hidden {
+			out = append(out, child)
+		}
+	}
+	return out
+}
+
 func writeHelp(w io.Writer, root, cmd *Command) {
 	full := commandDisplayName(root, cmd)
 	if cmd.Short != "" {
@@ -23,10 +34,9 @@ func writeHelp(w io.Writer, root, cmd *Command) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintf(w, "  %s\n", usageLine(root, cmd))
 
-	if len(cmd.children) > 0 {
+	if children := visibleChildren(cmd); len(children) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Commands:")
-		children := cmd.Commands()
 		sort.Slice(children, func(i, j int) bool { return children[i].Name < children[j].Name })
 		for _, child := range children {
 			if child.Short != "" {
