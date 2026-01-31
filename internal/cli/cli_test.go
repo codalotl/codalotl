@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 )
 
 func isolateUserConfig(t *testing.T) {
@@ -37,6 +38,14 @@ func isolateUserConfig(t *testing.T) {
 	// Startup validation also requires a handful of tools. Ensure tests don't
 	// depend on whatever happens to be installed on the machine running them.
 	ensureToolStubs(t, "gopls", "goimports", "git")
+
+	// Keep tests hermetic: by default, do not allow CLI monitoring/version
+	// checks to make outbound network requests.
+	origNewMonitor := newCLIMonitor
+	newCLIMonitor = func(currentVersion string) *remotemonitor.Monitor {
+		return nil
+	}
+	t.Cleanup(func() { newCLIMonitor = origNewMonitor })
 }
 
 func ensureToolStubs(t *testing.T, names ...string) {

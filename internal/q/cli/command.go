@@ -15,6 +15,10 @@ type Command struct {
 	// Aliases are additional tokens that invoke this command.
 	Aliases []string
 
+	// Hidden hides this command from parent help listings, but it may still be
+	// invoked normally by name or alias.
+	Hidden bool
+
 	Short   string
 	Long    string
 	Example string

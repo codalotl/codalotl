@@ -12,6 +12,8 @@ Publishes a `latest_version.json` file to GitHub Pages via a branch (default:
   {"version": "X.Y.Z"}
 
 The version is read from the latest semver tag merged into origin/main (vX.Y.Z).
+
+This JSON file will be available at https://codalotl.github.io/codalotl/latest_version.json
 EOF
 }
 

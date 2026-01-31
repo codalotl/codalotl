@@ -41,7 +41,27 @@ If the TUI requests that a newly selected model be persisted (via `tui.Config.Pe
 
 ### codalotl version
 
-Prints the codalotl version to stdout.
+Prints the codalotl version status, and the version itself, to stdout. The version must be by itself on the last line. If the latest version cannot be obtained in a timely fashion (250ms timeout), only the current version is displayed.
+
+Example output:
+```
+The current version (1.2.3) is up to date.
+
+1.2.3
+```
+
+Or:
+```
+An update is available: 1.2.4 (current 1.2.3)
+Run go install github.com/codalotl/codalotl@latest
+
+1.2.3
+```
+
+Or:
+```
+1.2.3
+```
 
 ### codalotl config
 
@@ -154,6 +174,42 @@ Notes:
 - If a provider's key is configured via the configuration file, call `llmmodel.ConfigureProviderKey` to use it.
 - Custom models are listed, they may be referred to by ID with `PreferredModel` (also, see `llmmodel.AddCustomModel`).
 
+## Metrics/Crash Reporting and Version Notices
+
+We use `internal/q/remotemonitor` to report anonymous usage metrics, errors, and crashes to a server for analysis and diagnostics. This is also used to inform the user of new versions. Only pseudo-anonymous metrics are collected; never code, prompts, or user data. These can be opted out of.
+- Opt-out is controlled by `DisableTelemetry` and `DisableCrashReporting` above (crash reporting is only panics).
+- Version check opt-out is not needed, since no data is sent.
+- The server that receives data is `https://codalotl.ai`.
+	- The endpoints are `/v1/reports/events`, `/v1/reports/errors`, and `/v1/reports/panics`.
+- The version check URL is `https://codalotl.github.io/codalotl/latest_version.json`.
+- Any CLI command that doesn't load config (ex: `-h`, `codalotl version`) does NOT send events/errors/panics, because we don't know if telemetry is disabled.
+
+If the version is out of date:
+- When running certain CLI commands (non-TUI), the **first** output is:
+	- `An update is available: %s (current %s)\nRun go install github.com/codalotl/codalotl@latest\n\n`
+	- Commands where this is displayed: `codalotl config`.
+- `codalotl version` also displays this, but also indicates if the version IS up to date. See that section for more details.
+
+### Events
+
+- There is one event fired per CLI invocation (including the TUI invocation, but excluding non-config-loaded commands). Ex: `codalotl` (starting TUI) fires an event; `codalotl context initial path/to/pkg` fires an event; `codalotl version` does NOT fire an event.
+- The event name is lowercase and underscored. Ex: `start_tui`; `context_initial`.
+- Events are reported asynchronously with stable props included.
+
+### Errors
+
+- If `Run` returns an error with exit code 1, the error is reported.
+- Metadata will include `event` mapping to the same string as the event in `### Events`, or some reasonable fallback if that doesn't apply.
+
+### Crashes
+
+- Most CLI commands are run in a wrapped `WithPanicReporting`. Panics are reported.
+
+### TUI
+
+The TUI is its own beast with multiple goroutines and its own UI. Therefore, a `*remotemonitor.Monitor` is supplied to the TUI, so that it can display version upgrade notices and monitor its goroutines.
+
+That being said, still treat the invocation of the TUI as any other command. Its invocation should be wrapped with panic reporting; this package DOES fire a `start_tui` event; if the invoked TUI returns an error, this package will report it.
 
 ## Public API
 

@@ -14,6 +14,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
+	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/tui"
 )
 
@@ -42,13 +43,36 @@ func (s *startupState) validate(cfg Config) error {
 	return s.err
 }
 
-func newRootCommand(loadConfigForRuns bool) *qcli.Command {
+func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	cfgState := &configState{}
 	startup := &startupState{}
-	runWithConfig := func(next func(c *qcli.Context, cfg Config) error) qcli.RunFunc {
+	runState := &cliRunState{}
+
+	ensureMonitor := func(cfg Config) *remotemonitor.Monitor {
+		if !loadConfigForRuns {
+			return nil
+		}
+		if m := runState.getMonitor(); m != nil {
+			return m
+		}
+
+		m := newCLIMonitor(Version)
+		configureMonitorReporting(m, cfg)
+		if m != nil {
+			// Version checking doesn't send data; launch early so commands can
+			// display update notices without blocking too long.
+			m.FetchLatestVersionFromHost()
+		}
+
+		runState.setMonitor(m)
+		return m
+	}
+
+	runWithConfig := func(event string, next func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error) qcli.RunFunc {
 		if !loadConfigForRuns {
 			return func(c *qcli.Context) error {
-				return next(c, Config{})
+				runState.setEvent(event)
+				return next(c, Config{}, nil)
 			}
 		}
 		return func(c *qcli.Context) error {
@@ -56,10 +80,19 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 			if err != nil {
 				return qcli.ExitError{Code: 1, Err: err}
 			}
-			if err := startup.validate(cfg); err != nil {
-				return qcli.ExitError{Code: 1, Err: err}
-			}
-			return next(c, cfg)
+
+			m := ensureMonitor(cfg)
+			runState.setEvent(event)
+
+			return withPanicReporting(m, runState, event, func() error {
+				if m != nil {
+					m.ReportEventAsync(event, nil, true)
+				}
+				if err := startup.validate(cfg); err != nil {
+					return qcli.ExitError{Code: 1, Err: err}
+				}
+				return next(c, cfg, m)
+			})
 		}
 	}
 
@@ -67,12 +100,13 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 		Name:  "codalotl",
 		Short: "codalotl is an LLM-assisted Go coding agent.",
 		Args:  qcli.NoArgs,
-		Run: runWithConfig(func(c *qcli.Context, cfg Config) error {
+		Run: runWithConfig("start_tui", func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error {
 			// If PreferredModel is empty, pass the zero value so TUI keeps its
 			// default model behavior.
 			modelID := llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
 			return tui.RunWithConfig(tui.Config{
 				ModelID: modelID,
+				Monitor: m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
 					return persistPreferredModelID(cfg, newModelID)
 				},
@@ -90,7 +124,7 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 	execYes := execFlags.Bool("yes", 'y', false, "Auto-approve any permission checks (noninteractive).")
 	execNoColor := execFlags.Bool("no-color", 0, false, "Disable ANSI colors and formatting.")
 	execModel := execFlags.String("model", 0, "", "LLM model ID to use (overrides config preferredmodel; empty = default).")
-	execCmd.Run = runWithConfig(func(c *qcli.Context, cfg Config) error {
+	execCmd.Run = runWithConfig("exec", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 		userPrompt := strings.TrimSpace(strings.Join(c.Args, " "))
 
 		// Match the TUI behavior: if the user hasn't explicitly selected a model
@@ -126,6 +160,24 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 		Short: "Print codalotl version.",
 		Args:  qcli.NoArgs,
 		Run: func(c *qcli.Context) error {
+			m := newCLIMonitor(Version)
+			if m != nil {
+				// `version` does not send events/errors/panics (it doesn't load
+				// config, so we don't know user telemetry settings).
+				m.SetReportingEnabled(false, false, false)
+				m.FetchLatestVersionFromHost()
+			}
+
+			latest, ok := latestVersionWithTimeout(m, defaultVersionTimeout)
+			if ok {
+				status, ok := versionStatusOutput(Version, latest)
+				if ok {
+					if _, err := io.WriteString(c.Out, status); err != nil {
+						return err
+					}
+					return writeStringln(c.Out, Version)
+				}
+			}
 			return writeStringln(c.Out, Version)
 		},
 	}
@@ -134,8 +186,20 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 		Name:  "config",
 		Short: "Print codalotl configuration.",
 		Args:  qcli.NoArgs,
-		Run: runWithConfig(func(c *qcli.Context, cfg Config) error {
+		Run: runWithConfig("config", func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error {
+			if err := maybeWriteUpdateNotice(c.Out, m, Version, defaultNoticeWaitTimeout); err != nil {
+				return err
+			}
 			return writeConfig(c.Out, cfg)
+		}),
+	}
+
+	panicCmd := &qcli.Command{
+		Name:   "panic",
+		Hidden: true,
+		Args:   qcli.NoArgs,
+		Run: runWithConfig("panic", func(*qcli.Context, Config, *remotemonitor.Monitor) error {
+			panic("intentional panic")
 		}),
 	}
 
@@ -143,7 +207,7 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 		Name:  "public",
 		Short: "Print the public API of a package.",
 		Args:  qcli.ExactArgs(1),
-		Run: runWithConfig(func(c *qcli.Context, _ Config) error {
+		Run: runWithConfig("context_public", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			pkg, _, err := loadPackageArg(c.Args[0])
 			if err != nil {
 				return err
@@ -160,7 +224,7 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 		Name:  "initial",
 		Short: "Print the initial context for an LLM starting to work on a package.",
 		Args:  qcli.ExactArgs(1),
-		Run: runWithConfig(func(c *qcli.Context, _ Config) error {
+		Run: runWithConfig("context_initial", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			pkg, mod, err := loadPackageArg(c.Args[0])
 			if err != nil {
 				return err
@@ -181,7 +245,7 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 	fs := packagesCmd.Flags()
 	search := fs.String("search", 's', "", "Filter packages by Go regexp.")
 	deps := fs.Bool("deps", 0, false, "Include packages from direct module dependencies.")
-	packagesCmd.Run = runWithConfig(func(c *qcli.Context, _ Config) error {
+	packagesCmd.Run = runWithConfig("context_packages", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 		wd, err := os.Getwd()
 		if err != nil {
 			return err
@@ -194,8 +258,8 @@ func newRootCommand(loadConfigForRuns bool) *qcli.Command {
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd)
-	return root
+	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, panicCmd)
+	return root, runState
 }
 
 func writeStringln(w io.Writer, s string) error {

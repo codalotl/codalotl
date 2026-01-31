@@ -180,7 +180,7 @@ func (m *Monitor) FetchLatestVersionFromHost() {
 // ReportError synchronously reports err.Error() to the server, along with metadata (nil allowed). An error is returned for
 // connection issues.
 //
-// The request: POST Host+ReportPanicPath with JSON body: {"error": err.Error(), "metadata": metadata, "host": HostProperties(),
+// The request: POST Host+ReportErrorPath with JSON body: {"error": err.Error(), "metadata": metadata, "host": HostProperties(),
 // "props": m.stableProps}.
 func (m *Monitor) ReportError(err error, metadata map[string]string) error {
 	if !m.isErrorReportingEnabled() {

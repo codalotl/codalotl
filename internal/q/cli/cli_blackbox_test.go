@@ -815,6 +815,74 @@ func TestHelpOutput_DeterministicOrdering(t *testing.T) {
 	})
 }
 
+func TestHelpOutput_HiddenCommands_NotListedButInvokable(t *testing.T) {
+	const secretLong = "SECRET_LONG_MARKER"
+
+	var r recorder
+	root := &cli.Command{Name: "prog", Long: "ROOT"}
+	visible := &cli.Command{Name: "visible", Short: "visible command"}
+	visible.Run = r.run(visible, nil)
+
+	secret := &cli.Command{
+		Name:    "secret",
+		Aliases: []string{"s"},
+		Short:   "secret command",
+		Long:    secretLong,
+		Hidden:  true,
+	}
+	secret.Run = r.run(secret, nil)
+
+	root.AddCommand(visible, secret)
+
+	t.Run("parent help does not list hidden command", func(t *testing.T) {
+		code, out, err := runCLI(t, context.Background(), root, "--help")
+		if code != 0 || err != "" {
+			t.Fatalf("expected exit=0 and empty Err, got exit=%d err=%q (out=%q)", code, err, out)
+		}
+		requireContains(t, out, "\nCommands:\n")
+		requireContains(t, out, "\n  visible\tvisible command\n")
+		requireNotContains(t, out, "\n  secret")
+		requireNotContains(t, out, secretLong)
+	})
+
+	t.Run("hidden command can run by name", func(t *testing.T) {
+		r.calls = nil
+		code, out, err := runCLI(t, context.Background(), root, "secret")
+		if code != 0 {
+			t.Fatalf("expected exit=0, got exit=%d (out=%q err=%q)", code, out, err)
+		}
+		if out != "" || err != "" {
+			t.Fatalf("expected no output, got out=%q err=%q", out, err)
+		}
+		if len(r.calls) != 1 || r.calls[0].cmd != secret {
+			t.Fatalf("expected secret handler to run, got calls=%v", r.calls)
+		}
+	})
+
+	t.Run("hidden command can run by alias", func(t *testing.T) {
+		r.calls = nil
+		code, out, err := runCLI(t, context.Background(), root, "s")
+		if code != 0 {
+			t.Fatalf("expected exit=0, got exit=%d (out=%q err=%q)", code, out, err)
+		}
+		if out != "" || err != "" {
+			t.Fatalf("expected no output, got out=%q err=%q", out, err)
+		}
+		if len(r.calls) != 1 || r.calls[0].cmd != secret {
+			t.Fatalf("expected secret handler to run, got calls=%v", r.calls)
+		}
+	})
+
+	t.Run("hidden command still shows its own help when explicitly requested", func(t *testing.T) {
+		code, out, err := runCLI(t, context.Background(), root, "secret", "--help")
+		if code != 0 || err != "" {
+			t.Fatalf("expected exit=0 and empty Err, got exit=%d err=%q (out=%q)", code, err, out)
+		}
+		requireContains(t, out, "prog secret")
+		requireContains(t, out, secretLong)
+	})
+}
+
 func TestArgsHelpers_ReturnUsageErrors(t *testing.T) {
 	t.Run("NoArgs", func(t *testing.T) {
 		if err := cli.NoArgs(nil); err != nil {

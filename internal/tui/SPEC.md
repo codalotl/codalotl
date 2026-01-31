@@ -175,6 +175,15 @@ Capture mouse events. Handle as follows:
 
 There's an info panel to the right of the Messages Area, shown if there's sufficient width.
 
+### Version Upgrade Notice
+
+If a `*remotemonitor.Monitor` is passed to TUI, it is used to determine the latest version. If that version is higher than the current version, the top of the info panel will display (for instance):
+
+```
+An update is available: 1.2.4 (current 1.2.3)
+Run go install github.com/codalotl/codalotl@latest
+```
+
 ### Session / Model / Tokens / Cost
 
 The top of the panel shows the current session ID, model, tokens, and cost:
