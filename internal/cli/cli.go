@@ -13,6 +13,8 @@ import (
 
 // Version is the codalotl version. It is a var (not a const) so build tooling can
 // override it (for example via `-ldflags "-X .../internal/cli.Version=1.2.3"`).
+//
+// NOTE: our current build system does not do this - we just bump versions with ./bump_release.sh, which edits this source file.
 var Version = "0.10.0"
 
 // RunOptions overrides standard I/O. If nil, defaults are used. Overriding is
@@ -42,7 +44,7 @@ func Run(args []string, opts *RunOptions) (int, error) {
 		argv = argv[1:]
 	}
 
-	root := newRootCommand(!hasHelpFlag(argv))
+	root, runState := newRootCommand(!hasHelpFlag(argv))
 
 	var in io.Reader = os.Stdin
 	var out io.Writer = os.Stdout
@@ -86,6 +88,11 @@ func Run(args []string, opts *RunOptions) (int, error) {
 	if msg == "" {
 		msg = "command failed"
 	}
+
+	if exitCode == 1 && runState != nil && !runState.getPanicked() {
+		_ = reportErrorForExitCode1(runState.getMonitor(), runState.getEvent(), msg)
+	}
+
 	return exitCode, errors.New(msg)
 }
 
