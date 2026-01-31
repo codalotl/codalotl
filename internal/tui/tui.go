@@ -12,6 +12,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
@@ -132,7 +133,7 @@ func RunWithConfig(cfg Config) error {
 		return err
 	}
 
-	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession, cfg.PersistModelID)
+	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession, cfg.PersistModelID, cfg.Monitor)
 
 	return qtui.RunTUI(model, qtui.Options{
 		Input:       os.Stdin,
@@ -219,6 +220,10 @@ type model struct {
 	// This is primarily used by slash commands that start a new session (ex: /model) but still
 	// want to confirm what happened.
 	pendingPostResetMessage string
+
+	monitor             *remotemonitor.Monitor
+	latestVersion       string
+	versionCheckStarted bool
 }
 
 func newModel(
@@ -228,6 +233,7 @@ func newModel(
 	initialCfg sessionConfig,
 	factory func(sessionConfig) (*session, error),
 	persistModelID func(newModelID llmmodel.ModelID) error,
+	monitor *remotemonitor.Monitor,
 ) *model {
 	ti := newTextArea()
 	vp := tuicontrols.NewView(0, 0)
@@ -255,6 +261,7 @@ func newModel(
 		palette:             palette,
 		cycleIndex:          historyIndexNone,
 		editingHistoryIndex: historyIndexNone,
+		monitor:             monitor,
 	}
 	if initialSession != nil {
 		m.requests = initialSession.UserRequests()
@@ -269,6 +276,7 @@ func (m *model) Init(t *qtui.TUI) {
 	if m.requests != nil {
 		m.startUserRequestListener(m.requestSource, m.requests)
 	}
+	m.startLatestVersionCheck()
 }
 
 func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
@@ -332,6 +340,12 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 		}
 	case packageContextResultMsg:
 		m.handlePackageContextResult(ev)
+	case latestVersionMsg:
+		if ev.err != nil {
+			debugLogf("latest version check error: %v", ev.err)
+			break
+		}
+		m.latestVersion = ev.latest
 	}
 
 	m.persistEditedHistoryDraft()
@@ -1767,6 +1781,9 @@ func (m *model) infoPanelBlock() string {
 
 func (m *model) infoPanelContent() string {
 	var sections []string
+	if versionSection := m.versionUpgradeNoticeSection(); versionSection != "" {
+		sections = append(sections, versionSection)
+	}
 	if usageSection := m.tokensCostSection(); usageSection != "" {
 		sections = append(sections, usageSection)
 	}
@@ -1837,6 +1854,20 @@ func (m *model) currentAgent() *agent.Agent {
 		return nil
 	}
 	return m.session.agent
+}
+
+func (m *model) startLatestVersionCheck() {
+	if m == nil || m.versionCheckStarted || m.monitor == nil || m.tui == nil {
+		return
+	}
+	m.versionCheckStarted = true
+
+	mon := m.monitor
+	prog := m.tui
+	go func() {
+		latest, err := mon.LatestVersionSync()
+		prog.Send(latestVersionMsg{latest: latest, err: err})
+	}()
 }
 
 func (m *model) permissionView() string {

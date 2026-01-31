@@ -16,7 +16,7 @@ func TestScrollKeysScrollMessagesAreaNotTextArea(t *testing.T) {
 		primaryForeground: termformat.ANSIColor(7),
 		accentForeground:  termformat.ANSIColor(7),
 	}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
 	// Create enough content to make the viewport scrollable.

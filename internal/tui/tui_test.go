@@ -50,7 +50,7 @@ func TestModelViewAfterResize(t *testing.T) {
 	}
 	palette.workingSeq = workingIndicatorSequences(palette)
 
-	m := newModel(palette, noopFormatter{}, &session{config: sessionConfig{}}, sessionConfig{}, nil, nil)
+	m := newModel(palette, noopFormatter{}, &session{config: sessionConfig{}}, sessionConfig{}, nil, nil, nil)
 
 	require.False(t, m.ready)
 	require.Equal(t, "initializing", m.View())
@@ -134,7 +134,7 @@ func TestPermissionCommandTriggersView(t *testing.T) {
 		primaryForeground: termformat.ANSIColor(2),
 		accentForeground:  termformat.ANSIColor(3),
 	}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 	m.viewportWidth = 80
 	m.viewport.SetSize(80, 0)
 
@@ -155,7 +155,7 @@ func TestPermissionCommandTriggersView(t *testing.T) {
 
 func TestCyclingModeNavigation(t *testing.T) {
 	palette := colorPalette{}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 	m.windowWidth = 80
 	m.windowHeight = 20
 	m.updateSizes()
@@ -183,7 +183,7 @@ func TestCyclingModeNavigation(t *testing.T) {
 
 func TestCyclingModeEditsExitAndReturn(t *testing.T) {
 	palette := colorPalette{}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 	m.windowWidth = 80
 	m.windowHeight = 20
 	m.updateSizes()
@@ -210,7 +210,7 @@ func TestCyclingModeEditsExitAndReturn(t *testing.T) {
 }
 
 func TestCyclingHistoryFiltersSlashCommands(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	m.recordSubmittedMessage("/new")
 	m.recordSubmittedMessage("/model gemini-2.5")
@@ -230,7 +230,7 @@ func TestPackageCommandStartsSession(t *testing.T) {
 		return &session{config: cfg, packagePath: cfg.packagePath}, nil
 	}
 
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, factory, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, factory, nil, nil)
 	m.handlePackageCommand(".")
 
 	require.Equal(t, ".", factoryCfg.packagePath)
@@ -246,7 +246,7 @@ func TestPackageCommandStartsSession(t *testing.T) {
 }
 
 func TestPackageCommandRejectsInvalidPath(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	m.handlePackageCommand("no/such/package/path")
 
@@ -256,7 +256,7 @@ func TestPackageCommandRejectsInvalidPath(t *testing.T) {
 }
 
 func TestPackageSectionFallback(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	section := m.packageSection()
 	assert.Contains(t, section, "<none>")
@@ -269,7 +269,7 @@ func TestPackageSectionFallback(t *testing.T) {
 }
 
 func TestCtrlCStopsAgentWhenRunning(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	cancelCalled := false
 	m.currentRun = &agentRun{
@@ -300,7 +300,7 @@ func TestCtrlCStopsAgentWhenRunning(t *testing.T) {
 }
 
 func TestCtrlCQuitsWhenIdle(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	// No currentRun => idle.
 	require.False(t, m.isAgentRunning())
@@ -319,7 +319,7 @@ func TestCtrlCQuitsWhenIdle(t *testing.T) {
 }
 
 func TestToolResultReplacesCallByDefault(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	callID := "call-1"
 	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
@@ -339,7 +339,7 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 }
 
 func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	callID := "call-2"
 	call := &llmstream.ToolCall{CallID: callID, Name: "change_api"}
@@ -362,7 +362,7 @@ func TestModelCommandListsAvailableModels(t *testing.T) {
 	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "test-openai-key")
 	require.NotEmpty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
 
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	handled := m.handleSlashCommand("/model")
 	require.True(t, handled)
@@ -386,7 +386,7 @@ func TestModelsCommandListsAvailableModels(t *testing.T) {
 	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "test-openai-key")
 	require.NotEmpty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
 
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 
 	handled := m.handleSlashCommand("/models")
 	require.True(t, handled)
@@ -425,7 +425,7 @@ func TestModelsCommandRejectsArgs(t *testing.T) {
 		return &session{config: cfg, modelID: cfg.modelID}, nil
 	}
 
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, factory, persist)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, factory, persist, nil)
 
 	handled := m.handleSlashCommand("/models " + string(target))
 	require.True(t, handled)
@@ -464,7 +464,7 @@ func TestModelCommandSwitchesAndPersistsWhenConfigured(t *testing.T) {
 		return &session{config: cfg, modelID: cfg.modelID}, nil
 	}
 
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, factory, persist)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, factory, persist, nil)
 
 	handled := m.handleSlashCommand("/model " + string(target))
 	require.True(t, handled)

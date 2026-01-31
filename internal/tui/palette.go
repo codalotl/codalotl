@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 )
 
@@ -33,6 +34,12 @@ type Config struct {
 	//
 	// NOTE: The TUI does not call this yet.
 	PersistModelID func(newModelID llmmodel.ModelID) error
+
+	// Monitor is provided by the CLI (when available) so the TUI can later report
+	// panics/errors and display version upgrade notices.
+	//
+	// NOTE: The TUI does not use this yet.
+	Monitor *remotemonitor.Monitor
 }
 
 // PaletteName is a symbolic name for a color palette.
