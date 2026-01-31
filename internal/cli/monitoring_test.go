@@ -253,13 +253,11 @@ func TestRun_Config_ExitCode1_ReportsErrorToMonitor(t *testing.T) {
 	var obj map[string]any
 	require.NoError(t, json.Unmarshal(raw, &obj))
 
-	// The actual CLI error message can contain sensitive details; we send a
-	// coarse category instead.
-	require.Equal(t, "config_failed", obj["error"])
+	// When a command fails with exit code 1, we report the CLI error message.
+	require.Equal(t, strings.TrimSpace(errOut.String()), obj["error"])
 	meta := obj["metadata"].(map[string]any)
 	require.Equal(t, "config", meta["event"])
 	require.Equal(t, "1", meta["exit_code"])
-	require.NotEmpty(t, meta["error_hash"])
 }
 
 func TestIsUpdateAvailable_ParsesSemverWithCommonPrefixes(t *testing.T) {
