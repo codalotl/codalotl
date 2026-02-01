@@ -204,9 +204,9 @@ func TestCyclingModeEditsExitAndReturn(t *testing.T) {
 	require.Equal(t, editedValue, m.historyValue(1))
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyEsc})
-	require.True(t, m.cyclingMode)
+	require.False(t, m.cyclingMode)
 	require.False(t, m.isEditingHistory())
-	assert.Equal(t, editedValue, m.textarea.Contents())
+	assert.Equal(t, "", m.textarea.Contents())
 }
 
 func TestCyclingHistoryFiltersSlashCommands(t *testing.T) {
@@ -316,6 +316,50 @@ func TestCtrlCQuitsWhenIdle(t *testing.T) {
 	require.True(t, requestCancelCalled)
 	require.Nil(t, m.requestCancel)
 	require.True(t, auth.closed)
+}
+
+func TestEscClearsTextAreaWhenNonEmpty(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+
+	m.textarea.SetContents("hello")
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyEsc})
+
+	require.Equal(t, "", m.textarea.Contents())
+	require.False(t, m.cyclingMode)
+	require.False(t, m.isEditingHistory())
+}
+
+func TestEscDoesNotStopAgentWhenTextAreaNonEmpty(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+
+	cancelCalled := false
+	m.currentRun = &agentRun{
+		cancel: func() { cancelCalled = true },
+		events: nil,
+		id:     1,
+	}
+
+	m.textarea.SetContents("typed while running")
+	handled := m.handleKeyEvent(qtui.KeyEvent{ControlKey: qtui.ControlKeyEsc})
+	require.True(t, handled)
+	require.False(t, cancelCalled)
+	require.Equal(t, "", m.textarea.Contents())
+}
+
+func TestEscStopsAgentWhenTextAreaEmpty(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+
+	cancelCalled := false
+	m.currentRun = &agentRun{
+		cancel: func() { cancelCalled = true },
+		events: nil,
+		id:     1,
+	}
+
+	m.textarea.SetContents("")
+	handled := m.handleKeyEvent(qtui.KeyEvent{ControlKey: qtui.ControlKeyEsc})
+	require.True(t, handled)
+	require.True(t, cancelCalled)
 }
 
 func TestToolResultReplacesCallByDefault(t *testing.T) {

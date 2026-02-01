@@ -43,9 +43,10 @@ At any point in time, the agent is either Running or Idle.
 Basic controls:
 - Pressing ENTER sends a message. The message is reflected in the Messages Area, and the Text Area is cleared. ENTER does nothing if the Text Area is empty.
 - Ctrl-J enters a newline.
-- ESC stops the agent if it's Running
+- ESC clears the Text Area if it has any text.
+  Otherwise, ESC stops the agent if it's Running.
     - ESC is overloaded. It may apply to other scenarios before stopping the agent. Ex: exiting Cycle Mode; exiting edit-previous-message-mode; closing a "dialog", if we had a dialog up.
-    - Spamming ESC should be safe and should eventually stop the agent. Extra ESC when the agent is stopped does nothing.
+    - Spamming ESC should be safe and should eventually stop the agent. Extra ESC when the agent is stopped and the Text Area is empty does nothing.
 - Ctrl-C stops the agent if it's Running. If the agent is Idle, Ctrl-C terminates the process.
   Typing "/quit", "/exit", or "/logout" also terminates the process.
 - Basic text navigation should work. For instance, on OSX, option-left/right jumps the cursor left/right to word boundaries.

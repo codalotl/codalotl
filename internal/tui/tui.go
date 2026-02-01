@@ -542,6 +542,14 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 		}
 		return true
 	case qtui.ControlKeyEsc:
+		// ESC has a "clear input" behavior when the user has typed anything. This takes
+		// precedence over other ESC behaviors (stopping the agent, cycling/edit modes).
+		if m.textarea != nil && m.textarea.Contents() != "" {
+			m.exitEditingState()
+			m.textarea.SetContents("")
+			m.updateTextareaHeight()
+			return true
+		}
 		if m.cyclingMode {
 			m.exitCyclingModeToDefault()
 			return true
@@ -1739,7 +1747,7 @@ func (m *model) updateTextareaHeight() {
 }
 
 func (m *model) infoLineView() string {
-	hints := []string{"ctrl-c to quit", "esc to stop agent", "ctrl-j for newline"}
+	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline"}
 	infoLineText := "  "
 
 	for i, h := range hints {
