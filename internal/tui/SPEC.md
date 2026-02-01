@@ -151,6 +151,20 @@ Caveat for text animation: some text will be animated (example: Working Indicato
 Capture mouse events. Handle as follows:
 - Scroll wheel always scrolls Messages Area.
 
+## Option Mode
+
+Typing Ctrl-O, or double-clicking the terminal, enters "Option Mode". Doing it again exits the mode. In Option Mode, various "options" appear in various places in the UI that can be clicked on with the mouse (in the future, but not now, they can be cycled through with the keyboard).
+
+### Copying Text
+
+Because we capture mouse events to handle scrolling the Messages Area, normal selection of text for copying doesn't work (even if it did, it's also confounded by the dual-column view of the Messages Area and Info Panel). Therefore, in Option Mode, a `copy` button will appear below each message in the Messages Area:
+- `copy` appears below the message in the lower right (in the blank line between messages).
+- It is rendered in Colorful text with an Accent background.
+- Clicking it with the mouse will copy the message to the clipboard. A transient `copied!` is displayed in its place momentarily.
+- This applies to any type of message: a user message, agent response, tool use, etc. Welcome message is can be included or excluded based on whatever is easier to implement.
+- Copy what you see (text as displayed, plain text, no formatting, wrapped).
+- Clipboard: use `q/tui`'s `SetClipboard`.
+
 ## Info Panel
 
 There's an info panel to the right of the Messages Area, shown if there's sufficient width.
