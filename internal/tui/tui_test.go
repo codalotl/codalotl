@@ -127,6 +127,40 @@ func TestFakeAgentEventsCoverage(t *testing.T) {
 	require.True(t, sawList)
 }
 
+func TestRenderUserMessageBlock_WrappedLinesAlignAfterPrompt(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+
+	const width = 16
+	content := strings.Repeat("x", 50) // no spaces => forces wrapping even without word boundaries
+
+	block := m.renderUserMessageBlock(content, false, width)
+	view := stripAnsi(block)
+	lines := strings.Split(view, "\n")
+	require.Greater(t, len(lines), 1)
+
+	for _, line := range lines {
+		require.Equal(t, width, termformat.TextWidthWithANSICodes(line))
+	}
+
+	require.True(t, strings.HasPrefix(lines[0], " › "))
+	for i := 1; i < len(lines); i++ {
+		require.True(t, strings.HasPrefix(lines[i], "   "))
+	}
+}
+
+func TestRenderUserMessageBlock_LogicalNewlinesUseContinuationIndent(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+
+	const width = 40
+	block := m.renderUserMessageBlock("first\nsecond", false, width)
+	view := stripAnsi(block)
+	lines := strings.Split(view, "\n")
+	require.Len(t, lines, 2)
+
+	require.True(t, strings.HasPrefix(lines[0], " › "))
+	require.True(t, strings.HasPrefix(lines[1], "   "))
+}
+
 func TestPermissionCommandTriggersView(t *testing.T) {
 	palette := colorPalette{
 		primaryBackground: termformat.ANSIColor(0),

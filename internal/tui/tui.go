@@ -1574,18 +1574,23 @@ func (m *model) applyWorkingIndicator(rendered []string, width int) []string {
 
 // renderUserMessageBlock returns a fully formated message with proper width and bg color.
 func (m *model) renderUserMessageBlock(content string, queued bool, width int) string {
-	lines := strings.Split(termformat.Sanitize(content, 4), "\n")
-	for i, line := range lines {
-		switch i {
-		case 0:
-			if queued {
-				line = fmt.Sprintf("%s (queued)", line)
-			}
-			lines[i] = "› " + line
-		default:
-			lines[i] = "  " + line
-		}
+	prompt := "› "
+	if m != nil && m.textarea != nil && m.textarea.Prompt != "" {
+		prompt = m.textarea.Prompt
 	}
+
+	// The user message area should visually match the TextArea:
+	// - prompt on the first display line
+	// - subsequent display lines (including soft-wrapped lines) align to the first typed column.
+	innerWidth := max(width-2, 1) // 2: margin left/right from the BlockStyle below
+	sanitized := termformat.Sanitize(content, 4)
+	logicalLines := strings.Split(sanitized, "\n")
+	if queued && len(logicalLines) > 0 {
+		logicalLines[0] = fmt.Sprintf("%s (queued)", logicalLines[0])
+	}
+	sanitized = strings.Join(logicalLines, "\n")
+
+	lines := tuicontrols.WrapPromptedText(prompt, innerWidth, sanitized)
 
 	content = termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(strings.Join(lines, "\n"))
 	bs := termformat.BlockStyle{TotalWidth: width, TextBackground: m.palette.accentBackground, MarginLeft: 1, MarginRight: 1, MarginBackground: m.palette.primaryBackground}
