@@ -135,15 +135,17 @@ func TestPermissionCommandTriggersView(t *testing.T) {
 		accentForeground:  termformat.ANSIColor(3),
 	}
 	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
-	m.viewportWidth = 80
-	m.viewport.SetSize(80, 0)
+	m.windowWidth = 80
+	m.windowHeight = 20
+	m.updateSizes()
 
 	handled := m.handleSlashCommand("/permission")
 	require.True(t, handled)
 	require.NotNil(t, m.activePermission)
 
 	view := stripAnsi(m.permissionView())
-	require.Contains(t, view, "demo permission request")
+	normalized := strings.Join(strings.Fields(view), " ")
+	require.Contains(t, normalized, "demo permission request")
 
 	m.resolvePermission(true)
 

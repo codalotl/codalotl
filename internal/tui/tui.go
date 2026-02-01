@@ -1891,19 +1891,61 @@ func (m *model) refreshPermissionView() {
 	}
 
 	req := m.activePermission.request
+
+	width := m.viewportWidth
+	if width <= 0 {
+		width = m.windowWidth
+	}
+	if width <= 0 {
+		width = agentformatter.MinTerminalWidth
+	}
+	width = max(width, 1)
+
+	// Guard against very narrow terminals; BlockStyle panics if the requested width
+	// cannot contain margin/padding/border.
+	const (
+		permissionMarginLR = 1
+		permissionPadding  = 1
+		permissionBorderLR = 2 // left+right border columns
+	)
+	minTotalWidth := 2*permissionMarginLR + 2*permissionPadding + permissionBorderLR
+	if width < minTotalWidth {
+		rendered := termformat.Sanitize(req.Prompt, 4)
+		m.permissionViewText = rendered
+		m.permissionViewHeight = strings.Count(rendered, "\n") + 1
+		m.updateSizes()
+		return
+	}
+
 	var b strings.Builder
-	b.WriteString(req.Prompt)
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		prompt = "Allow this request?"
+	}
+	prompt = termformat.Sanitize(prompt, 4)
+	b.WriteString(termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(prompt))
 	b.WriteString("\n\n")
-	b.WriteString("Y    allow\n")
-	b.WriteString("N    deny\n")
-	b.WriteString("ESC  deny + stop agent")
+	key := func(s string) string {
+		return termformat.Style{Foreground: m.palette.accentForeground}.Wrap(s)
+	}
+	body := func(s string) string {
+		return termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(s)
+	}
+	b.WriteString(key("Y") + body("    allow\n"))
+	b.WriteString(key("N") + body("    deny\n"))
+	b.WriteString(key("ESC") + body("  deny + stop agent"))
 
 	rendered := termformat.BlockStyle{
-		MarginLeft:         1,
-		MarginRight:        1,
-		TotalWidth:         m.viewportWidth,
+		MarginLeft:         permissionMarginLR,
+		MarginRight:        permissionMarginLR,
+		Padding:            permissionPadding,
+		BorderStyle:        termformat.BorderStyleBasic,
+		TotalWidth:         width,
 		TextBackground:     m.palette.accentBackground,
 		MarginBackground:   m.palette.primaryBackground,
+		PaddingBackground:  m.palette.accentBackground,
+		BorderForeground:   m.palette.borderColor,
+		BorderBackground:   m.palette.primaryBackground,
 		BlockNormalizeMode: termformat.BlockNormalizeModeExtend,
 	}.Apply(b.String())
 
