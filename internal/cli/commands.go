@@ -18,6 +18,8 @@ import (
 	"github.com/codalotl/codalotl/internal/tui"
 )
 
+var runTUIWithConfig = tui.RunWithConfig
+
 type configState struct {
 	once sync.Once
 	cfg  Config
@@ -99,12 +101,19 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	root := &qcli.Command{
 		Name:  "codalotl",
 		Short: "codalotl is an LLM-assisted Go coding agent.",
-		Args:  qcli.NoArgs,
+		Args: func(args []string) error {
+			// Allow `codalotl .` as an alias for launching the TUI (muscle memory
+			// with tools like `code .`). Any other path continues to be invalid.
+			if len(args) == 1 && args[0] == "." {
+				return nil
+			}
+			return qcli.NoArgs(args)
+		},
 		Run: runWithConfig("start_tui", func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error {
 			// If PreferredModel is empty, pass the zero value so TUI keeps its
 			// default model behavior.
 			modelID := llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
-			return tui.RunWithConfig(tui.Config{
+			return runTUIWithConfig(tui.Config{
 				ModelID: modelID,
 				Monitor: m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
