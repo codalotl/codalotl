@@ -163,7 +163,9 @@ Because we capture mouse events to handle scrolling the Messages Area, normal se
 - Clicking it with the mouse will copy the message to the clipboard. A transient `copied!` is displayed in its place momentarily.
 - This applies to any type of message: a user message, agent response, tool use, etc. Welcome message is can be included or excluded based on whatever is easier to implement.
 - Copy what you see (text as displayed, plain text, no formatting, wrapped).
-- Clipboard: use `q/tui`'s `SetClipboard`.
+- Clipboard: best-effort, use BOTH:
+  - OS clipboard via `internal/q/clipboard.Write` when available
+  - OSC52 clipboard via `q/tui`'s `SetClipboard` (terminals may ignore it)
 
 ## Info Panel
 

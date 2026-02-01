@@ -12,6 +12,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/clipboard"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
@@ -224,6 +225,32 @@ type model struct {
 	monitor             *remotemonitor.Monitor
 	latestVersion       string
 	versionCheckStarted bool
+
+	// Option Mode: show clickable UI affordances in the viewport (currently: per-message copy).
+	optionMode bool
+
+	// optionCopyFeedback tracks transient "copied!" feedback per message index.
+	optionCopyFeedback map[int]time.Time
+
+	// optionCopyTargets are computed on each refreshViewport; they map viewport content
+	// rows to message indices for hit-testing.
+	optionCopyTargets []optionCopyTarget
+
+	// lastLeftClick* is used for best-effort double-click detection.
+	lastLeftClickAt time.Time
+	lastLeftClickX  int
+	lastLeftClickY  int
+
+	// clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
+	clipboardSetter func(text string)
+
+	// OS clipboard integration (best-effort); separated for testability so unit tests
+	// don't mutate the real system clipboard.
+	osClipboardAvailable func() bool
+	osClipboardWrite     func(text string) error
+
+	// now allows deterministic tests around transient UI state (ex: "copied!").
+	now func() time.Time
 }
 
 func newModel(
@@ -245,23 +272,26 @@ func newModel(
 	}
 
 	m := &model{
-		viewport:            vp,
-		textarea:            ti,
-		session:             initialSession,
-		sessionFactory:      factory,
-		sessionConfig:       activeCfg,
-		agentFormatter:      formatter,
-		persistModelID:      persistModelID,
-		requestSource:       1,
-		nextAgentRunID:      1,
-		messages:            make([]chatMessage, 0, 32),
-		messageHistory:      make([]string, 0, 32),
-		messageQueue:        make([]string, 0),
-		permissionQueue:     make([]*permissionPrompt, 0),
-		palette:             palette,
-		cycleIndex:          historyIndexNone,
-		editingHistoryIndex: historyIndexNone,
-		monitor:             monitor,
+		viewport:             vp,
+		textarea:             ti,
+		session:              initialSession,
+		sessionFactory:       factory,
+		sessionConfig:        activeCfg,
+		agentFormatter:       formatter,
+		persistModelID:       persistModelID,
+		requestSource:        1,
+		nextAgentRunID:       1,
+		messages:             make([]chatMessage, 0, 32),
+		messageHistory:       make([]string, 0, 32),
+		messageQueue:         make([]string, 0),
+		permissionQueue:      make([]*permissionPrompt, 0),
+		palette:              palette,
+		cycleIndex:           historyIndexNone,
+		editingHistoryIndex:  historyIndexNone,
+		monitor:              monitor,
+		now:                  time.Now,
+		osClipboardAvailable: clipboard.Available,
+		osClipboardWrite:     clipboard.Write,
 	}
 	if initialSession != nil {
 		m.requests = initialSession.UserRequests()
@@ -273,6 +303,9 @@ func newModel(
 
 func (m *model) Init(t *qtui.TUI) {
 	m.tui = t
+	if m.clipboardSetter == nil && t != nil {
+		m.clipboardSetter = t.SetClipboard
+	}
 	if m.requests != nil {
 		m.startUserRequestListener(m.requestSource, m.requests)
 	}
@@ -282,6 +315,9 @@ func (m *model) Init(t *qtui.TUI) {
 func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 	if m.tui == nil && t != nil {
 		m.tui = t
+	}
+	if m.clipboardSetter == nil && t != nil {
+		m.clipboardSetter = t.SetClipboard
 	}
 
 	switch ev := msg.(type) {
@@ -346,6 +382,9 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 			break
 		}
 		m.latestVersion = ev.latest
+	case optionCopyExpiredMsg:
+		m.clearExpiredOptionCopyFeedback()
+		m.refreshViewport(false)
 	}
 
 	m.persistEditedHistoryDraft()
@@ -427,16 +466,37 @@ func (m *model) handleMouseEvent(ev qtui.MouseEvent) {
 	if m.viewport == nil {
 		return
 	}
-	if !ev.IsWheel() {
+
+	// Wheel always scrolls the messages viewport.
+	if ev.IsWheel() {
+		switch ev.Button {
+		case qtui.MouseButtonWheelUp:
+			m.viewport.ScrollUp(mouseWheelScrollLines)
+		case qtui.MouseButtonWheelDown:
+			m.viewport.ScrollDown(mouseWheelScrollLines)
+		}
 		return
 	}
 
-	switch ev.Button {
-	case qtui.MouseButtonWheelUp:
-		m.viewport.ScrollUp(mouseWheelScrollLines)
-	case qtui.MouseButtonWheelDown:
-		m.viewport.ScrollDown(mouseWheelScrollLines)
+	// Click handling (Option Mode, double-click to toggle).
+	if ev.Action != qtui.MouseActionPress || ev.Button != qtui.MouseButtonLeft {
+		return
 	}
+
+	// In Option Mode, clicks in the viewport can hit targets like "copy".
+	if m.optionMode && m.tryHandleOptionClick(ev) {
+		return
+	}
+
+	// Best-effort double-click toggles Option Mode.
+	if m.isDoubleClick(ev) {
+		m.toggleOptionMode()
+		return
+	}
+
+	m.lastLeftClickAt = m.nowOrTimeNow()
+	m.lastLeftClickX = ev.X
+	m.lastLeftClickY = ev.Y
 }
 
 // updateSizes calculates all sizes (dimensions) on m based on m.windowHeight and m.windowWidth.
@@ -520,6 +580,9 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 	}
 
 	switch key.ControlKey {
+	case qtui.ControlKeyCtrlO:
+		m.toggleOptionMode()
+		return true
 	// Spec: these keys scroll the message area (viewport), not the text area.
 	case qtui.ControlKeyPageUp, qtui.ControlKeyCtrlPageUp:
 		if m.viewport != nil {
@@ -919,6 +982,7 @@ func (m *model) shouldExitCyclingForKey(msg qtui.KeyEvent) bool {
 	case qtui.ControlKeyUp,
 		qtui.ControlKeyDown,
 		qtui.ControlKeyEsc,
+		qtui.ControlKeyCtrlO,
 		qtui.ControlKeyEnter,
 		qtui.ControlKeyPageUp,
 		qtui.ControlKeyPageDown,
@@ -1499,14 +1563,23 @@ func (m *model) refreshViewport(autoScroll bool) {
 		m.ensureMessageFormatted(&m.messages[i], width)
 	}
 
-	rendered := make([]string, 0, len(m.messages))
+	blocks := make([]renderedBlock, 0, len(m.messages)+2)
 	for i := range m.messages {
-		rendered = append(rendered, m.messages[i].formatted)
+		blocks = append(blocks, renderedBlock{
+			text:         m.messages[i].formatted,
+			messageIndex: i,
+			copyable:     m.isMessageCopyable(&m.messages[i]),
+		})
 	}
+	if m.isAgentRunning() {
+		if indicator := m.renderWorkingIndicator(width); indicator != "" {
+			blocks = append(blocks, renderedBlock{text: indicator, messageIndex: -1, copyable: false})
+		}
+	}
+	blocks = append(blocks, renderedBlock{text: m.blankRow(width, m.palette.primaryBackground), messageIndex: -1, copyable: false}) // always have one blank line at the end
 
-	rendered = m.applyWorkingIndicator(rendered, width)
-	rendered = append(rendered, m.blankRow(width, m.palette.primaryBackground)) // always have one blank line at the end
-	content := m.joinRenderedBlocks(rendered, width)
+	content, targets := m.joinRenderedBlocksWithOptions(blocks, width)
+	m.optionCopyTargets = targets
 	content = m.padViewportContentHeight(content, height, width)
 	if m.viewport != nil {
 		m.viewport.SetContent(content)
@@ -1752,7 +1825,7 @@ func (m *model) updateTextareaHeight() {
 }
 
 func (m *model) infoLineView() string {
-	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline"}
+	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline", "ctrl-o options"}
 	infoLineText := "  "
 
 	for i, h := range hints {
