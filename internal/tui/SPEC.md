@@ -167,6 +167,17 @@ Because we capture mouse events to handle scrolling the Messages Area, normal se
   - OS clipboard via `internal/q/clipboard.Write` when available
   - OSC52 clipboard via `q/tui`'s `SetClipboard` (terminals may ignore it)
 
+### Details
+
+To the left of the `copy` button is a `details` button, which is displayed on tool calls, as well as the initial context (`Gathering context for`). Clicking `details` displays a view of the tool call details (or if a non-tool call, the underlying details/data associated with it):
+- The view is a "dialog" that is rendered "in front of" the existing TUI contents. It is almost full screen, but has a 3-cell margin on each edge.
+- ESC will close the dialog.
+- The dialog displays a title, which is the same as the tool-use text to the right of the bullet (only the first line). Ex: `Read main.go`; `Ran Tests some/pkg`.
+- Under this title is a view which shows the raw contents of the tool, both inputs and outputs. Every byte of the inputs/outputs should typically be displayed (no eliding).
+    - However, there are protections against huge tool results and binary data. Otherwise, do not interpret the bytes (eg, no redactions for suspected keys).
+- JSON should be rendered reasonably, if relevant.
+- For items like `Gathering context for`, the corresponding generated context should be displayed.
+
 ## Info Panel
 
 There's an info panel to the right of the Messages Area, shown if there's sufficient width.
