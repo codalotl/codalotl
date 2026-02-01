@@ -162,9 +162,6 @@ events can be used for scrolling).
 
 tui provides a way for applications to copy text into the user's clipboard by emitting an OSC52 sequence to the terminal output. This is best-effort: some terminals disable or limit OSC52.
 
-NOTE: this is specified here but not implemented yet.
-
-
 ## Public Interface
 
 This is the minimally required public interface. There may be other public types/methods as well.
