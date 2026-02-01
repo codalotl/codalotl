@@ -1,32 +1,15 @@
 # tui
 
-The tui package is the primary package that implements the coding agent TUI, bringing together the `codeai/agent` package and `codeai/tool/...` into a UI. This UI will enable users to access things like `codeai/docubot` for auto documentation, `codeai/reorgbot` for file organization, and so on.
+The tui package is the primary package that implements the coding agent TUI, bringing together `internal/agent` and `internal/tools/...` into a UI. This UI is intended to expose capabilities like `internal/docubot` (auto documentation), `internal/reorgbot` (file organization), and so on.
 
 ## Dependencies
 
-- `codeai/agent` is the main agent loop.
-- `codeai/agentformatter` formats events from the agent.
-- `codeai/llmstream` is the library to communicate with LLMs.
-- `q/termformat` should be used where possible for terminal formatting.
-- `q/tui` is the TUI runtime (raw mode, alt screen, input, resize, render loop).
-- `q/tui/tuicontrols` provides common controls like a scrollable view and text area.
-
-NOTE: this package intentionally avoids charmbracelet/*; `q/tui` and `q/termformat` are the in-repo replacements.
-
-## Implementation Details
-
-This spec should be implemented in phases. The spec will document things that we'll do later. Don't implement these for now:
-- SKIP for now: none (Cycling Mode, /model, and the Info Panel are implemented).
-- SKIP any sort of docubot/reorgbot functionality.
-- SKIP package mode
-- Working Indicator:
-    - SKIP the "If the last message is a reasoning message less than one line" part of Working Indicator (for now). Only implement the generic "• Working (1m 34s • ESC to interrupt)" even if the last message is a Reasoning message.
-    - SKIP any sort of animation
-    - However, DO use a working indicator with runtime.
-
-q/tui Implementation
-- `q/tui` models update in response to messages and render synchronously after each update.
-- Background work (agent streams, permission requests, timers) should send messages via `*tui.TUI.Send` or helpers like `SendPeriodically`.
+- `internal/agent` is the main agent loop.
+- `internal/agentformatter` formats events from the agent.
+- `internal/llmstream` is the library to communicate with LLMs.
+- `internal/q/termformat` should be used where possible for terminal formatting.
+- `internal/q/tui` is the TUI runtime (raw mode, alt screen, input, resize, render loop).
+- `internal/q/tui/tuicontrols` provides common controls like a scrollable view and text area.
 
 ## Basic Agent
 
@@ -43,9 +26,10 @@ At any point in time, the agent is either Running or Idle.
 Basic controls:
 - Pressing ENTER sends a message. The message is reflected in the Messages Area, and the Text Area is cleared. ENTER does nothing if the Text Area is empty.
 - Ctrl-J enters a newline.
-- ESC stops the agent if it's Running
+- ESC clears the Text Area if it has any text.
+  Otherwise, ESC stops the agent if it's Running.
     - ESC is overloaded. It may apply to other scenarios before stopping the agent. Ex: exiting Cycle Mode; exiting edit-previous-message-mode; closing a "dialog", if we had a dialog up.
-    - Spamming ESC should be safe and should eventually stop the agent. Extra ESC when the agent is stopped does nothing.
+    - Spamming ESC should be safe and should eventually stop the agent. Extra ESC when the agent is stopped and the Text Area is empty does nothing.
 - Ctrl-C stops the agent if it's Running. If the agent is Idle, Ctrl-C terminates the process.
   Typing "/quit", "/exit", or "/logout" also terminates the process.
 - Basic text navigation should work. For instance, on OSX, option-left/right jumps the cursor left/right to word boundaries.
@@ -70,12 +54,9 @@ Basic controls:
 ## Working Indicator
 
 - If the agent is Running, it has a Working Indicator visible with the amount of time it's been working. Otherwise it doesn't.
-- If present, the Working Indicator is always the last message of the Messages Area.
+- If present, the Working Indicator is always the last item of the Messages Area.
 - By default it will say (for instance): "• Working (1m 34s • ESC to interrupt)"
-- The non-parenthetical part is animated: each letter's FG color is highlighted in turn, as if a spotlight is passing over it. The spotlight has a width of 5 characters, brightest on the center character. The spotlight sits on a letter for 120ms before shifting to the next letter. The letters form a ring (the spotlight centered on the last letter also illuminates 2 letters at the start of the indicator).
-    - The "spotlight" is theme-dependent. If the BG color is light-mode, the FB highlighting makes it darker. Otherwise, it makes it lighter.
-- If the last message is a reasoning message less than one line (including the parenthetical with run time), that reasoning message **becomes** the Working Indicator, and is animated and gets the run time parenthetical.
-- Otherwise, the Working Indicator is a new line with the generic text "Working".
+- The runtime is updated periodically while the agent is running; otherwise.
 
 ## Cycling Mode
 
@@ -103,9 +84,8 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 
 - /quit, /exit, /logout - terminates process.
 - /new - Makes a new session.
-- /model - With no args, prints the available models and usage help.
-- /model <id> - Switches the active model (validated via `llmmodel`) and starts a new session.
-  If `tui.Config.PersistModelID` is set, the model selection is persisted.
+- /models, /model (with no args) - prints the available models and usage help. 
+- /model <id> - Switches the active model (validated via `llmmodel`) and starts a new session. If `tui.Config.PersistModelID` is set, the model selection is persisted.
 - /package path/to/pkg - enter Package Mode for a given package.
 - /package - exit Package Mode. Prints a message indicating how Package Mode works.
 - /generic - exits Package Mode. Enters generic mode.
@@ -137,7 +117,7 @@ Package Mode file access boundaries are implemented via a "code unit" rooted at 
 
 Other notes:
 - /new while in Package Mode retains the active package.
-- Package Mode does not require a real, working Go package. It only requires a path ("." is possible). This is because the user may want to use this TUI to make a *new* package from scratch.
+- Package Mode requires the selected path to exist and be a directory ("." is allowed), but does not need to be a buildable Go package.
 - Package mode uses initialcontext for the agent's initial context. This can take time to run (it runs tests). Switching to package mode starts getting this context immediately, and does not block the UI. If the user sends a message before this completes, the intialcontext is allowed to complete and then used to as context for the User's message.
     - Uses the message `• Gathering context for path/to/package`, where the bullet indicates status (Accent=in progress -> Red vs Green).
 
@@ -145,7 +125,7 @@ Other notes:
 
 There exists a non-colorized mode. In this mode, no colors will be applied. Text may still be styled to be bold, etc.
 
-In a colorized mode, there exists a palette. **All colors used must be defined in the palette** (see caveat on text animation). Callers of this package may specify a palette by name (they cannot indicate individual colors). By default, the palette will be based on the default terminal palette, as determined by `q/termformat`.
+In a colorized mode, there exists a palette. **All colors used must be defined in the palette** (see caveat on text animation). Callers of this package may specify a palette by name (they cannot indicate individual colors). By default, the palette will be based on the default terminal palette, as determined by `internal/q/termformat`.
 
 Supported palette names:
 - `auto` - derive colors from the terminal (default)
@@ -191,9 +171,10 @@ The top of the panel shows the current session ID, model, tokens, and cost:
 - Model
 - Context window (ex: "100% context left", "82% context left", etc)
 - Cost
-- Total input tokens (including cached). This token count rounded as necessary (ex: 313, 1.4k, 520k, 1.2M, etc).
-- Total cached tokens
-- Total output tokens (including reasoning tokens)
+- Total tokens (input + cached + output). This token count is rounded as necessary (ex: 313, 1.4k, 520k, 1.2M, etc).
+- Input tokens (non-cached)
+- Cached input tokens
+- Output tokens (includes reasoning tokens)
 
 Display format:
 

@@ -52,6 +52,10 @@ type TextArea struct {
 	lastWidth      int
 
 	segments []displaySegment
+
+	// promptedLines mirrors segments, but includes the prompt on the first line and the hanging indent on subsequent lines.
+	// It is cached alongside segments and is used by View() so other callers can share identical wrapping logic.
+	promptedLines []string
 }
 
 type displaySegment struct {
@@ -221,24 +225,42 @@ func (ta *TextArea) View() string {
 		prefixWidthCells = 0
 	}
 
+	promptPrefix := cutPlainStringToWidth(ta.Prompt, max0(ta.width))
+	indentPrefix := strings.Repeat(" ", minInt(prefixWidthCells, ta.width))
+	promptedLines := ta.promptedLines
+
 	rows := make([]string, 0, ta.height)
 
 	caretLine, caretCol := ta.effectiveCaretDisplayPos()
 
 	for row := 0; row < ta.height; row++ {
 		displayIdx := ta.displayOffset + row
-		var seg displaySegment
-		hasSeg := displayIdx >= 0 && displayIdx < len(ta.segments)
-		if hasSeg {
-			seg = ta.segments[displayIdx]
+
+		// Match the TextArea's longstanding behavior: prompt is always shown on the first row of the box,
+		// not only on the first display line of the content.
+		prefix := indentPrefix
+		if row == 0 {
+			prefix = promptPrefix
 		}
 
-		prefix := ""
-		if row == 0 {
-			prefix = cutPlainStringToWidth(ta.Prompt, max0(ta.width))
-		} else {
-			prefix = strings.Repeat(" ", minInt(prefixWidthCells, ta.width))
+		lineText := ""
+		hasSeg := false
+		if displayIdx >= 0 && displayIdx < len(promptedLines) {
+			src := promptedLines[displayIdx]
+			srcPrefix := indentPrefix
+			if displayIdx == 0 {
+				srcPrefix = promptPrefix
+			}
+			if strings.HasPrefix(src, srcPrefix) {
+				lineText = src[len(srcPrefix):]
+				hasSeg = true
+			}
+		} else if displayIdx >= 0 && displayIdx < len(ta.segments) {
+			// Width <= 0 path (or unexpected mismatch): fall back to the existing cached layout.
+			lineText = ta.segments[displayIdx].text
+			hasSeg = true
 		}
+		seg := displaySegment{text: lineText}
 
 		baseStyle := termformat.Style{Foreground: ta.ForegroundColor, Background: ta.BackgroundColor}
 		textStyle := baseStyle
@@ -826,6 +848,10 @@ func (ta *TextArea) rebuildLayoutIfNeeded() {
 	if len(ta.segments) == 0 {
 		ta.segments = []displaySegment{{text: "", startByte: 0, endByte: 0, endsLogicalLn: true}}
 	}
+
+	promptPrefix := cutPlainStringToWidth(prompt, max0(ta.width))
+	indentPrefix := strings.Repeat(" ", minInt(ta.promptWidth(), ta.width))
+	ta.promptedLines = wrapPromptedTextFromSegments(promptPrefix, indentPrefix, availWidth, ta.segments)
 
 	if ta.contents != "" {
 		ta.caretByte = clampInt(ta.caretByte, 0, len(ta.contents))

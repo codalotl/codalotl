@@ -25,16 +25,17 @@ When codalotl starts, we load and validate configuration and required tools (exc
 Notes:
 - Any argument <path/to/pkg> can either use a Go-style package path (ex: `.`; `..`; `./internal/cli`) to a single package OR a relative/absolute dir (ex: `internal/cli`; `/home/proj/codalotl/internal/cli`), with optional trailing `/`.
     - It may NOT use `...` package patterns (if we need this, we'll invent a new identifier for it, for instance: <package_pattern>).
+- The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (muscle memory with tools like `code .`).
 
 ### codalotl -h, codalotl --help
 
 Prints standard usage.
 
-### codalotl
+### codalotl and codalotl .
 
-The naked `codalotl` launches the TUI (`internal/tui`).
+The naked `codalotl` launches the TUI (`codalotl .` is an alias, supported so that muscle memory from things like `code .` work; any other path-like argument is an error).
 
-If the TUI requests that a newly selected model be persisted (via `tui.Config.PersistModelID`), the CLI writes the model to `preferredmodel` in a JSON config file:
+If the TUI (`internal/tui`) requests that a newly selected model be persisted (via `tui.Config.PersistModelID`), the CLI writes the model to `preferredmodel` in a JSON config file:
 - If some config file explicitly set `preferredmodel` during load, update that same file.
 - Otherwise, update the highest-precedence config file that contributed any values.
 - If no config files contributed values, write to the global config at `~/.codalotl/config.json` (expanded cross-OS).

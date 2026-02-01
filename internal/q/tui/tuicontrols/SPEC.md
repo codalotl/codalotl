@@ -365,3 +365,12 @@ func (ta *TextArea) DeleteToEndOfLine()
 func (ta *TextArea) DeleteToBeginningOfLine()
 
 ```
+
+### Prompted wrapping helper
+
+`WrapPromptedText` is a pure helper for rendering user text with the same word-wrapping and hanging-indent behavior as `TextArea`.
+It returns one string per display line, already prefixed with the prompt on the first line and spaces on subsequent lines.
+
+```go
+func WrapPromptedText(prompt string, width int, contents string) []string
+```

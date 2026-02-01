@@ -542,6 +542,14 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 		}
 		return true
 	case qtui.ControlKeyEsc:
+		// ESC has a "clear input" behavior when the user has typed anything. This takes
+		// precedence over other ESC behaviors (stopping the agent, cycling/edit modes).
+		if m.textarea != nil && m.textarea.Contents() != "" {
+			m.exitEditingState()
+			m.textarea.SetContents("")
+			m.updateTextareaHeight()
+			return true
+		}
 		if m.cyclingMode {
 			m.exitCyclingModeToDefault()
 			return true
@@ -1566,18 +1574,23 @@ func (m *model) applyWorkingIndicator(rendered []string, width int) []string {
 
 // renderUserMessageBlock returns a fully formated message with proper width and bg color.
 func (m *model) renderUserMessageBlock(content string, queued bool, width int) string {
-	lines := strings.Split(termformat.Sanitize(content, 4), "\n")
-	for i, line := range lines {
-		switch i {
-		case 0:
-			if queued {
-				line = fmt.Sprintf("%s (queued)", line)
-			}
-			lines[i] = "› " + line
-		default:
-			lines[i] = "  " + line
-		}
+	prompt := "› "
+	if m != nil && m.textarea != nil && m.textarea.Prompt != "" {
+		prompt = m.textarea.Prompt
 	}
+
+	// The user message area should visually match the TextArea:
+	// - prompt on the first display line
+	// - subsequent display lines (including soft-wrapped lines) align to the first typed column.
+	innerWidth := max(width-2, 1) // 2: margin left/right from the BlockStyle below
+	sanitized := termformat.Sanitize(content, 4)
+	logicalLines := strings.Split(sanitized, "\n")
+	if queued && len(logicalLines) > 0 {
+		logicalLines[0] = fmt.Sprintf("%s (queued)", logicalLines[0])
+	}
+	sanitized = strings.Join(logicalLines, "\n")
+
+	lines := tuicontrols.WrapPromptedText(prompt, innerWidth, sanitized)
 
 	content = termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(strings.Join(lines, "\n"))
 	bs := termformat.BlockStyle{TotalWidth: width, TextBackground: m.palette.accentBackground, MarginLeft: 1, MarginRight: 1, MarginBackground: m.palette.primaryBackground}
@@ -1739,7 +1752,7 @@ func (m *model) updateTextareaHeight() {
 }
 
 func (m *model) infoLineView() string {
-	hints := []string{"ctrl-c to quit", "esc to stop agent", "ctrl-j for newline"}
+	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline"}
 	infoLineText := "  "
 
 	for i, h := range hints {
@@ -1883,19 +1896,61 @@ func (m *model) refreshPermissionView() {
 	}
 
 	req := m.activePermission.request
+
+	width := m.viewportWidth
+	if width <= 0 {
+		width = m.windowWidth
+	}
+	if width <= 0 {
+		width = agentformatter.MinTerminalWidth
+	}
+	width = max(width, 1)
+
+	// Guard against very narrow terminals; BlockStyle panics if the requested width
+	// cannot contain margin/padding/border.
+	const (
+		permissionMarginLR = 1
+		permissionPadding  = 1
+		permissionBorderLR = 2 // left+right border columns
+	)
+	minTotalWidth := 2*permissionMarginLR + 2*permissionPadding + permissionBorderLR
+	if width < minTotalWidth {
+		rendered := termformat.Sanitize(req.Prompt, 4)
+		m.permissionViewText = rendered
+		m.permissionViewHeight = strings.Count(rendered, "\n") + 1
+		m.updateSizes()
+		return
+	}
+
 	var b strings.Builder
-	b.WriteString(req.Prompt)
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		prompt = "Allow this request?"
+	}
+	prompt = termformat.Sanitize(prompt, 4)
+	b.WriteString(termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(prompt))
 	b.WriteString("\n\n")
-	b.WriteString("Y    allow\n")
-	b.WriteString("N    deny\n")
-	b.WriteString("ESC  deny + stop agent")
+	key := func(s string) string {
+		return termformat.Style{Foreground: m.palette.accentForeground}.Wrap(s)
+	}
+	body := func(s string) string {
+		return termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(s)
+	}
+	b.WriteString(key("Y") + body("    allow\n"))
+	b.WriteString(key("N") + body("    deny\n"))
+	b.WriteString(key("ESC") + body("  deny + stop agent"))
 
 	rendered := termformat.BlockStyle{
-		MarginLeft:         1,
-		MarginRight:        1,
-		TotalWidth:         m.viewportWidth,
+		MarginLeft:         permissionMarginLR,
+		MarginRight:        permissionMarginLR,
+		Padding:            permissionPadding,
+		BorderStyle:        termformat.BorderStyleBasic,
+		TotalWidth:         width,
 		TextBackground:     m.palette.accentBackground,
 		MarginBackground:   m.palette.primaryBackground,
+		PaddingBackground:  m.palette.accentBackground,
+		BorderForeground:   m.palette.borderColor,
+		BorderBackground:   m.palette.primaryBackground,
 		BlockNormalizeMode: termformat.BlockNormalizeModeExtend,
 	}.Apply(b.String())
 

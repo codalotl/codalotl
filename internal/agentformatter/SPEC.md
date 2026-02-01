@@ -280,6 +280,17 @@ If either option is provided and non-zero-value, print a single Accent line unde
 - EventTypeToolComplete is the same as the Call (except it resolves to a status).
 - Bullet indicates status (Green on success; Red on error).
 
+### EventTypeToolCall and EventTypeToolComplete - diagnostics
+
+The EventTypeToolComplete looks like this (Call is the same, except with `Run`):
+
+```
+• Ran Diagnostics some/path
+```
+
+- Run Diagnostics / Ran Diagnostics is Bold, Colorful; some/path is normal
+- There is no output line. Status indindicated by bullet color (Red or Green).
+
 ### EventTypeToolCall and EventTypeToolComplete - run_tests
 
 ```

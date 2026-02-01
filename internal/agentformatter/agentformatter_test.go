@@ -446,6 +446,177 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
 }
 
+func TestDiagnosticsToolCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "diagnostics",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "diagnostics",
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Run Diagnostics ./internal/agentformatter", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+	assert.Contains(t, out, ansiWrap("Run Diagnostics", pal, colorColorful, false, true))
+	assert.NotContains(t, out, "└")
+}
+
+func TestDiagnosticsToolCompleteSuccessNoOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "diagnostics",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true,"content":"build succeeded"}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "diagnostics",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Ran Diagnostics ./internal/agentformatter", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
+	assert.NotContains(t, out, "└")
+}
+
+func TestDiagnosticsToolCompleteFailureNoOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "diagnostics",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	// diagnostics may return a non-error ToolResult with success=false and a content/error message;
+	// per SPEC we still only show the single-line header and indicate status via bullet color.
+	result := llmstream.ToolResult{
+		Result:  `{"success":false,"error":"build failed"}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "diagnostics",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Ran Diagnostics ./internal/agentformatter", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorRed, false, false))
+	assert.NotContains(t, stripANSI(out), "Error:")
+	assert.NotContains(t, out, "└")
+}
+
+func TestDiagnosticsToolCompleteFailureFromXMLTagNoOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "diagnostics",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result: `<diagnostics-status ok="false">
+$ go build -o /dev/null ./internal/agentformatter
+# github.com/codalotl/codalotl/internal/agentformatter
+agentformatter.go:1:1: some error
+</diagnostics-status>`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "diagnostics",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Ran Diagnostics ./internal/agentformatter", stripANSI(out))
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+	assert.NotContains(t, stripANSI(out), "Error:")
+	assert.NotContains(t, out, "└")
+}
+
+func TestDiagnosticsToolCompleteSuccessFromXMLTagNoOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "diagnostics",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result: `<diagnostics-status ok="true" message="build succeeded">
+$ go build -o /dev/null ./internal/agentformatter
+</diagnostics-status>`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "diagnostics",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Ran Diagnostics ./internal/agentformatter", stripANSI(out))
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+	assert.NotContains(t, out, "└")
+}
+
+func TestDiagnosticsToolCompleteCLI(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	call := llmstream.ToolCall{
+		Name:  "diagnostics",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "diagnostics",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, MinTerminalWidth)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Ran Diagnostics ./internal/agentformatter", stripANSI(out))
+}
+
 func TestLsCompleteSuccessNoOutput(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
