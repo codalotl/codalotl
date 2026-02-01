@@ -254,6 +254,8 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiLsToolCall(e, width)
 	case "read_file":
 		return f.tuiReadFileToolCall(e, width)
+	case "diagnostics":
+		return f.tuiDiagnosticsToolCall(e, width)
 	case "get_public_api":
 		return f.tuiGetPublicAPIToolCall(e, width)
 	case "clarify_public_api":
@@ -287,6 +289,8 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliLsToolCall(e)
 	case "read_file":
 		return f.cliReadFileToolCall(e)
+	case "diagnostics":
+		return f.cliDiagnosticsToolCall(e)
 	case "get_public_api":
 		return f.cliGetPublicAPIToolCall(e)
 	case "clarify_public_api":
@@ -445,6 +449,8 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiLsToolComplete(e, width, success, cmd, outputLines)
 	case "read_file":
 		return f.tuiReadFileToolComplete(e, width, success, cmd, outputLines)
+	case "diagnostics":
+		return f.tuiDiagnosticsToolComplete(e, width, success)
 	case "get_public_api":
 		return f.tuiGetPublicAPIToolComplete(e, width, success, cmd, outputLines)
 	case "clarify_public_api":
@@ -479,6 +485,8 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliLsToolComplete(e, success, cmd, outputLines)
 	case "read_file":
 		return f.cliReadFileToolComplete(e, success, cmd, outputLines)
+	case "diagnostics":
+		return f.cliDiagnosticsToolComplete(e, success)
 	case "get_public_api":
 		return f.cliGetPublicAPIToolComplete(e, success, cmd, outputLines)
 	case "clarify_public_api":
@@ -848,16 +856,73 @@ func (f *textTUIFormatter) parseToolResult(e agent.Event) (bool, string, []toolO
 }
 
 func toolResultSuccess(result llmstream.ToolResult) (bool, bool) {
+	trimmed := strings.TrimSpace(result.Result)
+
+	// Prefer an explicit JSON `success` field when present.
 	var payload struct {
-		Success *bool `json:"success"`
+		Success *bool  `json:"success"`
+		Content string `json:"content"`
+		Error   string `json:"error"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(result.Result)), &payload); err != nil {
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+		if payload.Success != nil {
+			return *payload.Success, true
+		}
+		// Some tools report failures via an `error` string but keep IsError=false.
+		if strings.TrimSpace(payload.Error) != "" {
+			return false, true
+		}
+		// Some tools return XML-ish content like:
+		//   <diagnostics-status ok="false">...</diagnostics-status>
+		// If present, honor the ok="..." attribute for status/bullet coloring.
+		if ok, found := extractXMLishOK(payload.Content); found {
+			return ok, true
+		}
 		return false, false
 	}
-	if payload.Success == nil {
+
+	// If the tool result isn't JSON, try to infer success from an outer XML-ish tag.
+	if ok, found := extractXMLishOK(trimmed); found {
+		return ok, true
+	}
+
+	return false, false
+}
+
+func extractXMLishOK(s string) (ok bool, found bool) {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "<") {
 		return false, false
 	}
-	return *payload.Success, true
+	gt := strings.IndexByte(s, '>')
+	if gt <= 0 {
+		return false, false
+	}
+	openTag := s[:gt]
+	idx := strings.Index(openTag, "ok=")
+	if idx < 0 {
+		return false, false
+	}
+	rest := openTag[idx+len("ok="):]
+	if len(rest) < 3 {
+		return false, false
+	}
+	quote := rest[0]
+	if quote != '"' && quote != '\'' {
+		return false, false
+	}
+	closing := strings.IndexByte(rest[1:], quote)
+	if closing < 0 {
+		return false, false
+	}
+	val := rest[1 : 1+closing]
+	if strings.EqualFold(val, "true") {
+		return true, true
+	}
+	if strings.EqualFold(val, "false") {
+		return false, true
+	}
+	return false, false
 }
 
 func summarizeToolResult(result llmstream.ToolResult) []toolOutputLine {
@@ -1000,6 +1065,93 @@ func extractReadFilePath(call *llmstream.ToolCall) (string, bool) {
 		return "", false
 	}
 	return sanitizeText(path), true
+}
+
+func extractDiagnosticsPath(call *llmstream.ToolCall) (string, bool) {
+	if call == nil {
+		return "", false
+	}
+	var payload struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(call.Input), &payload); err != nil {
+		return "", false
+	}
+	path := strings.TrimSpace(payload.Path)
+	if path == "" {
+		return "", false
+	}
+	return sanitizeText(path), true
+}
+
+func (f *textTUIFormatter) tuiDiagnosticsToolCall(e agent.Event, width int) string {
+	path, ok := extractDiagnosticsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	segments := []textSegment{
+		{text: "Run Diagnostics", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+	return f.tuiBulletLine(width, colorAccent, segments...)
+}
+
+func (f *textTUIFormatter) cliDiagnosticsToolCall(e agent.Event) string {
+	path, ok := extractDiagnosticsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	segments := []textSegment{
+		{text: "Run Diagnostics", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+	return f.cliBulletLine(colorAccent, segments...)
+}
+
+func (f *textTUIFormatter) tuiDiagnosticsToolComplete(e agent.Event, width int, success bool) string {
+	path, ok := extractDiagnosticsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := []textSegment{
+		{text: "Ran Diagnostics", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+	// Per SPEC, diagnostics never prints output lines; status is indicated by bullet color.
+	return f.tuiBulletLine(width, bullet, segments...)
+}
+
+func (f *textTUIFormatter) cliDiagnosticsToolComplete(e agent.Event, success bool) string {
+	path, ok := extractDiagnosticsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := []textSegment{
+		{text: "Ran Diagnostics", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+	// Per SPEC, diagnostics never prints output lines; status is indicated by bullet color.
+	return f.cliBulletLine(bullet, segments...)
 }
 
 func (f *textTUIFormatter) tuiGetPublicAPIToolCall(e agent.Event, width int) string {
