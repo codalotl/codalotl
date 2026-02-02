@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"golang.org/x/mod/modfile"
+	"golang.org/x/tools/go/packages"
 )
 
 // Module describes a Go module rooted at a directory containing a go.mod file. It records the module path, absolute root on disk, and a cache of packages loaded from that module. Create
@@ -39,6 +40,213 @@ func NewModule(anyPath string) (*Module, error) {
 		AbsolutePath: moduleRoot,
 		Packages:     make(map[string]*Package),
 	}, nil
+}
+
+var ErrResolveNotFound = errors.New("could not find package")
+
+// ResolvePackageByRelativeDir resolves pkgRelativeDir relative to m.AbsolutePath.
+// The result is equivalent to Go tooling (ex: `go list`) as if run from within m: the target must be importable from code in m (i.e., in m's module graph). This does not scan
+// arbitrary packages on disk; directories in nested modules not in m's module graph are treated as not found.
+//
+// Argument pkgRelativeDir is a dir relative to m.AbsolutePath. Ex: "internal/foo"; "."; "" (same as "."); "./some/pkg/path". Any relative path that escapes m.AbsolutePath is rejected.
+//
+// It returns:
+//   - moduleAbsDir: absolute dir of the package's containing module.
+//   - packageAbsDir: absolute dir of the package.
+//   - packageRelDir: relative dir of the package (relative to moduleAbsDir). Ex: "."; "some/pkg/path". "." is always returned if pkg dir is the same as the module dir. "" is returned if the package is not in a module.
+//   - fqImportPath: fully qualified import path of the package (importable from code in m).
+//   - fnErr: error, if any. ErrResolveNotFound if the package cannot be found, or some non-nil error if other errors are encountered.
+func (m *Module) ResolvePackageByRelativeDir(pkgRelativeDir string) (moduleAbsDir string, packageAbsDir string, packageRelDir string, fqImportPath string, fnErr error) {
+	rel := pkgRelativeDir
+	for strings.HasPrefix(rel, "./") {
+		rel = strings.TrimPrefix(rel, "./")
+	}
+	if rel == "" {
+		rel = "."
+	}
+	if filepath.IsAbs(rel) {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByRelativeDir: pkgRelativeDir must be relative, got %q", pkgRelativeDir)
+	}
+
+	abs := filepath.Join(m.AbsolutePath, rel)
+	back, err := filepath.Rel(m.AbsolutePath, abs)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByRelativeDir: validate relative dir: %w", err)
+	}
+	if back == ".." || strings.HasPrefix(back, ".."+string(filepath.Separator)) {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByRelativeDir: pkgRelativeDir escapes module root: %q", pkgRelativeDir)
+	}
+
+	// Fast fail for missing directories to avoid confusing go/packages errors.
+	if info, err := os.Stat(abs); err != nil {
+		if os.IsNotExist(err) {
+			return "", "", "", "", fmt.Errorf("%w: directory does not exist: %s", ErrResolveNotFound, abs)
+		}
+		return "", "", "", "", fmt.Errorf("ResolvePackageByRelativeDir: stat: %w", err)
+	} else if !info.IsDir() {
+		return "", "", "", "", fmt.Errorf("%w: not a directory: %s", ErrResolveNotFound, abs)
+	}
+
+	pattern := "."
+	if rel != "." {
+		pattern = "./" + filepath.ToSlash(rel)
+	}
+
+	pkg, err := resolveOnePackage(m.AbsolutePath, pattern)
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	moduleAbsDir = ""
+	if pkg.Module != nil {
+		moduleAbsDir = pkg.Module.Dir
+	}
+	fqImportPath = pkg.PkgPath
+
+	packageAbsDir = pkg.Dir
+	if packageAbsDir == "" && len(pkg.GoFiles) > 0 {
+		packageAbsDir = filepath.Dir(pkg.GoFiles[0])
+	}
+	if packageAbsDir == "" {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByRelativeDir: go/packages returned empty package dir for %q", pkgRelativeDir)
+	}
+
+	if moduleAbsDir != "" {
+		r, err := filepath.Rel(moduleAbsDir, packageAbsDir)
+		if err != nil {
+			return "", "", "", "", fmt.Errorf("ResolvePackageByRelativeDir: compute packageRelDir: %w", err)
+		}
+		packageRelDir = filepath.ToSlash(r)
+	} else {
+		packageRelDir = ""
+	}
+
+	return moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath, nil
+}
+
+// ResolvePackageByImport resolves importPath as a Go import as seen from code in m. The target must be importable from m (i.e., in m's module graph); otherwise ErrResolveNotFound.
+// importPath must be a valid import path (as might be found in a source file's `import ( ... )` section), not a relative path like "./foo".
+//
+// The result is equivalent to Go tooling (ex: `go list`) as if run from within m. Actual implementation may vary, but callers can assume equivalent semantics.
+//
+// It returns:
+//   - moduleAbsDir: absolute dir of the package's containing module (or "" if no module, as in stdlib packages, for instance).
+//   - packageAbsDir: absolute dir of the package.
+//   - packageRelDir: relative dir of the package (relative to moduleAbsDir). Ex: "."; "some/pkg/path". "." is always returned if pkg dir is the same as the module dir. "" is returned if the package is not in a module.
+//   - fqImportPath: fully qualified import path of the package (importable from code in m).
+//   - fnErr: error, if any. ErrResolveNotFound if the package cannot be found, or some non-nil error if other errors are encountered.
+func (m *Module) ResolvePackageByImport(importPath string) (moduleAbsDir string, packageAbsDir string, packageRelDir string, fqImportPath string, fnErr error) {
+	if importPath == "" {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByImport: importPath is empty")
+	}
+	if strings.Contains(importPath, "...") {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByImport: importPath must not be a pattern: %q", importPath)
+	}
+	if strings.HasPrefix(importPath, ".") || strings.HasPrefix(importPath, "/") {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByImport: importPath must not be relative or absolute: %q", importPath)
+	}
+
+	pkg, err := resolveOnePackage(m.AbsolutePath, importPath)
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	moduleAbsDir = ""
+	if pkg.Module != nil {
+		moduleAbsDir = pkg.Module.Dir
+	}
+	fqImportPath = pkg.PkgPath
+
+	packageAbsDir = pkg.Dir
+	if packageAbsDir == "" && len(pkg.GoFiles) > 0 {
+		packageAbsDir = filepath.Dir(pkg.GoFiles[0])
+	}
+	if packageAbsDir == "" {
+		return "", "", "", "", fmt.Errorf("ResolvePackageByImport: go/packages returned empty package dir for %q", importPath)
+	}
+
+	if moduleAbsDir != "" {
+		r, err := filepath.Rel(moduleAbsDir, packageAbsDir)
+		if err != nil {
+			return "", "", "", "", fmt.Errorf("ResolvePackageByImport: compute packageRelDir: %w", err)
+		}
+		packageRelDir = filepath.ToSlash(r)
+	} else {
+		packageRelDir = ""
+	}
+
+	return moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath, nil
+}
+
+func resolveOnePackage(fromDir string, pattern string) (*packages.Package, error) {
+	cfg := &packages.Config{
+		Mode: packages.NeedModule | packages.NeedFiles | packages.NeedName,
+		Dir:  fromDir,
+		Env:  os.Environ(),
+	}
+
+	pkgs, err := packages.Load(cfg, pattern)
+	if err != nil {
+		if resolveNotFound(err, pkgs) {
+			return nil, fmt.Errorf("%w: %v", ErrResolveNotFound, err)
+		}
+		return nil, fmt.Errorf("go/packages load %q from %q: %w", pattern, fromDir, err)
+	}
+
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("%w: no packages matched %q", ErrResolveNotFound, pattern)
+	}
+	if len(pkgs) != 1 {
+		return nil, fmt.Errorf("expected 1 package for %q, got %d", pattern, len(pkgs))
+	}
+
+	pkg := pkgs[0]
+	if len(pkg.Errors) > 0 {
+		if resolveNotFound(nil, pkgs) {
+			return nil, fmt.Errorf("%w: %s", ErrResolveNotFound, pkg.Errors[0].Msg)
+		}
+		return nil, fmt.Errorf("go/packages load %q: %s", pattern, pkg.Errors[0].Msg)
+	}
+
+	// Some failures show up as empty PkgPath and/or Dir without a hard error.
+	if pkg.PkgPath == "" || (pkg.Dir == "" && len(pkg.GoFiles) == 0) {
+		return nil, fmt.Errorf("%w: could not resolve %q", ErrResolveNotFound, pattern)
+	}
+
+	return pkg, nil
+}
+
+func resolveNotFound(loadErr error, pkgs []*packages.Package) bool {
+	var msgs []string
+	if loadErr != nil {
+		msgs = append(msgs, loadErr.Error())
+	}
+	for _, p := range pkgs {
+		for _, e := range p.Errors {
+			msgs = append(msgs, e.Msg)
+		}
+	}
+
+	// These are go list error fragments that indicate "not found" rather than a hard internal error.
+	needles := []string{
+		"no required module provides package",
+		"cannot find module providing package",
+		"cannot find package",
+		"main module does not contain package",
+		"does not contain package",
+		"build constraints exclude all Go files",
+		"no Go files",
+		"is in a module rooted at",
+	}
+
+	for _, msg := range msgs {
+		for _, n := range needles {
+			if strings.Contains(msg, n) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // LoadAllPackages recursively traverses the module root looking for Go packages. It calls ReadPackage for each package it finds. All loaded packages are stored in m.Packages.
