@@ -158,6 +158,9 @@ Mouse events are supported when enabled via `Options.EnableMouse`. When enabled,
 mouse input is delivered to `Update` as `MouseEvent` values (for example, wheel
 events can be used for scrolling).
 
+## Clipboard (OSC52)
+
+tui provides a way for applications to copy text into the user's clipboard by emitting an OSC52 sequence to the terminal output. This is best-effort: some terminals disable or limit OSC52.
 
 ## Public Interface
 
@@ -245,4 +248,8 @@ func (t *TUI) SendOnceAfter(m Message, d time.Duration)
 //
 // Go is a great place to do I/O like HTTP requests.
 func (t *TUI) Go(f func(ctx context.Context) Message)
+
+// SetClipboard requests that the terminal set the clipboard contents to text (copy).
+// Implementations use OSC52 (ESC ] 52 ; c ; <base64(text)> BEL).
+func (t *TUI) SetClipboard(text string)
 ```

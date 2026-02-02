@@ -12,6 +12,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/clipboard"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
@@ -66,6 +67,10 @@ type chatMessage struct {
 	event         agent.Event
 	toolCallID    string
 	contextStatus *contextStatusLine
+	// contextDetails and contextError are only used for messageKindContextStatus, and are displayed
+	// in Overlay Mode > Details.
+	contextDetails string
+	contextError   string
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it.
 	// It must be the correct block width (all lines padded with spaces to equal width of the viewport.
@@ -105,6 +110,7 @@ type packageContextResultMsg struct {
 	runID  int
 	status packageContextStatus
 	text   string
+	errMsg string
 }
 
 // Run launches the TUI in an alternate screen buffer.
@@ -224,6 +230,36 @@ type model struct {
 	monitor             *remotemonitor.Monitor
 	latestVersion       string
 	versionCheckStarted bool
+
+	// Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
+	overlayMode bool
+
+	// overlayCopyFeedback tracks transient "copied!" feedback per message index.
+	overlayCopyFeedback map[int]time.Time
+
+	// overlayTargets are computed on each refreshViewport; they map viewport content
+	// rows to message indices for hit-testing.
+	overlayTargets []overlayTarget
+
+	// lastLeftClick* is used for best-effort double-click detection.
+	lastLeftClickAt time.Time
+	lastLeftClickX  int
+	lastLeftClickY  int
+
+	// clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
+	clipboardSetter func(text string)
+
+	// OS clipboard integration (best-effort); separated for testability so unit tests
+	// don't mutate the real system clipboard.
+	osClipboardAvailable func() bool
+	osClipboardWrite     func(text string) error
+
+	// now allows deterministic tests around transient UI state (ex: "copied!").
+	now func() time.Time
+
+	// detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and
+	// package context gathering.
+	detailsDialog *detailsDialog
 }
 
 func newModel(
@@ -245,23 +281,26 @@ func newModel(
 	}
 
 	m := &model{
-		viewport:            vp,
-		textarea:            ti,
-		session:             initialSession,
-		sessionFactory:      factory,
-		sessionConfig:       activeCfg,
-		agentFormatter:      formatter,
-		persistModelID:      persistModelID,
-		requestSource:       1,
-		nextAgentRunID:      1,
-		messages:            make([]chatMessage, 0, 32),
-		messageHistory:      make([]string, 0, 32),
-		messageQueue:        make([]string, 0),
-		permissionQueue:     make([]*permissionPrompt, 0),
-		palette:             palette,
-		cycleIndex:          historyIndexNone,
-		editingHistoryIndex: historyIndexNone,
-		monitor:             monitor,
+		viewport:             vp,
+		textarea:             ti,
+		session:              initialSession,
+		sessionFactory:       factory,
+		sessionConfig:        activeCfg,
+		agentFormatter:       formatter,
+		persistModelID:       persistModelID,
+		requestSource:        1,
+		nextAgentRunID:       1,
+		messages:             make([]chatMessage, 0, 32),
+		messageHistory:       make([]string, 0, 32),
+		messageQueue:         make([]string, 0),
+		permissionQueue:      make([]*permissionPrompt, 0),
+		palette:              palette,
+		cycleIndex:           historyIndexNone,
+		editingHistoryIndex:  historyIndexNone,
+		monitor:              monitor,
+		now:                  time.Now,
+		osClipboardAvailable: clipboard.Available,
+		osClipboardWrite:     clipboard.Write,
 	}
 	if initialSession != nil {
 		m.requests = initialSession.UserRequests()
@@ -273,6 +312,9 @@ func newModel(
 
 func (m *model) Init(t *qtui.TUI) {
 	m.tui = t
+	if m.clipboardSetter == nil && t != nil {
+		m.clipboardSetter = t.SetClipboard
+	}
 	if m.requests != nil {
 		m.startUserRequestListener(m.requestSource, m.requests)
 	}
@@ -282,6 +324,9 @@ func (m *model) Init(t *qtui.TUI) {
 func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 	if m.tui == nil && t != nil {
 		m.tui = t
+	}
+	if m.clipboardSetter == nil && t != nil {
+		m.clipboardSetter = t.SetClipboard
 	}
 
 	switch ev := msg.(type) {
@@ -346,6 +391,9 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 			break
 		}
 		m.latestVersion = ev.latest
+	case overlayCopyExpiredMsg:
+		m.clearExpiredOverlayCopyFeedback()
+		m.refreshViewport(false)
 	}
 
 	m.persistEditedHistoryDraft()
@@ -392,7 +440,11 @@ func (m *model) View() string {
 	}
 
 	if m.infoPanelWidth == 0 {
-		return b.String()
+		base := b.String()
+		if m.detailsDialog != nil {
+			return m.detailsDialogView(base)
+		}
+		return base
 	}
 
 	infoBlock := m.infoPanelBlock()
@@ -404,6 +456,9 @@ func (m *model) View() string {
 	combo, err := termformat.Layout(blocks, nil)
 	if err == nil {
 		debugLogf("h=%d lines=%d rectHeight=%d", m.windowHeight, len(strings.Split(combo, "\n")), termformat.BlockHeight(combo))
+		if m.detailsDialog != nil {
+			return m.detailsDialogView(combo)
+		}
 		return combo
 	} else {
 		return fmt.Sprintf("rendering error: %v", err)
@@ -427,16 +482,50 @@ func (m *model) handleMouseEvent(ev qtui.MouseEvent) {
 	if m.viewport == nil {
 		return
 	}
-	if !ev.IsWheel() {
+
+	if m.detailsDialog != nil {
+		// When a modal dialog is up, mouse interactions apply to it (or are ignored).
+		if ev.IsWheel() {
+			switch ev.Button {
+			case qtui.MouseButtonWheelUp:
+				m.detailsDialogScrollUp(mouseWheelScrollLines)
+			case qtui.MouseButtonWheelDown:
+				m.detailsDialogScrollDown(mouseWheelScrollLines)
+			}
+		}
 		return
 	}
 
-	switch ev.Button {
-	case qtui.MouseButtonWheelUp:
-		m.viewport.ScrollUp(mouseWheelScrollLines)
-	case qtui.MouseButtonWheelDown:
-		m.viewport.ScrollDown(mouseWheelScrollLines)
+	// Wheel always scrolls the messages viewport.
+	if ev.IsWheel() {
+		switch ev.Button {
+		case qtui.MouseButtonWheelUp:
+			m.viewport.ScrollUp(mouseWheelScrollLines)
+		case qtui.MouseButtonWheelDown:
+			m.viewport.ScrollDown(mouseWheelScrollLines)
+		}
+		return
 	}
+
+	// Click handling (Overlay Mode, double-click to toggle).
+	if ev.Action != qtui.MouseActionPress || ev.Button != qtui.MouseButtonLeft {
+		return
+	}
+
+	// In Overlay Mode, clicks in the viewport can hit targets like "copy".
+	if m.overlayMode && m.tryHandleOverlayClick(ev) {
+		return
+	}
+
+	// Best-effort double-click toggles Overlay Mode.
+	if m.isDoubleClick(ev) {
+		m.toggleOverlayMode()
+		return
+	}
+
+	m.lastLeftClickAt = m.nowOrTimeNow()
+	m.lastLeftClickX = ev.X
+	m.lastLeftClickY = ev.Y
 }
 
 // updateSizes calculates all sizes (dimensions) on m based on m.windowHeight and m.windowWidth.
@@ -511,6 +600,29 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 		return true
 	}
 
+	if m.detailsDialog != nil {
+		switch key.ControlKey {
+		case qtui.ControlKeyEsc:
+			m.closeDetailsDialog()
+			return true
+		case qtui.ControlKeyPageUp, qtui.ControlKeyCtrlPageUp:
+			m.detailsDialogPageUp()
+			return true
+		case qtui.ControlKeyPageDown, qtui.ControlKeyCtrlPageDown:
+			m.detailsDialogPageDown()
+			return true
+		case qtui.ControlKeyHome, qtui.ControlKeyCtrlHome, qtui.ControlKeyShiftHome, qtui.ControlKeyCtrlShiftHome:
+			m.detailsDialogScrollToTop()
+			return true
+		case qtui.ControlKeyEnd, qtui.ControlKeyCtrlEnd, qtui.ControlKeyShiftEnd, qtui.ControlKeyCtrlShiftEnd:
+			m.detailsDialogScrollToBottom()
+			return true
+		default:
+			// Swallow other key presses so the modal doesn't mutate the main UI.
+			return true
+		}
+	}
+
 	if m.activePermission != nil {
 		return m.handlePermissionKey(key)
 	}
@@ -520,6 +632,9 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 	}
 
 	switch key.ControlKey {
+	case qtui.ControlKeyCtrlO:
+		m.toggleOverlayMode()
+		return true
 	// Spec: these keys scroll the message area (viewport), not the text area.
 	case qtui.ControlKeyPageUp, qtui.ControlKeyCtrlPageUp:
 		if m.viewport != nil {
@@ -919,6 +1034,7 @@ func (m *model) shouldExitCyclingForKey(msg qtui.KeyEvent) bool {
 	case qtui.ControlKeyUp,
 		qtui.ControlKeyDown,
 		qtui.ControlKeyEsc,
+		qtui.ControlKeyCtrlO,
 		qtui.ControlKeyEnter,
 		qtui.ControlKeyPageUp,
 		qtui.ControlKeyPageDown,
@@ -1396,11 +1512,18 @@ func (m *model) handlePackageContextResult(msg packageContextResultMsg) {
 
 	m.packageContext.status = msg.status
 	m.updateContextStatusMessage(m.packageContext.messageIndex, msg.status)
+	if idx := m.packageContext.messageIndex; idx >= 0 && idx < len(m.messages) {
+		m.messages[idx].contextDetails = msg.text
+		m.messages[idx].contextError = msg.errMsg
+	}
 
 	if msg.text != "" && m.session != nil && m.session.agent != nil {
 		if err := m.session.agent.AddUserTurn(msg.text); err != nil {
 			m.appendSystemMessage(fmt.Sprintf("Failed to apply package context: %v", err))
 			m.updateContextStatusMessage(m.packageContext.messageIndex, packageContextStatusFailure)
+			if idx := m.packageContext.messageIndex; idx >= 0 && idx < len(m.messages) {
+				m.messages[idx].contextError = err.Error()
+			}
 		}
 	}
 
@@ -1499,14 +1622,24 @@ func (m *model) refreshViewport(autoScroll bool) {
 		m.ensureMessageFormatted(&m.messages[i], width)
 	}
 
-	rendered := make([]string, 0, len(m.messages))
+	blocks := make([]renderedBlock, 0, len(m.messages)+2)
 	for i := range m.messages {
-		rendered = append(rendered, m.messages[i].formatted)
+		blocks = append(blocks, renderedBlock{
+			text:         m.messages[i].formatted,
+			messageIndex: i,
+			copyable:     m.isMessageCopyable(&m.messages[i]),
+			detailable:   m.isMessageDetailable(&m.messages[i]),
+		})
 	}
+	if m.isAgentRunning() {
+		if indicator := m.renderWorkingIndicator(width); indicator != "" {
+			blocks = append(blocks, renderedBlock{text: indicator, messageIndex: -1, copyable: false})
+		}
+	}
+	blocks = append(blocks, renderedBlock{text: m.blankRow(width, m.palette.primaryBackground), messageIndex: -1, copyable: false}) // always have one blank line at the end
 
-	rendered = m.applyWorkingIndicator(rendered, width)
-	rendered = append(rendered, m.blankRow(width, m.palette.primaryBackground)) // always have one blank line at the end
-	content := m.joinRenderedBlocks(rendered, width)
+	content, targets := m.joinRenderedBlocksWithOverlay(blocks, width)
+	m.overlayTargets = targets
 	content = m.padViewportContentHeight(content, height, width)
 	if m.viewport != nil {
 		m.viewport.SetContent(content)
@@ -1752,7 +1885,7 @@ func (m *model) updateTextareaHeight() {
 }
 
 func (m *model) infoLineView() string {
-	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline"}
+	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline", "ctrl-o overlay"}
 	infoLineText := "  "
 
 	for i, h := range hints {
@@ -2098,13 +2231,16 @@ func (m *model) startPackageContextGather() {
 	go func() {
 		contextText, err := buildPackageInitialContext(sandboxDir, pkgPath, pkgAbsPath)
 		status := packageContextStatusSuccess
+		errMsg := ""
 		if err != nil {
 			status = packageContextStatusFailure
+			errMsg = err.Error()
 		}
 		m.tui.Send(packageContextResultMsg{
 			runID:  runID,
 			status: status,
 			text:   contextText,
+			errMsg: errMsg,
 		})
 	}()
 }
