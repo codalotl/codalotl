@@ -68,7 +68,7 @@ type chatMessage struct {
 	toolCallID    string
 	contextStatus *contextStatusLine
 	// contextDetails and contextError are only used for messageKindContextStatus, and are displayed
-	// in Option Mode > Details.
+	// in Overlay Mode > Details.
 	contextDetails string
 	contextError   string
 
@@ -231,15 +231,15 @@ type model struct {
 	latestVersion       string
 	versionCheckStarted bool
 
-	// Option Mode: show clickable UI affordances in the viewport (currently: per-message copy).
-	optionMode bool
+	// Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
+	overlayMode bool
 
-	// optionCopyFeedback tracks transient "copied!" feedback per message index.
-	optionCopyFeedback map[int]time.Time
+	// overlayCopyFeedback tracks transient "copied!" feedback per message index.
+	overlayCopyFeedback map[int]time.Time
 
-	// optionTargets are computed on each refreshViewport; they map viewport content
+	// overlayTargets are computed on each refreshViewport; they map viewport content
 	// rows to message indices for hit-testing.
-	optionTargets []optionTarget
+	overlayTargets []overlayTarget
 
 	// lastLeftClick* is used for best-effort double-click detection.
 	lastLeftClickAt time.Time
@@ -257,7 +257,7 @@ type model struct {
 	// now allows deterministic tests around transient UI state (ex: "copied!").
 	now func() time.Time
 
-	// detailsDialog is a modal "Details" overlay, opened from Option Mode for tool calls and
+	// detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and
 	// package context gathering.
 	detailsDialog *detailsDialog
 }
@@ -391,8 +391,8 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 			break
 		}
 		m.latestVersion = ev.latest
-	case optionCopyExpiredMsg:
-		m.clearExpiredOptionCopyFeedback()
+	case overlayCopyExpiredMsg:
+		m.clearExpiredOverlayCopyFeedback()
 		m.refreshViewport(false)
 	}
 
@@ -507,19 +507,19 @@ func (m *model) handleMouseEvent(ev qtui.MouseEvent) {
 		return
 	}
 
-	// Click handling (Option Mode, double-click to toggle).
+	// Click handling (Overlay Mode, double-click to toggle).
 	if ev.Action != qtui.MouseActionPress || ev.Button != qtui.MouseButtonLeft {
 		return
 	}
 
-	// In Option Mode, clicks in the viewport can hit targets like "copy".
-	if m.optionMode && m.tryHandleOptionClick(ev) {
+	// In Overlay Mode, clicks in the viewport can hit targets like "copy".
+	if m.overlayMode && m.tryHandleOverlayClick(ev) {
 		return
 	}
 
-	// Best-effort double-click toggles Option Mode.
+	// Best-effort double-click toggles Overlay Mode.
 	if m.isDoubleClick(ev) {
-		m.toggleOptionMode()
+		m.toggleOverlayMode()
 		return
 	}
 
@@ -633,7 +633,7 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 
 	switch key.ControlKey {
 	case qtui.ControlKeyCtrlO:
-		m.toggleOptionMode()
+		m.toggleOverlayMode()
 		return true
 	// Spec: these keys scroll the message area (viewport), not the text area.
 	case qtui.ControlKeyPageUp, qtui.ControlKeyCtrlPageUp:
@@ -1638,8 +1638,8 @@ func (m *model) refreshViewport(autoScroll bool) {
 	}
 	blocks = append(blocks, renderedBlock{text: m.blankRow(width, m.palette.primaryBackground), messageIndex: -1, copyable: false}) // always have one blank line at the end
 
-	content, targets := m.joinRenderedBlocksWithOptions(blocks, width)
-	m.optionTargets = targets
+	content, targets := m.joinRenderedBlocksWithOverlay(blocks, width)
+	m.overlayTargets = targets
 	content = m.padViewportContentHeight(content, height, width)
 	if m.viewport != nil {
 		m.viewport.SetContent(content)
@@ -1885,7 +1885,7 @@ func (m *model) updateTextareaHeight() {
 }
 
 func (m *model) infoLineView() string {
-	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline", "ctrl-o options"}
+	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline", "ctrl-o overlay"}
 	infoLineText := "  "
 
 	for i, h := range hints {

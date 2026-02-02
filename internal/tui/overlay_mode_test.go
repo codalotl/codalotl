@@ -12,36 +12,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOptionModeCtrlOToggles(t *testing.T) {
+func TestOverlayModeCtrlOToggles(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
-	require.False(t, m.optionMode)
+	require.False(t, m.overlayMode)
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
-	require.True(t, m.optionMode)
+	require.True(t, m.overlayMode)
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
-	require.False(t, m.optionMode)
+	require.False(t, m.overlayMode)
 }
 
-func TestOptionModeDoubleClickToggles(t *testing.T) {
+func TestOverlayModeDoubleClickToggles(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
 	base := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
 	m.now = func() time.Time { return base }
 
-	require.False(t, m.optionMode)
+	require.False(t, m.overlayMode)
 
 	m.Update(nil, qtui.MouseEvent{Action: qtui.MouseActionPress, Button: qtui.MouseButtonLeft, X: 3, Y: 3})
-	require.False(t, m.optionMode)
+	require.False(t, m.overlayMode)
 
 	m.Update(nil, qtui.MouseEvent{Action: qtui.MouseActionPress, Button: qtui.MouseButtonLeft, X: 3, Y: 3})
-	require.True(t, m.optionMode)
+	require.True(t, m.overlayMode)
 }
 
-func TestOptionModeCopyCopiesRenderedMessageAndShowsFeedback(t *testing.T) {
+func TestOverlayModeCopyCopiesRenderedMessageAndShowsFeedback(t *testing.T) {
 	palette := colorPalette{
 		colorized:          true,
 		primaryBackground:  termformat.ANSIColor(0),
@@ -71,14 +71,14 @@ func TestOptionModeCopyCopiesRenderedMessageAndShowsFeedback(t *testing.T) {
 	m.appendSystemMessage("hello world")
 	m.refreshViewport(true)
 
-	// Enter option mode, which makes copy buttons appear in the separator rows.
+	// Enter overlay mode, which makes copy buttons appear in the separator rows.
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
-	require.True(t, m.optionMode)
+	require.True(t, m.overlayMode)
 
-	var target optionTarget
+	var target overlayTarget
 	found := false
-	for _, t := range m.optionTargets {
-		if t.kind == optionTargetCopy {
+	for _, t := range m.overlayTargets {
+		if t.kind == overlayTargetCopy {
 			target = t
 			found = true
 			break
@@ -103,15 +103,15 @@ func TestOptionModeCopyCopiesRenderedMessageAndShowsFeedback(t *testing.T) {
 	require.Equal(t, want, osCopied)
 
 	view := stripAnsi(m.viewport.View())
-	require.Contains(t, view, optionCopyButtonCopiedLabel)
+	require.Contains(t, view, overlayCopyButtonCopiedLabel)
 
 	// Once the feedback duration expires, the label should revert.
-	now = base.Add(optionCopyFeedbackDuration + time.Millisecond)
+	now = base.Add(overlayCopyFeedbackDuration + time.Millisecond)
 	m.refreshViewport(false)
 
 	view = stripAnsi(m.viewport.View())
-	require.Contains(t, view, optionCopyButtonLabel)
-	require.False(t, strings.Contains(view, optionCopyButtonCopiedLabel))
+	require.Contains(t, view, overlayCopyButtonLabel)
+	require.False(t, strings.Contains(view, overlayCopyButtonCopiedLabel))
 }
 
 type stubToolFormatter struct{}
@@ -123,7 +123,7 @@ func (stubToolFormatter) FormatEvent(ev agent.Event, _ int) string {
 	return ""
 }
 
-func TestOptionModeDetailsOpensDialogForToolMessage(t *testing.T) {
+func TestOverlayModeDetailsOpensDialogForToolMessage(t *testing.T) {
 	palette := colorPalette{
 		colorized:          true,
 		primaryBackground:  termformat.ANSIColor(0),
@@ -144,12 +144,12 @@ func TestOptionModeDetailsOpensDialogForToolMessage(t *testing.T) {
 	m.refreshViewport(true)
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
-	require.True(t, m.optionMode)
+	require.True(t, m.overlayMode)
 
-	var detailsTarget optionTarget
+	var detailsTarget overlayTarget
 	found := false
-	for _, t := range m.optionTargets {
-		if t.kind == optionTargetDetails && t.messageIndex == 0 {
+	for _, t := range m.overlayTargets {
+		if t.kind == overlayTargetDetails && t.messageIndex == 0 {
 			detailsTarget = t
 			found = true
 			break
@@ -178,7 +178,7 @@ func TestOptionModeDetailsOpensDialogForToolMessage(t *testing.T) {
 	require.Nil(t, m.detailsDialog)
 }
 
-func TestOptionModeDetailsOpensDialogForContextStatusMessage(t *testing.T) {
+func TestOverlayModeDetailsOpensDialogForContextStatusMessage(t *testing.T) {
 	palette := colorPalette{
 		colorized:          true,
 		primaryBackground:  termformat.ANSIColor(0),
@@ -198,12 +198,12 @@ func TestOptionModeDetailsOpensDialogForContextStatusMessage(t *testing.T) {
 	m.refreshViewport(true)
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
-	require.True(t, m.optionMode)
+	require.True(t, m.overlayMode)
 
-	var detailsTarget optionTarget
+	var detailsTarget overlayTarget
 	found := false
-	for _, t := range m.optionTargets {
-		if t.kind == optionTargetDetails && t.messageIndex == index {
+	for _, t := range m.overlayTargets {
+		if t.kind == overlayTargetDetails && t.messageIndex == index {
 			detailsTarget = t
 			found = true
 			break
@@ -245,13 +245,13 @@ func TestDetailsDialogScrollKeepsForegroundColor(t *testing.T) {
 	m.refreshViewport(true)
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
-	require.True(t, m.optionMode)
+	require.True(t, m.overlayMode)
 
 	// Open details dialog for the context status message.
-	var detailsTarget optionTarget
+	var detailsTarget overlayTarget
 	found := false
-	for _, t := range m.optionTargets {
-		if t.kind == optionTargetDetails && t.messageIndex == index {
+	for _, t := range m.overlayTargets {
+		if t.kind == overlayTargetDetails && t.messageIndex == index {
 			detailsTarget = t
 			found = true
 			break

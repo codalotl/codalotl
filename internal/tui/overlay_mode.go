@@ -10,12 +10,12 @@ import (
 )
 
 const (
-	optionCopyFeedbackDuration  = 900 * time.Millisecond
-	optionDoubleClickThreshold  = 350 * time.Millisecond
-	optionDoubleClickMaxDistXY  = 1
-	optionDetailsButtonLabel    = "details"
-	optionCopyButtonLabel       = "copy"
-	optionCopyButtonCopiedLabel = "copied!"
+	overlayCopyFeedbackDuration  = 900 * time.Millisecond
+	overlayDoubleClickThreshold  = 350 * time.Millisecond
+	overlayDoubleClickMaxDistXY  = 1
+	overlayDetailsButtonLabel    = "details"
+	overlayCopyButtonLabel       = "copy"
+	overlayCopyButtonCopiedLabel = "copied!"
 )
 
 type renderedBlock struct {
@@ -25,23 +25,23 @@ type renderedBlock struct {
 	detailable   bool
 }
 
-type optionTargetKind int
+type overlayTargetKind int
 
 const (
-	optionTargetCopy optionTargetKind = iota
-	optionTargetDetails
+	overlayTargetCopy overlayTargetKind = iota
+	overlayTargetDetails
 )
 
-type optionTarget struct {
-	kind         optionTargetKind
+type overlayTarget struct {
+	kind         overlayTargetKind
 	contentLine  int
 	messageIndex int
 	xStart       int
 	xEnd         int
 }
 
-// optionCopyExpiredMsg is scheduled after a copy action so the UI can clear the transient state.
-type optionCopyExpiredMsg struct{}
+// overlayCopyExpiredMsg is scheduled after a copy action so the UI can clear the transient state.
+type overlayCopyExpiredMsg struct{}
 
 func (m *model) nowOrTimeNow() time.Time {
 	if m != nil && m.now != nil {
@@ -50,8 +50,8 @@ func (m *model) nowOrTimeNow() time.Time {
 	return time.Now()
 }
 
-func (m *model) toggleOptionMode() {
-	m.optionMode = !m.optionMode
+func (m *model) toggleOverlayMode() {
+	m.overlayMode = !m.overlayMode
 	// Clear click state so a rapid triple-click doesn't toggle twice.
 	m.lastLeftClickAt = time.Time{}
 	m.lastLeftClickX = 0
@@ -64,20 +64,20 @@ func (m *model) isDoubleClick(ev qtui.MouseEvent) bool {
 		return false
 	}
 	now := m.nowOrTimeNow()
-	if now.Sub(m.lastLeftClickAt) > optionDoubleClickThreshold {
+	if now.Sub(m.lastLeftClickAt) > overlayDoubleClickThreshold {
 		return false
 	}
-	if abs(ev.X-m.lastLeftClickX) > optionDoubleClickMaxDistXY {
+	if abs(ev.X-m.lastLeftClickX) > overlayDoubleClickMaxDistXY {
 		return false
 	}
-	if abs(ev.Y-m.lastLeftClickY) > optionDoubleClickMaxDistXY {
+	if abs(ev.Y-m.lastLeftClickY) > overlayDoubleClickMaxDistXY {
 		return false
 	}
 	return true
 }
 
-func (m *model) tryHandleOptionClick(ev qtui.MouseEvent) bool {
-	if m == nil || m.viewport == nil || !m.optionMode {
+func (m *model) tryHandleOverlayClick(ev qtui.MouseEvent) bool {
+	if m == nil || m.viewport == nil || !m.overlayMode {
 		return false
 	}
 
@@ -87,7 +87,7 @@ func (m *model) tryHandleOptionClick(ev qtui.MouseEvent) bool {
 	}
 
 	contentLine := ev.Y + m.viewport.Offset()
-	for _, t := range m.optionTargets {
+	for _, t := range m.overlayTargets {
 		if t.contentLine != contentLine {
 			continue
 		}
@@ -95,10 +95,10 @@ func (m *model) tryHandleOptionClick(ev qtui.MouseEvent) bool {
 			continue
 		}
 		switch t.kind {
-		case optionTargetCopy:
+		case overlayTargetCopy:
 			m.copyMessageToClipboard(t.messageIndex)
 			return true
-		case optionTargetDetails:
+		case overlayTargetDetails:
 			m.openDetailsDialog(t.messageIndex)
 			return true
 		default:
@@ -167,13 +167,13 @@ func (m *model) copyMessageToClipboard(messageIndex int) {
 	}
 
 	now := m.nowOrTimeNow()
-	if m.optionCopyFeedback == nil {
-		m.optionCopyFeedback = make(map[int]time.Time)
+	if m.overlayCopyFeedback == nil {
+		m.overlayCopyFeedback = make(map[int]time.Time)
 	}
-	m.optionCopyFeedback[messageIndex] = now.Add(optionCopyFeedbackDuration)
+	m.overlayCopyFeedback[messageIndex] = now.Add(overlayCopyFeedbackDuration)
 
 	if m.tui != nil {
-		m.tui.SendOnceAfter(optionCopyExpiredMsg{}, optionCopyFeedbackDuration)
+		m.tui.SendOnceAfter(overlayCopyExpiredMsg{}, overlayCopyFeedbackDuration)
 	}
 	m.refreshViewport(false)
 }
@@ -202,49 +202,49 @@ func (m *model) plainMessageTextForCopy(messageIndex int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *model) clearExpiredOptionCopyFeedback() {
-	if m == nil || len(m.optionCopyFeedback) == 0 {
+func (m *model) clearExpiredOverlayCopyFeedback() {
+	if m == nil || len(m.overlayCopyFeedback) == 0 {
 		return
 	}
 	now := m.nowOrTimeNow()
-	for idx, until := range m.optionCopyFeedback {
+	for idx, until := range m.overlayCopyFeedback {
 		if !until.After(now) {
-			delete(m.optionCopyFeedback, idx)
+			delete(m.overlayCopyFeedback, idx)
 		}
 	}
 }
 
-func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int) (string, []optionTarget) {
+func (m *model) joinRenderedBlocksWithOverlay(blocks []renderedBlock, width int) (string, []overlayTarget) {
 	if len(blocks) == 0 {
 		return "", nil
 	}
 
-	m.clearExpiredOptionCopyFeedback()
+	m.clearExpiredOverlayCopyFeedback()
 
 	var (
 		b       strings.Builder
-		targets []optionTarget
+		targets []overlayTarget
 	)
 
 	curLine := 0
 	separatorForPrev := func(prev renderedBlock) string {
-		if !m.optionMode || !prev.copyable || prev.messageIndex < 0 {
+		if !m.overlayMode || !prev.copyable || prev.messageIndex < 0 {
 			return m.blankRow(width, m.palette.primaryBackground)
 		}
 
-		label := optionCopyButtonLabel
-		if until, ok := m.optionCopyFeedback[prev.messageIndex]; ok && until.After(m.nowOrTimeNow()) {
-			label = optionCopyButtonCopiedLabel
+		label := overlayCopyButtonLabel
+		if until, ok := m.overlayCopyFeedback[prev.messageIndex]; ok && until.After(m.nowOrTimeNow()) {
+			label = overlayCopyButtonCopiedLabel
 		}
 
-		row, detailXStart, detailXEnd, copyXStart, copyXEnd, ok := m.optionButtonsRow(width, label, prev.detailable)
+		row, detailXStart, detailXEnd, copyXStart, copyXEnd, ok := m.overlayButtonsRow(width, label, prev.detailable)
 		if !ok {
 			return m.blankRow(width, m.palette.primaryBackground)
 		}
 
 		if prev.detailable {
-			targets = append(targets, optionTarget{
-				kind:         optionTargetDetails,
+			targets = append(targets, overlayTarget{
+				kind:         overlayTargetDetails,
 				contentLine:  curLine,
 				messageIndex: prev.messageIndex,
 				xStart:       detailXStart,
@@ -252,8 +252,8 @@ func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int)
 			})
 		}
 
-		targets = append(targets, optionTarget{
-			kind:         optionTargetCopy,
+		targets = append(targets, overlayTarget{
+			kind:         overlayTargetCopy,
 			contentLine:  curLine,
 			messageIndex: prev.messageIndex,
 			xStart:       copyXStart,
@@ -296,8 +296,8 @@ func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int)
 	return b.String(), targets
 }
 
-func (m *model) optionButtonsRow(width int, copyLabel string, showDetails bool) (row string, detailsXStart int, detailsXEnd int, copyXStart int, copyXEnd int, ok bool) {
-	detailsText := " " + optionDetailsButtonLabel + " "
+func (m *model) overlayButtonsRow(width int, copyLabel string, showDetails bool) (row string, detailsXStart int, detailsXEnd int, copyXStart int, copyXEnd int, ok bool) {
+	detailsText := " " + overlayDetailsButtonLabel + " "
 	copyText := " " + copyLabel + " "
 
 	buttons := copyText
