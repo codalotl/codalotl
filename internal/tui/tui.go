@@ -67,6 +67,10 @@ type chatMessage struct {
 	event         agent.Event
 	toolCallID    string
 	contextStatus *contextStatusLine
+	// contextDetails and contextError are only used for messageKindContextStatus, and are displayed
+	// in Option Mode > Details.
+	contextDetails string
+	contextError   string
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it.
 	// It must be the correct block width (all lines padded with spaces to equal width of the viewport.
@@ -106,6 +110,7 @@ type packageContextResultMsg struct {
 	runID  int
 	status packageContextStatus
 	text   string
+	errMsg string
 }
 
 // Run launches the TUI in an alternate screen buffer.
@@ -232,9 +237,9 @@ type model struct {
 	// optionCopyFeedback tracks transient "copied!" feedback per message index.
 	optionCopyFeedback map[int]time.Time
 
-	// optionCopyTargets are computed on each refreshViewport; they map viewport content
+	// optionTargets are computed on each refreshViewport; they map viewport content
 	// rows to message indices for hit-testing.
-	optionCopyTargets []optionCopyTarget
+	optionTargets []optionTarget
 
 	// lastLeftClick* is used for best-effort double-click detection.
 	lastLeftClickAt time.Time
@@ -251,6 +256,10 @@ type model struct {
 
 	// now allows deterministic tests around transient UI state (ex: "copied!").
 	now func() time.Time
+
+	// detailsDialog is a modal "Details" overlay, opened from Option Mode for tool calls and
+	// package context gathering.
+	detailsDialog *detailsDialog
 }
 
 func newModel(
@@ -431,7 +440,11 @@ func (m *model) View() string {
 	}
 
 	if m.infoPanelWidth == 0 {
-		return b.String()
+		base := b.String()
+		if m.detailsDialog != nil {
+			return m.detailsDialogView(base)
+		}
+		return base
 	}
 
 	infoBlock := m.infoPanelBlock()
@@ -443,6 +456,9 @@ func (m *model) View() string {
 	combo, err := termformat.Layout(blocks, nil)
 	if err == nil {
 		debugLogf("h=%d lines=%d rectHeight=%d", m.windowHeight, len(strings.Split(combo, "\n")), termformat.BlockHeight(combo))
+		if m.detailsDialog != nil {
+			return m.detailsDialogView(combo)
+		}
 		return combo
 	} else {
 		return fmt.Sprintf("rendering error: %v", err)
@@ -464,6 +480,19 @@ func (m *model) handleWindowSize(msg qtui.ResizeEvent) {
 
 func (m *model) handleMouseEvent(ev qtui.MouseEvent) {
 	if m.viewport == nil {
+		return
+	}
+
+	if m.detailsDialog != nil {
+		// When a modal dialog is up, mouse interactions apply to it (or are ignored).
+		if ev.IsWheel() {
+			switch ev.Button {
+			case qtui.MouseButtonWheelUp:
+				m.detailsDialogScrollUp(mouseWheelScrollLines)
+			case qtui.MouseButtonWheelDown:
+				m.detailsDialogScrollDown(mouseWheelScrollLines)
+			}
+		}
 		return
 	}
 
@@ -569,6 +598,29 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 			m.tui.Quit()
 		}
 		return true
+	}
+
+	if m.detailsDialog != nil {
+		switch key.ControlKey {
+		case qtui.ControlKeyEsc:
+			m.closeDetailsDialog()
+			return true
+		case qtui.ControlKeyPageUp, qtui.ControlKeyCtrlPageUp:
+			m.detailsDialogPageUp()
+			return true
+		case qtui.ControlKeyPageDown, qtui.ControlKeyCtrlPageDown:
+			m.detailsDialogPageDown()
+			return true
+		case qtui.ControlKeyHome, qtui.ControlKeyCtrlHome, qtui.ControlKeyShiftHome, qtui.ControlKeyCtrlShiftHome:
+			m.detailsDialogScrollToTop()
+			return true
+		case qtui.ControlKeyEnd, qtui.ControlKeyCtrlEnd, qtui.ControlKeyShiftEnd, qtui.ControlKeyCtrlShiftEnd:
+			m.detailsDialogScrollToBottom()
+			return true
+		default:
+			// Swallow other key presses so the modal doesn't mutate the main UI.
+			return true
+		}
 	}
 
 	if m.activePermission != nil {
@@ -1460,11 +1512,18 @@ func (m *model) handlePackageContextResult(msg packageContextResultMsg) {
 
 	m.packageContext.status = msg.status
 	m.updateContextStatusMessage(m.packageContext.messageIndex, msg.status)
+	if idx := m.packageContext.messageIndex; idx >= 0 && idx < len(m.messages) {
+		m.messages[idx].contextDetails = msg.text
+		m.messages[idx].contextError = msg.errMsg
+	}
 
 	if msg.text != "" && m.session != nil && m.session.agent != nil {
 		if err := m.session.agent.AddUserTurn(msg.text); err != nil {
 			m.appendSystemMessage(fmt.Sprintf("Failed to apply package context: %v", err))
 			m.updateContextStatusMessage(m.packageContext.messageIndex, packageContextStatusFailure)
+			if idx := m.packageContext.messageIndex; idx >= 0 && idx < len(m.messages) {
+				m.messages[idx].contextError = err.Error()
+			}
 		}
 	}
 
@@ -1569,6 +1628,7 @@ func (m *model) refreshViewport(autoScroll bool) {
 			text:         m.messages[i].formatted,
 			messageIndex: i,
 			copyable:     m.isMessageCopyable(&m.messages[i]),
+			detailable:   m.isMessageDetailable(&m.messages[i]),
 		})
 	}
 	if m.isAgentRunning() {
@@ -1579,7 +1639,7 @@ func (m *model) refreshViewport(autoScroll bool) {
 	blocks = append(blocks, renderedBlock{text: m.blankRow(width, m.palette.primaryBackground), messageIndex: -1, copyable: false}) // always have one blank line at the end
 
 	content, targets := m.joinRenderedBlocksWithOptions(blocks, width)
-	m.optionCopyTargets = targets
+	m.optionTargets = targets
 	content = m.padViewportContentHeight(content, height, width)
 	if m.viewport != nil {
 		m.viewport.SetContent(content)
@@ -2171,13 +2231,16 @@ func (m *model) startPackageContextGather() {
 	go func() {
 		contextText, err := buildPackageInitialContext(sandboxDir, pkgPath, pkgAbsPath)
 		status := packageContextStatusSuccess
+		errMsg := ""
 		if err != nil {
 			status = packageContextStatusFailure
+			errMsg = err.Error()
 		}
 		m.tui.Send(packageContextResultMsg{
 			runID:  runID,
 			status: status,
 			text:   contextText,
+			errMsg: errMsg,
 		})
 	}()
 }

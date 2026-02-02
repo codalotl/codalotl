@@ -13,6 +13,7 @@ const (
 	optionCopyFeedbackDuration  = 900 * time.Millisecond
 	optionDoubleClickThreshold  = 350 * time.Millisecond
 	optionDoubleClickMaxDistXY  = 1
+	optionDetailsButtonLabel    = "details"
 	optionCopyButtonLabel       = "copy"
 	optionCopyButtonCopiedLabel = "copied!"
 )
@@ -21,9 +22,18 @@ type renderedBlock struct {
 	text         string
 	messageIndex int
 	copyable     bool
+	detailable   bool
 }
 
-type optionCopyTarget struct {
+type optionTargetKind int
+
+const (
+	optionTargetCopy optionTargetKind = iota
+	optionTargetDetails
+)
+
+type optionTarget struct {
+	kind         optionTargetKind
 	contentLine  int
 	messageIndex int
 	xStart       int
@@ -77,15 +87,23 @@ func (m *model) tryHandleOptionClick(ev qtui.MouseEvent) bool {
 	}
 
 	contentLine := ev.Y + m.viewport.Offset()
-	for _, t := range m.optionCopyTargets {
+	for _, t := range m.optionTargets {
 		if t.contentLine != contentLine {
 			continue
 		}
 		if ev.X < t.xStart || ev.X > t.xEnd {
 			continue
 		}
-		m.copyMessageToClipboard(t.messageIndex)
-		return true
+		switch t.kind {
+		case optionTargetCopy:
+			m.copyMessageToClipboard(t.messageIndex)
+			return true
+		case optionTargetDetails:
+			m.openDetailsDialog(t.messageIndex)
+			return true
+		default:
+			return false
+		}
 	}
 	return false
 }
@@ -96,6 +114,20 @@ func (m *model) isMessageCopyable(msg *chatMessage) bool {
 	}
 	// The welcome/banner message is excluded (spec allows it to be included or excluded).
 	return msg.kind != messageKindWelcome
+}
+
+func (m *model) isMessageDetailable(msg *chatMessage) bool {
+	if msg == nil {
+		return false
+	}
+	switch msg.kind {
+	case messageKindContextStatus:
+		return true
+	case messageKindAgent:
+		return msg.toolCallID != ""
+	default:
+		return false
+	}
 }
 
 func (m *model) copyMessageToClipboard(messageIndex int) {
@@ -182,7 +214,7 @@ func (m *model) clearExpiredOptionCopyFeedback() {
 	}
 }
 
-func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int) (string, []optionCopyTarget) {
+func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int) (string, []optionTarget) {
 	if len(blocks) == 0 {
 		return "", nil
 	}
@@ -191,7 +223,7 @@ func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int)
 
 	var (
 		b       strings.Builder
-		targets []optionCopyTarget
+		targets []optionTarget
 	)
 
 	curLine := 0
@@ -205,16 +237,27 @@ func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int)
 			label = optionCopyButtonCopiedLabel
 		}
 
-		row, xStart, xEnd, ok := m.optionCopyButtonRow(width, label)
+		row, detailXStart, detailXEnd, copyXStart, copyXEnd, ok := m.optionButtonsRow(width, label, prev.detailable)
 		if !ok {
 			return m.blankRow(width, m.palette.primaryBackground)
 		}
 
-		targets = append(targets, optionCopyTarget{
+		if prev.detailable {
+			targets = append(targets, optionTarget{
+				kind:         optionTargetDetails,
+				contentLine:  curLine,
+				messageIndex: prev.messageIndex,
+				xStart:       detailXStart,
+				xEnd:         detailXEnd,
+			})
+		}
+
+		targets = append(targets, optionTarget{
+			kind:         optionTargetCopy,
 			contentLine:  curLine,
 			messageIndex: prev.messageIndex,
-			xStart:       xStart,
-			xEnd:         xEnd,
+			xStart:       copyXStart,
+			xEnd:         copyXEnd,
 		})
 		return row
 	}
@@ -253,26 +296,53 @@ func (m *model) joinRenderedBlocksWithOptions(blocks []renderedBlock, width int)
 	return b.String(), targets
 }
 
-func (m *model) optionCopyButtonRow(width int, label string) (row string, xStart int, xEnd int, ok bool) {
-	text := " " + label + " "
+func (m *model) optionButtonsRow(width int, copyLabel string, showDetails bool) (row string, detailsXStart int, detailsXEnd int, copyXStart int, copyXEnd int, ok bool) {
+	detailsText := " " + optionDetailsButtonLabel + " "
+	copyText := " " + copyLabel + " "
+
+	buttons := copyText
+	sep := " "
+	if showDetails {
+		buttons = detailsText + sep + copyText
+	}
+
 	if width <= 0 {
 		width = 1
 	}
-	if len(text) > width {
-		return "", 0, 0, false
+	if len(buttons) > width {
+		return "", 0, 0, 0, 0, false
 	}
 
-	xStart = width - len(text)
-	xEnd = xStart + len(text) - 1
+	xStart := width - len(buttons)
 
 	left := termformat.Style{Background: m.palette.primaryBackground}.Wrap(strings.Repeat(" ", xStart))
-	btn := termformat.Style{Foreground: m.palette.colorfulForeground, Background: m.palette.accentBackground}.Wrap(text)
-	rightCount := width - xStart - len(text)
+	btnStyle := termformat.Style{Foreground: m.palette.colorfulForeground, Background: m.palette.accentBackground}
+
+	var b strings.Builder
+	b.WriteString(left)
+
+	if showDetails {
+		detailsXStart = xStart
+		detailsXEnd = detailsXStart + len(detailsText) - 1
+		b.WriteString(btnStyle.Wrap(detailsText))
+		b.WriteString(termformat.Style{Background: m.palette.primaryBackground}.Wrap(sep))
+		copyXStart = detailsXEnd + len(sep) + 1
+	} else {
+		detailsXStart = 0
+		detailsXEnd = -1
+		copyXStart = xStart
+	}
+
+	copyXEnd = copyXStart + len(copyText) - 1
+	b.WriteString(btnStyle.Wrap(copyText))
+
+	rightCount := width - xStart - len(buttons)
 	right := ""
 	if rightCount > 0 {
 		right = termformat.Style{Background: m.palette.primaryBackground}.Wrap(strings.Repeat(" ", rightCount))
 	}
-	return left + btn + right, xStart, xEnd, true
+	b.WriteString(right)
+	return b.String(), detailsXStart, detailsXEnd, copyXStart, copyXEnd, true
 }
 
 func abs(v int) int {
