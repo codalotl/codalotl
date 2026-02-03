@@ -1155,8 +1155,8 @@ func (f *textTUIFormatter) cliDiagnosticsToolComplete(e agent.Event, success boo
 }
 
 func (f *textTUIFormatter) tuiGetPublicAPIToolCall(e agent.Event, width int) string {
-	importPath, identifiers, ok := extractGetPublicAPI(e.ToolCall)
-	target := strings.TrimSpace(importPath)
+	path, identifiers, ok := extractGetPublicAPI(e.ToolCall)
+	target := strings.TrimSpace(path)
 	if !ok || target == "" {
 		target = toolDisplayName(e)
 	}
@@ -1180,8 +1180,8 @@ func (f *textTUIFormatter) tuiGetPublicAPIToolCall(e agent.Event, width int) str
 }
 
 func (f *textTUIFormatter) cliGetPublicAPIToolCall(e agent.Event) string {
-	importPath, identifiers, ok := extractGetPublicAPI(e.ToolCall)
-	target := strings.TrimSpace(importPath)
+	path, identifiers, ok := extractGetPublicAPI(e.ToolCall)
+	target := strings.TrimSpace(path)
 	if !ok || target == "" {
 		target = toolDisplayName(e)
 	}
@@ -1261,8 +1261,8 @@ func (f *textTUIFormatter) cliClarifyPublicAPIToolCall(e agent.Event) string {
 }
 
 func (f *textTUIFormatter) tuiGetPublicAPIToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
-	importPath, identifiers, ok := extractGetPublicAPI(e.ToolCall)
-	target := strings.TrimSpace(importPath)
+	path, identifiers, ok := extractGetPublicAPI(e.ToolCall)
+	target := strings.TrimSpace(path)
 	if !ok || target == "" {
 		target = toolDisplayName(e)
 	}
@@ -1293,8 +1293,8 @@ func (f *textTUIFormatter) tuiGetPublicAPIToolComplete(e agent.Event, width int,
 }
 
 func (f *textTUIFormatter) cliGetPublicAPIToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
-	importPath, identifiers, ok := extractGetPublicAPI(e.ToolCall)
-	target := strings.TrimSpace(importPath)
+	path, identifiers, ok := extractGetPublicAPI(e.ToolCall)
+	target := strings.TrimSpace(path)
 	if !ok || target == "" {
 		target = toolDisplayName(e)
 	}
@@ -1884,7 +1884,8 @@ func (f *textTUIFormatter) cliRunProjectTestsToolComplete(e agent.Event, _ bool,
 	return strings.Join(out, "\n")
 }
 
-// extractGetPublicAPI extracts the import path and optional identifiers for get_public_api.
+// extractGetPublicAPI extracts the path (which may be either a relative dir or an import path)
+// and optional identifiers for get_public_api.
 func extractGetPublicAPI(call *llmstream.ToolCall) (string, []string, bool) {
 	if call == nil {
 		return "", nil, false
@@ -1895,13 +1896,13 @@ func extractGetPublicAPI(call *llmstream.ToolCall) (string, []string, bool) {
 		// but we won't reject based solely on tool name.
 	}
 	var payload struct {
-		ImportPath  string   `json:"import_path"`
+		Path        string   `json:"path"`
 		Identifiers []string `json:"identifiers"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
 		return "", nil, false
 	}
-	path := strings.TrimSpace(payload.ImportPath)
+	path := strings.TrimSpace(payload.Path)
 	if path == "" {
 		return "", nil, false
 	}

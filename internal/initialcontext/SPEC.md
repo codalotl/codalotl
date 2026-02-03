@@ -8,11 +8,16 @@ This package creates an initial bundle of information for an LLM starting to wor
 - A list of all packages that import your package.
 - Current state of build errors, tests, and lints.
 
+Optionally, the caller can disable all checks (diagnostics/tests/lints). In that mode, this package does not run any of those
+commands (or the used-by lookup); it emits the corresponding status blocks with a "not run" message.
+
 ## Dependencies and Correctness Delegation
 
-This package uses the `codeai/tools/coretools` package for `ls`, and the `codeai/tools/exttools` package for `diagnostics-status`, `test-status`, and `lint-status` (ex: it calls `exttools.RunDiagnostics`, among others). The exact formatting of the `<diagnostics-status>` section, for example, is governed by `RunDiagnostics`'s intended behavior, even if it differs slightly from this spec.
+This package uses the `internal/tools/coretools` package for `ls`, and the `internal/tools/exttools` package for `diagnostics-status`,
+`test-status`, and `lint-status` (ex: it calls `exttools.RunDiagnostics`, among others). The exact formatting of the `<diagnostics-status>`
+section, for example, is governed by `RunDiagnostics`'s intended behavior, even if it differs slightly from this spec.
 
-The `pkg-map` section is mostly built by the `codeai/gocodecontext`'s `InternalPackageSignatures` func (the only comments are file markers).
+The `pkg-map` section is mostly built by the `internal/gocodecontext`'s `InternalPackageSignatures` func (the only comments are file markers).
 
 Commands are typically run with `q/cmdrunner`:
 - `ok="true"` generally means successful execution, 0 exit code, no issues found.
@@ -97,5 +102,8 @@ func usedBy(pkg *gocode.Package) ([]string, error)
 //   - All package-level identifiers (ex: vars/consts/funcs/types), their signatures, and imports, but without comments.
 //   - A list of all packages that import your package.
 //   - Current state of build errors, tests, and lints.
-func Create(pkg *gocode.Package) (string, error)
+//
+// If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by sections. Instead, it
+// emits the corresponding status blocks with a "not run" message.
+func Create(pkg *gocode.Package, skipAllChecks bool) (string, error)
 ```

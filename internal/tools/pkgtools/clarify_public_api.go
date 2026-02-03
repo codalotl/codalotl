@@ -5,13 +5,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	clarify "github.com/codalotl/codalotl/internal/subagents/clarifydocs"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"path/filepath"
 	"strings"
 )
 
@@ -53,7 +52,7 @@ func (t *toolClarifyPublicAPI) Info() llmstream.ToolInfo {
 		Parameters: map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Filesystem path (absolute or relative to sandbox) containing the public API docs.",
+				"description": "A Go package directory (relative to the sandbox) or a Go import path.",
 			},
 			"identifier": map[string]any{
 				"type":        "string",
@@ -74,8 +73,7 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return coretools.NewToolErrorResult(call, fmt.Sprintf("error parsing parameters: %s", err), err)
 	}
 
-	pathParam := strings.TrimSpace(params.Path)
-	if pathParam == "" {
+	if params.Path == "" {
 		return llmstream.NewErrorToolResult("path is required", call)
 	}
 	if params.Identifier == "" {
@@ -85,24 +83,52 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return llmstream.NewErrorToolResult("question is required", call)
 	}
 
-	absPath := pathParam
-	if !filepath.IsAbs(absPath) {
-		absPath = filepath.Join(t.sandboxAbsDir, absPath)
+	mod, err := gocode.NewModule(t.sandboxAbsDir)
+	if err != nil {
+		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
-	absPath = filepath.Clean(absPath)
 
-	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameClarifyPublicAPI, absPath); authErr != nil {
+	moduleAbsDir, packageAbsDir, _, _, err := resolvePackagePath(mod, params.Path)
+	if err != nil {
+		return coretools.NewToolErrorResult(call, err.Error(), err)
+	}
+
+	effectiveSandboxAbsDir := t.sandboxAbsDir
+	effectiveAuthorizer := t.authorizer
+	if !isWithinDir(t.sandboxAbsDir, packageAbsDir) {
+		// If the resolved package is outside of the primary sandbox, treat its module (or stdlib root)
+		// as the sandbox root for relative path resolution in the clarify subagent.
+		if moduleAbsDir != "" {
+			effectiveSandboxAbsDir = moduleAbsDir
+		} else {
+			stdRootAbsDir, _ := stdlibRootAndRel(packageAbsDir)
+			if stdRootAbsDir != "" {
+				effectiveSandboxAbsDir = stdRootAbsDir
+			}
+		}
+
+		// Some authorizers enforce sandbox membership. If we can, clone it with an updated sandbox
+		// to allow read access to the resolved dependency/stdlib package while still confining reads.
+		if t.authorizer != nil && effectiveSandboxAbsDir != "" {
+			if updated, updErr := authdomain.WithUpdatedSandbox(t.authorizer, effectiveSandboxAbsDir); updErr == nil {
+				effectiveAuthorizer = updated
+			}
+		}
+	}
+
+	if t.authorizer != nil && isWithinDir(t.sandboxAbsDir, packageAbsDir) {
+		// Only prompt/deny for sandbox reads; resolved dependency/stdlib packages are always readable.
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameClarifyPublicAPI, packageAbsDir); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}
 
-	agentCreator := agent.SubAgentCreatorFromContext(ctx)
-	if agentCreator == nil {
-		return coretools.NewToolErrorResult(call, "unable to create subagent", nil)
+	agentCreator, err := subAgentCreatorFromContextSafe(ctx)
+	if err != nil {
+		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	answer, err := clarify.ClarifyAPI(ctx, agentCreator, t.sandboxAbsDir, t.authorizer, t.toolset, absPath, params.Identifier, params.Question)
+	answer, err := clarify.ClarifyAPI(ctx, agentCreator, effectiveSandboxAbsDir, effectiveAuthorizer, t.toolset, packageAbsDir, params.Identifier, params.Question)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}

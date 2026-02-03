@@ -962,7 +962,7 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
-	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg)
+	pkgModeInfo, err := initialcontext.Create(pkg, false)
 	if err != nil {
 		return joinContextBlocks(
 			agentsMsg,
@@ -970,8 +970,10 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
+	finalHint := fmt.Sprintf("Reminder: all file paths you send to tools **must be relative to the sandbox dir (%s)** - NOT relative to the package dir.", sandboxDir)
+
 	// Always place AGENTS.md guidance before the rest of the generated initial context.
-	return joinContextBlocks(agentsMsg, pkgModeInfo), nil
+	return joinContextBlocks(agentsMsg, pkgModeInfo, finalHint), nil
 }
 
 func joinContextBlocks(blocks ...string) string {

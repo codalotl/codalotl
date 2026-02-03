@@ -123,6 +123,50 @@ func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authori
 	}
 }
 
+// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir.
+// It re-uses the same ShellAllowedCommands, request channel, grants, etc.
+func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, error) {
+	if authorizer == nil {
+		return nil, errors.New("authorizer is nil")
+	}
+
+	sandbox, err := normalizeSandboxDir(sandboxDir)
+	if err != nil {
+		return nil, err
+	}
+
+	switch a := authorizer.(type) {
+	case *sandboxAuthorizer:
+		return &sandboxAuthorizer{
+			baseAuthorizer: a.baseAuthorizer,
+			sandboxDir:     sandbox,
+			commands:       a.commands,
+		}, nil
+	case *permissiveSandboxAuthorizer:
+		return &permissiveSandboxAuthorizer{
+			baseAuthorizer: a.baseAuthorizer,
+			sandboxDir:     sandbox,
+			commands:       a.commands,
+		}, nil
+	case autoApproveAuthorizer:
+		return autoApproveAuthorizer{sandboxDir: sandbox}, nil
+	case *autoApproveAuthorizer:
+		return &autoApproveAuthorizer{sandboxDir: sandbox}, nil
+	case *codeUnitAuthorizer:
+		updatedFallback, err := WithUpdatedSandbox(a.fallback, sandbox)
+		if err != nil {
+			return nil, err
+		}
+		return &codeUnitAuthorizer{
+			unit:     a.unit,
+			fallback: updatedFallback,
+			grants:   a.grants,
+		}, nil
+	default:
+		return nil, fmt.Errorf("authorizer type %T does not support WithUpdatedSandbox", authorizer)
+	}
+}
+
 type sandboxAuthorizer struct {
 	*baseAuthorizer
 	sandboxDir string

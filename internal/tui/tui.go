@@ -1691,20 +1691,6 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 
 }
 
-// applyWorkingIndicator accepts the rendered list of messages in the viewport, returns a new list with a working indicator if the agent is running.
-//
-// For now, applyWorkingIndicator always just appends a new message. In the future, it may mutate the last entry (eg, a reasoning entry).
-func (m *model) applyWorkingIndicator(rendered []string, width int) []string {
-	if !m.isAgentRunning() {
-		return rendered
-	}
-	indicator := m.renderWorkingIndicator(width)
-	if indicator == "" {
-		return rendered
-	}
-	return append(rendered, indicator)
-}
-
 // renderUserMessageBlock returns a fully formated message with proper width and bg color.
 func (m *model) renderUserMessageBlock(content string, queued bool, width int) string {
 	prompt := "› "
@@ -1794,24 +1780,6 @@ func (m *model) setMessageWidthBG(content string, width int, background termform
 	}
 
 	return style.Apply(content)
-}
-
-func (m *model) joinRenderedBlocks(blocks []string, width int) string {
-	if len(blocks) == 0 {
-		return ""
-	}
-	separator := m.blankRow(width, m.palette.primaryBackground)
-
-	var b strings.Builder
-	for i, block := range blocks {
-		if i > 0 {
-			b.WriteByte('\n')
-			b.WriteString(separator)
-			b.WriteByte('\n')
-		}
-		b.WriteString(block)
-	}
-	return b.String()
 }
 
 // padViewportContentHeight ensures that content, which is the proposed contents of the viewport, has enough height, by adding rows of spaces with a bg color. This is nececessary so that
@@ -2193,10 +2161,6 @@ func (m *model) rejectOutstandingPermissions() {
 	}
 	m.permissionQueue = nil
 	m.refreshPermissionView()
-}
-
-func (m *model) resetSession() {
-	m.resetSessionWithConfig(m.sessionConfig)
 }
 
 func (m *model) startPackageContextGather() {

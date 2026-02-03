@@ -234,11 +234,11 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Short: "Print the initial context for an LLM starting to work on a package.",
 		Args:  qcli.ExactArgs(1),
 		Run: runWithConfig("context_initial", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-			pkg, mod, err := loadPackageArg(c.Args[0])
+			pkg, _, err := loadPackageArg(c.Args[0])
 			if err != nil {
 				return err
 			}
-			out, err := initialcontext.Create(mod.AbsolutePath, pkg)
+			out, err := initialcontext.Create(pkg, false)
 			if err != nil {
 				return err
 			}
