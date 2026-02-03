@@ -86,7 +86,7 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 	var contextStr string
 	useGeneric := true
 	if lang == detectlang.LangGo {
-		goContext, goDetected, err := tryBuildGoContext(sandboxAbsDir, absPath)
+		goContext, goDetected, err := tryBuildGoContext(absPath)
 		if err != nil {
 			return "", err
 		}
@@ -170,7 +170,7 @@ func buildPrompt(absPath, identifier, question, initialContext string) string {
 	return buf.String()
 }
 
-func tryBuildGoContext(sandboxAbsDir, absPath string) (string, bool, error) {
+func tryBuildGoContext(absPath string) (string, bool, error) {
 	module, err := gocode.NewModule(absPath)
 	if err != nil {
 		return "", false, nil
@@ -197,7 +197,7 @@ func tryBuildGoContext(sandboxAbsDir, absPath string) (string, bool, error) {
 		return "", false, nil
 	}
 
-	initial, err := initialcontext.Create(sandboxAbsDir, pkg, true) // Skip checks like test/lints/build
+	initial, err := initialcontext.Create(pkg, true) // Skip checks like test/lints/build
 	if err != nil {
 		return "", false, fmt.Errorf("initial context: %w", err)
 	}

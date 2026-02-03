@@ -16,7 +16,7 @@ func TestBannerUsesWordArtWhenWidthAllows(t *testing.T) {
 	width := contentWidth + bannerMarginLeft + bannerMarginRight
 
 	pal := newColorPalette(Config{ColorProfile: termformat.ColorProfileANSI256, Palette: PaletteDark})
-	result := bannerBlock(width, pal)
+	result := newSessionBlock(width, pal, sessionConfig{})
 
 	require.Contains(t, result, "▄▀▀▀▀")
 	require.NotContains(t, result, "Model:")
@@ -28,7 +28,7 @@ func TestBannerFallsBackToPlainNameWhenTight(t *testing.T) {
 	width := contentWidth + bannerMarginLeft + bannerMarginRight
 
 	pal := newColorPalette(Config{ColorProfile: termformat.ColorProfileANSI256, Palette: PaletteDark})
-	result := bannerBlock(width, pal)
+	result := newSessionBlock(width, pal, sessionConfig{})
 
 	require.Contains(t, result, productNameLine)
 	require.NotContains(t, result, "▄▀▀▀▀")
@@ -40,7 +40,7 @@ func TestBannerStacksNameWhenExtremelyNarrow(t *testing.T) {
 	width := contentWidth + bannerMarginLeft + bannerMarginRight
 
 	pal := newColorPalette(Config{ColorProfile: termformat.ColorProfileANSI256, Palette: PaletteDark})
-	result := bannerBlock(width, pal)
+	result := newSessionBlock(width, pal, sessionConfig{})
 
 	expectedLine := "\n" + strings.Repeat(" ", bannerMarginLeft) + productNameLine
 	require.Contains(t, stripANSI(result), expectedLine)

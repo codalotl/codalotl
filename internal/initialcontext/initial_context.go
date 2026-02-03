@@ -27,7 +27,7 @@ const recursionEnvVar = "CODEAI_INITIALCONTEXT_ACTIVE_TESTS"
 //
 // If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by
 // lookups. Instead, it emits the corresponding status blocks with a "not run" message.
-func Create(sandboxDir string, pkg *gocode.Package, skipAllChecks bool) (string, error) {
+func Create(pkg *gocode.Package, skipAllChecks bool) (string, error) {
 	if pkg == nil {
 		return "", fmt.Errorf("nil package")
 	}
@@ -117,9 +117,6 @@ func Create(sandboxDir string, pkg *gocode.Package, skipAllChecks bool) (string,
 		}
 		filtered = append(filtered, section)
 	}
-
-	reminder := fmt.Sprintf("Reminder: all file paths you send to tools **must be relative to the sandbox dir (%s)** - NOT relative to the package dir.", sandboxDir)
-	filtered = append(filtered, reminder)
 
 	return strings.Join(filtered, "\n\n"), nil
 }

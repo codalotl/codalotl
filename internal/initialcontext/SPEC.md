@@ -105,5 +105,5 @@ func usedBy(pkg *gocode.Package) ([]string, error)
 //
 // If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by sections. Instead, it
 // emits the corresponding status blocks with a "not run" message.
-func Create(sandboxDir string, pkg *gocode.Package, skipAllChecks bool) (string, error)
+func Create(pkg *gocode.Package, skipAllChecks bool) (string, error)
 ```

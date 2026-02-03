@@ -9,8 +9,10 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/subagents/clarifydocs"
-	"github.com/codalotl/codalotl/internal/tools/toolsets"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/coretools"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -39,7 +41,14 @@ func TestClarifyAPIIntegration(t *testing.T) {
 	assert.NoError(t, err)
 
 	question := "What does the ClarifyAPI function return when it successfully answers a question?"
-	answer, err := clarifydocs.ClarifyAPI(context.Background(), agent.NewAgentCreator(), sandboxAbsDir, nil, toolsets.SimpleReadOnlyTools, targetPath, "ClarifyAPI", question)
+	simpleReadOnlyTools := func(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error) {
+		return []llmstream.Tool{
+			coretools.NewLsTool(authorizer),
+			coretools.NewReadFileTool(authorizer),
+		}, nil
+	}
+
+	answer, err := clarifydocs.ClarifyAPI(context.Background(), agent.NewAgentCreator(), sandboxAbsDir, nil, simpleReadOnlyTools, targetPath, "ClarifyAPI", question)
 	if err != nil {
 		t.Fatalf("ClarifyAPI: %v", err)
 	}

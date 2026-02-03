@@ -20,29 +20,6 @@ var bannerIcon string
 //go:embed banner-name.txt
 var bannerName string
 
-// bannerBlock returns a fully formatted block of proper width/bg that can be directly dropped into a view.
-// The function assumes width >= agentformatter.MinTerminalWidth (30), with undefined behavior under.
-//
-// bannerBlock is intentionally art-only: it renders the logo + word art and nothing else.
-func bannerBlock(width int, pal colorPalette) string {
-	contentWidth := width - bannerMarginLeft - bannerMarginRight
-	if contentWidth <= 0 {
-		contentWidth = width
-	}
-
-	bs := termformat.BlockStyle{
-		TotalWidth:         width,
-		BlockNormalizeMode: termformat.BlockNormalizeModeExtend,
-		MarginTop:          1,
-		MarginLeft:         bannerMarginLeft,
-		MarginRight:        bannerMarginRight,
-		TextBackground:     pal.primaryBackground,
-		MarginBackground:   pal.primaryBackground,
-	}
-
-	return bs.Apply(termformat.BlockStylePerLine(renderBannerArt(contentWidth, pal)))
-}
-
 func renderBannerArt(width int, pal colorPalette) string {
 	icon := newBannerSection(bannerIcon, pal.primaryForeground)
 	name := newBannerSection(bannerName, pal.colorfulForeground)

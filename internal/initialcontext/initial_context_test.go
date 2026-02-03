@@ -21,7 +21,7 @@ func TestCreate_CodeAITools(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/tools/coretools")
 	require.NoError(t, err)
 
-	got, err := Create(mod.AbsolutePath, pkg, false)
+	got, err := Create(pkg, false)
 	require.NoError(t, err)
 
 	// fmt.Println(got)
@@ -37,7 +37,6 @@ func TestCreate_CodeAITools(t *testing.T) {
 	assert.Contains(t, got, "<lint-status")
 	assert.Contains(t, got, "<test-status")
 	assert.NotContains(t, got, "tests not run; infinite recursion detected in initialcontext")
-	assert.Contains(t, got, fmt.Sprintf("relative to the sandbox dir (%s)", mod.AbsolutePath))
 }
 
 func TestCreate_SkipAllChecks(t *testing.T) {
@@ -47,7 +46,7 @@ func TestCreate_SkipAllChecks(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/tools/coretools")
 	require.NoError(t, err)
 
-	got, err := Create(mod.AbsolutePath, pkg, true)
+	got, err := Create(pkg, true)
 	require.NoError(t, err)
 
 	assert.NotContains(t, got, "<used-by>")
@@ -66,7 +65,7 @@ func TestCreate_SkipTestsInRecursion(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/initialcontext")
 	require.NoError(t, err)
 
-	got, err := Create(mod.AbsolutePath, pkg, false)
+	got, err := Create(pkg, false)
 	require.NoError(t, err)
 
 	assert.Contains(t, got, "$ go test ./internal/initialcontext")

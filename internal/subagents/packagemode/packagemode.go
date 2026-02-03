@@ -76,7 +76,7 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 	var contextStr string
 	switch lang {
 	case detectlang.LangGo:
-		goContext, err := buildGoContext(sandboxAbsDir, goPkgAbsDir)
+		goContext, err := buildGoContext(goPkgAbsDir)
 		if err != nil {
 			return "", err
 		}
@@ -123,7 +123,7 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 	return strings.TrimSpace(finalTurnText), nil
 }
 
-func buildGoContext(sandboxAbsDir, goPkgAbsDir string) (string, error) {
+func buildGoContext(goPkgAbsDir string) (string, error) {
 	module, err := gocode.NewModule(goPkgAbsDir)
 	if err != nil {
 		return "", err
@@ -140,7 +140,7 @@ func buildGoContext(sandboxAbsDir, goPkgAbsDir string) (string, error) {
 		return "", err
 	}
 
-	initial, err := initialcontext.Create(sandboxAbsDir, pkg, false)
+	initial, err := initialcontext.Create(pkg, false)
 	if err != nil {
 		return "", fmt.Errorf("initial context: %w", err)
 	}

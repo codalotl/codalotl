@@ -352,17 +352,6 @@ func codeUnitName(pkgPath string) string {
 	return "package " + pkgPath
 }
 
-func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string) string {
-	baseInfo := buildEnvironmentInfo(sandboxDir)
-
-	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath)
-	if err != nil {
-		return baseInfo + "\n\n" + initialContext
-	}
-
-	return baseInfo + "\n" + initialContext
-}
-
 func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
 	if pkgAbsPath == "" {
 		return nil, fmt.Errorf("empty package path")
@@ -402,7 +391,7 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
-	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg, false)
+	pkgModeInfo, err := initialcontext.Create(pkg, false)
 	if err != nil {
 		return joinContextBlocks(
 			agentsMsg,
@@ -410,8 +399,10 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
+	finalHint := fmt.Sprintf("Reminder: all file paths you send to tools **must be relative to the sandbox dir (%s)** - NOT relative to the package dir.", sandboxDir)
+
 	// Always place AGENTS.md guidance before the rest of the generated initial context.
-	return joinContextBlocks(agentsMsg, pkgModeInfo), nil
+	return joinContextBlocks(agentsMsg, pkgModeInfo, finalHint), nil
 }
 
 func packagePathSection(pkgRelPath string, pkgAbsPath string, err error) string {
