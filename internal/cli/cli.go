@@ -15,7 +15,7 @@ import (
 // override it (for example via `-ldflags "-X .../internal/cli.Version=1.2.3"`).
 //
 // NOTE: our current build system does not do this - we just bump versions with ./bump_release.sh, which edits this source file.
-var Version = "0.10.0"
+var Version = "0.11.0"
 
 // RunOptions overrides standard I/O. If nil, defaults are used. Overriding is
 // useful for testing.
