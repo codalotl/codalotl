@@ -7,6 +7,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,7 @@ func TestGetPublicAPI_RunRelativeImport(t *testing.T) {
 			CallID: "call-relative",
 			Name:   ToolNameGetPublicAPI,
 			Type:   "function_call",
-			Input:  `{"import_path":"mypkg"}`,
+			Input:  `{"path":"mypkg"}`,
 		}
 
 		res := tool.Run(context.Background(), call)
@@ -39,7 +40,7 @@ func TestGetPublicAPI_RunQualifiedImport(t *testing.T) {
 			CallID: "call-qualified",
 			Name:   ToolNameGetPublicAPI,
 			Type:   "function_call",
-			Input:  fmt.Sprintf(`{"import_path":%q}`, pkg.Module.Name+"/mypkg"),
+			Input:  fmt.Sprintf(`{"path":%q}`, pkg.Module.Name+"/mypkg"),
 		}
 
 		res := tool.Run(context.Background(), call)
@@ -58,14 +59,56 @@ func TestGetPublicAPI_RunInvalidOutsideModule(t *testing.T) {
 			CallID: "call-invalid",
 			Name:   ToolNameGetPublicAPI,
 			Type:   "function_call",
-			Input:  `{"import_path":"github.com/other/module"}`,
+			Input:  `{"path":"github.com/other/module"}`,
 		}
 
 		res := tool.Run(context.Background(), call)
 		assert.True(t, res.IsError)
 		assert.NotNil(t, res.SourceErr)
-		assert.Contains(t, res.Result, "package directory does not exist")
+		assert.Contains(t, res.Result, "could not be resolved")
 	})
+}
+
+func TestGetPublicAPI_RunStdlibImport(t *testing.T) {
+	withSimplePackage(t, func(pkg *gocode.Package) {
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewGetPublicAPITool(auth)
+		call := llmstream.ToolCall{
+			CallID: "call-stdlib",
+			Name:   ToolNameGetPublicAPI,
+			Type:   "function_call",
+			Input:  `{"path":"fmt","identifiers":["Printf"]}`,
+		}
+
+		res := tool.Run(context.Background(), call)
+		assert.False(t, res.IsError)
+		assert.Nil(t, res.SourceErr)
+		assert.Contains(t, res.Result, "func Printf(")
+	})
+}
+
+func TestGetPublicAPI_RunDependencyImport(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	assert.True(t, ok)
+
+	mod, err := gocode.NewModule(thisFile)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	auth := authdomain.NewAutoApproveAuthorizer(mod.AbsolutePath)
+	tool := NewGetPublicAPITool(auth)
+	call := llmstream.ToolCall{
+		CallID: "call-dep",
+		Name:   ToolNameGetPublicAPI,
+		Type:   "function_call",
+		Input:  `{"path":"github.com/stretchr/testify/assert","identifiers":["Equal"]}`,
+	}
+
+	res := tool.Run(context.Background(), call)
+	assert.False(t, res.IsError)
+	assert.Nil(t, res.SourceErr)
+	assert.Contains(t, res.Result, "func Equal(")
 }
 
 func withSimplePackage(t *testing.T, f func(*gocode.Package)) {

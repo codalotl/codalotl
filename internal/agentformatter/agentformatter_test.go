@@ -1257,7 +1257,7 @@ func TestGetPublicAPICallWithIdentifiers(t *testing.T) {
 	pal := newPalette(cfg)
 	call := llmstream.ToolCall{
 		Name:  "get_public_api",
-		Input: `{"import_path":"axi/some/pkg","identifiers":["SomeType","DoThingFunc"]}`,
+		Input: `{"path":"axi/some/pkg","identifiers":["SomeType","DoThingFunc"]}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
@@ -1284,7 +1284,7 @@ func TestGetPublicAPICompleteSuccessWithIdentifiers(t *testing.T) {
 	pal := newPalette(cfg)
 	call := llmstream.ToolCall{
 		Name:  "get_public_api",
-		Input: `{"import_path":"axi/another/pkg","identifiers":["T","F"]}`,
+		Input: `{"path":"axi/another/pkg","identifiers":["T","F"]}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  `{"success":true}`,
@@ -1315,7 +1315,7 @@ func TestGetPublicAPICompleteErrorShowsMessage(t *testing.T) {
 	pal := newPalette(cfg)
 	call := llmstream.ToolCall{
 		Name:  "get_public_api",
-		Input: `{"import_path":"axi/bad/pkg","identifiers":["X"]}`,
+		Input: `{"path":"axi/bad/pkg","identifiers":["X"]}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  "package not found",

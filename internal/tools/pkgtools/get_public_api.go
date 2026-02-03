@@ -11,8 +11,8 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
-	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -27,7 +27,7 @@ type toolGetPublicAPI struct {
 }
 
 type getPublicAPIParams struct {
-	ImportPath  string   `json:"import_path"`
+	Path        string   `json:"path"`
 	Identifiers []string `json:"identifiers"`
 }
 
@@ -48,9 +48,9 @@ func (t *toolGetPublicAPI) Info() llmstream.ToolInfo {
 		Name:        ToolNameGetPublicAPI,
 		Description: strings.TrimSpace(descriptionGetPublicAPI),
 		Parameters: map[string]any{
-			"import_path": map[string]any{
+			"path": map[string]any{
 				"type":        "string",
-				"description": "Get the API for this Go package.",
+				"description": "A Go package directory (relative to the sandbox) or a Go import path.",
 			},
 			"identifiers": map[string]any{
 				"type":        "array",
@@ -60,7 +60,7 @@ func (t *toolGetPublicAPI) Info() llmstream.ToolInfo {
 				},
 			},
 		},
-		Required: []string{"import_path"},
+		Required: []string{"path"},
 	}
 }
 
@@ -72,8 +72,8 @@ func (t *toolGetPublicAPI) Run(ctx context.Context, call llmstream.ToolCall) llm
 		return coretools.NewToolErrorResult(call, fmt.Sprintf("error parsing parameters: %s", err), err)
 	}
 
-	if params.ImportPath == "" {
-		return llmstream.NewErrorToolResult("import_path is required", call)
+	if params.Path == "" {
+		return llmstream.NewErrorToolResult("path is required", call)
 	}
 
 	mod, err := gocode.NewModule(t.sandboxAbsDir)
@@ -81,28 +81,20 @@ func (t *toolGetPublicAPI) Run(ctx context.Context, call llmstream.ToolCall) llm
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	resolvedImportPath, relativeDir, err := resolveImportPath(mod.Name, params.ImportPath)
+	moduleAbsDir, packageAbsDir, packageRelDir, resolvedImportPath, err := resolvePackagePath(mod, params.Path)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	absPackageDir := mod.AbsolutePath
-	if relativeDir != "" {
-		absPackageDir = filepath.Join(mod.AbsolutePath, relativeDir)
-	}
-
-	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetPublicAPI, absPackageDir); authErr != nil {
+	if t.authorizer != nil && isWithinDir(t.sandboxAbsDir, packageAbsDir) {
+		// Only prompt/deny for sandbox reads; resolved dependency/stdlib packages are always readable.
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetPublicAPI, packageAbsDir); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}
 
-	pkg, err := mod.LoadPackageByImportPath(resolvedImportPath)
+	pkg, err := loadPackageForResolved(mod, moduleAbsDir, packageAbsDir, packageRelDir, resolvedImportPath)
 	if err != nil {
-		if errors.Is(err, gocode.ErrImportNotInModule) {
-			return coretools.NewToolErrorResult(call, fmt.Sprintf("import path %q is not within this module", resolvedImportPath), err)
-		}
-
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "package directory does not exist") {
 			return coretools.NewToolErrorResult(call, errMsg, err)
@@ -126,40 +118,174 @@ func (t *toolGetPublicAPI) Run(ctx context.Context, call llmstream.ToolCall) llm
 	}
 }
 
-// resolveImportPath rewrites caller input so we can locate the package on disk.
-//   - moduleImportPath is the module path declared in go.mod (ex: "github.com/user/project").
-//   - packageImportPath is the import path the tool caller supplied (ex: "github.com/user/project/pkg/foo" or just "pkg/foo").
-//
-// The function returns:
-//  1. the fully-qualified import path
-//  2. the directory path relative to the module root (slash-separated)
-//  3. an error if the import path is outside the module or otherwise invalid
-func resolveImportPath(moduleImportPath, packageImportPath string) (string, string, error) {
-	if packageImportPath == "" {
-		return "", "", fmt.Errorf("import_path %q is invalid", packageImportPath)
+func resolvePackagePath(mod *gocode.Module, input string) (moduleAbsDir string, packageAbsDir string, packageRelDir string, fqImportPath string, fnErr error) {
+	if mod == nil {
+		return "", "", "", "", errors.New("module required")
 	}
-	if moduleImportPath == "" {
-		return "", "", errors.New("module name required")
+	if input == "" {
+		return "", "", "", "", errors.New("path is required")
 	}
 
-	if strings.HasPrefix(packageImportPath, "/") || strings.Contains(packageImportPath, "\\") {
-		return "", "", fmt.Errorf("import_path %q is invalid", packageImportPath)
+	// Heuristic preference:
+	// - likely import paths (example.com/..., module-name/...): resolve as import first
+	// - otherwise (internal/...): resolve as sandbox-relative dir first
+	preferImport := strings.HasPrefix(input, mod.Name+"/") || input == mod.Name || hasDotInFirstPathSegment(input)
+
+	tryImport := func() (string, string, string, string, error) {
+		m, p, r, ip, err := mod.ResolvePackageByImport(input)
+		return m, p, r, ip, err
+	}
+	tryRelDir := func() (string, string, string, string, error) {
+		m, p, r, ip, err := mod.ResolvePackageByRelativeDir(input)
+		return m, p, r, ip, err
 	}
 
-	segments := strings.Split(packageImportPath, "/")
-	for _, segment := range segments {
-		if segment == "" || segment == "." || segment == ".." {
-			return "", "", fmt.Errorf("import_path %q is invalid", packageImportPath)
+	if preferImport {
+		m, p, r, ip, err := tryImport()
+		if err == nil {
+			return m, p, r, ip, nil
+		}
+		if !errors.Is(err, gocode.ErrResolveNotFound) {
+			return "", "", "", "", err
+		}
+
+		m, p, r, ip, err = tryRelDir()
+		if err == nil {
+			return m, p, r, ip, nil
+		}
+		if errors.Is(err, gocode.ErrResolveNotFound) {
+			return "", "", "", "", fmt.Errorf("package %q could not be resolved from this module's build context", input)
+		}
+		return "", "", "", "", err
+	}
+
+	m, p, r, ip, err := tryRelDir()
+	if err == nil {
+		return m, p, r, ip, nil
+	}
+	if !errors.Is(err, gocode.ErrResolveNotFound) {
+		return "", "", "", "", err
+	}
+
+	m, p, r, ip, err = tryImport()
+	if err == nil {
+		return m, p, r, ip, nil
+	}
+	if errors.Is(err, gocode.ErrResolveNotFound) {
+		return "", "", "", "", fmt.Errorf("package %q could not be resolved from this module's build context", input)
+	}
+	return "", "", "", "", err
+}
+
+func loadPackageForResolved(baseMod *gocode.Module, moduleAbsDir string, packageAbsDir string, packageRelDir string, fqImportPath string) (*gocode.Package, error) {
+	if baseMod == nil {
+		return nil, errors.New("module required")
+	}
+	if packageAbsDir == "" {
+		return nil, errors.New("package directory not resolved")
+	}
+
+	relDir, err := resolvedRelDir(moduleAbsDir, packageAbsDir, packageRelDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// If we're still inside the sandbox module, use the already-loaded module cache.
+	if moduleAbsDir == baseMod.AbsolutePath {
+		pkg, err := baseMod.LoadPackageByRelativeDir(relDir)
+		if err != nil {
+			return nil, err
+		}
+		pkg.ImportPath = fqImportPath
+		return pkg, nil
+	}
+
+	// For dependencies (or nested modules), load via a Module rooted at the resolved module dir.
+	if moduleAbsDir != "" {
+		depMod, err := gocode.NewModule(moduleAbsDir)
+		if err != nil {
+			return nil, err
+		}
+		pkg, err := depMod.LoadPackageByRelativeDir(relDir)
+		if err != nil {
+			return nil, err
+		}
+		pkg.ImportPath = fqImportPath
+		return pkg, nil
+	}
+
+	// Standard library packages are not within a module. We still load them for docs.
+	stdRootAbsDir, stdRelDir := stdlibRootAndRel(packageAbsDir)
+	stdMod := &gocode.Module{
+		Name:         "",
+		AbsolutePath: stdRootAbsDir,
+		Packages:     map[string]*gocode.Package{},
+	}
+	pkg, err := stdMod.ReadPackage(stdRelDir, nil)
+	if err != nil {
+		return nil, err
+	}
+	pkg.ImportPath = fqImportPath
+	return pkg, nil
+}
+
+func resolvedRelDir(moduleAbsDir string, packageAbsDir string, packageRelDir string) (string, error) {
+	if packageRelDir != "" {
+		if packageRelDir == "." {
+			return ".", nil
+		}
+		return packageRelDir, nil
+	}
+	if moduleAbsDir == "" {
+		return ".", nil
+	}
+	rel, err := filepath.Rel(moduleAbsDir, packageAbsDir)
+	if err != nil {
+		return "", err
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "" {
+		return ".", nil
+	}
+	return rel, nil
+}
+
+func stdlibRootAndRel(packageAbsDir string) (rootAbsDir string, relDir string) {
+	if packageAbsDir == "" {
+		return "", "."
+	}
+	goroot := runtime.GOROOT()
+	if goroot != "" {
+		gorootSrc := filepath.Join(goroot, "src")
+		if isWithinDir(gorootSrc, packageAbsDir) {
+			rel, err := filepath.Rel(gorootSrc, packageAbsDir)
+			if err == nil {
+				rel = filepath.ToSlash(rel)
+				if rel == "" {
+					return gorootSrc, "."
+				}
+				return gorootSrc, rel
+			}
 		}
 	}
 
-	if packageImportPath == moduleImportPath {
-		return packageImportPath, "", nil
-	}
-	if relative, ok := strings.CutPrefix(packageImportPath, moduleImportPath+"/"); ok {
-		return packageImportPath, relative, nil
-	}
+	// Fallback: treat the package dir as the root. This yields correct docs even if we can't derive GOROOT.
+	return packageAbsDir, "."
+}
 
-	relativePath := strings.Join(segments, "/")
-	return path.Join(moduleImportPath, relativePath), relativePath, nil
+func hasDotInFirstPathSegment(p string) bool {
+	seg, _, _ := strings.Cut(p, "/")
+	return strings.Contains(seg, ".")
+}
+
+func isWithinDir(parentAbsDir string, childAbsPath string) bool {
+	if parentAbsDir == "" || childAbsPath == "" {
+		return false
+	}
+	rel, err := filepath.Rel(parentAbsDir, childAbsPath)
+	if err != nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	return rel == "." || (!strings.HasPrefix(rel, "../") && rel != "..")
 }
