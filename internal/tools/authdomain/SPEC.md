@@ -135,6 +135,12 @@ func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authori
 // An error is only returned if authorizer is not capable of accepting grants. Any other "errors" simply result in no grants being added (ex: file doesn't exist; bad glob format).
 func AddGrantsFromUserMessage(authorizer Authorizer, userMessage string) error
 
+
+// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same ShellAllowedCommands, request channel, grants, etc.
+//
+// This can be used to run subagents in other directories outside the sandbox (e.g., investigating a shared library).
+func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, error)
+
 // ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands. All methods are thread-safe.
 //
 // The zero value ShellAllowedCommands{} has empty lists.
