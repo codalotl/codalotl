@@ -28,8 +28,12 @@ const (
 // If the LLM can't find the identifier as it relates to path, it may say so in the answer, which doesn't produce an error.
 //   - sandboxAbsDir is used for tool construction and relative path resolution, not as a confinement mechanism.
 //   - authorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind).
-//   - path is absolute or relative to sandboxAbsDir.
+//   - toolset toolsetinterface.Toolset are the tools available for use. Injected to cut dependencies. Should be ls/read_file.
+//   - path is absolute or relative to sandboxAbsDir. If absolute, it may be outside of sandboxAbsDir (for instance, when clarifying dep packages or stdlib packages).
 //   - identifier is language-specific and opaque. For Go, it looks like "MyVar", "*MyType.MyFunc", etc.
+//
+// When clarifying a dep package outside of the sandbox, and authorizer is not nil, it is recommended for UX reasons (but not required) to construct an authorizer to allow reads. There are many
+// ways to do this - one is to create a new authorizer with sandbox root of the dep; another is to add a 'grant' to the authorizer.
 //
 // Example question: "What does the first return parameter (a string) look like in the ClarifyAPI func?". Example answer that might be returned: "The ClarifyAPI func
 // returns a human- or LLM-readable answer to the specified question. It will be the empty string if an error occurred."
@@ -50,12 +54,22 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 		return "", errors.New("question is required")
 	}
 
-	absPath, _, err := coretools.NormalizePath(path, sandboxAbsDir, coretools.WantPathTypeAny, true)
-	if err != nil {
-		return "", fmt.Errorf("normalize path: %w", err)
-	}
-	if absPath == "" {
-		return "", fmt.Errorf("path %q is outside of sandbox %q", path, sandboxAbsDir)
+	var absPath string
+	if filepath.IsAbs(path) {
+		var err error
+		absPath, err = filepath.Abs(path)
+		if err != nil {
+			return "", fmt.Errorf("make path absolute: %w", err)
+		}
+	} else {
+		var err error
+		absPath, _, err = coretools.NormalizePath(path, sandboxAbsDir, coretools.WantPathTypeAny, true)
+		if err != nil {
+			return "", fmt.Errorf("normalize path: %w", err)
+		}
+		if absPath == "" {
+			return "", fmt.Errorf("path %q is outside of sandbox %q", path, sandboxAbsDir)
+		}
 	}
 
 	stat, err := os.Stat(absPath)
@@ -70,24 +84,20 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 	lang, _ := detectlang.Detect(sandboxAbsDir, absPath) // Ignore error
 
 	var contextStr string
-	var skipGeneric bool
-
-	switch lang {
-	case detectlang.LangGo:
+	useGeneric := true
+	if lang == detectlang.LangGo {
 		goContext, goDetected, err := tryBuildGoContext(sandboxAbsDir, absPath)
 		if err != nil {
 			return "", err
 		}
 		if goDetected {
 			contextStr = goContext
-			skipGeneric = true
+			useGeneric = false
 		}
-	default:
-		// fall back to generic context for all other languages
 	}
 
-	if !skipGeneric {
-		genericContext, err := buildGenericContext(absPath, stat, identifier, skipGeneric)
+	if useGeneric {
+		genericContext, err := buildGenericContext(absPath, stat, identifier)
 		if err != nil {
 			return "", err
 		}
@@ -107,9 +117,6 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 	}
 
 	message := buildPrompt(absPath, identifier, question, contextStr)
-	// fmt.Println("---Message---")
-	// fmt.Println(message)
-	// fmt.Println("---^^------")
 
 	events := ag.SendUserMessage(ctx, message)
 
@@ -198,11 +205,7 @@ func tryBuildGoContext(sandboxAbsDir, absPath string) (string, bool, error) {
 	return initial, true, nil
 }
 
-func buildGenericContext(absPath string, stat os.FileInfo, identifier string, skip bool) (string, error) {
-	if skip {
-		return "", nil
-	}
-
+func buildGenericContext(absPath string, stat os.FileInfo, identifier string) (string, error) {
 	var dir string
 	var target string
 	if stat.IsDir() {
