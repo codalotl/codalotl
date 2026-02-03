@@ -197,7 +197,8 @@ func tryBuildGoContext(sandboxAbsDir, absPath string) (string, bool, error) {
 		return "", false, nil
 	}
 
-	initial, err := initialcontext.Create(sandboxAbsDir, pkg)
+	// Clarifydocs should be fast and side-effect free; skip expensive checks (diagnostics/tests/lints).
+	initial, err := initialcontext.Create(sandboxAbsDir, pkg, true)
 	if err != nil {
 		return "", false, fmt.Errorf("initial context: %w", err)
 	}

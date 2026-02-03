@@ -21,7 +21,7 @@ func TestCreate_CodeAITools(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/tools/coretools")
 	require.NoError(t, err)
 
-	got, err := Create(mod.AbsolutePath, pkg)
+	got, err := Create(mod.AbsolutePath, pkg, false)
 	require.NoError(t, err)
 
 	// fmt.Println(got)
@@ -40,6 +40,24 @@ func TestCreate_CodeAITools(t *testing.T) {
 	assert.Contains(t, got, fmt.Sprintf("relative to the sandbox dir (%s)", mod.AbsolutePath))
 }
 
+func TestCreate_SkipAllChecks(t *testing.T) {
+	mod, err := gocode.NewModule(gocode.MustCwd())
+	require.NoError(t, err)
+
+	pkg, err := mod.LoadPackageByRelativeDir("internal/tools/coretools")
+	require.NoError(t, err)
+
+	got, err := Create(mod.AbsolutePath, pkg, true)
+	require.NoError(t, err)
+
+	assert.Contains(t, got, "<diagnostics-status")
+	assert.Contains(t, got, "diagnostics not run; deliberately skipped")
+	assert.Contains(t, got, "<test-status")
+	assert.Contains(t, got, "tests not run; deliberately skipped")
+	assert.Contains(t, got, "<lint-status")
+	assert.Contains(t, got, "lints not run; deliberately skipped")
+}
+
 func TestCreate_SkipTestsInRecursion(t *testing.T) {
 	mod, err := gocode.NewModule(gocode.MustCwd())
 	require.NoError(t, err)
@@ -47,7 +65,7 @@ func TestCreate_SkipTestsInRecursion(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/initialcontext")
 	require.NoError(t, err)
 
-	got, err := Create(mod.AbsolutePath, pkg)
+	got, err := Create(mod.AbsolutePath, pkg, false)
 	require.NoError(t, err)
 
 	assert.Contains(t, got, "$ go test ./internal/initialcontext")

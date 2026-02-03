@@ -402,7 +402,7 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
-	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg)
+	pkgModeInfo, err := initialcontext.Create(sandboxDir, pkg, false)
 	if err != nil {
 		return joinContextBlocks(
 			agentsMsg,
