@@ -50,6 +50,7 @@ func TestCreate_SkipAllChecks(t *testing.T) {
 	got, err := Create(mod.AbsolutePath, pkg, true)
 	require.NoError(t, err)
 
+	assert.NotContains(t, got, "<used-by>")
 	assert.Contains(t, got, "<diagnostics-status")
 	assert.Contains(t, got, "diagnostics not run; deliberately skipped")
 	assert.Contains(t, got, "<test-status")

@@ -25,8 +25,8 @@ const recursionEnvVar = "CODEAI_INITIALCONTEXT_ACTIVE_TESTS"
 //   - A list of all packages that import your package.
 //   - Current state of build errors, tests, and lints.
 //
-// If skipAllChecks is true, this function does not run diagnostics, tests, or lints. Instead, it
-// emits the corresponding status blocks with a "not run" message.
+// If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by
+// lookups. Instead, it emits the corresponding status blocks with a "not run" message.
 func Create(sandboxDir string, pkg *gocode.Package, skipAllChecks bool) (string, error) {
 	if pkg == nil {
 		return "", fmt.Errorf("nil package")
@@ -78,12 +78,6 @@ func Create(sandboxDir string, pkg *gocode.Package, skipAllChecks bool) (string,
 	testsContent := limitTestPkgMap(testSections, maxTestPkgMapLines)
 	sections = append(sections, formatSection("pkg-map", `type="tests"`, testsContent))
 
-	usedByPackages, err := usedBy(pkg)
-	if err != nil {
-		return "", fmt.Errorf("resolve used-by packages: %w", err)
-	}
-	sections = append(sections, formatSection("used-by", "", strings.Join(usedByPackages, "\n")))
-
 	if skipAllChecks {
 		sections = append(sections,
 			skippedDiagnosticsStatus(pkg),
@@ -91,6 +85,12 @@ func Create(sandboxDir string, pkg *gocode.Package, skipAllChecks bool) (string,
 			skippedLintStatus(pkg),
 		)
 	} else {
+		usedByPackages, err := usedBy(pkg)
+		if err != nil {
+			return "", fmt.Errorf("resolve used-by packages: %w", err)
+		}
+		sections = append(sections, formatSection("used-by", "", strings.Join(usedByPackages, "\n")))
+
 		diagnosticsOutput, err := exttools.RunDiagnostics(ctx, moduleAbsPath, absPkgPath)
 		if err != nil {
 			return "", fmt.Errorf("collect diagnostics: %w", err)

@@ -9,7 +9,7 @@ This package creates an initial bundle of information for an LLM starting to wor
 - Current state of build errors, tests, and lints.
 
 Optionally, the caller can disable all checks (diagnostics/tests/lints). In that mode, this package does not run any of those
-commands; it emits the corresponding status blocks with a "not run" message.
+commands (or the used-by lookup); it emits the corresponding status blocks with a "not run" message.
 
 ## Dependencies and Correctness Delegation
 
@@ -103,7 +103,7 @@ func usedBy(pkg *gocode.Package) ([]string, error)
 //   - A list of all packages that import your package.
 //   - Current state of build errors, tests, and lints.
 //
-// If skipAllChecks is true, this function does not run diagnostics, tests, or lints. Instead, it
+// If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by sections. Instead, it
 // emits the corresponding status blocks with a "not run" message.
 func Create(sandboxDir string, pkg *gocode.Package, skipAllChecks bool) (string, error)
 ```
