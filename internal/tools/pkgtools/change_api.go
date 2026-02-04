@@ -123,31 +123,32 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	moduleAbsDir, packageAbsDir, packageRelDir, targetImportPath, err := resolvePackagePath(mod, pathParam)
+	resolved, err := resolveToolPackageRef(mod, pathParam)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
-	if !isWithinDir(t.sandboxAbsDir, packageAbsDir) {
+
+	if err := validateResolvedPackageRefInSandbox(t.sandboxAbsDir, pathParam, resolved); err != nil {
 		return llmstream.NewErrorToolResult(
-			fmt.Sprintf("path %q resolves to %q at %q, which is outside the sandbox; change_api can only modify packages within the sandbox", pathParam, targetImportPath, packageAbsDir),
+			fmt.Sprintf("%s; change_api can only modify packages within the sandbox", err.Error()),
 			call,
 		)
 	}
-	if targetImportPath == currentPkg.ImportPath {
+	if resolved.ImportPath == currentPkg.ImportPath {
 		return llmstream.NewErrorToolResult("path must refer to an upstream package (not the current package)", call)
 	}
 
 	if currentPkg.ImportPaths == nil {
 		return coretools.NewToolErrorResult(call, "unable to determine direct imports for current package", nil)
 	}
-	if _, ok := currentPkg.ImportPaths[targetImportPath]; !ok {
+	if _, ok := currentPkg.ImportPaths[resolved.ImportPath]; !ok {
 		return llmstream.NewErrorToolResult(
-			fmt.Sprintf("path %q resolves to %q, which is not a direct import of the current package %q", pathParam, targetImportPath, currentPkg.ImportPath),
+			fmt.Sprintf("path %q resolves to %q, which is not a direct import of the current package %q", pathParam, resolved.ImportPath, currentPkg.ImportPath),
 			call,
 		)
 	}
 
-	targetAbsDir := filepath.Clean(packageAbsDir)
+	targetAbsDir := filepath.Clean(resolved.PackageAbsDir)
 
 	if t.authorizer != nil {
 		if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameChangeAPI, targetAbsDir); authErr != nil {
@@ -165,11 +166,11 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 	}
 
 	// Ensure the target package exists and is loadable (helps produce better errors than failing later).
-	if _, err := loadPackageForResolved(mod, moduleAbsDir, packageAbsDir, packageRelDir, targetImportPath); err != nil {
+	if _, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath); err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	unit, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", targetImportPath), targetAbsDir)
+	unit, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", resolved.ImportPath), targetAbsDir)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
