@@ -68,7 +68,7 @@ func (t *toolUpdateUsage) Info() llmstream.ToolInfo {
 				"items": map[string]any{
 					"type": "string",
 				},
-				"description": "Absolute or sandbox-relative paths (files or directories) within downstream packages that should be updated.",
+				"description": "Array of Go package directories (relative to the sandbox) or Go import paths, each a downstream package that should be updated.",
 			},
 		},
 		Required: []string{"instructions", "paths"},
