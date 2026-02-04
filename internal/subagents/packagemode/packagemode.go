@@ -90,7 +90,9 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 		return "", err
 	}
 
-	systemPrompt := prompt.GetGoPackageModeModePrompt(promptKind)
+	// Provide the sandbox location in the system prompt so the model can reason about paths
+	// and what it can/can't read via tools.
+	systemPrompt := prompt.GetGoPackageModeModePrompt(promptKind) + "\n\n<env>\nSandbox directory: " + sandboxAbsDir + "\n</env>\n"
 
 	ag, err := agentCreator.NewWithDefaultModel(systemPrompt, tools)
 	if err != nil {
