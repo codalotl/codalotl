@@ -5,13 +5,14 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	clarify "github.com/codalotl/codalotl/internal/subagents/clarifydocs"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"strings"
 )
 
 //go:embed clarify_public_api.md

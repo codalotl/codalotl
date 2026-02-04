@@ -1046,7 +1046,7 @@ func TestChangeAPICallFormatting(t *testing.T) {
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
-  "import_path": "axi/some/pkg",
+  "path": "axi/some/pkg",
   "instructions": "Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic."
 }`,
 	}
@@ -1077,7 +1077,7 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
-  "import_path": "axi/some/pkg",
+  "path": "axi/some/pkg",
   "instructions": "Do not repeat instructions on complete."
 }`,
 	}
@@ -1111,7 +1111,7 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
-  "import_path": "axi/some/pkg",
+  "path": "axi/some/pkg",
   "instructions": "Add method."
 }`,
 	}

@@ -1990,23 +1990,23 @@ func extractUpdateUsage(call *llmstream.ToolCall) (instructions string, paths []
 	return instructions, paths, true
 }
 
-func extractChangeAPI(call *llmstream.ToolCall) (importPath string, instructions string, ok bool) {
+func extractChangeAPI(call *llmstream.ToolCall) (path string, instructions string, ok bool) {
 	if call == nil {
 		return "", "", false
 	}
 	var payload struct {
-		ImportPath   string `json:"import_path"`
+		Path         string `json:"path"`
 		Instructions string `json:"instructions"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
 		return "", "", false
 	}
-	importPath = sanitizeText(strings.TrimSpace(payload.ImportPath))
+	path = sanitizeText(strings.TrimSpace(payload.Path))
 	instructions = sanitizeText(strings.TrimSpace(payload.Instructions))
-	if importPath == "" {
+	if path == "" {
 		return "", "", false
 	}
-	return importPath, instructions, true
+	return path, instructions, true
 }
 
 func summarizeUpdateUsagePaths(paths []string) (summary string, extra int) {
