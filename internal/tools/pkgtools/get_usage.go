@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -26,8 +25,8 @@ type toolGetUsage struct {
 }
 
 type getUsageParams struct {
-	DefiningPackage string `json:"defining_package"`
-	Identifier      string `json:"identifier"`
+	DefiningPackagePath string `json:"defining_package_path"`
+	Identifier          string `json:"identifier"`
 }
 
 func NewGetUsageTool(authorizer authdomain.Authorizer) llmstream.Tool {
@@ -47,16 +46,16 @@ func (t *toolGetUsage) Info() llmstream.ToolInfo {
 		Name:        ToolNameGetUsage,
 		Description: strings.TrimSpace(descriptionGetUsage),
 		Parameters: map[string]any{
-			"defining_package": map[string]any{
+			"defining_package_path": map[string]any{
 				"type":        "string",
-				"description": "The import path of the package defining the identifier.",
+				"description": "A Go package directory (relative to the sandbox) or a Go import path. Must resolve to the package defining the identifier.",
 			},
 			"identifier": map[string]any{
 				"type":        "string",
-				"description": "The identifier defined in defining_package.",
+				"description": "The identifier defined in defining_package_path.",
 			},
 		},
-		Required: []string{"defining_package", "identifier"},
+		Required: []string{"defining_package_path", "identifier"},
 	}
 }
 
@@ -68,8 +67,8 @@ func (t *toolGetUsage) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		return coretools.NewToolErrorResult(call, fmt.Sprintf("error parsing parameters: %s", err), err)
 	}
 
-	if params.DefiningPackage == "" {
-		return llmstream.NewErrorToolResult("defining_package is required", call)
+	if params.DefiningPackagePath == "" {
+		return llmstream.NewErrorToolResult("defining_package_path is required", call)
 	}
 
 	if params.Identifier == "" {
@@ -81,23 +80,19 @@ func (t *toolGetUsage) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	_, relativeDir, err := resolveImportPath(mod.Name, params.DefiningPackage)
+	_, packageAbsDir, _, _, err := resolvePackagePath(mod, params.DefiningPackagePath)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	absPackageDir := mod.AbsolutePath
-	if relativeDir != "" {
-		absPackageDir = filepath.Join(absPackageDir, filepath.FromSlash(relativeDir))
-	}
-
-	if t.authorizer != nil {
-		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetUsage, absPackageDir); authErr != nil {
+	if t.authorizer != nil && isWithinDir(t.sandboxAbsDir, packageAbsDir) {
+		// Only prompt/deny for sandbox reads; resolved dependency/stdlib packages are always readable.
+		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameGetUsage, packageAbsDir); authErr != nil {
 			return coretools.NewToolErrorResult(call, authErr.Error(), authErr)
 		}
 	}
 
-	_, usageSummary, err := gocodecontext.CrossPackageUsage(absPackageDir, params.Identifier)
+	_, usageSummary, err := gocodecontext.CrossPackageUsage(packageAbsDir, params.Identifier)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}

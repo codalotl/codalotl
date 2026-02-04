@@ -1430,6 +1430,108 @@ func TestClarifyPublicAPICompleteError(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
 }
 
+func TestGetUsageToolCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "get_usage",
+		Input: `{"defining_package_path":"axi/some/pkg","identifier":"*SomeType.SomeFunc"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "get_usage",
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Read Usage axi/some/pkg *SomeType.SomeFunc", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("Read Usage", pal, colorColorful, false, true))
+}
+
+func TestGetUsageToolCompleteSuccessCountsResults(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "get_usage",
+		Input: `{"defining_package_path":"axi/some/pkg","identifier":"*SomeType.SomeFunc"}`,
+	}
+	// Results are counted by matching /^\d+:/.
+	content := "1: first\nSome details\n2: second\n3: third"
+	resultPayload := map[string]any{
+		"success": true,
+		"content": content,
+	}
+	data, err := json.Marshal(resultPayload)
+	require.NoError(t, err)
+	result := llmstream.ToolResult{
+		Result:  string(data),
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "get_usage",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Read Usage axi/some/pkg *SomeType.SomeFunc",
+		"  └ Found 3 results.",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "success bullet should be green")
+}
+
+func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+
+	formatter := NewTUIFormatter(cfg)
+
+	t.Run("import_path is ignored", func(t *testing.T) {
+		call := llmstream.ToolCall{
+			Name:  "get_usage",
+			Input: `{"import_path":"axi/some/pkg","identifier":"*SomeType.SomeFunc"}`,
+		}
+		event := agent.Event{
+			Type:     agent.EventTypeToolCall,
+			Tool:     "get_usage",
+			ToolCall: &call,
+		}
+
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		assert.Equal(t, "• Read Usage get_usage *SomeType.SomeFunc", stripANSI(out))
+	})
+
+	t.Run("path is ignored", func(t *testing.T) {
+		call := llmstream.ToolCall{
+			Name:  "get_usage",
+			Input: `{"path":"axi/some/pkg","identifier":"*SomeType.SomeFunc"}`,
+		}
+		event := agent.Event{
+			Type:     agent.EventTypeToolCall,
+			Tool:     "get_usage",
+			ToolCall: &call,
+		}
+
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		assert.Equal(t, "• Read Usage get_usage *SomeType.SomeFunc", stripANSI(out))
+	})
+}
+
 func TestAssistantTextWrapsWideRunes(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),

@@ -1943,24 +1943,16 @@ func extractGetUsage(call *llmstream.ToolCall) (string, string, bool) {
 		return "", "", false
 	}
 	var payload struct {
-		DefiningPackage string `json:"defining_package"`
-		Package         string `json:"package"`
-		ImportPath      string `json:"import_path"`
-		Identifier      string `json:"identifier"`
+		DefiningPackagePath string `json:"defining_package_path"`
+		Identifier          string `json:"identifier"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
 		return "", "", false
 	}
-	pkg := strings.TrimSpace(payload.DefiningPackage)
-	if pkg == "" {
-		pkg = strings.TrimSpace(payload.Package)
-	}
-	if pkg == "" {
-		pkg = strings.TrimSpace(payload.ImportPath)
-	}
+	pkg := strings.TrimSpace(payload.DefiningPackagePath)
 	id := strings.TrimSpace(payload.Identifier)
 	if pkg == "" {
-		return "", "", false
+		return "", sanitizeText(id), false
 	}
 	return sanitizeText(pkg), sanitizeText(id), true
 }
