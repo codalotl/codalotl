@@ -26,7 +26,7 @@ func TestChangeAPI_MissingImportPath(t *testing.T) {
 		})
 
 		assert.True(t, res.IsError)
-		assert.Contains(t, res.Result, "import_path is required")
+		assert.Contains(t, res.Result, "path is required")
 	})
 }
 
@@ -39,7 +39,7 @@ func TestChangeAPI_MissingInstructions(t *testing.T) {
 			CallID: "call-missing-instructions",
 			Name:   ToolNameChangeAPI,
 			Type:   "function_call",
-			Input:  `{"import_path":"upstream"}`,
+			Input:  `{"path":"upstream"}`,
 		})
 
 		assert.True(t, res.IsError)
@@ -56,11 +56,11 @@ func TestChangeAPI_RejectsNotImportedPackage(t *testing.T) {
 			CallID: "call-not-imported",
 			Name:   ToolNameChangeAPI,
 			Type:   "function_call",
-			Input:  `{"import_path":"otherpkg","instructions":"update API"}`,
+			Input:  `{"path":"otherpkg","instructions":"update API"}`,
 		})
 
 		assert.True(t, res.IsError)
-		assert.Contains(t, res.Result, "is not a direct module import")
+		assert.Contains(t, res.Result, "is not a direct import")
 	})
 }
 
@@ -73,12 +73,29 @@ func TestChangeAPI_ImportedPackage_ReachesSubagentCheck(t *testing.T) {
 			CallID: "call-imported",
 			Name:   ToolNameChangeAPI,
 			Type:   "function_call",
-			Input:  `{"import_path":"upstream","instructions":"Change the exported API in some way."}`,
+			Input:  `{"path":"upstream","instructions":"Change the exported API in some way."}`,
 		})
 
 		// In unit tests, we don't wire a SubAgentCreator into context; this asserts we got past validation.
 		assert.True(t, res.IsError)
 		assert.Contains(t, res.Result, "unable to create subagent")
+	})
+}
+
+func TestChangeAPI_RejectsPackagesOutsideSandbox(t *testing.T) {
+	withUpstreamFixture(t, func(pkg *gocode.Package) {
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset())
+
+		res := tool.Run(context.Background(), llmstream.ToolCall{
+			CallID: "call-stdlib",
+			Name:   ToolNameChangeAPI,
+			Type:   "function_call",
+			Input:  `{"path":"fmt","instructions":"please change fmt"}`,
+		})
+
+		assert.True(t, res.IsError)
+		assert.Contains(t, res.Result, "outside the sandbox")
 	})
 }
 
@@ -110,6 +127,15 @@ func withUpstreamFixture(t *testing.T, f func(*gocode.Package)) {
 
 				// Hello returns a greeting.
 				func Hello() string { return "hi" }
+			`),
+		})
+		require.NoError(t, err)
+
+		err = gocodetesting.AddPackage(t, pkg.Module, "otherpkg", map[string]string{
+			"otherpkg.go": gocodetesting.Dedent(`
+				package otherpkg
+
+				func Ok() bool { return true }
 			`),
 		})
 		require.NoError(t, err)

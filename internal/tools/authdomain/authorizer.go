@@ -18,6 +18,11 @@ var ErrAuthorizerClosed = errors.New("authdomain: authorizer closed")
 // ErrAuthorizationDenied is returned when the user declines a pending authorization request.
 var ErrAuthorizationDenied = errors.New("authdomain: authorization denied")
 
+// ErrCodeUnitPathOutside is returned when a code-unit domain denies access because a path is outside the code unit.
+//
+// Use errors.Is(err, ErrCodeUnitPathOutside) to detect this condition.
+var ErrCodeUnitPathOutside = errors.New("authdomain: path outside code unit")
+
 const userRequestBufferSize = 16
 
 // UserRequest describes work that requires a human decision.
@@ -506,6 +511,30 @@ func (a *codeUnitAuthorizer) Close() {
 	a.fallback.Close()
 }
 
+const codeUnitOutsideToolsHint = "Consider using other tools (ex: get_public_api; clarify_public_api; get_usage; update_usage; change_api)"
+
+type codeUnitPathOutsideError struct {
+	path     string
+	unitName string
+	unitDir  string
+}
+
+func (e codeUnitPathOutsideError) Error() string {
+	return fmt.Sprintf("path %q is outside %q rooted at %q. %s", e.path, e.unitName, e.unitDir, codeUnitOutsideToolsHint)
+}
+
+func (e codeUnitPathOutsideError) Is(target error) bool {
+	return target == ErrCodeUnitPathOutside
+}
+
+func (a *codeUnitAuthorizer) newCodeUnitPathOutsideError(path string) error {
+	return codeUnitPathOutsideError{
+		path:     path,
+		unitName: a.unit.Name(),
+		unitDir:  a.unit.BaseDir(),
+	}
+}
+
 func (a *codeUnitAuthorizer) ensurePathsIncluded(paths ...string) error {
 	for _, path := range paths {
 		if a.unit.Includes(path) {
@@ -515,7 +544,7 @@ func (a *codeUnitAuthorizer) ensurePathsIncluded(paths ...string) error {
 		if !filepath.IsAbs(path) {
 			canonical = filepath.Join(a.unit.BaseDir(), path)
 		}
-		return fmt.Errorf("path %q is outside %q rooted at %q. Consider using other tools (ex: 'get_public_api' provides docs for a package; 'clarify_public_api' can answer questions about poorly written docs)", canonical, a.unit.Name(), a.unit.BaseDir())
+		return a.newCodeUnitPathOutsideError(canonical)
 	}
 	return nil
 }
@@ -536,7 +565,7 @@ func (a *codeUnitAuthorizer) ensurePathsIncludedOrGranted(toolName string, paths
 			continue
 		}
 
-		return fmt.Errorf("path %q is outside %q rooted at %q. Consider using other tools (ex: 'get_public_api' provides docs for a package; 'clarify_public_api' can answer questions about poorly written docs)", canonical, a.unit.Name(), a.unit.BaseDir())
+		return a.newCodeUnitPathOutsideError(canonical)
 	}
 	return nil
 }

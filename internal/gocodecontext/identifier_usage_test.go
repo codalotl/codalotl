@@ -7,53 +7,39 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestCrossPackageUsage_InvalidIdentifier(t *testing.T) {
-	// CrossPackageUsage requires an absolute directory.
+func TestIdentifierUsage_InvalidIdentifier(t *testing.T) {
+	// IdentifierUsage requires an absolute directory.
 	mod, err := gocode.NewModule(gocode.MustCwd())
-	if err != nil {
-		t.Fatalf("load module: %v", err)
-	}
+	require.NoError(t, err)
 	pkg, err := mod.LoadPackageByRelativeDir("internal/gocodecontext")
-	if err != nil {
-		t.Fatalf("load package: %v", err)
-	}
+	require.NoError(t, err)
 	absDir := filepath.Clean(pkg.AbsolutePath())
 
-	_, _, err = CrossPackageUsage(absDir, "ThisIdentifierDoesNotExist")
-	if err == nil {
-		t.Fatalf("expected error for invalid identifier")
-	}
+	_, _, err = IdentifierUsage(absDir, "ThisIdentifierDoesNotExist", false)
+	require.Error(t, err)
 }
 
-func TestCrossPackageUsage_BasicAndExcludesSamePackage(t *testing.T) {
+func TestIdentifierUsage_BasicAndExcludesSamePackage(t *testing.T) {
 	importPath := "github.com/codalotl/codalotl/internal/gocodecontext"
 	targetID := "Groups"
 
 	// Locate the package dir to check exclusion behavior.
 	mod, err := gocode.NewModule(gocode.MustCwd())
-	if err != nil {
-		t.Fatalf("load module: %v", err)
-	}
+	require.NoError(t, err)
 	defPkg, err := mod.LoadPackageByImportPath(importPath)
-	if err != nil {
-		t.Fatalf("load package %q: %v", importPath, err)
-	}
+	require.NoError(t, err)
 	defDir := filepath.Clean(defPkg.AbsolutePath())
 
-	usages, summary, err := CrossPackageUsage(defDir, targetID)
-	if err != nil {
-		t.Fatalf("CrossPackageUsage returned error: %v", err)
-	}
+	usages, summary, err := IdentifierUsage(defDir, targetID, false)
+	require.NoError(t, err)
 
-	if !strings.Contains(summary, "--- References ---") {
-		t.Fatalf("summary missing references header:\n%s", summary)
-	}
+	assert.Contains(t, summary, "--- References ---")
 	if len(usages) == 0 {
-		if !strings.Contains(summary, "No references found.") {
-			t.Fatalf("summary should mention lack of references when none exist:\n%s", summary)
-		}
+		assert.Contains(t, summary, "No references found.")
 		return
 	}
 
@@ -78,7 +64,7 @@ func TestCrossPackageUsage_BasicAndExcludesSamePackage(t *testing.T) {
 		// If we have any usages, a sanity check that the usage line mentions the identifier.
 		if !strings.Contains(u.FullLine, targetID) {
 			// Not all usage lines are guaranteed to contain the raw identifier (could be aliased), so warn but don't fail.
-			t.Logf("warning: usage line does not contain identifier %q: %q", targetID, strings.TrimSpace(u.FullLine))
+			t.Logf("warning: usage line does not contain identifier %q: %q", targetID, strings.TrimRight(u.FullLine, "\n"))
 		}
 
 		// Ensure each usage is represented in the string summary.
@@ -98,4 +84,28 @@ func TestCrossPackageUsage_BasicAndExcludesSamePackage(t *testing.T) {
 			t.Fatalf("summary missing line indicator %q:\n%s", lineStr, summary)
 		}
 	}
+}
+
+func TestIdentifierUsage_IncludesIntraPackageUsages(t *testing.T) {
+	importPath := "github.com/codalotl/codalotl/internal/gocodecontext"
+	targetID := "formatUsagePath"
+
+	mod, err := gocode.NewModule(gocode.MustCwd())
+	require.NoError(t, err)
+	defPkg, err := mod.LoadPackageByImportPath(importPath)
+	require.NoError(t, err)
+	defDir := filepath.Clean(defPkg.AbsolutePath())
+
+	usages, _, err := IdentifierUsage(defDir, targetID, true)
+	require.NoError(t, err)
+	require.NotEmpty(t, usages)
+
+	foundIntra := false
+	for _, u := range usages {
+		if filepath.Clean(filepath.Dir(u.AbsFilePath)) == defDir && u.ImportPath == importPath {
+			foundIntra = true
+			break
+		}
+	}
+	assert.True(t, foundIntra)
 }

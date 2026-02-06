@@ -2,6 +2,7 @@ package agentformatter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/q/uni"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -439,6 +441,9 @@ func (f *textTUIFormatter) cliGenericToolCall(e agent.Event) string {
 }
 
 func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
+	if f.isSillyAgentOutsidePackage(e) {
+		return f.tuiSillyAgentOutsidePackage(e, width)
+	}
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
 	case "apply_patch":
@@ -475,6 +480,9 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 }
 
 func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
+	if f.isSillyAgentOutsidePackage(e) {
+		return f.cliSillyAgentOutsidePackage(e)
+	}
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
 	case "apply_patch":
@@ -508,6 +516,59 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 	default:
 		return f.cliGenericToolComplete(e, success, cmd, outputLines)
 	}
+}
+
+func (f *textTUIFormatter) isSillyAgentOutsidePackage(e agent.Event) bool {
+	if e.ToolResult == nil || e.ToolResult.SourceErr == nil {
+		return false
+	}
+	return errors.Is(e.ToolResult.SourceErr, authdomain.ErrCodeUnitPathOutside)
+}
+
+func sillyAgentToolAndPath(e agent.Event) (tool string, path string, hasPath bool) {
+	tool = strings.TrimSpace(normalizedToolName(e))
+	if tool == "" {
+		tool = strings.TrimSpace(toolDisplayName(e))
+	}
+
+	// Best-effort: many tools carry a simple {"path": "..."} payload.
+	if e.ToolCall != nil {
+		var payload struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(e.ToolCall.Input)), &payload); err == nil {
+			p := strings.TrimSpace(payload.Path)
+			if p != "" {
+				return tool, sanitizeText(p), true
+			}
+		}
+	}
+
+	return tool, "", false
+}
+
+func (f *textTUIFormatter) tuiSillyAgentOutsidePackage(e agent.Event, width int) string {
+	tool, path, hasPath := sillyAgentToolAndPath(e)
+	msg := "Silly agent tried " + tool
+	if hasPath {
+		msg += " on " + path
+	}
+	msg += " outside of package."
+
+	runes := f.buildStyledRunes(sanitizeText(msg), runeStyle{color: colorAccent}, nil)
+	return f.wrapStyledText(runes, width, f.bulletPrefix(colorRed), "  ")
+}
+
+func (f *textTUIFormatter) cliSillyAgentOutsidePackage(e agent.Event) string {
+	tool, path, hasPath := sillyAgentToolAndPath(e)
+	msg := "Silly agent tried " + tool
+	if hasPath {
+		msg += " on " + path
+	}
+	msg += " outside of package."
+
+	runes := f.buildStyledRunes(sanitizeText(msg), runeStyle{color: colorAccent}, nil)
+	return f.cliSimpleLine(runes, colorRed)
 }
 
 func (f *textTUIFormatter) toolOutputFirstPrefix() string {
@@ -1943,24 +2004,16 @@ func extractGetUsage(call *llmstream.ToolCall) (string, string, bool) {
 		return "", "", false
 	}
 	var payload struct {
-		DefiningPackage string `json:"defining_package"`
-		Package         string `json:"package"`
-		ImportPath      string `json:"import_path"`
-		Identifier      string `json:"identifier"`
+		DefiningPackagePath string `json:"defining_package_path"`
+		Identifier          string `json:"identifier"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
 		return "", "", false
 	}
-	pkg := strings.TrimSpace(payload.DefiningPackage)
-	if pkg == "" {
-		pkg = strings.TrimSpace(payload.Package)
-	}
-	if pkg == "" {
-		pkg = strings.TrimSpace(payload.ImportPath)
-	}
+	pkg := strings.TrimSpace(payload.DefiningPackagePath)
 	id := strings.TrimSpace(payload.Identifier)
 	if pkg == "" {
-		return "", "", false
+		return "", sanitizeText(id), false
 	}
 	return sanitizeText(pkg), sanitizeText(id), true
 }
@@ -1990,23 +2043,23 @@ func extractUpdateUsage(call *llmstream.ToolCall) (instructions string, paths []
 	return instructions, paths, true
 }
 
-func extractChangeAPI(call *llmstream.ToolCall) (importPath string, instructions string, ok bool) {
+func extractChangeAPI(call *llmstream.ToolCall) (path string, instructions string, ok bool) {
 	if call == nil {
 		return "", "", false
 	}
 	var payload struct {
-		ImportPath   string `json:"import_path"`
+		Path         string `json:"path"`
 		Instructions string `json:"instructions"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
 		return "", "", false
 	}
-	importPath = sanitizeText(strings.TrimSpace(payload.ImportPath))
+	path = sanitizeText(strings.TrimSpace(payload.Path))
 	instructions = sanitizeText(strings.TrimSpace(payload.Instructions))
-	if importPath == "" {
+	if path == "" {
 		return "", "", false
 	}
-	return importPath, instructions, true
+	return path, instructions, true
 }
 
 func summarizeUpdateUsagePaths(paths []string) (summary string, extra int) {

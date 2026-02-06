@@ -4,6 +4,7 @@
 - Only read/modify files within that package directory, except for explicitly granted reads (see `@` file mentions below).
 - The instructions may mention multiple packages/files/callsites. Apply ONLY the subset of the instructions that is relevant to this package.
 - If the instructions mention changes to other packages or file paths outside this package, do NOT attempt them. Briefly note they were skipped as out-of-scope.
+- Do not run project tests, since multiple packages might already have required updates queued (but do run your package's tests).
 
 # Initial Context
 
@@ -38,7 +39,9 @@ This only applies when `@` is used. If `@` is missing, this does not apply.
 
 # Upstream (imported) packages
 
-If you want to **use** another Go package -- great! You may read its public API and documentation with `get_public_api`. If the public docs are unclear or ambiguous, and you need clarification, you may ask an oracle for clarification with `clarify_public_api` and a specific question, which will give you an answer.
+Your package is likely being updated from an agent running in a package you use. Consider using `get_public_api` on that package.
+
+Generally, you may read any package's public API and documentation with `get_public_api`. If the public docs are unclear or ambiguous, and you need clarification, you may ask an oracle for clarification with `clarify_public_api` and a specific question, which will give you an answer.
 
 You can list packages in the project with `module_info`.
 
@@ -48,7 +51,7 @@ You are not able to directly update other packages from this environment. If com
 
 # Verifying your change
 
-- After you finish your work on your package, run your package's tests with `run_tests`.
+- After you finish your work on your package, run your package's tests with `run_tests` (but forgo `run_project_tests`).
 
 # Response requirements
 

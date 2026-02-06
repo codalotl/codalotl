@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gousage"
@@ -68,7 +67,7 @@ func (t *toolUpdateUsage) Info() llmstream.ToolInfo {
 				"items": map[string]any{
 					"type": "string",
 				},
-				"description": "Absolute or sandbox-relative paths (files or directories) within downstream packages that should be updated.",
+				"description": "Array of Go package directories (relative to the sandbox) or Go import paths, each a downstream package that should be updated.",
 			},
 		},
 		Required: []string{"instructions", "paths"},
@@ -91,11 +90,6 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 
 	if t.toolset == nil {
 		return coretools.NewToolErrorResult(call, "toolset unavailable", nil)
-	}
-
-	agentCreator := agent.SubAgentCreatorFromContext(ctx)
-	if agentCreator == nil {
-		return coretools.NewToolErrorResult(call, "unable to create subagent", nil)
 	}
 
 	mod, err := gocode.NewModule(t.sandboxAbsDir)
@@ -150,52 +144,42 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 		usages[i].AbsolutePath = filepath.Clean(usages[i].AbsolutePath)
 	}
 
-	usageByAbsPath := make(map[string]gousage.Usage, len(usages))
+	usageByImportPath := make(map[string]gousage.Usage, len(usages))
 	for _, usage := range usages {
-		usageByAbsPath[usage.AbsolutePath] = usage
+		usageByImportPath[usage.ImportPath] = usage
 	}
 
-	packagePaths := make(map[string][]string)
-	orderedPackages := make([]string, 0)
+	orderedImports := make([]string, 0, len(params.Paths))
+	seenImport := make(map[string]bool, len(params.Paths))
 
 	for _, rawPath := range params.Paths {
 		if strings.TrimSpace(rawPath) == "" {
 			return llmstream.NewErrorToolResult("paths must not contain empty entries", call)
 		}
 
-		cleanPath := filepath.Clean(rawPath)
-		var absPath string
-		if filepath.IsAbs(cleanPath) {
-			absPath = cleanPath
-		} else {
-			absPath = filepath.Join(t.sandboxAbsDir, cleanPath)
+		resolved, err := resolveToolPackageRef(mod, rawPath)
+		if err != nil {
+			return coretools.NewToolErrorResult(call, err.Error(), err)
+		}
+		if err := validateResolvedPackageRefInSandbox(t.sandboxAbsDir, rawPath, resolved); err != nil {
+			return llmstream.NewErrorToolResult(err.Error(), call)
+		}
+		if err := validateResolvedPackageRefInModule(mod.AbsolutePath, rawPath, resolved); err != nil {
+			return llmstream.NewErrorToolResult(err.Error(), call)
 		}
 
-		var matchedUsage *gousage.Usage
-		for i := range usages {
-			usage := &usages[i]
-			relToUsage, err := filepath.Rel(usage.AbsolutePath, absPath)
-			if err != nil {
-				continue
-			}
-			if relToUsage == "." || (relToUsage != ".." && !strings.HasPrefix(relToUsage, ".."+string(filepath.Separator))) {
-				matchedUsage = usage
-				break
-			}
+		usage, ok := usageByImportPath[resolved.ImportPath]
+		if !ok {
+			return llmstream.NewErrorToolResult(fmt.Sprintf("path %q resolves to %q, which is not a downstream package that imports %q", rawPath, resolved.ImportPath, pkg.ImportPath), call)
 		}
 
-		if matchedUsage == nil {
-			return llmstream.NewErrorToolResult(fmt.Sprintf("path %q is not within any downstream package directories", rawPath), call)
+		if !seenImport[usage.ImportPath] {
+			seenImport[usage.ImportPath] = true
+			orderedImports = append(orderedImports, usage.ImportPath)
 		}
-
-		targetAbsPath := matchedUsage.AbsolutePath
-		if _, exists := packagePaths[targetAbsPath]; !exists {
-			orderedPackages = append(orderedPackages, targetAbsPath)
-		}
-		packagePaths[targetAbsPath] = append(packagePaths[targetAbsPath], absPath)
 	}
 
-	if len(packagePaths) == 0 {
+	if len(orderedImports) == 0 {
 		return llmstream.NewErrorToolResult("no valid downstream package paths provided", call)
 	}
 
@@ -212,9 +196,15 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 	// 	}
 	// }
 
-	results := make([]string, 0, len(orderedPackages))
-	for _, targetAbsPath := range orderedPackages {
-		usage := usageByAbsPath[targetAbsPath]
+	agentCreator, err := subAgentCreatorFromContextSafe(ctx)
+	if err != nil {
+		return coretools.NewToolErrorResult(call, err.Error(), err)
+	}
+
+	results := make([]string, 0, len(orderedImports))
+	for _, importPath := range orderedImports {
+		usage := usageByImportPath[importPath]
+		targetAbsPath := usage.AbsolutePath
 
 		if t.authorizer != nil {
 			if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameUpdateUsage, targetAbsPath); authErr != nil {
@@ -230,29 +220,13 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, t.authorizer)
 
-		targetPaths := packagePaths[targetAbsPath]
-		targetLines := make([]string, 0, len(targetPaths))
-		for _, p := range targetPaths {
-			rel, err := filepath.Rel(targetAbsPath, p)
-			if err != nil || rel == "." {
-				targetLines = append(targetLines, p)
-				continue
-			}
-			targetLines = append(targetLines, fmt.Sprintf("%s (abs: %s)", filepath.ToSlash(rel), p))
-		}
-
-		packageInstructions := instructions
-		if len(targetLines) > 0 {
-			packageInstructions = fmt.Sprintf("%s\n\nTarget paths for this package:\n- %s", instructions, strings.Join(targetLines, "\n- "))
-		}
-
 		answer, err := packagemode.Run(
 			ctx,
 			agentCreator,
 			pkgAuthorizer,
 			targetAbsPath,
 			t.toolset,
-			packageInstructions,
+			instructions,
 			prompt.GoPackageModePromptKindUpdateUsage,
 		)
 		if err != nil {

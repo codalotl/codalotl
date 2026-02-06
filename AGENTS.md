@@ -3,3 +3,4 @@
 - Misc Go coding guidelines:
     - RARELY sanitize strings with strings.TrimSpace. You may ONLY use strings.TrimSpace as part of a deliberate algorithm, not "just to be sure".
     - You probably don't need to use filepath.Clean: filepath's Join, Abs, Relative automatically Clean the result.
+- Don't keep around old code/APIs to "support legacy codepaths" unless told otherwise, or unless you know for sure you need to.

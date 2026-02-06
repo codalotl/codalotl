@@ -35,7 +35,7 @@ type toolChangeAPI struct {
 }
 
 type changeAPIParams struct {
-	ImportPath   string `json:"import_path"`
+	Path         string `json:"path"`
 	Instructions string `json:"instructions"`
 }
 
@@ -62,16 +62,16 @@ func (t *toolChangeAPI) Info() llmstream.ToolInfo {
 		Name:        ToolNameChangeAPI,
 		Description: strings.TrimSpace(descriptionChangeAPI),
 		Parameters: map[string]any{
-			"import_path": map[string]any{
+			"path": map[string]any{
 				"type":        "string",
-				"description": "Import path of the upstream package to modify. Must be directly imported by the current package.",
+				"description": "A Go package directory (relative to the sandbox) or a Go import path. Must resolve to an upstream package that the current package directly imports.",
 			},
 			"instructions": map[string]any{
 				"type":        "string",
 				"description": "What to change and why. Include enough context for a new agent to update the package safely.",
 			},
 		},
-		Required: []string{"import_path", "instructions"},
+		Required: []string{"path", "instructions"},
 	}
 }
 
@@ -81,9 +81,9 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 		return coretools.NewToolErrorResult(call, fmt.Sprintf("error parsing parameters: %s", err), err)
 	}
 
-	importPathParam := strings.TrimSpace(params.ImportPath)
-	if importPathParam == "" {
-		return llmstream.NewErrorToolResult("import_path is required", call)
+	pathParam := strings.TrimSpace(params.Path)
+	if pathParam == "" {
+		return llmstream.NewErrorToolResult("path is required", call)
 	}
 	instructions := strings.TrimSpace(params.Instructions)
 	if instructions == "" {
@@ -123,27 +123,32 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	targetImportPath, targetRelDir, err := resolveImportPath(mod.Name, importPathParam)
+	resolved, err := resolveToolPackageRef(mod, pathParam)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
-	if targetImportPath == currentPkg.ImportPath {
-		return llmstream.NewErrorToolResult("import_path must refer to an upstream package (not the current package)", call)
+
+	if err := validateResolvedPackageRefInSandbox(t.sandboxAbsDir, pathParam, resolved); err != nil {
+		return llmstream.NewErrorToolResult(
+			fmt.Sprintf("%s; change_api can only modify packages within the sandbox", err.Error()),
+			call,
+		)
+	}
+	if resolved.ImportPath == currentPkg.ImportPath {
+		return llmstream.NewErrorToolResult("path must refer to an upstream package (not the current package)", call)
 	}
 
-	allowed := make(map[string]struct{})
-	for _, imp := range currentPkg.ImportPathsModule() {
-		allowed[imp] = struct{}{}
+	if currentPkg.ImportPaths == nil {
+		return coretools.NewToolErrorResult(call, "unable to determine direct imports for current package", nil)
 	}
-	if _, ok := allowed[targetImportPath]; !ok {
-		return llmstream.NewErrorToolResult(fmt.Sprintf("import_path %q is not a direct module import of the current package %q", targetImportPath, currentPkg.ImportPath), call)
+	if _, ok := currentPkg.ImportPaths[resolved.ImportPath]; !ok {
+		return llmstream.NewErrorToolResult(
+			fmt.Sprintf("path %q resolves to %q, which is not a direct import of the current package %q", pathParam, resolved.ImportPath, currentPkg.ImportPath),
+			call,
+		)
 	}
 
-	targetAbsDir := mod.AbsolutePath
-	if targetRelDir != "" {
-		targetAbsDir = filepath.Join(mod.AbsolutePath, filepath.FromSlash(targetRelDir))
-	}
-	targetAbsDir = filepath.Clean(targetAbsDir)
+	targetAbsDir := filepath.Clean(resolved.PackageAbsDir)
 
 	if t.authorizer != nil {
 		if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameChangeAPI, targetAbsDir); authErr != nil {
@@ -161,11 +166,11 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 	}
 
 	// Ensure the target package exists and is loadable (helps produce better errors than failing later).
-	if _, err := mod.LoadPackageByImportPath(targetImportPath); err != nil {
+	if _, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath); err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	unit, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", targetImportPath), targetAbsDir)
+	unit, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", resolved.ImportPath), targetAbsDir)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
