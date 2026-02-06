@@ -3,6 +3,7 @@ package gocode
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"path/filepath"
 	"strings"
@@ -130,6 +131,85 @@ func GetReceiverFuncName(funcDecl *ast.FuncDecl) (string, string) {
 	return receiverType, name
 }
 
+// DeparenthesizeIdentifier normalizes identifiers like `(*SomeType).SomeMethod` to `*SomeType.SomeMethod`. It also strips any generic type argument lists from
+// the receiver side (ex: `(*SomeType[T]).SomeMethod` -> `*SomeType.SomeMethod`, `SomeType[T].SomeMethod` -> `SomeType.SomeMethod`). If ident cannot be parsed
+// or any errors are encountered while processing it, ident is returned unchanged.
+//
+// Normally, using this method isn't needed. You should NOT need it on a regular basis. However, if some LLM insists on using the parenthesized identifier format
+// despite prompting, you can pass it through this method.
+func DeparenthesizeIdentifier(ident string) string {
+	receiverExpr, rest, ok := splitParenthesizedOrGenericReceiver(ident)
+	if !ok {
+		return ident
+	}
+
+	// rest is the selector name (or ambiguous suffix, like "_:file.go:12:7") after the receiver.
+	if rest == "" {
+		return ident
+	}
+
+	expr, err := parser.ParseExpr(receiverExpr)
+	if err != nil {
+		return ident
+	}
+
+	receiverType := extractReceiverType(expr)
+	if receiverType == "" {
+		return ident
+	}
+
+	return receiverType + "." + rest
+}
+
+func splitParenthesizedOrGenericReceiver(ident string) (receiverExpr string, rest string, ok bool) {
+	// Parenthesized selector form: "(*T).M", "(T).M", including nested parens like "((*T)).M".
+	// We intentionally split on the first balanced ")." boundary, which avoids ambiguity with dots
+	// that can appear later (ex: file.go in ambiguous identifiers).
+	if strings.HasPrefix(ident, "(") {
+		depth := 0
+		for i := 0; i < len(ident); i++ {
+			switch ident[i] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth < 0 {
+					return "", "", false
+				}
+				if depth == 0 {
+					// We found the matching ')' for the initial '('.
+					if i+1 < len(ident) && ident[i+1] == '.' {
+						if i+2 >= len(ident) {
+							return "", "", false
+						}
+						return ident[1:i], ident[i+2:], true
+					}
+				}
+			}
+		}
+		return "", "", false
+	}
+
+	// Generic receiver form without parens: "MyType[T].M" or "*pkg.MyType[T, U].M".
+	// Only normalize when it looks like a method identifier (final segment is an identifier),
+	// and the receiver side contains type arguments.
+	lastDot := strings.LastIndex(ident, ".")
+	if lastDot == -1 || lastDot == len(ident)-1 {
+		return "", "", false
+	}
+
+	receiver := ident[:lastDot]
+	selector := ident[lastDot+1:]
+	if !token.IsIdentifier(selector) {
+		return "", "", false
+	}
+	if !strings.Contains(receiver, "[") {
+		return "", "", false
+	}
+
+	return receiver, selector, true
+}
+
 // extractReceiverType converts an AST expression describing a method receiver type into the canonical string representation used by this package. It preserves leading pointer stars
 // and selector expressions but strips any generic type parameter lists, as these are not part of the identifier. Examples:
 //
@@ -146,6 +226,8 @@ func extractReceiverType(expr ast.Expr) string {
 			return ""
 		}
 		return "*" + base
+	case *ast.ParenExpr:
+		return extractReceiverType(v.X)
 	case *ast.IndexExpr: // Go <=1.20 generics (single type param or index expression)
 		return extractReceiverType(v.X)
 	case *ast.IndexListExpr: // Go 1.21+: multiple type params

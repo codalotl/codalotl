@@ -72,6 +72,45 @@ func TestGetUsage_Run_UsesDefiningPackagePath(t *testing.T) {
 	})
 }
 
+func TestGetUsage_Run_DeparenthesizesIdentifier(t *testing.T) {
+	gocodetesting.WithMultiCode(t, map[string]string{
+		"mypkg.go": gocodetesting.Dedent(`
+			package mypkg
+
+			type Greeter struct{}
+
+			func (g *Greeter) Hello() string { return "hi" }
+		`),
+	}, func(pkg *gocode.Package) {
+		err := gocodetesting.AddPackage(t, pkg.Module, "consumer", map[string]string{
+			"consumer.go": gocodetesting.Dedent(`
+				package consumer
+
+				import "mymodule/mypkg"
+
+				func UseHello() string {
+					return new(mypkg.Greeter).Hello()
+				}
+			`),
+		})
+		require.NoError(t, err)
+
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewGetUsageTool(auth)
+
+		res := tool.Run(context.Background(), llmstream.ToolCall{
+			CallID: "call-deparenthesize",
+			Name:   ToolNameGetUsage,
+			Type:   "function_call",
+			Input:  `{"defining_package_path":"mymodule/mypkg","identifier":"(*Greeter).Hello"}`,
+		})
+
+		assert.False(t, res.IsError)
+		assert.Nil(t, res.SourceErr)
+		assert.NotEmpty(t, res.Result)
+	})
+}
+
 func TestGetUsage_Run_StdlibImport(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)

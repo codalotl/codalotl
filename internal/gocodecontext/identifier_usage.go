@@ -19,9 +19,13 @@ const (
 	maxSnippetLines    = 150
 )
 
-// CrossPackageUsage returns references to identifier as defined in packageAbsDir (i.e., the abs dir of a package). None of the references will be from within the packageAbsDir package itself.
-// All references will be from other packages that import the package. Usages from packageAbsDir's own _test package will not be included. But other _test packages
-// in other dirs will be included.
+// IdentifierUsage returns usages of identifier as defined in packageAbsDir (i.e., the abs dir of a package).
+//
+// By default (includeIntraPackageUsages=false), none of the returned usages will be from within the defining package itself. All usages will be from other packages
+// that import the defining package. Usages from packageAbsDir's own _test package will not be included.
+//
+// If includeIntraPackageUsages=true, usages within the defining package (same import path) will also be returned. Usages from the defining package's own _test package
+// are still excluded.
 //
 // The second return value is a string representation of these references, suitable for an LLM:
 //   - It will include all references in some manner.
@@ -29,7 +33,7 @@ const (
 //   - Specifics are an implementation detail. Callers should just pass this opaque blob to an LLM.
 //
 // If packageAbsDir is invalid, or identifier is not defined in packageAbsDir, an error will be returned.
-func CrossPackageUsage(packageAbsDir string, identifier string) ([]CrossRefUsage, string, error) {
+func IdentifierUsage(packageAbsDir string, identifier string, includeIntraPackageUsages bool) ([]IdentifierUsageRef, string, error) {
 	mod, err := gocode.NewModule(packageAbsDir)
 	if err != nil {
 		return nil, "", fmt.Errorf("load module: %w", err)
@@ -68,11 +72,11 @@ func CrossPackageUsage(packageAbsDir string, identifier string) ([]CrossRefUsage
 		return nil, "", fmt.Errorf("gopls references failed: %w", err)
 	}
 
-	var out []CrossRefUsage
+	var out []IdentifierUsageRef
 	defDir := filepath.Clean(pkg.AbsolutePath())
 	for _, r := range refs {
-		// Filter out references from the same dir (excludes both main and _test packages for importPath).
-		if filepath.Clean(filepath.Dir(r.AbsPath)) == defDir {
+		// gopls includes the declaration as a "reference"; exclude it.
+		if filepath.Clean(r.AbsPath) == filepath.Clean(defAbsPath) && r.Line == defLine && r.ColumnStart == defCol {
 			continue
 		}
 
@@ -96,10 +100,25 @@ func CrossPackageUsage(packageAbsDir string, identifier string) ([]CrossRefUsage
 			// Could be outside the current module or otherwise unmapped; ignore.
 			continue
 		}
-		// Ensure the using package directly imports the target package import path.
-		if _, ok := usingPkg.ImportPaths[pkg.ImportPath]; !ok {
-			// Some files may belong to packages that don't import importPath (unlikely for a real ref), skip defensively.
+
+		inDefDir := filepath.Clean(filepath.Dir(r.AbsPath)) == defDir
+		if inDefDir && !includeIntraPackageUsages {
+			// Excludes both the defining package and the defining directory's _test package.
 			continue
+		}
+		if inDefDir && includeIntraPackageUsages {
+			// Keep intra-package usages (same import path) but exclude the directory's _test package.
+			if usingPkg.ImportPath != pkg.ImportPath || inTestPkg {
+				continue
+			}
+		}
+
+		// Ensure the using package directly imports the target package import path, unless it's the defining package itself.
+		if usingPkg.ImportPath != pkg.ImportPath {
+			if _, ok := usingPkg.ImportPaths[pkg.ImportPath]; !ok {
+				// Some files may belong to packages that don't import importPath (unlikely for a real ref), skip defensively.
+				continue
+			}
 		}
 
 		// Determine the snippet that contains this reference.
@@ -111,7 +130,7 @@ func CrossPackageUsage(packageAbsDir string, identifier string) ([]CrossRefUsage
 		}
 
 		fullLine := extractFullLine(usingFile.Contents, r.Line)
-		out = append(out, CrossRefUsage{
+		out = append(out, IdentifierUsageRef{
 			ImportPath:       usingPkg.ImportPath,
 			AbsFilePath:      r.AbsPath,
 			Line:             r.Line,
@@ -120,12 +139,12 @@ func CrossPackageUsage(packageAbsDir string, identifier string) ([]CrossRefUsage
 			SnippetFullBytes: string(snippet.FullBytes()),
 		})
 	}
-	return out, formatCrossUsage(mod, out), nil
+	return out, formatIdentifierUsageSummary(mod, out), nil
 }
 
-// CrossRefUsage holds a single usage location for an identifier from another package.
-// This matches the SPEC fields for CrossRefUsage.
-type CrossRefUsage struct {
+// IdentifierUsageRef holds a single usage location for an identifier.
+// This matches the SPEC fields for IdentifierUsageRef.
+type IdentifierUsageRef struct {
 	ImportPath       string // using package's import path
 	AbsFilePath      string // using file's absolute path
 	Line             int    // line (1 based) where the usage occurs
@@ -357,7 +376,7 @@ func snippetViaAST(usingPkg *gocode.Package, usingFile *gocode.File, byteOffset 
 	return nil
 }
 
-func formatCrossUsage(mod *gocode.Module, usages []CrossRefUsage) string {
+func formatIdentifierUsageSummary(mod *gocode.Module, usages []IdentifierUsageRef) string {
 	var b strings.Builder
 	moduleRoot := mod.AbsolutePath
 	b.WriteString("--- References ---\n\n")
@@ -405,7 +424,7 @@ type snippetContext struct {
 	length  int
 }
 
-func selectSnippetContexts(moduleRoot string, usages []CrossRefUsage) []snippetContext {
+func selectSnippetContexts(moduleRoot string, usages []IdentifierUsageRef) []snippetContext {
 	seen := make(map[string]snippetContext)
 	for _, usage := range usages {
 		snippet := usage.SnippetFullBytes

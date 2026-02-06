@@ -3,7 +3,7 @@
 This package creates bundles of context for LLMs to understand Go code. It does this with these main mechanisms:
 1. Per-identifier context: get intra-package context for one or more identifiers in a package.
 2. Package documentation: get public API with docs (possibly limited to specific identifiers); get all identifiers (incl. private), with or without docs.
-3. Cross-package usage: get usage information from other packages that use an identifier.
+3. Identifier usage: get usage information for an identifier (cross-package by default; optionally include intra-package).
 4. Package list and module info: list and search through available packages; get module info, like dep modules.
 
 ## Per-identifier context
@@ -107,12 +107,10 @@ func PublicPackageDocumentation(pkg *gocode.Package, identifiers ...string) (str
 func InternalPackageSignatures(pkg *gocode.Package, tests bool, includeDocs bool) (string, error)
 ```
 
-## Cross-package usage
-
-TODO at some point: I think CrossRefUsage should be renamed CrossPackageRef (or just PackageRef).
+## Identifier usage
 
 ```go {api exact_docs}
-type CrossRefUsage struct {
+type IdentifierUsageRef struct {
     ImportPath string // using package's import path
     AbsFilePath string // using file's absolute path
     Line int // line (1 based) where the usage occurs
@@ -123,9 +121,13 @@ type CrossRefUsage struct {
 ```
 
 ```go {api exact_docs}
-// CrossPackageUsage returns references to identifier as defined in packageAbsDir (i.e., the abs dir of a package). None of the references will be from within the packageAbsDir package itself.
-// All references will be from other packages that import the package. Usages from packageAbsDir's own _test package will not be included. But other _test packages
-// in other dirs will be included.
+// IdentifierUsage returns usages of identifier as defined in packageAbsDir (i.e., the abs dir of a package).
+//
+// By default (includeIntraPackageUsages=false), none of the returned usages will be from within the defining package itself. All usages will be from other packages
+// that import the defining package. Usages from packageAbsDir's own _test package will not be included.
+//
+// If includeIntraPackageUsages=true, usages within the defining package (same import path) will also be returned. Usages from the defining package's own _test package
+// are still excluded.
 //
 // The second return value is a string representation of these references, suitable for an LLM:
 //   - It will include all references in some manner.
@@ -133,10 +135,10 @@ type CrossRefUsage struct {
 //   - Specifics are an implementation detail. Callers should just pass this opaque blob to an LLM.
 //
 // If packageAbsDir is invalid, or identifier is not defined in packageAbsDir, an error will be returned.
-func CrossPackageUsage(packageAbsDir, identifier string) ([]CrossRefUsage, string, error)
+func IdentifierUsage(packageAbsDir, identifier string, includeIntraPackageUsages bool) ([]IdentifierUsageRef, string, error)
 ```
 
-Even though `CrossPackageUsage`'s string return parameter must be **documented** as being opaque, here is the format to use for now:
+Even though `IdentifierUsage`'s string return parameter must be **documented** as being opaque, here is the format to use for now:
 
 ```txt
 --- References ---
@@ -150,7 +152,7 @@ codeai/initialcontext/initial_context_test.go
 codeai/initialcontext/initial_context.go
 21:func Create(pkg *gocode.Package) (string, error) {
 
---- Select full contexts ---
+--- A handful of examples of usage ---
 
 codeai/cmd/codagent/main.go
 func createContext(pkg *gocode.Package) (string, error) {
@@ -163,9 +165,9 @@ func createContext(pkg *gocode.Package) (string, error) {
 ```
 
 - First, list all references in a manner similar to `rg`.
-- List up to 3 snippets of full context (often functions). Criteria for choosing snippets:
-   - Only list a function if it's less than 200 lines (configurable via const).
-   - Choose the 3 smallest snippets.
+- Then, list a handful of snippets of full context (often functions). Criteria for choosing snippets:
+   - Only list snippets smaller than `maxSnippetLines` (currently 150).
+   - Choose up to `maxSnippetContexts` snippets (currently 2), preferring the shortest snippets.
 - If there are no snippets, don't display the corresponding banner.
 
 ## Package lists and module info

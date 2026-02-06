@@ -75,6 +75,8 @@ func (t *toolGetUsage) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		return llmstream.NewErrorToolResult("identifier is required", call)
 	}
 
+	identifier := gocode.DeparenthesizeIdentifier(params.Identifier)
+
 	mod, err := gocode.NewModule(t.sandboxAbsDir)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
@@ -92,7 +94,7 @@ func (t *toolGetUsage) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		}
 	}
 
-	_, usageSummary, err := gocodecontext.CrossPackageUsage(packageAbsDir, params.Identifier)
+	_, usageSummary, err := gocodecontext.IdentifierUsage(packageAbsDir, identifier, true)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
