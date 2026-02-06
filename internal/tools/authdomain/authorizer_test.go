@@ -521,6 +521,7 @@ func TestCodeUnitReadFileBlocksOutsideUnit(t *testing.T) {
 
 	err = auth.IsAuthorizedForRead(false, "", strictTool, outsidePath)
 	require.Error(t, err)
+	require.ErrorIs(t, err, ErrCodeUnitPathOutside)
 	require.Contains(t, err.Error(), "is outside")
 }
 
@@ -612,6 +613,7 @@ func TestCodeUnitWriteBlocksOutsideUnit(t *testing.T) {
 
 	err = auth.IsAuthorizedForWrite(false, "", "write_tool", outsidePath)
 	require.Error(t, err)
+	require.ErrorIs(t, err, ErrCodeUnitPathOutside)
 	require.Contains(t, err.Error(), "is outside")
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -444,6 +445,92 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 		"  └ Error: path does not exist",
 	}, lines)
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+}
+
+func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "read_file",
+		Input: `{"path":"some/file.go"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:    "denied",
+		IsError:   true,
+		SourceErr: authdomain.ErrCodeUnitPathOutside,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "read_file",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 100)
+	require.NotEmpty(t, out)
+
+	require.Equal(t, "• Silly agent tried read_file on some/file.go outside of package.", stripANSI(out))
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+	assert.Contains(t, out, ansiWrap("Silly agent tried read_file on some/file.go outside of package.", pal, colorAccent, false, false))
+	assert.NotContains(t, stripANSI(out), "└")
+}
+
+func TestToolCompleteSillyAgentOutsidePackageReadFileCLI(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "read_file",
+		Input: `{"path":"some/file.go"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:    "denied",
+		IsError:   true,
+		SourceErr: authdomain.ErrCodeUnitPathOutside,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "read_file",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, MinTerminalWidth)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Silly agent tried read_file on some/file.go outside of package.", stripANSI(out))
+}
+
+func TestToolCompleteSillyAgentOutsidePackageNoPath(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "apply_patch",
+		Input: `*** Begin Patch` + "\n" + `*** End Patch` + "\n",
+	}
+	result := llmstream.ToolResult{
+		Result:    "denied",
+		IsError:   true,
+		SourceErr: authdomain.ErrCodeUnitPathOutside,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "apply_patch",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 100)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Silly agent tried apply_patch outside of package.", stripANSI(out))
 }
 
 func TestDiagnosticsToolCallFormatting(t *testing.T) {

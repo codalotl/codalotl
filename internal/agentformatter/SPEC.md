@@ -128,6 +128,16 @@ Unless otherwise stated, a command that results in an error will show an error m
 
 Note: this case doesn't apply to commands that run successfully but have, for instance, failing tests. This case is for when the tool itself has an error.
 
+If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCodeUnitPathOutside)`, we format the message on one line like:
+
+```
+• Silly agent tried read_file on some/file.go outside of package.
+```
+
+- Bullet is Red. Everything else is Accent.
+- It is fine to just print the tool name (ex: read_file, ls, apply_patch).
+- The only data displayed is the tool name, and if present, the `path` argument. If no path, it reads (for instance): `Silly agent tried apply_patch outside of package`.
+
 ### EventTypeToolCall and EventTypeToolComplete - ls
 
 ```
