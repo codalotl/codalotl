@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -20,7 +23,6 @@ import (
 )
 
 var runTUIWithConfig = tui.RunWithConfig
-var reflowAllDocumentation = updatedocs.ReflowAllDocumentation
 
 type configState struct {
 	once sync.Once
@@ -214,33 +216,103 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Name:  "reflow",
 		Short: "Reflow documentation in a package.",
 		Args:  qcli.ExactArgs(1),
-		Run: runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
-			pkg, _, err := loadPackageArg(c.Args[0])
-			if err != nil {
-				return err
+	}
+	reflowFlags := reflowCmd.Flags()
+	reflowWidth := reflowFlags.Int("width", 'w', 0, "Override reflow width (default: config reflowwidth).")
+	reflowCmd.Run = runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
+		pkg, _, err := loadPackageArg(c.Args[0])
+		if err != nil {
+			return err
+		}
+
+		width := cfg.ReflowWidth
+		if *reflowWidth != 0 {
+			if *reflowWidth <= 0 {
+				return qcli.UsageError{Message: fmt.Sprintf("invalid --width: must be > 0 (got %d)", *reflowWidth)}
+			}
+			width = *reflowWidth
+		}
+
+		type fileSnapshot struct {
+			sum   [32]byte
+			rel   string
+			isSet bool
+		}
+		before := map[string]fileSnapshot{} // abs path -> snapshot
+
+		wd, _ := os.Getwd() // best-effort fallback for display paths
+		snapshotFile := func(absPath string, relCandidate string, contents []byte) {
+			absPath = strings.TrimSpace(absPath)
+			if absPath == "" {
+				return
 			}
 
-			_, skipped, err := reflowAllDocumentation(pkg, updatedocs.Options{
-				ReflowMaxWidth: cfg.ReflowWidth,
-			})
-			if err != nil {
-				return err
-			}
-			if len(skipped) == 0 {
-				return nil
-			}
-
-			if _, err := fmt.Fprintln(c.Err, "Warning: some identifiers could not be reflowed:"); err != nil {
-				return err
-			}
-			for _, id := range skipped {
-				if _, err := fmt.Fprintf(c.Err, "- %s\n", strings.TrimSpace(id)); err != nil {
-					return err
+			rel := strings.TrimSpace(relCandidate)
+			if rel == "" && strings.TrimSpace(wd) != "" {
+				if v, err := filepath.Rel(wd, absPath); err == nil && strings.TrimSpace(v) != "" {
+					rel = v
 				}
 			}
+			if rel == "" {
+				rel = absPath
+			}
+			before[absPath] = fileSnapshot{
+				sum:   sha256.Sum256(contents),
+				rel:   rel,
+				isSet: true,
+			}
+		}
+
+		for _, f := range pkg.Files {
+			snapshotFile(f.AbsolutePath, f.RelativeFileName, f.Contents)
+		}
+		if pkg.TestPackage != nil {
+			for _, f := range pkg.TestPackage.Files {
+				snapshotFile(f.AbsolutePath, f.RelativeFileName, f.Contents)
+			}
+		}
+
+		_, skipped, err := updatedocs.ReflowAllDocumentation(pkg, updatedocs.Options{
+			ReflowMaxWidth: width,
+		})
+		if err != nil {
+			return err
+		}
+
+		var modified []string
+		for abs, snap := range before {
+			if !snap.isSet {
+				continue
+			}
+			afterBytes, err := os.ReadFile(abs)
+			if err != nil {
+				// If we can't read the file, don't claim it was modified.
+				continue
+			}
+			if sha256.Sum256(afterBytes) != snap.sum {
+				modified = append(modified, snap.rel)
+			}
+		}
+		sort.Strings(modified)
+		for _, p := range modified {
+			if _, err := fmt.Fprintln(c.Out, p); err != nil {
+				return err
+			}
+		}
+
+		if len(skipped) == 0 {
 			return nil
-		}),
-	}
+		}
+		if _, err := fmt.Fprintln(c.Err, "Warning: some identifiers could not be reflowed:"); err != nil {
+			return err
+		}
+		for _, id := range skipped {
+			if _, err := fmt.Fprintf(c.Err, "- %s\n", strings.TrimSpace(id)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	docsCmd.AddCommand(reflowCmd)
 
 	panicCmd := &qcli.Command{
