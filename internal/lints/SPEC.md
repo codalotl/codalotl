@@ -4,7 +4,7 @@ The `lints` package implements an extensible "lint pipeline", which is just a li
 - `gofmt`
 - `codalotl docs reflow`
 - `staticcheck`
-- `gocligolangci-lint`
+- `golangci-lint`
 
 These linters sometimes can fix problems, and sometimes can only detect them (depending on the capabilities of the linter). We support running them in `fix` or `check` modes. A linter that doesn't support `fix` will still be run in `fix` mode - it will simply report problems without fixing them.
 
@@ -13,19 +13,19 @@ These linters may be run in the following contexts within `codalotl`:
 
 ## Output
 
-This package runs all shell commands via `q/cmdrunner`, and reports status to LLMs via the `ToXML` method (with `lint-status` tag).
+This package runs all shell commands via `internal/q/cmdrunner`, and reports status to LLMs via the `ToXML` method (with `lint-status` tag).
 - In `check` mode, `ok="false"` -> lint issues found (or a command caused an error of some kind). `ok="true"` means there were no linting issues.
-- In `fix` mode, if all issues were successfully fixed, `ok="true"`; `ok="false"` is used if a check caused an error, or could not be fixed (including when a lint has no fix capability).
+- In `fix` mode, if all issues were successfully fixed, `ok="true"`; `ok="false"` is used if a command caused an error, or could not be fixed (including when a lint has no fix capability).
 
 Example output:
 
 ```xml
-<lint-status ok="false" message="no issues found">
-<command ok="true">
-$ gofmt -l ./q/cmdrunner
+<lint-status ok="false">
+<command ok="true" message="no issues found">
+$ gofmt -l ./internal/q/cmdrunner
 </command>
 <command ok="false">
-$ gochecklint -l ./q/cmdrunner
+$ golangci-lint run ./internal/q/cmdrunner
 Found 2 issues:
 - issue1
 - issue2
@@ -33,7 +33,7 @@ Found 2 issues:
 </lint-status>
 ```
 
-To help LLMs understand the meaning of `ok="true|false"`, commands may include `message="no issues found"`. Example:
+To help LLMs understand the meaning of `ok="true|false"`, `command` elements may include `message="no issues found"`. Example:
 
 ```xml
 <command ok="true" message="no issues found">
@@ -95,7 +95,7 @@ Reserved/default step IDs:
 
 ### Templating
 
-The commands are specified and run with `q/cmdrunner`. As such, they use its template variables:
+The commands are specified and run with `internal/q/cmdrunner`. As such, they use its template variables:
 - `rootDir` = sandbox dir
 - inputs:
   - `path`: absolute package directory (cmdrunner `InputTypePathDir`)
@@ -112,7 +112,7 @@ The following code is an example of how gofmt is run (this code is for illustrat
 ```go
 func newGoFmtRunner(fix bool) *cmdrunner.Runner {
 	inputSchema := map[string]cmdrunner.InputType{
-		"path": cmdrunner.InputTypePathAny,
+		"path": cmdrunner.InputTypePathDir,
 	}
 	runner := cmdrunner.NewRunner(inputSchema, []string{"path"})
 	args := []string{"-l"}
