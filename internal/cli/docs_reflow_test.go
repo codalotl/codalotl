@@ -15,15 +15,20 @@ func TestRun_DocsReflow_Sanity(t *testing.T) {
 
 	tmp := t.TempDir()
 
-	// Create a tiny module with one package containing an intentionally
-	// overlong doc comment so reflow should modify the file.
+	// Create a tiny module with two packages containing intentionally overlong
+	// doc comments so reflow should modify both files.
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
-	pkgDir := filepath.Join(tmp, "p")
-	require.NoError(t, os.MkdirAll(pkgDir, 0755))
+	pkgDirP := filepath.Join(tmp, "p")
+	require.NoError(t, os.MkdirAll(pkgDirP, 0755))
+	srcPathP := filepath.Join(pkgDirP, "p.go")
+	srcBeforeP := "package p\n\n// Foo does a thing. This is a deliberately long documentation sentence that should be wrapped by the reflow command when the width is small.\nfunc Foo() {}\n"
+	require.NoError(t, os.WriteFile(srcPathP, []byte(srcBeforeP), 0644))
 
-	srcPath := filepath.Join(pkgDir, "p.go")
-	srcBefore := "package p\n\n// Foo does a thing. This is a deliberately long documentation sentence that should be wrapped by the reflow command when the width is small.\nfunc Foo() {}\n"
-	require.NoError(t, os.WriteFile(srcPath, []byte(srcBefore), 0644))
+	pkgDirQ := filepath.Join(tmp, "q")
+	require.NoError(t, os.MkdirAll(pkgDirQ, 0755))
+	srcPathQ := filepath.Join(pkgDirQ, "q.go")
+	srcBeforeQ := "package q\n\n// Bar does a thing. This is a deliberately long documentation sentence that should be wrapped by the reflow command when the width is small.\nfunc Bar() {}\n"
+	require.NoError(t, os.WriteFile(srcPathQ, []byte(srcBeforeQ), 0644))
 
 	// Configure a wide width so config alone would not need to wrap.
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
@@ -36,18 +41,25 @@ func TestRun_DocsReflow_Sanity(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, runErr := Run([]string{"codalotl", "docs", "reflow", "--width=40", pkgDir}, &RunOptions{Out: &out, Err: &errOut})
+	code, runErr := Run([]string{"codalotl", "docs", "reflow", "--width=40", pkgDirP, pkgDirQ}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, runErr)
 	require.Equal(t, 0, code)
-	require.Equal(t, "p/p.go\n", out.String())
+	require.Equal(t, "p/p.go\nq/q.go\n", out.String())
 	require.Empty(t, errOut.String())
 
-	after, err := os.ReadFile(srcPath)
+	afterP, err := os.ReadFile(srcPathP)
+	require.NoError(t, err)
+	afterQ, err := os.ReadFile(srcPathQ)
 	require.NoError(t, err)
 
 	// Sanity-check that the docs were wrapped into multiple lines.
-	beforeCount := strings.Count(srcBefore, "\n// ")
-	afterCount := strings.Count(string(after), "\n// ")
-	require.Equal(t, 1, beforeCount)
-	require.Greater(t, afterCount, 1)
+	beforeCountP := strings.Count(srcBeforeP, "\n// ")
+	afterCountP := strings.Count(string(afterP), "\n// ")
+	require.Equal(t, 1, beforeCountP)
+	require.Greater(t, afterCountP, 1)
+
+	beforeCountQ := strings.Count(srcBeforeQ, "\n// ")
+	afterCountQ := strings.Count(string(afterQ), "\n// ")
+	require.Equal(t, 1, beforeCountQ)
+	require.Greater(t, afterCountQ, 1)
 }

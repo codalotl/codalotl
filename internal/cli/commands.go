@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -214,17 +213,12 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 
 	reflowCmd := &qcli.Command{
 		Name:  "reflow",
-		Short: "Reflow documentation in a package.",
-		Args:  qcli.ExactArgs(1),
+		Short: "Reflow documentation in one or more paths.",
+		Args:  qcli.MinimumArgs(1),
 	}
 	reflowFlags := reflowCmd.Flags()
 	reflowWidth := reflowFlags.Int("width", 'w', 0, "Override reflow width (default: config reflowwidth).")
 	reflowCmd.Run = runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
-		pkg, _, err := loadPackageArg(c.Args[0])
-		if err != nil {
-			return err
-		}
-
 		width := cfg.ReflowWidth
 		if *reflowWidth != 0 {
 			if *reflowWidth <= 0 {
@@ -233,68 +227,55 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			width = *reflowWidth
 		}
 
-		type fileSnapshot struct {
-			sum   [32]byte
-			rel   string
-			isSet bool
-		}
-		before := map[string]fileSnapshot{} // abs path -> snapshot
-
-		wd, _ := os.Getwd() // best-effort fallback for display paths
-		snapshotFile := func(absPath string, relCandidate string, contents []byte) {
-			absPath = strings.TrimSpace(absPath)
-			if absPath == "" {
-				return
+		findModuleRoot := func(dir string) string {
+			for {
+				modPath := filepath.Join(dir, "go.mod")
+				if fi, err := os.Stat(modPath); err == nil && !fi.IsDir() {
+					return dir
+				}
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					return ""
+				}
+				dir = parent
 			}
+		}
 
-			rel := strings.TrimSpace(relCandidate)
-			if rel == "" && strings.TrimSpace(wd) != "" {
-				if v, err := filepath.Rel(wd, absPath); err == nil && strings.TrimSpace(v) != "" {
-					rel = v
+		displayPathForModifiedFile := func(absPath string) string {
+			modRoot := findModuleRoot(filepath.Dir(absPath))
+			if modRoot != "" {
+				if rel, err := filepath.Rel(modRoot, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+					return rel
 				}
 			}
-			if rel == "" {
-				rel = absPath
+
+			// Fallback: prefer cwd-relative when it doesn't escape.
+			if wd, err := os.Getwd(); err == nil {
+				if rel, err := filepath.Rel(wd, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+					return rel
+				}
 			}
-			before[absPath] = fileSnapshot{
-				sum:   sha256.Sum256(contents),
-				rel:   rel,
-				isSet: true,
-			}
+
+			return absPath
 		}
 
-		for _, f := range pkg.Files {
-			snapshotFile(f.AbsolutePath, f.RelativeFileName, f.Contents)
-		}
-		if pkg.TestPackage != nil {
-			for _, f := range pkg.TestPackage.Files {
-				snapshotFile(f.AbsolutePath, f.RelativeFileName, f.Contents)
-			}
-		}
-
-		_, skipped, err := updatedocs.ReflowAllDocumentation(pkg, updatedocs.Options{
+		modifiedFiles, skipped, err := updatedocs.ReflowDocumentationPaths(c.Args, updatedocs.Options{
 			ReflowMaxWidth: width,
 		})
 		if err != nil {
 			return err
 		}
 
-		var modified []string
-		for abs, snap := range before {
-			if !snap.isSet {
-				continue
-			}
-			afterBytes, err := os.ReadFile(abs)
-			if err != nil {
-				// If we can't read the file, don't claim it was modified.
-				continue
-			}
-			if sha256.Sum256(afterBytes) != snap.sum {
-				modified = append(modified, snap.rel)
-			}
+		uniqModified := map[string]struct{}{}
+		for _, abs := range modifiedFiles {
+			uniqModified[displayPathForModifiedFile(abs)] = struct{}{}
 		}
-		sort.Strings(modified)
-		for _, p := range modified {
+		var displayModified []string
+		for p := range uniqModified {
+			displayModified = append(displayModified, p)
+		}
+		sort.Strings(displayModified)
+		for _, p := range displayModified {
 			if _, err := fmt.Fprintln(c.Out, p); err != nil {
 				return err
 			}
