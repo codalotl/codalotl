@@ -16,9 +16,11 @@ import (
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/tui"
+	"github.com/codalotl/codalotl/internal/updatedocs"
 )
 
 var runTUIWithConfig = tui.RunWithConfig
+var reflowAllDocumentation = updatedocs.ReflowAllDocumentation
 
 type configState struct {
 	once sync.Once
@@ -203,6 +205,44 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		}),
 	}
 
+	docsCmd := &qcli.Command{
+		Name:  "docs",
+		Short: "Documentation tools.",
+	}
+
+	reflowCmd := &qcli.Command{
+		Name:  "reflow",
+		Short: "Reflow documentation in a package.",
+		Args:  qcli.ExactArgs(1),
+		Run: runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
+			pkg, _, err := loadPackageArg(c.Args[0])
+			if err != nil {
+				return err
+			}
+
+			_, skipped, err := reflowAllDocumentation(pkg, updatedocs.Options{
+				ReflowMaxWidth: cfg.ReflowWidth,
+			})
+			if err != nil {
+				return err
+			}
+			if len(skipped) == 0 {
+				return nil
+			}
+
+			if _, err := fmt.Fprintln(c.Err, "Warning: some identifiers could not be reflowed:"); err != nil {
+				return err
+			}
+			for _, id := range skipped {
+				if _, err := fmt.Fprintf(c.Err, "- %s\n", strings.TrimSpace(id)); err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
+	}
+	docsCmd.AddCommand(reflowCmd)
+
 	panicCmd := &qcli.Command{
 		Name:   "panic",
 		Hidden: true,
@@ -267,7 +307,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, panicCmd)
+	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, panicCmd)
 	return root, runState
 }
 

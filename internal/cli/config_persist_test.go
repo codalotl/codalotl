@@ -40,7 +40,7 @@ func TestPersistPreferredModel_UsesProvidenceFileWhenSet(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(globalCfgPath), 0755); err != nil {
 		t.Fatalf("mkdir global cfg dir: %v", err)
 	}
-	if err := os.WriteFile(globalCfgPath, []byte(`{"preferredmodel":"gpt-old","maxwidth":100}`+"\n"), 0644); err != nil {
+	if err := os.WriteFile(globalCfgPath, []byte(`{"preferredmodel":"gpt-old","reflowwidth":100}`+"\n"), 0644); err != nil {
 		t.Fatalf("write global cfg: %v", err)
 	}
 
@@ -49,7 +49,7 @@ func TestPersistPreferredModel_UsesProvidenceFileWhenSet(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(projectCfgPath), 0755); err != nil {
 		t.Fatalf("mkdir project cfg dir: %v", err)
 	}
-	if err := os.WriteFile(projectCfgPath, []byte(`{"maxwidth":80}`+"\n"), 0644); err != nil {
+	if err := os.WriteFile(projectCfgPath, []byte(`{"reflowwidth":80}`+"\n"), 0644); err != nil {
 		t.Fatalf("write project cfg: %v", err)
 	}
 
@@ -78,16 +78,16 @@ func TestPersistPreferredModel_UsesProvidenceFileWhenSet(t *testing.T) {
 	if got := globalObj["preferredmodel"]; got != "gpt-new" {
 		t.Fatalf("expected global preferredmodel to be updated, got %v", got)
 	}
-	if got := globalObj["maxwidth"]; got != float64(100) {
-		t.Fatalf("expected global maxwidth to be preserved, got %v", got)
+	if got := globalObj["reflowwidth"]; got != float64(100) {
+		t.Fatalf("expected global reflowwidth to be preserved, got %v", got)
 	}
 
 	projectObj := readJSONObj(t, projectCfgPath)
 	if _, ok := projectObj["preferredmodel"]; ok {
 		t.Fatalf("expected project config to remain without preferredmodel, got %v", projectObj["preferredmodel"])
 	}
-	if got := projectObj["maxwidth"]; got != float64(80) {
-		t.Fatalf("expected project maxwidth to be preserved, got %v", got)
+	if got := projectObj["reflowwidth"]; got != float64(80) {
+		t.Fatalf("expected project reflowwidth to be preserved, got %v", got)
 	}
 }
 
@@ -99,7 +99,7 @@ func TestPersistPreferredModel_UsesHighestPrecedenceFileWhenUnset(t *testing.T) 
 	if err := os.MkdirAll(filepath.Dir(projectCfgPath), 0755); err != nil {
 		t.Fatalf("mkdir project cfg dir: %v", err)
 	}
-	if err := os.WriteFile(projectCfgPath, []byte(`{"maxwidth":80}`+"\n"), 0644); err != nil {
+	if err := os.WriteFile(projectCfgPath, []byte(`{"reflowwidth":80}`+"\n"), 0644); err != nil {
 		t.Fatalf("write project cfg: %v", err)
 	}
 
@@ -128,8 +128,8 @@ func TestPersistPreferredModel_UsesHighestPrecedenceFileWhenUnset(t *testing.T) 
 	if got := projectObj["preferredmodel"]; got != "gpt-new" {
 		t.Fatalf("expected project preferredmodel to be updated, got %v", got)
 	}
-	if got := projectObj["maxwidth"]; got != float64(80) {
-		t.Fatalf("expected project maxwidth to be preserved, got %v", got)
+	if got := projectObj["reflowwidth"]; got != float64(80) {
+		t.Fatalf("expected project reflowwidth to be preserved, got %v", got)
 	}
 }
 

@@ -25,7 +25,7 @@ When codalotl starts, we load and validate configuration and required tools (exc
 Notes:
 - Any argument <path/to/pkg> can either use a Go-style package path (ex: `.`; `..`; `./internal/cli`) to a single package OR a relative/absolute dir (ex: `internal/cli`; `/home/proj/codalotl/internal/cli`), with optional trailing `/`.
     - It may NOT use `...` package patterns (if we need this, we'll invent a new identifier for it, for instance: <package_pattern>).
-- The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (muscle memory with tools like `code .`).
+- The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (for muscle memory with tools like `code .`).
 
 ### codalotl -h, codalotl --help
 
@@ -119,6 +119,9 @@ Notes:
 - If `--deps` is set, packages from direct (non-`// indirect`) module dependencies are also included.
 - The output format is intentionally opaque and may change; callers should treat it as text intended to be copied into an LLM prompt rather than parsed.
 
+### codalotl docs reflow <path/to/pkg>
+
+Reflows the specified package using `updatedocs.ReflowAllDocumentation`. Reflow width is pulled from config.
 
 ## Configuration
 
@@ -135,7 +138,7 @@ Config:
 type Config struct {
 	ProviderKeys          ProviderKeys       `json:"providerkeys"`
 	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
-	MaxWidth              int                `json:"maxwidth"` // Max width when reflowing documentation. Default to 120
+	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Default to 120
 	MaxWidthProvidence    cascade.Providence `json:"-"`
 	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
 	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`

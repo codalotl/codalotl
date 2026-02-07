@@ -24,10 +24,10 @@ type Config struct {
 
 	CustomModels []CustomModel `json:"custommodels,omitempty"`
 
-	// MaxWidth is the max width when reflowing documentation.
+	// ReflowWidth is the max width when reflowing documentation.
 	// Defaults to 120.
-	MaxWidth           int                `json:"maxwidth"`
-	MaxWidthProvidence cascade.Providence `json:"-"`
+	ReflowWidth           int                `json:"reflowwidth"`
+	ReflowWidthProvidence cascade.Providence `json:"-"`
 
 	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`
 	DisableCrashReporting bool `json:"disablecrashreporting,omitempty"`
@@ -74,7 +74,7 @@ type CustomModel struct {
 
 func loadConfig() (Config, error) {
 	loader := cascade.New().WithDefaults(map[string]any{
-		"maxwidth": 120,
+		"reflowwidth": 120,
 	})
 
 	// Global user config.
@@ -106,8 +106,8 @@ func loadConfig() (Config, error) {
 }
 
 func validateConfig(cfg Config) error {
-	if cfg.MaxWidth <= 0 {
-		return fmt.Errorf("invalid configuration: maxwidth must be > 0 (got %d)", cfg.MaxWidth)
+	if cfg.ReflowWidth <= 0 {
+		return fmt.Errorf("invalid configuration: reflowwidth must be > 0 (got %d)", cfg.ReflowWidth)
 	}
 	return nil
 }
