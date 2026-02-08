@@ -46,6 +46,8 @@ type Step struct {
 
 const defaultReflowWidth = 120
 
+const reflowCheckInstructions = "never manually fix these unless asked; fixing is automatic on apply_patch"
+
 // DefaultSteps returns the default lint steps.
 //
 // It is equivalent to ResolveSteps(nil, 0).
@@ -469,12 +471,17 @@ func runReflow(moduleDir string, relativePackageDir string, targetPkgAbsDir stri
 	}
 	args = append(args, fmt.Sprintf("--width=%d", width), relativePackageDir)
 
+	attrs := []string{"mode", modeAttr}
+	if modeAttr == "check" {
+		attrs = append(attrs, "instructions", reflowCheckInstructions)
+	}
+
 	cr := cmdrunner.CommandResult{
 		Command:           "codalotl",
 		Args:              args,
 		Output:            strings.Join(outLines, "\n"),
 		MessageIfNoOutput: "no issues found",
-		Attrs:             []string{"mode", modeAttr},
+		Attrs:             attrs,
 		ExecStatus:        cmdrunner.ExecStatusCompleted,
 		ExecError:         fnErr,
 		Outcome:           outcome,

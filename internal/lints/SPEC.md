@@ -170,7 +170,10 @@ $ codalotl docs reflow --width=120 path/to/pkg
 </command>
 ```
 
-In `check` mode, the same rendering is used, but `ok="false"` when any files would change (and the output lists those files). The command invocation is rendered with `--check`.
+In `check` mode:
+- Rhe same rendering is used, but `ok="false"` when any files would change (and the output lists those files).
+- The command invocation is rendered with `--check`.
+- Attrs are used to give instructions: `instructions="never manually fix these unless asked; fixing is automatic on apply_patch"` (only for `check`).
 
 ## Public API
 
