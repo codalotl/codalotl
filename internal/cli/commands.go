@@ -218,6 +218,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	}
 	reflowFlags := reflowCmd.Flags()
 	reflowWidth := reflowFlags.Int("width", 'w', 0, "Override reflow width (default: config reflowwidth).")
+	reflowCheck := reflowFlags.Bool("check", 0, false, "Don't write files; only print which files would change.")
 	reflowCmd.Run = runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 		width := cfg.ReflowWidth
 		if *reflowWidth != 0 {
@@ -259,7 +260,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			return absPath
 		}
 
-		modifiedFiles, skipped, err := updatedocs.ReflowDocumentationPaths(c.Args, updatedocs.Options{
+		modifiedFiles, skipped, err := updatedocs.ReflowDocumentationPaths(c.Args, *reflowCheck, updatedocs.Options{
 			ReflowMaxWidth: width,
 		})
 		if err != nil {

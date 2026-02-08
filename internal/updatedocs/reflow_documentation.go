@@ -16,11 +16,13 @@ import (
 //
 // See ReflowDocumentation for details on what reflowing means.
 //
+// If dryRun is true, this function will still compute which files would be modified, but it will leave the on-disk contents unchanged.
+//
 // It returns:
 //   - a list of modified files (or nil of nothing was modified).
 //   - a list of identifiers that failed reflow.
 //   - an overall error, if any. NOTE: failed identifiers do NOT cause an overall error. An overall error is returned for things like I/O errors.
-func ReflowDocumentationPaths(paths []string, options ...Options) (modifiedFiles []string, failedIdentifiers []string, fnErr error) {
+func ReflowDocumentationPaths(paths []string, dryRun bool, options ...Options) (modifiedFiles []string, failedIdentifiers []string, fnErr error) {
 	if len(paths) == 0 {
 		return nil, nil, nil
 	}
@@ -130,143 +132,175 @@ func ReflowDocumentationPaths(paths []string, options ...Options) (modifiedFiles
 	moduleCache := map[string]*gocode.Module{} // module abs dir -> module
 
 	for _, absDir := range targetDirs {
-		t := targets[absDir]
+		if err := func() (err error) {
+			t := targets[absDir]
 
-		m, err := gocode.NewModule(absDir)
-		if err != nil {
-			return collect(err)
-		}
-		mod := moduleCache[m.AbsolutePath]
-		if mod == nil {
-			moduleCache[m.AbsolutePath] = m
-			mod = m
-		}
-
-		pkgRelDir, err := filepath.Rel(mod.AbsolutePath, absDir)
-		if err != nil {
-			return collect(err)
-		}
-		if pkgRelDir == "" {
-			pkgRelDir = "."
-		}
-
-		pkg, err := mod.LoadPackageByRelativeDir(pkgRelDir)
-		if err != nil {
-			return collect(err)
-		}
-
-		// Select files and take pre-reflow snapshots.
-		beforeByAbsPath := map[string][]byte{}
-		addBefore := func(absPath string) error {
-			if _, ok := beforeByAbsPath[absPath]; ok {
-				return nil
-			}
-			b, err := os.ReadFile(absPath)
+			m, err := gocode.NewModule(absDir)
 			if err != nil {
 				return err
 			}
-			beforeByAbsPath[absPath] = b
-			return nil
-		}
-
-		var mainFiles []string
-		var testFiles []string
-
-		if t.all {
-			for _, f := range pkg.Files {
-				if err := addBefore(f.AbsolutePath); err != nil {
-					return collect(err)
-				}
+			mod := moduleCache[m.AbsolutePath]
+			if mod == nil {
+				moduleCache[m.AbsolutePath] = m
+				mod = m
 			}
-			if pkg.HasTestPackage() {
-				for _, f := range pkg.TestPackage.Files {
-					if err := addBefore(f.AbsolutePath); err != nil {
-						return collect(err)
-					}
-				}
-			}
-		} else {
-			for fileName := range t.files {
-				if f, ok := pkg.Files[fileName]; ok {
-					mainFiles = append(mainFiles, fileName)
-					if err := addBefore(f.AbsolutePath); err != nil {
-						return collect(err)
-					}
-					continue
-				}
-				if pkg.HasTestPackage() {
-					if f, ok := pkg.TestPackage.Files[fileName]; ok {
-						testFiles = append(testFiles, fileName)
-						if err := addBefore(f.AbsolutePath); err != nil {
-							return collect(err)
-						}
-						continue
-					}
-				}
-				return collect(fmt.Errorf("file %q not found in package %s", fileName, pkg.AbsolutePath()))
-			}
-		}
 
-		sort.Strings(mainFiles)
-		sort.Strings(testFiles)
+			pkgRelDir, err := filepath.Rel(mod.AbsolutePath, absDir)
+			if err != nil {
+				return err
+			}
+			if pkgRelDir == "" {
+				pkgRelDir = "."
+			}
 
-		diffAndRecord := func() error {
-			for absPath, before := range beforeByAbsPath {
-				after, err := os.ReadFile(absPath)
+			pkg, err := mod.LoadPackageByRelativeDir(pkgRelDir)
+			if err != nil {
+				return err
+			}
+
+			// Select files and take pre-reflow snapshots.
+			beforeByAbsPath := map[string][]byte{}
+			addBefore := func(absPath string) error {
+				if _, ok := beforeByAbsPath[absPath]; ok {
+					return nil
+				}
+				b, err := os.ReadFile(absPath)
 				if err != nil {
 					return err
 				}
-				if !bytes.Equal(before, after) {
-					modifiedSet[absPath] = struct{}{}
+				beforeByAbsPath[absPath] = b
+				return nil
+			}
+
+			var mainFiles []string
+			var testFiles []string
+
+			if t.all {
+				for _, f := range pkg.Files {
+					if err := addBefore(f.AbsolutePath); err != nil {
+						return err
+					}
+				}
+				if pkg.HasTestPackage() {
+					for _, f := range pkg.TestPackage.Files {
+						if err := addBefore(f.AbsolutePath); err != nil {
+							return err
+						}
+					}
+				}
+			} else {
+				for fileName := range t.files {
+					if f, ok := pkg.Files[fileName]; ok {
+						mainFiles = append(mainFiles, fileName)
+						if err := addBefore(f.AbsolutePath); err != nil {
+							return err
+						}
+						continue
+					}
+					if pkg.HasTestPackage() {
+						if f, ok := pkg.TestPackage.Files[fileName]; ok {
+							testFiles = append(testFiles, fileName)
+							if err := addBefore(f.AbsolutePath); err != nil {
+								return err
+							}
+							continue
+						}
+					}
+					return fmt.Errorf("file %q not found in package %s", fileName, pkg.AbsolutePath())
 				}
 			}
+
+			sort.Strings(mainFiles)
+			sort.Strings(testFiles)
+
+			diffAndRecord := func() error {
+				for absPath, before := range beforeByAbsPath {
+					after, err := os.ReadFile(absPath)
+					if err != nil {
+						return err
+					}
+					if !bytes.Equal(before, after) {
+						modifiedSet[absPath] = struct{}{}
+					}
+				}
+				return nil
+			}
+
+			restore := func() error {
+				if !dryRun {
+					return nil
+				}
+				for absPath, before := range beforeByAbsPath {
+					after, err := os.ReadFile(absPath)
+					if err != nil {
+						return err
+					}
+					if bytes.Equal(before, after) {
+						continue
+					}
+					if err := os.WriteFile(absPath, before, 0o666); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+
+			// Ensure we record diffs for return values, and (optionally) roll back any file writes.
+			// Note: when dryRun is true, these must run in this order: diff first, then restore.
+			defer func() {
+				if err2 := restore(); err == nil && err2 != nil {
+					err = err2
+				}
+			}()
+			defer func() {
+				if err2 := diffAndRecord(); err == nil && err2 != nil {
+					err = err2
+				}
+			}()
+
+			// Reflow main package identifiers.
+			{
+				var filter gocode.FilterIdentifiersOptions
+				filter.IncludeTestFuncs = true
+				filter.OnlyAnyDocs = true
+				if !t.all {
+					filter.Files = mainFiles
+				}
+
+				mainIDs := pkg.FilterIdentifiers(nil, filter)
+				updatedPkg, failed, err := ReflowDocumentation(pkg, mainIDs, opts)
+				if err != nil {
+					return err
+				}
+				for _, id := range failed {
+					failedSet[id] = struct{}{}
+				}
+				if updatedPkg != nil {
+					pkg = updatedPkg
+				}
+			}
+
+			// Reflow external test package identifiers, if any.
+			if pkg.HasTestPackage() {
+				var filter gocode.FilterIdentifiersOptions
+				filter.IncludeTestFuncs = true
+				filter.OnlyAnyDocs = true
+				if !t.all {
+					filter.Files = testFiles
+				}
+
+				testIDs := pkg.TestPackage.FilterIdentifiers(nil, filter)
+				_, failed, err := ReflowDocumentation(pkg.TestPackage, testIDs, opts)
+				if err != nil {
+					return err
+				}
+				for _, id := range failed {
+					failedSet[id] = struct{}{}
+				}
+			}
+
 			return nil
-		}
-
-		// Reflow main package identifiers.
-		{
-			var filter gocode.FilterIdentifiersOptions
-			filter.IncludeTestFuncs = true
-			filter.OnlyAnyDocs = true
-			if !t.all {
-				filter.Files = mainFiles
-			}
-
-			mainIDs := pkg.FilterIdentifiers(nil, filter)
-			updatedPkg, failed, err := ReflowDocumentation(pkg, mainIDs, opts)
-			if err != nil {
-				_ = diffAndRecord()
-				return collect(err)
-			}
-			for _, id := range failed {
-				failedSet[id] = struct{}{}
-			}
-			if updatedPkg != nil {
-				pkg = updatedPkg
-			}
-		}
-
-		// Reflow external test package identifiers, if any.
-		if pkg.HasTestPackage() {
-			var filter gocode.FilterIdentifiersOptions
-			filter.IncludeTestFuncs = true
-			filter.OnlyAnyDocs = true
-			if !t.all {
-				filter.Files = testFiles
-			}
-
-			testIDs := pkg.TestPackage.FilterIdentifiers(nil, filter)
-			_, failed, err := ReflowDocumentation(pkg.TestPackage, testIDs, opts)
-			if err != nil {
-				_ = diffAndRecord()
-				return collect(err)
-			}
-			for _, id := range failed {
-				failedSet[id] = struct{}{}
-			}
-		}
-
-		if err := diffAndRecord(); err != nil {
+		}(); err != nil {
 			return collect(err)
 		}
 	}

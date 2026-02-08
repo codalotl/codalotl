@@ -829,7 +829,7 @@ func TestReflowDocumentationPaths_Sanity_File(t *testing.T) {
 		aPath := pkg.Files["a.go"].AbsolutePath
 		bPath := pkg.Files["b.go"].AbsolutePath
 
-		modified, failed, err := ReflowDocumentationPaths([]string{aPath}, Options{
+		modified, failed, err := ReflowDocumentationPaths([]string{aPath}, false, Options{
 			ReflowMaxWidth: 80,
 		})
 		assert.NoError(t, err)
@@ -839,6 +839,44 @@ func TestReflowDocumentationPaths_Sanity_File(t *testing.T) {
 		aBytes, err := os.ReadFile(aPath)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedA, string(aBytes))
+
+		bBytes, err := os.ReadFile(bPath)
+		assert.NoError(t, err)
+		assert.Equal(t, initialB, string(bBytes))
+	})
+}
+
+func TestReflowDocumentationPaths_DryRun(t *testing.T) {
+	initialA := dedent(`
+		package mypkg
+
+		// MyFunction is a function with a very long comment that should be wrapped because it exceeds the maximum line width that we are going to set in the options for the test.
+		func MyFunction() {}
+	`)
+	initialB := dedent(`
+		package mypkg
+
+		// Other is fine as-is.
+		func Other() {}
+	`)
+
+	gocodetesting.WithMultiCode(t, map[string]string{
+		"a.go": initialA,
+		"b.go": initialB,
+	}, func(pkg *gocode.Package) {
+		aPath := pkg.Files["a.go"].AbsolutePath
+		bPath := pkg.Files["b.go"].AbsolutePath
+
+		modified, failed, err := ReflowDocumentationPaths([]string{aPath}, true, Options{
+			ReflowMaxWidth: 80,
+		})
+		assert.NoError(t, err)
+		assert.Empty(t, failed)
+		assert.Equal(t, []string{aPath}, modified)
+
+		aBytes, err := os.ReadFile(aPath)
+		assert.NoError(t, err)
+		assert.Equal(t, initialA, string(aBytes))
 
 		bBytes, err := os.ReadFile(bPath)
 		assert.NoError(t, err)

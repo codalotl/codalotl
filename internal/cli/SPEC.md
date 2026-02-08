@@ -119,10 +119,11 @@ Notes:
 - If `--deps` is set, packages from direct (non-`// indirect`) module dependencies are also included.
 - The output format is intentionally opaque and may change; callers should treat it as text intended to be copied into an LLM prompt rather than parsed.
 
-### codalotl docs reflow [--width <reflowwidth>] <path> ...
+### codalotl docs reflow [--width <reflowwidth>] [--check] <path> ...
 
 Reflows the specified path(s) using `updatedocs.ReflowDocumentationPaths`. Reflow width is pulled from config.
 If `--width` is provided, it overrides the configured `reflowwidth` for that invocation only.
+If `--check` is provided, reflow is run as a dry-run: no files are modified on disk, but the output still lists which files would change.
 
 Output:
 - Prints the list of modified `.go` files (one per line) to stdout, similar to `gofmt -l`. The paths are module-relative when available.
