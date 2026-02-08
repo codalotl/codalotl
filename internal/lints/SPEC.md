@@ -203,7 +203,7 @@ type Step struct {
 	ID  string   `json:"id,omitempty"`
 
 	// Check/Fix override Cmd for their respective actions.
-	Check *cmdrunner.Command `json:"check,omitempty"` // TODO: tag cmdrunner.Command with JSON tags
+	Check *cmdrunner.Command `json:"check,omitempty"`
 	Fix   *cmdrunner.Command `json:"fix,omitempty"`
 }
 
