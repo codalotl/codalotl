@@ -448,3 +448,22 @@ func TestRunnerRunContextTimeout(t *testing.T) {
 	require.Error(t, cr.ExecError)
 	require.True(t, errors.Is(cr.ExecError, context.DeadlineExceeded))
 }
+
+func TestRunnerRunCommandAttrsMustBeEvenLength(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	runner := NewRunner(nil, nil)
+	runner.AddCommand(Command{
+		Command: "echo",
+		Args:    []string{"hello"},
+		Attrs:   []string{"key-without-value"},
+	})
+
+	result, err := runner.Run(context.Background(), root, nil)
+	require.Error(t, err)
+	require.Empty(t, result.Results)
+	require.ErrorContains(t, err, "attrs must have even length")
+	require.ErrorContains(t, err, "command[0]")
+}

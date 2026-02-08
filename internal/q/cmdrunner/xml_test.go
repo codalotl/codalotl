@@ -217,3 +217,64 @@ $ echo world
 
 	require.Equal(t, want, got)
 }
+
+func TestResultToXMLAttrs_Single(t *testing.T) {
+	t.Parallel()
+
+	result := Result{
+		Results: []CommandResult{
+			{
+				Command:    "echo",
+				Args:       []string{"hello"},
+				ExecStatus: ExecStatusCompleted,
+				ExitCode:   0,
+				Outcome:    OutcomeSuccess,
+				Attrs:      []string{"dryrun", "true", "lang", "go"},
+			},
+		},
+	}
+
+	got := result.ToXML("cmd-status")
+	want := `<cmd-status ok="true" dryrun="true" lang="go">
+$ echo hello
+</cmd-status>`
+
+	require.Equal(t, want, got)
+}
+
+func TestResultToXMLAttrs_Multiple(t *testing.T) {
+	t.Parallel()
+
+	result := Result{
+		Results: []CommandResult{
+			{
+				Command:    "echo",
+				Args:       []string{"hello"},
+				ExecStatus: ExecStatusCompleted,
+				ExitCode:   0,
+				Outcome:    OutcomeSuccess,
+				Attrs:      []string{"dryrun", "true"},
+			},
+			{
+				Command:    "echo",
+				Args:       []string{"world"},
+				ExecStatus: ExecStatusCompleted,
+				ExitCode:   0,
+				Outcome:    OutcomeSuccess,
+				Attrs:      []string{"lang", "go", "phase", "2"},
+			},
+		},
+	}
+
+	got := result.ToXML("echoes")
+	want := `<echoes ok="true">
+<command ok="true" dryrun="true">
+$ echo hello
+</command>
+<command ok="true" lang="go" phase="2">
+$ echo world
+</command>
+</echoes>`
+
+	require.Equal(t, want, got)
+}

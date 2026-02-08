@@ -81,6 +81,10 @@ func commandAttributes(res CommandResult) string {
 		parts = append(parts, fmt.Sprintf(`message="%s"`, res.MessageIfNoOutput))
 	}
 
+	for i := 0; i+1 < len(res.Attrs); i += 2 {
+		parts = append(parts, fmt.Sprintf(`%s="%s"`, res.Attrs[i], res.Attrs[i+1]))
+	}
+
 	if res.ExecStatus != "" && res.ExecStatus != ExecStatusCompleted {
 		parts = append(parts, fmt.Sprintf(`exec-status="%s"`, res.ExecStatus))
 	}

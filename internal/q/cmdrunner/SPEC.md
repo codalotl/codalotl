@@ -164,6 +164,12 @@ type Command struct {
 
     // If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.
     ShowCWD bool
+
+    // Attrs are pairs of keys/values that will be added to the corresponding CommandResult's ToXML tag. len(Attrs) must be a mulitple of 2. Strings are NOT validated or escaped.
+    // For instance, ["dryrun", "true"] renders (for instance) `<command ok="true" dryrun="true">...</command>`.
+    //
+    // This can be used to communicate metadata to a consuming LLM about the command.
+    Attrs []string
 }
 ```
 

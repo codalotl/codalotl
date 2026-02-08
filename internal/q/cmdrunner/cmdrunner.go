@@ -102,6 +102,10 @@ func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any)
 
 	results := make([]CommandResult, len(r.commands))
 	for i, cmd := range r.commands {
+		if len(cmd.Attrs)%2 != 0 {
+			return Result{}, fmt.Errorf("cmdrunner: command[%d]: attrs must have even length, got %d", i, len(cmd.Attrs))
+		}
+
 		renderedCommand := cmd.Command
 		if cmd.Command != "" {
 			renderedCommand, err = renderTemplate(fmt.Sprintf("command_%d", i), cmd.Command, funcs, templateData)
@@ -151,6 +155,7 @@ func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any)
 			CWD:               renderedCWD,
 			MessageIfNoOutput: cmd.MessageIfNoOutput,
 			ShowCWD:           cmd.ShowCWD,
+			Attrs:             append([]string(nil), cmd.Attrs...),
 		}
 
 		results[i] = executeCommand(ctx, cmd, initial)
@@ -175,6 +180,11 @@ type Command struct {
 	MessageIfNoOutput      string `json:"messageifnooutput"`
 	// ShowCWD, when true, instructs XML rendering to include the command's CWD.
 	ShowCWD bool `json:"showcwd"`
+
+	// Attrs are pairs of keys/values that will be added to the corresponding
+	// command tag when rendering ToXML output. len(Attrs) must be a multiple of 2.
+	// Strings are NOT validated or escaped.
+	Attrs []string `json:"attrs"`
 }
 
 // Result aggregates all command executions performed by Run.
@@ -220,6 +230,7 @@ type CommandResult struct {
 	Output            string
 	MessageIfNoOutput string
 	ShowCWD           bool
+	Attrs             []string
 	ExecStatus        ExecStatus
 	ExecError         error
 	ExitCode          int
