@@ -71,8 +71,8 @@ type Config struct {
         "id": "staticcheck",
         "check": {
           "command": "staticcheck",
-          "args": ["{{ .path }}"],
-          "cwd": "{{ manifestDir .path }}"
+          "args": ["{{ .relativePackageDir }}"],
+          "cwd": "{{ .moduleDir }}"
         }
       }
     ]
@@ -103,7 +103,9 @@ Reserved/default step IDs:
 The commands are specified and run with `internal/q/cmdrunner`. As such, they use its template variables:
 - `rootDir` = sandbox dir
 - inputs:
-  - `path`: absolute package directory (cmdrunner `InputTypePathDir`)
+  - `path` (`InputTypePathDir`): absolute package directory.
+  - `moduleDir` (`InputTypePathDir`): absolute module directory (dir of `go.mod`).
+  - `relativePackageDir` (`InputTypeString`): package dir relative to `moduleDir` (ex: `internal/somepkg`).
 - cmdrunner templating is available (ex: `manifestDir`, `relativeTo`, `repoDir`, `DevNull`).
 
 ## Default Lints
@@ -117,9 +119,11 @@ The following code is an example of how gofmt is run (this code is for illustrat
 ```go
 func newGoFmtRunner(fix bool) *cmdrunner.Runner {
 	inputSchema := map[string]cmdrunner.InputType{
-		"path": cmdrunner.InputTypePathDir,
+		"path":               cmdrunner.InputTypePathDir,
+		"moduleDir":          cmdrunner.InputTypePathDir,
+		"relativePackageDir": cmdrunner.InputTypeString,
 	}
-	runner := cmdrunner.NewRunner(inputSchema, []string{"path"})
+	runner := cmdrunner.NewRunner(inputSchema, []string{"path", "moduleDir", "relativePackageDir"})
 	args := []string{"-l"}
 	attrs := []string{"mode"}
 	if fix {
@@ -128,14 +132,14 @@ func newGoFmtRunner(fix bool) *cmdrunner.Runner {
 	} else {
 		attrs = append(attrs, "check")
 	}
-	args = append(args, "{{ relativeTo .path (manifestDir .path) }}")
+	args = append(args, "{{ .relativePackageDir }}")
 
 	runner.AddCommand(cmdrunner.Command{
 		Command:                "gofmt",
 		Args:                   args,
 		OutcomeFailIfAnyOutput: !fix,
 		MessageIfNoOutput:      "no issues found",
-		CWD:                    "{{ manifestDir .path }}",
+		CWD:                    "{{ .moduleDir }}",
 		Attrs:                  attrs,
 	})
 	return runner

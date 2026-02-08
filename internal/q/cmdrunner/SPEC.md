@@ -222,3 +222,15 @@ type CommandResult struct {
     Duration time.Duration
 }
 ```
+
+```go {api}
+
+// ManifestDir returns the manifest dir for `path` and the path relative to that manifest dir.
+//
+// Conceptually equivalent to:
+//   - {{ manifestDir .path }}
+//   - {{ relativeTo .path (manifestDir .path) }}
+//
+// Errors are returned if `rootDir` is empty/invalid/not a directory, or if the relative path computation fails.
+func ManifestDir(rootDir string, path string) (string, string, error)
+```
