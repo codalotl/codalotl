@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
@@ -21,9 +22,14 @@ type Config struct {
 	// ColorProfile overrides the detected color profile when non-empty.
 	ColorProfile termformat.ColorProfile
 
-	// ModelID selects the LLM model to use. If empty, the TUI uses the same
-	// default model as it does today (llmmodel.DefaultModel).
+	// ModelID selects the LLM model to use. If empty, the TUI uses llmmodel.DefaultModel.
 	ModelID llmmodel.ModelID
+
+	// LintSteps controls which lint steps the agent runs.
+	LintSteps []lints.Step
+
+	// ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
+	ReflowWidth int
 
 	// PersistModelID, when non-nil, is called by the TUI when the user changes
 	// the active model via UI commands (ex: the planned `/model` command).
