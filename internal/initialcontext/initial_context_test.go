@@ -21,7 +21,7 @@ func TestCreate_CodeAITools(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/tools/coretools")
 	require.NoError(t, err)
 
-	got, err := Create(pkg, false)
+	got, err := Create(pkg, nil, false)
 	require.NoError(t, err)
 
 	// fmt.Println(got)
@@ -46,7 +46,7 @@ func TestCreate_SkipAllChecks(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/tools/coretools")
 	require.NoError(t, err)
 
-	got, err := Create(pkg, true)
+	got, err := Create(pkg, nil, true)
 	require.NoError(t, err)
 
 	assert.NotContains(t, got, "<used-by>")
@@ -65,7 +65,7 @@ func TestCreate_SkipTestsInRecursion(t *testing.T) {
 	pkg, err := mod.LoadPackageByRelativeDir("internal/initialcontext")
 	require.NoError(t, err)
 
-	got, err := Create(pkg, false)
+	got, err := Create(pkg, nil, false)
 	require.NoError(t, err)
 
 	assert.Contains(t, got, "$ go test ./internal/initialcontext")
