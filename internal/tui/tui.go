@@ -133,7 +133,10 @@ func RunWithConfig(cfg Config) error {
 		ErrorColor:      palette.redForeground,
 	}
 	agentFormatter := agentformatter.NewTUIFormatter(formatterCfg)
-	initialCfg := sessionConfig{modelID: cfg.ModelID}
+	initialCfg := sessionConfig{
+		modelID:   cfg.ModelID,
+		lintSteps: cfg.LintSteps,
+	}
 	initialSession, err := newSession(initialCfg)
 	if err != nil {
 		return err

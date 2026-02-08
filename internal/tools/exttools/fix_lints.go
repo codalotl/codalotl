@@ -5,8 +5,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"strings"
@@ -20,17 +20,19 @@ const ToolNameFixLints = "fix_lints"
 type toolFixLints struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
+	lintSteps     []lints.Step
 }
 
 type fixLintsParams struct {
 	Path string `json:"path"`
 }
 
-func NewFixLintsTool(authorizer authdomain.Authorizer) llmstream.Tool {
+func NewFixLintsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolFixLints{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
+		lintSteps:     lintSteps,
 	}
 }
 
@@ -75,7 +77,7 @@ func (t *toolFixLints) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		}
 	}
 
-	output, err := FixLints(ctx, t.sandboxAbsDir, absPkgPath)
+	output, err := FixLints(ctx, t.sandboxAbsDir, absPkgPath, t.lintSteps)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
@@ -88,54 +90,24 @@ func (t *toolFixLints) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 }
 
-// FixLints runs gofmt with -l -w against targetPath (file or directory), returning a lint-status XML block.
-// The command output is included; if gofmt makes no changes, a helpful message is returned instead.
-func FixLints(ctx context.Context, sandboxDir string, targetPath string) (string, error) {
-	return runGoFmt(ctx, sandboxDir, targetPath, true)
+// FixLints runs the configured lint pipeline against targetPath (file or directory), returning a lint-status XML block.
+func FixLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step) (string, error) {
+	return runLints(ctx, sandboxDir, targetPath, steps, lints.ActionFix)
 }
 
-// CheckLints runs gofmt -l against targetPath (file or directory), returning a lint-status XML block.
-// The command output is included; if no formatting issues are found, a helpful message is returned instead.
-func CheckLints(ctx context.Context, sandboxDir string, targetPath string) (string, error) {
-	return runGoFmt(ctx, sandboxDir, targetPath, false)
+// CheckLints runs the configured lint pipeline in check mode against targetPath (file or directory), returning a lint-status XML block.
+func CheckLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step) (string, error) {
+	return runLints(ctx, sandboxDir, targetPath, steps, lints.ActionCheck)
 }
 
-func runGoFmt(ctx context.Context, sandboxDir string, targetPath string, write bool) (string, error) {
+func runLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step, action lints.Action) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	runner := newGoFmtRunner(write)
-	result, err := runner.Run(ctx, sandboxDir, map[string]any{
-		"path": targetPath,
-	})
-	if err != nil {
-		return "", err
+	if steps == nil {
+		steps = lints.DefaultSteps()
 	}
 
-	return result.ToXML("lint-status"), nil
-}
-
-func newGoFmtRunner(write bool) *cmdrunner.Runner {
-	inputSchema := map[string]cmdrunner.InputType{
-		"path": cmdrunner.InputTypePathAny,
-	}
-
-	runner := cmdrunner.NewRunner(inputSchema, []string{"path"})
-
-	args := []string{"-l"}
-	if write {
-		args = append(args, "-w")
-	}
-	args = append(args, "{{ relativeTo .path (manifestDir .path) }}")
-
-	runner.AddCommand(cmdrunner.Command{
-		Command:                "gofmt",
-		Args:                   args,
-		OutcomeFailIfAnyOutput: !write,
-		MessageIfNoOutput:      "no issues found",
-		CWD:                    "{{ manifestDir .path }}",
-	})
-
-	return runner
+	return lints.Run(ctx, sandboxDir, targetPath, steps, action)
 }

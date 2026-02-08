@@ -1,9 +1,11 @@
 package toolsets
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
@@ -11,11 +13,23 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 )
 
+type ToolsetOptions struct {
+	// LintSteps configures the lint pipeline used by tools like `fix_lints` and
+	// apply_patch post-checks.
+	//
+	// Nil means "use defaults". An empty slice means "no linters".
+	LintSteps []lints.Step
+}
+
 // CoreAgentTools offers tools similar to a Codex-style agent: read_file, ls, apply_patch, shell, and update_plan.
 //
 // sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually
 // **implements** the jail. The purpose of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
 func CoreAgentTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error) {
+	return CoreAgentToolsWithOptions(sandboxDir, authorizer, ToolsetOptions{})
+}
+
+func CoreAgentToolsWithOptions(sandboxDir string, authorizer authdomain.Authorizer, _ ToolsetOptions) ([]llmstream.Tool, error) {
 	if !filepath.IsAbs(sandboxDir) {
 		return nil, fmt.Errorf("sandboxDir must be an absolute path")
 	}
@@ -41,6 +55,10 @@ func CoreAgentTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llms
 //
 // sandboxDir is simply the absolute path that relative paths received by the LLM are relative to. It is NOT the package jail dir.
 func PackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error) {
+	return PackageAgentToolsWithOptions(sandboxDir, authorizer, goPkgAbsDir, ToolsetOptions{})
+}
+
+func PackageAgentToolsWithOptions(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string, opts ToolsetOptions) ([]llmstream.Tool, error) {
 	if !filepath.IsAbs(sandboxDir) {
 		return nil, fmt.Errorf("sandboxDir must be an absolute path")
 	}
@@ -53,13 +71,15 @@ func PackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPk
 		sandboxAuthorizer = sandboxAuthorizer.WithoutCodeUnit()
 	}
 
+	lintSteps := lintStepsOrDefault(opts.LintSteps)
+
 	tools := []llmstream.Tool{
 		coretools.NewReadFileTool(authorizer),
 		coretools.NewLsTool(authorizer),
-		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks()),
+		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks(lintSteps)),
 		coretools.NewUpdatePlanTool(authorizer),
 		exttools.NewDiagnosticsTool(authorizer),
-		exttools.NewFixLintsTool(authorizer),
+		exttools.NewFixLintsTool(authorizer, lintSteps),
 		exttools.NewRunTestsTool(authorizer),
 		exttools.NewRunProjectTestsTool(goPkgAbsDir, authorizer),
 		pkgtools.NewModuleInfoTool(authorizer),
@@ -98,6 +118,10 @@ func SimpleReadOnlyTools(sandboxDir string, authorizer authdomain.Authorizer) ([
 //
 // See PackageAgentTools for other param descriptions.
 func LimitedPackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error) {
+	return LimitedPackageAgentToolsWithOptions(sandboxDir, authorizer, goPkgAbsDir, ToolsetOptions{})
+}
+
+func LimitedPackageAgentToolsWithOptions(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string, opts ToolsetOptions) ([]llmstream.Tool, error) {
 	if !filepath.IsAbs(sandboxDir) {
 		return nil, fmt.Errorf("sandboxDir must be an absolute path")
 	}
@@ -110,12 +134,14 @@ func LimitedPackageAgentTools(sandboxDir string, authorizer authdomain.Authorize
 		sandboxAuthorizer = sandboxAuthorizer.WithoutCodeUnit()
 	}
 
+	lintSteps := lintStepsOrDefault(opts.LintSteps)
+
 	tools := []llmstream.Tool{
 		coretools.NewReadFileTool(authorizer),
 		coretools.NewLsTool(authorizer),
-		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks()),
+		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks(lintSteps)),
 		exttools.NewDiagnosticsTool(authorizer),
-		exttools.NewFixLintsTool(authorizer),
+		exttools.NewFixLintsTool(authorizer, lintSteps),
 		exttools.NewRunTestsTool(authorizer),
 		pkgtools.NewGetPublicAPITool(authorizer),
 		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
@@ -124,9 +150,21 @@ func LimitedPackageAgentTools(sandboxDir string, authorizer authdomain.Authorize
 	return tools, nil
 }
 
-func packageApplyPatchPostChecks() *coretools.ApplyPatchPostChecks {
+func lintStepsOrDefault(steps []lints.Step) []lints.Step {
+	if steps == nil {
+		return lints.DefaultSteps()
+	}
+	return steps
+}
+
+func packageApplyPatchPostChecks(lintSteps []lints.Step) *coretools.ApplyPatchPostChecks {
 	return &coretools.ApplyPatchPostChecks{
 		RunDiagnostics: exttools.RunDiagnostics,
-		FixLints:       exttools.FixLints,
+		FixLints: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			return lints.Run(ctx, sandboxDir, targetDir, lintSteps, lints.ActionFix)
+		},
 	}
 }

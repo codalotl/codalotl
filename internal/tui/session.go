@@ -14,6 +14,7 @@ import (
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
@@ -45,6 +46,7 @@ type session struct {
 type sessionConfig struct {
 	packagePath string
 	modelID     llmmodel.ModelID
+	lintSteps   []lints.Step
 	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd).
 	// This is primarily to make tests independent of process-wide working directory
 	// and to avoid path aliasing issues (ex: /var vs /private/var on macOS).
@@ -109,14 +111,18 @@ func newSession(cfg sessionConfig) (*session, error) {
 		}
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
 		toolAuthorizer = pkgAuthorizer
-		tools, err = toolsets.PackageAgentTools(sandboxDir, pkgAuthorizer, pkgAbsPath)
+		tools, err = toolsets.PackageAgentToolsWithOptions(sandboxDir, pkgAuthorizer, pkgAbsPath, toolsets.ToolsetOptions{
+			LintSteps: cfg.lintSteps,
+		})
 		if err != nil {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build package toolset: %w", err)
 		}
 	} else {
 		systemPrompt = prompt.GetFullPrompt()
-		tools, err = toolsets.CoreAgentTools(sandboxDir, sandboxAuthorizer)
+		tools, err = toolsets.CoreAgentToolsWithOptions(sandboxDir, sandboxAuthorizer, toolsets.ToolsetOptions{
+			LintSteps: cfg.lintSteps,
+		})
 		if err != nil {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build toolset: %w", err)
