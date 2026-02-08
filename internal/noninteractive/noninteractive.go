@@ -296,7 +296,7 @@ func Exec(userPrompt string, opts Options) error {
 
 	envMsg := buildEnvironmentInfo(sandboxDir)
 	if pkgMode {
-		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath)
+		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, opts.LintSteps)
 	}
 	if err := agentInstance.AddUserTurn(envMsg); err != nil {
 		return fmt.Errorf("add environment info: %w", err)
@@ -902,10 +902,10 @@ func codeUnitName(pkgPath string) string {
 	return "package " + pkgPath
 }
 
-func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string) string {
+func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) string {
 	baseInfo := buildEnvironmentInfo(sandboxDir)
 
-	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath)
+	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
 	if err != nil {
 		return baseInfo + "\n\n" + initialContext
 	}
@@ -958,7 +958,7 @@ func readAgentsMDContextBestEffort(sandboxDir, cwd string) string {
 	return strings.TrimSpace(msg)
 }
 
-func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string) (string, error) {
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) (string, error) {
 	agentsMsg := readAgentsMDContextBestEffort(sandboxDir, pkgAbsPath)
 
 	pkg, err := loadGoPackage(pkgAbsPath)
@@ -969,7 +969,7 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
-	pkgModeInfo, err := initialcontext.Create(pkg, nil, false)
+	pkgModeInfo, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return joinContextBlocks(
 			agentsMsg,

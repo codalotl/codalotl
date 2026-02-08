@@ -38,7 +38,7 @@ func TestBuildPackageInitialContext_PrependsAgentsMDBeforeInitialContext(t *test
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nconst X = 1\n"), 0o600))
 
-	out, err := buildPackageInitialContext(tmp, "p", filepath.Join(tmp, "p"))
+	out, err := buildPackageInitialContext(tmp, "p", filepath.Join(tmp, "p"), nil)
 	require.NoError(t, err)
 	require.Contains(t, out, "agentsmd-test-package")
 
