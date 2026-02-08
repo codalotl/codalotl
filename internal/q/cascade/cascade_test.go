@@ -133,6 +133,87 @@ func TestCascade_ObjectSlice(t *testing.T) {
 	})
 }
 
+func TestCascade_ObjectSlice_NestedStructAndPointer(t *testing.T) {
+	type Command struct {
+		Command string
+		Args    []string
+		CWD     string
+	}
+
+	t.Run("slice element contains nested struct value", func(t *testing.T) {
+		type Step struct {
+			ID    string
+			Check Command
+		}
+		type Config struct {
+			Lints struct {
+				Steps []Step
+			}
+		}
+
+		withJSON(t, "lints.json", `{
+			"lints": {
+				"steps": [
+					{
+						"id": "staticcheck",
+						"check": {
+							"command": "staticcheck",
+							"args": ["{{ .relativePackageDir }}"],
+							"cwd": "{{ .moduleDir }}"
+						}
+					}
+				]
+			}
+		}`, func(p string) {
+			var cfg Config
+			err := New().WithJSONFile(p).StrictlyLoad(&cfg)
+			require.NoError(t, err)
+			require.Len(t, cfg.Lints.Steps, 1)
+			assert.Equal(t, "staticcheck", cfg.Lints.Steps[0].ID)
+			assert.Equal(t, "staticcheck", cfg.Lints.Steps[0].Check.Command)
+			assert.Equal(t, []string{"{{ .relativePackageDir }}"}, cfg.Lints.Steps[0].Check.Args)
+			assert.Equal(t, "{{ .moduleDir }}", cfg.Lints.Steps[0].Check.CWD)
+		})
+	})
+
+	t.Run("slice element contains nested *struct value (pointer allocated)", func(t *testing.T) {
+		type Step struct {
+			ID    string
+			Check *Command
+		}
+		type Config struct {
+			Lints struct {
+				Steps []Step
+			}
+		}
+
+		withJSON(t, "lints.json", `{
+			"lints": {
+				"steps": [
+					{
+						"id": "staticcheck",
+						"check": {
+							"command": "staticcheck",
+							"args": ["{{ .relativePackageDir }}"],
+							"cwd": "{{ .moduleDir }}"
+						}
+					}
+				]
+			}
+		}`, func(p string) {
+			var cfg Config
+			err := New().WithJSONFile(p).StrictlyLoad(&cfg)
+			require.NoError(t, err)
+			require.Len(t, cfg.Lints.Steps, 1)
+			assert.Equal(t, "staticcheck", cfg.Lints.Steps[0].ID)
+			require.NotNil(t, cfg.Lints.Steps[0].Check)
+			assert.Equal(t, "staticcheck", cfg.Lints.Steps[0].Check.Command)
+			assert.Equal(t, []string{"{{ .relativePackageDir }}"}, cfg.Lints.Steps[0].Check.Args)
+			assert.Equal(t, "{{ .moduleDir }}", cfg.Lints.Steps[0].Check.CWD)
+		})
+	})
+}
+
 func TestCascade_StrictlyLoadCases(t *testing.T) {
 	t.Run("file not found does not error", func(t *testing.T) {
 		type C struct{ Port int }
