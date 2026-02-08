@@ -46,6 +46,13 @@ type Step struct {
 
 const defaultReflowWidth = 120
 
+// DefaultSteps returns the default lint steps.
+//
+// It is equivalent to ResolveSteps(nil, 0).
+func DefaultSteps() []Step {
+	return defaultSteps(0)
+}
+
 func defaultSteps(reflowWidth int) []Step {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
@@ -121,7 +128,7 @@ func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 	}
 
 	if cfg == nil {
-		return normalizeReflowWidth(defaultSteps(reflowWidth), reflowWidth)
+		return defaultSteps(reflowWidth), nil
 	}
 
 	mode := cfg.Mode

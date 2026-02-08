@@ -204,6 +204,9 @@ type Step struct {
 	Fix   *cmdrunner.Command `json:"fix,omitempty"`
 }
 
+// DefaultSteps returns default steps. It is equivalent to ResolveSteps(nil, 0).
+func DefaultSteps() []Step
+
 // ResolveSteps merges defaults and user config, applying disable rules.
 // Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an error.
 // It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
