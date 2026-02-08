@@ -155,9 +155,17 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		if modelID == "" {
 			modelID = llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
 		}
-		err := noninteractive.Exec(userPrompt, noninteractive.Options{
+
+		steps, err := lints.ResolveSteps(&cfg.Lints, cfg.ReflowWidth)
+		if err != nil {
+			return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
+		}
+
+		err = noninteractive.Exec(userPrompt, noninteractive.Options{
 			PackagePath:  *execPackage,
 			ModelID:      modelID,
+			LintSteps:    steps,
+			ReflowWidth:  cfg.ReflowWidth,
 			AutoYes:      *execYes,
 			NoFormatting: *execNoColor,
 			Out:          c.Out,
