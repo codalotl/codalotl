@@ -2195,8 +2195,9 @@ func (m *model) startPackageContextGather() {
 
 	sandboxDir := m.session.sandboxDir
 	pkgAbsPath := m.session.packageAbsPath
+	lintSteps := m.session.config.lintSteps
 	go func() {
-		contextText, err := buildPackageInitialContext(sandboxDir, pkgPath, pkgAbsPath)
+		contextText, err := buildPackageInitialContext(sandboxDir, pkgPath, pkgAbsPath, lintSteps)
 		status := packageContextStatusSuccess
 		errMsg := ""
 		if err != nil {

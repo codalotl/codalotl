@@ -383,7 +383,7 @@ func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
 	return pkg, nil
 }
 
-func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string) (string, error) {
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) (string, error) {
 	agentsMsg, agentsErr := agentsmd.Read(sandboxDir, pkgAbsPath)
 	if agentsErr != nil {
 		debugLogf("agentsmd.Read failed: %v", agentsErr)
@@ -397,7 +397,7 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
-	pkgModeInfo, err := initialcontext.Create(pkg, nil, false)
+	pkgModeInfo, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return joinContextBlocks(
 			agentsMsg,
