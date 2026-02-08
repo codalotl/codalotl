@@ -81,12 +81,9 @@ Example Output:
 Current Configuration:
 {
   "providerkeys": {
-    "anthropic": "",
-    "openai": "sk-p..._LQA",
-    "xai": "",
-    "gemini": ""
+    "openai": "sk-p..._LQA"
   },
-  "maxwidth": 160,
+  "reflowwidth": 160,
   "preferredprovider": "",
   "preferredmodel": ""
 }
@@ -144,7 +141,14 @@ type Config struct {
 	ProviderKeys          ProviderKeys       `json:"providerkeys"`
 	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
 	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Default to 120
-	MaxWidthProvidence    cascade.Providence `json:"-"`
+	ReflowWidthProvidence cascade.Providence `json:"-"`
+
+	// Lints configures the lint pipeline used by `codalotl context initial`.
+	// See internal/lints/SPEC.md for full details.
+	//
+	// NOTE: for now, this is only used by the `context initial` command.
+	Lints lints.Lints `json:"lints,omitempty"`
+
 	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
 	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
 

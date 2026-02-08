@@ -13,6 +13,7 @@ import (
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
@@ -327,12 +328,18 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Name:  "initial",
 		Short: "Print the initial context for an LLM starting to work on a package.",
 		Args:  qcli.ExactArgs(1),
-		Run: runWithConfig("context_initial", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		Run: runWithConfig("context_initial", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 			pkg, _, err := loadPackageArg(c.Args[0])
 			if err != nil {
 				return err
 			}
-			out, err := initialcontext.Create(pkg, nil, false)
+
+			steps, err := lints.ResolveSteps(&cfg.Lints, cfg.ReflowWidth)
+			if err != nil {
+				return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
+			}
+
+			out, err := initialcontext.Create(pkg, steps, false)
 			if err != nil {
 				return err
 			}

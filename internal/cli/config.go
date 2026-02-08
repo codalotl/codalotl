@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/q/cascade"
 )
@@ -28,6 +29,12 @@ type Config struct {
 	// Defaults to 120.
 	ReflowWidth           int                `json:"reflowwidth"`
 	ReflowWidthProvidence cascade.Providence `json:"-"`
+
+	// Lints configures the lint pipeline used by `codalotl context initial`.
+	//
+	// NOTE: this is parsed for all config loads, but it is intentionally only
+	// used by the `context initial` command for now.
+	Lints lints.Lints `json:"lints,omitempty"`
 
 	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`
 	DisableCrashReporting bool `json:"disablecrashreporting,omitempty"`
