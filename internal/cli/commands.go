@@ -117,9 +117,17 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			// If PreferredModel is empty, pass the zero value so TUI keeps its
 			// default model behavior.
 			modelID := llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
+
+			steps, err := lints.ResolveSteps(&cfg.Lints, cfg.ReflowWidth)
+			if err != nil {
+				return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
+			}
+
 			return runTUIWithConfig(tui.Config{
-				ModelID: modelID,
-				Monitor: m,
+				ModelID:     modelID,
+				LintSteps:   steps,
+				ReflowWidth: cfg.ReflowWidth,
+				Monitor:     m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
 					return persistPreferredModelID(cfg, newModelID)
 				},
