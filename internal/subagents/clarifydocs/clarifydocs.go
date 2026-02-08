@@ -199,7 +199,7 @@ func tryBuildGoContext(absPath string) (string, bool, error) {
 		return "", false, nil
 	}
 
-	initial, err := initialcontext.Create(pkg, true) // Skip checks like test/lints/build
+	initial, err := initialcontext.Create(pkg, nil, true) // Skip checks like test/lints/build
 	if err != nil {
 		return "", false, fmt.Errorf("initial context: %w", err)
 	}

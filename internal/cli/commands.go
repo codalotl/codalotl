@@ -332,7 +332,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			if err != nil {
 				return err
 			}
-			out, err := initialcontext.Create(pkg, false)
+			out, err := initialcontext.Create(pkg, nil, false)
 			if err != nil {
 				return err
 			}

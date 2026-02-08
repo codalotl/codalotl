@@ -142,7 +142,7 @@ func buildGoContext(goPkgAbsDir string) (string, error) {
 		return "", err
 	}
 
-	initial, err := initialcontext.Create(pkg, false)
+	initial, err := initialcontext.Create(pkg, nil, false)
 	if err != nil {
 		return "", fmt.Errorf("initial context: %w", err)
 	}
