@@ -167,14 +167,14 @@ func (r *Runner) AddCommand(c Command) {
 // Command defines a templated command to run. Command, Args, and CWD fields
 // support templating prior to execution.
 type Command struct {
-	Command string
-	Args    []string
-	CWD     string
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	CWD     string   `json:"cwd"`
 
-	OutcomeFailIfAnyOutput bool
-	MessageIfNoOutput      string
+	OutcomeFailIfAnyOutput bool   `json:"outcomefailifanyoutput"`
+	MessageIfNoOutput      string `json:"messageifnooutput"`
 	// ShowCWD, when true, instructs XML rendering to include the command's CWD.
-	ShowCWD bool
+	ShowCWD bool `json:"showcwd"`
 }
 
 // Result aggregates all command executions performed by Run.
