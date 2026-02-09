@@ -47,9 +47,9 @@ type sessionConfig struct {
 	packagePath string
 	modelID     llmmodel.ModelID
 	lintSteps   []lints.Step
-	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd).
-	// This is primarily to make tests independent of process-wide working directory
-	// and to avoid path aliasing issues (ex: /var vs /private/var on macOS).
+
+	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd). This is primarily to make tests independent of process-wide working directory and to avoid
+	// path aliasing issues (ex: /var vs /private/var on macOS).
 	sandboxDir string
 }
 
@@ -174,8 +174,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}, nil
 }
 
-// includeReachableTestdataDirs includes any "testdata" directory directly under an
-// already-included directory (recursively). This allows Go fixture files in testdata
+// includeReachableTestdataDirs includes any "testdata" directory directly under an already-included directory (recursively). This allows Go fixture files in testdata
 // to remain in-scope for a package-mode code unit even when they are "*.go" files.
 func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
 	if unit == nil {
@@ -295,9 +294,8 @@ func boolToYesNo(v bool) string {
 	return "No"
 }
 
-// normalizeSessionConfig resolves the configured package path against the sandbox
-// directory and ensures it remains inside the sandbox, returning the sanitized
-// config along with the absolute package path.
+// normalizeSessionConfig resolves the configured package path against the sandbox directory and ensures it remains inside the sandbox, returning the sanitized config
+// along with the absolute package path.
 func normalizeSessionConfig(cfg sessionConfig, sandboxDir string) (sessionConfig, string, error) {
 	cfg.packagePath = strings.TrimSpace(cfg.packagePath)
 	cfg.modelID = llmmodel.ModelID(strings.TrimSpace(string(cfg.modelID)))

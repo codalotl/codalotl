@@ -39,8 +39,7 @@ func renderBannerArt(width int, pal colorPalette) string {
 	return fallback.block
 }
 
-// newSessionBlock returns the "new session text" described in SPEC.md.
-// It includes banner art and a short, mode-specific help text.
+// newSessionBlock returns the "new session text" described in SPEC.md. It includes banner art and a short, mode-specific help text.
 func newSessionBlock(width int, pal colorPalette, cfg sessionConfig) string {
 	contentWidth := width - bannerMarginLeft - bannerMarginRight
 	if contentWidth <= 0 {
@@ -156,9 +155,8 @@ func newSessionBlock(width int, pal colorPalette, cfg sessionConfig) string {
 	return bs.Apply(termformat.BlockStylePerLine(strings.Join(lines, "\n")))
 }
 
-// wrapParagraphText word-wraps text to the given width while preserving blank lines as paragraph breaks.
-// Newlines inside a paragraph are treated as spaces, so the programmer can format source strings across
-// multiple lines without affecting output (unless a blank line is inserted).
+// wrapParagraphText word-wraps text to the given width while preserving blank lines as paragraph breaks. Newlines inside a paragraph are treated as spaces, so the
+// programmer can format source strings across multiple lines without affecting output (unless a blank line is inserted).
 func wrapParagraphText(width int, text string) []string {
 	if width <= 0 {
 		if text == "" {
