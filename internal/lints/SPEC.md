@@ -101,6 +101,8 @@ Rules:
 - Duplicate step IDs are an error, but only for steps whose ID is set.
 - In `extend` mode, "duplicate" includes collisions with default steps.
 - IDs listed in `disable` that don't match any resolved step ID are ignored.
+- If extending by referencing an ID of a pre-installed (but non-active) lint (e.g., `reflow`), `situations` is allowed to be overriden.
+    - Ex: `"steps": [{"id": "reflow", "situations": ["fix"]}]` (use `reflow`, but only `fix_lints` tool).
 
 This yields:
 - Add a lint: append a step to `steps`.
@@ -124,7 +126,12 @@ The commands are specified and run with `internal/q/cmdrunner`. As such, they us
 
 ## Default Lints
 
-By default, only `gofmt` is active. The `reflow` lint (or any other preconfigured lint) is easily available by extending with `"steps": [{"id": "reflow"}]`.
+By default, only `gofmt` is active. The `reflow` lint (or any other preconfigured lint) is easily available by extending with .
+
+Additionally, these lints are available by extending and referencing them by ID (ex: `"steps": [{"id": "reflow"}]`):
+- `reflow`: `codalotl docs reflow`
+- `staticcheck`
+- `golangci-lint`
 
 ### gofmt
 
