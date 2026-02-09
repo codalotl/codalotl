@@ -1,1 +1,1 @@
-Get diagnostics (errors, warnings, etc.) for a file or package.
+Get build/type errors for a file or package.

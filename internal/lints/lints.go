@@ -28,8 +28,7 @@ const (
 	ModeReplace Mode = "replace"
 )
 
-// Lints is the user-configurable lint pipeline. It is intended to live under the
-// top-level `lints` key in config JSON.
+// Lints is the user-configurable lint pipeline. It is intended to live under the top-level `lints` key in config JSON.
 type Lints struct {
 	Mode    Mode     `json:"mode,omitempty"`
 	Disable []string `json:"disable,omitempty"`
@@ -37,10 +36,8 @@ type Lints struct {
 }
 
 type Step struct {
-	ID string `json:"id,omitempty"`
-
-	// Check/Fix override Cmd for their respective actions.
-	Check *cmdrunner.Command `json:"check,omitempty"`
+	ID    string             `json:"id,omitempty"`
+	Check *cmdrunner.Command `json:"check,omitempty"` // Check/Fix override Cmd for their respective actions.
 	Fix   *cmdrunner.Command `json:"fix,omitempty"`
 }
 
@@ -118,12 +115,10 @@ func defaultSteps(reflowWidth int) []Step {
 	}
 }
 
-// ResolveSteps merges defaults and user config, applying disable rules.
-// Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.)
-// return an error.
+// ResolveSteps merges defaults and user config, applying disable rules. Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
+// error.
 //
-// It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>`
-// when missing.
+// It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
 func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
@@ -317,10 +312,10 @@ func parseWidthFlag(args []string) (width int, idx int, ok bool, err error) {
 
 // Run executes steps for the given action against targetPkgAbsDir and returns cmdrunner XML (`lint-status`).
 //
-// - sandboxDir is the cmdrunner rootDir.
-// - targetPkgAbsDir is an absolute package directory.
-// - Run does not stop early: it attempts to execute all steps, even if earlier steps report failures.
-// - Command failures are reflected in the XML. Hard errors (invalid config, templating failures, internal errors) return a Go error.
+//   - sandboxDir is the cmdrunner rootDir.
+//   - targetPkgAbsDir is an absolute package directory.
+//   - Run does not stop early: it attempts to execute all steps, even if earlier steps report failures.
+//   - Command failures are reflected in the XML. Hard errors (invalid config, templating failures, internal errors) return a Go error.
 func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps []Step, action Action) (string, error) {
 	if sandboxDir == "" {
 		return "", errors.New("sandboxDir is required")
