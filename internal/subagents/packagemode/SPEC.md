@@ -24,7 +24,8 @@ The toolset will be injected. It is expected to be `toolsets.PackageAgentTools`.
 //   - toolset are the tools available for use (injected to cut dependencies).
 //   - instructions must contain enough information for an LLM to update the
 //     package (it won't have the context of the calling agent).
+//   - lintSteps controls lint checks in initial context collection and lint-aware tools.
 //
 // Example instructions: "Update the package add a IsDefault field to the Configuration struct."
-func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdomain.Authorizer, goPkgAbsDir string, toolset toolsetinterface.Toolset, instructions string, promptKind prompt.GoPackageModePromptKind) (string, error)
+func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdomain.Authorizer, goPkgAbsDir string, toolset toolsetinterface.Toolset, instructions string, lintSteps []lints.Step, promptKind prompt.GoPackageModePromptKind) (string, error)
 ```

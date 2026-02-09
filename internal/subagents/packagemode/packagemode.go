@@ -12,6 +12,7 @@ import (
 	"github.com/codalotl/codalotl/internal/detectlang"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
@@ -27,9 +28,10 @@ import (
 //   - toolset are the tools available for use (injected to cut dependencies).
 //   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling
 //     agent).
+//   - lintSteps controls lint checks in initial context collection and lint-aware tools.
 //
 // Example instructions: "Update the package add a IsDefault field to the Configuration struct."
-func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdomain.Authorizer, goPkgAbsDir string, toolset toolsetinterface.Toolset, instructions string, promptKind prompt.GoPackageModePromptKind) (string, error) {
+func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdomain.Authorizer, goPkgAbsDir string, toolset toolsetinterface.Toolset, instructions string, lintSteps []lints.Step, promptKind prompt.GoPackageModePromptKind) (string, error) {
 	if agentCreator == nil {
 		return "", errors.New("agentCreator is required")
 	}
@@ -80,7 +82,7 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 	var contextStr string
 	switch lang {
 	case detectlang.LangGo:
-		goContext, err := buildGoContext(goPkgAbsDir)
+		goContext, err := buildGoContext(goPkgAbsDir, lintSteps)
 		if err != nil {
 			return "", err
 		}
@@ -93,6 +95,7 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 		SandboxDir:  sandboxAbsDir,
 		Authorizer:  authorizer,
 		GoPkgAbsDir: goPkgAbsDir,
+		LintSteps:   lintSteps,
 	})
 	if err != nil {
 		return "", err
@@ -133,7 +136,7 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 	return strings.TrimSpace(finalTurnText), nil
 }
 
-func buildGoContext(goPkgAbsDir string) (string, error) {
+func buildGoContext(goPkgAbsDir string, lintSteps []lints.Step) (string, error) {
 	module, err := gocode.NewModule(goPkgAbsDir)
 	if err != nil {
 		return "", err
@@ -150,7 +153,7 @@ func buildGoContext(goPkgAbsDir string) (string, error) {
 		return "", err
 	}
 
-	initial, err := initialcontext.Create(pkg, nil, false)
+	initial, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return "", fmt.Errorf("initial context: %w", err)
 	}

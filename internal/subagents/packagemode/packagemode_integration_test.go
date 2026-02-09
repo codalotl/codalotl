@@ -59,6 +59,7 @@ func TestRunIntegration(t *testing.T) {
 		pkg.AbsolutePath(),
 		toolset,
 		instructions,
+		nil,
 		prompt.GoPackageModePromptKindUpdateUsage,
 	)
 	require.NoError(t, err)

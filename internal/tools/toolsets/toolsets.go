@@ -96,8 +96,8 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 		pkgtools.NewGetPublicAPITool(authorizer),
 		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
 		pkgtools.NewGetUsageTool(authorizer),
-		pkgtools.NewUpdateUsageTool(opts.GoPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools),
-		pkgtools.NewChangeAPITool(opts.GoPkgAbsDir, sandboxAuthorizer, PackageAgentTools),
+		pkgtools.NewUpdateUsageTool(opts.GoPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools, opts.LintSteps),
+		pkgtools.NewChangeAPITool(opts.GoPkgAbsDir, sandboxAuthorizer, PackageAgentTools, opts.LintSteps),
 	}
 	return tools, nil
 }

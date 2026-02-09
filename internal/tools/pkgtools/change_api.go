@@ -11,6 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/subagents/packagemode"
@@ -32,6 +33,7 @@ type toolChangeAPI struct {
 	// pkgDirAbsPath is the package directory of the agent that is invoking this tool. The tool only allows changing packages
 	// that this package directly imports.
 	pkgDirAbsPath string
+	lintSteps     []lints.Step
 }
 
 type changeAPIParams struct {
@@ -44,13 +46,14 @@ type changeAPIParams struct {
 // authorizer should be a sandbox authorizer (not a package-jail authorizer). If the calling agent is jailed, pass authorizer.WithoutCodeUnit().
 //
 // toolset is injected into the subagent that performs the package update (ex: toolsets.PackageAgentTools).
-func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
+func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, lintSteps []lints.Step) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolChangeAPI{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 		toolset:       toolset,
 		pkgDirAbsPath: filepath.Clean(pkgDirAbsPath),
+		lintSteps:     lintSteps,
 	}
 }
 
@@ -186,6 +189,7 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 		targetAbsDir,
 		t.toolset,
 		instructions,
+		t.lintSteps,
 		prompt.GoPackageModePromptKindFull,
 	)
 	if err != nil {

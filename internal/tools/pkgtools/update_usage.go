@@ -11,6 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gousage"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/subagents/packagemode"
@@ -29,6 +30,7 @@ type toolUpdateUsage struct {
 	authorizer    authdomain.Authorizer
 	toolset       toolsetinterface.Toolset
 	pkgDirAbsPath string
+	lintSteps     []lints.Step
 }
 
 type updateUsageParams struct {
@@ -41,13 +43,14 @@ type updateUsageParams struct {
 // pkgDirAbsPath is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it).
 //
 // toolset are the tools that the subagent doing the updating will have access to.
-func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
+func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, lintSteps []lints.Step) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolUpdateUsage{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 		toolset:       toolset,
 		pkgDirAbsPath: filepath.Clean(pkgDirAbsPath),
+		lintSteps:     lintSteps,
 	}
 }
 
@@ -229,6 +232,7 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 			targetAbsPath,
 			t.toolset,
 			instructions,
+			t.lintSteps,
 			prompt.GoPackageModePromptKindUpdateUsage,
 		)
 		if err != nil {
