@@ -87,9 +87,7 @@ func newSessionBlock(width int, pal colorPalette, cfg sessionConfig) string {
 				words = append(words, ch.style.Apply(w))
 			}
 		}
-		for _, line := range wrapWords(contentWidth, words) {
-			lines = append(lines, line)
-		}
+		lines = append(lines, wrapWords(contentWidth, words)...)
 	}
 
 	// Bullet-style wrapping with a hanging indent for subsequent lines.
