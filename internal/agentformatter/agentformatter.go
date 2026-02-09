@@ -34,8 +34,8 @@ func sanitizeText(s string) string {
 type Formatter interface {
 	// FormatEvent returns the content to print in a chat window or stdout-based CLI.
 	//
-	// If terminalWidth > MinTerminalWidth, newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines and the caller can wrap themselves or insert the text in a container
-	// that can deal with long strings.
+	// If terminalWidth > MinTerminalWidth, newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines and the caller
+	// can wrap themselves or insert the text in a container that can deal with long strings.
 	FormatEvent(e agent.Event, terminalWidth int) string
 }
 
@@ -1701,8 +1701,7 @@ func usageResultContent(result llmstream.ToolResult) string {
 
 // -------- run_tests formatting --------
 
-// extractRunTests parses the run_tests tool input.
-// Expected JSON shape (fields are optional):
+// extractRunTests parses the run_tests tool input. Expected JSON shape (fields are optional):
 //
 //	{"path":"./pkg","test_name":"SomeTest","verbose":true}
 func extractRunTests(call *llmstream.ToolCall) (path string, testName string, verbose bool, ok bool) {
@@ -1945,8 +1944,7 @@ func (f *textTUIFormatter) cliRunProjectTestsToolComplete(e agent.Event, _ bool,
 	return strings.Join(out, "\n")
 }
 
-// extractGetPublicAPI extracts the path (which may be either a relative dir or an import path)
-// and optional identifiers for get_public_api.
+// extractGetPublicAPI extracts the path (which may be either a relative dir or an import path) and optional identifiers for get_public_api.
 func extractGetPublicAPI(call *llmstream.ToolCall) (string, []string, bool) {
 	if call == nil {
 		return "", nil, false
