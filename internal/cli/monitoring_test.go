@@ -20,12 +20,10 @@ import (
 type testMonitorServer struct {
 	latestVersion string
 	latestDelay   time.Duration
-
-	eventCount atomic.Int64
-	lastEvent  atomic.Value // string
-
-	errorCount   atomic.Int64
-	lastErrorRaw atomic.Value // []byte
+	eventCount    atomic.Int64
+	lastEvent     atomic.Value // string
+	errorCount    atomic.Int64
+	lastErrorRaw  atomic.Value // []byte
 }
 
 func newTestMonitorServer(t *testing.T) (*httptest.Server, *testMonitorServer) {

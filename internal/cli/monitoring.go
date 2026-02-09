@@ -23,15 +23,13 @@ const (
 	defaultNoticeWaitTimeout = 150 * time.Millisecond
 )
 
-// buildToken is a "secret" token. It is sent as a header during communication with server. It is designed to prevent random
-// abuse (ex: crawling bots hitting these endpoints), and is not designed to prevent targeted, deliberate abuse.
+// buildToken is a "secret" token. It is sent as a header during communication with server. It is designed to prevent random abuse (ex: crawling bots hitting these
+// endpoints), and is not designed to prevent targeted, deliberate abuse.
 //
-// For now, it's just hard-coded. In the future, it could be built into the build system with -ldflags. This is probably worthy of
-// a redesign at some point.
+// For now, it's just hard-coded. In the future, it could be built into the build system with -ldflags. This is probably worthy of a redesign at some point.
 const buildToken = "b80b45ed-c550-4fee-b088-da0eac4721f2"
 
-// newCLIMonitor is a test hook. Production code should treat this like a
-// constructor and not mutate it.
+// newCLIMonitor is a test hook. Production code should treat this like a constructor and not mutate it.
 var newCLIMonitor = func(currentVersion string) *remotemonitor.Monitor {
 	m := remotemonitor.NewMonitor(currentVersion, defaultMonitorHost)
 	m.BuildToken = buildToken
@@ -48,14 +46,10 @@ var newCLIMonitor = func(currentVersion string) *remotemonitor.Monitor {
 }
 
 type cliRunState struct {
-	mu sync.Mutex
-
-	monitor *remotemonitor.Monitor
-	event   string
-
-	// panicked indicates the command panicked (regardless of whether crash
-	// reporting was enabled).
-	panicked bool
+	mu       sync.Mutex
+	monitor  *remotemonitor.Monitor
+	event    string
+	panicked bool // panicked indicates the command panicked (regardless of whether crash reporting was enabled).
 }
 
 func (s *cliRunState) setEvent(event string) {

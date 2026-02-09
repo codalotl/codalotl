@@ -17,39 +17,29 @@ import (
 
 // Config is codalotl's configuration loaded from a cascade of sources.
 //
-// NOTE: internal/q/cascade matches keys to struct field names case-insensitively;
-// it does not use json tags. The json tags are for `codalotl config` output and
+// NOTE: internal/q/cascade matches keys to struct field names case-insensitively; it does not use json tags. The json tags are for `codalotl config` output and
 // for compatibility with typical config.json naming.
 type Config struct {
-	ProviderKeys ProviderKeys `json:"providerkeys"`
-
-	CustomModels []CustomModel `json:"custommodels,omitempty"`
-
-	// ReflowWidth is the max width when reflowing documentation.
-	// Defaults to 120.
-	ReflowWidth           int                `json:"reflowwidth"`
+	ProviderKeys          ProviderKeys       `json:"providerkeys"`
+	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
+	ReflowWidth           int                `json:"reflowwidth"` // ReflowWidth is the max width when reflowing documentation. Defaults to 120.
 	ReflowWidthProvidence cascade.Providence `json:"-"`
+	Lints                 lints.Lints        `json:"lints,omitempty"` // Lints configures the lint pipeline.
+	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
+	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
 
-	// Lints configures the lint pipeline.
-	Lints lints.Lints `json:"lints,omitempty"`
-
-	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`
-	DisableCrashReporting bool `json:"disablecrashreporting,omitempty"`
-
-	// Optional. If set, use this provider if possible (lower precedence than
-	// PreferredModel, though).
+	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though).
 	PreferredProvider string `json:"preferredprovider"`
 
 	// Optional. If set, use this model specifically.
 	PreferredModel string `json:"preferredmodel"`
-	// PreferredModelProvidence indicates which source set PreferredModel, when
-	// any source actually did. This is used to decide which config file should
-	// be updated if the TUI asks to persist a newly selected model.
+
+	// PreferredModelProvidence indicates which source set PreferredModel, when any source actually did. This is used to decide which config file should be updated if
+	// the TUI asks to persist a newly selected model.
 	PreferredModelProvidence cascade.Providence `json:"-"`
 
-	// configLocations are the JSON config file paths that actually contributed
-	// values during load (low->high precedence). This is intentionally not part
-	// of the user-visible JSON schema.
+	// configLocations are the JSON config file paths that actually contributed values during load (low->high precedence). This is intentionally not part of the user-visible
+	// JSON schema.
 	configLocations []string
 }
 
