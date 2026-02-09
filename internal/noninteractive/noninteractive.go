@@ -854,7 +854,11 @@ func detectTerminalWidth(out io.Writer) int {
 func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, authorizer authdomain.Authorizer) ([]llmstream.Tool, string, error) {
 	if pkgMode {
 		systemPrompt := prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull)
-		tools, err := toolsets.PackageAgentTools(sandboxDir, authorizer, pkgAbsPath)
+		tools, err := toolsets.PackageAgentTools(toolsets.Options{
+			SandboxDir:  sandboxDir,
+			Authorizer:  authorizer,
+			GoPkgAbsDir: pkgAbsPath,
+		})
 		if err != nil {
 			return nil, "", fmt.Errorf("build package toolset: %w", err)
 		}
@@ -862,7 +866,10 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 	}
 
 	systemPrompt := prompt.GetFullPrompt()
-	tools, err := toolsets.CoreAgentTools(sandboxDir, authorizer)
+	tools, err := toolsets.CoreAgentTools(toolsets.Options{
+		SandboxDir: sandboxDir,
+		Authorizer: authorizer,
+	})
 	if err != nil {
 		return nil, "", fmt.Errorf("build toolset: %w", err)
 	}

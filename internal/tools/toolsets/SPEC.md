@@ -5,11 +5,31 @@ The toolsets package offers bundles of tool configurations that agents/subagents
 ## Public API
 
 ```go
+// Options configures the toolset returned by the functions in this package.
+type Options struct {
+	// SandboxDir is the sandbox root used to resolve relative paths provided by the LLM into absolute paths. The authorizer
+	// implements the actual access constraints ("jail").
+	SandboxDir string
+
+	// Authorizer is the access-control implementation for the tools.
+	Authorizer authdomain.Authorizer
+
+	// GoPkgAbsDir is the absolute path of the Go package directory that package-scoped toolsets operate on. It is required only
+	// for package-scoped toolsets.
+	GoPkgAbsDir string
+
+	// LintSteps configures the lint pipeline used by tools like `fix_lints` and apply_patch post-checks.
+	//
+	// Nil means "use defaults". An empty slice means "no linters".
+	LintSteps []lints.Step
+}
+
 // CoreAgentTools offers tools similar to a Codex-style agent: read_file, ls, apply_patch, shell, and update_plan.
 //
-// sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually
-// **implements** the jail. The purpose of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
-func CoreAgentTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error)
+// sandboxDir is an absolute path that represents the "jail" that the agent runs in.
+// However, it's authorizer that actually implements the jail. The purpose of accepting
+// sandboxDir here is so that relative paths received by the LLM can be made absolute.
+func CoreAgentTools(opts Options) ([]llmstream.Tool, error)
 
 // PackageAgentTools offers tools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
 //   - core tools: read_file, ls, apply_patch, update_plan
@@ -20,14 +40,15 @@ func CoreAgentTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llms
 // the package. Tools that need broader sandbox access derive it via authorizer.WithoutCodeUnit().
 //
 // sandboxDir is simply the absolute path that relative paths received by the LLM are relative to. It is NOT the package jail dir.
-func PackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error)
+func PackageAgentTools(opts Options) ([]llmstream.Tool, error)
 
 
 // SimpleReadOnlyTools offers ls and read_file. It can excel at a small research task (ex: clarifying documentation inside a package).
 //
-// sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually
-// **implements** the jail. The purpose of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
-func SimpleReadOnlyTools(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error)
+// sandboxDir is an absolute path that represents the "jail" that the agent runs in.
+// However, it's authorizer that actually implements the jail. The purpose of accepting
+// sandboxDir here is so that relative paths received by the LLM can be made absolute.
+func SimpleReadOnlyTools(opts Options) ([]llmstream.Tool, error)
 
 
 // LimitedPackageAgentTools offers more limited tools than PackageAgentTools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
@@ -39,5 +60,5 @@ func SimpleReadOnlyTools(sandboxDir string, authorizer authdomain.Authorizer) ([
 // are intended to be used for subagents running update_usage. In other words, they target small, simple, mechanical code changes on a single package.
 //
 // See PackageAgentTools for other param descriptions.
-func LimitedPackageAgentTools(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error)
+func LimitedPackageAgentTools(opts Options) ([]llmstream.Tool, error)
 ```

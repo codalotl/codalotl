@@ -9,6 +9,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,8 +100,8 @@ func TestChangeAPI_RejectsPackagesOutsideSandbox(t *testing.T) {
 	})
 }
 
-func dummyPackageToolset() func(string, authdomain.Authorizer, string) ([]llmstream.Tool, error) {
-	return func(_ string, _ authdomain.Authorizer, _ string) ([]llmstream.Tool, error) {
+func dummyPackageToolset() toolsetinterface.Toolset {
+	return func(_ toolsetinterface.Options) ([]llmstream.Tool, error) {
 		return nil, nil
 	}
 }

@@ -22,7 +22,7 @@ func TestCoreAgentTools(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
-	tools, err := CoreAgentTools(sandbox, auth)
+	tools, err := CoreAgentTools(Options{SandboxDir: sandbox, Authorizer: auth})
 	if err != nil {
 		t.Fatalf("CoreAgentTools returned error: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestPackageAgentTools(t *testing.T) {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := PackageAgentTools(sandbox, auth, goPkg)
+	tools, err := PackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg})
 	if err != nil {
 		t.Fatalf("PackageAgentTools returned error: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestSimpleReadOnlyTools(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
-	tools, err := SimpleReadOnlyTools(sandbox, auth)
+	tools, err := SimpleReadOnlyTools(Options{SandboxDir: sandbox, Authorizer: auth})
 	if err != nil {
 		t.Fatalf("SimpleReadOnlyTools returned error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestLimitedPackageAgentTools(t *testing.T) {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := LimitedPackageAgentTools(sandbox, auth, goPkg)
+	tools, err := LimitedPackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg})
 	if err != nil {
 		t.Fatalf("LimitedPackageAgentTools returned error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestLimitedPackageAgentTools(t *testing.T) {
 	})
 }
 
-func TestPackageAgentToolsWithOptions_ThreadsLintStepsToTools(t *testing.T) {
+func TestPackageAgentTools_ThreadsLintStepsToTools(t *testing.T) {
 	t.Setenv("CODALOTL_TOOLSETS_LINTS_HELPER_PROCESS", "1")
 
 	sandbox := t.TempDir()
@@ -126,7 +126,7 @@ func TestPackageAgentToolsWithOptions_ThreadsLintStepsToTools(t *testing.T) {
 	}
 
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
-	tools, err := PackageAgentToolsWithOptions(sandbox, auth, pkgDir, ToolsetOptions{LintSteps: steps})
+	tools, err := PackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: pkgDir, LintSteps: steps})
 	require.NoError(t, err)
 
 	var fixTool llmstream.Tool

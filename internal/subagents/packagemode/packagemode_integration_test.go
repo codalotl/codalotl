@@ -10,10 +10,11 @@ import (
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/subagents/packagemode"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
-	"github.com/codalotl/codalotl/internal/tools/toolsets"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 
 	"github.com/stretchr/testify/require"
 )
@@ -47,12 +48,16 @@ func TestRunIntegration(t *testing.T) {
 	a := authdomain.NewCodeUnitAuthorizer(unit, fallback)
 
 	instructions := "Don't make any changes. Instead, describe the main files and tests in this package."
+	toolset := func(toolsetinterface.Options) ([]llmstream.Tool, error) {
+		// Keep this integration test isolated from toolset wiring (which can change in refactors).
+		return nil, nil
+	}
 	answer, err := packagemode.Run(
 		context.Background(),
 		agent.NewAgentCreator(),
 		a,
 		pkg.AbsolutePath(),
-		toolsets.LimitedPackageAgentTools,
+		toolset,
 		instructions,
 		prompt.GoPackageModePromptKindUpdateUsage,
 	)

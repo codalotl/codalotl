@@ -13,7 +13,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/subagents/clarifydocs"
-	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -58,7 +58,7 @@ func TestClarifyAPI_AllowsAbsolutePathOutsideSandbox(t *testing.T) {
 		failingAgentCreator{},
 		sandboxAbsDir,
 		nil,
-		func(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error) { return nil, nil },
+		func(opts toolsetinterface.Options) ([]llmstream.Tool, error) { return nil, nil },
 		outsidePath,
 		"SomeIdentifier",
 		"SomeQuestion",
@@ -79,7 +79,7 @@ func TestClarifyAPI_SystemPromptIncludesEnvBlock(t *testing.T) {
 		ac,
 		sandboxAbsDir,
 		nil,
-		func(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error) { return nil, nil },
+		func(opts toolsetinterface.Options) ([]llmstream.Tool, error) { return nil, nil },
 		targetPath,
 		"ClarifyAPI",
 		"What does ClarifyAPI return?",

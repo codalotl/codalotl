@@ -27,7 +27,7 @@ const ToolNameUpdateUsage = "update_usage"
 type toolUpdateUsage struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
-	toolset       toolsetinterface.PackageToolset
+	toolset       toolsetinterface.Toolset
 	pkgDirAbsPath string
 }
 
@@ -36,10 +36,12 @@ type updateUsageParams struct {
 	Paths        []string `json:"paths"`
 }
 
-// authorizer here should be the "sandbox" authorizer, not a package-jailed authorizer.
-// pkgDirAbsPath here is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it)
-// toolset is the tools that the subagent doing the updating will ahve access to.
-func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.PackageToolset) llmstream.Tool {
+// authorizer should be the "sandbox" authorizer, not a package-jailed authorizer.
+//
+// pkgDirAbsPath is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it).
+//
+// toolset are the tools that the subagent doing the updating will have access to.
+func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolUpdateUsage{
 		sandboxAbsDir: sandboxAbsDir,

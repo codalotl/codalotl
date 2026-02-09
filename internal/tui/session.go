@@ -111,8 +111,11 @@ func newSession(cfg sessionConfig) (*session, error) {
 		}
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
 		toolAuthorizer = pkgAuthorizer
-		tools, err = toolsets.PackageAgentToolsWithOptions(sandboxDir, pkgAuthorizer, pkgAbsPath, toolsets.ToolsetOptions{
-			LintSteps: cfg.lintSteps,
+		tools, err = toolsets.PackageAgentTools(toolsets.Options{
+			SandboxDir:  sandboxDir,
+			Authorizer:  pkgAuthorizer,
+			GoPkgAbsDir: pkgAbsPath,
+			LintSteps:   cfg.lintSteps,
 		})
 		if err != nil {
 			sandboxAuthorizer.Close()
@@ -120,8 +123,10 @@ func newSession(cfg sessionConfig) (*session, error) {
 		}
 	} else {
 		systemPrompt = prompt.GetFullPrompt()
-		tools, err = toolsets.CoreAgentToolsWithOptions(sandboxDir, sandboxAuthorizer, toolsets.ToolsetOptions{
-			LintSteps: cfg.lintSteps,
+		tools, err = toolsets.CoreAgentTools(toolsets.Options{
+			SandboxDir: sandboxDir,
+			Authorizer: sandboxAuthorizer,
+			LintSteps:  cfg.lintSteps,
 		})
 		if err != nil {
 			sandboxAuthorizer.Close()

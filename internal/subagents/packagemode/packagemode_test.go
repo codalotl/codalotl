@@ -13,7 +13,7 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
-var dummyToolset toolsetinterface.PackageToolset = func(string, authdomain.Authorizer, string) ([]llmstream.Tool, error) {
+var dummyToolset toolsetinterface.Toolset = func(toolsetinterface.Options) ([]llmstream.Tool, error) {
 	return nil, nil
 }
 

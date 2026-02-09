@@ -11,8 +11,8 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/subagents/clarifydocs"
-	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -41,10 +41,10 @@ func TestClarifyAPIIntegration(t *testing.T) {
 	assert.NoError(t, err)
 
 	question := "What does the ClarifyAPI function return when it successfully answers a question?"
-	simpleReadOnlyTools := func(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error) {
+	simpleReadOnlyTools := func(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
 		return []llmstream.Tool{
-			coretools.NewLsTool(authorizer),
-			coretools.NewReadFileTool(authorizer),
+			coretools.NewLsTool(opts.Authorizer),
+			coretools.NewReadFileTool(opts.Authorizer),
 		}, nil
 	}
 

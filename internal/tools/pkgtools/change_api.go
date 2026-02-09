@@ -27,10 +27,10 @@ const ToolNameChangeAPI = "change_api"
 type toolChangeAPI struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
-	toolset       toolsetinterface.PackageToolset
+	toolset       toolsetinterface.Toolset
 
-	// pkgDirAbsPath is the package directory of the agent that is invoking this tool.
-	// The tool only allows changing packages that this package directly imports.
+	// pkgDirAbsPath is the package directory of the agent that is invoking this tool. The tool only allows changing packages
+	// that this package directly imports.
 	pkgDirAbsPath string
 }
 
@@ -42,8 +42,9 @@ type changeAPIParams struct {
 // NewChangeAPITool creates a tool that can update upstream packages that the current package directly imports.
 //
 // authorizer should be a sandbox authorizer (not a package-jail authorizer). If the calling agent is jailed, pass authorizer.WithoutCodeUnit().
-// toolset should be the package agent toolset injected into the subagent (ex: toolsets.PackageAgentTools).
-func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.PackageToolset) llmstream.Tool {
+//
+// toolset is injected into the subagent that performs the package update (ex: toolsets.PackageAgentTools).
+func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolChangeAPI{
 		sandboxAbsDir: sandboxAbsDir,
