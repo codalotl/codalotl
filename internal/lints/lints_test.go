@@ -83,6 +83,59 @@ func TestResolveSteps_ExtendCanAddPreconfiguredReflowByID(t *testing.T) {
 	require.NotContains(t, steps[1].Situations, SituationInitial)
 }
 
+func TestResolveSteps_ExtendAllowsOverridingSituationsForPreconfiguredStep(t *testing.T) {
+	cfg := &Lints{
+		Mode: ConfigModeExtend,
+		Steps: []Step{
+			{ID: "reflow", Situations: []Situation{SituationFix}},
+		},
+	}
+
+	steps, err := ResolveSteps(cfg, 123)
+	require.NoError(t, err)
+	require.Len(t, steps, 2)
+	require.Equal(t, "reflow", steps[1].ID)
+	require.Equal(t, []Situation{SituationFix}, steps[1].Situations)
+}
+
+func TestResolveSteps_ExtendCanAddPreconfiguredStaticcheckByID(t *testing.T) {
+	cfg := &Lints{
+		Mode: ConfigModeExtend,
+		Steps: []Step{
+			{ID: "staticcheck"},
+		},
+	}
+
+	steps, err := ResolveSteps(cfg, 120)
+	require.NoError(t, err)
+	require.Len(t, steps, 2)
+	require.Equal(t, "gofmt", steps[0].ID)
+	require.Equal(t, "staticcheck", steps[1].ID)
+	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
+	require.Contains(t, steps[1].Check.Args, "./{{ .relativePackageDir }}")
+	require.Nil(t, steps[1].Situations)
+	require.Nil(t, steps[1].Fix)
+}
+
+func TestResolveSteps_ExtendCanAddPreconfiguredGolangciLintByID(t *testing.T) {
+	cfg := &Lints{
+		Mode: ConfigModeExtend,
+		Steps: []Step{
+			{ID: "golangci-lint"},
+		},
+	}
+
+	steps, err := ResolveSteps(cfg, 120)
+	require.NoError(t, err)
+	require.Len(t, steps, 2)
+	require.Equal(t, "gofmt", steps[0].ID)
+	require.Equal(t, "golangci-lint", steps[1].ID)
+	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
+	require.Contains(t, steps[1].Check.Args, "./{{ .relativePackageDir }}")
+	require.Contains(t, steps[1].Fix.Args, "--fix")
+	require.Nil(t, steps[1].Situations)
+}
+
 func TestResolveSteps_AllowsDuplicateUnsetID(t *testing.T) {
 	cfg := &Lints{
 		Mode: ConfigModeReplace,

@@ -151,6 +151,48 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 			Check:      reflowCheck,
 			Fix:        reflowFix,
 		}, true
+	case "staticcheck":
+		// staticcheck has no built-in fix mode. In fix situations we still run it in
+		// check mode (selectCommand falls back to Check when Fix is nil).
+		staticcheckCheck := &cmdrunner.Command{
+			Command: "staticcheck",
+			Args: []string{
+				"./{{ .relativePackageDir }}",
+			},
+			CWD:               "{{ .moduleDir }}",
+			MessageIfNoOutput: "no issues found",
+		}
+
+		return Step{
+			ID:    "staticcheck",
+			Check: staticcheckCheck,
+		}, true
+	case "golangci-lint":
+		golangciCheck := &cmdrunner.Command{
+			Command: "golangci-lint",
+			Args: []string{
+				"run",
+				"./{{ .relativePackageDir }}",
+			},
+			CWD:               "{{ .moduleDir }}",
+			MessageIfNoOutput: "no issues found",
+		}
+		golangciFix := &cmdrunner.Command{
+			Command: "golangci-lint",
+			Args: []string{
+				"run",
+				"--fix",
+				"./{{ .relativePackageDir }}",
+			},
+			CWD:               "{{ .moduleDir }}",
+			MessageIfNoOutput: "no issues found",
+		}
+
+		return Step{
+			ID:    "golangci-lint",
+			Check: golangciCheck,
+			Fix:   golangciFix,
+		}, true
 	default:
 		return Step{}, false
 	}
