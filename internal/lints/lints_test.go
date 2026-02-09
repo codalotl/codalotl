@@ -16,21 +16,16 @@ import (
 func TestResolveSteps_Defaults(t *testing.T) {
 	steps, err := ResolveSteps(nil, 0)
 	require.NoError(t, err)
-	require.Len(t, steps, 2)
+	require.Len(t, steps, 1)
 	require.Equal(t, "gofmt", steps[0].ID)
-	require.Equal(t, "reflow", steps[1].ID)
 
 	require.Equal(t, "{{ .moduleDir }}", steps[0].Check.CWD)
 	require.Contains(t, steps[0].Check.Args, "{{ .relativePackageDir }}")
-	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
-	require.Contains(t, steps[1].Check.Args, "{{ .relativePackageDir }}")
-	require.Contains(t, steps[1].Check.Args, "--check")
-	require.NotContains(t, steps[1].Fix.Args, "--check")
 }
 
 func TestResolveSteps_ExtendDuplicateID(t *testing.T) {
 	cfg := &Lints{
-		Mode: ModeExtend,
+		Mode: ConfigModeExtend,
 		Steps: []Step{
 			{
 				ID: "gofmt",
@@ -46,7 +41,7 @@ func TestResolveSteps_ExtendDuplicateID(t *testing.T) {
 
 func TestResolveSteps_ReplaceEmptyDisablesAll(t *testing.T) {
 	cfg := &Lints{
-		Mode:  ModeReplace,
+		Mode:  ConfigModeReplace,
 		Steps: nil,
 	}
 	steps, err := ResolveSteps(cfg, 120)
@@ -60,13 +55,49 @@ func TestResolveSteps_Disable(t *testing.T) {
 	}
 	steps, err := ResolveSteps(cfg, 120)
 	require.NoError(t, err)
-	require.Len(t, steps, 1)
-	require.Equal(t, "reflow", steps[0].ID)
+	require.Len(t, steps, 0)
+}
+
+func TestResolveSteps_ExtendCanAddPreconfiguredReflowByID(t *testing.T) {
+	cfg := &Lints{
+		Mode: ConfigModeExtend,
+		Steps: []Step{
+			{ID: "reflow"},
+		},
+	}
+
+	steps, err := ResolveSteps(cfg, 123)
+	require.NoError(t, err)
+	require.Len(t, steps, 2)
+	require.Equal(t, "gofmt", steps[0].ID)
+	require.Equal(t, "reflow", steps[1].ID)
+
+	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
+	require.Contains(t, steps[1].Check.Args, "{{ .relativePackageDir }}")
+	require.Contains(t, steps[1].Check.Args, "--check")
+	require.Contains(t, steps[1].Check.Args, "--width=123")
+	require.NotContains(t, steps[1].Fix.Args, "--check")
+	require.Contains(t, steps[1].Fix.Args, "--width=123")
+
+	// The preconfigured reflow step is intentionally excluded from initial.
+	require.NotContains(t, steps[1].Situations, SituationInitial)
+}
+
+func TestResolveSteps_AllowsDuplicateUnsetID(t *testing.T) {
+	cfg := &Lints{
+		Mode: ConfigModeReplace,
+		Steps: []Step{
+			{ID: "", Check: helperCmd("", 0, true)},
+			{ID: "", Check: helperCmd("", 0, true)},
+		},
+	}
+	_, err := ResolveSteps(cfg, 120)
+	require.NoError(t, err)
 }
 
 func TestResolveSteps_ReflowWidthNormalization(t *testing.T) {
 	cfg := &Lints{
-		Mode: ModeReplace,
+		Mode: ConfigModeReplace,
 		Steps: []Step{
 			{
 				ID: "reflow",
@@ -85,7 +116,7 @@ func TestResolveSteps_ReflowWidthNormalization(t *testing.T) {
 
 func TestResolveSteps_ReflowWidthNotDuplicated(t *testing.T) {
 	cfg := &Lints{
-		Mode: ModeReplace,
+		Mode: ConfigModeReplace,
 		Steps: []Step{
 			{
 				ID: "reflow",
@@ -105,7 +136,7 @@ func TestResolveSteps_ReflowWidthNotDuplicated(t *testing.T) {
 
 func TestResolveSteps_ReflowWidthErrorsOnMultiple(t *testing.T) {
 	cfg := &Lints{
-		Mode: ModeReplace,
+		Mode: ConfigModeReplace,
 		Steps: []Step{
 			{
 				ID: "reflow",
@@ -121,7 +152,13 @@ func TestResolveSteps_ReflowWidthErrorsOnMultiple(t *testing.T) {
 }
 
 func TestRun_NoSteps(t *testing.T) {
-	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, ActionCheck)
+	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, SituationCheck)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+
+func TestRun_SkipsReflowDuringInitial(t *testing.T) {
+	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), []Step{{ID: "reflow"}}, SituationInitial)
 	require.NoError(t, err)
 	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
 }
@@ -159,7 +196,7 @@ func TestRun_CheckModeRunsAllSteps(t *testing.T) {
 		},
 	}
 
-	out, err := Run(context.Background(), sandboxDir, target, steps, ActionCheck)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
 	require.NoError(t, err)
 
 	require.Contains(t, out, `lint-status ok="false"`)
@@ -188,7 +225,7 @@ func TestRun_FixModeUsesFixWhenAvailable(t *testing.T) {
 		},
 	}
 
-	out, err := Run(context.Background(), sandboxDir, target, steps, ActionFix)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationFix)
 	require.NoError(t, err)
 
 	require.Contains(t, out, `lint-status ok="true"`)
@@ -196,6 +233,34 @@ func TestRun_FixModeUsesFixWhenAvailable(t *testing.T) {
 	require.Contains(t, out, `mode="check"`)
 	require.NotContains(t, out, "{{ .moduleDir }}")
 	require.Contains(t, out, sandboxDir)
+}
+
+func TestRun_FiltersBySituation(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+
+	sandboxDir, target, _ := writeTempModule(t)
+
+	steps := []Step{
+		{
+			ID:         "check-only",
+			Situations: []Situation{SituationCheck},
+			Check:      helperCmd("", 0, true),
+		},
+		{
+			ID:         "fix-only",
+			Situations: []Situation{SituationFix},
+			Check:      helperCmd("", 0, true),
+			Fix:        helperCmd("", 0, true),
+		},
+	}
+
+	outCheck, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(outCheck, "\n$ "))
+
+	outFix, err := Run(context.Background(), sandboxDir, target, steps, SituationFix)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(outFix, "\n$ "))
 }
 
 func helperCmd(stdout string, exitCode int, failIfAnyOutput bool) *cmdrunner.Command {

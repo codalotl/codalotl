@@ -14,31 +14,55 @@ import (
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
 
-type Action string
+// Situation indicates the UX context under which the lints are run.
+//
+// Internally:
+//   - SituationInitial / SituationCheck imply "check"
+//   - SituationPatch / SituationFix imply "fix"
+type Situation string
 
 const (
-	ActionCheck Action = "check"
-	ActionFix   Action = "fix"
+	SituationInitial Situation = "initial"
+	SituationPatch   Situation = "patch"
+	SituationFix     Situation = "fix"
+	SituationCheck   Situation = "check"
 )
 
-type Mode string
+type action string
 
 const (
-	ModeExtend  Mode = "extend"
-	ModeReplace Mode = "replace"
+	actionCheck action = "check"
+	actionFix   action = "fix"
+)
+
+// ConfigMode represents the configuration mode of specifying steps: do we extend existing steps, or replace them all with the given steps?
+type ConfigMode string
+
+const (
+	ConfigModeExtend  ConfigMode = "extend"
+	ConfigModeReplace ConfigMode = "replace"
 )
 
 // Lints is the user-configurable lint pipeline. It is intended to live under the top-level `lints` key in config JSON.
 type Lints struct {
-	Mode    Mode     `json:"mode,omitempty"`
-	Disable []string `json:"disable,omitempty"`
-	Steps   []Step   `json:"steps,omitempty"`
+	Mode    ConfigMode `json:"mode,omitempty"`
+	Disable []string   `json:"disable,omitempty"`
+	Steps   []Step     `json:"steps,omitempty"`
 }
 
 type Step struct {
-	ID    string             `json:"id,omitempty"`
-	Check *cmdrunner.Command `json:"check,omitempty"` // Check/Fix override Cmd for their respective actions.
-	Fix   *cmdrunner.Command `json:"fix,omitempty"`
+	// Optional. Empty string means "unset". Multiple steps may have an unset ID.
+	ID string `json:"id,omitempty"`
+
+	// The step will be run in the following situations.
+	//   - If omitted/nil: run in all situations.
+	//   - If []: run in no situations.
+	Situations []Situation `json:"situations,omitempty"`
+
+	// Check/Fix override Cmd for their respective actions.
+	Check *cmdrunner.Command `json:"check,omitempty"`
+
+	Fix *cmdrunner.Command `json:"fix,omitempty"`
 }
 
 const defaultReflowWidth = 120
@@ -53,65 +77,82 @@ func DefaultSteps() []Step {
 }
 
 func defaultSteps(reflowWidth int) []Step {
+	// Defaults intentionally include only gofmt (reflow is available as a
+	// preconfigured step by specifying `{"id":"reflow"}` in config).
+	gofmt, _ := preconfiguredStep("gofmt", reflowWidth)
+	return []Step{gofmt}
+}
+
+func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
 	}
 
-	gofmtCheck := &cmdrunner.Command{
-		Command: "gofmt",
-		Args: []string{
-			"-l",
-			"{{ .relativePackageDir }}",
-		},
-		CWD:                    "{{ .moduleDir }}",
-		OutcomeFailIfAnyOutput: true,
-		MessageIfNoOutput:      "no issues found",
-	}
-	gofmtFix := &cmdrunner.Command{
-		Command: "gofmt",
-		Args: []string{
-			"-l",
-			"-w",
-			"{{ .relativePackageDir }}",
-		},
-		CWD:                    "{{ .moduleDir }}",
-		OutcomeFailIfAnyOutput: false,
-		MessageIfNoOutput:      "no issues found",
-	}
+	switch id {
+	case "gofmt":
+		gofmtCheck := &cmdrunner.Command{
+			Command: "gofmt",
+			Args: []string{
+				"-l",
+				"{{ .relativePackageDir }}",
+			},
+			CWD:                    "{{ .moduleDir }}",
+			OutcomeFailIfAnyOutput: true,
+			MessageIfNoOutput:      "no issues found",
+		}
+		gofmtFix := &cmdrunner.Command{
+			Command: "gofmt",
+			Args: []string{
+				"-l",
+				"-w",
+				"{{ .relativePackageDir }}",
+			},
+			CWD:                    "{{ .moduleDir }}",
+			OutcomeFailIfAnyOutput: false,
+			MessageIfNoOutput:      "no issues found",
+		}
 
-	// ID == "reflow" is special-cased during execution (it is NOT executed as a
-	// subprocess). The command is still stored so users can override the args.
-	reflowCheckArgs := []string{
-		"docs",
-		"reflow",
-		"--check",
-		fmt.Sprintf("--width=%d", reflowWidth),
-		"{{ .relativePackageDir }}",
-	}
-	reflowFixArgs := []string{
-		"docs",
-		"reflow",
-		fmt.Sprintf("--width=%d", reflowWidth),
-		"{{ .relativePackageDir }}",
-	}
-	reflowCheck := &cmdrunner.Command{
-		Command:                "codalotl",
-		Args:                   append([]string(nil), reflowCheckArgs...),
-		CWD:                    "{{ .moduleDir }}",
-		OutcomeFailIfAnyOutput: true,
-		MessageIfNoOutput:      "no issues found",
-	}
-	reflowFix := &cmdrunner.Command{
-		Command:                "codalotl",
-		Args:                   append([]string(nil), reflowFixArgs...),
-		CWD:                    "{{ .moduleDir }}",
-		OutcomeFailIfAnyOutput: false,
-		MessageIfNoOutput:      "no issues found",
-	}
+		return Step{ID: "gofmt", Check: gofmtCheck, Fix: gofmtFix}, true
+	case "reflow":
+		// ID == "reflow" is special-cased during execution (it is NOT executed as a
+		// subprocess). The command is still stored so users can override the args.
+		reflowCheckArgs := []string{
+			"docs",
+			"reflow",
+			"--check",
+			fmt.Sprintf("--width=%d", reflowWidth),
+			"{{ .relativePackageDir }}",
+		}
+		reflowFixArgs := []string{
+			"docs",
+			"reflow",
+			fmt.Sprintf("--width=%d", reflowWidth),
+			"{{ .relativePackageDir }}",
+		}
+		reflowCheck := &cmdrunner.Command{
+			Command:                "codalotl",
+			Args:                   append([]string(nil), reflowCheckArgs...),
+			CWD:                    "{{ .moduleDir }}",
+			OutcomeFailIfAnyOutput: true,
+			MessageIfNoOutput:      "no issues found",
+		}
+		reflowFix := &cmdrunner.Command{
+			Command:                "codalotl",
+			Args:                   append([]string(nil), reflowFixArgs...),
+			CWD:                    "{{ .moduleDir }}",
+			OutcomeFailIfAnyOutput: false,
+			MessageIfNoOutput:      "no issues found",
+		}
 
-	return []Step{
-		{ID: "gofmt", Check: gofmtCheck, Fix: gofmtFix},
-		{ID: "reflow", Check: reflowCheck, Fix: reflowFix},
+		// Reflow is intentionally excluded from initial context creation.
+		return Step{
+			ID:         "reflow",
+			Situations: []Situation{SituationPatch, SituationFix, SituationCheck},
+			Check:      reflowCheck,
+			Fix:        reflowFix,
+		}, true
+	default:
+		return Step{}, false
 	}
 }
 
@@ -130,19 +171,19 @@ func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 
 	mode := cfg.Mode
 	if mode == "" {
-		mode = ModeExtend
+		mode = ConfigModeExtend
 	}
 
 	var steps []Step
 	switch mode {
-	case ModeExtend:
+	case ConfigModeExtend:
 		steps = append([]Step(nil), defaultSteps(reflowWidth)...)
-		if err := appendStepsUnique(&steps, cfg.Steps); err != nil {
+		if err := appendStepsUnique(&steps, cfg.Steps, reflowWidth); err != nil {
 			return nil, err
 		}
-	case ModeReplace:
+	case ConfigModeReplace:
 		steps = nil
-		if err := appendStepsUnique(&steps, cfg.Steps); err != nil {
+		if err := appendStepsUnique(&steps, cfg.Steps, reflowWidth); err != nil {
 			return nil, err
 		}
 	default:
@@ -160,8 +201,10 @@ func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 
 		filtered := steps[:0]
 		for _, s := range steps {
-			if _, ok := disable[s.ID]; ok {
-				continue
+			if s.ID != "" {
+				if _, ok := disable[s.ID]; ok {
+					continue
+				}
 			}
 			filtered = append(filtered, s)
 		}
@@ -171,7 +214,7 @@ func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 	return normalizeReflowWidth(steps, reflowWidth)
 }
 
-func appendStepsUnique(dst *[]Step, src []Step) error {
+func appendStepsUnique(dst *[]Step, src []Step, reflowWidth int) error {
 	seen := make(map[string]struct{}, len(*dst)+len(src))
 	for _, s := range *dst {
 		if s.ID == "" {
@@ -181,47 +224,133 @@ func appendStepsUnique(dst *[]Step, src []Step) error {
 	}
 
 	for _, s := range src {
+		s = canonicalizeStep(s, reflowWidth)
 		if err := validateStep(s); err != nil {
 			return err
 		}
-		if _, ok := seen[s.ID]; ok {
-			return fmt.Errorf("duplicate lint step id %q", s.ID)
+		if s.ID != "" {
+			if _, ok := seen[s.ID]; ok {
+				return fmt.Errorf("duplicate lint step id %q", s.ID)
+			}
+			seen[s.ID] = struct{}{}
 		}
-		seen[s.ID] = struct{}{}
 		*dst = append(*dst, s)
 	}
 	return nil
 }
 
-func validateStep(s Step) error {
+func canonicalizeStep(s Step, reflowWidth int) Step {
 	if s.ID == "" {
-		return errors.New("lint step id is required")
+		return s
 	}
-	if s.Check == nil {
-		return fmt.Errorf("lint step %q: check command is required", s.ID)
+	if s.Check != nil || s.Fix != nil {
+		return s
 	}
+
+	// This allows config like: {"steps":[{"id":"reflow"}]} to add the preconfigured step.
+	pre, ok := preconfiguredStep(s.ID, reflowWidth)
+	if !ok {
+		return s
+	}
+
+	// If the user explicitly provided situations (including empty slice), those win.
+	if s.Situations != nil {
+		pre.Situations = s.Situations
+	}
+	return pre
+}
+
+func validateStep(s Step) error {
+	if err := validateSituations(s.Situations); err != nil {
+		if s.ID == "" {
+			return fmt.Errorf("lint step: %w", err)
+		}
+		return fmt.Errorf("lint step %q: %w", s.ID, err)
+	}
+
+	enabledInitial := stepEnabledInSituation(s, SituationInitial)
+	enabledCheck := stepEnabledInSituation(s, SituationCheck)
+	enabledPatch := stepEnabledInSituation(s, SituationPatch)
+	enabledFix := stepEnabledInSituation(s, SituationFix)
+
+	// If the step can run in a check action situation, Check is required.
+	if enabledInitial || enabledCheck {
+		if s.Check == nil {
+			if s.ID == "" {
+				return errors.New("lint step: check command is required for initial/check situations")
+			}
+			return fmt.Errorf("lint step %q: check command is required for initial/check situations", s.ID)
+		}
+	}
+
+	// If the step can run in a fix action situation, it needs at least one command.
+	// (Fix preferred, but Check is acceptable for check-only lints.)
+	if enabledPatch || enabledFix {
+		if s.Check == nil && s.Fix == nil {
+			if s.ID == "" {
+				return errors.New("lint step: at least one of check/fix command is required")
+			}
+			return fmt.Errorf("lint step %q: at least one of check/fix command is required", s.ID)
+		}
+	}
+
 	if err := validateCommand(s.ID, "check", s.Check); err != nil {
 		return err
 	}
-	if s.Fix != nil {
-		if err := validateCommand(s.ID, "fix", s.Fix); err != nil {
-			return err
-		}
+	if err := validateCommand(s.ID, "fix", s.Fix); err != nil {
+		return err
 	}
 	return nil
 }
 
 func validateCommand(stepID string, which string, c *cmdrunner.Command) error {
 	if c == nil {
-		return fmt.Errorf("lint step %q: %s command is nil", stepID, which)
+		return nil
 	}
 	if c.Command == "" {
+		if stepID == "" {
+			return fmt.Errorf("lint step: %s command: command is required", which)
+		}
 		return fmt.Errorf("lint step %q: %s command: command is required", stepID, which)
 	}
 	if len(c.Attrs)%2 != 0 {
+		if stepID == "" {
+			return fmt.Errorf("lint step: %s command: attrs must have even length, got %d", which, len(c.Attrs))
+		}
 		return fmt.Errorf("lint step %q: %s command: attrs must have even length, got %d", stepID, which, len(c.Attrs))
 	}
 	return nil
+}
+
+func validateSituations(situations []Situation) error {
+	if situations == nil {
+		return nil
+	}
+	seen := make(map[Situation]struct{}, len(situations))
+	for _, s := range situations {
+		switch s {
+		case SituationInitial, SituationPatch, SituationFix, SituationCheck:
+		default:
+			return fmt.Errorf("unknown situation %q", string(s))
+		}
+		if _, ok := seen[s]; ok {
+			return fmt.Errorf("duplicate situation %q", string(s))
+		}
+		seen[s] = struct{}{}
+	}
+	return nil
+}
+
+func stepEnabledInSituation(step Step, situation Situation) bool {
+	if step.Situations == nil {
+		return true
+	}
+	for _, s := range step.Situations {
+		if s == situation {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeReflowWidth(steps []Step, reflowWidth int) ([]Step, error) {
@@ -233,11 +362,13 @@ func normalizeReflowWidth(steps []Step, reflowWidth int) ([]Step, error) {
 		if steps[i].ID != "reflow" {
 			continue
 		}
-		check, err := ensureWidthArg(steps[i].Check, reflowWidth)
-		if err != nil {
-			return nil, fmt.Errorf("lint step %q: check command: %w", steps[i].ID, err)
+		if steps[i].Check != nil {
+			check, err := ensureWidthArg(steps[i].Check, reflowWidth)
+			if err != nil {
+				return nil, fmt.Errorf("lint step %q: check command: %w", steps[i].ID, err)
+			}
+			steps[i].Check = check
 		}
-		steps[i].Check = check
 
 		if steps[i].Fix != nil {
 			fix, err := ensureWidthArg(steps[i].Fix, reflowWidth)
@@ -310,26 +441,37 @@ func parseWidthFlag(args []string) (width int, idx int, ok bool, err error) {
 	return width, idx, ok, nil
 }
 
-// Run executes steps for the given action against targetPkgAbsDir and returns cmdrunner XML (`lint-status`).
+// Run executes steps for the given situation against targetPkgAbsDir and returns cmdrunner XML (`lint-status`).
 //
 //   - sandboxDir is the cmdrunner rootDir.
 //   - targetPkgAbsDir is an absolute package directory.
 //   - Run does not stop early: it attempts to execute all steps, even if earlier steps report failures.
 //   - Command failures are reflected in the XML. Hard errors (invalid config, templating failures, internal errors) return a Go error.
-func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps []Step, action Action) (string, error) {
+func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps []Step, situation Situation) (string, error) {
 	if sandboxDir == "" {
 		return "", errors.New("sandboxDir is required")
 	}
 	if targetPkgAbsDir == "" {
 		return "", errors.New("targetPkgAbsDir is required")
 	}
-	switch action {
-	case ActionCheck, ActionFix:
-	default:
-		return "", fmt.Errorf("unknown action %q", string(action))
+	act, err := actionForSituation(situation)
+	if err != nil {
+		return "", err
 	}
 
-	if len(steps) == 0 {
+	selected := make([]Step, 0, len(steps))
+	for _, s := range steps {
+		if !stepEnabledInSituation(s, situation) {
+			continue
+		}
+		// Reflow is never enabled during initial context creation, regardless of config.
+		if s.ID == "reflow" && situation == SituationInitial {
+			continue
+		}
+		selected = append(selected, s)
+	}
+
+	if len(selected) == 0 {
 		return `<lint-status ok="true" message="no linters"></lint-status>`, nil
 	}
 
@@ -340,15 +482,8 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 
 	var all cmdrunner.Result
 
-	for _, s := range steps {
-		if s.ID == "" {
-			return "", errors.New("lint step id is required")
-		}
-		if s.Check == nil {
-			return "", fmt.Errorf("lint step %q: check command is required", s.ID)
-		}
-
-		c, modeAttr, dryRun, err := selectCommand(s, action)
+	for _, s := range selected {
+		c, modeAttr, dryRun, err := selectCommand(s, act)
 		if err != nil {
 			return "", err
 		}
@@ -387,17 +522,29 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 	return all.ToXML("lint-status"), nil
 }
 
-func selectCommand(s Step, action Action) (cmd *cmdrunner.Command, modeAttr string, dryRun bool, err error) {
-	switch action {
-	case ActionCheck:
+func selectCommand(s Step, act action) (cmd *cmdrunner.Command, modeAttr string, dryRun bool, err error) {
+	switch act {
+	case actionCheck:
+		if s.Check == nil {
+			if s.ID == "" {
+				return nil, "", false, errors.New("lint step: check command is required")
+			}
+			return nil, "", false, fmt.Errorf("lint step %q: check command is required", s.ID)
+		}
 		return s.Check, "check", true, nil
-	case ActionFix:
+	case actionFix:
 		if s.Fix != nil {
 			return s.Fix, "fix", false, nil
 		}
-		return s.Check, "check", true, nil
+		if s.Check != nil {
+			return s.Check, "check", true, nil
+		}
+		if s.ID == "" {
+			return nil, "", false, errors.New("lint step: at least one of check/fix command is required")
+		}
+		return nil, "", false, fmt.Errorf("lint step %q: at least one of check/fix command is required", s.ID)
 	default:
-		return nil, "", false, fmt.Errorf("unknown action %q", string(action))
+		return nil, "", false, fmt.Errorf("unknown action %q", string(act))
 	}
 }
 
@@ -464,7 +611,9 @@ func runReflow(moduleDir string, relativePackageDir string, targetPkgAbsDir stri
 	if dryRun {
 		args = append(args, "--check")
 	}
-	args = append(args, fmt.Sprintf("--width=%d", width), relativePackageDir)
+	// Intentionally do NOT render `--width=` in output; it can distract the LLM,
+	// and width is fully automated.
+	args = append(args, relativePackageDir)
 
 	attrs := []string{"mode", modeAttr}
 	if modeAttr == "check" {
@@ -494,4 +643,15 @@ func relPathForOutput(sandboxDir string, p string) string {
 		return p
 	}
 	return filepath.ToSlash(r)
+}
+
+func actionForSituation(s Situation) (action, error) {
+	switch s {
+	case SituationInitial, SituationCheck:
+		return actionCheck, nil
+	case SituationPatch, SituationFix:
+		return actionFix, nil
+	default:
+		return "", fmt.Errorf("unknown situation %q", string(s))
+	}
 }

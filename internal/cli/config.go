@@ -30,10 +30,7 @@ type Config struct {
 	ReflowWidth           int                `json:"reflowwidth"`
 	ReflowWidthProvidence cascade.Providence `json:"-"`
 
-	// Lints configures the lint pipeline used by `codalotl context initial`.
-	//
-	// NOTE: this is parsed for all config loads, but it is intentionally only
-	// used by the `context initial` command for now.
+	// Lints configures the lint pipeline.
 	Lints lints.Lints `json:"lints,omitempty"`
 
 	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`

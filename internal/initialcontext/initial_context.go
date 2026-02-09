@@ -111,7 +111,7 @@ func Create(pkg *gocode.Package, lintSteps []lints.Step, skipAllChecks bool) (st
 			steps = lints.DefaultSteps()
 		}
 
-		lintOutput, err := lints.Run(ctx, moduleAbsPath, absPkgPath, steps, lints.ActionCheck)
+		lintOutput, err := lints.Run(ctx, moduleAbsPath, absPkgPath, steps, lints.SituationInitial)
 		if err != nil {
 			return "", fmt.Errorf("collect lint status: %w", err)
 		}

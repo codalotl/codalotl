@@ -61,8 +61,12 @@ func TestRun_ContextInitial_UsesLintsFromConfig(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc P() {}\n"), 0644))
 
-	// Configure lints to *replace* defaults with just a reflow step, and set a
-	// non-default width so we can prove the config is wired into ResolveSteps.
+	// Configure lints to *replace* defaults with:
+	//   - gofmt (a non-reflow step that should run in initial context), and
+	//   - reflow (which must NOT run in initial context; see internal/lints/SPEC.md).
+	//
+	// Set a non-default width so we can prove config is wired into ResolveSteps
+	// (reflow steps should still be normalized, even if skipped in initial context).
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
 	cfgPath := filepath.Join(tmp, ".codalotl", "config.json")
 	cfg := `{
@@ -71,6 +75,14 @@ func TestRun_ContextInitial_UsesLintsFromConfig(t *testing.T) {
   "lints": {
     "mode": "replace",
     "steps": [
+      {
+        "id": "gofmt",
+        "check": {
+          "command": "gofmt",
+          "args": ["-l", "{{ .relativePackageDir }}"],
+          "cwd": "{{ .moduleDir }}"
+        }
+      },
       {
         "id": "reflow",
         "check": {
@@ -99,7 +111,6 @@ func TestRun_ContextInitial_UsesLintsFromConfig(t *testing.T) {
 
 	got := out.String()
 	require.Contains(t, got, "<lint-status")
-	require.Contains(t, got, "codalotl docs reflow")
-	require.Contains(t, got, "--width=77")
-	require.NotContains(t, got, "$ gofmt")
+	require.Contains(t, got, "gofmt")
+	require.NotContains(t, got, "codalotl docs reflow")
 }

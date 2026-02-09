@@ -41,7 +41,7 @@ func TestFixLints_Run_FixesFormatting(t *testing.T) {
 
 		pkgDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
 		expectedOutput := fmt.Sprintf(
-			"<lint-status ok=\"true\">\n<command ok=\"true\" mode=\"fix\">\n$ gofmt -l -w mypkg\n%s\n</command>\n<command ok=\"true\" message=\"no issues found\" mode=\"fix\">\n$ codalotl docs reflow --width=120 mypkg\n</command>\n</lint-status>",
+			"<lint-status ok=\"true\" mode=\"fix\">\n$ gofmt -l -w mypkg\n%s\n</lint-status>",
 			filepath.Join("mypkg", "main.go"),
 		)
 		assert.Equal(t, expectedOutput, res.Result)
@@ -76,7 +76,7 @@ func TestFixLints_Run_NoChangesNeeded(t *testing.T) {
 		assert.Nil(t, res.SourceErr)
 
 		pkgDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
-		expectedOutput := "<lint-status ok=\"true\">\n<command ok=\"true\" message=\"no issues found\" mode=\"fix\">\n$ gofmt -l -w mypkg\n</command>\n<command ok=\"true\" message=\"no issues found\" mode=\"fix\">\n$ codalotl docs reflow --width=120 mypkg\n</command>\n</lint-status>"
+		expectedOutput := "<lint-status ok=\"true\" message=\"no issues found\" mode=\"fix\">\n$ gofmt -l -w mypkg\n</lint-status>"
 		assert.Equal(t, expectedOutput, res.Result)
 
 		contents, readErr := os.ReadFile(filepath.Join(pkgDir, "main.go"))
@@ -98,7 +98,7 @@ func TestCheckLints_NoIssues(t *testing.T) {
 		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir, nil)
 		require.NoError(t, err)
 
-		expectedOutput := "<lint-status ok=\"true\">\n<command ok=\"true\" message=\"no issues found\" mode=\"check\">\n$ gofmt -l mypkg\n</command>\n<command ok=\"true\" message=\"no issues found\" mode=\"check\" instructions=\"never manually fix these unless asked; fixing is automatic on apply_patch\">\n$ codalotl docs reflow --check --width=120 mypkg\n</command>\n</lint-status>"
+		expectedOutput := "<lint-status ok=\"true\" message=\"no issues found\" mode=\"check\">\n$ gofmt -l mypkg\n</lint-status>"
 		assert.Equal(t, expectedOutput, output)
 	})
 }
@@ -120,7 +120,7 @@ func TestCheckLints_FindsIssues(t *testing.T) {
 		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir, nil)
 		require.NoError(t, err)
 
-		expectedOutput := "<lint-status ok=\"false\">\n<command ok=\"false\" mode=\"check\">\n$ gofmt -l mypkg\nmypkg/main.go\n</command>\n<command ok=\"true\" message=\"no issues found\" mode=\"check\" instructions=\"never manually fix these unless asked; fixing is automatic on apply_patch\">\n$ codalotl docs reflow --check --width=120 mypkg\n</command>\n</lint-status>"
+		expectedOutput := "<lint-status ok=\"false\" mode=\"check\">\n$ gofmt -l mypkg\nmypkg/main.go\n</lint-status>"
 		assert.Equal(t, expectedOutput, output)
 
 		after, readAgainErr := os.ReadFile(filePath)

@@ -92,15 +92,15 @@ func (t *toolFixLints) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 
 // FixLints runs the configured lint pipeline against targetPath (file or directory), returning a lint-status XML block.
 func FixLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step) (string, error) {
-	return runLints(ctx, sandboxDir, targetPath, steps, lints.ActionFix)
+	return runLints(ctx, sandboxDir, targetPath, steps, lints.SituationFix)
 }
 
 // CheckLints runs the configured lint pipeline in check mode against targetPath (file or directory), returning a lint-status XML block.
 func CheckLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step) (string, error) {
-	return runLints(ctx, sandboxDir, targetPath, steps, lints.ActionCheck)
+	return runLints(ctx, sandboxDir, targetPath, steps, lints.SituationCheck)
 }
 
-func runLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step, action lints.Action) (string, error) {
+func runLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step, situation lints.Situation) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -109,5 +109,5 @@ func runLints(ctx context.Context, sandboxDir string, targetPath string, steps [
 		steps = lints.DefaultSteps()
 	}
 
-	return lints.Run(ctx, sandboxDir, targetPath, steps, action)
+	return lints.Run(ctx, sandboxDir, targetPath, steps, situation)
 }

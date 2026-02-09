@@ -180,7 +180,8 @@ func packageApplyPatchPostChecks(lintSteps []lints.Step) *coretools.ApplyPatchPo
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			return lints.Run(ctx, sandboxDir, targetDir, lintSteps, lints.ActionFix)
+			// This is the "auto-fix after apply_patch" lint run, not an explicit `fix_lints` tool invocation.
+			return lints.Run(ctx, sandboxDir, targetDir, lintSteps, lints.SituationPatch)
 		},
 	}
 }
