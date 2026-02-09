@@ -12,20 +12,26 @@ import (
 	"github.com/codalotl/codalotl/internal/detectlang"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
-// Run runs the agent with the given instructions and tools on a specific package. It returns the agent's last message. An error is returned for invalid inputs, failure to communicate with the LLM, etc.
-// If the LLM can't find the make the updates as per instructions, it may say so in its answer, which doesn't produce an error.
+// Run runs an agent with the given instructions and tools on a specific package.
+//
+// It returns the agent's last message. An error is returned for invalid inputs, failure to communicate with the LLM, etc.
+// If the LLM can't make the updates as per instructions, it may say so in its answer, which doesn't produce an error.
+//
 //   - authorizer is a code unit authorizer.
 //   - goPkgAbsDir is the absolute path to a package.
-//   - toolset toolsetinterface.Toolset are the tools available for use. Injected to cut dependencies.
-//   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling agent).
+//   - toolset are the tools available for use (injected to cut dependencies).
+//   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling
+//     agent).
+//   - lintSteps controls lint checks in initial context collection and lint-aware tools.
 //
 // Example instructions: "Update the package add a IsDefault field to the Configuration struct."
-func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdomain.Authorizer, goPkgAbsDir string, toolset toolsetinterface.PackageToolset, instructions string, promptKind prompt.GoPackageModePromptKind) (string, error) {
+func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdomain.Authorizer, goPkgAbsDir string, toolset toolsetinterface.Toolset, instructions string, lintSteps []lints.Step, promptKind prompt.GoPackageModePromptKind) (string, error) {
 	if agentCreator == nil {
 		return "", errors.New("agentCreator is required")
 	}
@@ -76,7 +82,7 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 	var contextStr string
 	switch lang {
 	case detectlang.LangGo:
-		goContext, err := buildGoContext(goPkgAbsDir)
+		goContext, err := buildGoContext(goPkgAbsDir, lintSteps)
 		if err != nil {
 			return "", err
 		}
@@ -85,7 +91,12 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 		return "", fmt.Errorf("only go is supported right now")
 	}
 
-	tools, err := toolset(sandboxAbsDir, authorizer, goPkgAbsDir)
+	tools, err := toolset(toolsetinterface.Options{
+		SandboxDir:  sandboxAbsDir,
+		Authorizer:  authorizer,
+		GoPkgAbsDir: goPkgAbsDir,
+		LintSteps:   lintSteps,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -125,7 +136,7 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 	return strings.TrimSpace(finalTurnText), nil
 }
 
-func buildGoContext(goPkgAbsDir string) (string, error) {
+func buildGoContext(goPkgAbsDir string, lintSteps []lints.Step) (string, error) {
 	module, err := gocode.NewModule(goPkgAbsDir)
 	if err != nil {
 		return "", err
@@ -142,7 +153,7 @@ func buildGoContext(goPkgAbsDir string) (string, error) {
 		return "", err
 	}
 
-	initial, err := initialcontext.Create(pkg, false)
+	initial, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return "", fmt.Errorf("initial context: %w", err)
 	}

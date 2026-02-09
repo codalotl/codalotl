@@ -1,27 +1,34 @@
-// toolsetinferface is designed to cut dependencies:
+// Package toolsetinterface defines shared types used to wire up toolsets without introducing import cycles.
+//
+// The motivating cycle is roughly:
 //   - a tool (ex: update_usage) in tools/pkgtools wants to create a subagent in subagents/update_usage.
-//   - the subagent wants access to package tools (ex: get_public_api) in tools/pkgtools.
-//   - Thus, a cycle.
-//   - Often, I cut dependencies by duplicating interface types. But these aren't interfaces. It turns out that func types below cannot
-//     be interchanged with separate types of the exact same shape, unlike interfaces.
-//   - Therefore, we have this little package toolsetinterface with these shared types. (Yes, I could have made these interfaces instead)
+//   - the subagent wants access to package tools (ex: get_public_api) that also live in tools/pkgtools.
+//
+// Often this is solved by duplicating *interfaces* across packages, but these are function types. In Go, distinct named
+// function types are not interchangeable even when they have the same signature. So this tiny package holds the shared types.
 package toolsetinterface
 
 import (
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
-// Toolset is a function that returns tools.
-//
-// sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually
-// **implements** the jail. The purpose of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
-type Toolset func(sandboxDir string, authorizer authdomain.Authorizer) ([]llmstream.Tool, error)
+// Options configures a Toolset.
+type Options struct {
+	// SandboxDir is the sandbox root used to resolve relative paths provided by the LLM into absolute paths. The authorizer
+	// implements the actual access constraints ("jail").
+	SandboxDir string
 
-// PackageToolset is a function that returns tools for that operate on a package located at goPkgAbsDir.
-//
-// Note that the package-jail authorizer prevents the agent from directly accessing files outside the package.
-// Tools that need broader sandbox access should derive it from authorizer.WithoutCodeUnit().
-//
-// sandboxDir is simply the absolute path that relative paths received by the LLM are relative to. It is NOT the package jail dir.
-type PackageToolset func(sandboxDir string, authorizer authdomain.Authorizer, goPkgAbsDir string) ([]llmstream.Tool, error)
+	Authorizer authdomain.Authorizer
+
+	// GoPkgAbsDir is the absolute path of the Go package directory that package-scoped toolsets operate on. It is required only
+	// for package-scoped toolsets.
+	GoPkgAbsDir string
+
+	// LintSteps are the linting steps that can be used by tools that need to check/fix formatting or other repo conventions.
+	LintSteps []lints.Step
+}
+
+// Toolset returns tools configured by opts.
+type Toolset func(opts Options) ([]llmstream.Tool, error)

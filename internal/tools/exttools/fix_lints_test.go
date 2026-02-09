@@ -27,7 +27,7 @@ func TestFixLints_Run_FixesFormatting(t *testing.T) {
 		`),
 	}, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewFixLintsTool(auth)
+		tool := NewFixLintsTool(auth, nil)
 		call := llmstream.ToolCall{
 			CallID: "call1",
 			Name:   ToolNameFixLints,
@@ -41,8 +41,7 @@ func TestFixLints_Run_FixesFormatting(t *testing.T) {
 
 		pkgDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
 		expectedOutput := fmt.Sprintf(
-			"<lint-status ok=\"true\">\n$ gofmt -l -w %s\n%s\n</lint-status>",
-			"mypkg",
+			"<lint-status ok=\"true\" mode=\"fix\">\n$ gofmt -l -w mypkg\n%s\n</lint-status>",
 			filepath.Join("mypkg", "main.go"),
 		)
 		assert.Equal(t, expectedOutput, res.Result)
@@ -63,7 +62,7 @@ func TestFixLints_Run_NoChangesNeeded(t *testing.T) {
 		`),
 	}, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewFixLintsTool(auth)
+		tool := NewFixLintsTool(auth, nil)
 		input := fmt.Sprintf(`{"path":%q}`, filepath.Join("mypkg", "main.go"))
 		call := llmstream.ToolCall{
 			CallID: "call2",
@@ -77,7 +76,7 @@ func TestFixLints_Run_NoChangesNeeded(t *testing.T) {
 		assert.Nil(t, res.SourceErr)
 
 		pkgDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
-		expectedOutput := "<lint-status ok=\"true\" message=\"no issues found\">\n$ gofmt -l -w mypkg\n</lint-status>"
+		expectedOutput := "<lint-status ok=\"true\" message=\"no issues found\" mode=\"fix\">\n$ gofmt -l -w mypkg\n</lint-status>"
 		assert.Equal(t, expectedOutput, res.Result)
 
 		contents, readErr := os.ReadFile(filepath.Join(pkgDir, "main.go"))
@@ -96,10 +95,10 @@ func TestCheckLints_NoIssues(t *testing.T) {
 		`),
 	}, func(pkg *gocode.Package) {
 		pkgDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
-		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir)
+		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir, nil)
 		require.NoError(t, err)
 
-		expectedOutput := "<lint-status ok=\"true\" message=\"no issues found\">\n$ gofmt -l mypkg\n</lint-status>"
+		expectedOutput := "<lint-status ok=\"true\" message=\"no issues found\" mode=\"check\">\n$ gofmt -l mypkg\n</lint-status>"
 		assert.Equal(t, expectedOutput, output)
 	})
 }
@@ -118,10 +117,10 @@ func TestCheckLints_FindsIssues(t *testing.T) {
 		before, readErr := os.ReadFile(filePath)
 		require.NoError(t, readErr)
 
-		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir)
+		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir, nil)
 		require.NoError(t, err)
 
-		expectedOutput := "<lint-status ok=\"false\">\n$ gofmt -l mypkg\nmypkg/main.go\n</lint-status>"
+		expectedOutput := "<lint-status ok=\"false\" mode=\"check\">\n$ gofmt -l mypkg\nmypkg/main.go\n</lint-status>"
 		assert.Equal(t, expectedOutput, output)
 
 		after, readAgainErr := os.ReadFile(filePath)

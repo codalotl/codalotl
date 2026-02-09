@@ -11,6 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gousage"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/subagents/packagemode"
@@ -27,8 +28,9 @@ const ToolNameUpdateUsage = "update_usage"
 type toolUpdateUsage struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
-	toolset       toolsetinterface.PackageToolset
+	toolset       toolsetinterface.Toolset
 	pkgDirAbsPath string
+	lintSteps     []lints.Step
 }
 
 type updateUsageParams struct {
@@ -36,16 +38,19 @@ type updateUsageParams struct {
 	Paths        []string `json:"paths"`
 }
 
-// authorizer here should be the "sandbox" authorizer, not a package-jailed authorizer.
-// pkgDirAbsPath here is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it)
-// toolset is the tools that the subagent doing the updating will ahve access to.
-func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.PackageToolset) llmstream.Tool {
+// authorizer should be the "sandbox" authorizer, not a package-jailed authorizer.
+//
+// pkgDirAbsPath is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it).
+//
+// toolset are the tools that the subagent doing the updating will have access to.
+func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, lintSteps []lints.Step) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolUpdateUsage{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 		toolset:       toolset,
 		pkgDirAbsPath: filepath.Clean(pkgDirAbsPath),
+		lintSteps:     lintSteps,
 	}
 }
 
@@ -227,6 +232,7 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 			targetAbsPath,
 			t.toolset,
 			instructions,
+			t.lintSteps,
 			prompt.GoPackageModePromptKindUpdateUsage,
 		)
 		if err != nil {

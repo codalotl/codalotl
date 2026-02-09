@@ -1,6 +1,8 @@
 package cmdrunner
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -180,4 +182,54 @@ func samePath(a, b string) bool {
 	}
 
 	return cleanA == cleanB
+}
+
+// ManifestDir returns the manifest dir for `path` and the path relative to that
+// manifest dir.
+//
+// Conceptually equivalent to:
+//   - {{ manifestDir .path }}
+//   - {{ relativeTo .path (manifestDir .path) }}
+//
+// Errors are returned if `rootDir` is empty/invalid/not a directory, or if the
+// relative path computation fails.
+func ManifestDir(rootDir string, path string) (string, string, error) {
+	if rootDir == "" {
+		return "", "", errors.New("cmdrunner: rootDir must not be empty")
+	}
+
+	absRoot, err := filepath.Abs(rootDir)
+	if err != nil {
+		return "", "", fmt.Errorf("cmdrunner: resolve rootDir: %w", err)
+	}
+
+	rootInfo, err := os.Stat(absRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("cmdrunner: rootDir: %w", err)
+	}
+	if !rootInfo.IsDir() {
+		return "", "", fmt.Errorf("cmdrunner: rootDir %q is not a directory", absRoot)
+	}
+
+	resolvedPath := absRoot
+	if path != "" {
+		if filepath.IsAbs(path) {
+			resolvedPath = filepath.Clean(path)
+		} else {
+			resolvedPath = filepath.Join(absRoot, path)
+		}
+	}
+
+	resolver := newManifestDirResolver(absRoot, nil)
+	manifestDir, err := resolver.manifestDir(resolvedPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	relativePath, err := filepath.Rel(manifestDir, resolvedPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	return manifestDir, relativePath, nil
 }

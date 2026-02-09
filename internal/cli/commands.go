@@ -5,17 +5,21 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/tui"
+	"github.com/codalotl/codalotl/internal/updatedocs"
 )
 
 var runTUIWithConfig = tui.RunWithConfig
@@ -113,9 +117,17 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			// If PreferredModel is empty, pass the zero value so TUI keeps its
 			// default model behavior.
 			modelID := llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
+
+			steps, err := lints.ResolveSteps(&cfg.Lints, cfg.ReflowWidth)
+			if err != nil {
+				return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
+			}
+
 			return runTUIWithConfig(tui.Config{
-				ModelID: modelID,
-				Monitor: m,
+				ModelID:     modelID,
+				LintSteps:   steps,
+				ReflowWidth: cfg.ReflowWidth,
+				Monitor:     m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
 					return persistPreferredModelID(cfg, newModelID)
 				},
@@ -143,9 +155,17 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		if modelID == "" {
 			modelID = llmmodel.ModelID(strings.TrimSpace(cfg.PreferredModel))
 		}
-		err := noninteractive.Exec(userPrompt, noninteractive.Options{
+
+		steps, err := lints.ResolveSteps(&cfg.Lints, cfg.ReflowWidth)
+		if err != nil {
+			return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
+		}
+
+		err = noninteractive.Exec(userPrompt, noninteractive.Options{
 			PackagePath:  *execPackage,
 			ModelID:      modelID,
+			LintSteps:    steps,
+			ReflowWidth:  cfg.ReflowWidth,
 			AutoYes:      *execYes,
 			NoFormatting: *execNoColor,
 			Out:          c.Out,
@@ -203,6 +223,97 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		}),
 	}
 
+	docsCmd := &qcli.Command{
+		Name:  "docs",
+		Short: "Documentation tools.",
+	}
+
+	reflowCmd := &qcli.Command{
+		Name:  "reflow",
+		Short: "Reflow documentation in one or more paths.",
+		Args:  qcli.MinimumArgs(1),
+	}
+	reflowFlags := reflowCmd.Flags()
+	reflowWidth := reflowFlags.Int("width", 'w', 0, "Override reflow width (default: config reflowwidth).")
+	reflowCheck := reflowFlags.Bool("check", 0, false, "Don't write files; only print which files would change.")
+	reflowCmd.Run = runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
+		width := cfg.ReflowWidth
+		if *reflowWidth != 0 {
+			if *reflowWidth <= 0 {
+				return qcli.UsageError{Message: fmt.Sprintf("invalid --width: must be > 0 (got %d)", *reflowWidth)}
+			}
+			width = *reflowWidth
+		}
+
+		findModuleRoot := func(dir string) string {
+			for {
+				modPath := filepath.Join(dir, "go.mod")
+				if fi, err := os.Stat(modPath); err == nil && !fi.IsDir() {
+					return dir
+				}
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					return ""
+				}
+				dir = parent
+			}
+		}
+
+		displayPathForModifiedFile := func(absPath string) string {
+			modRoot := findModuleRoot(filepath.Dir(absPath))
+			if modRoot != "" {
+				if rel, err := filepath.Rel(modRoot, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+					return rel
+				}
+			}
+
+			// Fallback: prefer cwd-relative when it doesn't escape.
+			if wd, err := os.Getwd(); err == nil {
+				if rel, err := filepath.Rel(wd, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+					return rel
+				}
+			}
+
+			return absPath
+		}
+
+		modifiedFiles, skipped, err := updatedocs.ReflowDocumentationPaths(c.Args, *reflowCheck, updatedocs.Options{
+			ReflowMaxWidth: width,
+		})
+		if err != nil {
+			return err
+		}
+
+		uniqModified := map[string]struct{}{}
+		for _, abs := range modifiedFiles {
+			uniqModified[displayPathForModifiedFile(abs)] = struct{}{}
+		}
+		var displayModified []string
+		for p := range uniqModified {
+			displayModified = append(displayModified, p)
+		}
+		sort.Strings(displayModified)
+		for _, p := range displayModified {
+			if _, err := fmt.Fprintln(c.Out, p); err != nil {
+				return err
+			}
+		}
+
+		if len(skipped) == 0 {
+			return nil
+		}
+		if _, err := fmt.Fprintln(c.Err, "Warning: some identifiers could not be reflowed:"); err != nil {
+			return err
+		}
+		for _, id := range skipped {
+			if _, err := fmt.Fprintf(c.Err, "- %s\n", strings.TrimSpace(id)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	docsCmd.AddCommand(reflowCmd)
+
 	panicCmd := &qcli.Command{
 		Name:   "panic",
 		Hidden: true,
@@ -233,12 +344,18 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Name:  "initial",
 		Short: "Print the initial context for an LLM starting to work on a package.",
 		Args:  qcli.ExactArgs(1),
-		Run: runWithConfig("context_initial", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		Run: runWithConfig("context_initial", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 			pkg, _, err := loadPackageArg(c.Args[0])
 			if err != nil {
 				return err
 			}
-			out, err := initialcontext.Create(pkg, false)
+
+			steps, err := lints.ResolveSteps(&cfg.Lints, cfg.ReflowWidth)
+			if err != nil {
+				return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
+			}
+
+			out, err := initialcontext.Create(pkg, steps, false)
 			if err != nil {
 				return err
 			}
@@ -267,7 +384,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, panicCmd)
+	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, panicCmd)
 	return root, runState
 }
 

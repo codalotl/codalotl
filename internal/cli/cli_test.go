@@ -394,7 +394,7 @@ func TestRun_Config_PrintsJSON(t *testing.T) {
 	cfgPath := filepath.Join(tmp, ".codalotl", "config.json")
 	cfg := `{
   "providerkeys": { "openai": "sk-test" },
-  "maxwidth": 80
+  "reflowwidth": 80
 }`
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0644); err != nil {
 		t.Fatalf("write config.json: %v", err)
@@ -441,8 +441,8 @@ func TestRun_Config_PrintsJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(cfgJSON), &got); err != nil {
 		t.Fatalf("expected JSON config in output, unmarshal error: %v\nstdout=%q", err, out.String())
 	}
-	if got.MaxWidth != 80 {
-		t.Fatalf("expected maxwidth=80, got %d", got.MaxWidth)
+	if got.ReflowWidth != 80 {
+		t.Fatalf("expected reflowwidth=80, got %d", got.ReflowWidth)
 	}
 	if got.ProviderKeys.OpenAI != "*******" {
 		t.Fatalf("expected providerkeys.openai to be redacted, got %q", got.ProviderKeys.OpenAI)
@@ -482,8 +482,8 @@ func TestRun_Config_Defaults(t *testing.T) {
 	if err := json.Unmarshal([]byte(cfgJSON), &got); err != nil {
 		t.Fatalf("expected JSON config in output, unmarshal error: %v\nstdout=%q", err, out.String())
 	}
-	if got.MaxWidth != 120 {
-		t.Fatalf("expected default maxwidth=120, got %d", got.MaxWidth)
+	if got.ReflowWidth != 120 {
+		t.Fatalf("expected default reflowwidth=120, got %d", got.ReflowWidth)
 	}
 
 	wantEffective := string(llmmodel.ModelIDOrFallback(""))

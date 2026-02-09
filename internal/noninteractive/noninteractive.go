@@ -20,6 +20,7 @@ import (
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
@@ -67,6 +68,12 @@ type Options struct {
 
 	// ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
 	ModelID llmmodel.ModelID
+
+	// LintSteps controls which lint steps the agent runs.
+	LintSteps []lints.Step
+
+	// ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
+	ReflowWidth int
 
 	// Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
 	AutoYes bool
@@ -289,7 +296,7 @@ func Exec(userPrompt string, opts Options) error {
 
 	envMsg := buildEnvironmentInfo(sandboxDir)
 	if pkgMode {
-		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath)
+		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, opts.LintSteps)
 	}
 	if err := agentInstance.AddUserTurn(envMsg); err != nil {
 		return fmt.Errorf("add environment info: %w", err)
@@ -847,7 +854,11 @@ func detectTerminalWidth(out io.Writer) int {
 func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, authorizer authdomain.Authorizer) ([]llmstream.Tool, string, error) {
 	if pkgMode {
 		systemPrompt := prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull)
-		tools, err := toolsets.PackageAgentTools(sandboxDir, authorizer, pkgAbsPath)
+		tools, err := toolsets.PackageAgentTools(toolsets.Options{
+			SandboxDir:  sandboxDir,
+			Authorizer:  authorizer,
+			GoPkgAbsDir: pkgAbsPath,
+		})
 		if err != nil {
 			return nil, "", fmt.Errorf("build package toolset: %w", err)
 		}
@@ -855,7 +866,10 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 	}
 
 	systemPrompt := prompt.GetFullPrompt()
-	tools, err := toolsets.CoreAgentTools(sandboxDir, authorizer)
+	tools, err := toolsets.CoreAgentTools(toolsets.Options{
+		SandboxDir: sandboxDir,
+		Authorizer: authorizer,
+	})
 	if err != nil {
 		return nil, "", fmt.Errorf("build toolset: %w", err)
 	}
@@ -895,10 +909,10 @@ func codeUnitName(pkgPath string) string {
 	return "package " + pkgPath
 }
 
-func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string) string {
+func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) string {
 	baseInfo := buildEnvironmentInfo(sandboxDir)
 
-	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath)
+	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
 	if err != nil {
 		return baseInfo + "\n\n" + initialContext
 	}
@@ -951,7 +965,7 @@ func readAgentsMDContextBestEffort(sandboxDir, cwd string) string {
 	return strings.TrimSpace(msg)
 }
 
-func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string) (string, error) {
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) (string, error) {
 	agentsMsg := readAgentsMDContextBestEffort(sandboxDir, pkgAbsPath)
 
 	pkg, err := loadGoPackage(pkgAbsPath)
@@ -962,7 +976,7 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
-	pkgModeInfo, err := initialcontext.Create(pkg, false)
+	pkgModeInfo, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return joinContextBlocks(
 			agentsMsg,

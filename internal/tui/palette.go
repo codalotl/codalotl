@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
@@ -18,25 +19,20 @@ type Config struct {
 	//   - "plain" / "mono" / "none": disable colorization.
 	Palette PaletteName
 
-	// ColorProfile overrides the detected color profile when non-empty.
-	ColorProfile termformat.ColorProfile
+	ColorProfile termformat.ColorProfile // ColorProfile overrides the detected color profile when non-empty.
+	ModelID      llmmodel.ModelID        // ModelID selects the LLM model to use. If empty, the TUI uses llmmodel.DefaultModel.
+	LintSteps    []lints.Step            // LintSteps controls which lint steps the agent runs.
+	ReflowWidth  int                     // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
 
-	// ModelID selects the LLM model to use. If empty, the TUI uses the same
-	// default model as it does today (llmmodel.DefaultModel).
-	ModelID llmmodel.ModelID
-
-	// PersistModelID, when non-nil, is called by the TUI when the user changes
-	// the active model via UI commands (ex: the planned `/model` command).
+	// PersistModelID, when non-nil, is called by the TUI when the user changes the active model via UI commands (ex: the planned `/model` command).
 	//
-	// This lets the caller (who owns whatever backing config the TUI was created
-	// from) persist the selected model to disk (or elsewhere). If it returns a
-	// non-nil error, the TUI will display that error in the message area.
+	// This lets the caller (who owns whatever backing config the TUI was created from) persist the selected model to disk (or elsewhere). If it returns a non-nil error,
+	// the TUI will display that error in the message area.
 	//
 	// NOTE: The TUI does not call this yet.
 	PersistModelID func(newModelID llmmodel.ModelID) error
 
-	// Monitor is provided by the CLI (when available) so the TUI can later report
-	// panics/errors and display version upgrade notices.
+	// Monitor is provided by the CLI (when available) so the TUI can later report panics/errors and display version upgrade notices.
 	//
 	// NOTE: The TUI does not use this yet.
 	Monitor *remotemonitor.Monitor

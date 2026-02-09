@@ -14,6 +14,7 @@ import (
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
@@ -45,9 +46,10 @@ type session struct {
 type sessionConfig struct {
 	packagePath string
 	modelID     llmmodel.ModelID
-	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd).
-	// This is primarily to make tests independent of process-wide working directory
-	// and to avoid path aliasing issues (ex: /var vs /private/var on macOS).
+	lintSteps   []lints.Step
+
+	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd). This is primarily to make tests independent of process-wide working directory and to avoid
+	// path aliasing issues (ex: /var vs /private/var on macOS).
 	sandboxDir string
 }
 
@@ -109,14 +111,23 @@ func newSession(cfg sessionConfig) (*session, error) {
 		}
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
 		toolAuthorizer = pkgAuthorizer
-		tools, err = toolsets.PackageAgentTools(sandboxDir, pkgAuthorizer, pkgAbsPath)
+		tools, err = toolsets.PackageAgentTools(toolsets.Options{
+			SandboxDir:  sandboxDir,
+			Authorizer:  pkgAuthorizer,
+			GoPkgAbsDir: pkgAbsPath,
+			LintSteps:   cfg.lintSteps,
+		})
 		if err != nil {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build package toolset: %w", err)
 		}
 	} else {
 		systemPrompt = prompt.GetFullPrompt()
-		tools, err = toolsets.CoreAgentTools(sandboxDir, sandboxAuthorizer)
+		tools, err = toolsets.CoreAgentTools(toolsets.Options{
+			SandboxDir: sandboxDir,
+			Authorizer: sandboxAuthorizer,
+			LintSteps:  cfg.lintSteps,
+		})
 		if err != nil {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("build toolset: %w", err)
@@ -163,8 +174,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}, nil
 }
 
-// includeReachableTestdataDirs includes any "testdata" directory directly under an
-// already-included directory (recursively). This allows Go fixture files in testdata
+// includeReachableTestdataDirs includes any "testdata" directory directly under an already-included directory (recursively). This allows Go fixture files in testdata
 // to remain in-scope for a package-mode code unit even when they are "*.go" files.
 func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
 	if unit == nil {
@@ -284,9 +294,8 @@ func boolToYesNo(v bool) string {
 	return "No"
 }
 
-// normalizeSessionConfig resolves the configured package path against the sandbox
-// directory and ensures it remains inside the sandbox, returning the sanitized
-// config along with the absolute package path.
+// normalizeSessionConfig resolves the configured package path against the sandbox directory and ensures it remains inside the sandbox, returning the sanitized config
+// along with the absolute package path.
 func normalizeSessionConfig(cfg sessionConfig, sandboxDir string) (sessionConfig, string, error) {
 	cfg.packagePath = strings.TrimSpace(cfg.packagePath)
 	cfg.modelID = llmmodel.ModelID(strings.TrimSpace(string(cfg.modelID)))
@@ -377,7 +386,7 @@ func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
 	return pkg, nil
 }
 
-func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string) (string, error) {
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) (string, error) {
 	agentsMsg, agentsErr := agentsmd.Read(sandboxDir, pkgAbsPath)
 	if agentsErr != nil {
 		debugLogf("agentsmd.Read failed: %v", agentsErr)
@@ -391,7 +400,7 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 		), err
 	}
 
-	pkgModeInfo, err := initialcontext.Create(pkg, false)
+	pkgModeInfo, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return joinContextBlocks(
 			agentsMsg,

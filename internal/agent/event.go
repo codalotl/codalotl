@@ -20,20 +20,15 @@ const (
 
 // Event conveys progress or status updates from the agent loop.
 type Event struct {
-	Agent AgentMeta
-
-	Type  EventType
-	Error error
-
-	TextContent llmstream.TextContent
-
+	Agent            AgentMeta
+	Type             EventType
+	Error            error
+	TextContent      llmstream.TextContent
 	ReasoningContent llmstream.ReasoningContent
-
-	Tool       string
-	ToolCall   *llmstream.ToolCall
-	ToolResult *llmstream.ToolResult
-
-	Turn *llmstream.Turn
+	Tool             string
+	ToolCall         *llmstream.ToolCall
+	ToolResult       *llmstream.ToolResult
+	Turn             *llmstream.Turn
 }
 
 // AgentMeta carries metadata describing which agent produced an event.

@@ -11,18 +11,15 @@ import (
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 )
 
-// Version is the codalotl version. It is a var (not a const) so build tooling can
-// override it (for example via `-ldflags "-X .../internal/cli.Version=1.2.3"`).
+// Version is the codalotl version. It is a var (not a const) so build tooling can override it (for example via `-ldflags "-X .../internal/cli.Version=1.2.3"`).
 //
 // NOTE: our current build system does not do this - we just bump versions with ./bump_release.sh, which edits this source file.
 var Version = "0.11.0"
 
-// RunOptions overrides standard I/O. If nil, defaults are used. Overriding is
-// useful for testing.
+// RunOptions overrides standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
-// Note that if Stdout/Stderr are overridden, we will pass them to other
-// package's functions if they accept them. However, not all will; some packages
-// will probably print to Stdout.
+// Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably
+// print to Stdout.
 type RunOptions struct {
 	In  io.Reader
 	Out io.Writer
@@ -36,8 +33,7 @@ type RunOptions struct {
 //   - 1 -> err != nil, but the structure of args is sound (flags are correct, etc).
 //   - 2 -> err != nil, args parse error or misuse of flags, etc.
 //
-// Note that in cases of errors, Run has already displayed an error message to
-// opts.Err || Stderr. Callers may use os.Exit with the exit code.
+// Note that in cases of errors, Run has already displayed an error message to opts.Err || Stderr. Callers may use os.Exit with the exit code.
 func Run(args []string, opts *RunOptions) (int, error) {
 	argv := args
 	if len(argv) > 0 {

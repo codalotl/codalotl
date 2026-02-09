@@ -141,6 +141,7 @@ func mergeMap(dest map[string]any, src map[string]any, baseKey string) error {
 // validateAllowedValue validates that v is one of the allowed normalized types:
 //   - nil
 //   - scalars: int, float64, bool, string
+//   - objects: map[string]any, with recursively validated values
 //   - slices: []int, []float64, []bool, []string
 //   - slices of objects: []map[string]any, with recursively validated values
 func validateAllowedValue(v any) error {
@@ -148,6 +149,13 @@ func validateAllowedValue(v any) error {
 	case nil:
 		return nil
 	case int, float64, bool, string:
+		return nil
+	case map[string]any:
+		for k, mv := range vv {
+			if err := validateAllowedValue(mv); err != nil {
+				return fmt.Errorf("invalid nested value at key '%s': %w", k, err)
+			}
+		}
 		return nil
 	case []int, []float64, []bool, []string:
 		return nil

@@ -10,42 +10,36 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/q/cascade"
 )
 
 // Config is codalotl's configuration loaded from a cascade of sources.
 //
-// NOTE: internal/q/cascade matches keys to struct field names case-insensitively;
-// it does not use json tags. The json tags are for `codalotl config` output and
+// NOTE: internal/q/cascade matches keys to struct field names case-insensitively; it does not use json tags. The json tags are for `codalotl config` output and
 // for compatibility with typical config.json naming.
 type Config struct {
-	ProviderKeys ProviderKeys `json:"providerkeys"`
+	ProviderKeys          ProviderKeys       `json:"providerkeys"`
+	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
+	ReflowWidth           int                `json:"reflowwidth"` // ReflowWidth is the max width when reflowing documentation. Defaults to 120.
+	ReflowWidthProvidence cascade.Providence `json:"-"`
+	Lints                 lints.Lints        `json:"lints,omitempty"` // Lints configures the lint pipeline.
+	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
+	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
 
-	CustomModels []CustomModel `json:"custommodels,omitempty"`
-
-	// MaxWidth is the max width when reflowing documentation.
-	// Defaults to 120.
-	MaxWidth           int                `json:"maxwidth"`
-	MaxWidthProvidence cascade.Providence `json:"-"`
-
-	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`
-	DisableCrashReporting bool `json:"disablecrashreporting,omitempty"`
-
-	// Optional. If set, use this provider if possible (lower precedence than
-	// PreferredModel, though).
+	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though).
 	PreferredProvider string `json:"preferredprovider"`
 
 	// Optional. If set, use this model specifically.
 	PreferredModel string `json:"preferredmodel"`
-	// PreferredModelProvidence indicates which source set PreferredModel, when
-	// any source actually did. This is used to decide which config file should
-	// be updated if the TUI asks to persist a newly selected model.
+
+	// PreferredModelProvidence indicates which source set PreferredModel, when any source actually did. This is used to decide which config file should be updated if
+	// the TUI asks to persist a newly selected model.
 	PreferredModelProvidence cascade.Providence `json:"-"`
 
-	// configLocations are the JSON config file paths that actually contributed
-	// values during load (low->high precedence). This is intentionally not part
-	// of the user-visible JSON schema.
+	// configLocations are the JSON config file paths that actually contributed values during load (low->high precedence). This is intentionally not part of the user-visible
+	// JSON schema.
 	configLocations []string
 }
 
@@ -74,7 +68,7 @@ type CustomModel struct {
 
 func loadConfig() (Config, error) {
 	loader := cascade.New().WithDefaults(map[string]any{
-		"maxwidth": 120,
+		"reflowwidth": 120,
 	})
 
 	// Global user config.
@@ -106,8 +100,8 @@ func loadConfig() (Config, error) {
 }
 
 func validateConfig(cfg Config) error {
-	if cfg.MaxWidth <= 0 {
-		return fmt.Errorf("invalid configuration: maxwidth must be > 0 (got %d)", cfg.MaxWidth)
+	if cfg.ReflowWidth <= 0 {
+		return fmt.Errorf("invalid configuration: reflowwidth must be > 0 (got %d)", cfg.ReflowWidth)
 	}
 	return nil
 }

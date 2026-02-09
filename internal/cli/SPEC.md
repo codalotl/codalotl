@@ -25,7 +25,7 @@ When codalotl starts, we load and validate configuration and required tools (exc
 Notes:
 - Any argument <path/to/pkg> can either use a Go-style package path (ex: `.`; `..`; `./internal/cli`) to a single package OR a relative/absolute dir (ex: `internal/cli`; `/home/proj/codalotl/internal/cli`), with optional trailing `/`.
     - It may NOT use `...` package patterns (if we need this, we'll invent a new identifier for it, for instance: <package_pattern>).
-- The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (muscle memory with tools like `code .`).
+- The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (for muscle memory with tools like `code .`).
 
 ### codalotl -h, codalotl --help
 
@@ -81,12 +81,9 @@ Example Output:
 Current Configuration:
 {
   "providerkeys": {
-    "anthropic": "",
-    "openai": "sk-p..._LQA",
-    "xai": "",
-    "gemini": ""
+    "openai": "sk-p..._LQA"
   },
-  "maxwidth": 160,
+  "reflowwidth": 160,
   "preferredprovider": "",
   "preferredmodel": ""
 }
@@ -119,6 +116,14 @@ Notes:
 - If `--deps` is set, packages from direct (non-`// indirect`) module dependencies are also included.
 - The output format is intentionally opaque and may change; callers should treat it as text intended to be copied into an LLM prompt rather than parsed.
 
+### codalotl docs reflow [--width <reflowwidth>] [--check] <path> ...
+
+Reflows the specified path(s) using `updatedocs.ReflowDocumentationPaths`. Reflow width is pulled from config.
+If `--width` is provided, it overrides the configured `reflowwidth` for that invocation only.
+If `--check` is provided, reflow is run as a dry-run: no files are modified on disk, but the output still lists which files would change.
+
+Output:
+- Prints the list of modified `.go` files (one per line) to stdout, similar to `gofmt -l`. The paths are module-relative when available.
 
 ## Configuration
 
@@ -135,8 +140,15 @@ Config:
 type Config struct {
 	ProviderKeys          ProviderKeys       `json:"providerkeys"`
 	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
-	MaxWidth              int                `json:"maxwidth"` // Max width when reflowing documentation. Default to 120
-	MaxWidthProvidence    cascade.Providence `json:"-"`
+	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Default to 120
+	ReflowWidthProvidence cascade.Providence `json:"-"`
+
+	// Lints configures the lint pipeline used by `codalotl context initial`.
+	// See internal/lints/SPEC.md for full details.
+	//
+	// NOTE: for now, this is only used by the `context initial` command.
+	Lints lints.Lints `json:"lints,omitempty"`
+
 	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
 	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
 

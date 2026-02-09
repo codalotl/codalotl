@@ -13,9 +13,13 @@ commands (or the used-by lookup); it emits the corresponding status blocks with 
 
 ## Dependencies and Correctness Delegation
 
-This package uses the `internal/tools/coretools` package for `ls`, and the `internal/tools/exttools` package for `diagnostics-status`,
-`test-status`, and `lint-status` (ex: it calls `exttools.RunDiagnostics`, among others). The exact formatting of the `<diagnostics-status>`
-section, for example, is governed by `RunDiagnostics`'s intended behavior, even if it differs slightly from this spec.
+This package uses:
+- `internal/tools/coretools` for `ls`
+- `internal/tools/exttools` for `diagnostics-status` and `test-status` (ex: it calls `exttools.RunDiagnostics`)
+- `internal/lints` for `lint-status` (it calls `lints.Run` in `check` mode)
+
+The exact formatting of `<diagnostics-status>` / `<test-status>` / `<lint-status>` is governed by those helper packages' intended
+behavior, even if it differs slightly from this spec.
 
 The `pkg-map` section is mostly built by the `internal/gocodecontext`'s `InternalPackageSignatures` func (the only comments are file markers).
 
@@ -81,8 +85,13 @@ ok      somemodule/some/pkg        (cached)
 </test-status>
 
 <lint-status ok="false">
+<command ok="true" mode="check" message="no issues found">
 $ gofmt -l ./some/pkg
+</command>
+<command ok="false" mode="check">
+$ codalotl docs reflow --check --width=120 ./some/pkg
 some/pkg/foo.go
+</command>
 </lint-status>
 ```
 
@@ -105,5 +114,7 @@ func usedBy(pkg *gocode.Package) ([]string, error)
 //
 // If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by sections. Instead, it
 // emits the corresponding status blocks with a "not run" message.
-func Create(pkg *gocode.Package, skipAllChecks bool) (string, error)
+//
+// lintSteps controls which lints are run. If lintSteps is nil, lints.DefaultSteps() is used.
+func Create(pkg *gocode.Package, lintSteps []lints.Step, skipAllChecks bool) (string, error)
 ```

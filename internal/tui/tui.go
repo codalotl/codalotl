@@ -21,13 +21,10 @@ import (
 )
 
 const (
-	minInputLines = 3
-	maxInputLines = 10
-
-	historyIndexNone = -1
-
-	// mouseWheelScrollLines is the number of lines to scroll per wheel "click".
-	mouseWheelScrollLines = 3
+	minInputLines         = 3
+	maxInputLines         = 10
+	historyIndexNone      = -1
+	mouseWheelScrollLines = 3 // mouseWheelScrollLines is the number of lines to scroll per wheel "click".
 )
 
 type messageKind int
@@ -62,21 +59,18 @@ type packageContextState struct {
 }
 
 type chatMessage struct {
-	kind          messageKind
-	userMessage   string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
-	event         agent.Event
-	toolCallID    string
-	contextStatus *contextStatusLine
-	// contextDetails and contextError are only used for messageKindContextStatus, and are displayed
-	// in Overlay Mode > Details.
-	contextDetails string
+	kind           messageKind
+	userMessage    string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
+	event          agent.Event
+	toolCallID     string
+	contextStatus  *contextStatusLine
+	contextDetails string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
 	contextError   string
 
-	// The ANSI formatted string. Each formatted must have all styles attached to it.
-	// It must be the correct block width (all lines padded with spaces to equal width of the viewport.
-	// Background colors must be set on this (if we're not in the uncolored palette).
-	// Resize events need to recalculate this.
-	formatted      string
+	// The ANSI formatted string. Each formatted must have all styles attached to it. It must be the correct block width (all lines padded with spaces to equal width
+	// of the viewport. Background colors must be set on this (if we're not in the uncolored palette). Resize events need to recalculate this.
+	formatted string
+
 	formattedWidth int
 }
 
@@ -133,7 +127,10 @@ func RunWithConfig(cfg Config) error {
 		ErrorColor:      palette.redForeground,
 	}
 	agentFormatter := agentformatter.NewTUIFormatter(formatterCfg)
-	initialCfg := sessionConfig{modelID: cfg.ModelID}
+	initialCfg := sessionConfig{
+		modelID:   cfg.ModelID,
+		lintSteps: cfg.LintSteps,
+	}
 	initialSession, err := newSession(initialCfg)
 	if err != nil {
 		return err
@@ -150,8 +147,7 @@ func RunWithConfig(cfg Config) error {
 }
 
 type model struct {
-	// ready is set on the first window size event. Only render TUI when ready=true
-	ready bool
+	ready bool // ready is set on the first window size event. Only render TUI when ready=true
 
 	//
 	// At any given time, the window height and window width are windowHeight/windowWidth. From this, we must calculate the height/width of all "controls"/"areas", so that they can be cell-perfect aligned.
@@ -160,11 +156,10 @@ type model struct {
 	windowHeight int
 	windowWidth  int
 
-	// viewportWidth and infoPanelWidth must sum to windowWidth.
-	// Below the viewport is the text area. It must be the same width as the viewport.
-	viewportWidth  int
-	infoPanelWidth int
+	// viewportWidth and infoPanelWidth must sum to windowWidth. Below the viewport is the text area. It must be the same width as the viewport.
+	viewportWidth int
 
+	infoPanelWidth       int
 	viewportHeight       int
 	textAreaHeight       int // height of text area AND any border around it
 	infoLineHeight       int // height of info area below the text area (ex: could show things like common hotkeys, context usage, etc)
@@ -175,90 +170,62 @@ type model struct {
 	//   - permission view width == viewportWidth
 	//   - info panel height == windowHeight
 
-	messages []chatMessage
-
-	messageHistory      []string
-	editedHistoryDrafts map[int]string
-	cyclingMode         bool
-	cycleIndex          int
-	editingHistoryIndex int
-
-	viewport *tuicontrols.View
-	textarea *tuicontrols.TextArea
-	tui      *qtui.TUI
-
-	session        *session
-	sessionConfig  sessionConfig
-	sessionFactory func(sessionConfig) (*session, error)
-
-	agentFormatter agentformatter.Formatter
-
-	messageQueue   []string
-	currentRun     *agentRun
-	runStartedAt   time.Time
-	nextAgentRunID int
-
+	messages                     []chatMessage
+	messageHistory               []string
+	editedHistoryDrafts          map[int]string
+	cyclingMode                  bool
+	cycleIndex                   int
+	editingHistoryIndex          int
+	viewport                     *tuicontrols.View
+	textarea                     *tuicontrols.TextArea
+	tui                          *qtui.TUI
+	session                      *session
+	sessionConfig                sessionConfig
+	sessionFactory               func(sessionConfig) (*session, error)
+	agentFormatter               agentformatter.Formatter
+	messageQueue                 []string
+	currentRun                   *agentRun
+	runStartedAt                 time.Time
+	nextAgentRunID               int
 	workingIndicatorAnimationPos int
 	workingIndicatorTickerCancel qtui.CancelFunc
 
-	// When `/new` is invoked mid-run we mark the reset as pending so the cleanup
-	// happens only after `agentStreamClosedMsg` fires; that way we don't tear
-	// down session state while events are still draining from the agent.
+	// When `/new` is invoked mid-run we mark the reset as pending so the cleanup happens only after `agentStreamClosedMsg` fires; that way we don't tear down session
+	// state while events are still draining from the agent.
 	pendingSessionConfig *sessionConfig
 
-	permissionQueue    []*permissionPrompt
-	activePermission   *permissionPrompt
-	permissionViewText string
-
-	requests      <-chan authdomain.UserRequest
-	requestSource int
-	requestCancel context.CancelFunc
-
-	palette colorPalette
-
-	// If set, /model persists the selected model ID back to the caller's config source.
-	persistModelID func(newModelID llmmodel.ModelID) error
-
+	permissionQueue      []*permissionPrompt
+	activePermission     *permissionPrompt
+	permissionViewText   string
+	requests             <-chan authdomain.UserRequest
+	requestSource        int
+	requestCancel        context.CancelFunc
+	palette              colorPalette
+	persistModelID       func(newModelID llmmodel.ModelID) error // If set, /model persists the selected model ID back to the caller's config source.
 	packageContext       *packageContextState
 	nextPackageContextID int
 
-	// pendingPostResetMessage is appended as a system message immediately after a session reset.
-	// This is primarily used by slash commands that start a new session (ex: /model) but still
-	// want to confirm what happened.
+	// pendingPostResetMessage is appended as a system message immediately after a session reset. This is primarily used by slash commands that start a new session (ex:
+	// /model) but still want to confirm what happened.
 	pendingPostResetMessage string
 
-	monitor             *remotemonitor.Monitor
-	latestVersion       string
-	versionCheckStarted bool
-
-	// Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
-	overlayMode bool
-
-	// overlayCopyFeedback tracks transient "copied!" feedback per message index.
-	overlayCopyFeedback map[int]time.Time
-
-	// overlayTargets are computed on each refreshViewport; they map viewport content
-	// rows to message indices for hit-testing.
-	overlayTargets []overlayTarget
-
-	// lastLeftClick* is used for best-effort double-click detection.
-	lastLeftClickAt time.Time
-	lastLeftClickX  int
-	lastLeftClickY  int
-
-	// clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
-	clipboardSetter func(text string)
-
-	// OS clipboard integration (best-effort); separated for testability so unit tests
-	// don't mutate the real system clipboard.
-	osClipboardAvailable func() bool
+	monitor              *remotemonitor.Monitor
+	latestVersion        string
+	versionCheckStarted  bool
+	overlayMode          bool              // Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
+	overlayCopyFeedback  map[int]time.Time // overlayCopyFeedback tracks transient "copied!" feedback per message index.
+	overlayTargets       []overlayTarget   // overlayTargets are computed on each refreshViewport; they map viewport content rows to message indices for hit-testing.
+	lastLeftClickAt      time.Time         // lastLeftClick* is used for best-effort double-click detection.
+	lastLeftClickX       int
+	lastLeftClickY       int
+	clipboardSetter      func(text string) // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
+	osClipboardAvailable func() bool       // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
 	osClipboardWrite     func(text string) error
 
 	// now allows deterministic tests around transient UI state (ex: "copied!").
 	now func() time.Time
 
-	// detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and
-	// package context gathering.
+	// detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and package context gathering.
 	detailsDialog *detailsDialog
 }
 
@@ -528,9 +495,8 @@ func (m *model) handleMouseEvent(ev qtui.MouseEvent) {
 	m.lastLeftClickY = ev.Y
 }
 
-// updateSizes calculates all sizes (dimensions) on m based on m.windowHeight and m.windowWidth.
-// It updates fields on m (ex: m.viewportWidth), and also dimensions on any "components" we're using.
-// This method is cheap to call, and can be called idempotently.
+// updateSizes calculates all sizes (dimensions) on m based on m.windowHeight and m.windowWidth. It updates fields on m (ex: m.viewportWidth), and also dimensions
+// on any "components" we're using. This method is cheap to call, and can be called idempotently.
 func (m *model) updateSizes() {
 	m.viewportWidth, m.infoPanelWidth = viewportInfoPanelWidths(m.windowWidth)
 
@@ -559,8 +525,8 @@ func (m *model) updateSizes() {
 	}
 }
 
-// viewportInfoPanelWidths returns the viewport width (messages area - left) and info panel width (right area).
-// If the terminal is too small, don't show the info panel area (width=0).
+// viewportInfoPanelWidths returns the viewport width (messages area - left) and info panel width (right area). If the terminal is too small, don't show the info
+// panel area (width=0).
 func viewportInfoPanelWidths(terminalWidth int) (int, int) {
 	minViewport := 60
 	minInfoPanel := 40
@@ -1782,8 +1748,8 @@ func (m *model) setMessageWidthBG(content string, width int, background termform
 	return style.Apply(content)
 }
 
-// padViewportContentHeight ensures that content, which is the proposed contents of the viewport, has enough height, by adding rows of spaces with a bg color. This is nececessary so that
-// the whole message area has the same bg color to the user, even if there's not much actual content in it.
+// padViewportContentHeight ensures that content, which is the proposed contents of the viewport, has enough height, by adding rows of spaces with a bg color. This
+// is nececessary so that the whole message area has the same bg color to the user, even if there's not much actual content in it.
 func (m *model) padViewportContentHeight(content string, targetHeight int, width int) string {
 	currentHeight := termformat.BlockHeight(content)
 
@@ -2192,8 +2158,9 @@ func (m *model) startPackageContextGather() {
 
 	sandboxDir := m.session.sandboxDir
 	pkgAbsPath := m.session.packageAbsPath
+	lintSteps := m.session.config.lintSteps
 	go func() {
-		contextText, err := buildPackageInitialContext(sandboxDir, pkgPath, pkgAbsPath)
+		contextText, err := buildPackageInitialContext(sandboxDir, pkgPath, pkgAbsPath, lintSteps)
 		status := packageContextStatusSuccess
 		errMsg := ""
 		if err != nil {
@@ -2268,8 +2235,8 @@ func newTextArea() *tuicontrols.TextArea {
 	return ti
 }
 
-// formatStopwatchDuration returns a human-readable stopwatch string with hour, minute,
-// and second units, clamping negative durations to zero and always showing seconds.
+// formatStopwatchDuration returns a human-readable stopwatch string with hour, minute, and second units, clamping negative durations to zero and always showing
+// seconds.
 func formatStopwatchDuration(d time.Duration) string {
 	if d < 0 {
 		d = 0

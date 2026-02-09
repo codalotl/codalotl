@@ -12,8 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// colorAt returns the effective foreground or background color active at cell (targetX, targetY)
-// within the ANSI-styled string str.
+// colorAt returns the effective foreground or background color active at cell (targetX, targetY) within the ANSI-styled string str.
 func colorAt(str string, targetX, targetY int, bg bool) termformat.Color {
 	if targetX < 0 || targetY < 0 {
 		return nil

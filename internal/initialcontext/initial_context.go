@@ -11,6 +11,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 )
@@ -27,7 +28,9 @@ const recursionEnvVar = "CODEAI_INITIALCONTEXT_ACTIVE_TESTS"
 //
 // If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by
 // lookups. Instead, it emits the corresponding status blocks with a "not run" message.
-func Create(pkg *gocode.Package, skipAllChecks bool) (string, error) {
+//
+// lintSteps controls which lints are run. If nil, lints.DefaultSteps() is used.
+func Create(pkg *gocode.Package, lintSteps []lints.Step, skipAllChecks bool) (string, error) {
 	if pkg == nil {
 		return "", fmt.Errorf("nil package")
 	}
@@ -103,7 +106,12 @@ func Create(pkg *gocode.Package, skipAllChecks bool) (string, error) {
 		}
 		sections = append(sections, testOutput)
 
-		lintOutput, err := exttools.CheckLints(ctx, moduleAbsPath, absPkgPath)
+		steps := lintSteps
+		if steps == nil {
+			steps = lints.DefaultSteps()
+		}
+
+		lintOutput, err := lints.Run(ctx, moduleAbsPath, absPkgPath, steps, lints.SituationInitial)
 		if err != nil {
 			return "", fmt.Errorf("collect lint status: %w", err)
 		}

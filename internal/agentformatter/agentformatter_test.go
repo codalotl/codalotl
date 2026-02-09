@@ -704,6 +704,104 @@ func TestDiagnosticsToolCompleteCLI(t *testing.T) {
 	require.Equal(t, "• Ran Diagnostics ./internal/agentformatter", stripANSI(out))
 }
 
+func TestFixLintsToolCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "fix_lints",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "fix_lints",
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Fix Lints ./internal/agentformatter", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+	assert.Contains(t, out, ansiWrap("Fix Lints", pal, colorColorful, false, true))
+	assert.NotContains(t, out, "└")
+}
+
+func TestFixLintsToolCompleteSuccessShowsOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "fix_lints",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result: `<lint-status ok="true">
+<command ok="true" message="no issues found" mode="fix">
+$ gofmt -l -w internal/agentformatter
+</command>
+<command ok="true" mode="fix">
+$ codalotl docs reflow internal/agentformatter
+internal/agentformatter/agentformatter.go
+</command>
+</lint-status>`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "fix_lints",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 200)
+	require.NotEmpty(t, out)
+
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Fixed Lints ./internal/agentformatter",
+		"  └ $ gofmt -l -w internal/agentformatter",
+		"    $ codalotl docs reflow internal/agentformatter",
+		"    internal/agentformatter/agentformatter.go",
+	}, lines)
+
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+	assert.Contains(t, out, ansiWrap("Fixed Lints", pal, colorColorful, false, true))
+	assert.NotContains(t, stripANSI(out), "<command")
+}
+
+func TestFixLintsToolCompleteCLI(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	call := llmstream.ToolCall{
+		Name:  "fix_lints",
+		Input: `{"path":"./internal/agentformatter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true,"content":"$ gofmt -l -w internal/agentformatter"}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "fix_lints",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, MinTerminalWidth)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Fixed Lints ./internal/agentformatter",
+		"  └ $ gofmt -l -w internal/agentformatter",
+	}, lines)
+}
+
 func TestLsCompleteSuccessNoOutput(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),

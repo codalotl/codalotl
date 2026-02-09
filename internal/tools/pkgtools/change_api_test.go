@@ -7,16 +7,28 @@ import (
 
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewChangeAPITool_StoresLintSteps(t *testing.T) {
+	sandbox := t.TempDir()
+	steps := []lints.Step{{ID: "custom"}}
+
+	tool := NewChangeAPITool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), steps)
+	changeTool, ok := tool.(*toolChangeAPI)
+	require.True(t, ok)
+	assert.Equal(t, steps, changeTool.lintSteps)
+}
+
 func TestChangeAPI_MissingImportPath(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset())
+		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset(), nil)
 
 		res := tool.Run(context.Background(), llmstream.ToolCall{
 			CallID: "call-missing-import-path",
@@ -33,7 +45,7 @@ func TestChangeAPI_MissingImportPath(t *testing.T) {
 func TestChangeAPI_MissingInstructions(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset())
+		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset(), nil)
 
 		res := tool.Run(context.Background(), llmstream.ToolCall{
 			CallID: "call-missing-instructions",
@@ -50,7 +62,7 @@ func TestChangeAPI_MissingInstructions(t *testing.T) {
 func TestChangeAPI_RejectsNotImportedPackage(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset())
+		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset(), nil)
 
 		res := tool.Run(context.Background(), llmstream.ToolCall{
 			CallID: "call-not-imported",
@@ -67,7 +79,7 @@ func TestChangeAPI_RejectsNotImportedPackage(t *testing.T) {
 func TestChangeAPI_ImportedPackage_ReachesSubagentCheck(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset())
+		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset(), nil)
 
 		res := tool.Run(context.Background(), llmstream.ToolCall{
 			CallID: "call-imported",
@@ -85,7 +97,7 @@ func TestChangeAPI_ImportedPackage_ReachesSubagentCheck(t *testing.T) {
 func TestChangeAPI_RejectsPackagesOutsideSandbox(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset())
+		tool := NewChangeAPITool(pkg.AbsolutePath(), auth, dummyPackageToolset(), nil)
 
 		res := tool.Run(context.Background(), llmstream.ToolCall{
 			CallID: "call-stdlib",
@@ -99,8 +111,8 @@ func TestChangeAPI_RejectsPackagesOutsideSandbox(t *testing.T) {
 	})
 }
 
-func dummyPackageToolset() func(string, authdomain.Authorizer, string) ([]llmstream.Tool, error) {
-	return func(_ string, _ authdomain.Authorizer, _ string) ([]llmstream.Tool, error) {
+func dummyPackageToolset() toolsetinterface.Toolset {
+	return func(_ toolsetinterface.Options) ([]llmstream.Tool, error) {
 		return nil, nil
 	}
 }

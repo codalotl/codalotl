@@ -20,15 +20,11 @@ const (
 )
 
 type detailsDialog struct {
-	messageIndex int
-
-	title string
-	body  string
-
-	view *tuicontrols.View
-
-	// Cached sizing/layout info so we can keep the scroll viewport stable across renders.
-	lastInnerWidth  int
+	messageIndex    int
+	title           string
+	body            string
+	view            *tuicontrols.View
+	lastInnerWidth  int // Cached sizing/layout info so we can keep the scroll viewport stable across renders.
 	lastInnerHeight int
 	titleLines      []string
 }
@@ -195,8 +191,8 @@ func (m *model) detailsDialogEnsureSized() {
 	dlg.view.SetSize(innerW, bodyHeight)
 }
 
-// detailsDialogView renders a modal details dialog. The base view is ignored (we keep it only for
-// future overlay improvements); the dialog is drawn over a blank background.
+// detailsDialogView renders a modal details dialog. The base view is ignored (we keep it only for future overlay improvements); the dialog is drawn over a blank
+// background.
 func (m *model) detailsDialogView(_ string) string {
 	if m == nil || m.detailsDialog == nil {
 		return ""

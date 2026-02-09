@@ -36,6 +36,12 @@ type Options struct {
     // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
     ModelID llmmodel.ModelID
 
+    // LintSteps controls which lint steps the agent runs.
+    LintSteps []lints.Step
+
+    // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
+    ReflowWidth int
+
     // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
     AutoYes bool
 

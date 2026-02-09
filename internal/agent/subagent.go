@@ -141,8 +141,7 @@ func SubAgentCreatorFromContext(ctx context.Context) SubAgentCreator {
 	return tc.creator
 }
 
-// SubAgentDepth reports how many levels of subagents exist above the tool invocation.
-// Returns -1 if the context is not associated with an agent tool invocation.
+// SubAgentDepth reports how many levels of subagents exist above the tool invocation. Returns -1 if the context is not associated with an agent tool invocation.
 func SubAgentDepth(ctx context.Context) int {
 	if ctx == nil {
 		return -1
