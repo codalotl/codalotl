@@ -258,6 +258,8 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiReadFileToolCall(e, width)
 	case "diagnostics":
 		return f.tuiDiagnosticsToolCall(e, width)
+	case "fix_lints":
+		return f.tuiFixLintsToolCall(e, width)
 	case "get_public_api":
 		return f.tuiGetPublicAPIToolCall(e, width)
 	case "clarify_public_api":
@@ -293,6 +295,8 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliReadFileToolCall(e)
 	case "diagnostics":
 		return f.cliDiagnosticsToolCall(e)
+	case "fix_lints":
+		return f.cliFixLintsToolCall(e)
 	case "get_public_api":
 		return f.cliGetPublicAPIToolCall(e)
 	case "clarify_public_api":
@@ -456,6 +460,8 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiReadFileToolComplete(e, width, success, cmd, outputLines)
 	case "diagnostics":
 		return f.tuiDiagnosticsToolComplete(e, width, success)
+	case "fix_lints":
+		return f.tuiFixLintsToolComplete(e, width, success)
 	case "get_public_api":
 		return f.tuiGetPublicAPIToolComplete(e, width, success, cmd, outputLines)
 	case "clarify_public_api":
@@ -495,6 +501,8 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliReadFileToolComplete(e, success, cmd, outputLines)
 	case "diagnostics":
 		return f.cliDiagnosticsToolComplete(e, success)
+	case "fix_lints":
+		return f.cliFixLintsToolComplete(e, success)
 	case "get_public_api":
 		return f.cliGetPublicAPIToolComplete(e, success, cmd, outputLines)
 	case "clarify_public_api":
@@ -1145,6 +1153,23 @@ func extractDiagnosticsPath(call *llmstream.ToolCall) (string, bool) {
 	return sanitizeText(path), true
 }
 
+func extractFixLintsPath(call *llmstream.ToolCall) (string, bool) {
+	if call == nil {
+		return "", false
+	}
+	var payload struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(call.Input), &payload); err != nil {
+		return "", false
+	}
+	path := strings.TrimSpace(payload.Path)
+	if path == "" {
+		return "", false
+	}
+	return sanitizeText(path), true
+}
+
 func (f *textTUIFormatter) tuiDiagnosticsToolCall(e agent.Event, width int) string {
 	path, ok := extractDiagnosticsPath(e.ToolCall)
 	target := strings.TrimSpace(path)
@@ -1213,6 +1238,148 @@ func (f *textTUIFormatter) cliDiagnosticsToolComplete(e agent.Event, success boo
 	}
 	// Per SPEC, diagnostics never prints output lines; status is indicated by bullet color.
 	return f.cliBulletLine(bullet, segments...)
+}
+
+func (f *textTUIFormatter) tuiFixLintsToolCall(e agent.Event, width int) string {
+	path, ok := extractFixLintsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	segments := []textSegment{
+		{text: "Fix Lints", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+	return f.tuiBulletLine(width, colorAccent, segments...)
+}
+
+func (f *textTUIFormatter) cliFixLintsToolCall(e agent.Event) string {
+	path, ok := extractFixLintsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	segments := []textSegment{
+		{text: "Fix Lints", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+	return f.cliBulletLine(colorAccent, segments...)
+}
+
+func stripFixLintsCommandWrappers(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "<command") || strings.HasPrefix(trimmed, "</command") {
+			continue
+		}
+		// Defensive: ignore any leftover outer wrappers if the outer tag couldn't be stripped.
+		if strings.HasPrefix(trimmed, "<lint-status") || strings.HasPrefix(trimmed, "</lint-status") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+func (f *textTUIFormatter) summarizeFixLints(e agent.Event) (success bool, lines []toolOutputLine) {
+	success = true
+	var content string
+	if e.ToolResult != nil {
+		if s, ok := toolResultSuccess(*e.ToolResult); ok {
+			success = s
+		} else {
+			success = !e.ToolResult.IsError
+		}
+		trimmed := strings.TrimSpace(e.ToolResult.Result)
+		var payload struct {
+			Content string `json:"content"`
+			Error   string `json:"error"`
+			Success *bool  `json:"success"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+			if strings.TrimSpace(payload.Error) != "" {
+				return success, []toolOutputLine{{
+					text:          fmt.Sprintf("Error: %s", payload.Error),
+					style:         runeStyle{color: colorRed},
+					highlightCode: false,
+				}}
+			}
+			content = payload.Content
+		} else {
+			if e.ToolResult.IsError {
+				return success, []toolOutputLine{{
+					text:          "Error: " + trimmed,
+					style:         runeStyle{color: colorRed},
+					highlightCode: false,
+				}}
+			}
+			content = trimmed
+		}
+	}
+
+	content = stripOuterXMLTag(strings.TrimSpace(content))
+	content = stripFixLintsCommandWrappers(content)
+	lines = summarizeToolContent(content)
+	return success, lines
+}
+
+func (f *textTUIFormatter) tuiFixLintsToolComplete(e agent.Event, width int, success bool) string {
+	path, ok := extractFixLintsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := []textSegment{
+		{text: "Fixed Lints", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+
+	_, lines := f.summarizeFixLints(e)
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
+	f.appendTUIToolOutput(&builder, width, lines)
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliFixLintsToolComplete(e agent.Event, success bool) string {
+	path, ok := extractFixLintsPath(e.ToolCall)
+	target := strings.TrimSpace(path)
+	if !ok || target == "" {
+		target = toolDisplayName(e)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	segments := []textSegment{
+		{text: "Fixed Lints", style: runeStyle{color: colorColorful, bold: true}},
+	}
+	if target != "" {
+		segments = append(segments, textSegment{text: " " + target})
+	}
+
+	_, lines := f.summarizeFixLints(e)
+	out := []string{f.cliBulletLine(bullet, segments...)}
+	if rest := f.cliToolOutputLines(lines); len(rest) > 0 {
+		out = append(out, rest...)
+	}
+	return strings.Join(out, "\n")
 }
 
 func (f *textTUIFormatter) tuiGetPublicAPIToolCall(e agent.Event, width int) string {

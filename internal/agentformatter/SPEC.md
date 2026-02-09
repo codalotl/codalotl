@@ -301,6 +301,24 @@ The EventTypeToolComplete looks like this (Call is the same, except with `Run`):
 - Run Diagnostics / Ran Diagnostics is Bold, Colorful; some/path is normal
 - There is no output line. Status indindicated by bullet color (Red or Green).
 
+### EventTypeToolCall and EventTypeToolComplete - fix_lints
+
+Call:
+
+```
+• Fix Lints some/path
+```
+
+Complete:
+
+```
+• Fixed Lints some/path
+  └ $ gofmt -l -w some/path
+```
+
+- Fix Lints / Fixed Lints is Bold, Colorful; some/path is normal
+- Output is summarized like other tools (max 5 lines).
+
 ### EventTypeToolCall and EventTypeToolComplete - run_tests
 
 ```
