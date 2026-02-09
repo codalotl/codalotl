@@ -347,3 +347,41 @@ func TestFormatSkillErrors(t *testing.T) {
 
 	assert.Equal(t, "", FormatSkillErrors(nil, nil))
 }
+
+func TestPrompt_Sanity(t *testing.T) {
+	tmp := t.TempDir()
+	alphaDir := filepath.Join(tmp, "alpha")
+	betaDir := filepath.Join(tmp, "beta")
+
+	out := Prompt([]Skill{
+		{
+			AbsDir:        betaDir,
+			Name:          "beta",
+			Description:   "Second skill",
+			License:       "MIT",
+			Metadata:      map[string]string{"x": "y"},
+			Body:          "beta body",
+			Compatibility: "any",
+		},
+		{
+			AbsDir:      alphaDir,
+			Name:        "alpha",
+			Description: "First skill",
+		},
+	})
+
+	assert.Contains(t, out, "## Skills")
+	assert.Contains(t, out, "### Available skills")
+	assert.Contains(t, out, "### How to use skills")
+
+	// Smoke-check that the embedded content is present, without pinning tests to specific wording.
+	assert.Contains(t, out, strings.TrimSuffix(promptOverviewMD, "\n"))
+	assert.Contains(t, out, strings.TrimSuffix(promptHowToMD, "\n"))
+
+	// Skills should be listed in sorted order and include the SKILL.md location.
+	iAlpha := strings.Index(out, "- alpha: First skill (file: "+filepath.Join(alphaDir, "SKILL.md")+")")
+	iBeta := strings.Index(out, "- beta: Second skill (file: "+filepath.Join(betaDir, "SKILL.md")+")")
+	require.Greater(t, iAlpha, -1)
+	require.Greater(t, iBeta, -1)
+	assert.Less(t, iAlpha, iBeta)
+}

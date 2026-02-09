@@ -1,6 +1,7 @@
 package skills
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+//go:embed prompt_overview.md
+var promptOverviewMD string
+
+//go:embed prompt_howto.md
+var promptHowToMD string
+
 // Skill is an Agent Skill, loaded from a skill directory containing a SKILL.md file.
 type Skill struct {
 	AbsDir        string // AbsDir is the dir that contains the SKILL.md file. Should not end in "/". Its last segment must match Name in valid Skills.
@@ -22,6 +29,31 @@ type Skill struct {
 	Compatibility string
 	Metadata      map[string]string
 	Body          string
+}
+
+// Prompt returns a markdown string suitable to be given to the LLM that explains skills and enumerates the provided available skills.
+func Prompt(skills []Skill) string {
+	// Keep output deterministic regardless of input order.
+	sorted := append([]Skill(nil), skills...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+
+	var b strings.Builder
+	b.WriteString("## Skills\n\n")
+	b.WriteString(strings.TrimSuffix(promptOverviewMD, "\n"))
+
+	b.WriteString("\n\n### Available skills\n")
+	if len(sorted) == 0 {
+		b.WriteString("- (none)\n")
+	} else {
+		for _, s := range sorted {
+			b.WriteString(fmt.Sprintf("- %s: %s (file: %s)\n", s.Name, s.Description, filepath.Join(s.AbsDir, "SKILL.md")))
+		}
+	}
+
+	b.WriteString("\n### How to use skills\n\n")
+	b.WriteString(strings.TrimSuffix(promptHowToMD, "\n"))
+	b.WriteByte('\n')
+	return b.String()
 }
 
 // LoadSkill accepts a path to either the skill dir or the SKILL.md file, and returns a Skill struct.

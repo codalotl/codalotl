@@ -41,5 +41,19 @@ func FormatSkillErrors(invalidSkills []Skill, failedSkillLoads []error) string
 // Example errors:
 //   - Invalid skill name (from the spec, skill name must be: `Max 64 characters. Lowercase letters, numbers, and hyphens only. Must not start or end with a hyphen.`)
 func (s Skill) Validate() error
+
+// Prompt returns a string suitable to be given to the LLM that explains skills. It takes this form:
+//
+//	## Skills
+//	A skill is a...
+//	### Available skills
+//	- skill-1: This is skill 1 description. (file: /path/to/skill-1/SKILL.md)
+//	- skill-2: This is skill 2 description. (file: /path/to/skill-2/SKILL.md)
+//	### How to use skills
+//	- Discovery: The list above is...
+//	- Missing/blocked: If a named skill...
+//
+// In other words, three headers, with an overview, list of actual skills and their location, and then a guide on how to use skills with various rules and tips.
+func Prompt(skills []Skills) string
 ```
 
