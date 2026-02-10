@@ -47,12 +47,12 @@ func (s Skill) Validate() error
 //
 // It takes this form:
 //
-//	## Skills
+//	# Skills
 //	A skill is a...
-//	### Available skills
+//	## Available skills
 //	- skill-1: This is skill 1 description. (file: /path/to/skill-1/SKILL.md)
 //	- skill-2: This is skill 2 description. (file: /path/to/skill-2/SKILL.md)
-//	### How to use skills
+//	## How to use skills
 //	- Discovery: The list above is...
 //	- Missing/blocked: If a named skill...
 //

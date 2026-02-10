@@ -383,9 +383,9 @@ func TestPrompt_Sanity(t *testing.T) {
 		},
 	}, shellToolName)
 
-	assert.Contains(t, out, "## Skills")
-	assert.Contains(t, out, "### Available skills")
-	assert.Contains(t, out, "### How to use skills")
+	assert.Contains(t, out, "# Skills")
+	assert.Contains(t, out, "## Available skills")
+	assert.Contains(t, out, "## How to use skills")
 
 	// Smoke-check that the embedded content is present, without pinning tests to specific wording.
 	assert.Contains(t, out, strings.TrimSuffix(promptOverviewMD, "\n"))
@@ -402,9 +402,9 @@ func TestPrompt_Sanity(t *testing.T) {
 
 func TestPrompt_NoSkills_Minimal(t *testing.T) {
 	out := Prompt(nil, "anything")
-	assert.Equal(t, "## Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n", out)
-	assert.NotContains(t, out, "### Available skills")
-	assert.NotContains(t, out, "### How to use skills")
+	assert.Equal(t, "# Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n", out)
+	assert.NotContains(t, out, "## Available skills")
+	assert.NotContains(t, out, "## How to use skills")
 }
 
 func TestAuthorize_CodeUnitGrantsSkillDir(t *testing.T) {

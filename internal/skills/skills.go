@@ -142,7 +142,7 @@ func Prompt(skills []Skill, shellToolName string) string {
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
 
 	if len(sorted) == 0 {
-		return "## Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n"
+		return "# Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n"
 	}
 
 	if shellToolName == "" {
@@ -151,15 +151,15 @@ func Prompt(skills []Skill, shellToolName string) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("## Skills\n\n")
+	b.WriteString("# Skills\n\n")
 	b.WriteString(strings.TrimSuffix(promptOverviewMD, "\n"))
 
-	b.WriteString("\n\n### Available skills\n")
+	b.WriteString("\n\n## Available skills\n")
 	for _, s := range sorted {
 		b.WriteString(fmt.Sprintf("- %s: %s (file: %s)\n", s.Name, s.Description, filepath.Join(s.AbsDir, "SKILL.md")))
 	}
 
-	b.WriteString("\n### How to use skills\n\n")
+	b.WriteString("\n## How to use skills\n\n")
 	howTo := strings.TrimSuffix(promptHowToMD, "\n")
 	howTo = strings.ReplaceAll(howTo, "skill_shell", shellToolName)
 	b.WriteString(howTo)
