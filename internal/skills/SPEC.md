@@ -1,11 +1,12 @@
 # skills
 
-The skills package implements support for agent skills, as per https://agentskills.io/home, with github repo https://github.com/agentskills/agentskills. From that repo, I have saved their spec at agentskills_spec.mdx.
+Package skills implements support for agent skills per https://agentskills.io/home and https://github.com/agentskills/agentskills.
+
+This repo includes a saved copy of that spec at agentskills_spec.mdx.
 
 ## Public API
 
 ```go
-
 type Skill struct {
     AbsDir string // AbsDir is the dir that contains the SKILL.md file. Should not end in "/". Its last segment must match Name in valid Skills.
     Name string
