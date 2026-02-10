@@ -7,7 +7,7 @@ The skills package implements support for agent skills, as per https://agentskil
 ```go
 
 type Skill struct {
-    AbsDir string // AbsDir is the dir that contains the SKILL.md file. Should not in "/". It's last segment must match Name in valid Skills.
+    AbsDir string // AbsDir is the dir that contains the SKILL.md file. Should not end in "/". Its last segment must match Name in valid Skills.
     Name string
     Description string
     License string
@@ -63,5 +63,16 @@ func Prompt(skills []Skill, shellToolName string) string
 //
 // This is intended to allow tools like read_file / ls to access skill files even outside a sandbox or code unit jail.
 func Authorize(skills []Skill, authorizer authdomain.Authorizer) error
+
+// SearchPaths returns absolute directories where skills may be located.
+//
+// Starting in startDir (can be "" for cwd), it looks for `$DIR/.codalotl/skills`, then repeats for each parent directory up to the filesystem root. Lastly, it checks
+// `~/.codalotl/skills` (where `~` resolves to the current user's home directory). This search order mirrors that of cascade's config files.
+//
+// A candidate `.codalotl/skills` directory is only returned if it contains at least one subdirectory (i.e., at least one potential skill dir). Empty directories, or
+// directories containing only files, are ignored.
+//
+// If no paths are found, it returns nil. Errors are ignored.
+func SearchPaths(startDir string) []string
 ```
 

@@ -32,6 +32,105 @@ type Skill struct {
 	Body          string
 }
 
+// SearchPaths returns absolute directories where skills may be located.
+//
+// Starting in startDir (can be "" for cwd), it looks for `$DIR/.codalotl/skills`, then repeats for each parent directory up to the filesystem root. Lastly, it checks
+// `~/.codalotl/skills` (where `~` resolves to the current user's home directory). This search order mirrors that of cascade's config files.
+//
+// A candidate `.codalotl/skills` directory is only returned if it contains at least one subdirectory (i.e., at least one potential skill dir). Empty directories,
+// or directories containing only files, are ignored.
+//
+// If no paths are found, it returns nil. Errors are ignored.
+func SearchPaths(startDir string) []string {
+	// Best-effort: errors are ignored by contract.
+	if startDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			startDir = wd
+		}
+	}
+
+	// If startDir points to a file, walk from its directory.
+	if startDir != "" {
+		if info, err := os.Stat(startDir); err == nil && !info.IsDir() {
+			startDir = filepath.Dir(startDir)
+		}
+	}
+
+	if startDir == "" {
+		// Couldn't determine a starting point.
+		return nil
+	}
+
+	startAbs, err := filepath.Abs(startDir)
+	if err != nil {
+		// Fall back to the provided path if Abs fails.
+		startAbs = startDir
+	}
+
+	paths := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+
+	containsAnyDir := func(dir string) bool {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return false
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				return true
+			}
+			// Treat symlinks to directories as directories. Best-effort: ignore errors.
+			if e.Type()&os.ModeSymlink != 0 {
+				if info, err := os.Stat(filepath.Join(dir, e.Name())); err == nil && info.IsDir() {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	addIfSkillsDir := func(dir string) {
+		if dir == "" {
+			return
+		}
+		if _, ok := seen[dir]; ok {
+			return
+		}
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			return
+		}
+		if !containsAnyDir(dir) {
+			return
+		}
+		seen[dir] = struct{}{}
+		paths = append(paths, dir)
+	}
+
+	for dir := startAbs; dir != ""; {
+		addIfSkillsDir(filepath.Join(dir, ".codalotl", "skills"))
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // reached filesystem root
+		}
+		dir = parent
+	}
+
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		homeAbs, err := filepath.Abs(home)
+		if err != nil {
+			homeAbs = home
+		}
+		addIfSkillsDir(filepath.Join(homeAbs, ".codalotl", "skills"))
+	}
+
+	if len(paths) == 0 {
+		return nil
+	}
+	return paths
+}
+
 // Prompt returns a markdown string suitable to be given to the LLM that explains skills and enumerates the provided available skills.
 //
 // If there are no skills, Prompt returns a minimal snippet indicating that.
