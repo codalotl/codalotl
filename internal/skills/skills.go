@@ -136,7 +136,9 @@ func SearchPaths(startDir string) []string {
 // If there are no skills, Prompt returns a minimal snippet indicating that.
 //
 // shellToolName indicates the tool name the LLM should use to invoke skill scripts and execute shell commands.
-func Prompt(skills []Skill, shellToolName string) string {
+//
+// isPackageMode indicates whether the LLM is running in package-mode (no general-purpose shell tool; shell is typically only available via the skills tool).
+func Prompt(skills []Skill, shellToolName string, isPackageMode bool) string {
 	// Keep output deterministic regardless of input order.
 	sorted := append([]Skill(nil), skills...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
@@ -161,6 +163,11 @@ func Prompt(skills []Skill, shellToolName string) string {
 
 	b.WriteString("\n## How to use skills\n\n")
 	howTo := strings.TrimSuffix(promptHowToMD, "\n")
+	if !isPackageMode {
+		// In non-package mode, the agent typically has access to a general-purpose shell tool,
+		// so avoid instructions that would imply shell use is restricted to skill-directed commands.
+		howTo = strings.ReplaceAll(howTo, " Do NOT use `skill_shell` unless a skill explicitly directs you to use a shell command.", "")
+	}
 	howTo = strings.ReplaceAll(howTo, "skill_shell", shellToolName)
 	b.WriteString(howTo)
 	b.WriteByte('\n')

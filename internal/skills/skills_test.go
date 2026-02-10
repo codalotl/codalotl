@@ -381,7 +381,7 @@ func TestPrompt_Sanity(t *testing.T) {
 			Name:        "alpha",
 			Description: "First skill",
 		},
-	}, shellToolName)
+	}, shellToolName, true)
 
 	assert.Contains(t, out, "# Skills")
 	assert.Contains(t, out, "## Available skills")
@@ -401,10 +401,38 @@ func TestPrompt_Sanity(t *testing.T) {
 }
 
 func TestPrompt_NoSkills_Minimal(t *testing.T) {
-	out := Prompt(nil, "anything")
-	assert.Equal(t, "# Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n", out)
-	assert.NotContains(t, out, "## Available skills")
-	assert.NotContains(t, out, "## How to use skills")
+	for _, tc := range []struct {
+		name          string
+		isPackageMode bool
+	}{
+		{name: "package mode", isPackageMode: true},
+		{name: "non-package mode", isPackageMode: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := Prompt(nil, "anything", tc.isPackageMode)
+			assert.Equal(t, "# Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n", out)
+			assert.NotContains(t, out, "## Available skills")
+			assert.NotContains(t, out, "## How to use skills")
+		})
+	}
+}
+
+func TestPrompt_NonPackageMode_OmitsShellRestrictionSentence(t *testing.T) {
+	tmp := t.TempDir()
+	shellToolName := "shell"
+
+	out := Prompt([]Skill{{
+		AbsDir:      filepath.Join(tmp, "alpha"),
+		Name:        "alpha",
+		Description: "First skill",
+	}}, shellToolName, false)
+
+	howTo := strings.TrimSuffix(promptHowToMD, "\n")
+	howTo = strings.ReplaceAll(howTo, " Do NOT use `skill_shell` unless a skill explicitly directs you to use a shell command.", "")
+	howTo = strings.ReplaceAll(howTo, "skill_shell", shellToolName)
+
+	assert.Contains(t, out, howTo)
+	assert.NotContains(t, out, "Do NOT use `shell` unless a skill")
 }
 
 func TestAuthorize_CodeUnitGrantsSkillDir(t *testing.T) {

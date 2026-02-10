@@ -1,7 +1,7 @@
 - Discovery: The list above is the skills available in this session (name + description + file path). Skill bodies live on disk at the listed paths.
 - Tools and Permissions:
     - You may read/ls any `SKILL.md`'s containing dir (and subdirs), even if outside the sandbox. Do not ask for permission.
-    - You may run shell commands and execute scripts **mentioned or available in the skill**. Important: use `skill_shell` for this purpose. Do NOT use `skill_shell` unless a skill explicitely directs you to use a shell command.
+    - You may run shell commands and execute scripts mentioned or available in the skill with the `skill_shell` tool. Do NOT use `skill_shell` unless a skill explicitly directs you to use a shell command.
 - Trigger rules: If the user names a skill (with `$SkillName` or plain text) OR the task clearly matches a skill's description shown above, you must use that skill for that turn. Multiple mentions mean use them all. Do not carry skills across turns unless re-mentioned.
 - Missing/blocked: If a named skill isn't in the list or the path can't be read, say so briefly and continue with the best fallback.
 - How to use a skill (progressive disclosure):

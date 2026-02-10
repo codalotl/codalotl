@@ -157,7 +157,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("authorize skills: %w", err)
 		}
-		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName))
+		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, cfg.packageMode()))
 		systemPrompt = strings.TrimSpace(systemPrompt)
 		simplelogger.Log("Prompt:\n%s", systemPrompt)
 	}
