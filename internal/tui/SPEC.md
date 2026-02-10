@@ -7,6 +7,7 @@ The tui package is the primary package that implements the coding agent TUI, bri
 - `internal/agent` is the main agent loop.
 - `internal/agentformatter` formats events from the agent.
 - `internal/llmstream` is the library to communicate with LLMs.
+- `internal/skills` is the library to implement skills.
 - `internal/q/termformat` should be used where possible for terminal formatting.
 - `internal/q/tui` is the TUI runtime (raw mode, alt screen, input, resize, render loop).
 - `internal/q/tui/tuicontrols` provides common controls like a scrollable view and text area.
@@ -118,7 +119,7 @@ Package Mode file access boundaries are implemented via a "code unit" rooted at 
 Other notes:
 - /new while in Package Mode retains the active package.
 - Package Mode requires the selected path to exist and be a directory ("." is allowed), but does not need to be a buildable Go package.
-- Package mode uses initialcontext for the agent's initial context. This can take time to run (it runs tests). Switching to package mode starts getting this context immediately, and does not block the UI. If the user sends a message before this completes, the intialcontext is allowed to complete and then used to as context for the User's message.
+- Package mode uses initialcontext for the agent's initial context. This can take time to run (it runs tests). Switching to package mode starts getting this context immediately, and does not block the UI. If the user sends a message before this completes, the intialcontext is allowed to complete and then used as context for the User's message.
     - Uses the message `• Gathering context for path/to/package`, where the bullet indicates status (Accent=in progress -> Red vs Green).
 
 ## Color Palette
