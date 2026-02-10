@@ -58,5 +58,10 @@ func (s Skill) Validate() error
 //
 // In other words, three headers, with an overview, list of actual skills and their location, and then a guide on how to use skills with various rules and tips.
 func Prompt(skills []Skill, shellToolName string) string
+
+// Authorize adds read grants for the provided skills' directories to authorizer. Each skill must be valid (Validate() returns nil) and unique.
+//
+// This is intended to allow tools like read_file / ls to access skill files even outside a sandbox or code unit jail.
+func Authorize(skills []Skill, authorizer authdomain.Authorizer) error
 ```
 

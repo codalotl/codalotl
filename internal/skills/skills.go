@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"gopkg.in/yaml.v3"
 )
 
@@ -65,6 +66,43 @@ func Prompt(skills []Skill, shellToolName string) string {
 	b.WriteString(howTo)
 	b.WriteByte('\n')
 	return b.String()
+}
+
+// Authorize adds read grants for the provided skills' directories to authorizer. Each skill must be valid (Validate() returns nil) and unique.
+//
+// This is intended to allow tools like read_file / ls to access skill files even outside a sandbox or code unit jail.
+func Authorize(skills []Skill, authorizer authdomain.Authorizer) error {
+	if authorizer == nil {
+		return errors.New("authorizer is nil")
+	}
+	if len(skills) == 0 {
+		return nil
+	}
+
+	uniqueDirs := make(map[string]struct{}, len(skills))
+	for _, s := range skills {
+		if err := s.Validate(); err != nil {
+			return err
+		}
+		uniqueDirs[s.AbsDir] = struct{}{}
+	}
+
+	dirs := make([]string, 0, len(uniqueDirs))
+	for dir := range uniqueDirs {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	// The grant parser supports @"..."; we always quote for deterministic behavior across platforms.
+	tokens := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		tokens = append(tokens, `@"`+dir+`"`)
+	}
+
+	if err := authdomain.AddGrantsFromUserMessage(authorizer, strings.Join(tokens, " ")); err != nil {
+		return err
+	}
+	return nil
 }
 
 // LoadSkill accepts a path to either the skill dir or the SKILL.md file, and returns a Skill struct.
@@ -251,6 +289,10 @@ func (s Skill) Validate() error {
 	} else {
 		if !filepath.IsAbs(s.AbsDir) {
 			issues = append(issues, "invalid skill directory: AbsDir must be an absolute path")
+		}
+		// AbsDir is embedded in a quoted token for auth grants (@"..."), so disallow quotes.
+		if strings.ContainsRune(s.AbsDir, '"') {
+			issues = append(issues, `invalid skill directory: AbsDir must not contain '"'`)
 		}
 		if strings.HasSuffix(s.AbsDir, string(os.PathSeparator)) {
 			issues = append(issues, "invalid skill directory: AbsDir must not end with a path separator")

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/codeunit"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -145,6 +147,16 @@ func TestSkillValidate_Table(t *testing.T) {
 				Description: "Extract PDFs",
 			},
 			wantErr: false,
+		},
+		{
+			name: "AbsDir contains quote",
+			skill: Skill{
+				AbsDir:      filepath.Join(tmp, `bad"dir`, "pdf-processing"),
+				Name:        "pdf-processing",
+				Description: "Extract PDFs",
+			},
+			wantErr:  true,
+			contains: []string{"AbsDir must not contain"},
 		},
 		{
 			name: "uppercase name",
@@ -393,4 +405,69 @@ func TestPrompt_NoSkills_Minimal(t *testing.T) {
 	assert.Equal(t, "## Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n", out)
 	assert.NotContains(t, out, "### Available skills")
 	assert.NotContains(t, out, "### How to use skills")
+}
+
+func TestAuthorize_CodeUnitGrantsSkillDir(t *testing.T) {
+	// Create a sandbox dir with a space so we exercise the quoting path in Authorize.
+	sandboxDir := filepath.Join(t.TempDir(), "sand box")
+	require.NoError(t, os.MkdirAll(sandboxDir, 0o755))
+
+	unitDir := filepath.Join(sandboxDir, "unit")
+	require.NoError(t, os.MkdirAll(unitDir, 0o755))
+
+	skillDir := filepath.Join(sandboxDir, "skills", "alpha")
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: alpha\ndescription: x\n---\n"), 0o644))
+
+	fallback, _, err := authdomain.NewSandboxAuthorizer(sandboxDir, authdomain.NewShellAllowedCommands())
+	require.NoError(t, err)
+
+	unit, err := codeunit.NewCodeUnit("unit", unitDir)
+	require.NoError(t, err)
+
+	authorizer := authdomain.NewCodeUnitAuthorizer(unit, fallback)
+
+	skillFile := filepath.Join(skillDir, "SKILL.md")
+
+	err = authorizer.IsAuthorizedForRead(false, "", "read_file", skillFile)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, authdomain.ErrCodeUnitPathOutside)
+
+	require.NoError(t, Authorize([]Skill{{
+		AbsDir:        skillDir,
+		Name:          "alpha",
+		Description:   "Alpha skill",
+		License:       "MIT",
+		Compatibility: "any",
+	}}, authorizer))
+
+	assert.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", skillFile))
+	assert.NoError(t, authorizer.IsAuthorizedForRead(false, "", "ls", skillDir))
+
+	otherDir := filepath.Join(sandboxDir, "other")
+	require.NoError(t, os.MkdirAll(otherDir, 0o755))
+	otherFile := filepath.Join(otherDir, "x.txt")
+	require.NoError(t, os.WriteFile(otherFile, []byte("x"), 0o644))
+
+	err = authorizer.IsAuthorizedForRead(false, "", "read_file", otherFile)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, authdomain.ErrCodeUnitPathOutside)
+}
+
+func TestAuthorize_Errors(t *testing.T) {
+	tmp := t.TempDir()
+	sandbox, _, err := authdomain.NewSandboxAuthorizer(tmp, authdomain.NewShellAllowedCommands())
+	require.NoError(t, err)
+
+	t.Run("nil authorizer", func(t *testing.T) {
+		require.Error(t, Authorize([]Skill{{AbsDir: tmp}}, nil))
+	})
+
+	t.Run("empty skills slice", func(t *testing.T) {
+		require.NoError(t, Authorize(nil, sandbox))
+	})
+
+	t.Run("invalid skill", func(t *testing.T) {
+		require.Error(t, Authorize([]Skill{{AbsDir: "", Name: "alpha", Description: "x"}}, sandbox))
+	})
 }
