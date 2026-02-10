@@ -352,6 +352,7 @@ func TestPrompt_Sanity(t *testing.T) {
 	tmp := t.TempDir()
 	alphaDir := filepath.Join(tmp, "alpha")
 	betaDir := filepath.Join(tmp, "beta")
+	shellToolName := "my_shell_tool"
 
 	out := Prompt([]Skill{
 		{
@@ -368,7 +369,7 @@ func TestPrompt_Sanity(t *testing.T) {
 			Name:        "alpha",
 			Description: "First skill",
 		},
-	})
+	}, shellToolName)
 
 	assert.Contains(t, out, "## Skills")
 	assert.Contains(t, out, "### Available skills")
@@ -376,7 +377,8 @@ func TestPrompt_Sanity(t *testing.T) {
 
 	// Smoke-check that the embedded content is present, without pinning tests to specific wording.
 	assert.Contains(t, out, strings.TrimSuffix(promptOverviewMD, "\n"))
-	assert.Contains(t, out, strings.TrimSuffix(promptHowToMD, "\n"))
+	assert.Contains(t, out, strings.ReplaceAll(strings.TrimSuffix(promptHowToMD, "\n"), "skill_shell", shellToolName))
+	assert.NotContains(t, out, "`skill_shell`")
 
 	// Skills should be listed in sorted order and include the SKILL.md location.
 	iAlpha := strings.Index(out, "- alpha: First skill (file: "+filepath.Join(alphaDir, "SKILL.md")+")")
@@ -384,4 +386,11 @@ func TestPrompt_Sanity(t *testing.T) {
 	require.Greater(t, iAlpha, -1)
 	require.Greater(t, iBeta, -1)
 	assert.Less(t, iAlpha, iBeta)
+}
+
+func TestPrompt_NoSkills_Minimal(t *testing.T) {
+	out := Prompt(nil, "anything")
+	assert.Equal(t, "## Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n", out)
+	assert.NotContains(t, out, "### Available skills")
+	assert.NotContains(t, out, "### How to use skills")
 }

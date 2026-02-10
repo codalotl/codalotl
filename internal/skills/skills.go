@@ -32,26 +32,37 @@ type Skill struct {
 }
 
 // Prompt returns a markdown string suitable to be given to the LLM that explains skills and enumerates the provided available skills.
-func Prompt(skills []Skill) string {
+//
+// If there are no skills, Prompt returns a minimal snippet indicating that.
+//
+// shellToolName indicates the tool name the LLM should use to invoke skill scripts and execute shell commands.
+func Prompt(skills []Skill, shellToolName string) string {
 	// Keep output deterministic regardless of input order.
 	sorted := append([]Skill(nil), skills...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+
+	if len(sorted) == 0 {
+		return "## Skills\n\nA skill is a set of local instructions stored in a SKILL.md file. No skills are available in this session.\n"
+	}
+
+	if shellToolName == "" {
+		// Maintain backward-compatible wording if the caller doesn't supply a tool name.
+		shellToolName = "skill_shell"
+	}
 
 	var b strings.Builder
 	b.WriteString("## Skills\n\n")
 	b.WriteString(strings.TrimSuffix(promptOverviewMD, "\n"))
 
 	b.WriteString("\n\n### Available skills\n")
-	if len(sorted) == 0 {
-		b.WriteString("- (none)\n")
-	} else {
-		for _, s := range sorted {
-			b.WriteString(fmt.Sprintf("- %s: %s (file: %s)\n", s.Name, s.Description, filepath.Join(s.AbsDir, "SKILL.md")))
-		}
+	for _, s := range sorted {
+		b.WriteString(fmt.Sprintf("- %s: %s (file: %s)\n", s.Name, s.Description, filepath.Join(s.AbsDir, "SKILL.md")))
 	}
 
 	b.WriteString("\n### How to use skills\n\n")
-	b.WriteString(strings.TrimSuffix(promptHowToMD, "\n"))
+	howTo := strings.TrimSuffix(promptHowToMD, "\n")
+	howTo = strings.ReplaceAll(howTo, "skill_shell", shellToolName)
+	b.WriteString(howTo)
 	b.WriteByte('\n')
 	return b.String()
 }

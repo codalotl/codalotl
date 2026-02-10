@@ -42,7 +42,10 @@ func FormatSkillErrors(invalidSkills []Skill, failedSkillLoads []error) string
 //   - Invalid skill name (from the spec, skill name must be: `Max 64 characters. Lowercase letters, numbers, and hyphens only. Must not start or end with a hyphen.`)
 func (s Skill) Validate() error
 
-// Prompt returns a string suitable to be given to the LLM that explains skills. It takes this form:
+// Prompt returns a string suitable to be given to the LLM that explains skills. If there are no skills, a minimal snippet is given indicating that. The param
+// shellToolName indicates the tool that the LLM should use to invoke skill scripts and execute shell commands.
+//
+// It takes this form:
 //
 //	## Skills
 //	A skill is a...
@@ -54,6 +57,6 @@ func (s Skill) Validate() error
 //	- Missing/blocked: If a named skill...
 //
 // In other words, three headers, with an overview, list of actual skills and their location, and then a guide on how to use skills with various rules and tips.
-func Prompt(skills []Skills) string
+func Prompt(skills []Skill, shellToolName string) string
 ```
 
