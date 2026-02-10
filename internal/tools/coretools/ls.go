@@ -96,9 +96,8 @@ func (t *toolLs) Run(ctx context.Context, call llmstream.ToolCall) llmstream.Too
 	}
 }
 
-// RunLs executes the equivalent of `ls -1p` from absPath and returns the command output rendered as <ls> XML.
-// We do not run an actual shell command (for portability); instead, we build a cmdrunner.Result directly and
-// let cmdrunner's XML rendering handle formatting.
+// RunLs executes the equivalent of `ls -1p` from absPath and returns the command output rendered as <ls> XML. We do not run an actual shell command (for portability);
+// instead, we build a cmdrunner.Result directly and let cmdrunner's XML rendering handle formatting.
 func RunLs(ctx context.Context, absPath string) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()

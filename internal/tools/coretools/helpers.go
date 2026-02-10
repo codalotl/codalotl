@@ -22,15 +22,15 @@ const (
 	WantPathTypeFile
 )
 
-// NormalizePath accepts a path provided by the LLM, and absSandboxDir (which MUST be an absolute dir), and what the caller wants path to be (anything, a file, or a dir).
-// It returns cleaned versions of path (both absolute and relative versions), possibly coerced based on want.
+// NormalizePath accepts a path provided by the LLM, and absSandboxDir (which MUST be an absolute dir), and what the caller wants path to be (anything, a file, or
+// a dir). It returns cleaned versions of path (both absolute and relative versions), possibly coerced based on want.
 //   - if mustExist and the uncoereced path does not exist, an error is returned.
 //   - if !mustExist and the uncoereced path does not exist, no coersion will take place.
 //   - if want is Dir but path is a file, path is coereced to a dir (filepath.Dir).
 //   - if want is File but path is a dir, an error is returned.
 //
-// If the path is outside of the sandbox, relativePath is returned as "". The returned absPath and relativePath will never ".." path components. The returned relativePath will
-// be "." iff path is the sandbox dir.
+// If the path is outside of the sandbox, relativePath is returned as "". The returned absPath and relativePath will never ".." path components. The returned relativePath
+// will be "." iff path is the sandbox dir.
 func NormalizePath(path string, absSandboxDir string, want WantPathType, mustExist bool) (absPath string, relativePath string, normalizePathErr error) {
 	switch want {
 	case WantPathTypeAny, WantPathTypeDir, WantPathTypeFile:
