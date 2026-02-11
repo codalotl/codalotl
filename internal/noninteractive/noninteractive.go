@@ -24,6 +24,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
+	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsets"
 	"golang.org/x/term"
@@ -278,7 +279,7 @@ func Exec(userPrompt string, opts Options) error {
 
 	go autoRespondToUserRequests(userRequests, out, opts.AutoYes)
 
-	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgAbsPath, authorizerForTools)
+	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgAbsPath, authorizerForTools, opts.LintSteps)
 	if err != nil {
 		return err
 	}
@@ -841,16 +842,50 @@ func detectTerminalWidth(out io.Writer) int {
 	return 0
 }
 
-func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, authorizer authdomain.Authorizer) ([]llmstream.Tool, string, error) {
+func detectShellToolName(tools []llmstream.Tool) (name string, ok bool) {
+	// We want skills.Prompt to reference the actual shell tool name exposed to the LLM.
+	// "skill_shell" is the harness-level default, but some toolsets may export it as "shell".
+	for _, candidate := range []string{"skill_shell", "shell"} {
+		for _, t := range tools {
+			if t != nil && t.Name() == candidate {
+				return candidate, true
+			}
+		}
+	}
+	return "", false
+}
+
+func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, authorizer authdomain.Authorizer, lintSteps []lints.Step) ([]llmstream.Tool, string, error) {
+	skillSearchStartDir := sandboxDir
+	if pkgMode {
+		skillSearchStartDir = pkgAbsPath
+	}
+	searchDirs := skills.SearchPaths(skillSearchStartDir)
+	validSkills, _, _, skillsErr := skills.LoadSkills(searchDirs)
+	if skillsErr != nil {
+		// Non-fatal: skills are optional and the app should still run even if discovery fails.
+		// The agent will simply not be told about skills in the prompt.
+		validSkills = nil
+	}
+
 	if pkgMode {
 		systemPrompt := prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull)
 		tools, err := toolsets.PackageAgentTools(toolsets.Options{
 			SandboxDir:  sandboxDir,
 			Authorizer:  authorizer,
 			GoPkgAbsDir: pkgAbsPath,
+			LintSteps:   lintSteps,
 		})
 		if err != nil {
 			return nil, "", fmt.Errorf("build package toolset: %w", err)
+		}
+		systemPrompt = strings.TrimSpace(systemPrompt)
+		if shellToolName, ok := detectShellToolName(tools); ok {
+			if err := skills.Authorize(validSkills, authorizer); err != nil {
+				return nil, "", fmt.Errorf("authorize skills: %w", err)
+			}
+			systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, true))
+			systemPrompt = strings.TrimSpace(systemPrompt)
 		}
 		return tools, systemPrompt, nil
 	}
@@ -859,9 +894,18 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 	tools, err := toolsets.CoreAgentTools(toolsets.Options{
 		SandboxDir: sandboxDir,
 		Authorizer: authorizer,
+		LintSteps:  lintSteps,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("build toolset: %w", err)
+	}
+	systemPrompt = strings.TrimSpace(systemPrompt)
+	if shellToolName, ok := detectShellToolName(tools); ok {
+		if err := skills.Authorize(validSkills, authorizer); err != nil {
+			return nil, "", fmt.Errorf("authorize skills: %w", err)
+		}
+		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, false))
+		systemPrompt = strings.TrimSpace(systemPrompt)
 	}
 	return tools, systemPrompt, nil
 }
