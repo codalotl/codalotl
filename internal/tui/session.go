@@ -88,7 +88,11 @@ func newSession(cfg sessionConfig) (*session, error) {
 		return nil, err
 	}
 
-	searchDirs := skills.SearchPaths("")
+	skillSearchStartDir := sandboxDir
+	if cfg.packageMode() {
+		skillSearchStartDir = pkgAbsPath
+	}
+	searchDirs := skills.SearchPaths(skillSearchStartDir)
 	validSkills, invalidSkills, failedSkillLoads, skillsErr := skills.LoadSkills(searchDirs)
 	if skillsErr != nil {
 		// Non-fatal: skills are optional and the app should still start even if discovery fails.
