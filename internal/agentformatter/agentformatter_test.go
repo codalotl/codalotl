@@ -297,6 +297,30 @@ func TestToolCallShellFormatting(t *testing.T) {
 	assert.Contains(t, stripANSI(out), "Running go test .", "full command should be present")
 }
 
+func TestToolCallSkillShellFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(245, 245, 245),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "skill_shell",
+		Input: `{"command":["go","test","."],"skill":"spec-md","timeout_ms":120000}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "skill_shell",
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
+	require.NotEmpty(t, out)
+
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
+	assert.Contains(t, stripANSI(out), "Running go test .")
+}
+
 func TestToolCompleteOutputSummarization(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -332,6 +356,60 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
 		Tool:       "shell",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	stripped := stripANSI(out)
+	require.NotEmpty(t, stripped)
+
+	linesOut := strings.Split(stripped, "\n")
+	require.GreaterOrEqual(t, len(linesOut), 3)
+	assert.Equal(t, "• Ran go test .", linesOut[0])
+	assert.Equal(t, "  └ "+termformat.Sanitize(lines[0], 4), linesOut[1])
+	assert.Contains(t, linesOut, "    … +2 lines")
+
+	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
+	assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
+	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false))
+}
+
+func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	lines := []string{
+		"ok  	axi/codeai/agentformatter    0.002s",
+		"?   	axi/codeai/agentformatter/cache    [no test files]",
+		"ok  	axi/codeai/agentformatter/extra    0.004s",
+		"ok  	axi/codeai/agentformatter/more    0.006s",
+		"ok  	axi/codeai/agentformatter/andmore    0.008s",
+		"ok  	axi/codeai/agentformatter/overflow    0.010s",
+		"ok  	axi/codeai/agentformatter/thelast    0.012s",
+	}
+	content := "Command: go test .\nProcess State: exit status 0\nTimeout: false\nDuration: 20ms\nOutput:\n" + strings.Join(lines, "\n")
+	payload := map[string]any{
+		"success": true,
+		"content": content,
+	}
+	b, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	result := llmstream.ToolResult{
+		Result:  string(b),
+		IsError: false,
+	}
+	call := llmstream.ToolCall{
+		Name:  "skill_shell",
+		Input: `{"command":["go","test","."],"skill":"spec-md"}`,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "skill_shell",
 		ToolCall:   &call,
 		ToolResult: &result,
 	}

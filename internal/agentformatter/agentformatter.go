@@ -217,15 +217,24 @@ func extractReasoningSummary(content string) (string, bool) {
 }
 
 func normalizedToolName(e agent.Event) string {
+	normalize := func(name string) string {
+		name = strings.ToLower(strings.TrimSpace(name))
+		// `skill_shell` is a drop-in replacement for `shell` (same behavior, same formatting).
+		if name == "skill_shell" {
+			return "shell"
+		}
+		return name
+	}
+
 	if e.Tool != "" {
-		return strings.ToLower(e.Tool)
+		return normalize(e.Tool)
 	}
 	if e.ToolCall != nil {
 		if e.ToolCall.Name != "" {
-			return strings.ToLower(e.ToolCall.Name)
+			return normalize(e.ToolCall.Name)
 		}
 		if e.ToolCall.Type != "" {
-			return strings.ToLower(e.ToolCall.Type)
+			return normalize(e.ToolCall.Type)
 		}
 	}
 	return ""
@@ -1086,7 +1095,10 @@ func extractShellCommand(call *llmstream.ToolCall) (string, bool) {
 	if call == nil {
 		return "", false
 	}
-	if strings.ToLower(call.Name) != "shell" && !strings.EqualFold(call.Type, "shell") {
+
+	toolName := strings.ToLower(strings.TrimSpace(call.Name))
+	toolType := strings.ToLower(strings.TrimSpace(call.Type))
+	if toolName != "shell" && toolName != "skill_shell" && toolType != "shell" && toolType != "skill_shell" {
 		return "", false
 	}
 
