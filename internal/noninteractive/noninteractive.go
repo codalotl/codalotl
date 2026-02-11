@@ -60,30 +60,24 @@ func (p *printedError) Unwrap() error {
 }
 
 type Options struct {
-	CWD string // working directory / sandbox dir. If "", uses os.Getwd()
+	// working directory / sandbox dir. If "", uses os.Getwd()
+	CWD string
 
-	// PackagePath sets package mode with the path to a package vs CWD. If "", does not use package mode.
-	// PackagePath can be any filesystem path (ex: "."; "/foo/bar"; "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
+	// PackagePath sets package mode with the path to a package vs CWD. If "", does not use package mode. PackagePath can be any filesystem path (ex: "."; "/foo/bar";
+	// "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
 	PackagePath string
 
-	// ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
-	ModelID llmmodel.ModelID
+	ModelID     llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
+	LintSteps   []lints.Step     // LintSteps controls which lint steps the agent runs.
+	ReflowWidth int              // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
+	AutoYes     bool             // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
 
-	// LintSteps controls which lint steps the agent runs.
-	LintSteps []lints.Step
-
-	// ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
-	ReflowWidth int
-
-	// Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
-	AutoYes bool
-
-	// NoFormatting=true means any prints do NOT use colors or other ANSI control codes to format. Only outputs plain text.
-	// Otherwise, we default to the color scheme of the terminal and print colorized/formatted text.
+	// NoFormatting=true means any prints do NOT use colors or other ANSI control codes to format. Only outputs plain text. Otherwise, we default to the color scheme
+	// of the terminal and print colorized/formatted text.
 	NoFormatting bool
 
-	// If Out != nil, any prints we do will use Out; otherwise will use Stdout.
-	// If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file), we'd still just print to Out (instead of something like Stderr).
+	// If Out != nil, any prints we do will use Out; otherwise will use Stdout. If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file),
+	// we'd still just print to Out (instead of something like Stderr).
 	Out io.Writer
 }
 
@@ -237,11 +231,11 @@ func (p *delayedToolCallPrinter) fire(callID string) {
 
 // Exec runs the agent with prompt and opts. It prints messages, tool calls, and so on to the screen.
 //
-// If there's any validation error (anything before the agent actually starts), an error is returned and nothing is nothing is printed.
-// If there's an unhandled error and the agent cannot complete its run (ex: cannot talk to LLM, even after retries), a message may be printed AND returned via err.
-// Callers can use IsPrinted to determine if an error has already been printed.
-// Finally, note that many "errors" happen in the course of typical agent runs. For instance, the agent will ask to read non-existant files; shell commands will fail; etc. These
-// do not typically constitute errors worthy of being returned (instead, the LLM is just told a file doesn't exist).
+// If there's any validation error (anything before the agent actually starts), an error is returned and nothing is nothing is printed. If there's an unhandled error
+// and the agent cannot complete its run (ex: cannot talk to LLM, even after retries), a message may be printed AND returned via err. Callers can use IsPrinted to
+// determine if an error has already been printed. Finally, note that many "errors" happen in the course of typical agent runs. For instance, the agent will ask
+// to read non-existant files; shell commands will fail; etc. These do not typically constitute errors worthy of being returned (instead, the LLM is just told a
+// file doesn't exist).
 func Exec(userPrompt string, opts Options) error {
 	userPrompt = strings.TrimSpace(userPrompt)
 	if userPrompt == "" {
@@ -437,8 +431,8 @@ func Exec(userPrompt string, opts Options) error {
 
 type grantsAdder func(authorizer authdomain.Authorizer, userMessage string) error
 
-// turnSnapshotConversation adapts an agent's turn history to llmstream.StreamingConversation.
-// It is intentionally read-only: it's only used for debugging/printing helpers.
+// turnSnapshotConversation adapts an agent's turn history to llmstream.StreamingConversation. It is intentionally read-only: it's only used for debugging/printing
+// helpers.
 type turnSnapshotConversation struct {
 	turns []llmstream.Turn
 }
@@ -506,8 +500,7 @@ func buildAuthorizerForTools(pkgMode bool, pkgRelPath string, pkgAbsPath string,
 	return authorizerForTools, nil
 }
 
-// includeReachableTestdataDirs includes any "testdata" directory directly under an
-// already-included directory (recursively). This allows Go fixture files in testdata
+// includeReachableTestdataDirs includes any "testdata" directory directly under an already-included directory (recursively). This allows Go fixture files in testdata
 // to remain in-scope for a package-mode code unit even when they are "*.go" files.
 func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
 	if unit == nil {
@@ -598,22 +591,19 @@ func providerAssistantTurns(turns []llmstream.Turn) []llmstream.Turn {
 	return out
 }
 
-// idealCachingForProviderTurns recalculates CachedInputTokens assuming each request's prompt
-// is a prefix of the next request's prompt, and that the previous response's output is
-// then included as input context for the next request.
+// idealCachingForProviderTurns recalculates CachedInputTokens assuming each request's prompt is a prefix of the next request's prompt, and that the previous response's
+// output is then included as input context for the next request.
 //
-// This models an "ideal" caching scenario where request N+1 can reuse the entire prompt
-// from request N plus the response content from request N, so:
+// This models an "ideal" caching scenario where request N+1 can reuse the entire prompt from request N plus the response content from request N, so:
 //
 //	CachedInputTokens(N+1)=TotalInputTokens(N)+TotalOutputTokens(N)
 //
 // Values are clamped for safety when prompts shrink between requests.
 //
-// This was implemented because I was trying to measure token/cost performances in a benchmark scenario, and seemingly
-// random cache misses in OpenAI were resulting in wildly different costs. For example, if one tool call result misses cache mid-conversation,
-// we are billed the entire prefix conversation at 10x the cost (input vs cached input prices are are 10x different). I assume this happens because
-// cache is best effort, caching servers can be created/destroyed due to scaling or natural cycling, cache entries evicted based on server load,
-// and things of that nature. Example:
+// This was implemented because I was trying to measure token/cost performances in a benchmark scenario, and seemingly random cache misses in OpenAI were resulting
+// in wildly different costs. For example, if one tool call result misses cache mid-conversation, we are billed the entire prefix conversation at 10x the cost (input
+// vs cached input prices are are 10x different). I assume this happens because cache is best effort, caching servers can be created/destroyed due to scaling or
+// natural cycling, cache entries evicted based on server load, and things of that nature. Example:
 //
 //	turn  provider_id                                              in_uncached  in_cached  out  cum_in_uncached  cum_in_cached  cum_out  cache
 //	0     resp_00158c9a096bb94f00696a51f3d3c0819c89608cbc3d650b7c  2578         0          276  2578             0              276      n/a
