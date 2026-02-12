@@ -85,6 +85,7 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 
 - /quit, /exit, /logout - terminates process.
 - /new - Makes a new session.
+- /skills - Lists installed skills.
 - /models, /model (with no args) - prints the available models and usage help. 
 - /model <id> - Switches the active model (validated via `llmmodel`) and starts a new session. If `tui.Config.PersistModelID` is set, the model selection is persisted.
 - /package path/to/pkg - enter Package Mode for a given package.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
+	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
@@ -31,6 +33,7 @@ type messageKind int
 
 const (
 	messageKindSystem messageKind = iota
+	messageKindSkillsList
 	messageKindWelcome
 	messageKindUser
 	messageKindQueuedUser
@@ -66,6 +69,7 @@ type chatMessage struct {
 	contextStatus  *contextStatusLine
 	contextDetails string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
 	contextError   string
+	skillsList     []skills.Skill // skillsList is only set for messageKindSkillsList.
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it. It must be the correct block width (all lines padded with spaces to equal width
 	// of the viewport. Background colors must be set on this (if we're not in the uncolored palette). Resize events need to recalculate this.
@@ -742,6 +746,18 @@ func (m *model) handleSlashCommand(cmd string) bool {
 		}
 		m.handleModelCommand("")
 		return true
+	case "/skills":
+		skillsArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/skills"))
+		if skillsArg != "" {
+			m.appendSystemMessage("Usage: `/skills` (lists installed skills).")
+			m.refreshViewport(true)
+			if m.viewport != nil {
+				m.viewport.ScrollToBottom()
+			}
+			return true
+		}
+		m.handleSkillsCommand()
+		return true
 	case "/package":
 		packageArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/package"))
 		m.handlePackageCommand(packageArg)
@@ -909,6 +925,37 @@ func (m *model) handleModelCommand(arg string) {
 		fmt.Sprintf("Switching model to %s...", modelID),
 		fmt.Sprintf("Model set to %s.", modelID),
 	)
+}
+
+func (m *model) handleSkillsCommand() {
+	var available []skills.Skill
+	switch {
+	case m != nil && m.session != nil && len(m.session.availableSkills) > 0:
+		available = append([]skills.Skill(nil), m.session.availableSkills...)
+	case m != nil && m.session != nil:
+		available = nil
+	default:
+		// Best-effort fallback: discover skills based on the current working directory.
+		// In practice the TUI always has an active session.
+		searchDirs := skills.SearchPaths("")
+		valid, _, _, err := skills.LoadSkills(searchDirs)
+		if err == nil {
+			available = valid
+		}
+	}
+
+	sort.Slice(available, func(i, j int) bool {
+		return available[i].Name < available[j].Name
+	})
+
+	m.messages = append(m.messages, chatMessage{
+		kind:       messageKindSkillsList,
+		skillsList: available,
+	})
+	m.refreshViewport(true)
+	if m.viewport != nil {
+		m.viewport.ScrollToBottom()
+	}
 }
 
 func (m *model) handlePackageCommand(arg string) {
@@ -1089,7 +1136,7 @@ func (m *model) shouldSaveToHistory(value string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/new", "/model", "/models", "/quit", "/exit", "/logout":
+	case "/new", "/model", "/models", "/skills", "/quit", "/exit", "/logout":
 		return false
 	}
 	return len(fields) > 1
@@ -1632,6 +1679,9 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 	case messageKindSystem:
 		content = m.withForegroundColor(termformat.Sanitize(msg.userMessage, 4), true)
 		needBgAndWidth = true
+	case messageKindSkillsList:
+		content = m.renderSkillsListMessage(msg.skillsList)
+		needBgAndWidth = true
 	case messageKindContextStatus:
 		content = m.renderContextStatusLine(msg.contextStatus)
 		needBgAndWidth = true
@@ -1655,6 +1705,54 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 		msg.formattedWidth = width
 	}
 
+}
+
+func (m *model) renderSkillsListMessage(available []skills.Skill) string {
+	primary := termformat.Style{Foreground: m.palette.primaryForeground}
+	accent := termformat.Style{Foreground: m.palette.accentForeground}
+
+	var b strings.Builder
+	b.WriteString(primary.Wrap("Installed skills:"))
+	b.WriteByte('\n')
+
+	if len(available) == 0 {
+		b.WriteString(primary.Wrap("• <none>"))
+		return b.String()
+	}
+
+	wrote := 0
+	for _, s := range available {
+		name := strings.TrimSpace(s.Name)
+		if name == "" {
+			continue
+		}
+		// Names/descriptions come from local files; still sanitize to avoid control
+		// codes and normalize newlines to one-line entries.
+		name = strings.ReplaceAll(name, "\n", " ")
+		name = termformat.Sanitize(name, 4)
+
+		desc := strings.TrimSpace(s.Description)
+		desc = strings.ReplaceAll(desc, "\n", " ")
+		desc = termformat.Sanitize(desc, 4)
+
+		if wrote > 0 {
+			b.WriteByte('\n')
+		}
+
+		b.WriteString(primary.Wrap("• " + name))
+		if desc != "" {
+			b.WriteString(primary.Wrap(" - "))
+			b.WriteString(accent.Wrap(desc))
+		}
+		wrote++
+	}
+
+	// If every skill was blank (shouldn't happen), fall back to <none>.
+	if wrote == 0 {
+		return primary.Wrap("Installed skills:\n• <none>")
+	}
+
+	return b.String()
 }
 
 // renderUserMessageBlock returns a fully formated message with proper width and bg color.
