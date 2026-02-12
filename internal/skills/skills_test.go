@@ -500,7 +500,7 @@ func TestAuthorize_Errors(t *testing.T) {
 	})
 }
 
-func TestSearchPaths(t *testing.T) {
+func TestSearchPaths_Basic(t *testing.T) {
 	tmp := t.TempDir()
 
 	home := filepath.Join(tmp, "home")
@@ -523,41 +523,121 @@ func TestSearchPaths(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(aSkills, "beta"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(homeSkills, "gamma"), 0o755))
 
-	got := SearchPaths(startDir)
-	require.NotEmpty(t, got)
+	want := []string{aSkills, projSkills, homeSkills}
+	assert.Equal(t, want, SearchPaths(startDir))
+}
+
+func TestSearchPaths_FileStartDirIsTreatedAsItsDirectory(t *testing.T) {
+	tmp := t.TempDir()
+
+	home := filepath.Join(tmp, "home")
+	require.NoError(t, os.MkdirAll(home, 0o755))
+	t.Setenv("HOME", home)
+
+	proj := filepath.Join(tmp, "proj")
+	startDir := filepath.Join(proj, "a", "b")
+	require.NoError(t, os.MkdirAll(startDir, 0o755))
+
+	projSkills := filepath.Join(proj, ".codalotl", "skills")
+	aSkills := filepath.Join(proj, "a", ".codalotl", "skills")
+	homeSkills := filepath.Join(home, ".codalotl", "skills")
+
+	require.NoError(t, os.MkdirAll(projSkills, 0o755))
+	require.NoError(t, os.MkdirAll(aSkills, 0o755))
+	require.NoError(t, os.MkdirAll(homeSkills, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(projSkills, "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(aSkills, "beta"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(homeSkills, "gamma"), 0o755))
+
+	f := filepath.Join(startDir, "x.txt")
+	require.NoError(t, os.WriteFile(f, []byte("x"), 0o644))
 
 	want := []string{aSkills, projSkills, homeSkills}
-	assert.Equal(t, want, got)
+	assert.Equal(t, want, SearchPaths(f))
+}
 
-	t.Run("file path startDir is treated as its directory", func(t *testing.T) {
-		f := filepath.Join(startDir, "x.txt")
-		require.NoError(t, os.WriteFile(f, []byte("x"), 0o644))
-		assert.Equal(t, want, SearchPaths(f))
-	})
+func TestSearchPaths_ReturnsNilWhenNoCandidatesExist(t *testing.T) {
+	tmp := t.TempDir()
 
-	t.Run("returns nil when no candidates exist", func(t *testing.T) {
-		// Use a fresh HOME that does not contain ~/.codalotl/skills.
-		home2 := filepath.Join(tmp, "home2")
-		require.NoError(t, os.MkdirAll(home2, 0o755))
-		t.Setenv("HOME", home2)
+	home := filepath.Join(tmp, "home")
+	require.NoError(t, os.MkdirAll(home, 0o755))
+	t.Setenv("HOME", home)
 
-		empty := filepath.Join(tmp, "empty")
-		require.NoError(t, os.MkdirAll(empty, 0o755))
-		assert.Nil(t, SearchPaths(empty))
-	})
+	empty := filepath.Join(tmp, "empty")
+	require.NoError(t, os.MkdirAll(empty, 0o755))
+	assert.Nil(t, SearchPaths(empty))
+}
 
-	t.Run("candidate skills dir must contain at least one subdir", func(t *testing.T) {
-		// An empty .codalotl/skills under the startDir should be ignored.
-		emptySkills := filepath.Join(startDir, ".codalotl", "skills")
-		require.NoError(t, os.MkdirAll(emptySkills, 0o755))
-		assert.Equal(t, want, SearchPaths(startDir))
+func TestSearchPaths_CandidateSkillsDirMustContainAtLeastOneSubdir(t *testing.T) {
+	tmp := t.TempDir()
 
-		// A .codalotl/skills containing only files should also be ignored.
-		require.NoError(t, os.WriteFile(filepath.Join(emptySkills, "README.txt"), []byte("x"), 0o644))
-		assert.Equal(t, want, SearchPaths(startDir))
+	home := filepath.Join(tmp, "home")
+	require.NoError(t, os.MkdirAll(home, 0o755))
+	t.Setenv("HOME", home)
 
-		// Once it contains a directory, it becomes a candidate and should appear first.
-		require.NoError(t, os.MkdirAll(filepath.Join(emptySkills, "delta"), 0o755))
-		assert.Equal(t, append([]string{emptySkills}, want...), SearchPaths(startDir))
-	})
+	proj := filepath.Join(tmp, "proj")
+	startDir := filepath.Join(proj, "a", "b")
+	require.NoError(t, os.MkdirAll(startDir, 0o755))
+
+	projSkills := filepath.Join(proj, ".codalotl", "skills")
+	aSkills := filepath.Join(proj, "a", ".codalotl", "skills")
+	homeSkills := filepath.Join(home, ".codalotl", "skills")
+
+	require.NoError(t, os.MkdirAll(projSkills, 0o755))
+	require.NoError(t, os.MkdirAll(aSkills, 0o755))
+	require.NoError(t, os.MkdirAll(homeSkills, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(projSkills, "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(aSkills, "beta"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(homeSkills, "gamma"), 0o755))
+
+	want := []string{aSkills, projSkills, homeSkills}
+
+	// An empty .codalotl/skills under the startDir should be ignored.
+	emptySkills := filepath.Join(startDir, ".codalotl", "skills")
+	require.NoError(t, os.MkdirAll(emptySkills, 0o755))
+	assert.Equal(t, want, SearchPaths(startDir))
+
+	// A .codalotl/skills containing only files should also be ignored.
+	require.NoError(t, os.WriteFile(filepath.Join(emptySkills, "README.txt"), []byte("x"), 0o644))
+	assert.Equal(t, want, SearchPaths(startDir))
+
+	// Once it contains a directory, it becomes a candidate and should appear first.
+	require.NoError(t, os.MkdirAll(filepath.Join(emptySkills, "delta"), 0o755))
+	wantWithStart := append([]string{emptySkills}, want...)
+	assert.Equal(t, wantWithStart, SearchPaths(startDir))
+}
+
+func TestSearchPaths_AlsoSearchesHomeSystemSkillsDir(t *testing.T) {
+	tmp := t.TempDir()
+
+	home := filepath.Join(tmp, "home")
+	require.NoError(t, os.MkdirAll(home, 0o755))
+	t.Setenv("HOME", home)
+
+	proj := filepath.Join(tmp, "proj")
+	startDir := filepath.Join(proj, "a", "b")
+	require.NoError(t, os.MkdirAll(startDir, 0o755))
+
+	projSkills := filepath.Join(proj, ".codalotl", "skills")
+	aSkills := filepath.Join(proj, "a", ".codalotl", "skills")
+	homeSkills := filepath.Join(home, ".codalotl", "skills")
+	homeSystemSkills := filepath.Join(homeSkills, ".system")
+
+	require.NoError(t, os.MkdirAll(projSkills, 0o755))
+	require.NoError(t, os.MkdirAll(aSkills, 0o755))
+	require.NoError(t, os.MkdirAll(homeSkills, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(projSkills, "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(aSkills, "beta"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(homeSkills, "gamma"), 0o755))
+
+	want := []string{aSkills, projSkills, homeSkills}
+
+	// Empty ~/.codalotl/skills/.system should be ignored.
+	require.NoError(t, os.MkdirAll(homeSystemSkills, 0o755))
+	assert.Equal(t, want, SearchPaths(startDir))
+
+	// Once it contains a directory, it becomes a candidate and should appear after ~/.codalotl/skills.
+	require.NoError(t, os.MkdirAll(filepath.Join(homeSystemSkills, "sys"), 0o755))
+	wantWithSystem := append(append([]string(nil), want...), homeSystemSkills)
+	assert.Equal(t, wantWithSystem, SearchPaths(startDir))
 }

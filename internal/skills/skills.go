@@ -35,7 +35,8 @@ type Skill struct {
 // SearchPaths returns absolute directories where skills may be located.
 //
 // Starting in startDir (can be "" for cwd), it looks for `$DIR/.codalotl/skills`, then repeats for each parent directory up to the filesystem root. Lastly, it checks
-// `~/.codalotl/skills` (where `~` resolves to the current user's home directory). This search order mirrors that of cascade's config files.
+// `~/.codalotl/skills` and `~/.codalotl/skills/.system` (where `~` resolves to the current user's home directory). This search order mirrors that of cascade's config
+// files.
 //
 // A candidate `.codalotl/skills` directory is only returned if it contains at least one subdirectory (i.e., at least one potential skill dir). Empty directories,
 // or directories containing only files, are ignored.
@@ -122,7 +123,9 @@ func SearchPaths(startDir string) []string {
 		if err != nil {
 			homeAbs = home
 		}
-		addIfSkillsDir(filepath.Join(homeAbs, ".codalotl", "skills"))
+		homeSkillsDir := filepath.Join(homeAbs, ".codalotl", "skills")
+		addIfSkillsDir(homeSkillsDir)
+		addIfSkillsDir(filepath.Join(homeSkillsDir, ".system"))
 	}
 
 	if len(paths) == 0 {
