@@ -74,7 +74,17 @@ func (g *grantStore) isGrantedForRead(sandboxDir string, absPath string, toolNam
 	if g == nil || !toolAllowsReadGrants(toolName) {
 		return false
 	}
-	if !allowOutsideSandbox && !withinSandbox(sandboxDir, absPath) {
+
+	requestAbs := absPath
+	if !filepath.IsAbs(requestAbs) {
+		if sandboxDir == "" {
+			return false
+		}
+		requestAbs = filepath.Join(sandboxDir, requestAbs)
+	}
+	requestAbs = filepath.Clean(requestAbs)
+
+	if !allowOutsideSandbox && !withinSandbox(sandboxDir, requestAbs) {
 		return false
 	}
 
@@ -84,88 +94,32 @@ func (g *grantStore) isGrantedForRead(sandboxDir string, absPath string, toolNam
 
 	relPath := ""
 	if sandboxDir != "" {
-		if rel, err := filepath.Rel(sandboxDir, absPath); err == nil && rel != "." {
+		if rel, err := filepath.Rel(sandboxDir, requestAbs); err == nil && rel != "." {
 			relPath = rel
 		}
 	}
 
-	candidates := grantCandidates(absPath, relPath)
 	for _, msg := range messages {
-		for _, cand := range candidates {
-			if cand == "" {
-				continue
-			}
-			if !messageHasGrantPrefix(msg, cand) {
-				continue
-			}
-			if g.exactGrantAllowsPath(sandboxDir, absPath, cand, allowOutsideSandbox) {
-				return true
-			}
+		if toolName == "ls" && g.globGrantAllowsLsOnSegment(requestAbs, msg, allowOutsideSandbox, sandboxDir) {
+			return true
+		}
+		if g.globGrantAllowsPath(requestAbs, relPath, msg, allowOutsideSandbox, sandboxDir) {
+			return true
 		}
 
-		if toolName == "ls" && g.globGrantAllowsLsOnSegment(absPath, msg, allowOutsideSandbox, sandboxDir) {
-			return true
-		}
-		if g.globGrantAllowsPath(absPath, relPath, msg, allowOutsideSandbox, sandboxDir) {
-			return true
+		// Exact grants apply only to the specific token the user wrote (file or directory).
+		// Do not infer implicit directory grants from token prefixes.
+		for _, token := range extractGrantPatterns(msg) {
+			if token == "" || containsGlobMetachar(token) {
+				continue
+			}
+			if g.exactGrantAllowsPath(sandboxDir, requestAbs, token, allowOutsideSandbox) {
+				return true
+			}
 		}
 	}
 
 	return false
-}
-
-// grantCandidates returns a set of candidate grant strings that we will try to match against a user message.
-//
-// Inputs:
-//   - absPath: absolute filesystem path for the requested read (ex: "/repo/sandbox/docs/readme.md")
-//   - relPath: path to the same target relative to sandboxDir, if available (ex: "docs/readme.md"); "" if filepath.Rel errors.
-//
-// Output:
-//   - A de-duplicated list including absPath, its ancestor directories, relPath, and relPath's ancestor directories,
-//     plus a "./"+relPath form when relPath is non-empty.
-//
-// Examples (sandboxDir="/repo/sandbox"):
-//   - absPath="/repo/sandbox/docs/readme.md", relPath="docs/readme.md" yields candidates including:
-//     "/repo/sandbox/docs/readme.md", "/repo/sandbox/docs", "/repo/sandbox", "docs/readme.md", "docs", "./docs/readme.md".
-func grantCandidates(absPath string, relPath string) []string {
-	seen := make(map[string]struct{}, 16)
-	var out []string
-
-	add := func(candidate string) {
-		if candidate == "" || candidate == "." {
-			return
-		}
-		if _, ok := seen[candidate]; ok {
-			return
-		}
-		seen[candidate] = struct{}{}
-		out = append(out, candidate)
-	}
-
-	add(absPath)
-	for dir := filepath.Dir(absPath); dir != absPath && dir != ""; dir = filepath.Dir(dir) {
-		add(dir)
-		if isFilesystemRoot(dir) {
-			break
-		}
-	}
-
-	if relPath != "" && relPath != "." {
-		add(relPath)
-		sep := string(filepath.Separator)
-		if !strings.HasPrefix(relPath, ".") {
-			add("." + sep + relPath)
-		}
-
-		for dir := filepath.Dir(relPath); dir != "." && dir != relPath && dir != ""; dir = filepath.Dir(dir) {
-			add(dir)
-			if isFilesystemRoot(dir) {
-				break
-			}
-		}
-	}
-
-	return out
 }
 
 func (g *grantStore) exactGrantAllowsPath(sandboxDir string, absPath string, grant string, allowOutsideSandbox bool) bool {
@@ -336,61 +290,6 @@ func isGrantTokenTerminator(b byte) bool {
 	}
 	switch b {
 	case ',', ';', ':', ')', ']', '}', '"':
-		return true
-	default:
-		return false
-	}
-}
-
-func messageHasGrantPrefix(message string, prefix string) bool {
-	for i := 0; i < len(message); i++ {
-		if message[i] != '@' {
-			continue
-		}
-
-		start := i + 1
-		if start >= len(message) {
-			continue
-		}
-
-		if message[start] == '"' {
-			start++
-		}
-		if start+len(prefix) > len(message) {
-			continue
-		}
-		if message[start:start+len(prefix)] != prefix {
-			continue
-		}
-
-		after := start + len(prefix)
-		if after >= len(message) {
-			return true
-		}
-
-		next := message[after]
-		if isGrantBoundary(next) {
-			return true
-		}
-
-		if next == '/' || next == '\\' {
-			if after+1 >= len(message) {
-				return true
-			}
-			if isGrantBoundary(message[after+1]) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func isGrantBoundary(b byte) bool {
-	if b <= ' ' {
-		return true
-	}
-	switch b {
-	case ',', '.', ';', ':', '!', '?', ')', ']', '}', '"', '`', '\'':
 		return true
 	default:
 		return false

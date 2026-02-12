@@ -279,3 +279,56 @@ func TestCodeUnitDirectoryAndGlobGrantsTableDriven(t *testing.T) {
 		})
 	}
 }
+
+func TestPermissiveGrantForHiddenPathDoesNotAllowSiblingRead(t *testing.T) {
+	t.Parallel()
+
+	// This mirrors the shape of a grant like:
+	//   read @"/somerepo/.somehidden/foo.txt"
+	// and checks whether it allows reading:
+	//   /somerepo/bar.txt
+	//
+	// We use a temp dir instead of writing to "/" during tests.
+	sandbox := t.TempDir()
+	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox, nil)
+	require.NoError(t, err)
+	defer auth.Close()
+
+	outsideRoot := t.TempDir()
+	repoDir := filepath.Join(outsideRoot, "somerepo")
+	hiddenDir := filepath.Join(repoDir, ".somehidden")
+	require.NoError(t, os.MkdirAll(hiddenDir, 0o755))
+
+	grantFile := filepath.Join(hiddenDir, "foo.txt")
+	require.NoError(t, os.WriteFile(grantFile, []byte("foo"), 0o644))
+
+	sibling := filepath.Join(repoDir, "bar.txt")
+	require.NoError(t, os.WriteFile(sibling, []byte("bar"), 0o644))
+
+	require.NoError(t, AddGrantsFromUserMessage(auth, `read @"`+grantFile+`"`))
+
+	done := make(chan error, 1)
+	go func() {
+		done <- auth.IsAuthorizedForRead(false, "", "read_file", sibling)
+	}()
+
+	select {
+	case req := <-requests:
+		// Sibling access should not be granted by granting a specific file. In permissive mode,
+		// an ungranted outside-sandbox read should require a user decision.
+		req.Disallow()
+	case err := <-done:
+		// If this happens, the sibling read was allowed without prompting.
+		require.Error(t, err)
+		return
+	case <-time.After(time.Second):
+		t.Fatal("authorization call blocked unexpectedly")
+	}
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, ErrAuthorizationDenied)
+	case <-time.After(time.Second):
+		t.Fatal("authorization call blocked unexpectedly")
+	}
+}
