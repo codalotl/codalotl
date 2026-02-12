@@ -143,6 +143,10 @@ func buildSystemPrompt(sandboxAbsDir string, goPkgAbsDir string, authorizer auth
 	// and what it can/can't read via tools.
 	systemPrompt := prompt.GetGoPackageModeModePrompt(promptKind) + "\n\n<env>\nSandbox directory: " + sandboxAbsDir + "\n</env>\n"
 
+	if err := skills.InstallDefault(); err != nil {
+		return "", fmt.Errorf("install default skills: %w", err)
+	}
+
 	searchDirs := skills.SearchPaths(goPkgAbsDir)
 	validSkills, invalidSkills, failedSkillLoads, skillsErr := skills.LoadSkills(searchDirs)
 	if skillsErr != nil {

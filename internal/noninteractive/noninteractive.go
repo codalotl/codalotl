@@ -860,6 +860,9 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 	if pkgMode {
 		skillSearchStartDir = pkgAbsPath
 	}
+	if err := skills.InstallDefault(); err != nil {
+		return nil, "", fmt.Errorf("install default skills: %w", err)
+	}
 	searchDirs := skills.SearchPaths(skillSearchStartDir)
 	validSkills, _, _, skillsErr := skills.LoadSkills(searchDirs)
 	if skillsErr != nil {

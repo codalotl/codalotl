@@ -39,6 +39,8 @@ type session struct {
 	packagePath    string
 	packageAbsPath string
 
+	availableSkills []skills.Skill
+
 	authorizer   authdomain.Authorizer
 	userRequests <-chan authdomain.UserRequest
 
@@ -92,6 +94,12 @@ func newSession(cfg sessionConfig) (*session, error) {
 	if cfg.packageMode() {
 		skillSearchStartDir = pkgAbsPath
 	}
+	installErr := skills.InstallDefault()
+	if installErr != nil {
+		sandboxAuthorizer.Close()
+		return nil, fmt.Errorf("install default skills: %w", installErr)
+	}
+
 	searchDirs := skills.SearchPaths(skillSearchStartDir)
 	validSkills, invalidSkills, failedSkillLoads, skillsErr := skills.LoadSkills(searchDirs)
 	if skillsErr != nil {
@@ -193,14 +201,15 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 
 	return &session{
-		agent:          agentInstance,
-		modelID:        modelID,
-		sandboxDir:     sandboxDir,
-		packagePath:    cfg.packagePath,
-		packageAbsPath: pkgAbsPath,
-		authorizer:     toolAuthorizer,
-		userRequests:   userRequests,
-		config:         cfg,
+		agent:           agentInstance,
+		modelID:         modelID,
+		sandboxDir:      sandboxDir,
+		packagePath:     cfg.packagePath,
+		packageAbsPath:  pkgAbsPath,
+		availableSkills: validSkills,
+		authorizer:      toolAuthorizer,
+		userRequests:    userRequests,
+		config:          cfg,
 	}, nil
 }
 
