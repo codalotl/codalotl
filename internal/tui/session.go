@@ -30,21 +30,22 @@ const (
 )
 
 type session struct {
-	agent *agent.Agent
-
-	modelID llmmodel.ModelID
-
-	sandboxDir string
-
-	packagePath    string
-	packageAbsPath string
-
+	agent           *agent.Agent
+	modelID         llmmodel.ModelID
+	sandboxDir      string
+	packagePath     string
+	packageAbsPath  string
 	availableSkills []skills.Skill
+	invalidSkills   []skills.Skill
 
-	authorizer   authdomain.Authorizer
-	userRequests <-chan authdomain.UserRequest
+	// failedSkillLoads are errors returned by skills.LoadSkill when attempting to load a candidate skill dir (typically due to missing/invalid SKILL.md, IO errors,
+	// etc). skillsLoadErr is a fatal skills discovery error (rare); both are surfaced to the user via `/skills`.
+	failedSkillLoads []error
 
-	config sessionConfig
+	skillsLoadErr error
+	authorizer    authdomain.Authorizer
+	userRequests  <-chan authdomain.UserRequest
+	config        sessionConfig
 }
 
 type sessionConfig struct {
@@ -101,11 +102,11 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 
 	searchDirs := skills.SearchPaths(skillSearchStartDir)
-	validSkills, invalidSkills, failedSkillLoads, skillsErr := skills.LoadSkills(searchDirs)
-	if skillsErr != nil {
+	validSkills, invalidSkills, failedSkillLoads, skillsLoadErr := skills.LoadSkills(searchDirs)
+	if skillsLoadErr != nil {
 		// Non-fatal: skills are optional and the app should still start even if discovery fails.
 		// The agent will simply not be told about skills in the prompt.
-		debugLogf("skills.LoadSkills failed: %v", skillsErr)
+		debugLogf("skills.LoadSkills failed: %v", skillsLoadErr)
 		validSkills = nil
 		invalidSkills = nil
 		failedSkillLoads = nil
@@ -201,15 +202,18 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 
 	return &session{
-		agent:           agentInstance,
-		modelID:         modelID,
-		sandboxDir:      sandboxDir,
-		packagePath:     cfg.packagePath,
-		packageAbsPath:  pkgAbsPath,
-		availableSkills: validSkills,
-		authorizer:      toolAuthorizer,
-		userRequests:    userRequests,
-		config:          cfg,
+		agent:            agentInstance,
+		modelID:          modelID,
+		sandboxDir:       sandboxDir,
+		packagePath:      cfg.packagePath,
+		packageAbsPath:   pkgAbsPath,
+		availableSkills:  validSkills,
+		invalidSkills:    invalidSkills,
+		failedSkillLoads: failedSkillLoads,
+		skillsLoadErr:    skillsLoadErr,
+		authorizer:       toolAuthorizer,
+		userRequests:     userRequests,
+		config:           cfg,
 	}, nil
 }
 

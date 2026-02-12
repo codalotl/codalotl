@@ -70,6 +70,7 @@ type chatMessage struct {
 	contextDetails string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
 	contextError   string
 	skillsList     []skills.Skill // skillsList is only set for messageKindSkillsList.
+	skillsIssues   string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it. It must be the correct block width (all lines padded with spaces to equal width
 	// of the viewport. Background colors must be set on this (if we're not in the uncolored palette). Resize events need to recalculate this.
@@ -929,33 +930,78 @@ func (m *model) handleModelCommand(arg string) {
 
 func (m *model) handleSkillsCommand() {
 	var available []skills.Skill
+	var invalid []skills.Skill
+	var failed []error
+	var loadErr error
 	switch {
 	case m != nil && m.session != nil && len(m.session.availableSkills) > 0:
 		available = append([]skills.Skill(nil), m.session.availableSkills...)
+		invalid = append([]skills.Skill(nil), m.session.invalidSkills...)
+		failed = append([]error(nil), m.session.failedSkillLoads...)
+		loadErr = m.session.skillsLoadErr
 	case m != nil && m.session != nil:
 		available = nil
+		invalid = append([]skills.Skill(nil), m.session.invalidSkills...)
+		failed = append([]error(nil), m.session.failedSkillLoads...)
+		loadErr = m.session.skillsLoadErr
 	default:
 		// Best-effort fallback: discover skills based on the current working directory.
 		// In practice the TUI always has an active session.
 		searchDirs := skills.SearchPaths("")
-		valid, _, _, err := skills.LoadSkills(searchDirs)
-		if err == nil {
-			available = valid
-		}
+		valid, invalidSkills, failedSkillLoads, err := skills.LoadSkills(searchDirs)
+		available = valid
+		invalid = invalidSkills
+		failed = failedSkillLoads
+		loadErr = err
 	}
 
 	sort.Slice(available, func(i, j int) bool {
 		return available[i].Name < available[j].Name
 	})
 
+	issues := formatSkillsIssues(invalid, failed, loadErr)
+
 	m.messages = append(m.messages, chatMessage{
-		kind:       messageKindSkillsList,
-		skillsList: available,
+		kind:         messageKindSkillsList,
+		skillsList:   available,
+		skillsIssues: issues,
 	})
 	m.refreshViewport(true)
 	if m.viewport != nil {
 		m.viewport.ScrollToBottom()
 	}
+}
+
+func formatSkillsIssues(invalid []skills.Skill, failed []error, loadErr error) string {
+	var parts []string
+	if loadErr != nil {
+		parts = append(parts, fmt.Sprintf("discovery error: %v", loadErr))
+	}
+	if len(invalid) > 0 || len(failed) > 0 {
+		if msg := strings.TrimSpace(skills.FormatSkillErrors(invalid, failed)); msg != "" {
+			parts = append(parts, msg)
+		}
+	}
+	combined := strings.TrimSpace(strings.Join(parts, "\n"))
+	if combined == "" {
+		return ""
+	}
+
+	// Keep `/skills` installed-skill bullets stable (tests, readability) by ensuring
+	// the issues section does not emit "• " bullet lines.
+	lines := strings.Split(combined, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, "•") {
+			rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "•"))
+			if rest == "" {
+				lines[i] = ""
+			} else {
+				lines[i] = "- " + rest
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 func (m *model) handlePackageCommand(arg string) {
@@ -1680,7 +1726,7 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 		content = m.withForegroundColor(termformat.Sanitize(msg.userMessage, 4), true)
 		needBgAndWidth = true
 	case messageKindSkillsList:
-		content = m.renderSkillsListMessage(msg.skillsList)
+		content = m.renderSkillsListMessage(msg.skillsList, msg.skillsIssues)
 		needBgAndWidth = true
 	case messageKindContextStatus:
 		content = m.renderContextStatusLine(msg.contextStatus)
@@ -1707,7 +1753,7 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 
 }
 
-func (m *model) renderSkillsListMessage(available []skills.Skill) string {
+func (m *model) renderSkillsListMessage(available []skills.Skill, issues string) string {
 	primary := termformat.Style{Foreground: m.palette.primaryForeground}
 	accent := termformat.Style{Foreground: m.palette.accentForeground}
 
@@ -1750,6 +1796,22 @@ func (m *model) renderSkillsListMessage(available []skills.Skill) string {
 	// If every skill was blank (shouldn't happen), fall back to <none>.
 	if wrote == 0 {
 		return primary.Wrap("Installed skills:\n• <none>")
+	}
+
+	issues = strings.TrimSpace(issues)
+	if issues != "" {
+		b.WriteString("\n\n")
+		b.WriteString(primary.Wrap("Skills with errors:"))
+		b.WriteByte('\n')
+
+		for _, line := range strings.Split(issues, "\n") {
+			line = strings.TrimRight(line, " \t")
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			b.WriteString(accent.Wrap(termformat.Sanitize(line, 4)))
+			b.WriteByte('\n')
+		}
 	}
 
 	return b.String()

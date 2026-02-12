@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -680,4 +681,40 @@ func TestSkillsCommandRejectsArgs(t *testing.T) {
 	require.Equal(t, messageKindSystem, m.messages[1].kind)
 	assert.Contains(t, m.messages[1].userMessage, "Usage: `/skills`")
 	assert.NotContains(t, m.messages[1].userMessage, "Installed skills:")
+}
+
+func TestSkillsCommandShowsSkillLoadErrors(t *testing.T) {
+	m := newModel(
+		colorPalette{},
+		noopFormatter{},
+		&session{
+			availableSkills: []skills.Skill{
+				{Name: "ok-skill", Description: "loads"},
+			},
+			invalidSkills: []skills.Skill{
+				{Name: "BadName", Description: "invalid per spec"},
+			},
+			failedSkillLoads: []error{
+				errors.New("load /tmp/skill: boom"),
+			},
+		},
+		sessionConfig{},
+		nil,
+		nil,
+		nil,
+	)
+
+	handled := m.handleSlashCommand("/skills")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindSkillsList, m.messages[1].kind)
+
+	m.ensureMessageFormatted(&m.messages[1], 120)
+	text := stripAnsi(m.messages[1].formatted)
+
+	require.Contains(t, text, "Installed skills:")
+	require.Contains(t, text, "Skills with errors:")
+	require.Contains(t, text, "BadName")
+	require.Contains(t, text, "boom")
 }
