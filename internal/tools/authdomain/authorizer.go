@@ -49,12 +49,10 @@ type Authorizer interface {
 	// WithoutCodeUnit returns an authorizer with code-unit restrictions removed.
 	WithoutCodeUnit() Authorizer
 
-	// IsAuthorizedForRead returns nil if all absPath are authorized to be read.
-	// It returns an error otherwise, where the error explains why authorization was denied.
+	// IsAuthorizedForRead returns nil if all absPath are authorized to be read. It returns an error otherwise, where the error explains why authorization was denied.
 	IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error
 
-	// IsAuthorizedForWrite returns nil if all absPath are authorized to be written.
-	// It returns an error otherwise, where the error explains why authorization was denied.
+	// IsAuthorizedForWrite returns nil if all absPath are authorized to be written. It returns an error otherwise, where the error explains why authorization was denied.
 	IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error
 
 	// IsShellAuthorized returns nil if the shell command is authorized; otherwise, the error explains why authorization was denied.
@@ -128,8 +126,7 @@ func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authori
 	}
 }
 
-// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir.
-// It re-uses the same ShellAllowedCommands, request channel, grants, etc.
+// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same ShellAllowedCommands, request channel, grants, etc.
 func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, error) {
 	if authorizer == nil {
 		return nil, errors.New("authorizer is nil")

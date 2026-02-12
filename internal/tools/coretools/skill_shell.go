@@ -6,59 +6,56 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
-// Requirements:
-//   - accept shell commands via a function_call.
-//   - inputs: command (array of strings, argv style); timeout_ms; cwd (abs path)
-//   - output: {"success": true|false, "content": content}, where content is like: "Command: go test .\nCode: 0\nDuration: 19ms\nOutput:\n<the output>"
-//   - no security (allowlist, blacklist, etc)
+const ToolNameSkillShell = "skill_shell"
 
-const (
-	ToolNameShell       = "shell"
-	defaultShellTimeout = 120 * time.Second
-)
+//go:embed skill_shell.md
+var descriptionSkillShell string
 
-//go:embed shell.md
-var descriptionShell string
-
-type toolShell struct {
+type toolSkillShell struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
 }
 
-type shellParams struct {
+type skillShellParams struct {
 	Command           []string `json:"command"`
+	Skill             string   `json:"skill"`
 	TimeoutMS         int64    `json:"timeout_ms"`
 	Cwd               string   `json:"cwd"`
 	RequestPermission bool     `json:"request_permission"`
 }
 
-func NewShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
+func NewSkillShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	abs := authorizer.SandboxDir()
-	return &toolShell{
+	return &toolSkillShell{
 		sandboxAbsDir: abs,
 		authorizer:    authorizer,
 	}
 }
 
-func (t *toolShell) Name() string { return ToolNameShell }
+func (t *toolSkillShell) Name() string { return ToolNameSkillShell }
 
-func (t *toolShell) Info() llmstream.ToolInfo {
+func (t *toolSkillShell) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
-		Name:        ToolNameShell,
-		Description: strings.TrimSpace(descriptionShell),
+		Name:        ToolNameSkillShell,
+		Description: strings.TrimSpace(descriptionSkillShell),
 		Parameters: map[string]any{
 			"command": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
 				"description": "Command and args (argv style), e.g., ['go','test','./...']",
+			},
+			"skill": map[string]any{
+				"type":        "string",
+				"description": "Required name of Skill that indicated this shell command",
 			},
 			"timeout_ms": map[string]any{
 				"type":        "integer",
@@ -73,32 +70,23 @@ func (t *toolShell) Info() llmstream.ToolInfo {
 				"description": "Optionally request the user's permission to run this command. Set to true for dangerous commands, and material access outside sandbox dir",
 			},
 		},
-		Required: []string{"command"},
+		Required: []string{"command", "skill"},
 	}
 }
 
-// Result is JSON-serialized object: {"success": true|false, "content": content}, where content is a string like:
-//
-//	Command: go test .
-//	Process State: exit status 0    // (os.ProcessState's String())
-//	Timeout: false
-//	Duration: 240ms
-//	Output:
-//	ok  	axi/codeai/applypatch	0.232s
-//
-// Error semantics:
-//   - success (JSON field) indicates the shell command exited cleanly (non-error exit code and no timeout). It is the signal consumed by agents.
-//   - IsError (ToolResult field) mirrors the success flag so callers that only inspect ToolResult still understand the command failed.
-//   - SourceErr (ToolResult field) captures system-level failures in executing the tool (ex: JSON parsing or spawning the process). Normal command failures should
-//     leave SourceErr nil.
-func (t *toolShell) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
-	var params shellParams
+// Run duplicates the semantics of toolShell.Run for now, so it can be independently evolved.
+func (t *toolSkillShell) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+	var params skillShellParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
 		return NewToolErrorResult(call, fmt.Sprintf("error parsing parameters: %s", err), err)
 	}
 
 	if len(params.Command) == 0 {
 		return llmstream.NewErrorToolResult("command is required", call)
+	}
+
+	if params.Skill == "" {
+		return llmstream.NewErrorToolResult("skill is required", call)
 	}
 
 	timeout := defaultShellTimeout
@@ -194,7 +182,7 @@ func (t *toolShell) Run(ctx context.Context, call llmstream.ToolCall) llmstream.
 	return result
 }
 
-func (t *toolShell) normalizeCwd(cwd string) (string, error) {
+func (t *toolSkillShell) normalizeCwd(cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
 		return "", fmt.Errorf("cwd is required")
 	}

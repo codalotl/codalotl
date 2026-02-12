@@ -90,6 +90,8 @@ If it follows some other format, just render the whole thing as if it were an Ev
 
 This event happens when a tool call is **initiated** - as such, the tool call is in progress.
 
+Note: `skill_shell` is formatted exactly like `shell` (it's a drop-in replacement).
+
 Default shell call formatting will follow this format:
 
 ```
@@ -103,6 +105,8 @@ Default shell call formatting will follow this format:
 ### EventTypeToolComplete - shell commands
 
 Complete tool calls have a call and a result.
+
+Note: `skill_shell` is formatted exactly like `shell` (it's a drop-in replacement).
 
 ```
 • Ran go test .

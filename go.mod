@@ -17,6 +17,7 @@ require (
 	github.com/creack/pty v1.1.24 // 0 transitive deps! (ONLY used for testing, so we could potentially get rid of it)
 	github.com/mattn/go-runewidth v0.0.19 // 1 transitive dep: github.com/clipperhouse/uax29
 	github.com/yuin/goldmark v1.7.13 // 0 transitive deps!
+	gopkg.in/yaml.v3 v3.0.1 // 1 transitive deps: gopkg.in/check.v1 (a testing lib)
 )
 
 // Dependencies we're on the fence about:
@@ -38,5 +39,4 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	golang.org/x/sync v0.17.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

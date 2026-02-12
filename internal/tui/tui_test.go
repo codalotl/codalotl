@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
+	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 
 	"github.com/stretchr/testify/assert"
@@ -251,6 +253,7 @@ func TestCyclingHistoryFiltersSlashCommands(t *testing.T) {
 	m.recordSubmittedMessage("/new")
 	m.recordSubmittedMessage("/model gemini-2.5")
 	m.recordSubmittedMessage("/models")
+	m.recordSubmittedMessage("/skills")
 	m.recordSubmittedMessage("/models gemini-2.5")
 	m.recordSubmittedMessage("/refactor fix it")
 	m.recordSubmittedMessage("regular input")
@@ -582,4 +585,136 @@ func listedModelIDs(modelListText string) []llmmodel.ModelID {
 		ids = append(ids, llmmodel.ModelID(rest))
 	}
 	return ids
+}
+
+func TestSkillsCommandListsInstalledSkills(t *testing.T) {
+	m := newModel(
+		colorPalette{},
+		noopFormatter{},
+		&session{
+			availableSkills: []skills.Skill{
+				{Name: "zeta", Description: "last"},
+				{Name: "alpha", Description: "first"},
+				{Name: "beta", Description: ""},
+			},
+		},
+		sessionConfig{},
+		nil,
+		nil,
+		nil,
+	)
+
+	handled := m.handleSlashCommand("/skills")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindWelcome, m.messages[0].kind)
+	require.Equal(t, messageKindSkillsList, m.messages[1].kind)
+
+	m.ensureMessageFormatted(&m.messages[1], 80)
+	text := stripAnsi(m.messages[1].formatted)
+	require.Contains(t, text, "Installed skills:")
+
+	lines := strings.Split(text, "\n")
+	var bullets []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "• ") {
+			bullets = append(bullets, line)
+		}
+	}
+	require.Equal(t, []string{
+		"• alpha - first",
+		"• beta",
+		"• zeta - last",
+	}, bullets)
+}
+
+func TestSkillsCommandRendersNamesNormalAndDescriptionsAccent(t *testing.T) {
+	palette := colorPalette{
+		colorized:          true,
+		primaryBackground:  termformat.ANSIColor(0),
+		accentBackground:   termformat.ANSIColor(1),
+		primaryForeground:  termformat.ANSIColor(2),
+		accentForeground:   termformat.ANSIColor(3),
+		colorfulForeground: termformat.ANSIColor(4),
+		borderColor:        termformat.ANSIColor(5),
+	}
+	m := newModel(
+		palette,
+		noopFormatter{},
+		&session{
+			availableSkills: []skills.Skill{
+				{Name: "alpha", Description: "first"},
+			},
+		},
+		sessionConfig{},
+		nil,
+		nil,
+		nil,
+	)
+
+	handled := m.handleSlashCommand("/skills")
+	require.True(t, handled)
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindSkillsList, m.messages[1].kind)
+
+	const width = 80
+	m.ensureMessageFormatted(&m.messages[1], width)
+	rendered := m.messages[1].formatted
+
+	// Line 1: "• alpha - first"
+	//          01234567890
+	//          0 2         x positions:
+	//          'a' in alpha is at x=2; 'f' in first is at x=10.
+	requireColorEqual(t, palette.primaryForeground, colorAt(rendered, 2, 1, false))
+	requireColorEqual(t, palette.accentForeground, colorAt(rendered, 10, 1, false))
+}
+
+func TestSkillsCommandRejectsArgs(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, &session{}, sessionConfig{}, nil, nil, nil)
+
+	handled := m.handleSlashCommand("/skills extra")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindSystem, m.messages[1].kind)
+	assert.Contains(t, m.messages[1].userMessage, "Usage: `/skills`")
+	assert.NotContains(t, m.messages[1].userMessage, "Installed skills:")
+}
+
+func TestSkillsCommandShowsSkillLoadErrors(t *testing.T) {
+	m := newModel(
+		colorPalette{},
+		noopFormatter{},
+		&session{
+			availableSkills: []skills.Skill{
+				{Name: "ok-skill", Description: "loads"},
+			},
+			invalidSkills: []skills.Skill{
+				{Name: "BadName", Description: "invalid per spec"},
+			},
+			failedSkillLoads: []error{
+				errors.New("load /tmp/skill: boom"),
+			},
+		},
+		sessionConfig{},
+		nil,
+		nil,
+		nil,
+	)
+
+	handled := m.handleSlashCommand("/skills")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindSkillsList, m.messages[1].kind)
+
+	m.ensureMessageFormatted(&m.messages[1], 120)
+	text := stripAnsi(m.messages[1].formatted)
+
+	require.Contains(t, text, "Installed skills:")
+	require.Contains(t, text, "Skills with errors:")
+	require.Contains(t, text, "BadName")
+	require.Contains(t, text, "boom")
 }

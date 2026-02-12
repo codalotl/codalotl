@@ -11,16 +11,11 @@ import (
 type CommandCheckResult int
 
 const (
-	// CommandCheckResultNone indicates the command did not match any configured matcher.
-	CommandCheckResultNone CommandCheckResult = iota
-	// CommandCheckResultSafe indicates the command matched the safe list.
-	CommandCheckResultSafe
-	// CommandCheckResultBlocked indicates the command matched the blocked list.
-	CommandCheckResultBlocked
-	// CommandCheckResultDangerous indicates the command matched the dangerous list.
-	CommandCheckResultDangerous
-	// CommandCheckResultInscrutable indicates the command could not be reasoned about lexically.
-	CommandCheckResultInscrutable
+	CommandCheckResultNone        CommandCheckResult = iota // CommandCheckResultNone indicates the command did not match any configured matcher.
+	CommandCheckResultSafe                                  // CommandCheckResultSafe indicates the command matched the safe list.
+	CommandCheckResultBlocked                               // CommandCheckResultBlocked indicates the command matched the blocked list.
+	CommandCheckResultDangerous                             // CommandCheckResultDangerous indicates the command matched the dangerous list.
+	CommandCheckResultInscrutable                           // CommandCheckResultInscrutable indicates the command could not be reasoned about lexically.
 )
 
 // ErrCommandMatcherNotFound is returned when attempting to remove a matcher that is not registered.
@@ -30,15 +25,16 @@ var ErrCommandMatcherNotFound = errors.New("command matcher not found")
 type CommandMatcher struct {
 	// Command is the executable (argv[0]) to match. Example: "go".
 	Command string
-	// CommandArgsPrefix matches the subsequent arguments (argv[1:]) exactly up to len(CommandArgsPrefix).
-	// Example: []string{"test"} matches `go test ./...`, but not `go help test`.
+
+	// CommandArgsPrefix matches the subsequent arguments (argv[1:]) exactly up to len(CommandArgsPrefix). Example: []string{"test"} matches `go test ./...`, but not
+	// `go help test`.
 	CommandArgsPrefix []string
+
 	// Flags matches any argument that equals one of the listed flags, supports "--flag=value" forms.
 	Flags []string
 }
 
-// ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands.
-// All methods are safe for concurrent use.
+// ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands. All methods are safe for concurrent use.
 type ShellAllowedCommands struct {
 	mu        sync.RWMutex
 	blocked   map[string]CommandMatcher
@@ -46,8 +42,7 @@ type ShellAllowedCommands struct {
 	safe      map[string]CommandMatcher
 }
 
-// NewShellAllowedCommands constructs a ShellAllowedCommands pre-populated with the
-// default blocked, dangerous, and safe command matchers.
+// NewShellAllowedCommands constructs a ShellAllowedCommands pre-populated with the default blocked, dangerous, and safe command matchers.
 func NewShellAllowedCommands() *ShellAllowedCommands {
 	s := &ShellAllowedCommands{
 		blocked:   make(map[string]CommandMatcher, len(defaultBlockedCommandMatchers)),

@@ -32,7 +32,7 @@ type Options struct {
 func CoreAgentTools(opts Options) ([]llmstream.Tool, error)
 
 // PackageAgentTools offers tools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch, update_plan
+//   - core tools: read_file, ls, apply_patch, skill_shell, update_plan
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests, run_project_tests
 //   - package tools: module_info, get_public_api, clarify_public_api, get_usage, update_usage, change_api
 //
@@ -52,7 +52,7 @@ func SimpleReadOnlyTools(opts Options) ([]llmstream.Tool, error)
 
 
 // LimitedPackageAgentTools offers more limited tools than PackageAgentTools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch (not included: update_plan)
+//   - core tools: read_file, ls, apply_patch, skill_shell (not included: update_plan)
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests (not included: run_project_tests)
 //   - package tools: get_public_api, clarify_public_api (not included: get_usage, update_usage)
 //

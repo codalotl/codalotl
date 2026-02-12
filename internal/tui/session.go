@@ -18,6 +18,8 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
+	"github.com/codalotl/codalotl/internal/simplelogger"
+	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsets"
 )
@@ -28,19 +30,22 @@ const (
 )
 
 type session struct {
-	agent *agent.Agent
+	agent           *agent.Agent
+	modelID         llmmodel.ModelID
+	sandboxDir      string
+	packagePath     string
+	packageAbsPath  string
+	availableSkills []skills.Skill
+	invalidSkills   []skills.Skill
 
-	modelID llmmodel.ModelID
+	// failedSkillLoads are errors returned by skills.LoadSkill when attempting to load a candidate skill dir (typically due to missing/invalid SKILL.md, IO errors,
+	// etc). skillsLoadErr is a fatal skills discovery error (rare); both are surfaced to the user via `/skills`.
+	failedSkillLoads []error
 
-	sandboxDir string
-
-	packagePath    string
-	packageAbsPath string
-
-	authorizer   authdomain.Authorizer
-	userRequests <-chan authdomain.UserRequest
-
-	config sessionConfig
+	skillsLoadErr error
+	authorizer    authdomain.Authorizer
+	userRequests  <-chan authdomain.UserRequest
+	config        sessionConfig
 }
 
 type sessionConfig struct {
@@ -84,6 +89,30 @@ func newSession(cfg sessionConfig) (*session, error) {
 	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	skillSearchStartDir := sandboxDir
+	if cfg.packageMode() {
+		skillSearchStartDir = pkgAbsPath
+	}
+	installErr := skills.InstallDefault()
+	if installErr != nil {
+		sandboxAuthorizer.Close()
+		return nil, fmt.Errorf("install default skills: %w", installErr)
+	}
+
+	searchDirs := skills.SearchPaths(skillSearchStartDir)
+	validSkills, invalidSkills, failedSkillLoads, skillsLoadErr := skills.LoadSkills(searchDirs)
+	if skillsLoadErr != nil {
+		// Non-fatal: skills are optional and the app should still start even if discovery fails.
+		// The agent will simply not be told about skills in the prompt.
+		debugLogf("skills.LoadSkills failed: %v", skillsLoadErr)
+		validSkills = nil
+		invalidSkills = nil
+		failedSkillLoads = nil
+	}
+	if len(invalidSkills) > 0 || len(failedSkillLoads) > 0 {
+		debugLogf("skills issues:\n%s", skills.FormatSkillErrors(invalidSkills, failedSkillLoads))
 	}
 
 	var tools []llmstream.Tool
@@ -136,6 +165,16 @@ func newSession(cfg sessionConfig) (*session, error) {
 
 	systemPrompt = strings.TrimSpace(systemPrompt)
 
+	if shellToolName, ok := detectShellToolName(tools); ok {
+		if err := skills.Authorize(validSkills, toolAuthorizer); err != nil {
+			sandboxAuthorizer.Close()
+			return nil, fmt.Errorf("authorize skills: %w", err)
+		}
+		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, cfg.packageMode()))
+		systemPrompt = strings.TrimSpace(systemPrompt)
+		simplelogger.Log("Prompt:\n%s", systemPrompt)
+	}
+
 	agentInstance, err := agent.NewAgent(modelID, systemPrompt, tools)
 	if err != nil {
 		sandboxAuthorizer.Close()
@@ -163,15 +202,32 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 
 	return &session{
-		agent:          agentInstance,
-		modelID:        modelID,
-		sandboxDir:     sandboxDir,
-		packagePath:    cfg.packagePath,
-		packageAbsPath: pkgAbsPath,
-		authorizer:     toolAuthorizer,
-		userRequests:   userRequests,
-		config:         cfg,
+		agent:            agentInstance,
+		modelID:          modelID,
+		sandboxDir:       sandboxDir,
+		packagePath:      cfg.packagePath,
+		packageAbsPath:   pkgAbsPath,
+		availableSkills:  validSkills,
+		invalidSkills:    invalidSkills,
+		failedSkillLoads: failedSkillLoads,
+		skillsLoadErr:    skillsLoadErr,
+		authorizer:       toolAuthorizer,
+		userRequests:     userRequests,
+		config:           cfg,
 	}, nil
+}
+
+func detectShellToolName(tools []llmstream.Tool) (name string, ok bool) {
+	// We want skills.Prompt to reference the actual shell tool name exposed to the LLM.
+	// "skill_shell" is the harness-level default, but some toolsets may export it as "shell".
+	for _, candidate := range []string{"skill_shell", "shell"} {
+		for _, t := range tools {
+			if t != nil && t.Name() == candidate {
+				return candidate, true
+			}
+		}
+	}
+	return "", false
 }
 
 // includeReachableTestdataDirs includes any "testdata" directory directly under an already-included directory (recursively). This allows Go fixture files in testdata

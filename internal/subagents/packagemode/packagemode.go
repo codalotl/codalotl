@@ -13,21 +13,22 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/lints"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
+	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
 // Run runs an agent with the given instructions and tools on a specific package.
 //
-// It returns the agent's last message. An error is returned for invalid inputs, failure to communicate with the LLM, etc.
-// If the LLM can't make the updates as per instructions, it may say so in its answer, which doesn't produce an error.
+// It returns the agent's last message. An error is returned for invalid inputs, failure to communicate with the LLM, etc. If the LLM can't make the updates as per
+// instructions, it may say so in its answer, which doesn't produce an error.
 //
 //   - authorizer is a code unit authorizer.
 //   - goPkgAbsDir is the absolute path to a package.
 //   - toolset are the tools available for use (injected to cut dependencies).
-//   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling
-//     agent).
+//   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling agent).
 //   - lintSteps controls lint checks in initial context collection and lint-aware tools.
 //
 // Example instructions: "Update the package add a IsDefault field to the Configuration struct."
@@ -101,9 +102,10 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 		return "", err
 	}
 
-	// Provide the sandbox location in the system prompt so the model can reason about paths
-	// and what it can/can't read via tools.
-	systemPrompt := prompt.GetGoPackageModeModePrompt(promptKind) + "\n\n<env>\nSandbox directory: " + sandboxAbsDir + "\n</env>\n"
+	systemPrompt, err := buildSystemPrompt(sandboxAbsDir, goPkgAbsDir, authorizer, tools, promptKind)
+	if err != nil {
+		return "", err
+	}
 
 	ag, err := agentCreator.NewWithDefaultModel(systemPrompt, tools)
 	if err != nil {
@@ -136,6 +138,38 @@ func Run(ctx context.Context, agentCreator agent.AgentCreator, authorizer authdo
 	return strings.TrimSpace(finalTurnText), nil
 }
 
+func buildSystemPrompt(sandboxAbsDir string, goPkgAbsDir string, authorizer authdomain.Authorizer, tools []llmstream.Tool, promptKind prompt.GoPackageModePromptKind) (string, error) {
+	// Provide the sandbox location in the system prompt so the model can reason about paths
+	// and what it can/can't read via tools.
+	systemPrompt := prompt.GetGoPackageModeModePrompt(promptKind) + "\n\n<env>\nSandbox directory: " + sandboxAbsDir + "\n</env>\n"
+
+	if err := skills.InstallDefault(); err != nil {
+		return "", fmt.Errorf("install default skills: %w", err)
+	}
+
+	searchDirs := skills.SearchPaths(goPkgAbsDir)
+	validSkills, invalidSkills, failedSkillLoads, skillsErr := skills.LoadSkills(searchDirs)
+	if skillsErr != nil {
+		// Non-fatal: skills are optional; if discovery fails, just don't mention them.
+		validSkills = nil
+		invalidSkills = nil
+		failedSkillLoads = nil
+	}
+
+	// Mirror internal/tui behavior: only mention/enable skills when there's a shell tool
+	// exposed to the model for skill script execution.
+	if shellToolName, ok := detectShellToolName(tools); ok {
+		if err := skills.Authorize(validSkills, authorizer); err != nil {
+			return "", fmt.Errorf("authorize skills: %w", err)
+		}
+		_ = invalidSkills
+		_ = failedSkillLoads
+		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, true))
+	}
+
+	return strings.TrimSpace(systemPrompt), nil
+}
+
 func buildGoContext(goPkgAbsDir string, lintSteps []lints.Step) (string, error) {
 	module, err := gocode.NewModule(goPkgAbsDir)
 	if err != nil {
@@ -159,4 +193,28 @@ func buildGoContext(goPkgAbsDir string, lintSteps []lints.Step) (string, error) 
 	}
 
 	return initial, nil
+}
+
+func detectShellToolName(tools []llmstream.Tool) (name string, ok bool) {
+	// We want skills.Prompt to reference the actual shell tool name exposed to the LLM.
+	// "skill_shell" is the harness-level default, but some toolsets may export it as "shell".
+	for _, candidate := range []string{"skill_shell", "shell"} {
+		for _, t := range tools {
+			if t != nil && t.Name() == candidate {
+				return candidate, true
+			}
+		}
+	}
+	return "", false
+}
+
+func joinContextBlocks(blocks ...string) string {
+	nonEmpty := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		if strings.TrimSpace(b) == "" {
+			continue
+		}
+		nonEmpty = append(nonEmpty, strings.TrimSpace(b))
+	}
+	return strings.Join(nonEmpty, "\n\n")
 }

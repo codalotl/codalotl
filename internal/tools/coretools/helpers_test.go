@@ -1,7 +1,6 @@
 package coretools
 
 import (
-	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,8 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-var dedent = gocodetesting.Dedent
 
 func TestNormalizePath(t *testing.T) {
 	sandbox := t.TempDir()
