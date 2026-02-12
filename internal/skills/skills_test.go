@@ -2,7 +2,9 @@ package skills
 
 import (
 	"errors"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -640,4 +642,64 @@ func TestSearchPaths_AlsoSearchesHomeSystemSkillsDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(homeSystemSkills, "sys"), 0o755))
 	wantWithSystem := append(append([]string(nil), want...), homeSystemSkills)
 	assert.Equal(t, wantWithSystem, SearchPaths(startDir))
+}
+
+func TestInstallDefault_OverwritesSameNameOnly(t *testing.T) {
+	tmp := t.TempDir()
+
+	home := filepath.Join(tmp, "home")
+	require.NoError(t, os.MkdirAll(home, 0o755))
+	t.Setenv("HOME", home)
+
+	entries, err := fs.ReadDir(defaultSkillsFS, "default")
+	require.NoError(t, err)
+
+	var defaultSkillName string
+	for _, e := range entries {
+		if e.IsDir() {
+			defaultSkillName = e.Name()
+			break
+		}
+	}
+	require.NotEmpty(t, defaultSkillName)
+
+	embeddedSkillMDPath := path.Join("default", defaultSkillName, "SKILL.md")
+	wantSkillMD, err := fs.ReadFile(defaultSkillsFS, embeddedSkillMDPath)
+	require.NoError(t, err)
+
+	// A user-managed skill dir should not be modified.
+	userSkillDir := filepath.Join(home, ".codalotl", "skills", "user-skill")
+	require.NoError(t, os.MkdirAll(userSkillDir, 0o755))
+	userKeep := filepath.Join(userSkillDir, "keep.txt")
+	require.NoError(t, os.WriteFile(userKeep, []byte("keep"), 0o644))
+
+	// A system skill dir that isn't part of defaults should not be modified.
+	systemDir := filepath.Join(home, ".codalotl", "skills", ".system")
+	otherSystemDir := filepath.Join(systemDir, "other-system-skill")
+	require.NoError(t, os.MkdirAll(otherSystemDir, 0o755))
+	otherKeep := filepath.Join(otherSystemDir, "keep.txt")
+	require.NoError(t, os.WriteFile(otherKeep, []byte("other"), 0o644))
+
+	// A system skill dir that matches a default should be overwritten.
+	defaultSystemDir := filepath.Join(systemDir, defaultSkillName)
+	require.NoError(t, os.MkdirAll(defaultSystemDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(defaultSystemDir, "SKILL.md"), []byte("wrong"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(defaultSystemDir, "extra.txt"), []byte("extra"), 0o644))
+
+	require.NoError(t, InstallDefault())
+
+	gotUserKeep, err := os.ReadFile(userKeep)
+	require.NoError(t, err)
+	assert.Equal(t, "keep", string(gotUserKeep))
+
+	gotOtherKeep, err := os.ReadFile(otherKeep)
+	require.NoError(t, err)
+	assert.Equal(t, "other", string(gotOtherKeep))
+
+	gotSkillMD, err := os.ReadFile(filepath.Join(systemDir, defaultSkillName, "SKILL.md"))
+	require.NoError(t, err)
+	assert.Equal(t, string(wantSkillMD), string(gotSkillMD))
+
+	_, err = os.Stat(filepath.Join(systemDir, defaultSkillName, "extra.txt"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
