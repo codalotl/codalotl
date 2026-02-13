@@ -4,6 +4,8 @@ The manual is a user manual for codalotl, the coding agent for Go. This SPEC.md 
 
 The manual should answer questions that actual users have when using codalotl. It should contain instructions on how to do things, reference material, and describe important concepts. It is not a marketing document.
 
+It is also not a behavior specification. One temptation of LLMs writing manuals is to dump all behavior and rules related to a topic into a section of the manual. This is not useful. There is no need to describe edge cases, error handling, exact sorting semantics, or things of that nature to the end user. Filter all information though the lens of: "Does this provide an important concept to the user's mental model? Does it teach them how to do something?"
+
 ## Build Target
 
 The user-facing manual articfact is `manual/MANUAL.md`. It is a **single** markdown file describing the usage of `codalotl`. Since it's just one file, it may be long.
