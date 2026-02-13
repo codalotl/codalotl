@@ -346,20 +346,18 @@ Configuration is loaded from JSON files plus environment.
 
 ### Config File
 
-Config search/precedence:
-1. Global: `~/.codalotl/config.json`
-2. Nearest project config from cwd upward: `.codalotl/config.json`
+Codalotl will search for `config.json` in the following locations, merging config values:
 
-Project config has higher precedence than global config.
+1. Nearest project config from cwd upward: `.codalotl/config.json` (highest priority)
+2. Global: `~/.codalotl/config.json` (lowest priority)
 
-Base schema:
+Schema:
 
 ```json
 {
   "providerkeys": {
     "openai": "sk-..."
   },
-  "custommodels": [],
   "reflowwidth": 120,
   "lints": {
     "mode": "extend",
@@ -374,15 +372,13 @@ Base schema:
 ```
 
 Key fields:
-- `providerkeys.openai`: OpenAI API key override (env fallback is supported).
-- `custommodels`: register additional model IDs, providers, endpoints, env key names, and overrides.
-- `reflowwidth`: default doc reflow width (must be > 0; default 120).
-- `lints`: lint pipeline config.
+- `providerkeys.openai`: OpenAI API key (ENV is also supported and preferred).
+- `reflowwidth`: default doc reflow width (default 120).
+- `lints`: lint pipeline config (see Lints below).
 - `preferredprovider`, `preferredmodel`: default model selection hints.
 - `disabletelemetry`, `disablecrashreporting`: opt out of event/error and panic reporting.
 
-Startup validation:
-- Invalid config fails command startup (except `-h` and `version`).
+To see your config, run `codalotl config`.
 
 ### Models
 
