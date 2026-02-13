@@ -104,9 +104,7 @@ Any patches the agent applies to the codebase will be automatically `gofmt`ed (i
 
 ### Automatic lints on patch
 
-All patches made will automatically check for build errors and lint issues (in the same tool call as the patch). Again, cuts out a lot of back and forth.
-
-In the future, I intend to make the lint checkers extensible, so things like `golangci-lint` or `staticcheck` automatically run on every patch.
+All patches made will automatically check for build errors and lint issues (in the same tool call as the patch). Lints are configurable and extensible. Again, cuts out a lot of back and forth.
 
 ## Dependencies
 

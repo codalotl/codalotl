@@ -77,9 +77,7 @@ Any patches the agent applies to the codebase will be automatically `gofmt`ed (i
 
 ### Automatic lints on patch
 
-All patches made will automatically check for build errors and lint issues (in the same tool call as the patch). Again, cuts out a lot of back and forth.
-
-In the future, I intend to make the lint checkers extensible, so things like `golangci-lint` or `staticcheck` automatically run on every patch.
+All patches made will automatically check for build errors and lint issues (in the same tool call as the patch). Lints are configurable and extensible. Again, cuts out a lot of back and forth.
 
 ## TUI
 
@@ -325,7 +323,7 @@ Skills are local instruction bundles (`SKILL.md`) available to the agent, follow
 
 Some built-in system skills are auto installed.
 
-You can add your own skills by placing them in a skill search path (and restarting the TUI):
+You can add your own skills by placing them in a skill search path (and then starting a new session with `/new`):
 - `.codalotl/skills` in current directory and each parent directory (e.g., project-based skills).
 - `~/.codalotl/skills`: skills the user wants for all projects.
 
