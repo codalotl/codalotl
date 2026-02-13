@@ -386,20 +386,47 @@ Startup validation:
 
 ### Models
 
-Model selection behavior:
-- Default fallback model is `gpt-5.2`.
-- `/model` and `/models` list only models with effective API keys.
-- `codalotl exec --model <id>` overrides `preferredmodel` for that run.
+Currently, only OpenAI models are supported. More providers will be added over time.
 
-Provider key resolution precedence (per model):
-1. Per-model actual key override
-2. Per-model env var override
-3. In-memory provider key override (from config load)
-4. Provider default env var (for OpenAI: `OPENAI_API_KEY`)
+#### Choosing a Model
 
-Preferred model persistence:
-- In TUI, model switching can persist to config.
-- It updates the config file that originally set `preferredmodel`, else highest-precedence contributing config, else global config.
+To set your model via the TUI:
+1. List available models in the TUI: `/models`
+2. Switch models: `/model <id>`
+
+To set your model via the config file:
+
+```json
+{
+  "preferredmodel": "gpt-5.2-medium"
+}
+```
+
+To set your model for an `exec` run:
+
+```bash
+codalotl exec --model gpt-5.2-medium "your prompt"
+```
+
+#### API Key Config
+
+Set your API key, we recommend setting an ENV variable.
+
+For exmaple, you may add the following to something like your `.bashrc`:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+Alternatively, you can set it in `.codalotl/config.json`:
+
+```json
+{
+  "providerkeys": {
+    "openai": "sk-..."
+  }
+}
+```
 
 ### AGENTS.md
 
