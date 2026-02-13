@@ -297,7 +297,7 @@ codalotl exec --model gpt-5.2-medium "your prompt"
 
 Set your API key, we recommend setting an ENV variable.
 
-For exmaple, you may add the following to something like your `.bashrc`:
+For example, you may add the following to something like your `.bashrc`:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -350,7 +350,7 @@ Defaults and preconfigured IDs:
 - Preconfigured step IDs you can add by `id`: `reflow`, `staticcheck`, `golangci-lint`.
 
 How to think about lint situations:
-- Keep `initial` fast and low-noise. It feeds the agent's starting context, so slow lints reduce responsiveness. Noisy lints district the LLM.
+- Keep `initial` fast and low-noise. It feeds the agent's starting context, so slow lints reduce responsiveness. Noisy lints distract the LLM.
 - Keep high-false-positive lints out of automatic paths. Prefer dedicated lint actions (`fix`) instead of always-on runs.
 
 Recommended baseline config:
@@ -426,7 +426,7 @@ go list -f '{{.Dir}}' ./... | sort -u | xargs -I{} codalotl docs reflow "{}"
 
 ## Safety & Security
 
-Codalotl has policy-based safety controls, not OS-level sandboxing. Its designed to prevent you from easily shooting yourself in the foot, but doesn't prevent attackers from doing so. UX is prioritized over hard security. You can achieve security by running in a container/VM.
+Codalotl has policy-based safety controls, not OS-level sandboxing. It's designed to prevent you from easily shooting yourself in the foot, but doesn't prevent attackers from doing so. UX is prioritized over hard security. You can achieve security by running in a container/VM.
 
 Authorization model:
 - Reads/writes are allowed for the sandbox dir (where the TUI was launched).
