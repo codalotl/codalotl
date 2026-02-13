@@ -50,52 +50,50 @@ Notes:
 - `codalotl -h` and `codalotl version` skip config/tool validation.
 - `codalotl .` is a valid alias for starting the TUI.
 
-## Specific Go Support
+## How Codalotl Works
 
-Codalotl is not just a generic shell-wrapping agent. In package mode, it changes how the agent works:
+To use Codalotl's Go-specific features, you'll need to enter **Package Mode**: `/package path/to/pkg`. This isolates the agent to primarily working on this package. The following mechanisms are used:
 
-- Package-scoped context: It starts with an automatic context bundle for one package (files, signatures, importers, diagnostics, tests, lints).
-- Package-scoped tools: It can inspect and modify your package directly, then use dedicated tools for upstream/downstream package work.
-- API-aware cross-package workflows:
-  - Upstream read: `get_public_api`, `clarify_public_api`
-  - Downstream impact: `get_usage`, `update_usage`
-  - Upstream changes: `change_api`
-- Automatic post-patch checks in package mode: after `apply_patch`, it runs diagnostics and lint-fix steps.
-- Go lint pipeline integration: defaults and custom lint steps are applied consistently in context generation and patch workflows.
+### Package Isolation
 
-The result is a tighter loop for Go package maintenance and API evolution across packages.
+In Package Mode, the agent is isolated to work in a single package: directly reading and writing files and listing directories are **limited to this package**.
 
-## Package Mode
+The agent does NOT have a `shell` tool (in my experience, LLMs cannot help but use `shell` and violate their instructions to explore outside their package, even with strong prompting).
 
-Package mode is Go-specific session behavior focused on one package path.
+In exchange for these limitations, the agent gets **confidence** to work in the current package without analysis-paralysis of working in a large codebase. As long as you, the human developer, set the correct package, this is a very large benefit.
 
-Enter/exit:
-- Enter: `/package path/to/pkg`
-- Exit: `/package` or `/generic`
+That being said, the agent DOES have levers to work in a multi-package environment:
+- It can read the public API (eg, its godoc) of any other package in the module. This is often **much more token efficient** than using `grep` and directly reading various files throughout a codebase.
+- If the public API is poorly commented, it can spawn a subagent to answer questions about upstream packages (ex: "how does func Foo work when xyz").
+- It can spawn subagents to implement changes either upstream or downstream. Examples:
+    - Change a used package so that it has xyz feature, that we need.
+    - Change packages that use the current package to use a new API that was just implemented (in the future, this will be parallelized).
+    - In both of these examples, the subagent uses a separate context window, so the main agent's context is protected from getting watered down.
+- It can run the overall project tests.
 
-What changes in package mode:
-- The session is rebuilt with package-mode prompt/tooling.
-- Direct read/write access is restricted to a package-scoped code unit.
-- The UI starts background collection of initial package context.
+You can manually give the agent context outside its package by using `@` to mention specific files or directories - the agent will be able to directly read them, even if outside the package.
 
-Code unit boundary behavior:
-- Includes the selected package directory.
-- Recursively includes subdirectories only when they do not contain `*.go` files.
-- Includes `testdata` directories directly under included directories, even if `testdata` contains `*.go` fixtures.
-- Nested Go packages are excluded from direct read/write.
+### Automatic context creation for a Go package
 
-Cross-package operations are done with package tools rather than direct file reads:
-- Read external package API/docs: `get_public_api`
-- Ask clarification about API/docs: `clarify_public_api`
-- Find downstream usage: `get_usage`
-- Update downstream packages: `update_usage`
-- Change upstream package API/behavior: `change_api`
+Every session in Package Mode starts with a **bundle of context** for the current package. This context includes:
+- List of files in the package.
+- A "package map": a list of functions and identifiers, and where they are found in the files. Comments/function bodies are stripped.
+- A list of packages that **use** the current package.
+- Build status, test status, and lint status.
 
-`@` mentions for extra context:
-- If your prompt mentions `@some/path`, codalotl grants read access to those paths for `read_file`/`ls`, even outside the package code unit.
+So, before the agent even starts, it knows which files exist, which code is defined where, who uses the package, and the package's build/test status. Compare that to traditional agents: they'll usually start off using `ls` in various directories, then `grep` to find out where things are, then reading files to find relevant code. Traditional agents might only check for failing tests/build later, throwing a wrench in their assumptions. All of this is given a small, neat package from the get-go.
 
-Path reminder:
-- Tool file paths are relative to sandbox root (usually your working directory), not package-relative.
+You can explore this initial context using Codalotl CLI: `codalotl context initial path/to/pkg` will print to stdout this initial context.
+
+### Automatic gofmt
+
+Any patches the agent applies to the codebase will be automatically `gofmt`ed (in the same tool call as the patch). This can cut out a lot of back and forth of failing builds and multiple tool calls.
+
+### Automatic lints on patch
+
+All patches made will automatically check for build errors and lint issues (in the same tool call as the patch). Again, cuts out a lot of back and forth.
+
+In the future, I intend to make the lint checkers extensible, so things like `golangci-lint` or `staticcheck` automatically run on every patch.
 
 ## TUI
 

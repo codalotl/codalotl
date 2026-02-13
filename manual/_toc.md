@@ -4,11 +4,9 @@
 
 [[installation is go install github.com/codalotl/codalotl@latest]]
 
-## Specific Go Support
+## How Codalotl Works
 
-[[what makes codalotl different than other agents; how it supports Go specifically; look at README.md when generating this text]]
-
-## Package Mode
+[[this describes what makes codalotl different from other agents, how it supports Go. just grab this from the README]]
 
 ## TUI
 
