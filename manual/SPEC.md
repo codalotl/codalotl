@@ -10,6 +10,15 @@ The user-facing manual articfact is `manual/MANUAL.md`. It is a **single** markd
 
 Terminology note: this document may refer to `the manual`, `the target manual`, `the output manual`, etc. This means `manual/MANUAL.md`.
 
+## Mental Model
+
+The manual must use words and concepts based on the mental model of the user. It should avoid code-based terms and jargon.
+
+Examples:
+- Some code uses "code unit" (a generic multi-language term for a 'package'). The corresponding user word is "package"; we don't support multi-language.
+- The user shouldn't need to know what the names of tools are (ex: `shell` vs `skill_shell`).
+- When discussing `@` and "grants": the user shouldn't care about the word 'grant' as a specific term.
+
 ## Supporting Material
 
 The `manual` dir contains various supporting files that we take as true and mandatory manual inclusions:
