@@ -14,8 +14,6 @@
 
 ### Slash Commands
 
-### Permissions
-
 ### Keyboard Input
 
 [[control keys]]

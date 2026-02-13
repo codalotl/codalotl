@@ -99,42 +99,19 @@ Path reminder:
 
 ## TUI
 
-The TUI has:
-- Message area (conversation + tool activity)
-- Text area (prompt input)
-- Permission view (when approvals are needed)
-- Right-side info panel (when terminal width permits)
-
-The app starts in generic mode. Package mode is opt-in with `/package`.
+The TUI is the interactive coding agent.
 
 ### Slash Commands
 
-Stable user commands:
+Commands:
 - `/quit`, `/exit`, `/logout`: exit the TUI.
 - `/new`: start a new session (keeps active package if already in package mode).
 - `/skills`: list installed skills and any skill loading issues.
-- `/model`: list current model and available callable models.
-- `/models`: alias for `/model` listing behavior.
+- `/models`: list current model and available callable models.
 - `/model <id>`: switch model and start a new session.
 - `/package <path>`: enter package mode.
 - `/package`: leave package mode.
 - `/generic`: leave package mode.
-
-Model persistence:
-- If model persistence is enabled by the CLI integration, `/model <id>` also writes `preferredmodel` in config.
-
-### Permissions
-
-When a tool call needs approval, a permission panel appears.
-
-Controls:
-- `Y`: allow
-- `N`: deny
-- `ESC`: deny and stop the current agent run
-
-In noninteractive mode (`codalotl exec`), there is no prompt:
-- `--yes` means auto-allow permission requests.
-- Without `--yes`, permission requests are auto-denied.
 
 ### Keyboard Input
 
@@ -142,58 +119,33 @@ Primary controls:
 - `Enter`: send message.
 - `Ctrl-J`: insert newline in input.
 - `ESC`:
-  - If input has text: clear input.
-  - Else: stop running agent.
-  - Also closes overlays/dialogs and exits history cycling states when active.
+    - If input has text: clear input.
+    - Else: stop running agent.
+    - Also closes overlays/dialogs and exits history cycling states when active.
 - `Ctrl-C`:
-  - If agent is running: stop current run.
-  - If idle: quit the TUI.
-- `Up`/`Down`: cycle message history (with edit-aware cycling behavior).
-- `PageUp`/`PageDown`/`Home`/`End`: scroll message area.
-- Mouse wheel: scroll message area.
+    - If agent is running: stop current run.
+    - If idle: quit the TUI.
+- `Up`/`Down`: cycle message history.
+- `Page Up`/`Page Down`/`Home`/`End`/Mouse wheel: scroll message area.
 - `Ctrl-O` or terminal double-click: toggle overlay mode.
 
 ### Details View
 
-Codalotl provides two “detail” surfaces in the TUI:
-
-1. Info panel (right side, if width allows), showing:
+The info panel (right side, if width allows), shows:
 - Session ID
-- Active model
-- Context usage remaining
-- Estimated cost
-- Token totals (input/cached/output)
+- Model
+- Current session usage (tokens, cost)
 - Current package mode/path
 - Version upgrade notice when available
 
-2. Overlay details dialog (opened from `details` buttons in overlay mode):
-- Tool call metadata (tool, call id, type, provider)
-- Raw tool input and result payloads
-- Context-gathering payload for package context status lines
-- JSON pretty formatting where applicable
-- Binary/oversize protections for very large payloads
-
-Close the dialog with `ESC`.
-
 ### Overlay Mode
 
-Overlay mode adds clickable UI actions over messages.
+Enter/Exit Overlay Mode with `Ctrl-O` or by double-clicking the terminal area.
 
-Enter/exit:
-- `Ctrl-O`
-- Double-click in terminal area
+Overlay Mode reveals two buttons, appearing below certain messages/tool calls in the Messages Area:
 
-Overlay actions currently include:
-- `copy` button per message
-- `details` button for tool/context-status messages
-
-#### Copying Text
-
-Copy behavior is best-effort and intentionally practical:
-- Copies rendered plain text of the selected message.
-- Tries OS clipboard integration when available.
-- Also sends OSC52 clipboard data for terminal clipboard support.
-- Shows transient `copied!` feedback in the UI.
+1. `copy`: lets you copy message and text from the TUI. The current workaround for being unable to select text.
+2. `details`: shows a dialog with raw tool input/output and raw context sent to the LLM.
 
 ## CLI
 
