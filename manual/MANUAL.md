@@ -513,7 +513,6 @@ Telemetry and reporting:
 
 Current practical status:
 - Actively exercised in Unix-like environments (macOS/Linux).
-- CI currently runs on Linux.
 - Windows code paths exist across terminal/clipboard layers, but cross-platform behavior is less battle-tested than Linux/macOS workflows.
 
 ### Unsupported Features
