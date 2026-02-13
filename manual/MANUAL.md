@@ -1,15 +1,10 @@
 # Codalotl
 
-Codalotl is a Go-focused coding agent with two interfaces:
-- `codalotl` launches an interactive terminal UI (TUI).
-- `codalotl exec` runs a single noninteractive agent turn from the command line.
-
-It is optimized for Go package workflows: package-scoped context, package-aware tools, and automatic post-edit checks in package mode.
+Codalotl is a Go-focused coding agent. It is optimized for Go package workflows: package-scoped context, package-aware tools, and automatic post-edit checks in package mode.
 
 ## Getting Started
 
-Choose your install path:
-1. Install or upgrade directly with Go (recommended):
+1. Install or upgrade:
 
 ```bash
 go install github.com/codalotl/codalotl@latest
@@ -33,22 +28,13 @@ export OPENAI_API_KEY="sk-..."
 codalotl
 ```
 
-5. Enter package mode for Go-specific behavior:
+Starting `codalotl` requires various Go tools be installed: `gopls`, `goimports`, `gofmt`.
+
+5. Enter package mode for a specific package:
 
 ```text
 /package .
 ```
-
-Startup validation (for most commands) requires these tools on `PATH`:
-- `go`
-- `gopls`
-- `goimports`
-- `gofmt`
-- `git`
-
-Notes:
-- `codalotl -h` and `codalotl version` skip config/tool validation.
-- `codalotl .` is a valid alias for starting the TUI.
 
 ## How Codalotl Works
 
