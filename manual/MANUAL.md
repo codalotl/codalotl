@@ -469,12 +469,12 @@ Then verify diff and commit separately.
 
 ## Safety & Security
 
-Codalotl has policy-based safety controls, not full OS isolation by itself.
+Codalotl has policy-based safety controls, not OS-level sandboxing. Its designed to prevent you from easily shooting yourself in the foot, but doesn't prevent attackers from doing so. UX is prioritized over hard security. You can achieve security by running in a container/VM.
 
 Authorization model:
-- Sandbox-scoped authorizer controls file read/write/shell permissions.
-- In package mode, a code-unit authorizer adds stricter package-boundary checks.
-- Permission requests are surfaced to the user in TUI (or auto-decided in `exec`).
+- Reads/writes are allowed for the sandbox dir (where the TUI was launched).
+- In package mode, direct reads/writes are limited to the package (and supporting files).
+- Access outside the sandbox dir requires user permission.
 
 Shell command policy:
 - Commands are categorized as safe, blocked, dangerous, or inscrutable.
@@ -482,18 +482,7 @@ Shell command policy:
 - Dangerous/inscrutable commands require approval (except in auto-approve mode).
 - Safe commands may still require approval if explicitly requested.
 
-Important package-mode behavior:
-- Package mode does not expose the general `shell` tool.
-- It uses package/go tools plus `skill_shell` for skill-directed shell actions.
-
-Grants from `@` mentions:
-- `@path` references in user messages create read grants for `read_file` and `ls`.
-- This is designed for contextual access convenience, not hard security boundaries.
-
-Security reality:
-- There is no built-in OS-level sandbox enforcement guarantee.
-- If you need strong isolation, run codalotl in a container/VM or equivalent OS sandbox.
-- The design prioritizes practical UX and focused workflows while preserving a path to stronger isolation through external sandboxing.
+Use `@` file/dir mentions to allow read access to files outside the sandbox or outside the current package.
 
 Telemetry and reporting:
 - Codalotl can report pseudonymous usage events, errors, and panic diagnostics.
