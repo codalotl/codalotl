@@ -24,10 +24,6 @@
 
 ### Overlay Mode
 
-#### Copying Text
-
-[[not great currently; can be done with overlay mode]]
-
 ## CLI
 
 [[add a nested header for each command]]
