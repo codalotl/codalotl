@@ -6,6 +6,8 @@ The manual should answer questions that actual users have when using codalotl. I
 
 It is also not a behavior specification. One temptation of LLMs writing manuals is to dump all behavior and rules related to a topic into a section of the manual. This is not useful. There is no need to describe edge cases, error handling, exact sorting semantics, or things of that nature to the end user. Filter all information though the lens of: "Does this provide an important concept to the user's mental model? Does it teach them how to do something?"
 
+For example, descriptions like this should be avoided: "`codalotl -h` and `codalotl version` skip config/tool validation". From a user point of view, that is a completely unimportant detail.
+
 ## Build Target
 
 The user-facing manual articfact is `manual/MANUAL.md`. It is a **single** markdown file describing the usage of `codalotl`. Since it's just one file, it may be long.
