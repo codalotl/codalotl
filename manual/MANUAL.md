@@ -432,14 +432,22 @@ Package mode note:
 
 ### Lints
 
-Lint pipeline config controls checks/fixes used in context creation and patch workflows.
+Lint pipeline config controls which checks/fixes run, and in which situations they run. Each linting tool can be either be check-only, or check-and-fix.
 
-Defaults and recommendations:
-- Default active lint: `gofmt` only.
-- Recommended: enable `reflow` for docs consistency.
-- Optional: add `staticcheck` and `golangci-lint` by `id` in `extend` mode.
+Run situations:
+- `initial`: when automatic initial package context is built (lints just check).
+- `patch`: automatically after patches (lints auto-fix).
+- `fix`: when the Fix Lints tool is specifically run (lints auto-fix).
 
-Recommended config example:
+Defaults and preconfigured IDs:
+- Default active lint pipeline: `gofmt`.
+- Preconfigured step IDs you can add by `id`: `reflow`, `staticcheck`, `golangci-lint`.
+
+How to think about lint situations:
+- Keep `initial` fast and low-noise. It feeds the agent's starting context, so slow lints reduce responsiveness. Noisy lints district the LLM.
+- Keep high-false-positive lints out of automatic paths. Prefer dedicated lint actions (`fix`) instead of always-on runs.
+
+Recommended baseline config:
 
 ```json
 {
@@ -448,24 +456,68 @@ Recommended config example:
     "mode": "extend",
     "steps": [
       { "id": "reflow" },
-      { "id": "staticcheck" },
-      { "id": "golangci-lint" }
+      { "id": "staticcheck" }
     ]
   }
 }
 ```
 
-Why reflow is recommended:
-- Reflow standardizes doc comment wrapping and reduces incidental formatting churn.
-- A one-time repo-wide reflow can reduce unrelated diffs in later tasks/commits.
+Custom lint step config:
+- A step can define `id`, optional `situations`, and `check`/`fix` commands.
+    - Check-only linters should define a `check` command. Check-and-fix linters should define commands for both `check` and `fix`.
+- Command fields:
+    - `command`: executable to run (for example `gofmt`, `staticcheck`, `golangci-lint`).
+    - `args`: argument list passed to `command`; each entry supports templates.
+    - `cwd`: working directory for the command.
+    - `messageifnooutput` (optional string): status text shown when the command emits no output. Used to guide LLM.
+    - `outcomefailifanyoutput` (optional boolean): treat any stdout/stderr output as a failing outcome.
+    - `attrs` (optional array of strings): key/value attributes attached to command output metadata. Used to guide LLM.
+- Template variables available in lint commands:
+    - `{{ .path }}`: absolute path to the target package directory.
+    - `{{ .moduleDir }}`: absolute path to the module root (directory containing `go.mod`).
+    - `{{ .relativePackageDir }}`: package path relative to `{{ .moduleDir }}`.
+    - `{{ .RootDir }}`: sandbox dir.
+- If a step runs in `initial`, `check` is required; if a step runs in `patch` or `fix`, at least one of `check` or `fix` is required.
 
-One-time reflow pattern:
+Example custom step:
 
-```bash
-codalotl docs reflow .
+```json
+{
+  "lints": {
+    "mode": "extend",
+    "steps": [
+      {
+        "id": "govulncheck",
+        "situations": ["fix"],
+        "check": {
+          "command": "govulncheck",
+          "args": ["./{{ .relativePackageDir }}"],
+          "cwd": "{{ .moduleDir }}",
+          "messageifnooutput": "no issues found"
+        }
+      }
+    ]
+  }
+}
 ```
 
-Then verify diff and commit separately.
+Extend vs replace:
+- `mode: "extend"` starts from defaults and appends your `steps`.
+- `mode: "replace"` ignores defaults and uses only your `steps`.
+- `disable` removes resolved steps by `id` (unknown IDs are ignored).
+- Use `mode: "replace"` with `steps: []` to disable all lints.
+
+Per-step `situations` behavior:
+- Omitted or `null`: run in all situations.
+- `[]`: run in no situations.
+
+If you enable `reflow` (it normalizes documentation width and formatting), a one-time repo-wide reflow is recommended (otherwise you'll see reflow-related diffs in later tasks/commits).
+
+One-time reflow of a module:
+
+```bash
+go list -f '{{.Dir}}' ./... | sort -u | xargs -I{} codalotl docs reflow "{}"
+```
 
 ## Safety & Security
 
