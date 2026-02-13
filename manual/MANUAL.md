@@ -403,16 +403,9 @@ Preferred model persistence:
 
 ### AGENTS.md
 
-Codalotl reads AGENTS instructions and injects them into agent context.
+Codalotl reads `AGENTS.md` instructions and injects them into the agent context automatically. The LLM does NOT need to manually Read `AGENTS.md`.
 
-Resolution behavior:
-- Searches from cwd upward to sandbox root for `AGENTS.md`.
-- Includes all non-empty AGENTS files found.
-- Orders output from farthest to nearest, so nearest instructions appear later and take precedence.
-
-Mode behavior:
-- Generic mode: AGENTS context is added at session start.
-- Package mode: AGENTS context is prepended to generated package initial context.
+In package mode, multiple `AGENTS.md` files may be added to context if multiple exist (looking from package dir upward to sandbox dir).
 
 ### Skills
 
