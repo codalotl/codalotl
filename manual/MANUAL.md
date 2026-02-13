@@ -416,19 +416,20 @@ Mode behavior:
 
 ### Skills
 
-Skills are local instruction bundles (`SKILL.md`) available to the agent.
+Skills are local instruction bundles (`SKILL.md`) available to the agent, following the specification at [agentskills.io](https://agentskills.io).
 
-Default behavior:
-- Built-in system skills are auto-installed under `~/.codalotl/skills/.system`.
-- `/skills` lists installed valid skills and shows load/validation issues.
+Some built-in system skills are auto installed.
 
-Search paths:
-- `.codalotl/skills` in current directory and each parent directory
-- `~/.codalotl/skills`
-- `~/.codalotl/skills/.system`
+You can add your own skills by placing them in a skill search path (and restarting the TUI):
+- `.codalotl/skills` in current directory and each parent directory (e.g., project-based skills).
+- `~/.codalotl/skills`: skills the user wants for all projects.
+
+Skills can be listed in the TUI with `/skills`.
+
+You can invoke skills by explicitly mentioning with a `$` prefix in a message (ex: `use $skill-creator to make a new skill that...`). The LLM may automatically decide to use a skill based on the task it is trying to accomplish.
 
 Package mode note:
-- Package mode does not expose general `shell`; it exposes `skill_shell` and expects shell execution only when a skill requires it.
+- Even though package mode does not typically have access to a Shell tool, it can use shell commands IF the skill indicates that it should, or if there's scripts to run in the skill.
 
 ### Lints
 
@@ -471,7 +472,6 @@ Custom lint step config:
     - `cwd`: working directory for the command.
     - `messageifnooutput` (optional string): status text shown when the command emits no output. Used to guide LLM.
     - `outcomefailifanyoutput` (optional boolean): treat any stdout/stderr output as a failing outcome.
-    - `attrs` (optional array of strings): key/value attributes attached to command output metadata. Used to guide LLM.
 - Template variables available in lint commands:
     - `{{ .path }}`: absolute path to the target package directory.
     - `{{ .moduleDir }}`: absolute path to the module root (directory containing `go.mod`).
