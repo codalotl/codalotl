@@ -1,0 +1,59 @@
+# Manual
+
+The manual is a user manual for codalotl, the coding agent for Go. This SPEC.md is a guide and rulebook (ie, for an LLM) for constructing the manual.
+
+The manual should answer questions that actual users have when using codalotl. It should contain instructions on how to do things, reference material, and describe important concepts. It is not a marketing document.
+
+## Build Target
+
+The user-facing manual articfact is `manual/MANUAL.md`. It is a **single** markdown file describing the usage of `codalotl`. Since it's just one file, it may be long.
+
+Terminology note: this document may refer to `the manual`, `the target manual`, `the output manual`, etc. This means `manual/MANUAL.md`.
+
+## Supporting Material
+
+The `manual` dir contains various supporting files that we take as true and mandatory manual inclusions:
+- `_toc.md`: the target table of contents (which headers exist). The output manual MUST have these sections/headings. These TOC are a floor. The manual may have additional sections (either peer sections, or nested sections).
+
+Supporting material may have sections with text wrapped in [[double brackets]]. This means the **gist** of the bracketed text must be included, but it should be re-written. These can also include instructions. Examples:
+- `[[type /skills to list skills]]` means to include 1+ sentences describing that /skills lists skills (but the final manual is free to include **additional** information about skills. Eg, where one might type /skills, what its output format is, what skills are, etc).
+- `[[describe how skills work]]` is giving instructions to the translator of `supporting material`->`the manual` that this text should describe how skills work.
+
+If you find the supporting material is false or out-of-date:
+- **Continue** what you were doing, and assume the supporting material is true-ish.
+- **Report** the potential error in supporting material at your stopping point (eg, your final message).
+
+## Tone and Writing Style
+
+- Use a matter-of-fact, capability-driven voice: describe what it does in plain verbs (read/change/run, generate/inspect), avoid superlatives.
+- Address the reader directly (second person) and prefer simple imperatives ("Run…", "Install…", "Choose…").
+- Keep paragraphs short (1–2 sentences), then move quickly into structured steps and sections.
+- Present onboarding as numbered procedures with clear action headings like "Setup / Install / Run / Upgrade."
+- Offer options in a neutral “Choose…” pattern and mark a recommended path without overselling.
+- Write feature lists as "Label: one-sentence explanation" bullets (short label + colon + concrete outcome).
+- Include minimal command snippets (one canonical command per step) and keep surrounding text focused on what happens next.
+- Phrase cautions as practical, calm guidance ("X can modify…, so consider Y…") rather than alarmist warnings.
+- State platform/support constraints plainly and early, and give a straightforward workaround when needed.
+- Use light, professional contractions ("it's", "you’ll") to stay approachable without sounding chatty.
+
+## Procedures
+
+### Update Supporting Material
+
+Use `git` to find all changes since a given piece of supporting material was updated. Scan through the commits to see if that supporting material may have changed. If it may have, dig into it. Update the supporting material in place (but don't commit it yet). Ask for human review.
+
+### Refresh Manaul
+
+If the manual already exists, we may want to refresh it. To do so:
+- Make sure supporting material is up-to-date (or be told it is).
+- Identify changes in supporting material since the last manual update.
+- Identify changes in the codebase since the last manual update.
+- Edit the manual.
+- Ask for human review.
+
+### Building Manaul from Scratch
+
+- Make sure supporting material is up-to-date (or be told it is).
+- Inspect Code and SPEC.md files throughout repository.
+- Write manual.
+- Ask for human review.
