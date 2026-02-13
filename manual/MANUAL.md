@@ -520,7 +520,4 @@ Current practical status:
 Known unsupported or intentionally omitted areas:
 - MCP server integration is not supported.
   - Use built-in tools, shell workflows, and skills instead.
-- Session resumption/persistence is not currently implemented as a user-facing feature.
-- Generic mode is intentionally less Go-specialized than package mode.
-
-If you are doing serious Go maintenance across packages, package mode is the intended path.
+- Session resumption/persistence is not currently implemented.
