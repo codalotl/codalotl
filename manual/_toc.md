@@ -14,6 +14,8 @@
 
 ### Slash Commands
 
+### Permissions
+
 ### Keyboard Input
 
 [[control keys]]
@@ -42,9 +44,13 @@
 
 ### Skills
 
-### MCP
+### Lints
 
-[[not supported]]
+[[
+    - gofmt is only default
+    - reflow is highly recommended; set reflow max width in config; recommend a 1-time reflow of repo, to avoid unrelated diffs on miscellaneous tasks/commits
+    - can add staticcheck and golangci-lint with extend + id
+]]
 
 ## Safety & Security
 
@@ -53,3 +59,11 @@
     - note that there is no OS-level sandboxing; users wanting true security can run in a docker container or similar
     - note that UX is prioritized above true security (as long as true security can be achieved with containerization)
 ]]
+
+## Status & Limitations
+
+### Supported Platforms
+
+### Unsupported Features
+
+[[mcp will likely never be supported; use shell commands and skills]]
