@@ -40,6 +40,17 @@ If you find the supporting material is false or out-of-date:
 
 The manual is LLM-generated, but human edited. The following commits are human edits of the manual. Inspect these commits. As long as they are still true, persist their intent. Sometimes their intent is in the commit message; other times you must infer it.
 - 16fd3efa988bada542e6697ffbc85aa850d45f7f
+- 9a0bfe0eea012237059c1af0252ab32de0298e21
+- b7323463b633211f2fdd96a227ae6c1bbbc61d2f
+- d99d4204f0106333806de14ed1b50d1475e3e3cb
+- 386887bcf5eeec73a10d024d573d25e7eccbb390
+- 588ca58cbe584486facf6a5465dbbe3af5647201
+- c00c928db8a8dcb882a2b718413b87333703c16e
+- e51ab400648d698ee01178684c557c177ccc46a2
+- e4e033b2c3f0ff383707420aec6a0ecadb99f1d1
+- 5723ddeabe2a71402829274db45ac6cc094e4767
+- 550dc7c695fee970b692dc3fd4c6348f0a3ad5bf
+- aa94b1a42f435d7bac9e2dfa531cd90a8ac43113
 
 ## Tone and Writing Style
 
