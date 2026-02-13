@@ -23,6 +23,11 @@ If you find the supporting material is false or out-of-date:
 - **Continue** what you were doing, and assume the supporting material is true-ish.
 - **Report** the potential error in supporting material at your stopping point (eg, your final message).
 
+### Supporting Commits
+
+The manual is LLM-generated, but human edited. The following commits are human edits of the manual. Inspect these commits. As long as they are still true, persist their intent. Sometimes their intent is in the commit message; other times you must infer it.
+- 16fd3efa988bada542e6697ffbc85aa850d45f7f
+
 ## Tone and Writing Style
 
 - Use a matter-of-fact, capability-driven voice: describe what it does in plain verbs (read/change/run, generate/inspect), avoid superlatives.
