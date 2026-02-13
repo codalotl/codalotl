@@ -197,36 +197,19 @@ Copy behavior is best-effort and intentionally practical:
 
 ## CLI
 
-`codalotl` supports interactive and noninteractive workflows.
+`codalotl` supports interactive (TUI) and noninteractive (CLI) workflows.
 
 Argument semantics for `<path/to/pkg>` (where relevant):
-- Accepts package directories by relative or absolute path.
-- Accepts import paths for packages in the current module context.
-- Optional trailing `/` is accepted.
-- `...` package patterns are rejected.
-
-Exit codes:
-- `0`: success
-- `1`: command/runtime/startup validation error
-- `2`: argument or flag usage error
+- Accepts package directories by relative or absolute path (both `some/pkg` and Go-style `./some/pkg` work).
+- `...` package patterns are not implemented.
 
 ### `codalotl`
 
-Launches the interactive TUI in generic mode.
+Launches the interactive TUI.
 
 ```bash
 codalotl
 ```
-
-### `codalotl .`
-
-Alias for starting the TUI.
-
-```bash
-codalotl .
-```
-
-Any other path-like argument at root command level is a usage error.
 
 ### `codalotl -h` / `codalotl --help`
 
@@ -246,29 +229,13 @@ Prints installed version, and may include update status if available quickly.
 codalotl version
 ```
 
-Output behavior:
-- Up-to-date notice + version, or
-- Update notice + install hint + version, or
-- Version only (if latest version lookup times out/unavailable)
-
-This command skips startup validation and telemetry event reporting.
-
 ### `codalotl config`
 
-Prints effective configuration and config sources.
+Prints effective configuration and config sources. See Config File below.
 
 ```bash
 codalotl config
 ```
-
-Includes:
-- Redacted provider keys
-- Config file locations that contributed values
-- Effective model
-- Relevant provider env vars
-- Standard config file locations
-
-May prepend update notice when out-of-date.
 
 ### `codalotl exec`
 
@@ -279,17 +246,10 @@ codalotl exec -p ./internal/cli "fix failing test"
 ```
 
 Flags:
-- `-p, --package <path>`: run in package mode rooted at this package path (must be within cwd).
+- `-p, --package <path>`: run in package mode rooted at this package path.
 - `-y, --yes`: auto-approve permission checks.
 - `--no-color`: disable ANSI formatting.
 - `--model <id>`: override configured preferred model for this run.
-
-### `codalotl context`
-
-Namespace command for LLM-oriented context subcommands:
-- `context public`
-- `context initial`
-- `context packages`
 
 ### `codalotl context public <path/to/pkg>`
 
@@ -301,7 +261,7 @@ codalotl context public ./internal/cli
 
 ### `codalotl context initial <path/to/pkg>`
 
-Print initial package context bundle used for package-mode startup.
+Print initial package context bundle used for package-mode.
 
 ```bash
 codalotl context initial ./internal/cli
@@ -309,7 +269,7 @@ codalotl context initial ./internal/cli
 
 ### `codalotl context packages`
 
-Print LLM-oriented package listing for the current module context.
+Print package listing for the current module.
 
 ```bash
 codalotl context packages
@@ -317,28 +277,21 @@ codalotl context packages
 
 Flags:
 - `-s, --search <go_regexp>`: filter package list by Go regexp.
-- `--deps`: include packages from direct dependencies (`require` entries excluding `// indirect`).
-
-The textual output is intended for LLM context, not stable machine parsing.
-
-### `codalotl docs`
-
-Namespace command for documentation tools:
-- `docs reflow`
+- `--deps`: include direct dependency packages from `go.mod` (`require` entries excluding `// indirect`).
 
 ### `codalotl docs reflow <path>...`
 
 Reflow Go documentation comments in one or more paths.
 
 ```bash
-codalotl docs reflow --check .
+codalotl docs reflow some/pkg
 ```
 
 Flags:
 - `-w, --width <int>`: override configured `reflowwidth` for this run.
 - `--check`: dry-run (print files that would change; do not write).
 
-Output style is similar to `gofmt -l`: one file per line.
+Output style is similar to `gofmt -l`: one file per line if modified.
 
 ## Configuration
 
