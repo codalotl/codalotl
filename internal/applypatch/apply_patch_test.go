@@ -18,9 +18,8 @@ type patchCase struct {
 	wantErr string
 }
 
-// runPatchCases executes ApplyPatch in an isolated temporary directory for each test case. Adding a
-// new test is as simple as filling in a patchCase with the initial files, patch text, and the expected
-// resulting filesystem snapshot.
+// runPatchCases executes ApplyPatch in an isolated temporary directory for each test case. Adding a new test is as simple as filling in a patchCase with the initial
+// files, patch text, and the expected resulting filesystem snapshot.
 func runPatchCases(t *testing.T, cases []patchCase) {
 	t.Helper()
 	for _, tc := range cases {

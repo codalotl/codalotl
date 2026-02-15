@@ -29,9 +29,8 @@ change_line: ("+" | "-" | " ") /(.*)/ LF
 eof_line: "*** End of File" LF
 %import common.LF`
 
-// ApplyPatch parses and applies a patch in the format defined by the grammar in ApplyPatchGrammar. It applies
-// changes rooted at cwdAbsPath, which must be an absolute path, and returns the relative file-level changes
-// that were applied.
+// ApplyPatch parses and applies a patch in the format defined by the grammar in ApplyPatchGrammar. It applies changes rooted at cwdAbsPath, which must be an absolute
+// path, and returns the relative file-level changes that were applied.
 //
 // ApplyPatch applies the "*** Begin Patch" format.
 //
@@ -40,54 +39,41 @@ eof_line: "*** End of File" LF
 // Files
 //   - *** Add File: <path> → create file with the following + lines as content
 //   - *** Delete File: <path> → delete the file
-//   - *** Update File: <path> → (optional) "*** Move to: <newpath>" rename, then one or more change
-//     hunks
+//   - *** Update File: <path> → (optional) "*** Move to: <newpath>" rename, then one or more change hunks
 //
 // Change hunks (inside *** Update File)
-//   - "@@" starts a new hunk (a new, noncontiguous change region). Text after "@@" (optionally
-//     starting with a single space) is treated as an anchor that narrows where the hunk applies.
-//     Anchors are matched before context; multiple consecutive "@@" lines zoom further in.
+//   - "@@" starts a new hunk (a new, noncontiguous change region). Text after "@@" (optionally starting with a single space) is treated as an anchor that narrows
+//     where the hunk applies. Anchors are matched before context; multiple consecutive "@@" lines zoom further in.
 //   - Hunks must appear in the same order as the target file.
 //   - Line prefixes within a hunk:
-//   - ' ' context line — text after leading whitespace must match; indentation may remap between tabs
-//     and spaces to mirror the file being patched.
+//   - ' ' context line — text after leading whitespace must match; indentation may remap between tabs and spaces to mirror the file being patched.
 //   - '-' delete this line at the current anchored spot (same indentation remapping rules).
-//   - '+' insert this line; indentation uses the remapped whitespace when available, otherwise it is
-//     taken exactly as written in the patch.
-//   - "*** End of File" after the last change line means the resulting file should not end with a trailing
-//     newline.
-//   - No line numbers; matching is literal. The first column is the control prefix; everything after
-//     it is raw text (including leading/trailing spaces). Newlines are LF.
+//   - '+' insert this line; indentation uses the remapped whitespace when available, otherwise it is taken exactly as written in the patch.
+//   - "*** End of File" after the last change line means the resulting file should not end with a trailing newline.
+//   - No line numbers; matching is literal. The first column is the control prefix; everything after it is raw text (including leading/trailing spaces). Newlines
+//     are LF.
 //
 // Hunk construction guidelines
 //   - Use one "@@" per noncontiguous edit region.
-//   - Include at least 1 pre-context and 1 post-context line when not at a boundary; choose distinctive
-//     lines. Increase context (often to 2–3 on the ambiguous side) until the sequence is unique in
-//     the file.
-//   - At start of file you may omit pre-context; at end of file omit post-context or use "*** End of
-//     File".
+//   - Include at least 1 pre-context and 1 post-context line when not at a boundary; choose distinctive lines. Increase context (often to 2–3 on the ambiguous
+//     side) until the sequence is unique in the file.
+//   - At start of file you may omit pre-context; at end of file omit post-context or use "*** End of File".
 //   - Replacements can be N '-' lines followed by M '+' lines; interleaving is allowed but usually unnecessary.
 //
 // FAQs
-//   - Do '+' and '-' have to interleave? No. Group deletes then inserts to replace a block; insert-only
-//     and delete-only hunks are valid.
-//   - Do I need post-context? Not required, but recommended. If the post-context is weak (e.g., just
-//     "}"), add a more distinctive neighbor so the hunk is unique.
-//   - Do I need "@@" at all? Optional in the grammar, but best practice is one per noncontiguous region
-//     for clarity and safer application.
-//   - How many context lines should I include? Start with 1 before + 1 after; if the sequence isn’t
-//     unique, grow to 2–3 on the ambiguous side.
-//   - What does the text after "@@" do? It narrows the search scope before matching context. The
-//     applier first searches for anchor text (discarding an optional leading space), then falls back
-//     to trimming trailing whitespace, trimming both leading and trailing whitespace, and finally
-//     converting select unicode punctuation (e.g., em dash) to ASCII before giving up.
-//   - How do I append at EOF? Use pre-context for the last real line and add '+' lines; include "***
-//     End of File" only when the resulting file should omit the trailing newline.
-//   - How do I encode lines that themselves start with '+', '-', or space? The first column is control;
-//     the next character is content. Example: "++foo" adds a line that begins with '+'.
+//   - Do '+' and '-' have to interleave? No. Group deletes then inserts to replace a block; insert-only and delete-only hunks are valid.
+//   - Do I need post-context? Not required, but recommended. If the post-context is weak (e.g., just "}"), add a more distinctive neighbor so the hunk is unique.
+//   - Do I need "@@" at all? Optional in the grammar, but best practice is one per noncontiguous region for clarity and safer application.
+//   - How many context lines should I include? Start with 1 before + 1 after; if the sequence isn’t unique, grow to 2–3 on the ambiguous side.
+//   - What does the text after "@@" do? It narrows the search scope before matching context. The applier first searches for anchor text (discarding an optional leading
+//     space), then falls back to trimming trailing whitespace, trimming both leading and trailing whitespace, and finally converting select unicode punctuation (e.g.,
+//     em dash) to ASCII before giving up.
+//   - How do I append at EOF? Use pre-context for the last real line and add '+' lines; include "*** End of File" only when the resulting file should omit the trailing
+//     newline.
+//   - How do I encode lines that themselves start with '+', '-', or space? The first column is control; the next character is content. Example: "++foo" adds a line
+//     that begins with '+'.
 //   - Can hunks touch or overlap? Adjacent is fine; overlapping is invalid—merge into one hunk instead.
-//   - What if the context matches in multiple places? ApplyPatch uses the first matching span; choose
-//     context that makes the anchor unique.
+//   - What if the context matches in multiple places? ApplyPatch uses the first matching span; choose context that makes the anchor unique.
 func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error) {
 	if !filepath.IsAbs(cwdAbsPath) {
 		return nil, fmt.Errorf("cwdAbsPath must be absolute: %q", cwdAbsPath)
