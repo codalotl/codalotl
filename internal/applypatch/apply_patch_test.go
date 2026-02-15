@@ -131,7 +131,7 @@ func TestApplyPatch_TargetedScenarios(t *testing.T) {
 			want: map[string]string{"new/path/name.txt": "content\n"},
 		},
 		{
-			name:   "no final newline directive",
+			name:   "end of file marker is ignored for trailing newline",
 			before: map[string]string{"notes.txt": "line1\nline2\n"},
 			patch: `
 *** Begin Patch
@@ -142,7 +142,7 @@ func TestApplyPatch_TargetedScenarios(t *testing.T) {
 *** End of File
 *** End Patch
 `,
-			want: map[string]string{"notes.txt": "line1\nline-two"},
+			want: map[string]string{"notes.txt": "line1\nline-two\n"},
 		},
 		{
 			name: "context prefers exact match over indent-only",
@@ -165,15 +165,15 @@ func TestApplyPatch_TargetedScenarios(t *testing.T) {
 			},
 		},
 		{
-			name:   "add file fails when exists",
-			before: map[string]string{"greetings.txt": "hello\n"},
+			name:   "add file overwrites when exists",
+			before: map[string]string{"greetings.txt": "old\n"},
 			patch: `
 *** Begin Patch
 *** Add File: greetings.txt
 +hello
 *** End Patch
 `,
-			wantErr: "file already exists",
+			want: map[string]string{"greetings.txt": "hello\n"},
 		},
 	}
 

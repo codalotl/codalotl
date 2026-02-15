@@ -37,7 +37,7 @@ eof_line: "*** End of File" LF
 // # Semantics
 //
 // Files
-//   - *** Add File: <path> → create file with the following + lines as content
+//   - *** Add File: <path> → write file with the following + lines as content (overwriting if it already exists)
 //   - *** Delete File: <path> → delete the file
 //   - *** Update File: <path> → (optional) "*** Move to: <newpath>" rename, then one or more change hunks
 //
@@ -49,7 +49,7 @@ eof_line: "*** End of File" LF
 //   - ' ' context line — text after leading whitespace must match; indentation may remap between tabs and spaces to mirror the file being patched.
 //   - '-' delete this line at the current anchored spot (same indentation remapping rules).
 //   - '+' insert this line; indentation uses the remapped whitespace when available, otherwise it is taken exactly as written in the patch.
-//   - "*** End of File" after the last change line means the resulting file should not end with a trailing newline.
+//   - "*** End of File" is accepted as a marker and ignored.
 //   - No line numbers; matching is literal. The first column is the control prefix; everything after it is raw text (including leading/trailing spaces). Newlines
 //     are LF.
 //
@@ -68,8 +68,7 @@ eof_line: "*** End of File" LF
 //   - What does the text after "@@" do? It narrows the search scope before matching context. The applier first searches for anchor text (discarding an optional leading
 //     space), then falls back to trimming trailing whitespace, trimming both leading and trailing whitespace, and finally converting select unicode punctuation (e.g.,
 //     em dash) to ASCII before giving up.
-//   - How do I append at EOF? Use pre-context for the last real line and add '+' lines; include "*** End of File" only when the resulting file should omit the trailing
-//     newline.
+//   - How do I append at EOF? Use pre-context for the last real line and add '+' lines.
 //   - How do I encode lines that themselves start with '+', '-', or space? The first column is control; the next character is content. Example: "++foo" adds a line
 //     that begins with '+'.
 //   - Can hunks touch or overlap? Adjacent is fine; overlapping is invalid—merge into one hunk instead.
@@ -267,7 +266,7 @@ func (p *parser) mark() int { return p.idx }
 func parsePatch(input string) (*patchFile, error) {
 	p := newParser(input)
 	first, ok := p.next()
-	if !ok || first != "*** Begin Patch" {
+	if !ok || strings.TrimSpace(first) != "*** Begin Patch" {
 		return nil, errors.New(`patch must start with "*** Begin Patch"`)
 	}
 
@@ -277,7 +276,7 @@ func parsePatch(input string) (*patchFile, error) {
 		if !ok {
 			return nil, errors.New(`unexpected end of input; expected hunk or "*** End Patch"`)
 		}
-		if line == "*** End Patch" {
+		if strings.TrimSpace(line) == "*** End Patch" {
 			p.next()
 			break
 		}
@@ -300,10 +299,11 @@ func parsePatch(input string) (*patchFile, error) {
 
 func parseFileHunk(p *parser) (fileHunk, error) {
 	start := p.mark()
-	header, ok := p.next()
+	rawHeader, ok := p.next()
 	if !ok {
 		return fileHunk{}, errors.New("unexpected end of input while reading hunk header")
 	}
+	header := strings.TrimSpace(rawHeader)
 
 	switch {
 	case strings.HasPrefix(header, "*** Add File: "):
@@ -339,25 +339,25 @@ func parseFileHunk(p *parser) (fileHunk, error) {
 			return fileHunk{}, fmt.Errorf("empty path for Update at line %d", start+1)
 		}
 		h := fileHunk{Kind: hunkUpdate, Path: path}
-		if next, ok := p.peek(); ok && strings.HasPrefix(next, "*** Move to: ") {
-			moveTo, _ := p.next()
+		if next, ok := p.peek(); ok && strings.HasPrefix(strings.TrimSpace(next), "*** Move to: ") {
+			moveToRaw, _ := p.next()
+			moveTo := strings.TrimSpace(moveToRaw)
 			moveTo = strings.TrimPrefix(moveTo, "*** Move to: ")
 			if moveTo == "" {
 				return fileHunk{}, fmt.Errorf("empty destination in Move to at line %d", p.mark())
 			}
 			h.MoveTo = moveTo
 		}
-		sets, noFinal, err := parseChangeSets(p, path)
+		sets, err := parseChangeSets(p, path)
 		if err != nil {
 			return fileHunk{}, err
 		}
 		h.ChangeSets = sets
-		h.NoFinalNL = noFinal
 		h.rawLineSpan = [2]int{start, p.mark()}
 		return h, nil
 	}
 
-	return fileHunk{}, fmt.Errorf("expected hunk header at line %d; got %q", start+1, header)
+	return fileHunk{}, fmt.Errorf("expected hunk header at line %d; got %q", start+1, rawHeader)
 }
 
 func parseAddLines(p *parser, path string) ([]string, error) {
@@ -379,7 +379,7 @@ func parseAddLines(p *parser, path string) ([]string, error) {
 	return lines, nil
 }
 
-func parseChangeSets(p *parser, path string) ([]changeSet, bool, error) {
+func parseChangeSets(p *parser, path string) ([]changeSet, error) {
 	var sets []changeSet
 	var cur changeSet
 	started := false
@@ -396,18 +396,15 @@ func parseChangeSets(p *parser, path string) ([]changeSet, bool, error) {
 		return nil
 	}
 
-	noFinalNL := false
-
 	for {
 		next, ok := p.peek()
 		if !ok {
-			return nil, false, fmt.Errorf("unterminated Update for %s", path)
+			return nil, fmt.Errorf("unterminated Update for %s", path)
 		}
 		if isFileBoundary(next) {
 			break
 		}
-		if next == "*** End of File" {
-			noFinalNL = true
+		if strings.TrimSpace(next) == "*** End of File" {
 			p.next()
 			continue
 		}
@@ -416,7 +413,7 @@ func parseChangeSets(p *parser, path string) ([]changeSet, bool, error) {
 			anchor := parseAnchorHeader(header)
 			if started && len(cur.Lines) > 0 {
 				if err := flush(); err != nil {
-					return nil, false, err
+					return nil, err
 				}
 			}
 			if !started {
@@ -437,12 +434,12 @@ func parseChangeSets(p *parser, path string) ([]changeSet, bool, error) {
 			p.next()
 			continue
 		}
-		return nil, false, fmt.Errorf("malformed update for %s at line %d: %q", path, p.lineNumber(), next)
+		return nil, fmt.Errorf("malformed update for %s at line %d: %q", path, p.lineNumber(), next)
 	}
 	if err := flush(); err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	return sets, noFinalNL, nil
+	return sets, nil
 }
 
 func parseAnchorHeader(line string) string {
@@ -454,10 +451,11 @@ func parseAnchorHeader(line string) string {
 }
 
 func isFileBoundary(line string) bool {
-	return line == "*** End Patch" ||
-		strings.HasPrefix(line, "*** Add File: ") ||
-		strings.HasPrefix(line, "*** Delete File: ") ||
-		strings.HasPrefix(line, "*** Update File: ")
+	trimmed := strings.TrimSpace(line)
+	return trimmed == "*** End Patch" ||
+		strings.HasPrefix(trimmed, "*** Add File: ") ||
+		strings.HasPrefix(trimmed, "*** Delete File: ") ||
+		strings.HasPrefix(trimmed, "*** Update File: ")
 }
 
 // ---------- Apply: Add/Delete/Update ----------
@@ -466,9 +464,6 @@ func applyAdd(root string, h fileHunk) error {
 	osPath := filepath.Join(root, filepath.FromSlash(h.Path))
 	if err := ensureParentDir(osPath); err != nil {
 		return err
-	}
-	if _, err := os.Stat(osPath); err == nil {
-		return fmt.Errorf("file already exists: %s", h.Path)
 	}
 	content := strings.Join(h.AddLines, "\n")
 	if len(h.AddLines) > 0 {
@@ -502,10 +497,7 @@ func applyUpdate(root string, h fileHunk) error {
 		return err
 	}
 
-	finalNewline := snapshot.hadFinalNewline
-	if h.NoFinalNL {
-		finalNewline = false
-	}
+	finalNewline := len(updatedLines) > 0
 	content := joinLines(updatedLines, snapshot.newline, finalNewline)
 
 	if err := ensureParentDir(dst); err != nil {
@@ -592,6 +584,9 @@ func applyChangeSetsToLines(orig []string, sets []changeSet) ([]string, error) {
 			start = idx
 		} else if len(cs.Anchors) > 0 {
 			start = searchFrom
+		} else {
+			// No anchors and no context/deletions means this change set is pure insertion. Codex golden cases treat that as appending at EOF.
+			start = len(orig)
 		}
 		out = append(out, orig[pos:start]...)
 
