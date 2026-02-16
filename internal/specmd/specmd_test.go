@@ -160,7 +160,7 @@ func TestFormatGoCodeBlocks(t *testing.T) {
 	require.NoError(t, os.WriteFile(p, []byte(orig), 0o644))
 	s, err := Read(p)
 	require.NoError(t, err)
-	modified, err := s.FormatGoCodeBlocks()
+	modified, err := s.FormatGoCodeBlocks(0)
 	require.NoError(t, err)
 	require.True(t, modified)
 	updatedBytes, err := os.ReadFile(p)
@@ -170,6 +170,67 @@ func TestFormatGoCodeBlocks(t *testing.T) {
 	assert.Contains(t, updated, "A int")
 	assert.Contains(t, updated, "func Bad(") // invalid Go is ignored and left alone
 	assert.Equal(t, updated, s.Body)
+}
+func TestFormatGoCodeBlocks_ReflowWidth(t *testing.T) {
+	countDocLinesAbove := func(code string, funcPrefix string) int {
+		lines := strings.Split(code, "\n")
+		for i := 0; i < len(lines); i++ {
+			if !strings.HasPrefix(lines[i], funcPrefix) {
+				continue
+			}
+			n := 0
+			for j := i - 1; j >= 0; j-- {
+				if strings.TrimSpace(lines[j]) == "" {
+					continue
+				}
+				if strings.HasPrefix(lines[j], "//") {
+					n++
+					continue
+				}
+				break
+			}
+			return n
+		}
+		return 0
+	}
+	getSingleGoFence := func(t *testing.T, s *Spec) string {
+		t.Helper()
+		md, err := parseMarkdown([]byte(s.Body))
+		require.NoError(t, err)
+		require.Len(t, md.allGoFences, 1)
+		return md.allGoFences[0].code
+	}
+	orig := strings.Join([]string{
+		"# Pkg",
+		"",
+		"```go",
+		"// Foo does a bunch of things and this is a deliberately long sentence that should be wrapped when reflow is enabled.",
+		"func Foo() {}",
+		"```",
+		"",
+	}, "\n")
+	t.Run("reflowWidth=0 does not reflow docs", func(t *testing.T) {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "SPEC.md")
+		require.NoError(t, os.WriteFile(p, []byte(orig), 0o644))
+		s, err := Read(p)
+		require.NoError(t, err)
+		_, err = s.FormatGoCodeBlocks(0)
+		require.NoError(t, err)
+		code := getSingleGoFence(t, s)
+		assert.Equal(t, 1, countDocLinesAbove(code, "func Foo"))
+	})
+	t.Run("reflowWidth>0 reflows docs", func(t *testing.T) {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "SPEC.md")
+		require.NoError(t, os.WriteFile(p, []byte(orig), 0o644))
+		s, err := Read(p)
+		require.NoError(t, err)
+		_, err = s.FormatGoCodeBlocks(40)
+		require.NoError(t, err)
+		code := getSingleGoFence(t, s)
+		assert.Greater(t, countDocLinesAbove(code, "func Foo"), 1)
+	})
 }
 func TestImplementationDiffs(t *testing.T) {
 	modDir := t.TempDir()

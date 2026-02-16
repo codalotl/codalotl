@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/updatedocs"
+
 	"github.com/codalotl/codalotl/internal/gocode"
 )
 
@@ -110,21 +112,36 @@ func (s *Spec) PublicAPIGoCodeBlocks() ([]string, error) {
 
 // FormatGoCodeBlocks runs each Go code block through the equivalent of `gofmt`, updating the file on disk and s.Body.
 //
+// If reflowWidth is 0, documentation is not reflowed. If reflowWidth is > 0, documentation in each code block is reflowed using internal/updatedocs to the specified
+// width (best-effort).
+//
 // If any Go code block has erroneous Go code (e.g. syntax error), it is ignored. The other Go code blocks are still formatted.
 //
 // It returns true if any modifications to the SPEC.md were made. An error is returned for file I/O issues or for invalid markdown. Go code with syntax errors do
 // not cause errors.
-func (s *Spec) FormatGoCodeBlocks() (bool, error) {
+func (s *Spec) FormatGoCodeBlocks(reflowWidth int) (bool, error) {
 	if s == nil {
 		return false, errors.New("specmd: FormatGoCodeBlocks: nil Spec")
 	}
 	if s.AbsPath == "" {
 		return false, errors.New("specmd: FormatGoCodeBlocks: empty AbsPath")
 	}
+	if reflowWidth < 0 {
+		return false, fmt.Errorf("specmd: FormatGoCodeBlocks: reflowWidth must be >= 0: %d", reflowWidth)
+	}
 	src := []byte(s.Body)
 	md, err := parseMarkdown(src)
 	if err != nil {
 		return false, err
+	}
+	var reflower *goCodeBlockReflower
+	if reflowWidth > 0 {
+		r, err := newGoCodeBlockReflower(reflowWidth)
+		if err != nil {
+			return false, err
+		}
+		reflower = r
+		defer reflower.close()
 	}
 	// Format every go fenced code block (not just public API), but ignore invalid Go.
 	var edits []textEdit
@@ -133,14 +150,23 @@ func (s *Spec) FormatGoCodeBlocks() (bool, error) {
 		if !ok {
 			continue
 		}
-		if formatted == b.code {
-			continue
+		out := formatted
+		if reflower != nil {
+			reflowed, ok, err := reflower.reflow(out)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				out = reflowed
+			}
 		}
-		edits = append(edits, textEdit{
-			start:       b.contentStart,
-			end:         b.contentEnd,
-			replacement: []byte(formatted),
-		})
+		if out != b.code {
+			edits = append(edits, textEdit{
+				start:       b.contentStart,
+				end:         b.contentEnd,
+				replacement: []byte(out),
+			})
+		}
 	}
 	if len(edits) == 0 {
 		return false, nil
@@ -558,6 +584,102 @@ func gofmtFragment(code string) (formatted string, ok bool) {
 	}
 	frag := formattedFile[len(prefix):]
 	return string(frag), true
+}
+
+type goCodeBlockReflower struct {
+	tempDir     string
+	goFilePath  string
+	mod         *gocode.Module
+	pkg         *gocode.Package
+	reflowWidth int
+}
+
+func newGoCodeBlockReflower(reflowWidth int) (*goCodeBlockReflower, error) {
+	dir, err := os.MkdirTemp("", "specmd-reflow-*")
+	if err != nil {
+		return nil, fmt.Errorf("specmd: FormatGoCodeBlocks: create temp dir: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	goMod := strings.Join([]string{
+		"module example.com/specmdtmp",
+		"",
+		"go 1.24.4",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("specmd: FormatGoCodeBlocks: write temp go.mod: %w", err)
+	}
+	mod, err := gocode.NewModule(dir)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("specmd: FormatGoCodeBlocks: load temp module: %w", err)
+	}
+	return &goCodeBlockReflower{
+		tempDir:     dir,
+		goFilePath:  filepath.Join(dir, "spec.go"),
+		mod:         mod,
+		reflowWidth: reflowWidth,
+	}, nil
+}
+
+func (r *goCodeBlockReflower) close() {
+	if r == nil || r.tempDir == "" {
+		return
+	}
+	_ = os.RemoveAll(r.tempDir)
+}
+
+func (r *goCodeBlockReflower) reflow(code string) (string, bool, error) {
+	if r == nil {
+		return "", false, nil
+	}
+	if err := os.WriteFile(r.goFilePath, makeWrappedGoFileSource(code), 0o644); err != nil {
+		return "", false, fmt.Errorf("specmd: FormatGoCodeBlocks: write temp file: %w", err)
+	}
+	var pkg *gocode.Package
+	var err error
+	if r.pkg == nil {
+		pkg, err = r.mod.LoadPackageByRelativeDir(".")
+	} else {
+		pkg, err = r.pkg.Reload()
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("specmd: FormatGoCodeBlocks: load temp package: %w", err)
+	}
+	r.pkg = pkg
+	newPkg, _, err := updatedocs.ReflowAllDocumentation(pkg, updatedocs.Options{
+		Reflow:         true,
+		ReflowMaxWidth: r.reflowWidth,
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("specmd: FormatGoCodeBlocks: reflow docs: %w", err)
+	}
+	if newPkg != nil {
+		r.pkg = newPkg
+	}
+	updated, err := os.ReadFile(r.goFilePath)
+	if err != nil {
+		return "", false, fmt.Errorf("specmd: FormatGoCodeBlocks: read temp file: %w", err)
+	}
+	frag, ok := unwrapWrappedGoFileSource(updated)
+	return frag, ok, nil
+}
+
+func unwrapWrappedGoFileSource(src []byte) (string, bool) {
+	if !bytes.HasPrefix(src, []byte("package p")) {
+		return "", false
+	}
+	// Strip the package clause line, plus any immediately following blank lines.
+	i := bytes.IndexByte(src, '\n')
+	if i == -1 {
+		return "", false
+	}
+	j := i + 1
+	for j < len(src) && (src[j] == '\n' || src[j] == '\r') {
+		j++
+	}
+	return string(src[j:]), true
 }
 
 type textEdit struct {

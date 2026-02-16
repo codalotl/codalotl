@@ -323,7 +323,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Name:  "fmt",
 		Short: "Format Go code blocks in SPEC.md.",
 		Args:  qcli.ExactArgs(1),
-		Run: runWithConfig("spec_fmt", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		Run: runWithConfig("spec_fmt", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 			specPath, err := resolveSpecPathArg(c.Args[0])
 			if err != nil {
 				return err
@@ -332,7 +332,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			if err != nil {
 				return err
 			}
-			modified, err := spec.FormatGoCodeBlocks()
+			modified, err := spec.FormatGoCodeBlocks(cfg.ReflowWidth)
 			if err != nil {
 				return err
 			}
