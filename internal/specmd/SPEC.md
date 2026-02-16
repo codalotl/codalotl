@@ -24,7 +24,7 @@ func Read(path string) (*Spec, error)
 
 // Validate parses Body as a markdown file, and ensures each Go code block has valid code without syntax errors. The code is not checked for type errors.
 // The first error encountered is returend; nil if no errors.
-func Validate() error
+func (s *Spec) Validate() error
 
 // GoCodeBlocks returns all multi-line Go code blocks in a ```go``` fence.
 //   - These must be triple-backtick and multi-line, not inline `single-backtick` code spans.
@@ -53,17 +53,19 @@ type DiffType int
 
 const (
     DiffTypeOther DiffType = iota // Unknown difference
-    DiffTypeImplMissing // A snippet (eg, a func) is missing in the implementation
-    DiffTypeSpecMissing
+    DiffTypeImplMissing // At least one snippet ID is missing in the implementation.
+    DiffTypeIDMismatch // All IDs are present in the impl, but they span differnet snippets. Ex: one var block in SPEC, but impl has separate `var` decls.
     DiffTypeCodeMismatch // Both spec and impl have the same snippet, but code is different. Ex: diff function args; diff var values. Any docs are NOT considered. Whitespace is also not considered.
-    DiffTypeDocMismatch // Docs between the two are mismatched 
-    DiffTypeDocWhitespace // Whitespace is different (ex: SPEC uses spaces but impl uses tabs)
+    DiffTypeDocMismatch // Docs between the two are mismatched.
+    DiffTypeDocWhitespace // Whitespace is different (ex: SPEC uses spaces but impl uses tabs).
 )
 
 // SpecDiffs represents a difference from the SPEC.md and the actual implemenation in .go files. Each diff corresponds to one `gocode.Snippet`. Note that one code block may contain
 // multiple `gocode.Snippets`, and one gocode.Snippets may contain multiple IDs. A correspondence between snippet and impl is made only by exact IDs matches.
 type SpecDiffs struct {
-    IDs []string // the IDs of the snippets. Often this is just one string (e.g, a function name). It can be multiple IDs for things like var blocks.
+    // the IDs of the snippet. Often this is just one string (e.g, a function name). It can be multiple IDs for things like var blocks.
+    // These IDs will match a snippet in the SPEC.md exactly.
+    IDs []string
 
     SpecSnippet string // The snippet in the SPEC. May be "" if missing.
     SpecLine int // The line number in the SPEC.
@@ -77,7 +79,8 @@ type SpecDiffs struct {
     DiffType DiffType
 }
 
-// ImplemenationDifferences finds differences between the public API declared in the SPEC.md to the actual public API in the corresponding Go package. If no differences are found, nil is returned.
+// ImplemenationDifferences finds differences between the public API declared in the SPEC.md to the actual public API in the corresponding Go package. It only checks those identifiers
+// defined in the SPEC.md - if the public API is a strict superset, no differences are returned. If no differences are found, nil is returned.
 //   - Only PublicAPIGoCodeBlocks are checked.
 //   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
