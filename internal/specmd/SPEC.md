@@ -85,4 +85,8 @@ type SpecDiff struct {
 //   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
 func (s *Spec) ImplemenationDiffs() ([]SpecDiff, error)
+
+
+// FormatDiffs formates and writes diffs to out, in a manner that would be helpful to a human or LLM in syncing up the spec and implementation.
+func FormatDiffs(diffs []SpecDiff, out io.Writer) error
 ```
