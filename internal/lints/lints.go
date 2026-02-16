@@ -1,9 +1,11 @@
 package lints
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
+	"github.com/codalotl/codalotl/internal/specmd"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
 
@@ -104,10 +107,12 @@ func DefaultSteps() []Step {
 }
 
 func defaultSteps(reflowWidth int) []Step {
-	// Defaults intentionally include only gofmt (reflow is available as a
-	// preconfigured step by specifying `{"id":"reflow"}` in config).
+	// Defaults intentionally include only lightweight, low-noise steps.
+	// Additional steps (like reflow) are available as preconfigured steps by
+	// specifying `{"id":"reflow"}` in config.
 	gofmt, _ := preconfiguredStep("gofmt", reflowWidth)
-	return []Step{gofmt}
+	specDiff, _ := preconfiguredStep("spec-diff", reflowWidth)
+	return []Step{gofmt, specDiff}
 }
 
 func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
@@ -219,6 +224,29 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 			ID:    "golangci-lint",
 			Check: golangciCheck,
 			Fix:   golangciFix,
+		}, true
+	case "spec-diff":
+		// ID == "spec-diff" is special-cased during execution (it is NOT executed as a
+		// subprocess). The command is still stored so config validation works and so
+		// we can render a uniform cmdrunner-style output.
+		specDiffCheck := &cmdrunner.Command{
+			Command: "codalotl",
+			Args: []string{
+				"spec",
+				"diff",
+				"{{ .relativePackageDir }}",
+			},
+			CWD:                    "{{ .moduleDir }}",
+			OutcomeFailIfAnyOutput: true,
+			MessageIfNoOutput:      "no issues found",
+		}
+
+		// Spec diffs are only run in dedicated fix flows by default (not during
+		// apply_patch auto-fix).
+		return Step{
+			ID:         "spec-diff",
+			Situations: []Situation{SituationFix},
+			Check:      specDiffCheck,
 		}, true
 	default:
 		return Step{}, false
@@ -562,18 +590,31 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 			continue
 		}
 
-		c, modeAttr, dryRun, err := selectCommand(s, act)
-		if err != nil {
-			return "", err
-		}
-
 		if s.ID == "reflow" {
+			c, modeAttr, dryRun, err := selectCommand(s, act)
+			if err != nil {
+				return "", err
+			}
 			cr, crErr := runReflow(moduleDir, relativePackageDir, targetPkgAbsDir, c, modeAttr, dryRun)
 			if crErr != nil {
 				return "", crErr
 			}
 			all.Results = append(all.Results, cr)
 			continue
+		}
+
+		if s.ID == "spec-diff" {
+			// This lint is always rendered as a check-only step, even in fix situations.
+			// It's executed in-process so we can use internal/specmd directly and keep
+			// output uniform (cmdrunner-style).
+			cr := runSpecDiff(relativePackageDir, targetPkgAbsDir)
+			all.Results = append(all.Results, cr)
+			continue
+		}
+
+		c, modeAttr, _, err := selectCommand(s, act)
+		if err != nil {
+			return "", err
 		}
 
 		runner := cmdrunner.NewRunner(
@@ -605,6 +646,19 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 }
 
 func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, moduleDir string, relativePackageDir string, s Step) bool {
+	if s.ID == "spec-diff" {
+		// Special-case: this step is only active when the package has a SPEC.md.
+		// (The spec describes this as a pseudo "active command"; we do it in-process
+		// for portability and to avoid spawning a subprocess just to check existence.)
+		_, err := os.Stat(filepath.Join(targetPkgAbsDir, "SPEC.md"))
+		if err != nil {
+			// Keep the pipeline quiet for packages without specs.
+			// For unexpected errors (permissions, transient I/O, etc.), treat as active
+			// so we surface the error in the lint output instead of silently skipping.
+			return !errors.Is(err, os.ErrNotExist)
+		}
+	}
+
 	if s.Active == nil {
 		return true
 	}
@@ -742,6 +796,50 @@ func runReflow(moduleDir string, relativePackageDir string, targetPkgAbsDir stri
 		Duration:          time.Since(start),
 	}
 	return cr, nil
+}
+
+func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.CommandResult {
+	start := time.Now()
+
+	specPath := filepath.Join(targetPkgAbsDir, "SPEC.md")
+	s, readErr := specmd.Read(specPath)
+
+	var out bytes.Buffer
+	var diffErr error
+	var diffs []specmd.SpecDiff
+
+	if readErr == nil {
+		diffs, diffErr = s.ImplemenationDiffs()
+	}
+	if readErr == nil && diffErr == nil && len(diffs) > 0 {
+		diffErr = specmd.FormatDiffs(diffs, &out)
+	}
+
+	outcome := cmdrunner.OutcomeSuccess
+	var execErr error
+	if readErr != nil {
+		outcome = cmdrunner.OutcomeFailed
+		execErr = readErr
+	} else if diffErr != nil {
+		outcome = cmdrunner.OutcomeFailed
+		execErr = diffErr
+	} else if len(diffs) > 0 {
+		// FormatDiffs succeeded (no error), but there are differences.
+		outcome = cmdrunner.OutcomeFailed
+	}
+
+	cr := cmdrunner.CommandResult{
+		Command:           "codalotl",
+		Args:              []string{"spec", "diff", relativePackageDir},
+		Output:            strings.TrimRight(out.String(), "\n"),
+		MessageIfNoOutput: "no issues found",
+		Attrs:             []string{"mode", "check"},
+		ExecStatus:        cmdrunner.ExecStatusCompleted,
+		ExecError:         execErr,
+		Outcome:           outcome,
+		Duration:          time.Since(start),
+	}
+	return cr
 }
 
 func relPathForOutput(sandboxDir string, p string) string {
