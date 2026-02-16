@@ -157,26 +157,26 @@ type Config struct {
 	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Default to 120
 	ReflowWidthProvidence cascade.Providence `json:"-"`
 
-	// Lints configures the lint pipeline used by `codalotl context initial`.
-	// See internal/lints/SPEC.md for full details.
+	// Lints configures the lint pipeline used by `codalotl context initial`. See internal/lints/SPEC.md for full details.
 	//
 	// NOTE: for now, this is only used by the `context initial` command.
 	Lints lints.Lints `json:"lints,omitempty"`
 
-	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
-	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
+	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`
+	DisableCrashReporting bool `json:"disablecrashreporting,omitempty"`
 
 	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
 	PreferredProvider string `json:"preferredprovider"`
 
 	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().
 	PreferredModel string `json:"preferredmodel"`
+
 	PreferredModelProvidence cascade.Providence `json:"-"`
 }
 
 // NOTE: separate struct so we can easily test zero value
 type ProviderKeys struct {
-	OpenAI      string `json:"openai"`
+	OpenAI string `json:"openai"`
 
 	// NOTE: in the future, we may add these:
 	// Anthropic   string `json:"anthropic"`
@@ -246,7 +246,8 @@ var Version = "0.1.0"
 
 // In/Out/Err override standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
-// Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably print to Stdout.
+// Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably
+// print to Stdout.
 type RunOptions struct {
 	In  io.Reader
 	Out io.Writer
