@@ -18,6 +18,7 @@ import (
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
+	"github.com/codalotl/codalotl/internal/specmd"
 	"github.com/codalotl/codalotl/internal/tui"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
@@ -314,6 +315,35 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	})
 	docsCmd.AddCommand(reflowCmd)
 
+	specCmd := &qcli.Command{
+		Name:  "spec",
+		Short: "SPEC.md tools.",
+	}
+	diffCmd := &qcli.Command{
+		Name:  "diff",
+		Short: "Print diffs between SPEC.md and the package implementation.",
+		Args:  qcli.ExactArgs(1),
+		Run: runWithConfig("spec_diff", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			specPath, err := resolveSpecPathArg(c.Args[0])
+			if err != nil {
+				return err
+			}
+			spec, err := specmd.Read(specPath)
+			if err != nil {
+				return err
+			}
+			diffs, err := spec.ImplemenationDiffs()
+			if err != nil {
+				return err
+			}
+			if len(diffs) == 0 {
+				return nil
+			}
+			return specmd.FormatDiffs(diffs, c.Out)
+		}),
+	}
+	specCmd.AddCommand(diffCmd)
+
 	panicCmd := &qcli.Command{
 		Name:   "panic",
 		Hidden: true,
@@ -384,7 +414,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, panicCmd)
+	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, panicCmd)
 	return root, runState
 }
 
@@ -394,4 +424,35 @@ func writeStringln(w io.Writer, s string) error {
 	}
 	_, err := fmt.Fprint(w, s)
 	return err
+}
+
+func resolveSpecPathArg(arg string) (string, error) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "", qcli.UsageError{Message: "missing <path/to/pkg_or_SPEC.md>"}
+	}
+	// Keep behavior consistent with other <path/to/pkg> arguments.
+	if strings.Contains(arg, "...") {
+		return "", qcli.UsageError{Message: `package patterns ("...") are not supported; provide a single package directory or SPEC.md`}
+	}
+
+	// If arg exists as a filesystem path, accept either a directory (use
+	// <dir>/SPEC.md) or a SPEC.md file.
+	if info, err := os.Stat(arg); err == nil {
+		if info.IsDir() {
+			return filepath.Join(arg, "SPEC.md"), nil
+		}
+		if filepath.Base(arg) != "SPEC.md" {
+			return "", qcli.UsageError{Message: fmt.Sprintf("expected SPEC.md file or package directory (got %q)", arg)}
+		}
+		return arg, nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+
+	pkg, _, err := loadPackageArg(arg)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(pkg.AbsolutePath(), "SPEC.md"), nil
 }

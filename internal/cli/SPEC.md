@@ -125,6 +125,20 @@ If `--check` is provided, reflow is run as a dry-run: no files are modified on d
 Output:
 - Prints the list of modified `.go` files (one per line) to stdout, similar to `gofmt -l`. The paths are module-relative when available.
 
+### codalotl spec diff <path/to/pkg_or_SPEC.md>
+
+Prints a human/LLM-friendly diff between the public API declared in `SPEC.md` and the public API implemented in the corresponding `.go` files, using `internal/specmd`.
+
+Argument semantics:
+- `<path/to/pkg_or_SPEC.md>` may be:
+	- A package directory (relative or absolute; optional trailing `/`), in which case the `SPEC.md` at `<dir>/SPEC.md` is used.
+	- A `SPEC.md` file path (relative or absolute), in which case that file is used directly.
+- Import-path-style package arguments (as accepted by other `<path/to/pkg>` args) are allowed; they are resolved to a package directory first, and then `SPEC.md` is loaded from that package directory.
+
+Output:
+- If differences are found, they are printed to stdout via `specmd.FormatDiffs`.
+- If no differences are found, the command prints nothing and exits successfully.
+
 ## Configuration
 
 This package is responsible for loading a configuation file and passing various configuration to other packages. The configuration is loaded with `internal/q/cascade`. The configuration is loaded and validated for all commands, except those that obviously don't need it, like `version` and `-h`. An invalid configuration prints out a helpful error message and returns with an non-zero exit code.

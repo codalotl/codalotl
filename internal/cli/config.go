@@ -532,8 +532,12 @@ func writeJSONObjectFileAtomic(path string, obj map[string]any, mode os.FileMode
 		return fmt.Errorf("create temp file in %q: %w", dir, err)
 	}
 	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
-	defer cleanup()
+	removeTmp := true
+	defer func() {
+		if removeTmp {
+			_ = os.Remove(tmpName)
+		}
+	}()
 
 	enc := json.NewEncoder(tmp)
 	enc.SetIndent("", "  ")
@@ -555,13 +559,13 @@ func writeJSONObjectFileAtomic(path string, obj map[string]any, mode os.FileMode
 			_ = os.Remove(path)
 			if err2 := os.Rename(tmpName, path); err2 == nil {
 				_ = os.Chmod(path, mode)
+				removeTmp = false
 				return nil
 			}
 		}
 		return fmt.Errorf("replace %q: %w", path, err)
 	}
 	_ = os.Chmod(path, mode)
-	// Rename succeeded; don't delete the temp file.
-	cleanup = func() {}
+	removeTmp = false
 	return nil
 }
