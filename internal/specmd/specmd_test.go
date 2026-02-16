@@ -97,6 +97,41 @@ func TestPublicAPIGoCodeBlocks(t *testing.T) {
 	assert.Contains(t, all, "type IncludedByFlag struct")
 	assert.NotContains(t, all, "type NotIncluded struct")
 }
+func TestPublicAPIGoCodeBlocks_APIFlagList(t *testing.T) {
+	s := &Spec{
+		AbsPath: filepath.Join(t.TempDir(), "SPEC.md"),
+		Body: strings.Join([]string{
+			"# Pkg",
+			"",
+			"## Other",
+			"```go {api, other}",
+			"type IncludedA struct {",
+			"    A int",
+			"}",
+			"```",
+			"",
+			"```go {other, api}",
+			"type IncludedB struct {",
+			"    B int",
+			"}",
+			"```",
+			"",
+			"```go {apix, other}",
+			"type NotIncluded struct {",
+			"    C int",
+			"}",
+			"```",
+			"",
+		}, "\n"),
+	}
+	blocks, err := s.PublicAPIGoCodeBlocks()
+	require.NoError(t, err)
+	require.Len(t, blocks, 2)
+	all := strings.Join(blocks, "\n---\n")
+	assert.Contains(t, all, "type IncludedA struct")
+	assert.Contains(t, all, "type IncludedB struct")
+	assert.NotContains(t, all, "type NotIncluded struct")
+}
 func TestValidate(t *testing.T) {
 	ok := &Spec{
 		AbsPath: filepath.Join(t.TempDir(), "SPEC.md"),

@@ -125,7 +125,7 @@ func collectGoFencesWithContext(src []byte, root ast.Node) ([]goFenceBlock, erro
 		if start >= 0 {
 			startLine = 1 + bytes.Count(src[:start], []byte("\n"))
 		}
-		hasAPIFlag := strings.Contains(info, "{api}")
+		hasAPIFlag := infoStringHasFlag(info, "api")
 		blocks = append(blocks, goFenceBlock{
 			info:             info,
 			code:             code,
@@ -186,6 +186,36 @@ func isGoInfoString(info string) bool {
 		return true
 	default:
 		return false
+	}
+}
+func infoStringHasFlag(info string, flag string) bool {
+	// Goldmark exposes the full "info string" after the opening ticks.
+	// Our SPEC.md convention uses flags like `{api}` or `{api, other_tag}`.
+	for {
+		open := strings.IndexByte(info, '{')
+		if open == -1 {
+			return false
+		}
+		closeRel := strings.IndexByte(info[open+1:], '}')
+		if closeRel == -1 {
+			return false
+		}
+		close := open + 1 + closeRel
+		inside := info[open+1 : close]
+		parts := strings.FieldsFunc(inside, func(r rune) bool {
+			switch r {
+			case ',', ' ', '\t', '\r', '\n':
+				return true
+			default:
+				return false
+			}
+		})
+		for _, p := range parts {
+			if p == flag {
+				return true
+			}
+		}
+		info = info[close+1:]
 	}
 }
 func fencedCodeContent(src []byte, fcb *ast.FencedCodeBlock) (code string, start int, end int) {

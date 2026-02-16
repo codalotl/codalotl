@@ -87,7 +87,7 @@ func (s *Spec) GoCodeBlocks() ([]string, error) {
 }
 
 // PublicAPIGoCodeBlocks returns those Go code blocks that are part of the public API of a package. This is determined by:
-//   - If the code block has {api} in the info string.
+//   - If the code block has {api} in the info string. This includes things like {api, other_tag}.
 //   - If the code block is in any headered section that includes "public api" (case-insensitive).
 //   - If the code block is in any nested headered section of the above "public api". E.g., `## Public API\n### Types\n<code block>`.
 //

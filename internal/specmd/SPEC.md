@@ -8,6 +8,7 @@ SPEC.md files are currently assumed to be for Go packages only.
 
 - Markdown parsed with `github.com/yuin/goldmark`
 - Go code parsed with `internal/gocode`
+- Go code parsed with `internal/updatedocs`
 
 ## Public API
 
@@ -34,7 +35,7 @@ func (s *Spec) Validate() error
 func (s *Spec) GoCodeBlocks() ([]string, error)
 
 // PublicAPIGoCodeBlocks returns those Go code blocks that are part of the public API of a package. This is determined by:
-//   - If the code block has {api} in the info string.
+//   - If the code block has {api} in the info string. This includes things like {api, other_tag}.
 //   - If the code block is in any headered section that includes "public api" (case-insensitive).
 //   - If the code block is in any nested headered section of the above "public api". E.g., `## Public API\n### Types\n<code block>`.
 //
@@ -43,8 +44,7 @@ func (s *Spec) PublicAPIGoCodeBlocks() ([]string, error)
 
 // FormatGoCodeBlocks runs each Go code block through the equivalent of `gofmt`, updating the file on disk and s.Body.
 //
-// If reflowWidth is 0, documentation is not reflowed. If reflowWidth is > 0, documentation in each code block is reflowed using internal/updatedocs to the specified
-// width (best-effort).
+// If reflowWidth is 0, documentation is not reflowed. If reflowWidth is > 0, documentation in each code block is reflowed to the specified width.
 //
 // If any Go code block has erroneous Go code (e.g. syntax error), it is ignored. The other Go code blocks are still formatted.
 //
