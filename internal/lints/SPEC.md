@@ -124,6 +124,15 @@ The commands are specified and run with `internal/q/cmdrunner`. As such, they us
   - `relativePackageDir` (`InputTypeString`): package dir relative to `moduleDir` (ex: `internal/somepkg`).
 - cmdrunner templating is available (ex: `manifestDir`, `relativeTo`, `repoDir`, `DevNull`).
 
+### Conditional steps
+
+Any step may optionally declare an "active check" command that gates whether the step is run for a particular package.
+- If a step would otherwise be run in a situation, we first run the active check (if present).
+- If the active check returns anything to stdout/stderr, it is considered active, otherwise inactive.
+- If the check errors in any way: considered active.
+- The only way to make an inactive step: no output, 0 exit code.
+- The LLM never sees the output of the check. The condition check is invisible to it.
+
 ## Default Lints
 
 By default, only `gofmt` is active. The `reflow` lint (or any other preconfigured lint) is easily available by extending with .
@@ -240,6 +249,9 @@ type Step struct {
 	// - If []: run in no situations.
 	Situations []Situation `json:"situations,omitempty"`
 
+	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no output: step is inactive. Otherwise, active.
+	Active *cmdrunner.Command `json:"active,omitempty"`
+
 	// Check/Fix override Cmd for their respective actions.
 	Check *cmdrunner.Command `json:"check,omitempty"`
 	Fix   *cmdrunner.Command `json:"fix,omitempty"`
@@ -258,6 +270,7 @@ func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error)
 // - sandboxDir is the cmdrunner rootDir.
 // - targetPkgAbsDir is an absolute package directory.
 // - Run does not stop early: it attempts to execute all steps, even if earlier steps report failures.
+// - Steps that are inactive are not run, and do not contribute towards the returned XML (it's as if they weren't in steps).
 // - Command failures are reflected in the XML. Hard errors (invalid config, templating failures, internal errors) return a Go error.
 func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps []Step, situation Situation) (string, error)
 ```
