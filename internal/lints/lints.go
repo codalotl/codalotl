@@ -50,6 +50,29 @@ type Lints struct {
 	Steps   []Step     `json:"steps,omitempty"`
 }
 
+// Reflows returns true if the lint configuration runs reflow in any situation where reflow may be executed (patch/fix/check).
+//
+// If the configuration is invalid (and thus cannot be resolved), it returns false.
+func (l Lints) Reflows() bool {
+	steps, err := ResolveSteps(&l, 0)
+	if err != nil {
+		return false
+	}
+	for _, s := range steps {
+		if s.ID != "reflow" {
+			continue
+		}
+		// Reflow is always skipped for SituationInitial, so only treat it as
+		// enabled if it can run in a non-initial situation.
+		if stepEnabledInSituation(s, SituationCheck) ||
+			stepEnabledInSituation(s, SituationPatch) ||
+			stepEnabledInSituation(s, SituationFix) {
+			return true
+		}
+	}
+	return false
+}
+
 type Step struct {
 	// Optional. Empty string means "unset". Multiple steps may have an unset ID.
 	ID string `json:"id,omitempty"`

@@ -332,7 +332,11 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			if err != nil {
 				return err
 			}
-			modified, err := spec.FormatGoCodeBlocks(cfg.ReflowWidth)
+			reflowWidth := cfg.ReflowWidth
+			if !cfg.Lints.Reflows() {
+				reflowWidth = 0
+			}
+			modified, err := spec.FormatGoCodeBlocks(reflowWidth)
 			if err != nil {
 				return err
 			}

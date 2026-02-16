@@ -204,6 +204,73 @@ func TestResolveSteps_ReflowWidthErrorsOnMultiple(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLints_Reflows(t *testing.T) {
+	t.Run("default false", func(t *testing.T) {
+		require.False(t, (Lints{}).Reflows())
+	})
+
+	t.Run("extend with reflow", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeExtend,
+			Steps: []Step{
+				{ID: "reflow"},
+			},
+		}
+		require.True(t, cfg.Reflows())
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		cfg := Lints{
+			Mode:    ConfigModeExtend,
+			Disable: []string{"reflow"},
+			Steps: []Step{
+				{ID: "reflow"},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+
+	t.Run("situations empty means never runs", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{}},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+
+	t.Run("situations initial only means never runs", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{SituationInitial}},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+
+	t.Run("situations fix means runs", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{SituationFix}},
+			},
+		}
+		require.True(t, cfg.Reflows())
+	})
+
+	t.Run("invalid config false", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{"bogus"}},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+}
+
 func TestRun_NoSteps(t *testing.T) {
 	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, SituationCheck)
 	require.NoError(t, err)

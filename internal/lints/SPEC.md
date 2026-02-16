@@ -229,6 +229,9 @@ type Lints struct {
 	Steps   []Step     `json:"steps,omitempty"`
 }
 
+// Reflows returns true if the lint configuration runs reflow.
+func (l Lints) Reflows() bool
+
 type Step struct {
 	ID string `json:"id,omitempty"` // Optional. Empty string means "unset". Multiple steps may have an unset ID.
 
