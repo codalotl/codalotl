@@ -113,6 +113,7 @@ This yields:
 Reserved/default step IDs:
 - `gofmt`
 - `reflow`
+- `spec-diff`
 
 ### Templating
 
@@ -137,7 +138,7 @@ Any step may optionally declare an "active check" command that gates whether the
 
 By default:
 - `gofmt` (all situations)
-- `codalotl spec diff` (fix situation with active check)
+- `spec-diff`: `codalotl spec diff` (fix situation with active check)
 
 Additionally, these lints are available by extending and referencing them by ID (ex: `"steps": [{"id": "reflow"}]`):
 - `reflow`: `codalotl docs reflow`
@@ -211,14 +212,14 @@ In `check` mode:
 - The command invocation is rendered with `--check`.
 - Attrs are used to give instructions: `instructions="never manually fix these unless asked; fixing is automatic on apply_patch"` (only for `check`).
 
-### Special-case: `codalotl spec check`
+### Special-case: `codalotl spec diff`
 
-Any step whose `ID` is `spec-check` is executed in-process:
-- calls `specmd.FormatDiffs` with diffs of SPEC.md <-> package implementation.
+Any step whose `ID` is `spec-diff` is executed in-process:
+- Calls `specmd.FormatDiffs` with diffs of SPEC.md <-> package implementation.
 - ONLY enabled in `SituationFix` by default.
 - This is a `check`-only step (it never auto-fixes), despite being run in `fix` (the `check` situation is not implemented in codalotl).
 - This check is only active if there's a SPEC.md file in the package.
-	- It has a pseudo Active command running the equivalent of `test ! -f path/to/SPEC.md` (exit 0 and no output for non-existant SPEC.md).
+	- It has a pseudo Active command running the equivalent of `test ! -f path/to/SPEC.md` (exit 0 and no output for non-existent SPEC.md).
 
 Example output (when active):
 
