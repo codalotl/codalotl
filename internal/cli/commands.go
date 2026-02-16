@@ -319,6 +319,29 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Name:  "spec",
 		Short: "SPEC.md tools.",
 	}
+	fmtCmd := &qcli.Command{
+		Name:  "fmt",
+		Short: "Format Go code blocks in SPEC.md.",
+		Args:  qcli.ExactArgs(1),
+		Run: runWithConfig("spec_fmt", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			specPath, err := resolveSpecPathArg(c.Args[0])
+			if err != nil {
+				return err
+			}
+			spec, err := specmd.Read(specPath)
+			if err != nil {
+				return err
+			}
+			modified, err := spec.FormatGoCodeBlocks()
+			if err != nil {
+				return err
+			}
+			if !modified {
+				return nil
+			}
+			return writeStringln(c.Out, specPath)
+		}),
+	}
 	diffCmd := &qcli.Command{
 		Name:  "diff",
 		Short: "Print diffs between SPEC.md and the package implementation.",
@@ -342,7 +365,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			return specmd.FormatDiffs(diffs, c.Out)
 		}),
 	}
-	specCmd.AddCommand(diffCmd)
+	specCmd.AddCommand(fmtCmd, diffCmd)
 
 	panicCmd := &qcli.Command{
 		Name:   "panic",
