@@ -82,6 +82,10 @@ type Step struct {
 	//   - If []: run in no situations.
 	Situations []Situation `json:"situations,omitempty"`
 
+	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no output: step is inactive. Otherwise
+	// (including any error): active.
+	Active *cmdrunner.Command `json:"active,omitempty"`
+
 	// Check/Fix override Cmd for their respective actions.
 	Check *cmdrunner.Command `json:"check,omitempty"`
 
@@ -322,6 +326,9 @@ func canonicalizeStep(s Step, reflowWidth int) Step {
 	if s.Situations != nil {
 		pre.Situations = s.Situations
 	}
+	if s.Active != nil {
+		pre.Active = s.Active
+	}
 	return pre
 }
 
@@ -363,6 +370,9 @@ func validateStep(s Step) error {
 		return err
 	}
 	if err := validateCommand(s.ID, "fix", s.Fix); err != nil {
+		return err
+	}
+	if err := validateCommand(s.ID, "active", s.Active); err != nil {
 		return err
 	}
 	return nil
@@ -548,6 +558,10 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 	var all cmdrunner.Result
 
 	for _, s := range selected {
+		if !stepActive(ctx, sandboxDir, targetPkgAbsDir, moduleDir, relativePackageDir, s) {
+			continue
+		}
+
 		c, modeAttr, dryRun, err := selectCommand(s, act)
 		if err != nil {
 			return "", err
@@ -584,7 +598,38 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 		all.Results = append(all.Results, r.Results...)
 	}
 
+	if len(all.Results) == 0 {
+		return `<lint-status ok="true" message="no linters"></lint-status>`, nil
+	}
 	return all.ToXML("lint-status"), nil
+}
+
+func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, moduleDir string, relativePackageDir string, s Step) bool {
+	if s.Active == nil {
+		return true
+	}
+	runner := cmdrunner.NewRunner(
+		map[string]cmdrunner.InputType{
+			"path":               cmdrunner.InputTypePathDir,
+			"moduleDir":          cmdrunner.InputTypePathDir,
+			"relativePackageDir": cmdrunner.InputTypeString,
+		},
+		[]string{"path", "moduleDir", "relativePackageDir"},
+	)
+	runner.AddCommand(*s.Active)
+	r, err := runner.Run(ctx, sandboxDir, map[string]any{
+		"path":               targetPkgAbsDir,
+		"moduleDir":          moduleDir,
+		"relativePackageDir": relativePackageDir,
+	})
+	if err != nil || len(r.Results) == 0 {
+		// Errors or unexpected results in the active check are considered active.
+		return true
+	}
+	cr := r.Results[0]
+	// The only way to make a step inactive is a clean 0 exit with no
+	// non-whitespace output.
+	return !(cr.ExitCode == 0 && strings.TrimSpace(cr.Output) == "" && cr.ExecError == nil)
 }
 
 func selectCommand(s Step, act action) (cmd *cmdrunner.Command, modeAttr string, dryRun bool, err error) {

@@ -128,9 +128,9 @@ The commands are specified and run with `internal/q/cmdrunner`. As such, they us
 
 Any step may optionally declare an "active check" command that gates whether the step is run for a particular package.
 - If a step would otherwise be run in a situation, we first run the active check (if present).
-- If the active check returns anything to stdout/stderr, it is considered active, otherwise inactive.
+- If the active check returns any non-whitespace output to stdout/stderr, it is considered active, otherwise inactive.
 - If the check errors in any way: considered active.
-- The only way to make an inactive step: no output, 0 exit code.
+- The only way to make an inactive step: 0 exit code and no non-whitespace output.
 - The LLM never sees the output of the check. The condition check is invisible to it.
 
 ## Default Lints
@@ -249,7 +249,7 @@ type Step struct {
 	// - If []: run in no situations.
 	Situations []Situation `json:"situations,omitempty"`
 
-	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no output: step is inactive. Otherwise, active.
+	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no non-whitespace output: step is inactive. Otherwise, active.
 	Active *cmdrunner.Command `json:"active,omitempty"`
 
 	// Check/Fix override Cmd for their respective actions.

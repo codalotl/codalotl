@@ -383,6 +383,74 @@ func TestRun_FiltersBySituation(t *testing.T) {
 	require.Equal(t, 1, strings.Count(outFix, "\n$ "))
 }
 
+func TestRun_ConditionalStepInactiveIsSkipped(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID:     "a",
+			Active: helperCmd("", 0, false), // inactive
+			Check:  helperCmd("should-not-run", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+
+func TestRun_ConditionalStepWhitespaceOutputIsInactive(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID:     "a",
+			Active: helperCmd("\n", 0, false), // treated as empty output
+			Check:  helperCmd("should-not-run", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+
+func TestRun_ConditionalStepActiveRunsAndActiveOutputIsInvisible(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID:     "a",
+			Active: helperCmd("SECRET", 0, false), // active
+			Check:  helperCmd("ran", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(out, "\n$ "))
+	require.Contains(t, out, "ran")
+	require.NotContains(t, out, "SECRET")
+}
+
+func TestRun_ConditionalStepErrorIsTreatedActive(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID: "a",
+			Active: &cmdrunner.Command{
+				Command: "echo",
+				Args: []string{
+					"{{ .notARealVar }}",
+				},
+				CWD: "{{ .moduleDir }}",
+			},
+			Check: helperCmd("ran", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(out, "\n$ "))
+	require.Contains(t, out, "ran")
+}
 func helperCmd(stdout string, exitCode int, failIfAnyOutput bool) *cmdrunner.Command {
 	return &cmdrunner.Command{
 		Command: os.Args[0],
