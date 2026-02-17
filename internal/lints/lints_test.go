@@ -344,7 +344,41 @@ func TestRun_SpecDiffRunsInProcess(t *testing.T) {
 	require.Contains(t, out, `mode="check"`)
 	require.NotContains(t, out, `mode="fix"`)
 	require.Contains(t, out, "Foo")
+	require.Contains(t, out, "Fixing SPEC diff failures")
 	require.NotContains(t, out, "should-not-run")
+}
+
+func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+
+	err := os.WriteFile(filepath.Join(target, "tgt.go"), []byte("package tgt\n\nfunc Foo() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	spec := strings.Join([]string{
+		"# spec",
+		"",
+		"## Public API",
+		"",
+		"```go {api}",
+		"func Foo() {",
+		"}",
+		"```",
+		"",
+	}, "\n")
+	err = os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
+	require.NoError(t, err)
+
+	cr := runSpecDiff(relativePackageDir, target)
+	require.Equal(t, cmdrunner.OutcomeSuccess, cr.Outcome)
+	require.Empty(t, cr.Output)
+	require.NotContains(t, cr.Output, "Fixing SPEC diff failures")
+	require.NoError(t, cr.ExecError)
+	require.Equal(t, "codalotl", cr.Command)
+	require.Equal(t, []string{"spec", "diff", relativePackageDir}, cr.Args)
+	require.Equal(t, []string{"mode", "check"}, cr.Attrs)
+
+	// Silence unused in case a future refactor removes a module-dir dependency.
+	_ = sandboxDir
 }
 
 func writeTempModule(t *testing.T) (sandboxDir string, targetPkgAbsDir string, relativePackageDir string) {

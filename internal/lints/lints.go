@@ -3,6 +3,7 @@ package lints
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,12 @@ import (
 	"github.com/codalotl/codalotl/internal/specmd"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
+
+//go:embed spec_diff_instructions.md
+var embeddedSpecDiffInstructions string
+
+// SpecDiffInstructions are instructions provided to the LLM in the body of the spec diff XML response when that lint doesn't pass.
+var SpecDiffInstructions = strings.TrimRight(embeddedSpecDiffInstructions, "\n")
 
 // Situation indicates the context under which the lints are run. Internally, `SituationInitial`/`SituationTests` map to action `check`, and `SituationPatch`/`SituationFix`
 // map to action `fix`.
@@ -824,10 +831,18 @@ func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.Co
 		outcome = cmdrunner.OutcomeFailed
 	}
 
+	output := strings.TrimRight(out.String(), "\n")
+	if len(diffs) > 0 && SpecDiffInstructions != "" {
+		if output != "" {
+			output += "\n\n"
+		}
+		output += SpecDiffInstructions
+	}
+
 	cr := cmdrunner.CommandResult{
 		Command:           "codalotl",
 		Args:              []string{"spec", "diff", relativePackageDir},
-		Output:            strings.TrimRight(out.String(), "\n"),
+		Output:            output,
 		MessageIfNoOutput: "no issues found",
 		Attrs:             []string{"mode", "check"},
 		ExecStatus:        cmdrunner.ExecStatusCompleted,

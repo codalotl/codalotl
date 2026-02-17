@@ -225,6 +225,7 @@ Any step whose `ID` is `spec-diff` is executed in-process:
 - This is a `check`-only step (it never auto-fixes).
 - This check is only active if there's a SPEC.md file in the package.
 	- It has a pseudo Active command running the equivalent of `test ! -f path/to/SPEC.md` (exit 0 and no output for non-existent SPEC.md).
+- If `ok="false"` due to diffs, instructions are appended after the diff output.
 
 Example output (when active):
 
@@ -232,6 +233,8 @@ Example output (when active):
 <command ok="false" mode="check">
 $ codalotl spec diff path/to/pkg
 [output from FormatDiffs]
+
+[instructions]
 </command>
 ```
 
