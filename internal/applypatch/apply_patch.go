@@ -29,6 +29,22 @@ change_line: ("+" | "-" | " ") /(.+)/ LF
 eof_line: "*** End of File" LF
 %import common.LF`
 
+var errInvalidPatch = errors.New("invalid patch")
+
+// IsInvalidPatch reports whether err (as returned from ApplyPatch) indicates that the patch itself was invalid: malformed input, unsafe/unsupported paths, or a
+// hunk that could not be matched/applied.
+//
+// It returns false for non-patch problems such as permission or other filesystem I/O failures while applying.
+func IsInvalidPatch(err error) bool {
+	return errors.Is(err, errInvalidPatch)
+}
+func invalidPatchError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.Join(errInvalidPatch, err)
+}
+
 // ApplyPatch parses and applies a patch in the format defined by the grammar in ApplyPatchGrammar. It applies changes rooted at cwdAbsPath, which must be an absolute
 // path, and returns the relative file-level changes that were applied.
 //
@@ -81,7 +97,7 @@ func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error) {
 
 	parsed, err := parsePatch(patch)
 	if err != nil {
-		return nil, err
+		return nil, invalidPatchError(err)
 	}
 	var changes []FileChange
 	for idx := range parsed.Hunks {
@@ -89,7 +105,7 @@ func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error) {
 		origPath := h.Path
 		relPath, err := resolvePatchPath(root, origPath)
 		if err != nil {
-			return nil, fmt.Errorf("hunk %d path %q: %w", idx+1, origPath, err)
+			return nil, invalidPatchError(fmt.Errorf("hunk %d path %q: %w", idx+1, origPath, err))
 		}
 		h.Path = relPath
 
@@ -97,7 +113,7 @@ func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error) {
 			origMove := h.MoveTo
 			relMove, err := resolvePatchPath(root, origMove)
 			if err != nil {
-				return nil, fmt.Errorf("hunk %d move %q: %w", idx+1, origMove, err)
+				return nil, invalidPatchError(fmt.Errorf("hunk %d move %q: %w", idx+1, origMove, err))
 			}
 			h.MoveTo = relMove
 		}
@@ -489,12 +505,16 @@ func applyUpdate(root string, h fileHunk) error {
 
 	snapshot, err := readTextFile(src)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", h.Path, err)
+		readErr := fmt.Errorf("read %s: %w", h.Path, err)
+		if errors.Is(err, fs.ErrNotExist) {
+			return invalidPatchError(readErr)
+		}
+		return readErr
 	}
 
 	updatedLines, err := applyChangeSetsToLines(snapshot.lines, h.ChangeSets)
 	if err != nil {
-		return err
+		return invalidPatchError(err)
 	}
 
 	finalNewline := len(updatedLines) > 0
