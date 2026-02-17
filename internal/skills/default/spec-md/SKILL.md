@@ -83,7 +83,7 @@ When asked to review a new section of the SPEC.md, you may use `git diff -- path
 When asked to "impl":
 - If there's no existing implementation, just make an implementation that conforms to the spec, using good judgement in ambiguous situations.
 - If there IS an existing implementation:
-    - It may help to detect modifications to the spec with `git diff -- path/to/SPEC.md`.
+    - It may help to detect modifications to the spec with `git diff -- path/to/SPEC.md`, `git diff HEAD~1 HEAD -- path/to/SPEC.md`, or similar.
 - Unless otherwise instructed, write tests.
     - Rule of thumb: 80% coverage at 20% of the cost.
     - When making small changes (e.g., based on a new section, or changes to existing sections), it sometimes does NOT warrant a NEW test case (these tend to violate the above rule of thumb).
