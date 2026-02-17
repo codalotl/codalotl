@@ -325,16 +325,17 @@ Complete:
 
 ### EventTypeToolCall and EventTypeToolComplete - run_tests
 
+Complete:
+
 ```
-• Ran Tests some/pkg -v -run Some
-  └ $ go test ./codeai/gocodecontext
-    ok  	axi/some/pkg	0.374s
+• Ran Tests ./internal/tools/toolsets
+  └ Tests: pass | Lints: pass
 ```
 
 - Ran Tests API is Bold, Colorful.
 - some/pkg is normal
-- Bullet is Red or Green based on test outcome
-- The output is stripped of the XML tag
+- Bullet is Red or Green based on the overall outcome (tests AND lints).
+- If a section is missing, the status is `-`.
 
 ### EventTypeToolCall and EventTypeToolComplete - apply_patch
 

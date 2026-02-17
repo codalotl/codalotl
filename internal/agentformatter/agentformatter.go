@@ -1978,17 +1978,103 @@ func stripOuterXMLTag(s string) string {
 	return strings.TrimSpace(inner)
 }
 
-// summarizeRunTests builds output lines for run_tests, including the echoed `$ go test <path>` and stripping any outer XML tag.
+type runTestsXMLSection struct {
+	found   bool
+	okFound bool
+	ok      bool
+	inner   string
+}
+
+func extractRunTestsXMLSection(content, tagName string) runTestsXMLSection {
+	needle := "<" + tagName
+	openStart := strings.Index(content, needle)
+	if openStart < 0 {
+		return runTestsXMLSection{}
+	}
+	gtRel := strings.IndexByte(content[openStart:], '>')
+	if gtRel < 0 {
+		return runTestsXMLSection{}
+	}
+	gt := openStart + gtRel
+	openTag := content[openStart : gt+1]
+	section := runTestsXMLSection{}
+	if ok, found := extractXMLishOK(openTag); found {
+		section.ok = ok
+		section.okFound = true
+	}
+	closeTag := "</" + tagName + ">"
+	closeRel := strings.Index(content[gt+1:], closeTag)
+	if closeRel < 0 {
+		return runTestsXMLSection{}
+	}
+	closeStart := (gt + 1) + closeRel
+	section.inner = strings.TrimSpace(content[gt+1 : closeStart])
+	section.found = true
+	return section
+}
+
+type runTestsSectionsSummary struct {
+	tests runTestsXMLSection
+	lints runTestsXMLSection
+	line  string
+}
+
+func runTestsStatusWord(sec runTestsXMLSection) string {
+	if !sec.okFound {
+		return "unknown"
+	}
+	if sec.ok {
+		return "pass"
+	}
+	return "fail"
+}
+
+func summarizeRunTestsSections(content string) (runTestsSectionsSummary, bool) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return runTestsSectionsSummary{}, false
+	}
+	summary := runTestsSectionsSummary{
+		tests: extractRunTestsXMLSection(content, "test-status"),
+		lints: extractRunTestsXMLSection(content, "lint-status"),
+	}
+	if !summary.tests.found && !summary.lints.found {
+		return runTestsSectionsSummary{}, false
+	}
+	testsWord := "-"
+	if summary.tests.found {
+		testsWord = runTestsStatusWord(summary.tests)
+	}
+	lintsWord := "-"
+	if summary.lints.found {
+		lintsWord = runTestsStatusWord(summary.lints)
+	}
+	summary.line = "Tests: " + testsWord + " | Lints: " + lintsWord
+	return summary, true
+}
+
+func overallSuccessFromRunTestsSummary(s runTestsSectionsSummary) (bool, bool) {
+	if s.tests.found && s.lints.found {
+		if s.tests.okFound && s.lints.okFound {
+			return s.tests.ok && s.lints.ok, true
+		}
+		return false, false
+	}
+	if s.tests.found && s.tests.okFound {
+		return s.tests.ok, true
+	}
+	if s.lints.found && s.lints.okFound {
+		return s.lints.ok, true
+	}
+	return false, false
+}
+
+// summarizeRunTests builds output lines for run_tests, preferring a concise status line when the tool output includes separate <test-status> and <lint-status> wrappers.
 func (f *textTUIFormatter) summarizeRunTests(e agent.Event, path string) (success bool, lines []toolOutputLine) {
 	success = true
 	var content string
+	var explicitSuccess *bool
 	if e.ToolResult != nil {
-		// Determine success from structured payload if available.
-		if s, ok := toolResultSuccess(*e.ToolResult); ok {
-			success = s
-		} else {
-			success = !e.ToolResult.IsError
-		}
 		trimmed := strings.TrimSpace(e.ToolResult.Result)
 		var payload struct {
 			Content string `json:"content"`
@@ -1996,6 +2082,7 @@ func (f *textTUIFormatter) summarizeRunTests(e agent.Event, path string) (succes
 			Success *bool  `json:"success"`
 		}
 		if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+			explicitSuccess = payload.Success
 			if payload.Error != "" {
 				return success, []toolOutputLine{{
 					text:          fmt.Sprintf("Error: %s", payload.Error),
@@ -2014,8 +2101,40 @@ func (f *textTUIFormatter) summarizeRunTests(e agent.Event, path string) (succes
 			}
 			content = trimmed
 		}
+		// Determine success from structured payload if available.
+		if explicitSuccess != nil {
+			success = *explicitSuccess
+		} else if s, ok := toolResultSuccess(*e.ToolResult); ok {
+			success = s
+		} else {
+			success = !e.ToolResult.IsError
+		}
 	}
-	content = stripOuterXMLTag(strings.TrimSpace(content))
+	content = strings.TrimSpace(content)
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	if content == "" {
+		return success, nil
+	}
+	// Newer run_tests output has separate, XML-ish wrappers for tests and lints. Prefer a concise summary line.
+	if summary, ok := summarizeRunTestsSections(content); ok {
+		// summary may be empty in edge cases; if present, always emit it first.
+		if summary.line != "" {
+			lines = append(lines, toolOutputLine{
+				text:          summary.line,
+				style:         runeStyle{color: colorAccent},
+				highlightCode: false,
+			})
+		}
+		// If the tool didn't provide a top-level success value, compute it from section statuses when possible.
+		if explicitSuccess == nil {
+			if computed, ok := overallSuccessFromRunTestsSummary(summary); ok {
+				success = computed
+			}
+		}
+		// Per SPEC, even when tests/lints fail, keep output minimal and do not append additional details.
+		return success, lines
+	}
+	content = stripOuterXMLTag(content)
 
 	// Do not reconstruct the command; it's already included in the tool output.
 	// Just summarize the provided content (already stripped of any outer XML).

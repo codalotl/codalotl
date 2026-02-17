@@ -1810,6 +1810,148 @@ func TestAssistantTextWrapsWideRunes(t *testing.T) {
 	}, lines)
 }
 
+func TestRunTestsCompleteSuccessShowsConciseStatusLine(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "run_tests",
+		Input: `{"path":"./internal/tools/toolsets"}`,
+	}
+	content := `<test-status ok="true">
+$ go test ./internal/tools/toolsets
+ok  	github.com/codalotl/codalotl/internal/tools/toolsets	(cached)
+</test-status>
+<lint-status ok="true">
+$ staticcheck ./internal/tools/toolsets
+</lint-status>`
+	result := llmstream.ToolResult{
+		Result:  content,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "run_tests",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 140)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Ran Tests ./internal/tools/toolsets",
+			"  └ Tests: pass | Lints: pass",
+		}, lines)
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+		assert.NotContains(t, stripANSI(out), "<test-status")
+		assert.NotContains(t, stripANSI(out), "<lint-status")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Ran Tests ./internal/tools/toolsets",
+			"  └ Tests: pass | Lints: pass",
+		}, lines)
+	})
+}
+
+func TestRunTestsCompleteLintFailureShowsConciseStatusOnly(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "run_tests",
+		Input: `{"path":"./internal/tools/toolsets"}`,
+	}
+	content := `<test-status ok="true">
+$ go test ./internal/tools/toolsets
+ok  	github.com/codalotl/codalotl/internal/tools/toolsets	(cached)
+</test-status>
+<lint-status ok="false">
+$ gofmt -l -w internal/agentformatter
+file1.go
+file2.go
+file3.go
+file4.go
+file5.go
+file6.go
+</lint-status>`
+	result := llmstream.ToolResult{
+		Result:  content,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "run_tests",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := formatter.FormatEvent(event, 200)
+	require.NotEmpty(t, out)
+	stripped := stripANSI(out)
+	lines := strings.Split(stripped, "\n")
+	require.Equal(t, []string{
+		"• Ran Tests ./internal/tools/toolsets",
+		"  └ Tests: pass | Lints: fail",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+	assert.NotContains(t, stripped, "<test-status")
+	assert.NotContains(t, stripped, "<lint-status")
+	assert.NotContains(t, stripped, "$ go test")
+	assert.NotContains(t, stripped, "$ gofmt")
+}
+
+func TestRunTestsCompleteMissingLintSectionUsesDashStatus(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "run_tests",
+		Input: `{"path":"./internal/tools/toolsets"}`,
+	}
+	content := `<test-status ok="true">
+$ go test ./internal/tools/toolsets
+ok  	github.com/codalotl/codalotl/internal/tools/toolsets	(cached)
+</test-status>`
+	result := llmstream.ToolResult{
+		Result:  content,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "run_tests",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := formatter.FormatEvent(event, 200)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Ran Tests ./internal/tools/toolsets",
+		"  └ Tests: pass | Lints: -",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "overall success should be derived from the only present section")
+}
+
 func TestSubAgentIndentationTUI(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -1819,11 +1961,14 @@ func TestSubAgentIndentationTUI(t *testing.T) {
 		Name:  "run_tests",
 		Input: `{"path":"./codeai/gocodecontext"}`,
 	}
-	content := "$ go test ./codeai/gocodecontext\nok  	axi/codeai/gocodecontext\t0.374s"
-	payload := map[string]any{
-		"success": true,
-		"content": content,
-	}
+	content := `<test-status ok="true">
+$ go test ./codeai/gocodecontext
+ok  	axi/codeai/gocodecontext	0.374s
+</test-status>
+<lint-status ok="true">
+$ gofmt -l -w internal/agentformatter
+</lint-status>`
+	payload := map[string]any{"content": content}
 	data, err := json.Marshal(payload)
 	require.NoError(t, err)
 	result := llmstream.ToolResult{
@@ -1841,10 +1986,9 @@ func TestSubAgentIndentationTUI(t *testing.T) {
 	out := NewTUIFormatter(cfg).FormatEvent(event, 80)
 	require.NotEmpty(t, out)
 	lines := strings.Split(stripANSI(out), "\n")
-	require.Equal(t, 3, len(lines))
+	require.Equal(t, 2, len(lines))
 	assert.Equal(t, "  • Ran Tests ./codeai/gocodecontext", lines[0])
-	assert.Equal(t, "    └ $ go test ./codeai/gocodecontext", lines[1])
-	assert.Equal(t, "      "+termformat.Sanitize("ok  	axi/codeai/gocodecontext\t0.374s", 4), lines[2])
+	assert.Equal(t, "    └ Tests: pass | Lints: pass", lines[1])
 }
 
 func TestSubAgentIndentationCLI(t *testing.T) {
@@ -1856,11 +2000,14 @@ func TestSubAgentIndentationCLI(t *testing.T) {
 		Name:  "run_tests",
 		Input: `{"path":"./codeai/gocodecontext"}`,
 	}
-	content := "$ go test ./codeai/gocodecontext\nok  	axi/codeai/gocodecontext\t0.374s"
-	payload := map[string]any{
-		"success": true,
-		"content": content,
-	}
+	content := `<test-status ok="true">
+$ go test ./codeai/gocodecontext
+ok  	axi/codeai/gocodecontext	0.374s
+</test-status>
+<lint-status ok="true">
+$ gofmt -l -w internal/agentformatter
+</lint-status>`
+	payload := map[string]any{"content": content}
 	data, err := json.Marshal(payload)
 	require.NoError(t, err)
 	result := llmstream.ToolResult{
@@ -1878,10 +2025,9 @@ func TestSubAgentIndentationCLI(t *testing.T) {
 	out := NewTUIFormatter(cfg).FormatEvent(event, MinTerminalWidth)
 	require.NotEmpty(t, out)
 	lines := strings.Split(stripANSI(out), "\n")
-	require.Equal(t, 3, len(lines))
+	require.Equal(t, 2, len(lines))
 	assert.Equal(t, "    • Ran Tests ./codeai/gocodecontext", lines[0])
-	assert.Equal(t, "      └ $ go test ./codeai/gocodecontext", lines[1])
-	assert.Equal(t, "        "+termformat.Sanitize("ok  	axi/codeai/gocodecontext\t0.374s", 4), lines[2])
+	assert.Equal(t, "      └ Tests: pass | Lints: pass", lines[1])
 }
 
 func stripANSI(in string) string {
