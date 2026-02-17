@@ -26,10 +26,10 @@ const recursionEnvVar = "CODEAI_INITIALCONTEXT_ACTIVE_TESTS"
 //   - A list of all packages that import your package.
 //   - Current state of build errors, tests, and lints.
 //
-// If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by
-// lookups. Instead, it emits the corresponding status blocks with a "not run" message.
+// If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by sections. Instead, it emits the corresponding status blocks with a
+// "not run" message.
 //
-// lintSteps controls which lints are run. If nil, lints.DefaultSteps() is used.
+// lintSteps controls which lints are run. If lintSteps is nil, lints.DefaultSteps() is used.
 func Create(pkg *gocode.Package, lintSteps []lints.Step, skipAllChecks bool) (string, error) {
 	if pkg == nil {
 		return "", fmt.Errorf("nil package")
@@ -243,23 +243,16 @@ func lineCount(s string) int {
 	return strings.Count(s, "\n") + 1
 }
 
-// runTestsWithRecursionGuard protects us from the situation where a package's tests invoke
-// `initialcontext.Create`, which then tries to collect the package's own test output again.
-// Example: the tests for `axi/codeai/cmd/codagent` call this helper on their package, and the
-// helper in turn calls `go test ./codeai/cmd/codagent`. That second `go test` rebuilds and
-// reruns the same test binary, which reaches back into `initialcontext.Create`, which launches
-// another `go test`, and so on forever.
+// runTestsWithRecursionGuard protects us from the situation where a package's tests invoke `initialcontext.Create`, which then tries to collect the package's own
+// test output again. Example: the tests for `axi/codeai/cmd/codagent` call this helper on their package, and the helper in turn calls `go test ./codeai/cmd/codagent`.
+// That second `go test` rebuilds and reruns the same test binary, which reaches back into `initialcontext.Create`, which launches another `go test`, and so on forever.
 //
 // The guard works in two layers:
-//  1. We thread every package we are currently testing through `CODEAI_INITIALCONTEXT_ACTIVE_TESTS`.
-//     Before launching `go test`, we append the current import path to the chain; if the path is
-//     already present, we know a parent call is already exercising that package and we short-circuit
-//     with a fake status.
-//  2. Some recursion loops do not use the env var—for example, when `go test` directly executes the
-//     binary for the package under test. In that case we detect the loop by recognizing that the
-//     current process was booted by `go test` (testing flags are registered) and that our cwd matches
-//     the package directory. If both are true, we are already running inside that package's own
-//     `go test` process, so we skip invoking it again.
+//  1. We thread every package we are currently testing through `CODEAI_INITIALCONTEXT_ACTIVE_TESTS`. Before launching `go test`, we append the current import path
+//     to the chain; if the path is already present, we know a parent call is already exercising that package and we short-circuit with a fake status.
+//  2. Some recursion loops do not use the env var—for example, when `go test` directly executes the binary for the package under test. In that case we detect
+//     the loop by recognizing that the current process was booted by `go test` (testing flags are registered) and that our cwd matches the package directory. If
+//     both are true, we are already running inside that package's own `go test` process, so we skip invoking it again.
 func runTestsWithRecursionGuard(ctx context.Context, pkg *gocode.Package, moduleAbsPath, pkgAbsPath string) (string, error) {
 	if recursionDetected(pkg.ImportPath) || selfTestRecursionDetected(pkg) {
 		return fakeTestStatus(pkg), nil
