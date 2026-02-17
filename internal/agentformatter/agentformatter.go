@@ -566,7 +566,7 @@ func sillyAgentToolAndPath(e agent.Event) (tool string, path string, hasPath boo
 
 func (f *textTUIFormatter) tuiSillyAgentOutsidePackage(e agent.Event, width int) string {
 	tool, path, hasPath := sillyAgentToolAndPath(e)
-	msg := "Silly agent tried " + tool
+	msg := "Silly LLM tried " + tool
 	if hasPath {
 		msg += " on " + path
 	}
@@ -578,7 +578,7 @@ func (f *textTUIFormatter) tuiSillyAgentOutsidePackage(e agent.Event, width int)
 
 func (f *textTUIFormatter) cliSillyAgentOutsidePackage(e agent.Event) string {
 	tool, path, hasPath := sillyAgentToolAndPath(e)
-	msg := "Silly agent tried " + tool
+	msg := "Silly LLM tried " + tool
 	if hasPath {
 		msg += " on " + path
 	}

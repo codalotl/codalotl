@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
@@ -551,13 +552,13 @@ func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {
 	out := NewTUIFormatter(cfg).FormatEvent(event, 100)
 	require.NotEmpty(t, out)
 
-	require.Equal(t, "• Silly agent tried read_file on some/file.go outside of package.", stripANSI(out))
+	require.Equal(t, "• Silly LLM tried read_file on some/file.go outside of package.", stripANSI(out))
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
-	assert.Contains(t, out, ansiWrap("Silly agent tried read_file on some/file.go outside of package.", pal, colorAccent, false, false))
+	assert.Contains(t, out, ansiWrap("Silly LLM tried read_file on some/file.go outside of package.", pal, colorAccent, false, false))
 	assert.NotContains(t, stripANSI(out), "└")
 }
 
-func TestToolCompleteSillyAgentOutsidePackageReadFileCLI(t *testing.T) {
+func TestToolCompleteSillyLLMOutsidePackageReadFileCLI(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -581,10 +582,10 @@ func TestToolCompleteSillyAgentOutsidePackageReadFileCLI(t *testing.T) {
 
 	out := NewTUIFormatter(cfg).FormatEvent(event, MinTerminalWidth)
 	require.NotEmpty(t, out)
-	require.Equal(t, "• Silly agent tried read_file on some/file.go outside of package.", stripANSI(out))
+	require.Equal(t, "• Silly LLM tried read_file on some/file.go outside of package.", stripANSI(out))
 }
 
-func TestToolCompleteSillyAgentOutsidePackageNoPath(t *testing.T) {
+func TestToolCompleteSillyLLMOutsidePackageNoPath(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -608,7 +609,7 @@ func TestToolCompleteSillyAgentOutsidePackageNoPath(t *testing.T) {
 
 	out := NewTUIFormatter(cfg).FormatEvent(event, 100)
 	require.NotEmpty(t, out)
-	require.Equal(t, "• Silly agent tried apply_patch outside of package.", stripANSI(out))
+	require.Equal(t, "• Silly LLM tried apply_patch outside of package.", stripANSI(out))
 }
 
 func TestDiagnosticsToolCallFormatting(t *testing.T) {
@@ -1087,6 +1088,67 @@ func TestApplyPatchCompleteWithError(t *testing.T) {
 	}, stripped)
 	assert.Contains(t, out, ansiWrap("•", pal, colorRed, false, false))
 	assert.Contains(t, out, ansiWrap("Error: patch failed", pal, colorRed, false, false))
+}
+
+func TestApplyPatchCompleteInvalidPatchIsConcise(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	invalidPatch := `*** Update File: foo/bar.go
+@@
+- old line
++ new line
+*** End Patch
+`
+	_, err := applypatch.ApplyPatch(t.TempDir(), invalidPatch)
+	require.Error(t, err)
+	require.True(t, applypatch.IsInvalidPatch(err))
+
+	call := llmstream.ToolCall{
+		Name:  "apply_patch",
+		Input: invalidPatch,
+	}
+	result := llmstream.ToolResult{
+		// Simulate a tool error that might include the patch text. We should never render it for invalid patches.
+		Result:    "invalid patch:\n" + invalidPatch,
+		IsError:   true,
+		SourceErr: err,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "apply_patch",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Edit foo/bar.go",
+			"  └ Failed: LLM supplied an invalid patch.",
+		}, lines)
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+		assert.NotContains(t, stripANSI(out), "*** Update File:")
+		assert.NotContains(t, stripANSI(out), "old line")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Edit foo/bar.go",
+			"  └ Failed: LLM supplied an invalid patch.",
+		}, lines)
+		assert.NotContains(t, stripANSI(out), "*** Update File:")
+		assert.NotContains(t, stripANSI(out), "old line")
+	})
 }
 
 func TestUpdatePlanCallFormatting(t *testing.T) {
