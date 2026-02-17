@@ -2194,32 +2194,152 @@ func (f *textTUIFormatter) cliRunTestsToolComplete(e agent.Event, _ bool, _ stri
 }
 
 // -------- run_project_tests formatting --------
+func extractRunProjectTestsContent(e agent.Event) (success bool, content string) {
+	success = true
+	if e.ToolResult == nil {
+		return success, ""
+	}
+	trimmed := strings.TrimSpace(e.ToolResult.Result)
+	if trimmed == "" {
+		if s, ok := toolResultSuccess(*e.ToolResult); ok {
+			success = s
+		} else {
+			success = !e.ToolResult.IsError
+		}
+		return success, ""
+	}
+	var payload struct {
+		Content string `json:"content"`
+		Error   string `json:"error"`
+		Success *bool  `json:"success"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+		content = payload.Content
+		if strings.TrimSpace(content) == "" && strings.TrimSpace(payload.Error) != "" {
+			content = payload.Error
+		}
+		if payload.Success != nil {
+			success = *payload.Success
+		} else if s, ok := toolResultSuccess(*e.ToolResult); ok {
+			success = s
+		} else {
+			success = !e.ToolResult.IsError
+		}
+		return success, content
+	}
+	content = trimmed
+	if s, ok := toolResultSuccess(*e.ToolResult); ok {
+		success = s
+	} else {
+		success = !e.ToolResult.IsError
+	}
+	return success, content
+}
+func extractRunProjectTestsFailures(content string) []string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+	var failures []string
+	seen := map[string]struct{}{}
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		failures = append(failures, s)
+	}
+	// Prefer an explicit "Failed:" marker (the tool's structured output).
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "Failed:") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "Failed:"))
+		if rest != "" {
+			add(rest)
+		}
+		for _, next := range lines[i+1:] {
+			t := strings.TrimSpace(next)
+			if t == "" {
+				continue
+			}
+			// Best-effort: stop if we hit an XML closing tag.
+			if strings.HasPrefix(t, "</") && strings.HasSuffix(t, ">") {
+				break
+			}
+			add(t)
+		}
+		return failures
+	}
+	// Otherwise, infer failures from `go test` output: lines like `FAIL\timport/path\t0.123s`.
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !(strings.HasPrefix(trimmed, "FAIL\t") || strings.HasPrefix(trimmed, "FAIL ")) {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 2 {
+			continue
+		}
+		add(fields[1])
+	}
+	return failures
+}
+func (f *textTUIFormatter) summarizeRunProjectTests(e agent.Event) (success bool, lines []toolOutputLine) {
+	success, content := extractRunProjectTestsContent(e)
+	content = stripOuterXMLTag(strings.TrimSpace(content))
+	if success {
+		return true, []toolOutputLine{{
+			text:          "Passed",
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		}}
+	}
+	failures := extractRunProjectTestsFailures(content)
+	lines = append(lines, toolOutputLine{
+		text:          "Failed:",
+		style:         runeStyle{color: colorAccent},
+		highlightCode: false,
+	})
+	for _, failure := range failures {
+		lines = append(lines, toolOutputLine{
+			text:          sanitizeText(failure),
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		})
+	}
+	return false, lines
+}
 
-// For run_project_tests there is no meaningful input to show; headers should not include a path.
 func (f *textTUIFormatter) tuiRunProjectTestsToolCall(e agent.Event, width int) string {
 	segments := []textSegment{
-		{text: "Run Project Tests", style: runeStyle{color: colorColorful, bold: true}},
+		{text: "Run Tests", style: runeStyle{color: colorColorful, bold: true}},
 	}
+	segments = append(segments, textSegment{text: " ./..."})
 	return f.tuiBulletLine(width, colorAccent, segments...)
 }
 
 func (f *textTUIFormatter) cliRunProjectTestsToolCall(e agent.Event) string {
 	segments := []textSegment{
-		{text: "Run Project Tests", style: runeStyle{color: colorColorful, bold: true}},
+		{text: "Run Tests", style: runeStyle{color: colorColorful, bold: true}},
 	}
+	segments = append(segments, textSegment{text: " ./..."})
 	return f.cliBulletLine(colorAccent, segments...)
 }
 
 func (f *textTUIFormatter) tuiRunProjectTestsToolComplete(e agent.Event, width int, _ bool, _ string, _ []toolOutputLine) string {
-	// Reuse the same output summarization as run_tests.
-	success, lines := f.summarizeRunTests(e, "")
+	success, lines := f.summarizeRunProjectTests(e)
 	bullet := colorGreen
 	if !success {
 		bullet = colorRed
 	}
 	segments := []textSegment{
-		{text: "Ran Project Tests", style: runeStyle{color: colorColorful, bold: true}},
+		{text: "Ran Tests", style: runeStyle{color: colorColorful, bold: true}},
 	}
+	segments = append(segments, textSegment{text: " ./..."})
 	var builder strings.Builder
 	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
 	f.appendTUIToolOutput(&builder, width, lines)
@@ -2227,14 +2347,15 @@ func (f *textTUIFormatter) tuiRunProjectTestsToolComplete(e agent.Event, width i
 }
 
 func (f *textTUIFormatter) cliRunProjectTestsToolComplete(e agent.Event, _ bool, _ string, _ []toolOutputLine) string {
-	success, lines := f.summarizeRunTests(e, "")
+	success, lines := f.summarizeRunProjectTests(e)
 	bullet := colorGreen
 	if !success {
 		bullet = colorRed
 	}
 	segments := []textSegment{
-		{text: "Ran Project Tests", style: runeStyle{color: colorColorful, bold: true}},
+		{text: "Ran Tests", style: runeStyle{color: colorColorful, bold: true}},
 	}
+	segments = append(segments, textSegment{text: " ./..."})
 	out := []string{f.cliBulletLine(bullet, segments...)}
 	if rest := f.cliToolOutputLines(lines); len(rest) > 0 {
 		out = append(out, rest...)

@@ -337,6 +337,26 @@ Complete:
 - Bullet is Red or Green based on the overall outcome (tests AND lints).
 - If a section is missing, the status is `-`.
 
+### EventTypeToolCall and EventTypeToolComplete - run_project_tests
+
+Complete:
+
+```
+• Ran Tests ./...
+  └ Passed
+```
+
+or
+
+```
+• Ran Tests ./...
+  └ Failed:
+    some/pkg1
+    other/pkg2
+```
+
+- NOTE: lints are not run in project tests.
+
 ### EventTypeToolCall and EventTypeToolComplete - apply_patch
 
 Example:
@@ -465,11 +485,11 @@ type Formatter interface {
 // Config controls the terminal colorization options. We need to know the intended bg/fg, so we can create other colors that are consistent.
 // For instance, if we want to colorize backtick-wrapped paths/identifiers/code different, can modify ForegroundColor to be closer to BackgroundColor.
 type Config struct {
-    PlainText bool // true: disable colors and ANSI escape characters (bold, italics, etc).
-    BackgroundColor termformat.Color // the terminal's background color. If nil, uses termformat.DefaultFBBGColor.
-    ForegroundColor termformat.Color // the terminal's foreground color. If nil, uses termformat.DefaultFBBGColor.
-    AccentColor termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
-    ColorfulColor termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	PlainText       bool             // true: disable colors and ANSI escape characters (bold, italics, etc).
+	BackgroundColor termformat.Color // the terminal's background color. If nil, uses termformat.DefaultFBBGColor.
+	ForegroundColor termformat.Color // the terminal's foreground color. If nil, uses termformat.DefaultFBBGColor.
+	AccentColor     termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	ColorfulColor   termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
 }
 
 // creates a new Formatter

@@ -1951,6 +1951,81 @@ ok  	github.com/codalotl/codalotl/internal/tools/toolsets	(cached)
 	}, lines)
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "overall success should be derived from the only present section")
 }
+func TestRunProjectTestsCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
+	event := agent.Event{Type: agent.EventTypeToolCall, Tool: "run_project_tests", ToolCall: &call}
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		assert.Equal(t, "• Run Tests ./...", stripANSI(out))
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
+		assert.Contains(t, out, ansiWrap("Run Tests", pal, colorColorful, false, true))
+	})
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, "• Run Tests ./...", stripANSI(out))
+	})
+}
+func TestRunProjectTestsCompleteSuccessShowsPassed(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
+	result := llmstream.ToolResult{Result: `{"success":true,"content":"(elided)"}`, IsError: false}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: "run_project_tests", ToolCall: &call, ToolResult: &result}
+	out := formatter.FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Equal(t, []string{
+		"• Ran Tests ./...",
+		"  └ Passed",
+	}, lines)
+	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+}
+func TestRunProjectTestsCompleteFailureShowsPackages(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
+	result := llmstream.ToolResult{Result: `{"success":false,"content":"Failed:\nsome/pkg1\nother/pkg2\n"}`, IsError: false}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: "run_project_tests", ToolCall: &call, ToolResult: &result}
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Ran Tests ./...",
+			"  └ Failed:",
+			"    some/pkg1",
+			"    other/pkg2",
+		}, lines)
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+	})
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Ran Tests ./...",
+			"  └ Failed:",
+			"    some/pkg1",
+			"    other/pkg2",
+		}, lines)
+	})
+}
 
 func TestSubAgentIndentationTUI(t *testing.T) {
 	cfg := Config{
