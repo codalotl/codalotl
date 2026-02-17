@@ -295,8 +295,7 @@ type Step struct {
 // DefaultSteps returns default steps. It is equivalent to ResolveSteps(nil, 0).
 func DefaultSteps() []Step
 
-// ResolveSteps merges defaults and user config, applying disable rules.
-// Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
+// ResolveSteps merges defaults and user config, applying disable rules. Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
 // error. It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
 func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error)
 
