@@ -97,7 +97,7 @@ func FixLints(ctx context.Context, sandboxDir string, targetPath string, steps [
 
 // CheckLints runs the configured lint pipeline in check mode against targetPath (file or directory), returning a lint-status XML block.
 func CheckLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step) (string, error) {
-	return runLints(ctx, sandboxDir, targetPath, steps, lints.SituationCheck)
+	return runLints(ctx, sandboxDir, targetPath, steps, lints.SituationTests)
 }
 
 func runLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step, situation lints.Situation) (string, error) {

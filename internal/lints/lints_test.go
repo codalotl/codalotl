@@ -19,7 +19,7 @@ func TestResolveSteps_Defaults(t *testing.T) {
 	require.Len(t, steps, 2)
 	require.Equal(t, "gofmt", steps[0].ID)
 	require.Equal(t, "spec-diff", steps[1].ID)
-	require.Equal(t, []Situation{SituationFix}, steps[1].Situations)
+	require.Equal(t, []Situation{SituationTests, SituationFix}, steps[1].Situations)
 	require.NotNil(t, steps[1].Check)
 	require.Nil(t, steps[1].Fix)
 	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
@@ -283,7 +283,7 @@ func TestLints_Reflows(t *testing.T) {
 }
 
 func TestRun_NoSteps(t *testing.T) {
-	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, SituationCheck)
+	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
 }
@@ -380,7 +380,7 @@ func TestRun_CheckModeRunsAllSteps(t *testing.T) {
 		},
 	}
 
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 
 	require.Contains(t, out, `lint-status ok="false"`)
@@ -427,7 +427,7 @@ func TestRun_FiltersBySituation(t *testing.T) {
 	steps := []Step{
 		{
 			ID:         "check-only",
-			Situations: []Situation{SituationCheck},
+			Situations: []Situation{SituationTests},
 			Check:      helperCmd("", 0, true),
 		},
 		{
@@ -438,7 +438,7 @@ func TestRun_FiltersBySituation(t *testing.T) {
 		},
 	}
 
-	outCheck, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	outCheck, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, 1, strings.Count(outCheck, "\n$ "))
 
@@ -457,7 +457,7 @@ func TestRun_ConditionalStepInactiveIsSkipped(t *testing.T) {
 			Check:  helperCmd("should-not-run", 0, false),
 		},
 	}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
 }
@@ -472,7 +472,7 @@ func TestRun_ConditionalStepWhitespaceOutputIsInactive(t *testing.T) {
 			Check:  helperCmd("should-not-run", 0, false),
 		},
 	}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
 }
@@ -487,7 +487,7 @@ func TestRun_ConditionalStepActiveRunsAndActiveOutputIsInvisible(t *testing.T) {
 			Check:  helperCmd("ran", 0, false),
 		},
 	}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, 1, strings.Count(out, "\n$ "))
 	require.Contains(t, out, "ran")
@@ -510,7 +510,7 @@ func TestRun_ConditionalStepErrorIsTreatedActive(t *testing.T) {
 			Check: helperCmd("ran", 0, false),
 		},
 	}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, 1, strings.Count(out, "\n$ "))
 	require.Contains(t, out, "ran")

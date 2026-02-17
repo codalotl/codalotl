@@ -17,18 +17,15 @@ import (
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
 
-// Situation indicates the UX context under which the lints are run.
-//
-// Internally:
-//   - SituationInitial / SituationCheck imply "check"
-//   - SituationPatch / SituationFix imply "fix"
+// Situation indicates the context under which the lints are run. Internally, `SituationInitial`/`SituationTests` map to action `check`, and `SituationPatch`/`SituationFix`
+// map to action `fix`.
 type Situation string
 
 const (
 	SituationInitial Situation = "initial"
 	SituationPatch   Situation = "patch"
 	SituationFix     Situation = "fix"
-	SituationCheck   Situation = "check"
+	SituationTests   Situation = "tests"
 )
 
 type action string
@@ -53,9 +50,7 @@ type Lints struct {
 	Steps   []Step     `json:"steps,omitempty"`
 }
 
-// Reflows returns true if the lint configuration runs reflow in any situation where reflow may be executed (patch/fix/check).
-//
-// If the configuration is invalid (and thus cannot be resolved), it returns false.
+// Reflows returns true if the lint configuration runs reflow.
 func (l Lints) Reflows() bool {
 	steps, err := ResolveSteps(&l, 0)
 	if err != nil {
@@ -67,7 +62,7 @@ func (l Lints) Reflows() bool {
 		}
 		// Reflow is always skipped for SituationInitial, so only treat it as
 		// enabled if it can run in a non-initial situation.
-		if stepEnabledInSituation(s, SituationCheck) ||
+		if stepEnabledInSituation(s, SituationTests) ||
 			stepEnabledInSituation(s, SituationPatch) ||
 			stepEnabledInSituation(s, SituationFix) {
 			return true
@@ -81,27 +76,23 @@ type Step struct {
 	ID string `json:"id,omitempty"`
 
 	// The step will be run in the following situations.
-	//   - If omitted/nil: run in all situations.
-	//   - If []: run in no situations.
+	//   - If omitted/null: run in all situations.
+	//   - If []: run in no situations (disable).
 	Situations []Situation `json:"situations,omitempty"`
 
-	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no output: step is inactive. Otherwise
-	// (including any error): active.
+	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no non-whitespace output: step
+	// is inactive. Otherwise, active.
 	Active *cmdrunner.Command `json:"active,omitempty"`
 
-	// Check/Fix override Cmd for their respective actions.
 	Check *cmdrunner.Command `json:"check,omitempty"`
-
-	Fix *cmdrunner.Command `json:"fix,omitempty"`
+	Fix   *cmdrunner.Command `json:"fix,omitempty"`
 }
 
 const defaultReflowWidth = 120
 
 const reflowCheckInstructions = "never manually fix these unless asked; fixing is automatic on apply_patch"
 
-// DefaultSteps returns the default lint steps.
-//
-// It is equivalent to ResolveSteps(nil, 0).
+// DefaultSteps returns default steps. It is equivalent to ResolveSteps(nil, 0).
 func DefaultSteps() []Step {
 	return defaultSteps(0)
 }
@@ -179,7 +170,7 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 		// Reflow is intentionally excluded from initial context creation.
 		return Step{
 			ID:         "reflow",
-			Situations: []Situation{SituationPatch, SituationFix, SituationCheck},
+			Situations: []Situation{SituationPatch, SituationFix, SituationTests},
 			Check:      reflowCheck,
 			Fix:        reflowFix,
 		}, true
@@ -241,11 +232,11 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 			MessageIfNoOutput:      "no issues found",
 		}
 
-		// Spec diffs are only run in dedicated fix flows by default (not during
-		// apply_patch auto-fix).
+		// Spec diffs are enabled in tests and dedicated fix flows by default (not
+		// during apply_patch auto-fix).
 		return Step{
 			ID:         "spec-diff",
-			Situations: []Situation{SituationFix},
+			Situations: []Situation{SituationTests, SituationFix},
 			Check:      specDiffCheck,
 		}, true
 	default:
@@ -254,9 +245,7 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 }
 
 // ResolveSteps merges defaults and user config, applying disable rules. Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
-// error.
-//
-// It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
+// error. It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
 func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
@@ -368,18 +357,24 @@ func validateStep(s Step) error {
 		return fmt.Errorf("lint step %q: %w", s.ID, err)
 	}
 
+	if s.Check == nil && s.Fix == nil {
+		if s.ID == "" {
+			return errors.New("lint step: at least one of check/fix command is required")
+		}
+		return fmt.Errorf("lint step %q: at least one of check/fix command is required", s.ID)
+	}
 	enabledInitial := stepEnabledInSituation(s, SituationInitial)
-	enabledCheck := stepEnabledInSituation(s, SituationCheck)
+	enabledTests := stepEnabledInSituation(s, SituationTests)
 	enabledPatch := stepEnabledInSituation(s, SituationPatch)
 	enabledFix := stepEnabledInSituation(s, SituationFix)
 
 	// If the step can run in a check action situation, Check is required.
-	if enabledInitial || enabledCheck {
+	if enabledInitial || enabledTests {
 		if s.Check == nil {
 			if s.ID == "" {
-				return errors.New("lint step: check command is required for initial/check situations")
+				return errors.New("lint step: check command is required for initial/tests situations")
 			}
-			return fmt.Errorf("lint step %q: check command is required for initial/check situations", s.ID)
+			return fmt.Errorf("lint step %q: check command is required for initial/tests situations", s.ID)
 		}
 	}
 
@@ -432,7 +427,7 @@ func validateSituations(situations []Situation) error {
 	seen := make(map[Situation]struct{}, len(situations))
 	for _, s := range situations {
 		switch s {
-		case SituationInitial, SituationPatch, SituationFix, SituationCheck:
+		case SituationInitial, SituationPatch, SituationFix, SituationTests:
 		default:
 			return fmt.Errorf("unknown situation %q", string(s))
 		}
@@ -549,6 +544,7 @@ func parseWidthFlag(args []string) (width int, idx int, ok bool, err error) {
 //   - sandboxDir is the cmdrunner rootDir.
 //   - targetPkgAbsDir is an absolute package directory.
 //   - Run does not stop early: it attempts to execute all steps, even if earlier steps report failures.
+//   - Steps that are inactive are not run, and do not contribute towards the returned XML (it's as if they weren't in steps).
 //   - Command failures are reflected in the XML. Hard errors (invalid config, templating failures, internal errors) return a Go error.
 func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps []Step, situation Situation) (string, error) {
 	if sandboxDir == "" {
@@ -855,7 +851,7 @@ func relPathForOutput(sandboxDir string, p string) string {
 
 func actionForSituation(s Situation) (action, error) {
 	switch s {
-	case SituationInitial, SituationCheck:
+	case SituationInitial, SituationTests:
 		return actionCheck, nil
 	case SituationPatch, SituationFix:
 		return actionFix, nil

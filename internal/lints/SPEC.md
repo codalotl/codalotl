@@ -246,8 +246,8 @@ $ codalotl spec diff path/to/pkg
 ## Public API
 
 ```go
-// Situation indicates the context under which the lints are run.
-// Internally, `SituationInitial`/`SituationTests` map to action `check`, and `SituationPatch`/`SituationFix` map to action `fix`.
+// Situation indicates the context under which the lints are run. Internally, `SituationInitial`/`SituationTests` map to action `check`, and `SituationPatch`/`SituationFix`
+// map to action `fix`.
 type Situation string
 
 const (
@@ -276,14 +276,16 @@ type Lints struct {
 func (l Lints) Reflows() bool
 
 type Step struct {
-	ID string `json:"id,omitempty"` // Optional. Empty string means "unset". Multiple steps may have an unset ID.
+	// Optional. Empty string means "unset". Multiple steps may have an unset ID.
+	ID string `json:"id,omitempty"`
 
 	// The step will be run in the following situations.
-	// - If omitted/null: run in all situations.
-	// - If []: run in no situations (disable).
+	//   - If omitted/null: run in all situations.
+	//   - If []: run in no situations (disable).
 	Situations []Situation `json:"situations,omitempty"`
 
-	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no non-whitespace output: step is inactive. Otherwise, active.
+	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no non-whitespace output: step
+	// is inactive. Otherwise, active.
 	Active *cmdrunner.Command `json:"active,omitempty"`
 
 	Check *cmdrunner.Command `json:"check,omitempty"`
@@ -294,16 +296,16 @@ type Step struct {
 func DefaultSteps() []Step
 
 // ResolveSteps merges defaults and user config, applying disable rules.
-// Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an error.
-// It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
+// Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
+// error. It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
 func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error)
 
 // Run executes steps for the given situation against targetPkgAbsDir and returns cmdrunner XML (`lint-status`).
 //
-// - sandboxDir is the cmdrunner rootDir.
-// - targetPkgAbsDir is an absolute package directory.
-// - Run does not stop early: it attempts to execute all steps, even if earlier steps report failures.
-// - Steps that are inactive are not run, and do not contribute towards the returned XML (it's as if they weren't in steps).
-// - Command failures are reflected in the XML. Hard errors (invalid config, templating failures, internal errors) return a Go error.
+//   - sandboxDir is the cmdrunner rootDir.
+//   - targetPkgAbsDir is an absolute package directory.
+//   - Run does not stop early: it attempts to execute all steps, even if earlier steps report failures.
+//   - Steps that are inactive are not run, and do not contribute towards the returned XML (it's as if they weren't in steps).
+//   - Command failures are reflected in the XML. Hard errors (invalid config, templating failures, internal errors) return a Go error.
 func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps []Step, situation Situation) (string, error)
 ```

@@ -96,8 +96,8 @@ func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 }
 
-// RunTests returns the output of the `go test` command, optionally verbose, optionally matched with namePattern. ctx controls
-// command cancellation; if nil, context.Background is used. The result is wrapped in a <test-status> XML tag:
+// RunTests returns the output of the `go test` command, optionally verbose, optionally matched with namePattern. ctx controls command cancellation; if nil, context.Background
+// is used. The result is wrapped in a <test-status> XML tag:
 //
 //	<test-status ok="true">
 //	$ go test -run TestMyTest ./codeai/tools

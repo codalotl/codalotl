@@ -86,9 +86,9 @@ func (t *toolDiagnostics) Run(ctx context.Context, call llmstream.ToolCall) llms
 	}
 }
 
-// RunDiagnostics executes `go build -o /dev/null` for pkgDirPath using cmdrunner, returning a diagnostics-status XML block.
-// The command runs from the package's manifest directory and targets the package via a relative path. Build failures are
-// reflected in the XML but do not surface as Go errors; only execution or templating failures return an error.
+// RunDiagnostics executes `go build -o /dev/null` for pkgDirPath using cmdrunner, returning a diagnostics-status XML block. The command runs from the package's
+// manifest directory and targets the package via a relative path. Build failures are reflected in the XML but do not surface as Go errors; only execution or templating
+// failures return an error.
 func RunDiagnostics(ctx context.Context, sandboxDir string, pkgDirPath string) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
