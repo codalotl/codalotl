@@ -1,6 +1,6 @@
 ---
 name: spec-md
-description: Guidance for creating, editing, and reviewing SPEC.md files in Go packages.
+description: Guidance for creating, editing, and reviewing SPEC.md files in Go packages. Guidance for implementing/extending/modifying Go packages based on SPEC.md files.
 ---
 
 # SPEC.md
@@ -11,7 +11,7 @@ A SPEC.md is a specification of a Go package. It serves as both an initial recip
 
 ## Ambiguity
 
-SPEC.md files are deliberately ambiguous, and should almost never be so detailed as to be unambiguous (except in trivial cases). A SPEC.md file is not a detailed set of instructions given to a junior engineer, but rather, a guide for a senior engineer. The senior engineer still has latitude to make decisions. When the implementation is done, it can be evaluated against the SPEC.md file: does it match? A SPEC.md permits many valid matching implementations. A good SPEC.md can quickly be evaluated with an implementation to output "conforming" or "non-conforming".
+SPEC.md files are deliberately ambiguous, and should almost never be so detailed as to be unambiguous (except in trivial cases). Ambiguity is a good thing and should be embraced. A SPEC.md file is not a detailed set of instructions given to a junior engineer, but rather, a guide for a senior engineer. The senior engineer still has latitude to make decisions. When the implementation is done, it can be evaluated against the SPEC.md file: does it match? A SPEC.md permits many valid matching implementations. A good SPEC.md can quickly be evaluated with an implementation to output "conforming" or "non-conforming".
 
 One good candidate to leave ambiguous are design aspects where there's one or more good solutions. The implementor is free to just pick one.
 
@@ -24,16 +24,19 @@ A "no good solution" situation is not mere ambiguity. It means that, given the c
 
 In these cases, "clarifying the ambiguity" is not sufficient; the underlying approach should usually change.
 
-## Consistency
+## Consistent
 
-A SPEC.md should be internally consistent. That being said, it's neither possible nor desirable to add every exception or qualification to all sentences in the spec. Therefore, the spec must be evaluated in its totality: when the full spec is read, would a senior engineer find it contradictory?
+A SPEC.md should be consistent with reality. For instance, it would be a mistake to base a design on a false belief about how Linux works.
 
-This point often shows up when a general statement (which is often true) shows up in one part of the spec. But in a later, dedicated section, that general statement is broken down, each part qualified. Exceptions are made. The initial, imprecise general statement, combined with the dedicated section, must be evaluated together. The imprecise statement is NOT inconsistent.
+A SPEC.md should also be internally consistent. That being said, it's neither possible nor desirable to add every exception or qualification to all sentences in the spec. Therefore, the spec must be evaluated in its totality: when the full spec is read, would a senior engineer find it contradictory?
+
+This point often shows up when a general statement (which is often true) is in one part of the spec. But in a later, dedicated section, that general statement is broken down, each part qualified. Exceptions are made. The initial, imprecise general statement, combined with the dedicated section, must be evaluated together. The imprecise statement is NOT inconsistent.
 
 ## Terse
 
-- Typically use concise, terse language. When creating SPEC.md files, often skip using articles like 'the' and 'an' (but don't remove them if the user writes them).
+- Use concise, terse language. When creating SPEC.md files, often skip using articles like 'the' and 'an' (but don't remove them if the user writes them).
 - Use bullet points to list details, often after a brief introductory non-bulleted paragraph.
+- Delete non-essential words, sentence fragments, and full sentences, that don't add value.
 
 ## Typical Sections
 
@@ -75,6 +78,15 @@ When asked to "review":
 
 When asked to review a new section of the SPEC.md, you may use `git diff -- path/to/SPEC.md` to see changes.
 
+### Make implementation changes based on a SPEC.md change
+
+When asked to "impl":
+- If there's no existing implementation, just make an implementation that conforms to the spec, using good judgement in ambiguous situations.
+- If there IS an existing implementation:
+    - It may help to detect modifications to the spec with `git diff -- path/to/SPEC.md`.
+- Unless otherwise instructed, write tests.
+    - Rule of thumb: 80% coverage at 20% of the cost.
+    - When making small changes (e.g., based on a new section, or changes to existing sections), it sometimes does NOT warrant a NEW test case (these tend to violate the above rule of thumb).
 
 (the following are common tasks; needs to be written)
 
