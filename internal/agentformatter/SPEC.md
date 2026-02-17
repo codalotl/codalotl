@@ -135,12 +135,12 @@ Note: this case doesn't apply to commands that run successfully but have, for in
 If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCodeUnitPathOutside)`, we format the message on one line like:
 
 ```
-• Silly agent tried read_file on some/file.go outside of package.
+• Silly LLM tried read_file on some/file.go outside of package.
 ```
 
 - Bullet is Red. Everything else is Accent.
 - It is fine to just print the tool name (ex: read_file, ls, apply_patch).
-- The only data displayed is the tool name, and if present, the `path` argument. If no path, it reads (for instance): `Silly agent tried apply_patch outside of package`.
+- The only data displayed is the tool name, and if present, the `path` argument. If no path, it reads (for instance): `Silly LLM tried apply_patch outside of package`.
 
 ### EventTypeToolCall and EventTypeToolComplete - ls
 
@@ -430,6 +430,13 @@ If a line exceeds the tuiWidth in TUI width mode, it will be wrapped:
          lly."
      25 +
      26  func main() {
+```
+
+If the underlying error `applypatch.IsInvalidPatch`, don't print out the whole invalid patch. Instead, for instance:
+
+```
+• Edit some/file.go
+  └ Failed: LLM supplied an invalid patch.
 ```
 
 ### EventTypeToolCall and EventTypeToolComplete - other unhandled tools
