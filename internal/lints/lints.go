@@ -109,8 +109,9 @@ func defaultSteps(reflowWidth int) []Step {
 	// Additional steps (like reflow) are available as preconfigured steps by
 	// specifying `{"id":"reflow"}` in config.
 	gofmt, _ := preconfiguredStep("gofmt", reflowWidth)
+	specFmt, _ := preconfiguredStep("spec-fmt", reflowWidth)
 	specDiff, _ := preconfiguredStep("spec-diff", reflowWidth)
-	return []Step{gofmt, specDiff}
+	return []Step{gofmt, specFmt, specDiff}
 }
 
 func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
@@ -245,6 +246,26 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 			ID:         "spec-diff",
 			Situations: []Situation{SituationTests, SituationFix},
 			Check:      specDiffCheck,
+		}, true
+	case "spec-fmt":
+		// ID == "spec-fmt" is special-cased during execution (it is NOT executed as a
+		// subprocess). The command is still stored so config validation works and so
+		// we can render a uniform cmdrunner-style output.
+		specFmtFix := &cmdrunner.Command{
+			Command: "codalotl",
+			Args: []string{
+				"spec",
+				"fmt",
+				"{{ .relativePackageDir }}",
+			},
+			CWD:                    "{{ .moduleDir }}",
+			OutcomeFailIfAnyOutput: false,
+			MessageIfNoOutput:      "no issues found",
+		}
+		return Step{
+			ID:         "spec-fmt",
+			Situations: []Situation{SituationPatch, SituationFix},
+			Fix:        specFmtFix,
 		}, true
 	default:
 		return Step{}, false
@@ -614,6 +635,13 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 			all.Results = append(all.Results, cr)
 			continue
 		}
+		if s.ID == "spec-fmt" {
+			// This lint is fix-only and is executed in-process so we can format SPEC.md
+			// via internal/specmd without spawning a subprocess.
+			cr := runSpecFmt(moduleDir, relativePackageDir, targetPkgAbsDir)
+			all.Results = append(all.Results, cr)
+			continue
+		}
 
 		c, modeAttr, _, err := selectCommand(s, act)
 		if err != nil {
@@ -649,7 +677,7 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 }
 
 func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, moduleDir string, relativePackageDir string, s Step) bool {
-	if s.ID == "spec-diff" {
+	if s.ID == "spec-diff" || s.ID == "spec-fmt" {
 		// Special-case: this step is only active when the package has a SPEC.md.
 		// (The spec describes this as a pseudo "active command"; we do it in-process
 		// for portability and to avoid spawning a subprocess just to check existence.)
@@ -845,6 +873,41 @@ func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.Co
 		Output:            output,
 		MessageIfNoOutput: "no issues found",
 		Attrs:             []string{"mode", "check"},
+		ExecStatus:        cmdrunner.ExecStatusCompleted,
+		ExecError:         execErr,
+		Outcome:           outcome,
+		Duration:          time.Since(start),
+	}
+	return cr
+}
+func runSpecFmt(moduleDir string, relativePackageDir string, targetPkgAbsDir string) cmdrunner.CommandResult {
+	start := time.Now()
+	specPath := filepath.Join(targetPkgAbsDir, "SPEC.md")
+	s, readErr := specmd.Read(specPath)
+	modified := false
+	formatErr := error(nil)
+	if readErr == nil {
+		modified, formatErr = s.FormatGoCodeBlocks(0)
+	}
+	outcome := cmdrunner.OutcomeSuccess
+	var execErr error
+	if readErr != nil {
+		outcome = cmdrunner.OutcomeFailed
+		execErr = readErr
+	} else if formatErr != nil {
+		outcome = cmdrunner.OutcomeFailed
+		execErr = formatErr
+	}
+	var output string
+	if modified {
+		output = relPathForOutput(moduleDir, specPath)
+	}
+	cr := cmdrunner.CommandResult{
+		Command:           "codalotl",
+		Args:              []string{"spec", "fmt", relativePackageDir},
+		Output:            output,
+		MessageIfNoOutput: "no issues found",
+		Attrs:             []string{"mode", "fix"},
 		ExecStatus:        cmdrunner.ExecStatusCompleted,
 		ExecError:         execErr,
 		Outcome:           outcome,

@@ -118,6 +118,7 @@ This yields:
 Reserved/default step IDs:
 - `gofmt`
 - `reflow`
+- `spec-fmt`
 - `spec-diff`
 
 ### Templating
@@ -143,6 +144,7 @@ Any step may optionally declare an "active check" command that gates whether the
 
 By default:
 - `gofmt` (all situations)
+- `spec-fmt`: `codalotl spec fmt` (situations patch/fix)
 - `spec-diff`: `codalotl spec diff` (situations tests/fix)
 
 Additionally, these lints are available by extending and referencing them by ID (ex: `"steps": [{"id": "reflow"}]`):
@@ -245,6 +247,13 @@ or
 $ codalotl spec diff path/to/pkg
 </command>
 ```
+
+### Special-case: `codalotl spec fmt`
+
+Any step whose `ID` is `spec-fmt` is executed in-process:
+- Formats the package's `SPEC.md` using `internal/specmd`.
+- Enabled in `SituationPatch` and `SituationFix` by default.
+- Only active if there's a `SPEC.md` file in the package.
 
 ## Public API
 
