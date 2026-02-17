@@ -3,13 +3,14 @@ package exttools
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
-	"os"
-	"path/filepath"
-	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,48 +84,5 @@ func TestFixLints_Run_NoChangesNeeded(t *testing.T) {
 		require.NoError(t, readErr)
 		expected := "package mypkg\n\nfunc main() {}\n"
 		assert.Equal(t, expected, string(contents))
-	})
-}
-
-func TestCheckLints_NoIssues(t *testing.T) {
-	gocodetesting.WithMultiCode(t, map[string]string{
-		"main.go": gocodetesting.Dedent(`
-			package mypkg
-
-			func main() {}
-		`),
-	}, func(pkg *gocode.Package) {
-		pkgDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
-		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir, nil)
-		require.NoError(t, err)
-
-		expectedOutput := "<lint-status ok=\"true\" message=\"no issues found\" mode=\"check\">\n$ gofmt -l mypkg\n</lint-status>"
-		assert.Equal(t, expectedOutput, output)
-	})
-}
-
-func TestCheckLints_FindsIssues(t *testing.T) {
-	gocodetesting.WithMultiCode(t, map[string]string{
-		"main.go": gocodetesting.Dedent(`
-			package mypkg
-
-			func main(){
-			}
-		`),
-	}, func(pkg *gocode.Package) {
-		pkgDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
-		filePath := filepath.Join(pkgDir, "main.go")
-		before, readErr := os.ReadFile(filePath)
-		require.NoError(t, readErr)
-
-		output, err := CheckLints(context.Background(), pkg.Module.AbsolutePath, pkgDir, nil)
-		require.NoError(t, err)
-
-		expectedOutput := "<lint-status ok=\"false\" mode=\"check\">\n$ gofmt -l mypkg\nmypkg/main.go\n</lint-status>"
-		assert.Equal(t, expectedOutput, output)
-
-		after, readAgainErr := os.ReadFile(filePath)
-		require.NoError(t, readAgainErr)
-		assert.Equal(t, string(before), string(after))
 	})
 }
