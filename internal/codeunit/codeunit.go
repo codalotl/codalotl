@@ -22,7 +22,7 @@ type CodeUnit struct {
 	// by the LLM thinking.
 }
 
-// NewCodeUnit creates a new code unit named name (ex: "package codeunit") that includes absBaseDir and all direct files (but not directories) in it. It is non-recursive.
+// NewCodeUnit creates a new code unit named `name` (ex: "package codeunit") that includes absBaseDir and all direct files (but not directories) in it. It is non-recursive.
 // absBaseDir must be absolute.
 func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error) {
 	if !filepath.IsAbs(absBaseDir) {
@@ -48,6 +48,7 @@ func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error) {
 	return c, nil
 }
 
+// Name returns the configured name, or "code unit" if "" was configured.
 func (c *CodeUnit) Name() string {
 	if c.name == "" {
 		return "code unit"

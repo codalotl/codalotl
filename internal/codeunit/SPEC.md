@@ -35,7 +35,7 @@ if !unit.Includes(fileToRead) {
 }
 ```
 
-## Public Interface
+## Public API
 
 ```go {api}
 // CodeUnit represents a set of files rooted at a base directory.
@@ -57,8 +57,8 @@ func (c *CodeUnit) Name() string
 
 func (c *CodeUnit) BaseDir() string
 
-// Returns true if the code unit includes path. path can be relative to baseDir or absolute. path can be a directory or a file. A non-existent path return true iff
-// its filepath.Dir is in the file set.
+// Includes returns true if the code unit includes path. path can be relative to baseDir or absolute. path can be a directory or a file. A non-existent path returns
+// true iff its filepath.Dir is already in the file set.
 func (c *CodeUnit) Includes(path string) bool
 
 // IncludedFiles returns the absolute paths of all files and dirs in code unit, sorted lexicographically.
