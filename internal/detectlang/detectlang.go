@@ -67,8 +67,8 @@ var extToLang = map[string]Lang{
 	".mm":    LangObjectiveC,
 }
 
-// Detect detects the programming language indicated by absPath (which must be absolute). The path can
-// either be to a file or a directory. See SPEC.md for the detailed behaviour.
+// Detect detects the programming language indicated by absPath (which must be absolute). The path can either be to a file or a directory. See SPEC.md for the detailed
+// behaviour.
 func Detect(absRootDir, absPath string) (Lang, error) {
 	root := filepath.Clean(absRootDir)
 	target := filepath.Clean(absPath)

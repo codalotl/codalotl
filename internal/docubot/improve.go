@@ -12,8 +12,8 @@ import (
 
 // ImproveDocsOptions specifies options for improving Go documentation using a large language model.
 type ImproveDocsOptions struct {
-	// True means LLM doesn't get to see current docs in source, so it gets to think more from first principles. On the other hand, it may significantly re-write docs, which can result
-	// in unnecessarily large diffs.
+	// True means LLM doesn't get to see current docs in source, so it gets to think more from first principles. On the other hand, it may significantly re-write docs,
+	// which can result in unnecessarily large diffs.
 	HideCurrentDocs bool
 
 	// Shared configuration and dependencies (ex: model, conversationalist, logging) for LLM-backed operations.
@@ -28,18 +28,20 @@ type betterDocs struct {
 	reason     string // Why the LLM chose what it did. Useful for debugging or displaying to a user.
 }
 
-// ImproveDocs uses an LLM to propose and apply better documentation for the given identifiers in pkg (including identifiers in associated test packages). It generates alternative comments,
-// compares them against the current comments, applies the winners to source files, and returns a documentation-only diff.
+// ImproveDocs uses an LLM to propose and apply better documentation for the given identifiers in pkg (including identifiers in associated test packages). It generates
+// alternative comments, compares them against the current comments, applies the winners to source files, and returns a documentation-only diff.
 //
-// If identifiers is empty, ImproveDocs considers all identifiers eligible under the default identifier filter, but requiring documentation; otherwise it processes only the provided
-// set.
+// If identifiers is empty, ImproveDocs considers all identifiers eligible under the default identifier filter, but requiring documentation; otherwise it processes
+// only the provided set.
 //
 // If an identifier has no documentation, it will not be sent to the LLM for improvement, and no error will be reported.
 //
-// The operation modifies pkg's source files to apply improved comments. On success, it returns the set of documentation changes; if no improvements are chosen, the returned slice is
-// empty. If any step fails (ex: cloning, context building, generation, selection, update, or diff), an error is returned and partial updates may already have been applied.
+// The operation modifies pkg's source files to apply improved comments. On success, it returns the set of documentation changes; if no improvements are chosen,
+// the returned slice is empty. If any step fails (ex: cloning, context building, generation, selection, update, or diff), an error is returned and partial updates
+// may already have been applied.
 //
-// When options.HideCurrentDocs is true, existing comments are hidden from the LLM during generation to encourage first-principles rewrites, which can increase diff sizes.
+// When options.HideCurrentDocs is true, existing comments are hidden from the LLM during generation to encourage first-principles rewrites, which can increase diff
+// sizes.
 func ImproveDocs(pkg *gocode.Package, identifiers []string, options ImproveDocsOptions) ([]*gopackagediff.Change, error) {
 	var changes []*gopackagediff.Change
 
@@ -59,18 +61,20 @@ func ImproveDocs(pkg *gocode.Package, identifiers []string, options ImproveDocsO
 	return changes, err
 }
 
-// improveDocsForIDs generates alternative documentation for the given identifiers, compares the alternatives to the existing comments, applies any winners to pkg, and returns a documentation-only
-// diff.
+// improveDocsForIDs generates alternative documentation for the given identifiers, compares the alternatives to the existing comments, applies any winners to pkg,
+// and returns a documentation-only diff.
 //
-// Each identifier must already have some documentation; if any is missing, an error is returned and no improvements are attempted. The function operates per context group: it constructs
-// minimal code contexts, generates new comments in a cloned working copy, forms A/B choices (new vs current) for each identifier, asks the LLM to pick the better snippet, and applies
-// only the winners back to the real package on disk.
+// Each identifier must already have some documentation; if any is missing, an error is returned and no improvements are attempted. The function operates per context
+// group: it constructs minimal code contexts, generates new comments in a cloned working copy, forms A/B choices (new vs current) for each identifier, asks the
+// LLM to pick the better snippet, and applies only the winners back to the real package on disk.
 //
-// pkg, identifiers, and onlyTests must align: identifiers must be in pkg (and not pkg.TestPackage). If onlyTests, all identifiers are tests. Otherwise, all identifiers are non-tests.
+// pkg, identifiers, and onlyTests must align: identifiers must be in pkg (and not pkg.TestPackage). If onlyTests, all identifiers are tests. Otherwise, all identifiers
+// are non-tests.
 //
-// On success, the returned changes describe documentation differences (function bodies are excluded) between the original package state and the updated package, limited to the given
-// identifiers. If no improvements are chosen, the slice is empty. If a fatal error occurs (ex: cloning failures, context building, selection, apply, or diff), an error is returned;
-// partial updates to pkg may already have been written. Generation-related non-fatal cases (ex: no snippets or partial application) are tolerated and reported via logging.
+// On success, the returned changes describe documentation differences (function bodies are excluded) between the original package state and the updated package,
+// limited to the given identifiers. If no improvements are chosen, the slice is empty. If a fatal error occurs (ex: cloning failures, context building, selection,
+// apply, or diff), an error is returned; partial updates to pkg may already have been written. Generation-related non-fatal cases (ex: no snippets or partial application)
+// are tolerated and reported via logging.
 func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool, options ImproveDocsOptions) ([]*gopackagediff.Change, error) {
 
 	// Ensure identifiers all have docs of some kind (in order to improve docs, we need existing docs):
@@ -239,12 +243,12 @@ func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool
 	return docChanges, nil
 }
 
-// chooseBetterDocsForIdentifiers makes a single request to the LLM, sending context.Code() and choices. For each identifier in choices, it will ask the LLM to choose either a or b.
-// An updated choices slice will be returned, with each choice's `best` field set to the better snippet. If the snippets are ~equal, `best` may be empty. An error is returned for hard
-// errors (ex: I/O, failure parsing JSON response).
+// chooseBetterDocsForIdentifiers makes a single request to the LLM, sending context.Code() and choices. For each identifier in choices, it will ask the LLM to choose
+// either a or b. An updated choices slice will be returned, with each choice's `best` field set to the better snippet. If the snippets are ~equal, `best` may be
+// empty. An error is returned for hard errors (ex: I/O, failure parsing JSON response).
 //
-// All identifiers in choices should be in context so that the LLM can see function bodies. Callers may choose to create a context where choices' identifiers have no docs to avoid tainting;
-// this function will use context as-is.
+// All identifiers in choices should be in context so that the LLM can see function bodies. Callers may choose to create a context where choices' identifiers have
+// no docs to avoid tainting; this function will use context as-is.
 func chooseBetterDocsForIdentifiers(ctx *gocodecontext.Context, choices []betterDocs, options ImproveDocsOptions) ([]betterDocs, error) {
 
 	// Build the instructions section that enumerates the identifiers and their documentation options.

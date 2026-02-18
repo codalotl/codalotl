@@ -20,7 +20,8 @@ const (
 //   - Hunks[3] will contain the second change. Imagine some code was strictly inserted. OpInsert.
 //   - Hunks[last] will be OpEqual (the suffix of the file).
 //
-// It is a policy question of how granular Hunks are (in theory, the above illustrative example could be achieved by a single Hunk with OpReplace). See DiffText for policies.
+// It is a policy question of how granular Hunks are (in theory, the above illustrative example could be achieved by a single Hunk with OpReplace). See DiffText
+// for policies.
 //
 // Invariants:
 //   - concat(Hunks.OldText) == OldText
@@ -31,8 +32,8 @@ type Diff struct {
 	Hunks   []DiffHunk // Ordered hunks that cover the whole diff and reconstruct OldText/NewText.
 }
 
-// DiffHunk represents a contiguous group of lines. The \n character is part of the hunk and line (ex: if a hunk is in the middle of some text is removed, OldText for that hunk would
-// be \n terminated).
+// DiffHunk represents a contiguous group of lines. The \n character is part of the hunk and line (ex: if a hunk is in the middle of some text is removed, OldText
+// for that hunk would be \n terminated).
 //
 // Operations:
 //   - OpEqual: OldText == NewText
@@ -70,8 +71,8 @@ type DiffLine struct {
 //
 // Operations follow the pattern of DiffHunk.
 //
-// DiffSpan is designed to be flexible in terms of policies for what constitutes a good span: it supports anything from single-character diffs (ex: adding a letter to a word), to per-word
-// diffs, to per-word-group diffs. These policies are determined by DiffText.
+// DiffSpan is designed to be flexible in terms of policies for what constitutes a good span: it supports anything from single-character diffs (ex: adding a letter
+// to a word), to per-word diffs, to per-word-group diffs. These policies are determined by DiffText.
 type DiffSpan struct {
 	Op      Op     // Operation performed by this span (OpEqual, OpInsert, OpDelete, or OpReplace).
 	OldText string // Substring from the old line; empty for inserts.

@@ -20,8 +20,8 @@ type Identifiers struct {
 	// typeToFields maps type identifier to its field identifiers. All fields present, regardless of doc status. Field identifiers include type in its dot notation.
 	typeToFields map[string][]string
 
-	// Identifiers that have documentation. For types, keys include both the overall type and each field (dot notation, including the type). An overall type identifier is considered documented
-	// if the type and all fields are documented.
+	// Identifiers that have documentation. For types, keys include both the overall type and each field (dot notation, including the type). An overall type identifier
+	// is considered documented if the type and all fields are documented.
 	withDocs map[string]struct{}
 
 	isExported map[string]struct{} // Identifier is exported (capitalized). Only top-level idents (no fields).
@@ -171,8 +171,8 @@ func (ids *Identifiers) MarkDocumented(identifier string) {
 //
 // The filtering works as follows:
 //   - isDocumented: if true, only returns functions with documentation; if false, only returns functions without documentation.
-//   - includeTest: includes functions from test files that are tracked by Identifiers (both exported and private). Note: Go test/benchmark entry points (ex: TestXxx, BenchmarkXxx) are
-//     not tracked and will never be returned, even when includeTest is true.
+//   - includeTest: includes functions from test files that are tracked by Identifiers (both exported and private). Note: Go test/benchmark entry points (ex: TestXxx,
+//     BenchmarkXxx) are not tracked and will never be returned, even when includeTest is true.
 //
 // When includeTest is false, all non-test file functions are included regardless of their export status.
 func (ids *Identifiers) FuncIDs(isDocumented bool, includeTest bool) []string {
@@ -270,14 +270,14 @@ func (ids *Identifiers) ValueIDs(isDocumented bool, includeTest bool) []string {
 	return result
 }
 
-// FieldIDs returns a map of type identifiers to their field identifiers that match the specified criteria. Field identifiers do not have a type name prefix, but do use dot notation
-// for nested fields (see gocode.TypeSnippet).
+// FieldIDs returns a map of type identifiers to their field identifiers that match the specified criteria. Field identifiers do not have a type name prefix, but
+// do use dot notation for nested fields (see gocode.TypeSnippet).
 //
 // The type filtering works as follows:
 //   - includeTest: includes all types from test files (both exported and private).
 //
-// When includeTest is false, all non-test file types are included regardless of their export status. The isDocumented parameter filters individual fields based on their documentation
-// status (and not the overall type symbol doc status).
+// When includeTest is false, all non-test file types are included regardless of their export status. The isDocumented parameter filters individual fields based
+// on their documentation status (and not the overall type symbol doc status).
 func (ids *Identifiers) FieldIDs(isDocumented bool, includeTest bool) map[string][]string {
 	result := make(map[string][]string)
 
@@ -325,8 +325,8 @@ func (ids *Identifiers) FieldIDs(isDocumented bool, includeTest bool) map[string
 	return result
 }
 
-// IDsNeedingDocs returns the identifiers and fields that need documentation. Fields are in the format of type name to field name. Field names use dot notation for nested fields, but
-// does not include the type name itself. The identifier gocode.PackageIdentifier represents package documentation.
+// IDsNeedingDocs returns the identifiers and fields that need documentation. Fields are in the format of type name to field name. Field names use dot notation for
+// nested fields, but does not include the type name itself. The identifier gocode.PackageIdentifier represents package documentation.
 func (ids *Identifiers) IDsNeedingDocs(includeTest bool) ([]string, map[string][]string) {
 	var targetIdentifiers []string
 	targetFields := make(map[string][]string)
@@ -373,8 +373,8 @@ func (ids *Identifiers) IDsNeedingDocs(includeTest bool) ([]string, map[string][
 	return targetIdentifiers, targetFields
 }
 
-// TotalUndocumented returns the total number of undocumented top-level identifiers, plus missing package-level documentation for non-_test packages. A type is counted as undocumented
-// if it has undocumented fields or if the type itself lacks documentation.
+// TotalUndocumented returns the total number of undocumented top-level identifiers, plus missing package-level documentation for non-_test packages. A type is counted
+// as undocumented if it has undocumented fields or if the type itself lacks documentation.
 func (ids *Identifiers) TotalUndocumented(includeTest bool) int {
 	count := 0
 
@@ -428,8 +428,9 @@ func (ids *Identifiers) TotalUndocumented(includeTest bool) int {
 	return count
 }
 
-// DocumentedSince returns the set of top-level identifiers that have gained documentation since older was measured. For types with fields, the type is included if any field gained
-// documentation, even if the overall documentation status of the type is still undocumented. Identifiers that lost documentation are not included in this set.
+// DocumentedSince returns the set of top-level identifiers that have gained documentation since older was measured. For types with fields, the type is included
+// if any field gained documentation, even if the overall documentation status of the type is still undocumented. Identifiers that lost documentation are not included
+// in this set.
 func (ids *Identifiers) DocumentedSince(older *Identifiers) []string {
 	// If no older snapshot, nothing to compare against.
 	if older == nil {

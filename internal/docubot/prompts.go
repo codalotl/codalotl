@@ -6,7 +6,8 @@ import (
 	"strings"
 )
 
-// promptFragmentCommentStyle returns a '## Style' section in markdown format (no leading whitespace, terminated by a double \n) that describes the subjective aspects of writing comments.
+// promptFragmentCommentStyle returns a '## Style' section in markdown format (no leading whitespace, terminated by a double \n) that describes the subjective aspects
+// of writing comments.
 //
 // This section is a good candidate for an end-user to swap out for their own styles.
 func promptFragmentCommentStyle() string {
@@ -160,8 +161,8 @@ func promptFixSnippetErrors(snippetErrors []updatedocs.SnippetError) string {
 	return b.String()
 }
 
-// promptPolish returns the system prompt used to minimally polish existing comments in Go code snippets. The prompt requires preserving code and formatting, changing only comment text
-// under strict allowed edits, enforcing idempotence and minimal change, and returning each snippet in the same order wrapped in ```go fences.
+// promptPolish returns the system prompt used to minimally polish existing comments in Go code snippets. The prompt requires preserving code and formatting, changing
+// only comment text under strict allowed edits, enforcing idempotence and minimal change, and returning each snippet in the same order wrapped in ```go fences.
 func promptPolish() string {
 	var b strings.Builder
 
@@ -252,8 +253,8 @@ func promptPolish() string {
 	return b.String()
 }
 
-// promptFindErrors returns the system prompt used to detect material documentation errors for a given list of identifiers. The prompt constrains the model to inspect only godoc-level
-// comments and to return a single JSON object that maps each identifier to an error description or to an empty string when no issue is found.
+// promptFindErrors returns the system prompt used to detect material documentation errors for a given list of identifiers. The prompt constrains the model to inspect
+// only godoc-level comments and to return a single JSON object that maps each identifier to an error description or to an empty string when no issue is found.
 func promptFindErrors() string {
 	var b strings.Builder
 
@@ -334,9 +335,9 @@ func promptFindErrors() string {
 	return b.String()
 }
 
-// promptIncorperateFeedback returns the system prompt used to update existing comments by incorporating reviewer feedback. The prompt requires preserving code and spacing, changing
-// only comment text relevant to the feedback, wrapping each resulting declaration in its own ```go code fence, and returning function declarations without bodies. It also describes
-// when to add a BUG: paragraph if the feedback indicates a clear code defect.
+// promptIncorperateFeedback returns the system prompt used to update existing comments by incorporating reviewer feedback. The prompt requires preserving code and
+// spacing, changing only comment text relevant to the feedback, wrapping each resulting declaration in its own ```go code fence, and returning function declarations
+// without bodies. It also describes when to add a BUG: paragraph if the feedback indicates a clear code defect.
 func promptIncorperateFeedback() string {
 
 	var b strings.Builder
@@ -436,8 +437,9 @@ func AddOne(x int) int
 	return b.String()
 }
 
-// promptChooseBestDocs returns the system prompt used to pick the better of two documentation options for each identifier. The prompt instructs the model to read Go code for context
-// and return a single JSON object that maps each identifier to an object with "best" set to "A", "B", or "" (if the options are roughly equal), and "reason" set to a brief justification.
+// promptChooseBestDocs returns the system prompt used to pick the better of two documentation options for each identifier. The prompt instructs the model to read
+// Go code for context and return a single JSON object that maps each identifier to an object with "best" set to "A", "B", or "" (if the options are roughly equal),
+// and "reason" set to a brief justification.
 func promptChooseBestDocs() string {
 	var b strings.Builder
 

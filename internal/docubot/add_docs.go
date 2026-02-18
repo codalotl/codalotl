@@ -24,13 +24,14 @@ func (e *tokenBudgetExceededError) Error() string {
 	return fmt.Sprintf("token budget exceeded: smallest target requires %d tokens, but budget is %d", e.RequiredTokens, e.BudgetTokens)
 }
 
-// Is reports whether target is ErrTokenBudgetExceeded, enabling errors.Is(err, ErrTokenBudgetExceeded) to match a tokenBudgetExceededError that carries additional details.
+// Is reports whether target is ErrTokenBudgetExceeded, enabling errors.Is(err, ErrTokenBudgetExceeded) to match a tokenBudgetExceededError that carries additional
+// details.
 func (e *tokenBudgetExceededError) Is(target error) bool {
 	return target == ErrTokenBudgetExceeded
 }
 
-// ErrTokenBudgetExceeded is a sentinel error reported when an operation would exceed the token budget. Use errors.Is(err, ErrTokenBudgetExceeded) to detect this condition. Some errors
-// may carry additional details (ex: required and budgeted tokens) while still matching this sentinel.
+// ErrTokenBudgetExceeded is a sentinel error reported when an operation would exceed the token budget. Use errors.Is(err, ErrTokenBudgetExceeded) to detect this
+// condition. Some errors may carry additional details (ex: required and budgeted tokens) while still matching this sentinel.
 var ErrTokenBudgetExceeded = fmt.Errorf("token budget exceeded")
 
 // ErrTriesExceeded is returned by AddDocs when repeated attempts fail to reduce the number of undocumented identifiers.
@@ -44,8 +45,9 @@ type AddDocsOptions struct {
 	BaseOptions                 // Shared configuration and dependencies (ex: model, conversationalist, logging) for LLM-backed operations.
 }
 
-// AddDocs adds documentation to undocumented identifiers in the package and returns the set of documentation changes (if DocumentTestFiles, it includes _test package changes if pkg
-// has one). If an error occurs, no changes are returned, except for non-fatal errors like errNoSnippets or errSomeSnippetsFailed, where processing continues and changes may be returned.
+// AddDocs adds documentation to undocumented identifiers in the package and returns the set of documentation changes (if DocumentTestFiles, it includes _test package
+// changes if pkg has one). If an error occurs, no changes are returned, except for non-fatal errors like errNoSnippets or errSomeSnippetsFailed, where processing
+// continues and changes may be returned.
 func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Change, error) {
 	if options.TokenBudget == 0 {
 		options.TokenBudget = defaultTokenBudget
@@ -197,8 +199,8 @@ func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Chan
 	return merged, nil
 }
 
-// addDocsPartial performs a single documentation pass sized to the current token budget. It estimates overhead (prompt and instructions), builds an LLM context and target identifier
-// list, requests snippets, applies successful updates, and returns the possibly updated package, the set of files changed, and any error.
+// addDocsPartial performs a single documentation pass sized to the current token budget. It estimates overhead (prompt and instructions), builds an LLM context
+// and target identifier list, requests snippets, applies successful updates, and returns the possibly updated package, the set of files changed, and any error.
 //
 // On error, the returned package is nil; updatedFiles still reflects any files modified before the error occurred. Existing docs are never overwritten (redocument=false).
 func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOptions) (*gocode.Package, map[string]struct{}, error) {
@@ -229,8 +231,8 @@ func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOpt
 	return updatedPkg, sliceToSet(updatedFiles), nil
 }
 
-// contextForAddDocsPartial returns a context and identifiers to document for use in generateAndApplyDocs. If no groups initially fit the budget, it selects the smallest-cost group
-// and attempts to prune. On success, it returns a non-nil context. On failure, it returns an error (ex: tokenBudgetExceededError).
+// contextForAddDocsPartial returns a context and identifiers to document for use in generateAndApplyDocs. If no groups initially fit the budget, it selects the
+// smallest-cost group and attempts to prune. On success, it returns a non-nil context. On failure, it returns an error (ex: tokenBudgetExceededError).
 func contextForAddDocsPartial(pkg *gocode.Package, idents *Identifiers, tokenBudget int, documentTestFiles bool, options BaseOptions) (*gocodecontext.Context, []string, error) {
 
 	// Build contexts for the package:
@@ -340,10 +342,11 @@ func contextForAddDocsPartial(pkg *gocode.Package, idents *Identifiers, tokenBud
 	return codeCtx, idsToDocument, nil
 }
 
-// reflowDocumentedIdents reflows any identifiers that gained documentation since originalIdents. It wraps text, normalizes EOL versus doc comments, and adjusts whitespace using options.ReflowMaxWidth.
-// If no identifiers were newly documented, it is a no-op.
+// reflowDocumentedIdents reflows any identifiers that gained documentation since originalIdents. It wraps text, normalizes EOL versus doc comments, and adjusts
+// whitespace using options.ReflowMaxWidth. If no identifiers were newly documented, it is a no-op.
 //
-// On partial failures, identifiers that failed to reflow are logged, and the function still returns nil. A non-nil error is returned only when the reflow operation itself fails.
+// On partial failures, identifiers that failed to reflow are logged, and the function still returns nil. A non-nil error is returned only when the reflow operation
+// itself fails.
 func reflowDocumentedIdents(pkg *gocode.Package, originalIdents *Identifiers, currentIdents *Identifiers, options BaseOptions) error {
 	reflowIdents := currentIdents.DocumentedSince(originalIdents)
 	if len(reflowIdents) > 0 {
@@ -359,8 +362,8 @@ func reflowDocumentedIdents(pkg *gocode.Package, originalIdents *Identifiers, cu
 	return nil
 }
 
-// appendExclusionForGeneratedFiles returns exclude plus all identifiers that originate from code-generated files in pkg. The result is de-duplicated and lexicographically sorted to
-// keep behavior deterministic.
+// appendExclusionForGeneratedFiles returns exclude plus all identifiers that originate from code-generated files in pkg. The result is de-duplicated and lexicographically
+// sorted to keep behavior deterministic.
 func appendExclusionForGeneratedFiles(exclude []string, pkg *gocode.Package) []string {
 	excludeSet := sliceToSet(exclude)
 	for _, file := range pkg.Files {
