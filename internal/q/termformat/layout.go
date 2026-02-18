@@ -25,8 +25,8 @@ type normalizedLayoutBlock struct {
 	lines  []string
 }
 
-// Layout lays out blocks onto a new string. Each existing block is a block of a given size (it has a height and a width). It will be placed at X, Y.
-// Each block will have BlockStylePerLine and BlockNormalizeWidth(Naive) applied to it (if you want another normalization method, just make sure Block is already normalized).
+// Layout lays out blocks onto a new string. Each existing block is a block of a given size (it has a height and a width). It will be placed at X, Y. Each block
+// will have BlockStylePerLine and BlockNormalizeWidth(Naive) applied to it (if you want another normalization method, just make sure Block is already normalized).
 //
 // If any block overlaps another block, an error is returned. Callers should handle size and position calculation outside of this function.
 //
@@ -137,8 +137,8 @@ func Layout(blocks []LayoutBlock, fillBGColor Color) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-// OverlayRelativePosition locates a box along an axis. 0 is in the middle. -1 places the left or top edge on the left/top border of the background. 1 places the right or bottom edge on the right or bottom edge of the background.
-// Values in between those are valid.
+// OverlayRelativePosition locates a box along an axis. 0 is in the middle. -1 places the left or top edge on the left/top border of the background. 1 places the
+// right or bottom edge on the right or bottom edge of the background. Values in between those are valid.
 type OverlayRelativePosition float64
 
 const (
@@ -157,13 +157,15 @@ type OverlayPosition struct {
 	// }
 }
 
-// Overlay places blockDialog on top of background (think about a popup dialog being drawn over an arbitrary screen buffer). Both are ANSI-styled blocks with a width and height.
+// Overlay places blockDialog on top of background (think about a popup dialog being drawn over an arbitrary screen buffer). Both are ANSI-styled blocks with a width
+// and height.
 //
 // Styles of the background will automatically be managed so that styles "cut off" by the dialog are automatically resumed outside of the dialog, as necessary.
 //
 // The dialog will be positioned according to pos, defaulting to being compeletely centered.
 //
-// If blockDialog cannot fit on background, blockDialog will be truncated (top-left of dialog is always present and the last to go, regardless of pos). The resultant block size will always be the same size as background.
+// If blockDialog cannot fit on background, blockDialog will be truncated (top-left of dialog is always present and the last to go, regardless of pos). The resultant
+// block size will always be the same size as background.
 func Overlay(blockDialog string, background string, pos OverlayPosition) string {
 	bgNormalized := BlockNormalizeWidth(BlockStylePerLine(background), BlockNormalizeModeExtend)
 	bgWidth := BlockWidth(bgNormalized)

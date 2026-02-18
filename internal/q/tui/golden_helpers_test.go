@@ -13,9 +13,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// requireTestTTY returns a pseudo-terminal hooked up to a background reader so
-// the integration test can exercise the real terminal paths even when the test
-// process itself is not attached to a tty.
+// requireTestTTY returns a pseudo-terminal hooked up to a background reader so the integration test can exercise the real terminal paths even when the test process
+// itself is not attached to a tty.
 func requireTestTTY(t *testing.T) (*os.File, *os.File) {
 	t.Helper()
 
@@ -23,16 +22,14 @@ func requireTestTTY(t *testing.T) (*os.File, *os.File) {
 	return input, output
 }
 
-// requireTestTTYWithPTY works like requireTestTTY but also returns the PTY
-// control endpoint so tests can write keyboard input.
+// requireTestTTYWithPTY works like requireTestTTY but also returns the PTY control endpoint so tests can write keyboard input.
 func requireTestTTYWithPTY(t *testing.T) (*os.File, *os.File, *os.File) {
 	t.Helper()
 
 	return setupTestTTY(t, false, nil)
 }
 
-// requireTestTTYWithCapture works like requireTestTTY but also returns a buffer
-// containing the terminal output.
+// requireTestTTYWithCapture works like requireTestTTY but also returns a buffer containing the terminal output.
 func requireTestTTYWithCapture(t *testing.T) (*os.File, *os.File, *syncedBuffer) {
 	t.Helper()
 

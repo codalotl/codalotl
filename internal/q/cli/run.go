@@ -10,28 +10,22 @@ import (
 )
 
 type Options struct {
-	// Args is the argv excluding the program name (typically os.Args[1:]).
-	Args []string
-
-	// In/Out/Err override standard I/O. If nil, defaults are used.
-	In  io.Reader
-	Out io.Writer
-	Err io.Writer
+	Args []string  // Args is the argv excluding the program name (typically os.Args[1:]).
+	In   io.Reader // In/Out/Err override standard I/O. If nil, defaults are used.
+	Out  io.Writer
+	Err  io.Writer
 }
 
 // Context is passed to a command handler.
 //
-// Positional args are in Args. Flag values are typically read via variables bound
-// at command construction time (e.g. fs.Bool(...)).
+// Positional args are in Args. Flag values are typically read via variables bound at command construction time (e.g. fs.Bool(...)).
 type Context struct {
 	context.Context
-
 	Command *Command
 	Args    []string
-
-	In  io.Reader
-	Out io.Writer
-	Err io.Writer
+	In      io.Reader
+	Out     io.Writer
+	Err     io.Writer
 }
 
 // Run executes a command tree as a CLI program and returns a process exit code.

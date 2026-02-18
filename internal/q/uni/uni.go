@@ -7,22 +7,19 @@ import (
 
 // Options control width calculations.
 //
-// EastAsianWidth toggles ambiguous-width characters, and TreatEmojiAsWide only
-// applies when EastAsianWidth is true.
+// EastAsianWidth toggles ambiguous-width characters, and TreatEmojiAsWide only applies when EastAsianWidth is true.
 type Options struct {
 	EastAsianWidth   bool
 	TreatEmojiAsWide bool
 }
 
-// TextWidth returns the monospace width of str. If opts is nil, locale is assumed
-// to be non-East Asian.
+// TextWidth returns the monospace width of str. If opts is nil, locale is assumed to be non-East Asian.
 func TextWidth[T string | []byte](str T, opts *Options) int {
 	cond := conditionFromOptions(opts)
 	return textWidth(str, cond)
 }
 
-// RuneWidth returns the monospace width of r. If opts is nil, locale is assumed
-// to be non-East Asian.
+// RuneWidth returns the monospace width of r. If opts is nil, locale is assumed to be non-East Asian.
 func RuneWidth(r rune, opts *Options) int {
 	cond := conditionFromOptions(opts)
 	return cond.RuneWidth(rune(r))
@@ -34,8 +31,7 @@ type Iterator[T string | []byte] struct {
 	cond *runewidth.Condition
 }
 
-// NewGraphemeIterator returns a new grapheme iterator for str. If opts is nil,
-// locale is assumed to be non-East Asian.
+// NewGraphemeIterator returns a new grapheme iterator for str. If opts is nil, locale is assumed to be non-East Asian.
 func NewGraphemeIterator[T string | []byte](str T, opts *Options) *Iterator[T] {
 	cond := conditionFromOptions(opts)
 	return &Iterator[T]{

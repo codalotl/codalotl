@@ -184,15 +184,13 @@ func samePath(a, b string) bool {
 	return cleanA == cleanB
 }
 
-// ManifestDir returns the manifest dir for `path` and the path relative to that
-// manifest dir.
+// ManifestDir returns the manifest dir for `path` and the path relative to that manifest dir.
 //
 // Conceptually equivalent to:
 //   - {{ manifestDir .path }}
 //   - {{ relativeTo .path (manifestDir .path) }}
 //
-// Errors are returned if `rootDir` is empty/invalid/not a directory, or if the
-// relative path computation fails.
+// Errors are returned if `rootDir` is empty/invalid/not a directory, or if the relative path computation fails.
 func ManifestDir(rootDir string, path string) (string, string, error) {
 	if rootDir == "" {
 		return "", "", errors.New("cmdrunner: rootDir must not be empty")

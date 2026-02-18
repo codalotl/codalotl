@@ -13,16 +13,12 @@ import (
 //   - Offset() is always in the range [0, number of lines).
 //   - Empty content counts as 1 line.
 type View struct {
-	width  int
-	height int
-
-	offset int
-
-	content string
-	lines   []string
-
-	keyMap *KeyMap
-
+	width                    int
+	height                   int
+	offset                   int
+	content                  string
+	lines                    []string
+	keyMap                   *KeyMap
 	emptyLineBackgroundColor termformat.Color
 }
 
@@ -72,8 +68,8 @@ func (v *View) Update(t *tui.TUI, m tui.Message) {
 
 // View implements tui.Model's View. Renders the content clipped to the view size and current offset.
 //
-// The rendered output always contains exactly Height() rows, but does not pad lines to Width() cells. Each rendered row contains at most
-// Width() visible cells (after accounting for ANSI control codes and character widths).
+// The rendered output always contains exactly Height() rows, but does not pad lines to Width() cells. Each rendered row contains at most Width() visible cells (after
+// accounting for ANSI control codes and character widths).
 func (v *View) View() string {
 	if v == nil || v.height == 0 {
 		return ""
@@ -141,8 +137,7 @@ func (v *View) Offset() int {
 
 // ScrollPercent returns the scroll percent in [0, 100]. 0 means the first line is visible. 100 means the last line is fully visible.
 //
-// If the last line is visible and the first line is not visible, ScrollPercent returns 100 even if the view's height is greater than the number
-// of content lines.
+// If the last line is visible and the first line is not visible, ScrollPercent returns 100 even if the view's height is greater than the number of content lines.
 func (v *View) ScrollPercent() int {
 	if v == nil {
 		return 0

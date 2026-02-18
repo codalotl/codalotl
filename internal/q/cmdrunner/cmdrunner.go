@@ -15,16 +15,13 @@ import (
 	"time"
 )
 
-// InputType represents the type of value that a command expects for a given
-// input key.
+// InputType represents the type of value that a command expects for a given input key.
 type InputType string
 
 // Supported input types.
 //
-// Path types can be absolute or relative to the root. The Any/Dir/File types
-// are checked for existence (or Run will return an error). InputTypePathUnchecked
-// is not checked for existence. All paths are converted to absolute paths before
-// being passed to templates.
+// Path types can be absolute or relative to the root. The Any/Dir/File types are checked for existence (or Run will return an error). InputTypePathUnchecked is
+// not checked for existence. All paths are converted to absolute paths before being passed to templates.
 const (
 	InputTypePathAny       InputType = "path_any"
 	InputTypePathDir       InputType = "path_dir"
@@ -42,9 +39,8 @@ type Runner struct {
 	commands       []Command
 }
 
-// NewRunner constructs a Runner with the provided schema and required inputs.
-// Defensive copies are taken to ensure subsequent callers cannot mutate the
-// Runner's internal state by modifying the arguments.
+// NewRunner constructs a Runner with the provided schema and required inputs. Defensive copies are taken to ensure subsequent callers cannot mutate the Runner's
+// internal state by modifying the arguments.
 func NewRunner(inputSchema map[string]InputType, requiredInputs []string) *Runner {
 	cloneSchema := make(map[string]InputType, len(inputSchema))
 	for k, v := range inputSchema {
@@ -59,8 +55,7 @@ func NewRunner(inputSchema map[string]InputType, requiredInputs []string) *Runne
 	}
 }
 
-// Run executes all configured commands. An error is returned if inputs are
-// invalid or templating fails.
+// Run executes all configured commands. An error is returned if inputs are invalid or templating fails.
 func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any) (Result, error) {
 	if r == nil {
 		return Result{}, errors.New("cmdrunner: runner is nil")
@@ -169,21 +164,17 @@ func (r *Runner) AddCommand(c Command) {
 	r.commands = append(r.commands, c)
 }
 
-// Command defines a templated command to run. Command, Args, and CWD fields
-// support templating prior to execution.
+// Command defines a templated command to run. Command, Args, and CWD fields support templating prior to execution.
 type Command struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-	CWD     string   `json:"cwd"`
+	Command                string   `json:"command"`
+	Args                   []string `json:"args"`
+	CWD                    string   `json:"cwd"`
+	OutcomeFailIfAnyOutput bool     `json:"outcomefailifanyoutput"`
+	MessageIfNoOutput      string   `json:"messageifnooutput"`
+	ShowCWD                bool     `json:"showcwd"` // ShowCWD, when true, instructs XML rendering to include the command's CWD.
 
-	OutcomeFailIfAnyOutput bool   `json:"outcomefailifanyoutput"`
-	MessageIfNoOutput      string `json:"messageifnooutput"`
-	// ShowCWD, when true, instructs XML rendering to include the command's CWD.
-	ShowCWD bool `json:"showcwd"`
-
-	// Attrs are pairs of keys/values that will be added to the corresponding
-	// command tag when rendering ToXML output. len(Attrs) must be a multiple of 2.
-	// Strings are NOT validated or escaped.
+	// Attrs are pairs of keys/values that will be added to the corresponding command tag when rendering ToXML output. len(Attrs) must be a multiple of 2. Strings are
+	// NOT validated or escaped.
 	Attrs []string `json:"attrs"`
 }
 
@@ -223,10 +214,9 @@ const (
 
 // CommandResult captures the execution details for a single command.
 type CommandResult struct {
-	Command string
-	Args    []string
-	CWD     string
-
+	Command           string
+	Args              []string
+	CWD               string
 	Output            string
 	MessageIfNoOutput string
 	ShowCWD           bool

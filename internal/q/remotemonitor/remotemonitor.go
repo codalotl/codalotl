@@ -19,53 +19,38 @@ import (
 	"time"
 )
 
-// Monitor represents a remote monitor embedded in a CLI binary that is running on a customer's computer (could be server
-// or laptop or desktop; personal or corporate; OS could be varied; network access varied).
+// Monitor represents a remote monitor embedded in a CLI binary that is running on a customer's computer (could be server or laptop or desktop; personal or corporate;
+// OS could be varied; network access varied).
 //
-// It is used to make sure the version is up to date, report anonymous usage activity, and report serious errors/panics,
-// so the server can assess health of the fleet of binaries.
+// It is used to make sure the version is up to date, report anonymous usage activity, and report serious errors/panics, so the server can assess health of the fleet
+// of binaries.
 type Monitor struct {
-	// Current version that is running.
-	CurrentVersion string
+	CurrentVersion string            // Current version that is running.
+	Host           string            // Host is the server that this monitor reports to and queries. It must include scheme. Trailing slash optional.
+	stableProps    map[string]string // Caller-defined opaque bag of props that are included in ReportError/Panic. ReportEvent is optionally included.
+	BuildToken     string            // optional token. If set, includes Build-Token: xyz as an HTTP header for the requests.
 
-	// Host is the server that this monitor reports to and queries. It must include scheme. Trailing slash optional.
-	Host string
-
-	// Caller-defined opaque bag of props that are included in ReportError/Panic. ReportEvent is optionally included.
-	stableProps map[string]string
-
-	BuildToken string // optional token. If set, includes Build-Token: xyz as an HTTP header for the requests.
-
-	// URL to query (GET) for latest version. If just a path, combines with Host. It can also include a host, which possibly
-	// differs from Host. If you want query params like ?product=x, you must bake that into LatestVersionURL.
+	// URL to query (GET) for latest version. If just a path, combines with Host. It can also include a host, which possibly differs from Host. If you want query params
+	// like ?product=x, you must bake that into LatestVersionURL.
 	//
 	// Defaults to "/version" if unset.
 	//
 	// Response format: JSON object {"version":"1.2.3"}.
 	//
-	// LatestVersionURL allows full URLs because this is the highest throughput endpoint, does not necessarily require server
-	// computation to conditionally compute different versions for different people, and so can easily be hosted by an object
-	// store or CDN instead of hitting host directly.
+	// LatestVersionURL allows full URLs because this is the highest throughput endpoint, does not necessarily require server computation to conditionally compute different
+	// versions for different people, and so can easily be hosted by an object store or CDN instead of hitting host directly.
 	LatestVersionURL string
 
-	ReportErrorPath string // Ex: "/report_error". Will receive a POST when ReportError is called.
-	ReportPanicPath string // Ex: "/report_panic". Will receive a POST when ReportPanic is called.
-	ReportEventPath string // Ex: "/report_event". Will receive a GET when ReportError is called.
+	ReportErrorPath  string        // Ex: "/report_error". Will receive a POST when ReportError is called.
+	ReportPanicPath  string        // Ex: "/report_panic". Will receive a POST when ReportPanic is called.
+	ReportEventPath  string        // Ex: "/report_event". Will receive a GET when ReportError is called.
+	latestVersion    string        // latestVersion is the cached latest-version string from the most recent successful check. Guarded by mu.
+	latestVersionErr error         // latestVersionErr is the cached error from the most recent latest-version check. Guarded by mu.
+	mu               sync.Mutex    // mu guards mutable state: stableProps, latestVersion, latestVersionErr, inflight, and httpClient.
+	inflight         chan struct{} // inflight is non-nil while a latest-version request is in progress. It is closed to signal completion to waiters.
 
-	// latestVersion is the cached latest-version string from the most recent successful check. Guarded by mu.
-	latestVersion string
-
-	// latestVersionErr is the cached error from the most recent latest-version check. Guarded by mu.
-	latestVersionErr error
-
-	// mu guards mutable state: stableProps, latestVersion, latestVersionErr, inflight, and httpClient.
-	mu sync.Mutex
-
-	// inflight is non-nil while a latest-version request is in progress. It is closed to signal completion to waiters.
-	inflight chan struct{}
-
-	// httpClient is the client used for all network operations. If nil, it is lazily initialized with a 4s timeout. Callers
-	// may replace it before use to customize transport or timeouts; the replacement must be safe for concurrent use.
+	// httpClient is the client used for all network operations. If nil, it is lazily initialized with a 4s timeout. Callers may replace it before use to customize transport
+	// or timeouts; the replacement must be safe for concurrent use.
 	httpClient *http.Client
 
 	panicReportingDisabled bool
@@ -99,8 +84,8 @@ func (m *Monitor) SetReportingEnabled(panicReporting, errorReporting, eventRepor
 	m.eventReportingDisabled = !eventReportig
 }
 
-// SetStableProperties sets stable props that are included in ReportError and ReportPanic requests; ReportEvent is optionally
-// included. Merges with existing props if they're present.
+// SetStableProperties sets stable props that are included in ReportError and ReportPanic requests; ReportEvent is optionally included. Merges with existing props
+// if they're present.
 func (m *Monitor) SetStableProperties(props map[string]string) {
 	if props == nil {
 		return
@@ -161,8 +146,8 @@ func (m *Monitor) LatestVersionAsync() (string, error) {
 	return m.latestVersion, m.latestVersionErr
 }
 
-// FetchLatestVersionFromHost initiates a request to the host to get the latest version unless the receiver is nil or a fetch
-// is already in progress. It does not block; it returns immediately.
+// FetchLatestVersionFromHost initiates a request to the host to get the latest version unless the receiver is nil or a fetch is already in progress. It does not
+// block; it returns immediately.
 func (m *Monitor) FetchLatestVersionFromHost() {
 	m.mu.Lock()
 	if m.inflight != nil {
@@ -177,11 +162,9 @@ func (m *Monitor) FetchLatestVersionFromHost() {
 	go m.fetchLatestVersion()
 }
 
-// ReportError synchronously reports err.Error() to the server, along with metadata (nil allowed). An error is returned for
-// connection issues.
+// ReportError synchronously reports err.Error() to the server, along with metadata (nil allowed). An error is returned for connection issues.
 //
-// The request: POST Host+ReportErrorPath with JSON body: {"error": err.Error(), "metadata": metadata, "host": HostProperties(),
-// "props": m.stableProps}.
+// The request: POST Host+ReportErrorPath with JSON body: {"error": err.Error(), "metadata": metadata, "host": HostProperties(), "props": m.stableProps}.
 func (m *Monitor) ReportError(err error, metadata map[string]string) error {
 	if !m.isErrorReportingEnabled() {
 		return nil
@@ -224,11 +207,11 @@ func (m *Monitor) ReportError(err error, metadata map[string]string) error {
 	return nil
 }
 
-// ReportPanic synchronously reports panicVal and stack to the host, along with metadata (nil allowed). An error is returned
-// for connection issues or non-2xx HTTP status codes.
+// ReportPanic synchronously reports panicVal and stack to the host, along with metadata (nil allowed). An error is returned for connection issues or non-2xx HTTP
+// status codes.
 //
-// The request: POST Host+ReportPanicPath, with JSON body: {"panic": fmt.Sprintf("%v", panicVal), "stack": stack, "metadata":
-// metadata, "host": hostProps, "props": m.stableProps}.
+// The request: POST Host+ReportPanicPath, with JSON body: {"panic": fmt.Sprintf("%v", panicVal), "stack": stack, "metadata": metadata, "host": hostProps, "props":
+// m.stableProps}.
 func (m *Monitor) ReportPanic(panicVal any, stack []byte, metadata map[string]string) error {
 	if !m.isPanicReportingEnabled() {
 		return nil
@@ -269,9 +252,8 @@ func (m *Monitor) ReportPanic(panicVal any, stack []byte, metadata map[string]st
 	return nil
 }
 
-// WithPanicReporting executes f and recovers any panic, reporting it via ReportPanic and returning an error instead of
-// re-panicking. If reporting fails, the returned error includes the reporting error as context. If f does not panic, the
-// returned error is nil.
+// WithPanicReporting executes f and recovers any panic, reporting it via ReportPanic and returning an error instead of re-panicking. If reporting fails, the returned
+// error includes the reporting error as context. If f does not panic, the returned error is nil.
 func (m *Monitor) WithPanicReporting(f func()) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -295,8 +277,7 @@ func (m *Monitor) WithPanicReporting(f func()) (err error) {
 //
 // The request: GET Host+ReportEventPath + toquery(metadata).
 //
-// Note that NO HostProperties are sent by default. The query parameters are event and metadata, and if includeStableProps,
-// then also the stable props.
+// Note that NO HostProperties are sent by default. The query parameters are event and metadata, and if includeStableProps, then also the stable props.
 func (m *Monitor) ReportEventAsync(event string, metadata map[string]string, includeStableProps bool) {
 	if !m.isEventReportingEnabled() {
 		return
@@ -349,8 +330,8 @@ func (m *Monitor) ReportEventAsync(event string, metadata map[string]string, inc
 	}(full)
 }
 
-// isPanicReportingEnabled reports whether panic reporting is enabled. Defaults to true when not configured.
-// isErrorReportingEnabled reports whether error reporting is enabled. Defaults to true when not configured.
+// isPanicReportingEnabled reports whether panic reporting is enabled. Defaults to true when not configured. isErrorReportingEnabled reports whether error reporting
+// is enabled. Defaults to true when not configured.
 func (m *Monitor) isErrorReportingEnabled() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -374,8 +355,8 @@ func (m *Monitor) isPanicReportingEnabled() bool {
 // ErrNotCached indicates there is no cached latest version.
 var ErrNotCached = errors.New("latest version not cached")
 
-// client returns the HTTP client used by m, creating one with a 4-second timeout if none is set. It is safe for concurrent
-// use. To customize the client, assign m.httpClient before invoking networked methods. The receiver must be non-nil.
+// client returns the HTTP client used by m, creating one with a 4-second timeout if none is set. It is safe for concurrent use. To customize the client, assign
+// m.httpClient before invoking networked methods. The receiver must be non-nil.
 func (m *Monitor) client() *http.Client {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -385,8 +366,8 @@ func (m *Monitor) client() *http.Client {
 	return m.httpClient
 }
 
-// copyStableProps returns a shallow copy of the stable properties, or nil if none are set. It is safe for concurrent use;
-// the returned map may be modified by the caller.
+// copyStableProps returns a shallow copy of the stable properties, or nil if none are set. It is safe for concurrent use; the returned map may be modified by the
+// caller.
 func (m *Monitor) copyStableProps() map[string]string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -398,8 +379,7 @@ func (m *Monitor) copyStableProps() map[string]string {
 	return cp
 }
 
-// safeCopyMap returns a shallow copy of in, or nil if in is nil or empty. It is safe to pass a nil map; the function returns
-// nil in that case.
+// safeCopyMap returns a shallow copy of in, or nil if in is nil or empty. It is safe to pass a nil map; the function returns nil in that case.
 func safeCopyMap(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
@@ -409,8 +389,8 @@ func safeCopyMap(in map[string]string) map[string]string {
 	return cp
 }
 
-// buildURL returns an absolute URL string. If pathOrURL is absolute (http/https), it is used as-is. If it's a path, it is
-// combined with m.Host. defaultPath is used when pathOrURL is empty.
+// buildURL returns an absolute URL string. If pathOrURL is absolute (http/https), it is used as-is. If it's a path, it is combined with m.Host. defaultPath is used
+// when pathOrURL is empty.
 func (m *Monitor) buildURL(pathOrURL, defaultPath string) (string, bool) {
 	s := strings.TrimSpace(pathOrURL)
 	if s == "" {
@@ -430,8 +410,8 @@ func (m *Monitor) buildURL(pathOrURL, defaultPath string) (string, bool) {
 	return left + "/" + right, true
 }
 
-// fetchLatestVersion builds the request URL and, if valid, performs the network request and updates cache; it signals inflight
-// when done. If URL construction fails, it records an error and returns without making a request.
+// fetchLatestVersion builds the request URL and, if valid, performs the network request and updates cache; it signals inflight when done. If URL construction fails,
+// it records an error and returns without making a request.
 func (m *Monitor) fetchLatestVersion() {
 	// Determine URL outside lock where possible
 	u, ok := m.buildURL(m.LatestVersionURL, "/version")
@@ -493,8 +473,8 @@ func (m *Monitor) fetchLatestVersion() {
 
 // HostProperties returns a map of k/vs relating to the host environment.
 //
-// All values should be considered anonymous - no personally identifiable info is returned. TZ/Locale are allowed, as even
-// though they narrow down, they can't identify users.
+// All values should be considered anonymous - no personally identifiable info is returned. TZ/Locale are allowed, as even though they narrow down, they can't identify
+// users.
 //
 // Never return things like their ENV, username, IP/MAC, filenames, or path info, etc.
 func HostProperties() map[string]string {
@@ -635,8 +615,7 @@ func isLikelyContainer() bool {
 	return false
 }
 
-// fileExists reports whether path names an existing non-directory file. It returns false if the file does not exist, is
-// a directory, or if an error occurs.
+// fileExists reports whether path names an existing non-directory file. It returns false if the file does not exist, is a directory, or if an error occurs.
 func fileExists(path string) bool {
 	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
 		return true
@@ -646,8 +625,7 @@ func fileExists(path string) bool {
 
 // readDarwinOSFlavor returns a short macOS flavor string derived from sw_vers.
 //
-// It returns "osx <version>" when ProductVersion is found, "osx" if the version is missing, or an empty string on failure.
-// It does not read ProductName.
+// It returns "osx <version>" when ProductVersion is found, "osx" if the version is missing, or an empty string on failure. It does not read ProductName.
 func readDarwinOSFlavor() string {
 	out, err := exec.Command("sw_vers").Output()
 	if err != nil || len(out) == 0 {
@@ -667,9 +645,8 @@ func readDarwinOSFlavor() string {
 	return "osx"
 }
 
-// readWindowsOSFlavor returns a normalized Windows OS flavor string from the registry via reg.exe. It derives a lowercase
-// series such as "windows 11" or "windows 10" from ProductName and omits the edition. When available, it appends DisplayVersion
-// or ReleaseId; otherwise, it returns only the series.
+// readWindowsOSFlavor returns a normalized Windows OS flavor string from the registry via reg.exe. It derives a lowercase series such as "windows 11" or "windows
+// 10" from ProductName and omits the edition. When available, it appends DisplayVersion or ReleaseId; otherwise, it returns only the series.
 func readWindowsOSFlavor() string {
 	const key = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"
 	// Single query; if it fails, don't try again.

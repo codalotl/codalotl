@@ -49,8 +49,8 @@ func requiredFromCascadeTag(f reflect.StructField) bool {
 	return false
 }
 
-// Loader builds a prioritized cascade of configuration sources and applies them to a destination struct. Register sources in call order from lowest to highest priority using the With*
-// methods, then call StrictlyLoad. The zero value is ready to use; New exists for fluent chaining (ex: New().WithDefaults(...).WithJSONFile(...).WithEnv(...).StrictlyLoad(&cfg)).
+// Loader builds a prioritized cascade of configuration sources and applies them to a destination struct. Register sources in call order from lowest to highest priority
+// using the With* methods, then call StrictlyLoad. The zero value is ready to use; New exists for fluent chaining (ex: New().WithDefaults(...).WithJSONFile(...).WithEnv(...).StrictlyLoad(&cfg)).
 type Loader struct {
 	sources []cascadeSource // Sources are ordered from low to high priority.
 }
@@ -62,12 +62,10 @@ type Providence struct {
 
 // LoadReport describes which sources actually contributed values during a successful load, in low->high precedence order.
 //
-// A source is included only if it was readable/present (as applicable), successfully parsed, and assigned at least one value
-// into the destination struct during the load. Missing/unreadable files, empty files, and sources that only provided unknown
-// keys are excluded.
+// A source is included only if it was readable/present (as applicable), successfully parsed, and assigned at least one value into the destination struct during
+// the load. Missing/unreadable files, empty files, and sources that only provided unknown keys are excluded.
 type LoadReport struct {
-	// Sources are the contributing sources in low->high precedence order.
-	Sources []Providence
+	Sources []Providence // Sources are the contributing sources in low->high precedence order.
 }
 
 func (p Providence) IsSet() bool {
@@ -83,8 +81,8 @@ func New() *Loader {
 	return &Loader{}
 }
 
-// WithDefaults registers m as the lowest-priority source of default values. Keys may use dot-notation and are matched case-insensitively; values must be allowed normalized types. A
-// nil map contributes no values. The method returns the Loader to allow chaining.
+// WithDefaults registers m as the lowest-priority source of default values. Keys may use dot-notation and are matched case-insensitively; values must be allowed
+// normalized types. A nil map contributes no values. The method returns the Loader to allow chaining.
 func (c *Loader) WithDefaults(m map[string]any) *Loader {
 	c.sources = append(c.sources, &sourceMap{isDefaults: true, m: m})
 	return c
@@ -92,8 +90,8 @@ func (c *Loader) WithDefaults(m map[string]any) *Loader {
 
 // WithJSONFile registers a JSON file as a source on the Loader.
 //
-// absolutePath may be absolute or relative and is expanded with ExpandPath. Relative paths are resolved against the current working directory when the file is read. The file is not
-// read at call time; any I/O or parse errors occur during loading.
+// absolutePath may be absolute or relative and is expanded with ExpandPath. Relative paths are resolved against the current working directory when the file is read.
+// The file is not read at call time; any I/O or parse errors occur during loading.
 //
 // The method returns the Loader to allow chaining.
 func (c *Loader) WithJSONFile(absolutePath string) *Loader {
@@ -101,9 +99,10 @@ func (c *Loader) WithJSONFile(absolutePath string) *Loader {
 	return c
 }
 
-// WithNearestJSONFile searches upward from startingAbsolutePath (or, if empty, from the current working directory if it can be determined) for the first readable, non-empty file named
-// fileName and adds it as the next-highest-priority source. fileName must be a relative path; it may include directories (ex: "config/app.json"). It panics if fileName is absolute.
-// startingAbsolutePath should be an absolute path to a directory or file; if a file path is provided, its directory is used. The search stops at the filesystem root.
+// WithNearestJSONFile searches upward from startingAbsolutePath (or, if empty, from the current working directory if it can be determined) for the first readable,
+// non-empty file named fileName and adds it as the next-highest-priority source. fileName must be a relative path; it may include directories (ex: "config/app.json").
+// It panics if fileName is absolute. startingAbsolutePath should be an absolute path to a directory or file; if a file path is provided, its directory is used.
+// The search stops at the filesystem root.
 //
 // The file is not parsed here; any JSON parse errors surface when the sources are loaded later. If no file is found, the loader is unchanged.
 //
@@ -149,33 +148,34 @@ func (c *Loader) WithNearestJSONFile(fileName string, startingAbsolutePath strin
 	return c
 }
 
-// WithEnv registers an environment-variable-backed source. The mapping m associates a configuration key (dots denote nesting) with an environment variable name; missing variables are
-// ignored and present values are strings. The source is added with the next higher priority, and the Loader is returned to allow chaining.
+// WithEnv registers an environment-variable-backed source. The mapping m associates a configuration key (dots denote nesting) with an environment variable name;
+// missing variables are ignored and present values are strings. The source is added with the next higher priority, and the Loader is returned to allow chaining.
 func (c *Loader) WithEnv(m map[string]string) *Loader {
 	c.sources = append(c.sources, &sourceEnv{envToKey: m})
 	return c
 }
 
-// StrictlyLoad loads configuration from c's sources into dest, from low to high priority, with later sources overwriting earlier values. dest must be a non- nil pointer to a struct.
+// StrictlyLoad loads configuration from c's sources into dest, from low to high priority, with later sources overwriting earlier values. dest must be a non- nil
+// pointer to a struct.
 //
-// Field names are matched case-insensitively (ex: "port" sets field Port). A field tagged with `cascade:",required"` must be set by some source; required fields are validated after
-// all sources have been applied.
+// Field names are matched case-insensitively (ex: "port" sets field Port). A field tagged with `cascade:",required"` must be set by some source; required fields
+// are validated after all sources have been applied.
 //
-// Values are coerced to the destination field type when reasonable (ex: "4" -> 4 for an int field). If a readable source cannot be parsed or supplies a value that cannot be coerced
-// to the field type, StrictlyLoad returns an error; it fails fast and does not continue to later sources to "fix" bad values.
+// Values are coerced to the destination field type when reasonable (ex: "4" -> 4 for an int field). If a readable source cannot be parsed or supplies a value that
+// cannot be coerced to the field type, StrictlyLoad returns an error; it fails fast and does not continue to later sources to "fix" bad values.
 //
-// StrictlyLoad does not error when a source is missing or not readable due to permissions, when a source is empty/whitespace-only, or when a source contains unknown keys. Errors from
-// individual sources include the source's name for context. On success, dest is populated and StrictlyLoad returns nil.
+// StrictlyLoad does not error when a source is missing or not readable due to permissions, when a source is empty/whitespace-only, or when a source contains unknown
+// keys. Errors from individual sources include the source's name for context. On success, dest is populated and StrictlyLoad returns nil.
 func (c *Loader) StrictlyLoad(dest any) error {
 	_, err := c.StrictlyLoadWithReport(dest)
 	return err
 }
 
-// StrictlyLoadWithReport is like StrictlyLoad, but additionally returns a report describing which sources actually contributed
-// values during the load, in low->high precedence order.
+// StrictlyLoadWithReport is like StrictlyLoad, but additionally returns a report describing which sources actually contributed values during the load, in low->high
+// precedence order.
 //
-// On success, report describes the contributing sources and err is nil.
-// On failure, err is non-nil and report includes sources that contributed values before the error was encountered.
+// On success, report describes the contributing sources and err is nil. On failure, err is non-nil and report includes sources that contributed values before the
+// error was encountered.
 func (c *Loader) StrictlyLoadWithReport(dest any) (LoadReport, error) {
 	var report LoadReport
 
@@ -226,10 +226,10 @@ func (c *Loader) StrictlyLoadWithReport(dest any) (LoadReport, error) {
 	return report, nil
 }
 
-// applyMapToStruct writes values from m into structVal, matching keys to settable struct fields case-insensitively and recursing into nested objects. basePath is a dot-separated prefix
-// used in error messages and in the present map, which records lowercase paths for fields that were successfully assigned. Unknown keys are ignored. Values are assigned via setFieldValue,
-// which handles pointer allocation, recursion, and type coercion. Returns an error if a provided value has the wrong shape or cannot be coerced to the destination field type. The present
-// map must be non-nil. Case-insensitive field name collisions are not supported.
+// applyMapToStruct writes values from m into structVal, matching keys to settable struct fields case-insensitively and recursing into nested objects. basePath is
+// a dot-separated prefix used in error messages and in the present map, which records lowercase paths for fields that were successfully assigned. Unknown keys are
+// ignored. Values are assigned via setFieldValue, which handles pointer allocation, recursion, and type coercion. Returns an error if a provided value has the wrong
+// shape or cannot be coerced to the destination field type. The present map must be non-nil. Case-insensitive field name collisions are not supported.
 func applyMapToStruct(structVal reflect.Value, m map[string]any, basePath string, present map[string]bool, prov Providence, onAnyAssigned func()) error {
 	structType := structVal.Type()
 
@@ -295,15 +295,15 @@ func applyMapToStruct(structVal reflect.Value, m map[string]any, basePath string
 	return nil
 }
 
-// setFieldValue sets fVal from raw, allocating pointer fields as needed and coercing types where reasonable. It records presence at the given path when a concrete value is assigned.
-// Supported assignments include:
+// setFieldValue sets fVal from raw, allocating pointer fields as needed and coercing types where reasonable. It records presence at the given path when a concrete
+// value is assigned. Supported assignments include:
 //   - Struct fields from map[string]any (recursing via applyMapToStruct).
 //   - Scalar fields (string, bool, ints, floats) via coerceScalar.
-//   - Slices: empty inputs to any slice type; slices of structs from []map[string]any; []string from []string/[]bool/[]int/[]float64; []bool from []bool/[]string; int slices from []int/[]float64/[]string;
-//     float slices from []float64/[]int/[]string.
+//   - Slices: empty inputs to any slice type; slices of structs from []map[string]any; []string from []string/[]bool/[]int/[]float64; []bool from []bool/[]string;
+//     int slices from []int/[]float64/[]string; float slices from []float64/[]int/[]string.
 //
-// On mismatch of shape or type (after coercion), an error is returned with the offending path. Unsupported destination kinds or slice element kinds also return an error. The present
-// map must be non-nil.
+// On mismatch of shape or type (after coercion), an error is returned with the offending path. Unsupported destination kinds or slice element kinds also return
+// an error. The present map must be non-nil.
 func setFieldValue(fVal reflect.Value, fType reflect.StructField, raw any, path string, present map[string]bool, prov Providence, onAssigned func(), onAnyAssigned func()) error {
 	// Handle pointers by allocating as needed
 	if fVal.Kind() == reflect.Ptr {
@@ -619,11 +619,11 @@ func providenceForSource(src cascadeSource) Providence {
 	}
 }
 
-// coerceScalar converts raw into a value assignable to a field of targetKind. It supports target kinds String, Bool, the signed Int kinds, and the Float kinds. For String, raw may
-// be a string, int, float64, or bool (formatted via strconv). For Bool, raw may be a bool or a string parseable by strconv.ParseBool; whitespace is trimmed. For Int kinds, raw may
-// be an int, a float64 (truncated toward zero), or a base-10 string; whitespace is trimmed. The returned value is int64. For Float kinds, raw may be a float64, an int, or a string
-// parseable by strconv.ParseFloat; whitespace is trimmed. The returned value is float64. If conversion fails or the kind is unsupported, an error is returned that includes path (ex:
-// "parent.child[2]") to aid diagnostics.
+// coerceScalar converts raw into a value assignable to a field of targetKind. It supports target kinds String, Bool, the signed Int kinds, and the Float kinds.
+// For String, raw may be a string, int, float64, or bool (formatted via strconv). For Bool, raw may be a bool or a string parseable by strconv.ParseBool; whitespace
+// is trimmed. For Int kinds, raw may be an int, a float64 (truncated toward zero), or a base-10 string; whitespace is trimmed. The returned value is int64. For
+// Float kinds, raw may be a float64, an int, or a string parseable by strconv.ParseFloat; whitespace is trimmed. The returned value is float64. If conversion fails
+// or the kind is unsupported, an error is returned that includes path (ex: "parent.child[2]") to aid diagnostics.
 func coerceScalar(raw any, targetKind reflect.Kind, path string) (any, error) {
 	switch targetKind {
 	case reflect.String:
@@ -687,9 +687,10 @@ func coerceScalar(raw any, targetKind reflect.Kind, path string) (any, error) {
 	}
 }
 
-// validateRequiredFields verifies that all fields tagged with cascade:"required" in structVal were set, as recorded in present. Field keys are built from lowercased field names joined
-// by dots, with slice indices included (ex: "items[0].name"). It recurses into structs, non-nil pointers to structs, and slices of structs. It returns an error naming the first missing
-// required key, or nil if all required fields are present. structVal must be a struct value; basePath carries the path prefix used during recursion.
+// validateRequiredFields verifies that all fields tagged with cascade:"required" in structVal were set, as recorded in present. Field keys are built from lowercased
+// field names joined by dots, with slice indices included (ex: "items[0].name"). It recurses into structs, non-nil pointers to structs, and slices of structs. It
+// returns an error naming the first missing required key, or nil if all required fields are present. structVal must be a struct value; basePath carries the path
+// prefix used during recursion.
 func validateRequiredFields(structVal reflect.Value, basePath string, present map[string]bool) error {
 	structType := structVal.Type()
 	for i := 0; i < structType.NumField(); i++ {

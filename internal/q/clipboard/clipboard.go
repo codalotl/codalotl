@@ -7,9 +7,7 @@ import (
 	"sync"
 )
 
-// ErrUnavailable indicates that the clipboard is not usable on this system
-// (typically because the required OS integration or command-line utilities are
-// missing).
+// ErrUnavailable indicates that the clipboard is not usable on this system (typically because the required OS integration or command-line utilities are missing).
 var ErrUnavailable = errors.New("clipboard unavailable")
 
 type backend interface {

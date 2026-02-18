@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// Identifier models a single pre-release identifier. Numeric identifiers are flagged via the Numeric field and expose their
-// numeric value through Number.
+// Identifier models a single pre-release identifier. Numeric identifiers are flagged via the Numeric field and expose their numeric value through Number.
 //
 // The Value field reuses the original input substring. Callers should treat it as read-only.
 type Identifier struct {
@@ -16,8 +15,8 @@ type Identifier struct {
 	Number  uint64 // Parsed numeric value when Numeric is true; undefined otherwise.
 }
 
-// Version represents a semantic version according to the SemVer 2.0.0 specification. The zero value represents version 0.0.0.
-// Use [Parse] or [ParseStrict] to construct instances.
+// Version represents a semantic version according to the SemVer 2.0.0 specification. The zero value represents version 0.0.0. Use [Parse] or [ParseStrict] to construct
+// instances.
 type Version struct {
 	Major uint64       // Major version number.
 	Minor uint64       // Minor version number.
@@ -26,8 +25,7 @@ type Version struct {
 	build []string     // Build metadata identifiers in order; exposed via Build(). Treat as read-only.
 }
 
-// Compare returns an integer comparing two versions according to SemVer's precedence rules. The result will be -1 if a <
-// b, 1 if a > b, and 0 if they are equal.
+// Compare returns an integer comparing two versions according to SemVer's precedence rules. The result will be -1 if a < b, 1 if a > b, and 0 if they are equal.
 func Compare(a, b Version) int {
 	return a.Compare(b)
 }
@@ -42,15 +40,14 @@ func GreaterThan(a, b Version) bool {
 	return Compare(a, b) > 0
 }
 
-// Compatible reports whether versions a and b should be considered compatible. Versions with different major versions are
-// incompatible. When both versions are still in the 0.y.z pre-release range, compatibility additionally requires matching
-// minor versions.
+// Compatible reports whether versions a and b should be considered compatible. Versions with different major versions are incompatible. When both versions are still
+// in the 0.y.z pre-release range, compatibility additionally requires matching minor versions.
 func Compatible(a, b Version) bool {
 	return a.CompatibleWith(b)
 }
 
-// Compare returns an integer comparing the receiver to the provided version according to SemVer's precedence rules. The
-// result will be -1 if v < other, 1 if v > other, and 0 if they are equal.
+// Compare returns an integer comparing the receiver to the provided version according to SemVer's precedence rules. The result will be -1 if v < other, 1 if v >
+// other, and 0 if they are equal.
 func (v Version) Compare(other Version) int {
 	if v.Major != other.Major {
 		if v.Major < other.Major {
@@ -141,9 +138,8 @@ func (v Version) GreaterThan(other Version) bool {
 	return v.Compare(other) > 0
 }
 
-// CompatibleWith reports whether the receiver should be considered compatible with the other version. Versions with different
-// major versions are incompatible. When both versions are still in the 0.y.z pre-release range, compatibility additionally
-// requires matching minor versions.
+// CompatibleWith reports whether the receiver should be considered compatible with the other version. Versions with different major versions are incompatible. When
+// both versions are still in the 0.y.z pre-release range, compatibility additionally requires matching minor versions.
 func (v Version) CompatibleWith(other Version) bool {
 	if v.Major != other.Major {
 		return false

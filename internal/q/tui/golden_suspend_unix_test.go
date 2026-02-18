@@ -27,8 +27,7 @@ const (
 	helperDone       = "helper:done"
 )
 
-// TestSuspend exercises Suspend by running a helper process in its own
-// process group so the SIGTSTP sent by Suspend only affects the helper.
+// TestSuspend exercises Suspend by running a helper process in its own process group so the SIGTSTP sent by Suspend only affects the helper.
 func TestSuspend(t *testing.T) {
 	// NOTE: not necessary to check `if runtime.GOOS == "windows"` because this compiles for non-windows.
 

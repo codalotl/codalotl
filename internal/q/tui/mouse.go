@@ -2,18 +2,15 @@ package tui
 
 import "strings"
 
-// MouseEvent represents a mouse event emitted by the terminal when mouse
-// tracking is enabled (cell motion / button-event tracking).
+// MouseEvent represents a mouse event emitted by the terminal when mouse tracking is enabled (cell motion / button-event tracking).
 //
 // Coordinates are 0-based where (0,0) is the upper-left cell.
 type MouseEvent struct {
-	X int
-	Y int
-
-	Shift bool
-	Alt   bool
-	Ctrl  bool
-
+	X      int
+	Y      int
+	Shift  bool
+	Alt    bool
+	Ctrl   bool
 	Action MouseAction
 	Button MouseButton
 }
@@ -212,8 +209,7 @@ func parseDecIntUntil(buf []byte, i *int, term byte) (int, bool) {
 	return n, true
 }
 
-// parseMouseButton decodes the "button code" (Cb) part of xterm mouse tracking.
-// It returns an event with Action/Button and modifier flags set.
+// parseMouseButton decodes the "button code" (Cb) part of xterm mouse tracking. It returns an event with Action/Button and modifier flags set.
 func parseMouseButton(b int, isSGR bool) MouseEvent {
 	var m MouseEvent
 	e := b

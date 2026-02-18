@@ -88,7 +88,8 @@ func TestTUIBasic(t *testing.T) {
 	assert.True(t, m.gotSigTerm)
 }
 
-// flexibleModel allows individual test cases to change and dynamically define the model on an ad-hoc basis, without requiring a new top-level model for each test case.
+// flexibleModel allows individual test cases to change and dynamically define the model on an ad-hoc basis, without requiring a new top-level model for each test
+// case.
 type flexibleModel struct {
 	init   func(*tui.TUI)
 	update func(*tui.TUI, tui.Message)

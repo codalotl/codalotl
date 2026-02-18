@@ -15,8 +15,8 @@ type cascadeSource interface {
 	// ToMap returns a normalized map:
 	//   - keys are lower cased
 	//   - keys have no "." -- those are expansion operators that create nested maps
-	//   - values are one of: normalized nested maps (ONLY via map[string]any -- not map[string]string or any other); scalars (ONLY int, float64, bool, string); slices of the aformentioned;
-	//     nil.
+	//   - values are one of: normalized nested maps (ONLY via map[string]any -- not map[string]string or any other); scalars (ONLY int, float64, bool, string); slices
+	//     of the aformentioned; nil.
 	//
 	// Errors are returned when:
 	//   - reading/parsing fails
@@ -26,19 +26,23 @@ type cascadeSource interface {
 
 // sourceMap adapts a Go map into a cascadeSource. Keys may use dot-notation to create nested objects and are normalized to lower case at merge time.
 type sourceMap struct {
-	isDefaults bool           // When true, Name reports "Defaults"; otherwise it reports "Go Map".
-	m          map[string]any // Raw input map to normalize. Keys may include "." for nesting; nested objects must be map[string]any; values must be allowed normalized types.
+	// When true, Name reports "Defaults"; otherwise it reports "Go Map".
+	isDefaults bool
+
+	// Raw input map to normalize. Keys may include "." for nesting; nested objects must be map[string]any; values must be allowed normalized types.
+	m map[string]any
 }
 
-// sourceJSONFile implements cascadeSource for a single JSON file whose contents are read and normalized at load time. Empty or whitespace-only files contribute no values.
+// sourceJSONFile implements cascadeSource for a single JSON file whose contents are read and normalized at load time. Empty or whitespace-only files contribute
+// no values.
 type sourceJSONFile struct {
 	path string // Path to the JSON file to read at load time. May be absolute or relative and is expanded with ExpandPath.
 }
 
 // sourceEnv implements cascadeSource backed by environment variables mapped to configuration keys.
 type sourceEnv struct {
-	// envToKey maps a key in a map ("." allowed for nesting) to an ENV variable. Ex: {"server.host": "SERVER_HOST", "server.port": "SERVER_PORT"} creates {server: {host: "example.com",
-	// port: 1234}}, assuming the env variables are set.
+	// envToKey maps a key in a map ("." allowed for nesting) to an ENV variable. Ex: {"server.host": "SERVER_HOST", "server.port": "SERVER_PORT"} creates {server: {host:
+	// "example.com", port: 1234}}, assuming the env variables are set.
 	envToKey map[string]string
 }
 
@@ -50,8 +54,9 @@ func (s *sourceMap) Name() string {
 	return "Go Map"
 }
 
-// ToMap normalizes s.m into a lowercased, nested map suitable for application to a destination struct. Dotted keys are expanded into nested objects, nested map[string]any values are
-// deep-merged, and values are validated to be allowed normalized types. If s.m is nil, it returns an empty map. It returns an error on key conflicts or invalid value types.
+// ToMap normalizes s.m into a lowercased, nested map suitable for application to a destination struct. Dotted keys are expanded into nested objects, nested map[string]any
+// values are deep-merged, and values are validated to be allowed normalized types. If s.m is nil, it returns an empty map. It returns an error on key conflicts
+// or invalid value types.
 func (s *sourceMap) ToMap() (map[string]any, error) {
 	if s.m == nil {
 		return map[string]any{}, nil
@@ -69,9 +74,9 @@ func (s *sourceMap) ToMap() (map[string]any, error) {
 	return normalizedMap, nil
 }
 
-// mergeIntoObject inserts value into obj along parts (a path of key segments), lowercasing each segment. If value is a map[string]any at the leaf, it is deep-merged; otherwise value
-// must be an allowed normalized type. It returns an error for invalid keys, invalid value types, or key conflicts (e.g., when a non-object already exists at an intermediate segment,
-// or a leaf is set twice). fullKey is used only to annotate errors. obj is modified in place.
+// mergeIntoObject inserts value into obj along parts (a path of key segments), lowercasing each segment. If value is a map[string]any at the leaf, it is deep-merged;
+// otherwise value must be an allowed normalized type. It returns an error for invalid keys, invalid value types, or key conflicts (e.g., when a non-object already
+// exists at an intermediate segment, or a leaf is set twice). fullKey is used only to annotate errors. obj is modified in place.
 func mergeIntoObject(obj map[string]any, parts []string, value any, fullKey string) error {
 	if len(parts) == 0 {
 		return fmt.Errorf("invalid key")
@@ -121,8 +126,8 @@ func mergeIntoObject(obj map[string]any, parts []string, value any, fullKey stri
 	return mergeIntoObject(child, parts[1:], value, fullKey)
 }
 
-// mergeMap merges all entries from src into dest, lowercasing keys and expanding dotted keys into nested objects via mergeIntoObject. baseKey, when non-empty, is prefixed to error
-// paths for context. It returns the first error encountered. dest is modified in place; src is not mutated.
+// mergeMap merges all entries from src into dest, lowercasing keys and expanding dotted keys into nested objects via mergeIntoObject. baseKey, when non-empty, is
+// prefixed to error paths for context. It returns the first error encountered. dest is modified in place; src is not mutated.
 func mergeMap(dest map[string]any, src map[string]any, baseKey string) error {
 	for k, v := range src {
 		kLower := strings.ToLower(k)

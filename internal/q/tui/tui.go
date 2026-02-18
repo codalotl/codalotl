@@ -22,14 +22,12 @@ import (
 // Message is any event or user-defined message sent to a Model's Update method.
 type Message any
 
-// ControlKey represents a control key pressed by the user.
-// Values - other than ControlKeyNone - correspond either to ASCII control bytes
-// (0x00-0x1f, 0x7f) or to higher-valued identifiers for CSI-based key sequences.
+// ControlKey represents a control key pressed by the user. Values - other than ControlKeyNone - correspond either to ASCII control bytes (0x00-0x1f, 0x7f) or to
+// higher-valued identifiers for CSI-based key sequences.
 type ControlKey int
 
 const (
-	// ControlKeyNone indicates no control key was pressed.
-	ControlKeyNone ControlKey = -1
+	ControlKeyNone ControlKey = -1 // ControlKeyNone indicates no control key was pressed.
 )
 
 const (
@@ -171,18 +169,16 @@ type ResizeEvent struct {
 // SigResumeEvent will be sent when a program resumes from being suspended.
 type SigResumeEvent struct{}
 
-// CancelFunc cancels signal events (ex: SigTermEvent) and periodic send.
-// It can be called idempotently and is always safe to call, even after the TUI has finished running.
+// CancelFunc cancels signal events (ex: SigTermEvent) and periodic send. It can be called idempotently and is always safe to call, even after the TUI has finished
+// running.
 type CancelFunc func()
 
-// SigTermEvent will be sent when Quit is requested. It can be canceled with Cancel.
-// An uncanceled event causes RunTUI to return with a nil error.
+// SigTermEvent will be sent when Quit is requested. It can be canceled with Cancel. An uncanceled event causes RunTUI to return with a nil error.
 type SigTermEvent struct {
 	Cancel CancelFunc
 }
 
-// SigIntEvent will be sent when Interrupt is requested. It can be canceled with Cancel.
-// An uncanceled event causes RunTUI to return with an ErrInterrupted error.
+// SigIntEvent will be sent when Interrupt is requested. It can be canceled with Cancel. An uncanceled event causes RunTUI to return with an ErrInterrupted error.
 type SigIntEvent struct {
 	Cancel CancelFunc
 }
@@ -203,15 +199,10 @@ type terminalFactory func(input io.Reader, output io.Writer) (terminalController
 
 // Options configure RunTUI.
 type Options struct {
-	Input  io.Reader
-	Output io.Writer
-	// EnableMouse enables mouse tracking and delivery of MouseEvent messages.
-	// Disabled by default.
-	EnableMouse bool
-	// If Framerate is between 60 and 120 inclusive, rendering is throttled to that
-	// refresh rate. Otherwise, a default of 60 FPS is used.
-	Framerate int
-
+	Input             io.Reader
+	Output            io.Writer
+	EnableMouse       bool // EnableMouse enables mouse tracking and delivery of MouseEvent messages. Disabled by default.
+	Framerate         int  // If Framerate is between 60 and 120 inclusive, rendering is throttled to that refresh rate. Otherwise, a default of 60 FPS is used.
 	skipTTYValidation bool
 	terminalFactory   terminalFactory
 	sizeProvider      func() (int, int, error)

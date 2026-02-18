@@ -14,7 +14,8 @@ import (
 	"time"
 )
 
-// This command updates the files in modellist/config to be up-to-date. It only updates providers in modellist.ProviderNames(). In theory it can do this via any mechanism.
+// This command updates the files in modellist/config to be up-to-date. It only updates providers in modellist.ProviderNames(). In theory it can do this via any
+// mechanism.
 //
 // Currently, it does it like this:
 //   - For each provider in modellist, get a JSON file from https://raw.githubusercontent.com/charmbracelet/catwalk/refs/heads/main/internal/providers/configs/PROVIDER_NAME.json
