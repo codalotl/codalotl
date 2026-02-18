@@ -45,8 +45,8 @@ import (
 // - Make this file be the API that I will try to drop into llmcomplete.
 
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model id send to API endpoints.
-// Consumers can create their own ModelID and register AddCustomModel, which bundles an provider model as well as a set of parameters.
-// This also lets us/consumers alias long/awkward ids with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
+// Consumers can create their own ModelID and register AddCustomModel, which bundles an provider model as well as a set of parameters. This also lets us/consumers
+// alias long/awkward ids with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
 type ModelID string
 
 // NOTE: I don't want to have ModelIDXyz constants for all our models, because I want them to be more dynamic. I don't want to keep changing them
@@ -55,18 +55,13 @@ type ModelID string
 const ModelIDUnknown ModelID = ""
 
 type model struct {
-	// User visible ID (eg, they'd type -model some-id)
-	id ModelID
-
-	typ        ProviderType
-	providerID ProviderID
-	modelID    string
-
+	id          ModelID // User visible ID (eg, they'd type -model some-id)
+	typ         ProviderType
+	providerID  ProviderID
+	modelID     string
 	providerObj *modellist.Provider // providerObj is the modellist provider
 	modelObj    *modellist.Model    // modelObj is the modellist model
-
-	isDefault bool // true if this is the default model for the provider
-
+	isDefault   bool                // true if this is the default model for the provider
 	ModelOverrides
 }
 
@@ -135,9 +130,9 @@ func ProviderIDForModelID(id ModelID) ProviderID {
 
 var availableModels []model
 
-// AddCustomModel adds the custom model to the available models. id is an opaque identifier that can be referred to later from consumers of this package.
-// providerID must match a known provider (note: for truly custom models, just say it's openai, or whatever shape the API is, and use custom URL in overrides).
-// providerModelID is the API parameter sent to the LLM provider for 'model' - matches API provider docs (ex: "claude-opus-4-20250514").
+// AddCustomModel adds the custom model to the available models. id is an opaque identifier that can be referred to later from consumers of this package. providerID
+// must match a known provider (note: for truly custom models, just say it's openai, or whatever shape the API is, and use custom URL in overrides). providerModelID
+// is the API parameter sent to the LLM provider for 'model' - matches API provider docs (ex: "claude-opus-4-20250514").
 //
 // It returns an error if:
 //   - invalid id/providerID
@@ -448,8 +443,7 @@ func AvailableModelIDs() []ModelID {
 	return ids
 }
 
-// ModelIDOrDefault returns id if it is valid. Otherwise it returns the default
-// model for OpenAI providers (or the first available model, if none is set).
+// ModelIDOrDefault returns id if it is valid. Otherwise it returns the default model for OpenAI providers (or the first available model, if none is set).
 func ModelIDOrDefault(id ModelID) ModelID {
 	if ModelIDIsValid(id) {
 		return id

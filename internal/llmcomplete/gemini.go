@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// geminiResolvedKey mirrors other providers' resolution order for API keys.
-// Order:
+// geminiResolvedKey mirrors other providers' resolution order for API keys. Order:
 //  1. overrides.APIActualKey
 //  2. env from overrides.APIKeyEnv (supports optional leading $)
 //  3. configuredProviderKeys[gemini]
@@ -38,8 +37,7 @@ func geminiResolvedKey(provider *modellist.Provider, overrides ModelOverrides) s
 	return ""
 }
 
-// geminiResolvedBaseURL mirrors other providers' URL resolution order.
-// Order:
+// geminiResolvedBaseURL mirrors other providers' URL resolution order. Order:
 //  1. overrides.APIEndpointURL
 //  2. env from provider.APIEndpointEnv (if provider != nil)
 //  3. provider.APIEndpointURL (if provider != nil)

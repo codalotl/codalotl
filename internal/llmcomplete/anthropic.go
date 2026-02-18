@@ -11,8 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmcomplete/internal/modellist"
 )
 
-// anthropicResolvedKey mirrors getClientOpenAI's resolution order for API keys.
-// Order:
+// anthropicResolvedKey mirrors getClientOpenAI's resolution order for API keys. Order:
 //  1. overrides.APIActualKey
 //  2. env from overrides.APIKeyEnv (supports optional leading $)
 //  3. configuredProviderKeys[anthropic]
@@ -44,8 +43,7 @@ func anthropicResolvedKey(provider *modellist.Provider, overrides ModelOverrides
 	return ""
 }
 
-// anthropicResolvedBaseURL mirrors getClientOpenAI's URL resolution order.
-// Order:
+// anthropicResolvedBaseURL mirrors getClientOpenAI's URL resolution order. Order:
 //  1. overrides.APIEndpointURL
 //  2. env from provider.APIEndpointEnv (if provider != nil)
 //  3. provider.APIEndpointURL (if provider != nil)

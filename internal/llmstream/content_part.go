@@ -7,8 +7,8 @@ type ContentPart interface {
 // ReasoningContent represents the typically hidden reasoning/thinking tokens.
 //
 // Different providers may represent/model reasoning differently:
-//   - If a provider just provides a single ID-less textual reasoning blob in a response, ID will be "" and Reasoning will contain the entire
-//     reasoning. There will be one ReasoningContent.
+//   - If a provider just provides a single ID-less textual reasoning blob in a response, ID will be "" and Reasoning will contain the entire reasoning. There will
+//     be one ReasoningContent.
 //   - If providers have IDs for their reasoning objects, ID will be set.
 //   - If providers have multiple reasoning items per ID (ex: OpenAI Responses), there may be multiple ReasoningContents with the same ID.
 type ReasoningContent struct {
@@ -50,19 +50,15 @@ func (ToolCall) isPart() {}
 
 // ToolResult is the result of a ToolCall. CallID/Name/Type should match the call.
 type ToolResult struct {
-	CallID string `json:"call_id"`
-	Name   string `json:"name"`
-	Type   string `json:"type"` // Matches type of corresponding ToolCall (ex: "function_call").
+	CallID  string `json:"call_id"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`   // Matches type of corresponding ToolCall (ex: "function_call").
+	Result  string `json:"result"` // Can either be raw string (ex: markdown; some text; a bulleted list) or JSON-serialized string; depends on Tool.
+	IsError bool   `json:"is_error"`
 
-	// Can either be raw string (ex: markdown; some text; a bulleted list) or JSON-serialized string; depends on Tool.
-	Result string `json:"result"`
-
-	IsError bool `json:"is_error"`
-
-	// If IsError, SourceError may optionally be set if the error was due to a Go-ism that returned an error.
-	// For instance, if os.Open fails to open a file and returns an error, we can store the error here.
-	// On th eother hand, if a `read_file` tool indicates a path that is a directory, we could detect it with IsDir and
-	// return an error result, but no SourceErr would exist.
+	// If IsError, SourceError may optionally be set if the error was due to a Go-ism that returned an error. For instance, if os.Open fails to open a file and returns
+	// an error, we can store the error here. On th eother hand, if a `read_file` tool indicates a path that is a directory, we could detect it with IsDir and return
+	// an error result, but no SourceErr would exist.
 	SourceErr error `json:"-"`
 }
 
