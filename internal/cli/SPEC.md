@@ -238,12 +238,18 @@ The TUI is its own beast with multiple goroutines and its own UI. Therefore, a `
 
 That being said, still treat the invocation of the TUI as any other command. Its invocation should be wrapped with panic reporting; this package DOES fire a `start_tui` event; if the invoked TUI returns an error, this package will report it.
 
-## Public API
+## Version
+
+Version is the version. Can either be set in source or via build tooling. It is not in the `Public API` section so we can bump version without triggering differences with the SPEC.
 
 ```go
 // Version is the codalotl version. It is a var (not a const) so build tooling can override it.
 var Version = "0.1.0"
+```
 
+## Public API
+
+```go
 // In/Out/Err override standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
 // Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably
