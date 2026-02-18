@@ -116,6 +116,7 @@ Found 2 issues:
 ## Public Interface
 
 ```go {api}
+// InputType represents the type of value that a command expects for a given input key.
 type InputType string
 
 // InputType values.
@@ -135,6 +136,7 @@ const (
 ```
 
 ```go {api}
+// Runner coordinates templating and execution for a collection of commands.
 type Runner struct {
 	inputSchema    map[string]InputType
 	requiredInputs []string
@@ -145,7 +147,7 @@ type Runner struct {
 // execing the command is encapsulated in Result.
 func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any) (Result, error)
 
-// AddCommand adds c to the runner.
+// AddCommand registers the provided command with the Runner.
 func (r *Runner) AddCommand(c Command)
 ```
 
@@ -174,6 +176,7 @@ type Command struct {
 ```
 
 ```go {api}
+// Result aggregates all command executions performed by Run.
 type Result struct {
 	Results []CommandResult
 }
@@ -181,6 +184,7 @@ type Result struct {
 // Success returns true if all results are OutcomeSuccess.
 func (r Result) Success() bool
 
+// ExecStatus captures how process execution concluded.
 type ExecStatus string
 
 const (

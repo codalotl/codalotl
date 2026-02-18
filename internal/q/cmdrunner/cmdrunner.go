@@ -18,10 +18,11 @@ import (
 // InputType represents the type of value that a command expects for a given input key.
 type InputType string
 
-// Supported input types.
+// InputType values.
 //
 // Path types can be absolute or relative to the root. The Any/Dir/File types are checked for existence (or Run will return an error). InputTypePathUnchecked is
-// not checked for existence. All paths are converted to absolute paths before being passed to templates.
+// not checked for existence. All paths are converted to absolute paths before being passed to the templates. Paths are allowed to be outside the root. No special
+// symlink handling is performed. InputTypePathDir can be a file in the input. If it is, it must exist as a file. But it is then converted to a directory using filepath.Dir().
 const (
 	InputTypePathAny       InputType = "path_any"
 	InputTypePathDir       InputType = "path_dir"
@@ -55,7 +56,8 @@ func NewRunner(inputSchema map[string]InputType, requiredInputs []string) *Runne
 	}
 }
 
-// Run executes all configured commands. An error is returned if inputs are invalid or templating fails.
+// Run runs all commands. An error is returned if inputs are invalid or don't match the schema, or if templating fails on any command. Any error encountered during
+// execing the command is encapsulated in Result.
 func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any) (Result, error) {
 	if r == nil {
 		return Result{}, errors.New("cmdrunner: runner is nil")
@@ -183,7 +185,7 @@ type Result struct {
 	Results []CommandResult
 }
 
-// Success reports whether all individual command outcomes were successful.
+// Success returns true if all results are OutcomeSuccess.
 func (r Result) Success() bool {
 	for _, cr := range r.Results {
 		if cr.Outcome != OutcomeSuccess {
@@ -204,7 +206,16 @@ const (
 	ExecStatusTerminated    ExecStatus = "terminated"
 )
 
-// Outcome is a semantic status for the command result.
+// Outcome is a semantic command-relative status. Examples:
+//   - `go build` is OutcomeFailed for build errors.
+//   - `gofmt -l` is OutcomeFailed if it produces output (there's unresolved lints).
+//   - `ls` produces OutcomeSuccess unless it errors out (ex: `ls doesnt-exist-path`).
+//
+// By default:
+//   - ExecStatusCompleted && exit code 0 -> OutcomeSuccess
+//   - !ExecStatusCompleted || exit code != 0 -> OutcomeFailed
+//
+// The default can be changed with flags on the Command type (ex: OutcomeFailIfAnyOutput).
 type Outcome string
 
 const (
