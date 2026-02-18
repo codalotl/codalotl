@@ -189,6 +189,70 @@ func TestEnforceEOLVsDocInAST_BasicStruct(t *testing.T) {
 	}
 }
 
+func TestEnforceEOLVsDocInAST_GoEmbedDirectivesStayDoc(t *testing.T) {
+	assert := assert.New(t)
+
+	src := dedent(`
+		package pkg
+
+		var (
+			//go:embed fragments/header-codex.md
+			codexHeader string
+
+			//go:embed fragments/sub-header.md
+			capabilitiesSection string
+
+			//go:embed fragments/personality.md
+			personalitySection string
+		)
+	`)
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "test.go", src, parser.ParseComments)
+	assert.NoError(err)
+
+	enforceEOLVsDocInAST(file, fset, Options{})
+
+	// go:embed directives must remain *leading* comments (ValueSpec.Doc) and must
+	// preserve the exact spelling `//go:embed` (not `// go:embed`).
+	expected := map[string]string{
+		"codexHeader":         "//go:embed fragments/header-codex.md",
+		"capabilitiesSection": "//go:embed fragments/sub-header.md",
+		"personalitySection":  "//go:embed fragments/personality.md",
+	}
+
+	found := map[string]bool{}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok || len(vs.Names) != 1 {
+				continue
+			}
+			name := vs.Names[0].Name
+			expLine, ok := expected[name]
+			if !ok {
+				continue
+			}
+
+			found[name] = true
+			if assert.NotNil(vs.Doc) {
+				assert.Len(vs.Doc.List, 1)
+				assert.Equal(expLine, vs.Doc.List[0].Text)
+			}
+			assert.Nil(vs.Comment)
+		}
+	}
+
+	for name := range expected {
+		assert.True(found[name], "did not find ValueSpec for %s", name)
+	}
+}
+
 func TestDecideEOLOrDocForGroup(t *testing.T) {
 	type args struct {
 		fields      []*eolVsDocField

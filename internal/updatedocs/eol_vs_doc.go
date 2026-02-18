@@ -176,7 +176,9 @@ func applyEOLVsDocChangesToStructs(file *ast.File, fieldMap map[string]*eolVsDoc
 						field.Doc = nil
 						field.Comment = newCG
 					} else if !fieldInfo.shouldBeEOL && field.Doc == nil && field.Comment != nil {
-						newCG := createCommentGroup("// " + field.Comment.Text())
+						// Preserve exact spelling for directives like `//go:embed` by using the
+						// original comment token text (not CommentGroup.Text()).
+						newCG := createCommentGroup(commentBlockFromGroup(field.Comment, false))
 						removeCommentFromFile(file, field.Comment)
 						field.Comment = nil
 						field.Doc = newCG
@@ -252,7 +254,9 @@ func applyEOLVsDocChangesToInterfaces(file *ast.File, fieldMap map[string]*eolVs
 
 				// Enforce Doc always for interfaces: if we currently have an EOL comment, convert to Doc.
 				if !fieldInfo.shouldBeEOL && field.Doc == nil && field.Comment != nil {
-					newCG := createCommentGroup("// " + field.Comment.Text())
+					// Preserve exact spelling for directives like `//go:...` by using the
+					// original comment token text (not CommentGroup.Text()).
+					newCG := createCommentGroup(commentBlockFromGroup(field.Comment, false))
 					removeCommentFromFile(file, field.Comment)
 					field.Comment = nil
 					field.Doc = newCG
@@ -330,7 +334,9 @@ func applyEOLVsDocChangesToDecls(file *ast.File, fieldMap map[string]*eolVsDocFi
 					s.Doc = nil
 					s.Comment = newCG
 				} else if !field.shouldBeEOL && s.Doc == nil && s.Comment != nil {
-					newCG := createCommentGroup("// " + s.Comment.Text())
+					// Preserve exact spelling for directives like `//go:embed` by using the
+					// original comment token text (not CommentGroup.Text()).
+					newCG := createCommentGroup(commentBlockFromGroup(s.Comment, false))
 
 					removeCommentFromFile(file, s.Comment)
 					s.Comment = nil
@@ -366,7 +372,9 @@ func applyEOLVsDocChangesToDecls(file *ast.File, fieldMap map[string]*eolVsDocFi
 					s.Doc = nil
 					s.Comment = newCG
 				} else if !field.shouldBeEOL && s.Doc == nil && s.Comment != nil {
-					newCG := createCommentGroup("// " + s.Comment.Text())
+					// Preserve exact spelling for directives like `//go:...` by using the
+					// original comment token text (not CommentGroup.Text()).
+					newCG := createCommentGroup(commentBlockFromGroup(s.Comment, false))
 
 					if s.Comment != nil {
 						removeCommentFromFile(file, s.Comment)
@@ -486,6 +494,7 @@ func getEolVsDocFieldsForStructType(structPath string, structType *ast.StructTyp
 		} else if !hasNoDocs(field.Comment) {
 			cg = field.Comment
 		}
+		forceDoc := commentGroupForcesDoc(cg)
 
 		var reflowed string
 		if cg != nil {
@@ -512,6 +521,7 @@ func getEolVsDocFieldsForStructType(structPath string, structType *ast.StructTyp
 			codeIsMultiline:    codeMultiline,
 			indentInSpaces:     (indentLevel + 1) * tabWidth,
 			reflowedDocComment: reflowed,
+			forceDoc:           forceDoc,
 			shouldBeEOL:        false,
 		})
 
@@ -591,6 +601,7 @@ func getEolVsDocFieldsForInterfaceType(interfacePath string, ifaceType *ast.Inte
 		} else if !hasNoDocs(field.Comment) {
 			cg = field.Comment
 		}
+		forceDoc := commentGroupForcesDoc(cg)
 
 		var reflowed string
 		if cg != nil {
@@ -644,7 +655,8 @@ func getEolVsDocFieldsForInterfaceType(interfacePath string, ifaceType *ast.Inte
 			codeIsMultiline:    codeMultiline,
 			indentInSpaces:     (indentLevel + 1) * tabWidth,
 			reflowedDocComment: reflowed,
-			shouldBeEOL:        isTypeTerm,
+			forceDoc:           forceDoc,
+			shouldBeEOL:        isTypeTerm && !forceDoc,
 		})
 	}
 
@@ -775,6 +787,7 @@ func getEolVsDocFieldsForDeclBlock(decl *ast.GenDecl, fset *token.FileSet, allCo
 			raw := commentBlockFromGroup(cg, false)
 			reflowed = reflowDocComment(raw, 1, tabWidth, softMaxCols)
 		}
+		forceDoc := commentGroupForcesDoc(cg)
 
 		// Comment metrics
 		var runeCount int
@@ -795,6 +808,7 @@ func getEolVsDocFieldsForDeclBlock(decl *ast.GenDecl, fset *token.FileSet, allCo
 			codeIsMultiline:    codeMultiline,
 			indentInSpaces:     tabWidth,
 			reflowedDocComment: reflowed,
+			forceDoc:           forceDoc,
 			shouldBeEOL:        false, // leave unset – caller decides later
 		})
 
@@ -840,6 +854,10 @@ type eolVsDocField struct {
 	// comment, \n-terminated, starting with "//", if the comment were to be placed as a Doc comment. Result of reflowing the original comment. If this is multiline,
 	// we know already we must keep it a doc comment. If it's single line, we can measure the stripped length to see if it fits EOL.
 	reflowedDocComment string
+
+	// If true, this comment must stay as a leading comment (Doc) even if it would otherwise be eligible to become an EOL comment. This is used for compiler directives
+	// like `//go:embed` which break when moved to EOL position.
+	forceDoc bool
 
 	// will be set to true if this comment should be EOL, otherwise set to false if this comment should be a Doc.
 	shouldBeEOL bool
@@ -894,7 +912,7 @@ func decideEOLVsDocForGroup(fields []*eolVsDocField, softMaxCols int) {
 	// Helper slice marking eligibility (non-multiline comment and non-multiline code).
 	eligible := make([]bool, len(fields))
 	for i, f := range fields {
-		eligible[i] = !(f.isMultiline || f.codeIsMultiline)
+		eligible[i] = !(f.isMultiline || f.codeIsMultiline || f.forceDoc)
 		// initialise default – explicit for clarity
 		fields[i].shouldBeEOL = false
 	}
@@ -957,4 +975,29 @@ func decideEOLVsDocForGroup(fields []*eolVsDocField, softMaxCols int) {
 			}
 		}
 	}
+}
+
+func commentGroupForcesDoc(cg *ast.CommentGroup) bool {
+	if cg == nil {
+		return false
+	}
+	for _, c := range cg.List {
+		if commentTextForcesDoc(c.Text) {
+			return true
+		}
+	}
+	return false
+}
+
+func commentTextForcesDoc(text string) bool {
+	t := strings.TrimSpace(text)
+
+	if strings.HasPrefix(t, "//line ") || strings.HasPrefix(t, "//line\t") {
+		return true
+	}
+
+	// Re-use the existing directive/pragma detection used elsewhere in this
+	// package (build tags, //go:<directive>, cgo pragmas, nolint directives,
+	// generated markers, etc.).
+	return shouldPreserveComment(t)
 }
