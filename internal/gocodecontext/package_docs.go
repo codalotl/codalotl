@@ -18,10 +18,10 @@ import (
 //   - Each file only has public snippets (no imports; no package-private vars/etc).
 //   - Snippets are sorted by the order they appear in the actual file.
 //   - Functions only have docs+signatures (even if not documented).
-//   - blocks and structs with unexported elements have those elements elided.
+//   - Blocks and structs with unexported elements have those elements elided.
 //   - No "floating" comments.
 //
-// If identifiers are present, documentation is limited identifiers:
+// If identifiers are present, documentation is limited to those identifiers:
 //   - If any identifier is a type, we also include all public methods on that type.
 //   - Most identifiers are just their name. Methods are identified like "*SomePtrType.SomeMethod" or "SomeType.SomeMethod".
 //

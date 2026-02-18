@@ -35,7 +35,24 @@ const (
 //
 // It returns a slice of sorted packages; a string that can be dropped in as context to an LLM; an error, if any.
 //
-// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM).
+// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it
+// might look like:
+//
+//	These packages are defined in the current module (github.com/someuser/myproj):
+//	- github.com/someuser/myproj/foo
+//	- github.com/someuser/myproj/bar
+//	- github.com/someuser/myproj/internal/api
+//	- github.com/someuser/myproj/internal/gen/... (232 packages omitted; expand with search="^github\\.com/someuser/myproj/internal/gen(/|$)")
+//	- github.com/someuser/myproj/internal/schema
+//
+//	Defined in golang.org/x/mod:
+//	- golang.org/x/mod/gosumcheck
+//	- golang.org/x/mod/modfile
+//
+// The returned slice will never be truncated. However, if there are too many packages, the LLM context may collapse large nodes with a message indicating how to
+// access them (see example above).
+//
+// IDEA: in the future, we may want to provide a short description of each package, and have that be searchable.
 func PackageList(absDir, search string, includeDepPackages bool) ([]string, string, error) {
 	modRoot, modPath, directDepMods, err := moduleRootAndDirectDeps(absDir)
 	if err != nil {

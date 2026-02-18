@@ -9,10 +9,19 @@ import (
 
 // ModuleInfo returns information about the current Go module. It identifies the go.mod file by starting at absDir and walking up until it finds a go.mod file.
 //
-// The returned string is intended as LLM context and is intentionally opaque to callers.
+// It returns an LLM context string that can be directly dropped into an LLM, and an error, if any.
+//
+// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it
+// might look like:
+//
+//	module github.com/someuser/myproj
+//
+//	go 1.24
 //
 // NOTES:
 //   - For now, this just returns the go.mod file itself.
+//   - Need to do more research about how big these can get. We may want to implement things like limiting deps to direct dependencies; stripping comments; being
+//     more concise; module search.
 func ModuleInfo(absDir string) (string, error) {
 	dir := filepath.Clean(absDir)
 	if !filepath.IsAbs(dir) {
