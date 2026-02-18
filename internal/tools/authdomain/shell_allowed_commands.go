@@ -21,20 +21,20 @@ const (
 // ErrCommandMatcherNotFound is returned when attempting to remove a matcher that is not registered.
 var ErrCommandMatcherNotFound = errors.New("command matcher not found")
 
-// CommandMatcher describes how to identify a command invocation.
 type CommandMatcher struct {
-	// Command is the executable (argv[0]) to match. Example: "go".
+	// main command. ex: "go"
 	Command string
 
-	// CommandArgsPrefix matches the subsequent arguments (argv[1:]) exactly up to len(CommandArgsPrefix). Example: []string{"test"} matches `go test ./...`, but not
-	// `go help test`.
+	// exact matches for the rest of argv. ex: []string{"test"} matches `go test .`, provided Command is "go", but does not match `go help test`.
 	CommandArgsPrefix []string
 
-	// Flags matches any argument that equals one of the listed flags, supports "--flag=value" forms.
+	// ex: "--global" matches any of argv being "--global" or being prefixed with "--global=" or "--global "
 	Flags []string
 }
 
-// ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands. All methods are safe for concurrent use.
+// ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands. All methods are thread-safe.
+//
+// The zero value ShellAllowedCommands{} has empty lists.
 type ShellAllowedCommands struct {
 	mu        sync.RWMutex
 	blocked   map[string]CommandMatcher
@@ -42,7 +42,7 @@ type ShellAllowedCommands struct {
 	safe      map[string]CommandMatcher
 }
 
-// NewShellAllowedCommands constructs a ShellAllowedCommands pre-populated with the default blocked, dangerous, and safe command matchers.
+// NewShellAllowedCommands creates a new ShellAllowedCommands with default blocked/dangerous/safe lists.
 func NewShellAllowedCommands() *ShellAllowedCommands {
 	s := &ShellAllowedCommands{
 		blocked:   make(map[string]CommandMatcher, len(defaultBlockedCommandMatchers)),
@@ -210,7 +210,8 @@ var defaultSafeCommandMatchers = []CommandMatcher{
 	{Command: "which"},
 }
 
-// DefaultBlockedCommandMatchers returns a copy of the built-in blocked matchers.
+// Hard-coded list of BlockedCommandMatchers that are blocked. Automatically added in NewShellAllowedCommands. Might contain things like {"brew", nil, nil} to disallow
+// homebrew access.
 func (s *ShellAllowedCommands) DefaultBlockedCommandMatchers() []CommandMatcher {
 	return cloneMatchers(defaultBlockedCommandMatchers)
 }
@@ -225,7 +226,7 @@ func (s *ShellAllowedCommands) DefaultSafeCommandMatchers() []CommandMatcher {
 	return cloneMatchers(defaultSafeCommandMatchers)
 }
 
-// BlockedCommandMatchers returns the currently registered blocked matchers.
+// Returns all currently blocked command matchers.
 func (s *ShellAllowedCommands) BlockedCommandMatchers() []CommandMatcher {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -249,7 +250,8 @@ func (s *ShellAllowedCommands) SafeCommandMatchers() []CommandMatcher {
 	return cloneAndSortMatchers(s.safe)
 }
 
-// BlockedCommands returns simple command names that are entirely blocked regardless of arguments.
+// Filters currently blocked command matchers by those commands that are just completely blocked regardless of arguments. ex: "brew", "apt". If args or flags are
+// set in the matcher, the command is NOT blocked here. This is here specifically so we can give an LLM a simple list of blocked commands.
 func (s *ShellAllowedCommands) BlockedCommands() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -275,7 +277,7 @@ func (s *ShellAllowedCommands) BlockedCommands() []string {
 	return commands
 }
 
-// AddBlocked adds a matcher to the blocked set.
+// Block blocks m. No-op if m is already blocked.
 func (s *ShellAllowedCommands) AddBlocked(m CommandMatcher) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -288,7 +290,7 @@ func (s *ShellAllowedCommands) AddBlocked(m CommandMatcher) {
 	s.blocked[key] = cloneMatcher(m)
 }
 
-// RemoveBlocked removes a matcher from the blocked set.
+// RemoveBlocked unblocks m.
 func (s *ShellAllowedCommands) RemoveBlocked(m CommandMatcher) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
