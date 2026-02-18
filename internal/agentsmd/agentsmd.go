@@ -13,10 +13,19 @@ const agentsFilename = "AGENTS.md"
 
 // Read will read AGENTS.md files in cwd, its parent, up to sandboxDir. It returns a concatenation of all AGENTS.md files it finds, in a format that can be directly
 // supplied to an LLM. This returned concatenated string may have some explanation and metadata (ex: filenames), in addition to the actual bytes from the files.
-//
 // If there are no AGENTS.md files (or they are empty), Read returns ("", nil).
 //
 // cwd must be in sandboxDir. They may be the same path.
+//
+// Example return value:
+//
+//	The following AGENTS.md files were found, and may provide relevant instructions. The nearest AGENTS.md file to the target code takes precedence.
+//
+//	AGENTS.md found at /home/user/proj/AGENTS.md:
+//	<file text>
+//
+//	AGENTS.md found at /home/user/proj/subdir/AGENTS.md:
+//	<file text>
 func Read(sandboxDir, cwd string) (string, error) {
 	sandboxAbs, err := absClean(sandboxDir)
 	if err != nil {

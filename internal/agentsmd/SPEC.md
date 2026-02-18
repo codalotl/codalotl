@@ -27,12 +27,12 @@ We intentionally kept it separate to:
 //
 // Example return value:
 //
-//	The follow AGENTS.md files were found, and may provide relevant instructions. The nearest AGENTS.md file to the target code takes precedence.
+//	The following AGENTS.md files were found, and may provide relevant instructions. The nearest AGENTS.md file to the target code takes precedence.
 //
-//	AGENT.md found at /home/user/proj/AGENTS.md:
+//	AGENTS.md found at /home/user/proj/AGENTS.md:
 //	<file text>
 //
-//	AGENT.md found at /home/user/proj/subdir/AGENTS.md:
+//	AGENTS.md found at /home/user/proj/subdir/AGENTS.md:
 //	<file text>
 func Read(sandboxDir, cwd string) (string, error)
 ```
