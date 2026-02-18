@@ -15,15 +15,13 @@ The toolset will be injected. It is expected to be `toolsets.PackageAgentTools`.
 ```go {api exact_docs}
 // Run runs an agent with the given instructions and tools on a specific package.
 //
-// It returns the agent's last message. An error is returned for invalid inputs,
-// failure to communicate with the LLM, etc. If the LLM can't make the updates as
-// per instructions, it may say so in its answer, which doesn't produce an error.
+// It returns the agent's last message. An error is returned for invalid inputs, failure to communicate with the LLM, etc. If the LLM can't make the updates as per
+// instructions, it may say so in its answer, which doesn't produce an error.
 //
 //   - authorizer is a code unit authorizer.
 //   - goPkgAbsDir is the absolute path to a package.
 //   - toolset are the tools available for use (injected to cut dependencies).
-//   - instructions must contain enough information for an LLM to update the
-//     package (it won't have the context of the calling agent).
+//   - instructions must contain enough information for an LLM to update the package (it won't have the context of the calling agent).
 //   - lintSteps controls lint checks in initial context collection and lint-aware tools.
 //
 // Example instructions: "Update the package add a IsDefault field to the Configuration struct."

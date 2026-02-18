@@ -22,45 +22,37 @@ Upon finishing a session, print a line like this:
 ## Public API
 
 ```go
-
 // IsPrinted returns true if err has already been printed to the screen.
 func IsPrinted(err error) bool
 
 type Options struct {
-    CWD string // working directory / sandbox dir. If "", uses os.Getwd()
+	// working directory / sandbox dir. If "", uses os.Getwd()
+	CWD string
 
-    // PackagePath sets package mode with the path to a package vs CWD. If "", does not use package mode.
-    // PackagePath can be any filesystem path (ex: "."; "/foo/bar"; "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
-    PackagePath string
+	// PackagePath sets package mode with the path to a package vs CWD. If "", does not use package mode. PackagePath can be any filesystem path (ex: "."; "/foo/bar";
+	// "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
+	PackagePath string
 
-    // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
-    ModelID llmmodel.ModelID
+	ModelID     llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
+	LintSteps   []lints.Step     // LintSteps controls which lint steps the agent runs.
+	ReflowWidth int              // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
+	AutoYes     bool             // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
 
-    // LintSteps controls which lint steps the agent runs.
-    LintSteps []lints.Step
+	// NoFormatting=true means any prints do NOT use colors or other ANSI control codes to format. Only outputs plain text. Otherwise, we default to the color scheme
+	// of the terminal and print colorized/formatted text.
+	NoFormatting bool
 
-    // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
-    ReflowWidth int
-
-    // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
-    AutoYes bool
-
-    // NoFormatting=true means any prints do NOT use colors or other ANSI control codes to format. Only outputs plain text.
-    // Otherwise, we default to the color scheme of the terminal and print colorized/formatted text.
-    NoFormatting bool
-
-    // If Out != nil, any prints we do will use Out; otherwise will use Stdout.
-    // If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file), we'd still just print to Out (instead of something like Stderr).
-    Out io.Writer
+	// If Out != nil, any prints we do will use Out; otherwise will use Stdout. If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file),
+	// we'd still just print to Out (instead of something like Stderr).
+	Out io.Writer
 }
 
 // Exec runs the agent with prompt and opts. It prints messages, tool calls, and so on to the screen.
 //
-// If there's any validation error (anything before the agent actually starts), an error is returned and nothing is nothing is printed.
-// If there's an unhandled error and the agent cannot complete its run (ex: cannot talk to LLM, even after retries), a message may be printed AND returned via err.
-// Callers can use IsPrinted to determine if an error has already been printed.
-// Finally, note that many "errors" happen in the course of typical agent runs. For instance, the agent will ask to read non-existant files; shell commands will fail; etc. These
-// do not typically constitute errors worthy of being returned (instead, the LLM is just told a file doesn't exist).
+// If there's any validation error (anything before the agent actually starts), an error is returned and nothing is nothing is printed. If there's an unhandled error
+// and the agent cannot complete its run (ex: cannot talk to LLM, even after retries), a message may be printed AND returned via err. Callers can use IsPrinted to
+// determine if an error has already been printed. Finally, note that many "errors" happen in the course of typical agent runs. For instance, the agent will ask
+// to read non-existant files; shell commands will fail; etc. These do not typically constitute errors worthy of being returned (instead, the LLM is just told a
+// file doesn't exist).
 func Exec(prompt string, opts Options) err
-
 ```

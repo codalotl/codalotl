@@ -15,18 +15,17 @@ Semantic event names are application-defined; `tuicontrols` does not define a ca
 
 ```go
 type KeyMap struct {
-    // ...
+	// ...
 }
+
 func NewKeyMap() *KeyMap
 
-// Add adds a mapping from key to semanticEvent. For example, to map Page Down to "pagedown":
-// Add(tui.KeyEvent{ControlKey: tui.ControlKeyPageDown}, "pagedown")
+// Add adds a mapping from key to semanticEvent. For example, to map Page Down to "pagedown": Add(tui.KeyEvent{ControlKey: tui.ControlKeyPageDown}, "pagedown")
 //
 // If the same key is added multiple times, the last mapping wins.
 func (km *KeyMap) Add(key tui.KeyEvent, semanticEvent string)
 
-// Process maps m to one of the semantic events added in Add.
-// If m is not a key event, or doesn't match a configured mapping, "" is returned.
+// Process maps m to one of the semantic events added in Add. If m is not a key event, or doesn't match a configured mapping, "" is returned.
 func (km *KeyMap) Process(m tui.Message) string
 ```
 
@@ -34,11 +33,11 @@ After a KeyMap has been configured, it can be used in an `Update(t *tui.TUI, m t
 
 ```go
 func (v *SomeControl) Update(t *tui.TUI, m tui.Message) {
-    switch v.keyMap.Process(m) {
-    case "pageup":
-        v.PageUp()
-    // ...
-    }
+	switch v.keyMap.Process(m) {
+	case "pageup":
+		v.PageUp()
+		// ...
+	}
 }
 ```
 
@@ -65,10 +64,10 @@ Public API:
 //
 // Invariants:
 //   - The Offset() must be in the range of [0, number of lines).
-//     - Empty content counts as 1 line.
-//     - Updating content may cause Offset() to be clamped to preserve this invariant.
+//   - Empty content counts as 1 line.
+//   - Updating content may cause Offset() to be clamped to preserve this invariant.
 type View struct {
-    // ...
+	// ...
 }
 
 // NewView returns a new view of the given size.
@@ -90,8 +89,8 @@ func (v *View) Update(t *tui.TUI, m tui.Message)
 
 // View implements tui.Model's View. Renders the content clipped to the view size and current offset.
 //
-// The rendered output always contains exactly Height() rows, but does not pad lines to Width() cells. Each rendered row contains at most
-// Width() visible cells (after accounting for ANSI control codes and character widths).
+// The rendered output always contains exactly Height() rows, but does not pad lines to Width() cells. Each rendered row contains at most Width() visible cells (after
+// accounting for ANSI control codes and character widths).
 func (v *View) View() string
 
 // SetSize sets the width and height of the view to w, h. Does not affect Offset(); may affect ScrollPercent.
@@ -105,8 +104,8 @@ func (v *View) Height() int
 
 // SetEmptyLineBackgroundColor sets the background color for rows that have no content.
 //
-// If a line does not extend all the way to v.Width() (including if a line is just a newline), this background color is NOT set. It's only
-// used if there aren't enough lines in the view to fill v.Height().
+// If a line does not extend all the way to v.Width() (including if a line is just a newline), this background color is NOT set. It's only used if there aren't enough
+// lines in the view to fill v.Height().
 //
 // If v's content is "", this color is used for all lines in the view.
 func (v *View) SetEmptyLineBackgroundColor(c termformat.Color)
@@ -114,8 +113,8 @@ func (v *View) SetEmptyLineBackgroundColor(c termformat.Color)
 // Offset returns the offset of the view in lines (e.g. 0 -> unscrolled; 1 -> scrolled down 1 line).
 func (v *View) Offset() int
 
-// ScrollPercent returns the scroll percent in [0, 100]. 0 means the first line is visible. 100 means the last line is fully visible.
-// If the content fits entirely in the view (so both the first and last line are visible), ScrollPercent returns 0.
+// ScrollPercent returns the scroll percent in [0, 100]. 0 means the first line is visible. 100 means the last line is fully visible. If the content fits entirely
+// in the view (so both the first and last line are visible), ScrollPercent returns 0.
 func (v *View) ScrollPercent() int
 
 // ScrollUp scrolls up n lines.
@@ -135,8 +134,7 @@ func (v *View) ScrollToTop()
 
 // ScrollToBottom scrolls to the bottom, and normalizes the offset so that the most lines possible are visible.
 //
-// Concretely, the offset is set so that (when possible) the last line is shown at the bottom row of the view rather than leaving empty rows
-// below the content.
+// Concretely, the offset is set so that (when possible) the last line is shown at the bottom row of the view rather than leaving empty rows below the content.
 func (v *View) ScrollToBottom()
 
 // AtTop returns true if the view is showing the first line.
@@ -191,35 +189,34 @@ Word wrapping details:
 Public API:
 
 ```go
-// TextArea lets users enter multi-line text in a terminal area. The text is represented as UTF-8, interpreted as grapheme clusters, and displayed in cells (a cluster's width is given by `uni.TextWidth`).
+// TextArea lets users enter multi-line text in a terminal area. The text is represented as UTF-8, interpreted as grapheme clusters, and displayed in cells (a cluster's
+// width is given by `uni.TextWidth`).
 //
-// Text is wrapped at word boundaries, falling back to grapheme boundaries to prevent overflowing. This means there are logical lines (divided by \n in the contents) and display lines (what the user sees).
+// Text is wrapped at word boundaries, falling back to grapheme boundaries to prevent overflowing. This means there are logical lines (divided by \n in the contents)
+// and display lines (what the user sees).
 //
 // If the number of display lines exceeds height, some text will be clipped out of view.
 //
 // Invariants:
 //   - Stored contents must be valid UTF-8 and cannot contain ASCII control characters (bytes <= 0x1F or 0x7F), except for \n.
 //   - Input is sanitized: \t is converted to 4 spaces, \r is removed, and other ASCII control characters are escaped (e.g. "\x1B").
-//   - If text is clipped vertically, all height rows of the text area show display lines of contents (i.e. there are no completely blank rows). As contents change (e.g. deletions), the vertical clip/scroll is adjusted to preserve this.
+//   - If text is clipped vertically, all height rows of the text area show display lines of contents (i.e. there are no completely blank rows). As contents change
+//     (e.g. deletions), the vertical clip/scroll is adjusted to preserve this.
 type TextArea struct {
-    // Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
-    Placeholder string
+	Placeholder      string // Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
+	BackgroundColor  termformat.Color
+	ForegroundColor  termformat.Color
+	PlaceholderColor termformat.Color
+	CaretColor       termformat.Color // CaretColor is the color of the caret/cursor. It should be visible on the background color.
 
-    BackgroundColor termformat.Color
-    ForegroundColor termformat.Color
-    PlaceholderColor termformat.Color
-
-    // CaretColor is the color of the caret/cursor. It should be visible on the background color.
-    CaretColor termformat.Color
-
-    // Prompt is the first characters to display in the upper-left of the box. The user's first character typed would immediately follow it.
-    // Subsequent lines don't have Prompt, but the user's text is aligned to the column of their first character.
-    //
-    // For example, if Prompt is "› ", and the user types "hello\nworld", the text area would show:
-    //
-    //	› hello
-    //	  world
-    Prompt string
+	// Prompt is the first characters to display in the upper-left of the box. The user's first character typed would immediately follow it. Subsequent lines don't have
+	// Prompt, but the user's text is aligned to the column of their first character.
+	//
+	// For example, if Prompt is "› ", and the user types "hello\nworld", the text area would show:
+	//
+	//	› hello
+	//	  world
+	Prompt string
 }
 
 // NewTextArea returns a new TextArea of the given size.
@@ -272,7 +269,8 @@ func (ta *TextArea) SetContents(s string)
 // Contents returns the contents of the text area (only user content - not placeholder/prompt/styles).
 func (ta *TextArea) Contents() string
 
-// ClippedDisplayContents returns the per-display-line user text that is currently displayed in the text area view (contains no \n). It reflects Contents() after wrapping and vertical clipping.
+// ClippedDisplayContents returns the per-display-line user text that is currently displayed in the text area view (contains no \n). It reflects Contents() after
+// wrapping and vertical clipping.
 //
 // This is useful as a testing hook.
 func (ta *TextArea) ClippedDisplayContents() []string
@@ -280,14 +278,15 @@ func (ta *TextArea) ClippedDisplayContents() []string
 // DisplayLines returns the number of display lines (accounting for wrapping), including those clipped out of view.
 func (ta *TextArea) DisplayLines() int
 
-// CaretPositionByteOffset returns the position of the caret (the location of the next inserted character) in Contents(), measured in bytes. This position must fall on a grapheme cluster boundary.
+// CaretPositionByteOffset returns the position of the caret (the location of the next inserted character) in Contents(), measured in bytes. This position must fall
+// on a grapheme cluster boundary.
 func (ta *TextArea) CaretPositionByteOffset() int
 
 // CaretPositionCurrentLineByteOffset returns the byte index of the caret on the current logical line.
 func (ta *TextArea) CaretPositionCurrentLineByteOffset() int
 
-// CaretPositionRowCol returns the logical position of the caret based on 0-indexed rows/cols of terminal cells. Note that 0,0 is not necessarily the top-left of the TextArea itself, due to Prompt.
-// The row is equivalent to the current logical-line index.
+// CaretPositionRowCol returns the logical position of the caret based on 0-indexed rows/cols of terminal cells. Note that 0,0 is not necessarily the top-left of
+// the TextArea itself, due to Prompt. The row is equivalent to the current logical-line index.
 func (ta *TextArea) CaretPositionRowCol() (int, int)
 
 // CaretDisplayPositionRowCol returns the caret position by display row/col. The row is in [0, DisplayLines()).
@@ -363,7 +362,6 @@ func (ta *TextArea) DeleteToEndOfLine()
 
 // DeleteToBeginningOfLine deletes from the caret to the beginning of the current logical line.
 func (ta *TextArea) DeleteToBeginningOfLine()
-
 ```
 
 ### Prompted wrapping helper

@@ -74,8 +74,7 @@ The `Lints` config struct can be loaded with JSON as part of a broader config fi
 
 ```go
 type Config struct {
-	// ... other config ...
-	ReflowWidth int         `json:"reflowwidth"`
+	ReflowWidth int         `json:"reflowwidth"` // ... other config ...
 	Lints       lints.Lints `json:"lints,omitempty"`
 }
 ```

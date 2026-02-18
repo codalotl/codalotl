@@ -111,12 +111,12 @@ func InternalPackageSignatures(pkg *gocode.Package, tests bool, includeDocs bool
 
 ```go {api exact_docs}
 type IdentifierUsageRef struct {
-    ImportPath string // using package's import path
-    AbsFilePath string // using file's absolute path
-    Line int // line (1 based) where the usage occurs
-    Column int // column (1 based) where the usage occurs
-    FullLine string // the full line in the file that uses the identifier (including \n if it exists)
-    SnippetFullBytes string // the full bytes of the gocode Snippet that uses identifier
+	ImportPath       string // using package's import path
+	AbsFilePath      string // using file's absolute path
+	Line             int    // line (1 based) where the usage occurs
+	Column           int    // column (1 based) where the usage occurs
+	FullLine         string // the full line in the file that uses the identifier (including \n if it exists)
+	SnippetFullBytes string // the full bytes of the gocode Snippet that uses identifier
 }
 ```
 
@@ -173,19 +173,21 @@ func createContext(pkg *gocode.Package) (string, error) {
 ## Package lists and module info
 
 ```go {api exact_docs}
-// PackageList returns a list of packages available in the current module. It identifies the go.mod file by starting at absDir and
-// walking up until it finds a go.mod file.
-// 
-// main and _test packages are included. _test packages listed by their "import path" - if a directory contains a non-test and a test package, the path is only listed once.
+// PackageList returns a list of packages available in the current module. It identifies the go.mod file by starting at absDir and walking up until it finds a go.mod
+// file.
+//
+// main and _test packages are included. _test packages listed by their "import path" - if a directory contains a non-test and a test package, the path is only listed
+// once.
 //
 // If search is given, it filters the results by interpreting it as a Go regexp.
 //
-// If !includeDepPackages, it only includes packages defined in this module. Otherwise, it includes packages in **direct** module dependencies (dependency internal packages excluded).
-// "Direct module dependencies" means modules listed in the go.mod `require` block(s) that are NOT annotated with `// indirect` (go.sum is ignored).
+// If !includeDepPackages, it only includes packages defined in this module. Otherwise, it includes packages in **direct** module dependencies (dependency internal
+// packages excluded). "Direct module dependencies" means modules listed in the go.mod `require` block(s) that are NOT annotated with `// indirect` (go.sum is ignored).
 //
 // It returns a slice of sorted packages; a string that can be dropped in as context to an LLM; an error, if any.
 //
-// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it might look like:
+// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it
+// might look like:
 //
 //	These packages are defined in the current module (github.com/someuser/myproj):
 //	- github.com/someuser/myproj/foo
@@ -198,7 +200,8 @@ func createContext(pkg *gocode.Package) (string, error) {
 //	- golang.org/x/mod/gosumcheck
 //	- golang.org/x/mod/modfile
 //
-// The returned slice will never be truncated. However, if there are too many packages, the LLM context may collapse large nodes with a message indicating how to access them (see example above).
+// The returned slice will never be truncated. However, if there are too many packages, the LLM context may collapse large nodes with a message indicating how to
+// access them (see example above).
 //
 // IDEA: in the future, we may want to provide a short description of each package, and have that be searchable.
 func PackageList(absDir, search string, includeDepPackages bool) ([]string, string, error)
@@ -209,7 +212,8 @@ func PackageList(absDir, search string, includeDepPackages bool) ([]string, stri
 //
 // It returns an LLM context string that can be directly dropped into an LLM, and an error, if any.
 //
-// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it might look like:
+// The LLM context string is intentionally opaque (callers should not rely on parsing it; they should directly drop it into an LLM). That said, conceptually, it
+// might look like:
 //
 //	module github.com/someuser/myproj
 //
@@ -217,6 +221,7 @@ func PackageList(absDir, search string, includeDepPackages bool) ([]string, stri
 //
 // NOTES:
 //   - For now, this just returns the go.mod file itself.
-//   - Need to do more research about how big these can get. We may want to implement things like limiting deps to direct dependencies; stripping comments; being more concise; module search.
+//   - Need to do more research about how big these can get. We may want to implement things like limiting deps to direct dependencies; stripping comments; being
+//     more concise; module search.
 func ModuleInfo(absDir string) (string, error)
 ```

@@ -26,7 +26,7 @@ func RuneWidth(r rune, opts *Options) int
 
 ```go
 type Iterator[T string | []byte] struct {
-    // ...
+	// ...
 }
 
 func (iter *Iterator[T]) Next() bool
@@ -48,8 +48,8 @@ func (iter *Iterator[T]) TextWidth() int
 //
 // Currently only relevant for East Asian code points and their locale.
 type Options struct {
-    EastAsianWidth bool   // if true, treats certain East Asian code points as 2 wide (e.g., Chinese, Japanese, Korean). Use if the locale is one of CJK.
-    TreatEmojiAsWide bool // Only considered if EastAsianWidth. If true, treats emoji as wide (2 columns).
+	EastAsianWidth   bool // if true, treats certain East Asian code points as 2 wide (e.g., Chinese, Japanese, Korean). Use if the locale is one of CJK.
+	TreatEmojiAsWide bool // Only considered if EastAsianWidth. If true, treats emoji as wide (2 columns).
 }
 ```
 
