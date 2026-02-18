@@ -5,8 +5,8 @@ import (
 	"go/token"
 )
 
-// filterExportedTypes takes a type declaration and returns a cloned decl without unexported types or unexported fields or methods in structs or interfaces. If a struct or interface
-// has elided members, it will contain `// contains filtered or unexported fields`.
+// filterExportedTypes takes a type declaration and returns a cloned decl without unexported types or unexported fields or methods in structs or interfaces. If a
+// struct or interface has elided members, it will contain `// contains filtered or unexported fields`.
 func filterExportedTypes(genDecl *ast.GenDecl) *ast.GenDecl {
 	if genDecl == nil {
 		return genDecl
@@ -61,9 +61,9 @@ func filterType(typeExpr ast.Expr) ast.Expr {
 	}
 }
 
-// filterStruct returns a copy of orig that retains only exported fields and embedded types. Unexported fields (and unexported embedded types) are removed. For fields that declare multiple
-// names, only exported names are kept; their ast.Field is duplicated with the remaining names while preserving type, tag, and comments. The result preserves field order and positions,
-// and sets Incomplete to true if anything was removed. orig is not mutated.
+// filterStruct returns a copy of orig that retains only exported fields and embedded types. Unexported fields (and unexported embedded types) are removed. For fields
+// that declare multiple names, only exported names are kept; their ast.Field is duplicated with the remaining names while preserving type, tag, and comments. The
+// result preserves field order and positions, and sets Incomplete to true if anything was removed. orig is not mutated.
 func filterStruct(orig *ast.StructType) *ast.StructType {
 	if orig.Fields == nil { // nothing to filter
 		return orig
@@ -117,9 +117,9 @@ func filterStruct(orig *ast.StructType) *ast.StructType {
 	return out
 }
 
-// filterInterface returns a copy of orig that retains only exported interface API. Exported methods and exported embedded interfaces are kept; unexported ones are removed. Type-set
-// terms used by constraints (e.g., union/tilde expressions) are always preserved. The result preserves order and positions, and sets Incomplete to true if anything was removed. orig
-// is not mutated.
+// filterInterface returns a copy of orig that retains only exported interface API. Exported methods and exported embedded interfaces are kept; unexported ones are
+// removed. Type-set terms used by constraints (e.g., union/tilde expressions) are always preserved. The result preserves order and positions, and sets Incomplete
+// to true if anything was removed. orig is not mutated.
 func filterInterface(orig *ast.InterfaceType) *ast.InterfaceType {
 	if orig.Methods == nil { // nothing to filter
 		return orig
@@ -170,8 +170,8 @@ func filterInterface(orig *ast.InterfaceType) *ast.InterfaceType {
 	return out
 }
 
-// isExportedEmbedded reports whether an embedded field or interface element is exported. The argument is an ast.Expr that names the type; peel off syntactic layers until reaching the
-// identifier.
+// isExportedEmbedded reports whether an embedded field or interface element is exported. The argument is an ast.Expr that names the type; peel off syntactic layers
+// until reaching the identifier.
 func isExportedEmbedded(expr ast.Expr) bool {
 	for {
 		switch e := expr.(type) {

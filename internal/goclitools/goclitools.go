@@ -24,8 +24,7 @@ var (
 //
 //	/abs/path/to/file.go:247:37-43
 //
-// ColumnStart and ColumnEnd are 1-based byte offsets in the line, and ColumnEnd
-// is the first byte past the reference.
+// ColumnStart and ColumnEnd are 1-based byte offsets in the line, and ColumnEnd is the first byte past the reference.
 type Ref struct {
 	AbsPath     string
 	Line        int
@@ -55,13 +54,10 @@ func Gofmt(filenameOrDir string) (bool, error) {
 	return changedList != "", nil
 }
 
-// FixImports fixes imports for a single file or for all .go files in a directory
-// (non-recursive), updating files in place. It returns true if any file was changed.
+// FixImports fixes imports for a single file or for all .go files in a directory (non-recursive), updating files in place. It returns true if any file was changed.
 //
-// It prefers goimports. When given a directory, goimports is run once on the
-// directory's .go files. If goimports is unavailable, it falls back to gopls; since gopls
-// does not accept a directory for import organization, each .go file is processed
-// individually with `gopls imports -w`.
+// It prefers goimports. When given a directory, goimports is run once on the directory's .go files. If goimports is unavailable, it falls back to gopls; since gopls
+// does not accept a directory for import organization, each .go file is processed individually with `gopls imports -w`.
 //
 // An error is returned if no tools are available or if a tool returns an error.
 func FixImports(filenameOrDir string) (bool, error) {
@@ -175,8 +171,8 @@ func FixImports(filenameOrDir string) (bool, error) {
 	return anyChanged, nil
 }
 
-// Rename renames the identifier at (line, column) in the given file to newName using gopls.
-// It writes changes in-place. If gopls reports shadowing or other semantic issues, an error is returned.
+// Rename renames the identifier at (line, column) in the given file to newName using gopls. It writes changes in-place. If gopls reports shadowing or other semantic
+// issues, an error is returned.
 func Rename(filePath string, line, column int, newName string) error {
 	discoverTools()
 
@@ -205,8 +201,7 @@ func Rename(filePath string, line, column int, newName string) error {
 	return nil
 }
 
-// References calls `gopls references` and returns references to the identifier at
-// line and column (1-based). Column is measured in utf-8 bytes (not unicode runes).
+// References calls `gopls references` and returns references to the identifier at line and column (1-based). Column is measured in utf-8 bytes (not unicode runes).
 func References(filePath string, line, column int) ([]Ref, error) {
 	discoverTools()
 
@@ -269,8 +264,7 @@ func discoverTools() {
 	testedToolAvailability = true
 }
 
-// parseReferencesOutput parses gopls references output into []Ref.
-// It expects one location per line in the form:
+// parseReferencesOutput parses gopls references output into []Ref. It expects one location per line in the form:
 //
 //	/abs/path:line:col
 //	/abs/path:line:col-endcol

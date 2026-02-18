@@ -5,8 +5,8 @@ import (
 	"go/token"
 )
 
-// filterExportedValue takes an *ast.GenDecl whose Tok is token.CONST or token.VAR and returns a new *ast.GenDecl containing only exported names. If nothing is exported, it returns
-// nil.
+// filterExportedValue takes an *ast.GenDecl whose Tok is token.CONST or token.VAR and returns a new *ast.GenDecl containing only exported names. If nothing is exported,
+// it returns nil.
 func filterExportedValue(gen *ast.GenDecl) *ast.GenDecl {
 	if gen == nil {
 		return gen

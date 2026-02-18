@@ -21,22 +21,29 @@ import (
 
 var _ Snippet = (*FuncSnippet)(nil) // FuncSnippet implements Snippet
 
-// FuncSnippet holds the parsed documentation and signature for a top-level function or method found in a file. It provides both the raw bytes as they appear in the source (for rendering)
-// and structured metadata (for analysis).
+// FuncSnippet holds the parsed documentation and signature for a top-level function or method found in a file. It provides both the raw bytes as they appear in
+// the source (for rendering) and structured metadata (for analysis).
 //
-// Use Bytes to get the doc+signature snippet (no body), FullBytes to get the entire function including its body, HasExported to check export status, and Position to locate the declaration
-// in the source.
+// Use Bytes to get the doc+signature snippet (no body), FullBytes to get the entire function including its body, HasExported to check export status, and Position
+// to locate the declaration in the source.
 type FuncSnippet struct {
-	Name         string         // function name, excluding receiver (ex: "NewSomething"; "doSomething")
-	ReceiverType string         // ex: "*Foo" or "Foo". For no receiver, ""
-	Identifier   string         // name for receiverless functions; "type.name" for receivers (ex: "*myType.doSomething")
-	FileName     string         // file name (no dirs) where the function was defined (ex: "foo.go")
-	Snippet      []byte         // the docs and func signature as they appear in source, up to but not including the opening "{" or the space before it. Shares buffer with File's Contents
-	Doc          string         // full comment above the function; includes "//" or "/**/"; always \n terminated
-	Sig          string         // function signature as it appears in source, from "func" up to but not including the opening " {" (ex: "func (t *MyType) DoThing(a string) (int, error)")
-	fileSet      *token.FileSet // fileSet used to parse decl
-	decl         *ast.FuncDecl  // decl node from parsing file
-	FullFunc     []byte         // can be used to move the function elsewhere or examine it in its totality; just an index into f.Contents
+	Name         string // function name, excluding receiver (ex: "NewSomething"; "doSomething")
+	ReceiverType string // ex: "*Foo" or "Foo". For no receiver, ""
+	Identifier   string // name for receiverless functions; "type.name" for receivers (ex: "*myType.doSomething")
+	FileName     string // file name (no dirs) where the function was defined (ex: "foo.go")
+
+	// the docs and func signature as they appear in source, up to but not including the opening "{" or the space before it. Shares buffer with File's Contents
+	Snippet []byte
+
+	// full comment above the function; includes "//" or "/**/"; always \n terminated
+	Doc string
+
+	// function signature as it appears in source, from "func" up to but not including the opening " {" (ex: "func (t *MyType) DoThing(a string) (int, error)")
+	Sig string
+
+	fileSet  *token.FileSet // fileSet used to parse decl
+	decl     *ast.FuncDecl  // decl node from parsing file
+	FullFunc []byte         // can be used to move the function elsewhere or examine it in its totality; just an index into f.Contents
 }
 
 // Implemention of Snippet interface.
@@ -249,8 +256,8 @@ func (f *FuncSnippet) IsTestFunc() bool {
 	return false
 }
 
-// hasTestingParam reports whether the function has exactly one parameter whose type is a pointer to testing.<testingType> (ex: *testing.T; *testing.B). It also requires that the function
-// have no return values.
+// hasTestingParam reports whether the function has exactly one parameter whose type is a pointer to testing.<testingType> (ex: *testing.T; *testing.B). It also
+// requires that the function have no return values.
 func hasTestingParam(decl *ast.FuncDecl, testingType string) bool {
 	if decl.Type == nil || decl.Type.Params == nil {
 		return false

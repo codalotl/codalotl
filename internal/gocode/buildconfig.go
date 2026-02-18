@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// goFilesInDirForConfig returns the .go files in dir for the default build, as modified by goarch, goos, and buildTags. If goarch, goos, or buildTags is the zero value,
-// it is ignored and does not modify the default build. In addition, it reads GOFLAGS and appends that to buildTags.
+// goFilesInDirForConfig returns the .go files in dir for the default build, as modified by goarch, goos, and buildTags. If goarch, goos, or buildTags is the zero
+// value, it is ignored and does not modify the default build. In addition, it reads GOFLAGS and appends that to buildTags.
 func goFilesInDirForConfig(dir string, goarch string, goos string, buildTags []string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -74,9 +74,8 @@ func goFilesInDirForConfig(dir string, goarch string, goos string, buildTags []s
 	return files, nil
 }
 
-// ParseTagsFromGOFLAGS parses GOFLAGS and extracts all values passed to -tags.
-// It supports both "-tags=foo,bar" and "-tags foo,bar" forms. It uses
-// strings.Fields for tokenization and does not perform full shell parsing.
+// ParseTagsFromGOFLAGS parses GOFLAGS and extracts all values passed to -tags. It supports both "-tags=foo,bar" and "-tags foo,bar" forms. It uses strings.Fields
+// for tokenization and does not perform full shell parsing.
 func ParseTagsFromGOFLAGS(gf string) []string {
 	if gf == "" {
 		return nil

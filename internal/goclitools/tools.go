@@ -4,8 +4,7 @@ import "os/exec"
 
 // ToolRequirement describes an external tool that should be available in PATH.
 //
-// InstallHint is optional; when provided, it should be a user-facing hint for how
-// to install the tool (for example: "go install ...@latest").
+// InstallHint is optional; when provided, it should be a user-facing hint for how to install the tool (for example: "go install ...@latest").
 type ToolRequirement struct {
 	Name        string
 	InstallHint string
@@ -20,9 +19,8 @@ type ToolStatus struct {
 	InstallHint string
 }
 
-// CheckTools resolves each required tool using exec.LookPath and returns a
-// status for each requirement in the same order. It never returns an error;
-// callers can decide which missing tools are fatal.
+// CheckTools resolves each required tool using exec.LookPath and returns a status for each requirement in the same order. It never returns an error; callers can
+// decide which missing tools are fatal.
 func CheckTools(reqs []ToolRequirement) []ToolStatus {
 	statuses := make([]ToolStatus, 0, len(reqs))
 	for _, r := range reqs {
@@ -40,8 +38,7 @@ func CheckTools(reqs []ToolRequirement) []ToolStatus {
 	return statuses
 }
 
-// DefaultRequiredTools returns the external tools expected by Codalotl's Go
-// workflows.
+// DefaultRequiredTools returns the external tools expected by Codalotl's Go workflows.
 func DefaultRequiredTools() []ToolRequirement {
 	return []ToolRequirement{
 		{Name: "go"},

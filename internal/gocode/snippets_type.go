@@ -15,8 +15,8 @@ import (
 
 var _ Snippet = (*TypeSnippet)(nil) // TypeSnippet implements Snippet
 
-// TypeSnippet represents a single type declaration or type block as it appears in source. It records the raw source (documentation plus declaration), the defined identifiers, and any
-// per-identifier and per-field documentation. TypeSnippet implements Snippet and can render a public-only form that elides unexported members.
+// TypeSnippet represents a single type declaration or type block as it appears in source. It records the raw source (documentation plus declaration), the defined
+// identifiers, and any per-identifier and per-field documentation. TypeSnippet implements Snippet and can render a public-only form that elides unexported members.
 type TypeSnippet struct {
 	Identifiers []string // all identifiers defined by the type block (length will be 1 if it's a single-spec type like "type MyType int")
 	IsBlock     bool     // true if a block (ex: "type ( ... )")
@@ -24,14 +24,14 @@ type TypeSnippet struct {
 	Snippet     []byte   // the docs + decl as it appears in source; shares buffer with File's Contents
 	BlockDoc    string   // "" if not a block; otherwise, the doc above the overall block
 
-	// identifier -> doc for that identifier. "" if no docs for an identifier. Multiple identifiers can share the same doc (duplicated strings in the map per identifier). Regardless of
-	// doc vs comment, each comment is \n-terminated. An identifier with both doc and comment has its comments concatenated. Field documentation (within structs and interfaces) is not present
-	// in this map.
+	// identifier -> doc for that identifier. "" if no docs for an identifier. Multiple identifiers can share the same doc (duplicated strings in the map per identifier).
+	// Regardless of doc vs comment, each comment is \n-terminated. An identifier with both doc and comment has its comments concatenated. Field documentation (within
+	// structs and interfaces) is not present in this map.
 	IdentifierDocs map[string]string
 
-	// nil for non-structs/interfaces. For structs/interfaces, contains field-key -> doc, with "" for no docs (all fields must be in the map). Multiple fields can share the same doc (duplicated
-	// strings). Always \n-terminated if docs are non-empty. Field-key is constructed by taking the identifier, followed by a dot, followed by the field name. Nested fields are supported
-	// with additional dots. ex: "MyType.MyNestedStruct.MyField".
+	// nil for non-structs/interfaces. For structs/interfaces, contains field-key -> doc, with "" for no docs (all fields must be in the map). Multiple fields can share
+	// the same doc (duplicated strings). Always \n-terminated if docs are non-empty. Field-key is constructed by taking the identifier, followed by a dot, followed
+	// by the field name. Nested fields are supported with additional dots. ex: "MyType.MyNestedStruct.MyField".
 	FieldDocs map[string]string
 
 	fieldDocIdentifiers []string       // ordered keys for FieldDocs so that order in Snippet.Docs/MissingDocs is deterministic
@@ -176,8 +176,8 @@ func (t *TypeSnippet) Position() token.Position {
 // Extraction
 //
 
-// extractFieldDocs recursively extracts field documentation from struct and interface types. It returns a map of field-key -> doc where the field-key uses "TypeName.FieldName". For
-// nested fields, it uses dot notation like "TypeName.NestedType.FieldName". It also returns an ordered slice of field keys to preserve deterministic order.
+// extractFieldDocs recursively extracts field documentation from struct and interface types. It returns a map of field-key -> doc where the field-key uses "TypeName.FieldName".
+// For nested fields, it uses dot notation like "TypeName.NestedType.FieldName". It also returns an ordered slice of field keys to preserve deterministic order.
 func extractFieldDocs(typeName string, typeExpr ast.Expr, fset *token.FileSet, fileContents []byte) (map[string]string, []string) {
 	fieldDocs := make(map[string]string)
 	var fieldOrder []string
