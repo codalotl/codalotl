@@ -54,5 +54,5 @@ type Options struct {
 // determine if an error has already been printed. Finally, note that many "errors" happen in the course of typical agent runs. For instance, the agent will ask
 // to read non-existant files; shell commands will fail; etc. These do not typically constitute errors worthy of being returned (instead, the LLM is just told a
 // file doesn't exist).
-func Exec(prompt string, opts Options) err
+func Exec(userPrompt string, opts Options) error
 ```
