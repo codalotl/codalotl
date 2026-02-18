@@ -16,22 +16,22 @@ import (
 )
 
 const (
-	// packageListMaxLinesPerModule caps the number of lines we emit for each module
-	// in the LLM context string. The returned slice is never truncated.
+	// packageListMaxLinesPerModule caps the number of lines we emit for each module in the LLM context string. The returned slice is never truncated.
 	packageListMaxLinesPerModule = 60
 
 	packageListGoListTimeout = 45 * time.Second
 )
 
-// PackageList returns a list of packages available in the current module. It identifies the go.mod file by starting at absDir and
-// walking up until it finds a go.mod file.
+// PackageList returns a list of packages available in the current module. It identifies the go.mod file by starting at absDir and walking up until it finds a go.mod
+// file.
 //
-// main and _test packages are included. _test packages listed by their "import path" - if a directory contains a non-test and a test package, the path is only listed once.
+// main and _test packages are included. _test packages listed by their "import path" - if a directory contains a non-test and a test package, the path is only listed
+// once.
 //
 // If search is given, it filters the results by interpreting it as a Go regexp.
 //
-// If !includeDepPackages, it only includes packages defined in this module. Otherwise, it includes packages in **direct** module dependencies (dependency internal packages excluded).
-// "Direct module dependencies" means modules listed in the go.mod `require` block(s) that are NOT annotated with `// indirect` (go.sum is ignored).
+// If !includeDepPackages, it only includes packages defined in this module. Otherwise, it includes packages in **direct** module dependencies (dependency internal
+// packages excluded). "Direct module dependencies" means modules listed in the go.mod `require` block(s) that are NOT annotated with `// indirect` (go.sum is ignored).
 //
 // It returns a slice of sorted packages; a string that can be dropped in as context to an LLM; an error, if any.
 //

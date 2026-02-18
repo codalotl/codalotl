@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Dedent removes the common leading indentation from each non-blank line in s. Spaces and tabs both count as indentation; the smallest indent
-// among non-blank lines is removed from all non-blank lines. Blank-only lines do not affect the indent; interior blank lines are preserved,
-// and leading/trailing blank lines are trimmed. The result has no trailing spaces or tabs and always ends with a single '\n'. Dedent is useful
-// for inline multi-line test fixtures that are indented along with surrounding code.
+// Dedent removes the common leading indentation from each non-blank line in s. Spaces and tabs both count as indentation; the smallest indent among non-blank lines
+// is removed from all non-blank lines. Blank-only lines do not affect the indent; interior blank lines are preserved, and leading/trailing blank lines are trimmed.
+// The result has no trailing spaces or tabs and always ends with a single '\n'. Dedent is useful for inline multi-line test fixtures that are indented along with
+// surrounding code.
 func Dedent(s string) string {
 	s = strings.Trim(s, "\n") // drop leading/trailing blank lines
 	lines := strings.Split(s, "\n")
@@ -43,9 +43,9 @@ func Dedent(s string) string {
 	return strings.TrimRight(strings.Join(lines, "\n"), " \t\n") + "\n"
 }
 
-// WithMultiCode creates a temporary Go module with path "mymodule" containing a single package "mypkg" (import path "mymodule/mypkg"), writes
-// the provided files into that package (map keys are filenames), prepends "package mypkg" when missing, loads the package via gocode, and calls
-// f with the loaded package. The temporary files are removed on return. If setup or loading fails, the test is failed and f is not called.
+// WithMultiCode creates a temporary Go module with path "mymodule" containing a single package "mypkg" (import path "mymodule/mypkg"), writes the provided files
+// into that package (map keys are filenames), prepends "package mypkg" when missing, loads the package via gocode, and calls f with the loaded package. The temporary
+// files are removed on return. If setup or loading fails, the test is failed and f is not called.
 func WithMultiCode(t *testing.T, fileToCode map[string]string, f func(*gocode.Package)) {
 	// Create a temporary directory
 	tmpDir, err := os.MkdirTemp("", "gocodetesting-")
@@ -88,22 +88,22 @@ func WithMultiCode(t *testing.T, fileToCode map[string]string, f func(*gocode.Pa
 	}
 }
 
-// WithCode creates a temporary Go module containing one package with a single source file, loads that package, and invokes f with the parsed
-// package. The file is written as "mypkg/code.go" with the provided contents; if no package clause is present, "package mypkg" is added. The
-// module path is "mymodule" and the package import path is "mymodule/mypkg". The environment targets Go 1.18 so generics are available.
+// WithCode creates a temporary Go module containing one package with a single source file, loads that package, and invokes f with the parsed package. The file is
+// written as "mypkg/code.go" with the provided contents; if no package clause is present, "package mypkg" is added. The module path is "mymodule" and the package
+// import path is "mymodule/mypkg". The environment targets Go 1.18 so generics are available.
 //
-// All temporary files are removed on return. If creating or loading the package fails, t is failed and f is not called. Use WithMultiCode for
-// multi-file fixtures and AddPackage to add additional packages to a module created by WithMultiCode.
+// All temporary files are removed on return. If creating or loading the package fails, t is failed and f is not called. Use WithMultiCode for multi-file fixtures
+// and AddPackage to add additional packages to a module created by WithMultiCode.
 func WithCode(t *testing.T, code string, f func(*gocode.Package)) {
 	WithMultiCode(t, map[string]string{"code.go": code}, f)
 }
 
-// AddPackage adds a new package to mod, which must have been created with WithMultiCode. It creates the directory for newPkgPath under mod.AbsolutePath,
-// writes the provided files, and auto-inserts a package clause for any file that lacks one. The package name is derived from the last element
-// of newPkgPath (ex: "other" for "foo/bar/other"), falling back to "main" if a name cannot be derived.
+// AddPackage adds a new package to mod, which must have been created with WithMultiCode. It creates the directory for newPkgPath under mod.AbsolutePath, writes
+// the provided files, and auto-inserts a package clause for any file that lacks one. The package name is derived from the last element of newPkgPath (ex: "other"
+// for "foo/bar/other"), falling back to "main" if a name cannot be derived.
 //
-// newPkgPath is a module-relative path that becomes the import-path suffix of the new package. fileToCode maps filenames to their contents;
-// files are created or overwritten as needed.
+// newPkgPath is a module-relative path that becomes the import-path suffix of the new package. fileToCode maps filenames to their contents; files are created or
+// overwritten as needed.
 //
 // AddPackage does not load the new package into gocode; load it separately via the Module's loading APIs if required.
 //

@@ -13,8 +13,8 @@ import (
 // A Context represents a bundle of code that can be sent to an LLM. The bundle describes K IdentifierGroups. An IdentifierGroup is described by Context if:
 //   - The IdentifierGroup itself has full bytes, and
 //   - All of IdentifierGroup's UsedByDeps have full bytes (so we can see how it is used in a function)
-//   - All of IdentifierGroup's DirectDeps have either: A) full bytes, or B) are external and/or have documentation and partial snippet bytes (we either need a documented function, or
-//     we need to see the entire function).
+//   - All of IdentifierGroup's DirectDeps have either: A) full bytes, or B) are external and/or have documentation and partial snippet bytes (we either need a documented
+//     function, or we need to see the entire function).
 type Context struct {
 	// originalGroups are the identifier groups explicitly added to the context via NewContext or AddGroup.
 	originalGroups []*IdentifierGroup
@@ -46,11 +46,12 @@ func (c *Context) AddedGroups() []*IdentifierGroup {
 	return c.originalGroups
 }
 
-// GroupsForFree returns groups that are referenced in DirectDeps/UsedByDeps and also have full context. In other words, they are "free" to add to a code context. This does NOT compute
-// the full closure of groups for free.
+// GroupsForFree returns groups that are referenced in DirectDeps/UsedByDeps and also have full context. In other words, they are "free" to add to a code context.
+// This does NOT compute the full closure of groups for free.
 //
-// For example, consider len(c.AddedGroups())=1, where the group is type X. The context includes the full bodies of X's methods. If those methods are also fully described by X's context
-// (ex: no one else calls them, and they only reference X), then we have full context for each of those methods. Each method for which this is true will be returned.
+// For example, consider len(c.AddedGroups())=1, where the group is type X. The context includes the full bodies of X's methods. If those methods are also fully
+// described by X's context (ex: no one else calls them, and they only reference X), then we have full context for each of those methods. Each method for which this
+// is true will be returned.
 //
 // Invariants:
 //   - Any returned value is not in c.AddedGroups().
@@ -101,8 +102,8 @@ func (c *Context) GroupsForFree() []*IdentifierGroup {
 	return groupsForFree
 }
 
-// AllGroups returns the groups explicitly added to the context plus any additional groups that are available for free. It does not include snippet-only dependency groups that are part
-// of the context's code/cost.
+// AllGroups returns the groups explicitly added to the context plus any additional groups that are available for free. It does not include snippet-only dependency
+// groups that are part of the context's code/cost.
 func (c *Context) AllGroups() []*IdentifierGroup {
 	groupsForFree := c.GroupsForFree()
 	allGroups := make([]*IdentifierGroup, 0, len(c.originalGroups)+len(groupsForFree))
@@ -179,13 +180,14 @@ func (c *Context) AdditionalCostForGroup(group *IdentifierGroup) int {
 	return delta
 }
 
-// HasFullBytes reports whether c contains full source ("full bytes") for group. It returns true for groups explicitly added to the context and for groups whose full bytes are included.
-// It returns false for groups that are not in the context or are present only as partial snippets (docs/signatures).
+// HasFullBytes reports whether c contains full source ("full bytes") for group. It returns true for groups explicitly added to the context and for groups whose
+// full bytes are included. It returns false for groups that are not in the context or are present only as partial snippets (docs/signatures).
 func (c *Context) HasFullBytes(group *IdentifierGroup) bool {
 	return slices.Contains(c.originalGroups, group) || c.groupsWithFullBytes[group]
 }
 
-// Code returns code that we can send to an LLM for the identifiers in groups. The code is grouped by source file and preserves the order in which it appears in the source file.
+// Code returns code that we can send to an LLM for the identifiers in groups. The code is grouped by source file and preserves the order in which it appears in
+// the source file.
 //
 // Groups are the primary identifiers we need context for. The context includes:
 //   - Full bodies of the groups' identifiers
@@ -333,7 +335,8 @@ func (c *Context) Code() string {
 	return b.String()
 }
 
-// Prune will mutate c and c's groups so that c.Cost() <= tokenBudget. It returns true if successful, or false if the prune failed. If the prune failed, c might still be mutated.
+// Prune will mutate c and c's groups so that c.Cost() <= tokenBudget. It returns true if successful, or false if the prune failed. If the prune failed, c might
+// still be mutated.
 //
 // Prune will make a best-effort attempt to preserve context's utility using a variety of techniques. For example:
 //   - Remove "used by" deps, up to a limit.
@@ -446,8 +449,8 @@ func (c *Context) Prune(tokenBudget int) bool {
 	return false
 }
 
-// groupHasExportedIdentifier reports whether the group contains at least one exported identifier. For compound identifiers like "X.B", both the receiver and the member must be exported
-// to count as exported API.
+// groupHasExportedIdentifier reports whether the group contains at least one exported identifier. For compound identifiers like "X.B", both the receiver and the
+// member must be exported to count as exported API.
 func groupHasExportedIdentifier(g *IdentifierGroup) bool {
 	for _, id := range g.IDs {
 		if isExportedID(id) {
@@ -457,7 +460,8 @@ func groupHasExportedIdentifier(g *IdentifierGroup) bool {
 	return false
 }
 
-// isExportedID returns true if the identifier is exported. For method/field style identifiers containing a dot, both sides must start with an uppercase letter to be treated as exported.
+// isExportedID returns true if the identifier is exported. For method/field style identifiers containing a dot, both sides must start with an uppercase letter to
+// be treated as exported.
 func isExportedID(id string) bool {
 	if dot := strings.IndexByte(id, '.'); dot >= 0 {
 		recv := id[:dot]
@@ -481,8 +485,8 @@ func identifiersInGroups(groups []*IdentifierGroup) []string {
 	return ids
 }
 
-// calculateGroupsWithFullBytes returns a map indicating which IdentifierGroups should be included in the context and for each, whether full bytes (true) or only snippet bytes (false)
-// are required.
+// calculateGroupsWithFullBytes returns a map indicating which IdentifierGroups should be included in the context and for each, whether full bytes (true) or only
+// snippet bytes (false) are required.
 //
 // The rules follow those in NewContext:
 //   - Every group provided to the context, along with all its UsedByDeps, must appear with full bytes.
