@@ -1,8 +1,8 @@
-// llmcomplete is a barebones package to abstract LLM completions across multiple providers (OpenAI, Anthropic, etc). It purposefully does NOT take advantage of each provider's special
-// features and gimmicks. For instance, there is no tool support. It only does completions.
+// llmcomplete is a barebones package to abstract LLM completions across multiple providers (OpenAI, Anthropic, etc). It purposefully does NOT take advantage of
+// each provider's special features and gimmicks. For instance, there is no tool support. It only does completions.
 //
-// If a feature (ex: tools) becomes ubiquitous across all providers, we could consider adding it. At the same time, this package is really intended to be basic text completion. I'm
-// inclined to forgo adding extra features like that. If we need that kind of stuff, we could consider using OSS components.
+// If a feature (ex: tools) becomes ubiquitous across all providers, we could consider adding it. At the same time, this package is really intended to be basic text
+// completion. I'm inclined to forgo adding extra features like that. If we need that kind of stuff, we could consider using OSS components.
 package llmcomplete
 
 import (
@@ -120,10 +120,8 @@ type Usage struct {
 	RateLimits
 }
 
-// costPerMFor returns the pricing (per 1M tokens) for the given model ID within
-// the conversation's provider. It tries exact match, then a normalized ID
-// (date/latest suffix removed). If not found, it falls back to the configured
-// model for the conversation. ok=false if no pricing data is available.
+// costPerMFor returns the pricing (per 1M tokens) for the given model ID within the conversation's provider. It tries exact match, then a normalized ID (date/latest
+// suffix removed). If not found, it falls back to the configured model for the conversation. ok=false if no pricing data is available.
 func (c *conversation) costPerMFor(modelID string) (in float64, out float64, ok bool) {
 	// Try to resolve within the provider used by this conversation.
 	if c.model.providerObj != nil {
@@ -173,7 +171,8 @@ func isRetryable(err error) bool    { return errors.Is(err, ErrRetryable) }
 
 // retrySleepDurations' i'th index is the sleep duration for the i'th retry. Any retry after that would use the last value.
 //
-// This is meant to mix exponential backoff, an eager initial retry, keeping sleep times long enough that things might recover but short enough that the user doesn't think things hung.
+// This is meant to mix exponential backoff, an eager initial retry, keeping sleep times long enough that things might recover but short enough that the user doesn't
+// think things hung.
 var retrySleepDurations = []time.Duration{
 	10 * time.Millisecond,
 	500 * time.Millisecond,
@@ -200,8 +199,8 @@ func (c *conversation) AddUserMessage(message string) *Message {
 	return m
 }
 
-// Send sends the conversation to the model to get a RoleAssistant response message. The last message in Messages MUST be a UserMessage. If the request errors out, an error is returned.
-// Additionally, the last UserMessage will contain details in a ResponseError struct.
+// Send sends the conversation to the model to get a RoleAssistant response message. The last message in Messages MUST be a UserMessage. If the request errors out,
+// an error is returned. Additionally, the last UserMessage will contain details in a ResponseError struct.
 func (c *conversation) Send() (*Message, error) {
 	if c.model == (model{}) {
 		return nil, c.LogNewErr("conversation.Send: invalid model")

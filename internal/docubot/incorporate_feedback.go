@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// IncorporatedFeedback represents a single documentation change and all feedback entries that relate to that change. A change may be driven by multiple issues for the same identifier
-// or multiple identifiers affected together (ex: within a var/type block).
+// IncorporatedFeedback represents a single documentation change and all feedback entries that relate to that change. A change may be driven by multiple issues for
+// the same identifier or multiple identifiers affected together (ex: within a var/type block).
 type IncorporatedFeedback struct {
 	Feedbacks []IdentifierFeedback // Feedbacks aggregated for this change.
 	Change    gopackagediff.Change // The documentation change produced.
@@ -19,10 +19,11 @@ type IncorporatedFeedback struct {
 
 // incorporateFeedback applies documentation fixes for the provided identifierFeedback and returns incorporated feedback entries.
 //
-// The returned slice will contain one IncorporatedFeedback per documentation change, each including all IdentifierFeedback entries that relate to that change (possibly multiple per
-// identifier or multiple identifiers if a block-level change was made).
+// The returned slice will contain one IncorporatedFeedback per documentation change, each including all IdentifierFeedback entries that relate to that change (possibly
+// multiple per identifier or multiple identifiers if a block-level change was made).
 //
-// identifierFeedback's identifiers must apply to pkg (vs pkg.TestPackage). onlyTests indicates that all identifierFeedback is for test files; you cannot mix test and non-test identifiers.
+// identifierFeedback's identifiers must apply to pkg (vs pkg.TestPackage). onlyTests indicates that all identifierFeedback is for test files; you cannot mix test
+// and non-test identifiers.
 func incorporateFeedback(pkg *gocode.Package, identifierFeedback []IdentifierFeedback, onlyTests bool, options FindFixDocErrorsOptions) ([]IncorporatedFeedback, error) {
 
 	// TODO: proper handling of IncludeXxx for GroupOptions
@@ -122,8 +123,9 @@ func incorporateFeedback(pkg *gocode.Package, identifierFeedback []IdentifierFee
 	return out, nil
 }
 
-// instructionsForIncorporateFeedback formats a grouped instruction block for the LLM from the given feedback. The result starts with "Identifiers and feedback:" and lists each identifier
-// followed by one or more bullet points with its feedback (ex: "- myID:\n - issue 1\n - issue 2"). Output order of identifiers is unspecified, and multi-line feedback is not re-indented.
+// instructionsForIncorporateFeedback formats a grouped instruction block for the LLM from the given feedback. The result starts with "Identifiers and feedback:"
+// and lists each identifier followed by one or more bullet points with its feedback (ex: "- myID:\n - issue 1\n - issue 2"). Output order of identifiers is unspecified,
+// and multi-line feedback is not re-indented.
 func instructionsForIncorporateFeedback(identifierFeedback []IdentifierFeedback) string {
 	var b strings.Builder
 

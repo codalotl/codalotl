@@ -88,7 +88,8 @@ func TestOpenAIFailure(t *testing.T) {
 	}
 }
 
-// openAIRetryStubTransport implements http.RoundTripper and simulates a transient 500 error on the first call and a successful chat completion response on the second call.
+// openAIRetryStubTransport implements http.RoundTripper and simulates a transient 500 error on the first call and a successful chat completion response on the second
+// call.
 type openAIRetryStubTransport struct{ calls int }
 
 func (rt *openAIRetryStubTransport) RoundTrip(req *http.Request) (*http.Response, error) {

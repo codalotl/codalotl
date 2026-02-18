@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// logSnippetErrors writes a consolidated, multi-line report of snippet application errors at info level. If snippetErrors is empty or logger is nil, it does nothing. The situation
-// parameter should describe where the errors occurred (ex: "original application", "fix attempt").
+// logSnippetErrors writes a consolidated, multi-line report of snippet application errors at info level. If snippetErrors is empty or logger is nil, it does nothing.
+// The situation parameter should describe where the errors occurred (ex: "original application", "fix attempt").
 func logSnippetErrors(logger *slog.Logger, situation string, snippetErrors []updatedocs.SnippetError) {
 	if len(snippetErrors) > 0 && logger != nil {
 
@@ -23,8 +23,8 @@ func logSnippetErrors(logger *slog.Logger, situation string, snippetErrors []upd
 	}
 }
 
-// logIdentifiersDebug logs a compact summary of the package's identifiers and highlights undocumented items. When documentTestFiles is true, test-file identifiers are included in the
-// diagnostic output.
+// logIdentifiersDebug logs a compact summary of the package's identifiers and highlights undocumented items. When documentTestFiles is true, test-file identifiers
+// are included in the diagnostic output.
 func logIdentifiersDebug(idents *Identifiers, documentTestFiles bool, options BaseOptions) {
 	options.Log(idents.String())
 	options.Log(idents.FilteredString(documentTestFiles))

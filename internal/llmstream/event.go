@@ -5,9 +5,7 @@ import "strings"
 type EventType string
 
 const (
-	// Indicates request is accepted but queued. Event will only have this status. Optional.
-	EventTypeQueued EventType = "queued"
-
+	EventTypeQueued           EventType = "queued"            // Indicates request is accepted but queued. Event will only have this status. Optional.
 	EventTypeCreated          EventType = "created"           // Turn has been created and is in-progress. Event has Turn.
 	EventTypeCompletedSuccess EventType = "completed_success" // Stream has ended successfully. Event has final Turn.
 	EventTypeError            EventType = "error"             // Some error occurred. Event has Error set.
@@ -32,20 +30,19 @@ type Event struct {
 	Turn  *Turn
 	Error error
 
-	// Delta is new content added to Text or Reasoning. The suffix of Text.Content or Reasoning.Content should be Delta. May be blank. Only sent
-	// in EventTypeTextDelta and EventTypeReasoningDelta.
+	// Delta is new content added to Text or Reasoning. The suffix of Text.Content or Reasoning.Content should be Delta. May be blank. Only sent in EventTypeTextDelta
+	// and EventTypeReasoningDelta.
 	Delta string
 
 	// Text is the cumulative text content so far for the given Text.ProviderID. Only sent in EventTypeTextDelta.
 	Text *TextContent
 
-	// Reasoning is the cumulative reasoning content so far for the given Reasoning.ProviderID. Only sent in EventTypeReasoningDelta. NOTE: some
-	// providers have multiple items per reasoning ProviderID. In those cases, Reasoning is the "current" item. Callers can keep track of this by
-	// looking at Done.
+	// Reasoning is the cumulative reasoning content so far for the given Reasoning.ProviderID. Only sent in EventTypeReasoningDelta. NOTE: some providers have multiple
+	// items per reasoning ProviderID. In those cases, Reasoning is the "current" item. Callers can keep track of this by looking at Done.
 	Reasoning *ReasoningContent
 
-	// Done is true if Text or Reasoning is done. Only sent in EventTypeTextDelta and EventTypeReasoningDelta. Note that for Reasoning, there may
-	// be multiple Done events per ProviderID, denoting multiple reasoning items in the same overall reasoning ProviderID.
+	// Done is true if Text or Reasoning is done. Only sent in EventTypeTextDelta and EventTypeReasoningDelta. Note that for Reasoning, there may be multiple Done events
+	// per ProviderID, denoting multiple reasoning items in the same overall reasoning ProviderID.
 	Done bool
 
 	// ToolCall is the tool call for EventTypeToolUse event.
@@ -94,8 +91,7 @@ const (
 
 // Turn represents a conversational turn: one party (system/user or assistant) conveying data.
 //
-// Turns don't map perfectly to OpenAI's Responses API. We model both local inputs (system/user/tool results) and provider outputs (assistant responses)
-// as Turns.
+// Turns don't map perfectly to OpenAI's Responses API. We model both local inputs (system/user/tool results) and provider outputs (assistant responses) as Turns.
 //
 // Notes:
 //   - Locally-created turns (system/user/tool results) have ProviderID == "" and Usage is zero.
@@ -106,7 +102,7 @@ const (
 //   - Turn{Role: RoleSystem, ProviderID: ""}
 //   - Turn{Role: RoleUser, ProviderID: ""}
 //   - Turn{Role: RoleAssistant, ProviderID: "resp_aaaa"} // Parts may include ToolCall(s)
-//   - Turn{Role: RoleUser, ProviderID: ""}              // Parts contain ToolResult(s)
+//   - Turn{Role: RoleUser, ProviderID: ""} // Parts contain ToolResult(s)
 //   - Turn{Role: RoleAssistant, ProviderID: "resp_bbbb", FinishReason: FinishReasonEndTurn}
 type Turn struct {
 	Role         Role          // Role taking this turn (user, system, assistant).

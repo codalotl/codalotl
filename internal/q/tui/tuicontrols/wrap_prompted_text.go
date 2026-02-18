@@ -8,9 +8,9 @@ import (
 
 // WrapPromptedText wraps contents into display lines the same way TextArea does, including prompt and hanging indent.
 //
-// - prompt is the prefix shown on the first display line.
-// - width is the available display width (in terminal cells) of the full line, including prompt.
-// - contents is the text to wrap; it may contain '\n' logical newlines.
+//   - prompt is the prefix shown on the first display line.
+//   - width is the available display width (in terminal cells) of the full line, including prompt.
+//   - contents is the text to wrap; it may contain '\n' logical newlines.
 //
 // The returned lines:
 //   - contain no ANSI styling

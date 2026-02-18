@@ -57,8 +57,8 @@ func (o *responsesConversationalist) allUserText() string {
 	return b.String()
 }
 
-// stagedConversationalist returns initial canned responses; subsequent conversations dynamically
-// respond with a JSON array of ids extracted from the last user message (for ResortFile tests).
+// stagedConversationalist returns initial canned responses; subsequent conversations dynamically respond with a JSON array of ids extracted from the last user message
+// (for ResortFile tests).
 type stagedConversationalist struct {
 	initial []string
 	idx     int
@@ -74,8 +74,7 @@ func (s *stagedConversationalist) NewConversation(model llmcomplete.ModelID, sys
 	return &dynamicArrayConversation{msgs: []*llmcomplete.Message{{Role: llmcomplete.RoleSystem, Text: systemMessage}}}
 }
 
-// dynamicArrayConversation builds a JSON array of ids found in the user message (lines beginning with "// id: ")
-// and returns that as the assistant response.
+// dynamicArrayConversation builds a JSON array of ids found in the user message (lines beginning with "// id: ") and returns that as the assistant response.
 type dynamicArrayConversation struct {
 	msgs   []*llmcomplete.Message
 	logger *slog.Logger

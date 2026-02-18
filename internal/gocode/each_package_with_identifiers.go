@@ -2,11 +2,12 @@ package gocode
 
 type EachPackageWithIdentifiersCallback func(pkg *Package, identifiers []string, onlyTests bool) error
 
-// EachPackageWithIdentifiers calls the callback up to three times with (package [either pkg or pkg.TestPackage], ids for that package, if ids are only testing ids). The order of callbacks
-// is [primary package no tests, primary package tests, testing package]. If there are no ids for a package, no callback will be made (including potentially no callbacks for any package,
-// if there's no matching identifiers).
+// EachPackageWithIdentifiers calls the callback up to three times with (package [either pkg or pkg.TestPackage], ids for that package, if ids are only testing ids).
+// The order of callbacks is [primary package no tests, primary package tests, testing package]. If there are no ids for a package, no callback will be made (including
+// potentially no callbacks for any package, if there's no matching identifiers).
 //
-// If identifiers is empty, all of pkg's and pkg.TestPackage's identifiers that match optionsIfEmpty will be used. Otherwise, we'll use identifiers, filtered by optionsIfNonempty.
+// If identifiers is empty, all of pkg's and pkg.TestPackage's identifiers that match optionsIfEmpty will be used. Otherwise, we'll use identifiers, filtered by
+// optionsIfNonempty.
 //
 // If the callback returns an error, further callbacks stop and the error is returned.
 func EachPackageWithIdentifiers(pkg *Package, identifiers []string, optionsIfEmpty FilterIdentifiersOptions, optionsIfNonempty FilterIdentifiersOptions, callback EachPackageWithIdentifiersCallback) error {

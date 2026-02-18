@@ -83,10 +83,10 @@ The agent package contains an `AgentCreator` interface that a callee can accept,
 func NewAgentCreator() AgentCreator
 
 type AgentCreator interface {
-    New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error)
+	New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error)
 
-    // A SubAgent's default model is the same as the parent's model; otherwise, it's the package's default.
-    NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*Agent, error)
+	// A SubAgent's default model is the same as the parent's model; otherwise, it's the package's default.
+	NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*Agent, error)
 }
 ```
 
@@ -94,13 +94,13 @@ Every `Event` includes metadata describing the originator so TUIs can attribute 
 
 ```go
 type AgentMeta struct {
-    ID    string // stable, unique per Agent/SubAgent within a session
-    Depth int    // 0 == root agent
+	ID    string // stable, unique per Agent/SubAgent within a session
+	Depth int    // 0 == root agent
 }
 
 type Event struct {
-    Agent AgentMeta
-    // ... other fields
+	Agent AgentMeta
+	// ... other fields
 }
 ```
 
@@ -152,8 +152,7 @@ These are not requirements yet, but will be. They are inactive either because we
 If possible, do not do anything that makes implementing them actively harder in the future.
 
 ```go
-// ContextUsage returns the (current context usage, total context available), in tokens.
-// Inactive because we lack context window data in llmstream (it's in llmcomplete).
+// ContextUsage returns the (current context usage, total context available), in tokens. Inactive because we lack context window data in llmstream (it's in llmcomplete).
 func (a *Agent) ContextUsage() (int, int)
 ```
 

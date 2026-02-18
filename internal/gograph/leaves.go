@@ -2,10 +2,10 @@ package gograph
 
 import "sort"
 
-// LeavesOf returns the set of leaves of the graph, starting from each of idents. Any identifier in disconnectedIdents is considered not in the graph, turning a node depending on only
-// disconnected identifiers into a leaf. True leaves are also considered leaves. If a node is returned because it only depends on disconnectedIdents, this function does not traverse
-// into the disconnectedIdents. No disconnectedIdents can be returned by this function. If there are no leaves of an ident due to traversing into an SCC, each identifier in the SCC
-// is returned.
+// LeavesOf returns the set of leaves of the graph, starting from each of idents. Any identifier in disconnectedIdents is considered not in the graph, turning a
+// node depending on only disconnected identifiers into a leaf. True leaves are also considered leaves. If a node is returned because it only depends on disconnectedIdents,
+// this function does not traverse into the disconnectedIdents. No disconnectedIdents can be returned by this function. If there are no leaves of an ident due to
+// traversing into an SCC, each identifier in the SCC is returned.
 func (g *Graph) LeavesOf(idents, disconnectedIdents []string) []string {
 	disc := make(map[string]struct{}, len(disconnectedIdents))
 	for _, id := range disconnectedIdents {

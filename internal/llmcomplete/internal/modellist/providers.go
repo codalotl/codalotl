@@ -68,16 +68,22 @@ type Provider struct {
 	// ID is the stable machine identifier for the provider.
 	ID ProviderID `json:"id"`
 
-	// All providers have an API "type", which is the shape of its API for chat completions. Any bespoke API will have its own type. Commonly new providers will ship APIs that are of the
-	// same shape as, for instance, OpenAI's API, so that people can plug-and-play without building to a new API.
+	// All providers have an API "type", which is the shape of its API for chat completions. Any bespoke API will have its own type. Commonly new providers will ship
+	// APIs that are of the same shape as, for instance, OpenAI's API, so that people can plug-and-play without building to a new API.
 	Type Type `json:"type"`
 
-	APIEndpointURL      string  `json:"api_endpoint_url"`                 // URL of their API endpoint.
-	APIKeyEnv           string  `json:"api_key,omitempty"`                // APIKey is the env variable that is typically used for auth.
-	APIEndpointEnv      string  `json:"api_endpoint_env,omitempty"`       // APIEndpointEnv is the env variable that is recommended to be overridden to use a custom URL.
-	DefaultLargeModelID string  `json:"default_large_model_id,omitempty"` // DefaultLargeModelID is the "best" large model of the provider. ID must match id in Models.
-	DefaultSmallModelID string  `json:"default_small_model_id,omitempty"` // DefaultSmallModelID is the "best" small model of the provider. ID must match id in Models.
-	Models              []Model `json:"models,omitempty"`                 // Models lists the models exposed by this provider.
+	APIEndpointURL string `json:"api_endpoint_url"`           // URL of their API endpoint.
+	APIKeyEnv      string `json:"api_key,omitempty"`          // APIKey is the env variable that is typically used for auth.
+	APIEndpointEnv string `json:"api_endpoint_env,omitempty"` // APIEndpointEnv is the env variable that is recommended to be overridden to use a custom URL.
+
+	// DefaultLargeModelID is the "best" large model of the provider. ID must match id in Models.
+	DefaultLargeModelID string `json:"default_large_model_id,omitempty"`
+
+	// DefaultSmallModelID is the "best" small model of the provider. ID must match id in Models.
+	DefaultSmallModelID string `json:"default_small_model_id,omitempty"`
+
+	// Models lists the models exposed by this provider.
+	Models []Model `json:"models,omitempty"`
 }
 
 // Synchronization and cache for provider loading.

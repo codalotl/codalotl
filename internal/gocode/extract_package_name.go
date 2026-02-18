@@ -4,9 +4,9 @@ import "fmt"
 
 // extractPackageName returns the package identifier from the first package declaration in src.
 //
-// Caveat: it does not support comments or newlines between the package keyword and the package name. Specifically, both // and /* */ comments in that position are rejected, and a package
-// clause split across lines is not recognized (a space or tab must follow "package"). Additionally, only ASCII letters, digits, and '_' are accepted in the package name; Unicode identifiers
-// are not supported.
+// Caveat: it does not support comments or newlines between the package keyword and the package name. Specifically, both // and /* */ comments in that position are
+// rejected, and a package clause split across lines is not recognized (a space or tab must follow "package"). Additionally, only ASCII letters, digits, and '_'
+// are accepted in the package name; Unicode identifiers are not supported.
 func extractPackageName(src []byte) (string, error) {
 	const keyword = "package"
 

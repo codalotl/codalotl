@@ -142,8 +142,7 @@ func IdentifierUsage(packageAbsDir string, identifier string, includeIntraPackag
 	return out, formatIdentifierUsageSummary(mod, out), nil
 }
 
-// IdentifierUsageRef holds a single usage location for an identifier.
-// This matches the SPEC fields for IdentifierUsageRef.
+// IdentifierUsageRef holds a single usage location for an identifier. This matches the SPEC fields for IdentifierUsageRef.
 type IdentifierUsageRef struct {
 	ImportPath       string // using package's import path
 	AbsFilePath      string // using file's absolute path
@@ -237,8 +236,8 @@ func snippetFileName(sn gocode.Snippet) (string, error) {
 	}
 }
 
-// packageForFile returns the gocode.Package that owns absPath and the File inside that package.
-// If the file belongs to a test package (package name suffix _test), it returns that test package and inTestPkg=true.
+// packageForFile returns the gocode.Package that owns absPath and the File inside that package. If the file belongs to a test package (package name suffix _test),
+// it returns that test package and inTestPkg=true.
 func packageForFile(mod *gocode.Module, absPath string) (*gocode.Package, *gocode.File, bool) {
 	dir := filepath.Dir(absPath)
 	base := filepath.Base(absPath)
@@ -301,8 +300,7 @@ func extractFullLine(contents []byte, line int) string {
 	return string(contents[start:end])
 }
 
-// snippetForOffset finds the gocode.Snippet that encloses byteOffset in usingFile.
-// It falls back to AST mapping if byte search fails.
+// snippetForOffset finds the gocode.Snippet that encloses byteOffset in usingFile. It falls back to AST mapping if byte search fails.
 func snippetForOffset(usingPkg *gocode.Package, usingFile *gocode.File, byteOffset int, inTestPkg bool) gocode.Snippet {
 	// First attempt: use AST to find the enclosing top-level declaration.
 	if s := snippetViaAST(usingPkg, usingFile, byteOffset); s != nil {

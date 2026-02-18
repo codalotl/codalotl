@@ -18,8 +18,8 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 )
 
-// sendAsyncOpenAIResponses sends sc.responses to OpenAI using the Responses API + Streaming, and sends events back on out. Returns a new response
-// that the caller can append to sc.responses. ctx is used for deadlines/cancellation.
+// sendAsyncOpenAIResponses sends sc.responses to OpenAI using the Responses API + Streaming, and sends events back on out. Returns a new response that the caller
+// can append to sc.responses. ctx is used for deadlines/cancellation.
 //
 // Division of responsibility:
 //   - If an error occurs, log it and return it. The caller will send the error on the channel and maybe retry.
@@ -243,8 +243,8 @@ type openAIResponsesContentBuilders struct {
 
 // openAIResponsesProcessEvent processes evt, returning:
 //   - An Event to send (but not an error event). This may have a finalized Response.
-//   - shouldContinue: false indicates the stream has finished from the provider's perspective. Callers may still choose to drain remaining events
-//     from the transport before exiting their loop.
+//   - shouldContinue: false indicates the stream has finished from the provider's perspective. Callers may still choose to drain remaining events from the transport
+//     before exiting their loop.
 //   - An error. Errors do NOT get built events - we just return the error, and the caller deals with it.
 func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builders *openAIResponsesContentBuilders) (*Event, bool, error) {
 	switch evt.Type {

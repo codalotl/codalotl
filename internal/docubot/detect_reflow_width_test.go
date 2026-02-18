@@ -19,7 +19,9 @@ func TestDetectReflowWidthReflexive(t *testing.T) {
 	width, confident, err := DetectReflowWidth(pkg)
 	require.NoError(t, err)
 	assert.True(t, confident)
-	assert.EqualValues(t, 180, width) // NOTE: if we change our formatting to something else, update this
+	// This is a reflexive test over this repo: DetectReflowWidth should match our current doc reflow style.
+	// If we change our formatting conventions, update this expectation.
+	assert.EqualValues(t, 160, width)
 }
 
 func TestDetectReflowWidthTestData(t *testing.T) {

@@ -11,11 +11,13 @@ import (
 	"strings"
 )
 
-// applyReorganization re-writes the files of pkg according to newOrganization. It is dangerous and destructive! It may delete files, create files, and completely re-write files
-// to have new contents. The new set of files that exist should have the same snippets as the old set of files - just in a new order, located in possibly different files.
+// applyReorganization re-writes the files of pkg according to newOrganization. It is dangerous and destructive! It may delete files, create files, and completely
+// re-write files to have new contents. The new set of files that exist should have the same snippets as the old set of files - just in a new order, located in possibly
+// different files.
 //
-// newOrganization is a map of target filename to a sorted slice of canonical snippet ids, meaning that after applyReorganization is done, that filename will have those snippets in
-// that order. idToSnippet is a map of canonical snippet ID to gocodeSnippet. It MUST be the case that orgIsValid(newOrganization, idToSnippet, onlyTests) before calling this function.
+// newOrganization is a map of target filename to a sorted slice of canonical snippet ids, meaning that after applyReorganization is done, that filename will have
+// those snippets in that order. idToSnippet is a map of canonical snippet ID to gocodeSnippet. It MUST be the case that orgIsValid(newOrganization, idToSnippet,
+// onlyTests) before calling this function.
 //
 // If onlyTests, all files and snippets are test snippets (either in a _test package, or the main package). Otherwise, they are all non-test files.
 //

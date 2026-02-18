@@ -9,7 +9,8 @@ import (
 
 var isWindows = runtime.GOOS == "windows" // isWindows reports whether the current OS is Windows.
 
-// ExpandPath expands out leading ~ (meaning home directory) to an absolute path. Works cross-OS (including Windows, which doesn't traditionally treat ~ as the home directory).
+// ExpandPath expands out leading ~ (meaning home directory) to an absolute path. Works cross-OS (including Windows, which doesn't traditionally treat ~ as the home
+// directory).
 func ExpandPath(path string) string {
 	if path == "" {
 		return ""

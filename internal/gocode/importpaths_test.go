@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestImportPathsPopulation verifies that Package.ImportPaths collects all unique import paths from every file in the package, regardless of aliasing style (regular, dot, blank, or
-// named).
+// TestImportPathsPopulation verifies that Package.ImportPaths collects all unique import paths from every file in the package, regardless of aliasing style (regular,
+// dot, blank, or named).
 func TestImportPathsPopulation(t *testing.T) {
 	// Create a temporary directory to act as a module root.
 	tempDir, err := os.MkdirTemp("", "gocode-importpaths-test")

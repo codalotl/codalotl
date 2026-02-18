@@ -28,14 +28,9 @@ var (
 	// Shows primary parsed objects (ex: new assistant message being added; final Response in the EventTypeCompletedSuccess event).
 	debugParsedResponses *os.File
 
-	// Shows tool calls and resuls
-	debugTools *os.File
-
-	// Log Misc things not cleanly in any other bucket
-	debugMisc *os.File
-
-	// Log Misc things not cleanly in any other bucket
-	debugEvents *os.File
+	debugTools  *os.File // Shows tool calls and resuls
+	debugMisc   *os.File // Log Misc things not cleanly in any other bucket
+	debugEvents *os.File // Log Misc things not cleanly in any other bucket
 )
 
 // NOTE: could add debugRawEvents, to show all the deltas and stuff
@@ -293,8 +288,7 @@ func debugFormatToolResult(raw string) (formatted string, content string, isJSON
 	}
 }
 
-// Returns a concise single-line description of an OpenAI Responses
-// response.output_item.added event's item to avoid dumping the full union.
+// Returns a concise single-line description of an OpenAI Responses response.output_item.added event's item to avoid dumping the full union.
 func debugDescribeOutputItemAdded(evt responses.ResponseOutputItemAddedEvent) string {
 	item := evt.Item
 	switch item.Type {

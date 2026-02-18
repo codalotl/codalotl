@@ -8,9 +8,8 @@ import (
 	"strings"
 )
 
-// Sanitizer defines a transformation over raw JSON bytes. It should return
-// sanitized JSON bytes. Implementations should be deterministic and preserve
-// semantically equivalent formatting (e.g., via re-marshal).
+// Sanitizer defines a transformation over raw JSON bytes. It should return sanitized JSON bytes. Implementations should be deterministic and preserve semantically
+// equivalent formatting (e.g., via re-marshal).
 type Sanitizer interface {
 	Sanitize(in []byte) ([]byte, error)
 }
@@ -34,9 +33,8 @@ func ApplySanitizers(in []byte, sanitizers ...Sanitizer) ([]byte, error) {
 	return out, nil
 }
 
-// FixProviderData applies ad-hoc overrides to provider JSON by provider id.
-// This lets us correct upstream issues without forking the source schema.
-// Only top-level k/v pairs are supported for now.
+// FixProviderData applies ad-hoc overrides to provider JSON by provider id. This lets us correct upstream issues without forking the source schema. Only top-level
+// k/v pairs are supported for now.
 var FixProviderData Sanitizer = SanitizerFunc(func(in []byte) ([]byte, error) {
 	// provider id -> top-level key -> override value
 	var overrides = map[string]map[string]interface{}{
@@ -89,8 +87,8 @@ var RemoveDefaultHeaders Sanitizer = SanitizerFunc(func(in []byte) ([]byte, erro
 	return bytes.TrimSpace(buf.Bytes()), nil
 })
 
-// RenameAPIEndpoint renames "api_endpoint" to either "api_endpoint_url" or "api_endpoint_env"
-// depending on whether the value parses as an absolute URL. If value is not a string, it is removed.
+// RenameAPIEndpoint renames "api_endpoint" to either "api_endpoint_url" or "api_endpoint_env" depending on whether the value parses as an absolute URL. If value
+// is not a string, it is removed.
 var RenameAPIEndpoint Sanitizer = SanitizerFunc(func(in []byte) ([]byte, error) {
 	var m map[string]interface{}
 	if err := json.Unmarshal(in, &m); err != nil {
@@ -118,10 +116,9 @@ var RenameAPIEndpoint Sanitizer = SanitizerFunc(func(in []byte) ([]byte, error) 
 	return bytes.TrimSpace(buf.Bytes()), nil
 })
 
-// SetMissingAPIEndpoint sets a default api_endpoint_url for known providers when missing.
-// It expects the JSON to contain an "id" field with the provider id (e.g., "openai").
-// If neither "api_endpoint_url" nor "api_endpoint_env" is present, it will set
-// "api_endpoint_url" based on a known mapping. Unknown providers are left unchanged.
+// SetMissingAPIEndpoint sets a default api_endpoint_url for known providers when missing. It expects the JSON to contain an "id" field with the provider id (e.g.,
+// "openai"). If neither "api_endpoint_url" nor "api_endpoint_env" is present, it will set "api_endpoint_url" based on a known mapping. Unknown providers are left
+// unchanged.
 var SetMissingAPIEndpoint Sanitizer = SanitizerFunc(func(in []byte) ([]byte, error) {
 	// Known provider id -> default base URL
 	var defaultEndpoints = map[string]string{
@@ -163,8 +160,7 @@ var SetMissingAPIEndpoint Sanitizer = SanitizerFunc(func(in []byte) ([]byte, err
 	return in, nil
 })
 
-// SetIsLegacy marks certain models as legacy by adding "is_legacy": true on the model object.
-// Rules:
+// SetIsLegacy marks certain models as legacy by adding "is_legacy": true on the model object. Rules:
 //   - openai: any model id starting with "gpt-4" (e.g., gpt-4.1, gpt-4o, gpt-4o-mini)
 //   - anthropic: any model id starting with "claude-sonnet-4" or "claude-opus-4" (e.g., 4, 4.1, 4.5 variants)
 //   - xai: any model id starting with "grok-3" (e.g., grok-3, grok-3-mini)
@@ -225,8 +221,7 @@ var SetIsLegacy Sanitizer = SanitizerFunc(func(in []byte) ([]byte, error) {
 	return bytes.TrimSpace(buf.Bytes()), nil
 })
 
-// OrderKeys reorders JSON keys to match our struct field order for providers and models.
-// Unknown keys are preserved and appended at the end in lexicographic order.
+// OrderKeys reorders JSON keys to match our struct field order for providers and models. Unknown keys are preserved and appended at the end in lexicographic order.
 var OrderKeys Sanitizer = SanitizerFunc(func(in []byte) ([]byte, error) {
 	var m map[string]interface{}
 	if err := json.Unmarshal(in, &m); err != nil {
@@ -288,9 +283,8 @@ var OrderKeys Sanitizer = SanitizerFunc(func(in []byte) ([]byte, error) {
 	return bytes.TrimSpace(outBuf.Bytes()), nil
 })
 
-// writeObjectOrderedPretty writes a JSON object with keys ordered by desiredOrder
-// (only those present), followed by any remaining keys in lexicographic order.
-// Pretty prints with two-space indentation.
+// writeObjectOrderedPretty writes a JSON object with keys ordered by desiredOrder (only those present), followed by any remaining keys in lexicographic order. Pretty
+// prints with two-space indentation.
 func writeObjectOrderedPretty(buf *bytes.Buffer, obj map[string]interface{}, desiredOrder []string, level int) error {
 	keysInObj := make(map[string]struct{}, len(obj))
 	for k := range obj {

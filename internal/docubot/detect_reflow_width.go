@@ -8,10 +8,11 @@ import (
 	"unicode/utf8"
 )
 
-// DetectReflowWidth examines code in the codebase and determines what a good value for MaxWidth is when reflowing (most [but not all] comments fit in this width). It returns (max width, is confident, error).
+// DetectReflowWidth examines code in the codebase and determines what a good value for MaxWidth is when reflowing (most [but not all] comments fit in this width).
+// It returns (max width, is confident, error).
 //
-// If no good values can be found (e.g., we're not confident in a value), (0, false, nil) will be returned. This can happen if there's low or no data points. If a good value can be found,
-// (observed max width, true, nil) will be returned.
+// If no good values can be found (e.g., we're not confident in a value), (0, false, nil) will be returned. This can happen if there's low or no data points. If
+// a good value can be found, (observed max width, true, nil) will be returned.
 //
 // If an error occurs, (0, false, err) will be returned.
 func DetectReflowWidth(pkg *gocode.Package) (int, bool, error) {
@@ -48,8 +49,7 @@ func DetectReflowWidth(pkg *gocode.Package) (int, bool, error) {
 	return roundMaxWidthToNearbyTen(p75), true, nil
 }
 
-// calcPercentile returns the value at the given percentile (e.g., 75) from vals.
-// If vals is empty, 0 is returned. The input slice is not modified.
+// calcPercentile returns the value at the given percentile (e.g., 75) from vals. If vals is empty, 0 is returned. The input slice is not modified.
 func calcPercentile(vals []int, percentile int) int {
 	if len(vals) == 0 {
 		return 0
@@ -173,9 +173,8 @@ func getPackageMaxWidths(pkg *gocode.Package, onlyTests bool) []int {
 	return widths
 }
 
-// widthsFromDoc extracts per-line widths from a raw doc/comment string. It only considers "//" style lines,
-// skips blank lines, pragmas ("//go:"), and lines that start with a tab after the slashes (code blocks),
-// and measures the visual width as rune count after removing the leading slashes and at most one space.
+// widthsFromDoc extracts per-line widths from a raw doc/comment string. It only considers "//" style lines, skips blank lines, pragmas ("//go:"), and lines that
+// start with a tab after the slashes (code blocks), and measures the visual width as rune count after removing the leading slashes and at most one space.
 func widthsFromDoc(doc string) []int {
 	var widths []int
 	if doc == "" {
@@ -214,8 +213,9 @@ func widthsFromDoc(doc string) []int {
 	return widths
 }
 
-// roundMaxWidthToNearbyTen rounds width to a reasonable value divisible by 10, taking into account this is max width, which has some cultural norms. In particular, 80 is common and is a floor.
-// If the value is like 81 or 82, they probably intended 80. But 89 will be rounded to 90. Besides these general guidelines, callers should assume any reasonable impl, but no specific rules are given.
+// roundMaxWidthToNearbyTen rounds width to a reasonable value divisible by 10, taking into account this is max width, which has some cultural norms. In particular,
+// 80 is common and is a floor. If the value is like 81 or 82, they probably intended 80. But 89 will be rounded to 90. Besides these general guidelines, callers
+// should assume any reasonable impl, but no specific rules are given.
 func roundMaxWidthToNearbyTen(width int) int {
 
 	// Clamp value between 80 and 200

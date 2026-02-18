@@ -28,8 +28,8 @@ type LineEdit struct {
 	// 1-based line number
 	Line int
 
-	// either "" or starts with "//". Multiline comments are separated fine (separated by \n). Can end in \n (either is fine, it's automatically handled). Comment should have no leading
-	// whitespace (indentation handled automatically).
+	// either "" or starts with "//". Multiline comments are separated fine (separated by \n). Can end in \n (either is fine, it's automatically handled). Comment should
+	// have no leading whitespace (indentation handled automatically).
 	Comment string
 }
 
@@ -46,11 +46,11 @@ func (e *LineEditError) Error() string {
 // (we'd may want a package because any time we edit a file, the package loses a coherent FileSet).
 // (we could also do both -- ApplyLineEditsToFile and ApplyLineEdits)
 
-// ApplyLineEdits applies edits to file and returns a new File, without mutating file. An error is returned if any edit could not be applied or if another fatal error occurred (ex:
-// I/O error). All edits are applied simultaneously -- Line refers to the original line number in the original file, so the caller DOESN'T need to calculate what the Line *will* be
-// after the first edit. If an edit is nonsensical (ex: remove blank line on a line that isn't blank), or if two edits refer to the same line, an error will be returned. If an error
-// occurred due to a bad LineEdit, the error will be *LineEditError. After all edits are made, gofmt will be applied to the file (ex: if you insert two blank lines, they'll be collapsed
-// to one).
+// ApplyLineEdits applies edits to file and returns a new File, without mutating file. An error is returned if any edit could not be applied or if another fatal
+// error occurred (ex: I/O error). All edits are applied simultaneously -- Line refers to the original line number in the original file, so the caller DOESN'T need
+// to calculate what the Line *will* be after the first edit. If an edit is nonsensical (ex: remove blank line on a line that isn't blank), or if two edits refer
+// to the same line, an error will be returned. If an error occurred due to a bad LineEdit, the error will be *LineEditError. After all edits are made, gofmt will
+// be applied to the file (ex: if you insert two blank lines, they'll be collapsed to one).
 //
 // BUG: Edits whose Line is beyond the end of the file are silently ignored instead of returning an error.
 func ApplyLineEdits(file *gocode.File, edits []LineEdit) (*gocode.File, error) {

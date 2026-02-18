@@ -14,20 +14,16 @@ import (
 )
 
 const (
-	// defaultBaseURL is the Gemini API base URL.
-	defaultBaseURL = "https://generativelanguage.googleapis.com"
+	defaultBaseURL = "https://generativelanguage.googleapis.com" // defaultBaseURL is the Gemini API base URL.
 )
 
 // Client is a minimal Gemini client that supports generating content via text chat.
 //
 // The client is intentionally small and mirrors the shape of the Anthropic client in this package.
 type Client struct {
-	// APIKey is the Gemini API key used for authentication.
-	APIKey string
-	// HTTP is the HTTP client used to make requests. If nil, a default client with timeout is used.
-	HTTP *http.Client
-	// BaseURL is the Gemini API base URL. If empty, a default value is used.
-	BaseURL string
+	APIKey  string       // APIKey is the Gemini API key used for authentication.
+	HTTP    *http.Client // HTTP is the HTTP client used to make requests. If nil, a default client with timeout is used.
+	BaseURL string       // BaseURL is the Gemini API base URL. If empty, a default value is used.
 }
 
 // NewClient returns a new Client with sensible defaults applied.

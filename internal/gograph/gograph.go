@@ -18,19 +18,20 @@ type Graph struct {
 	checkedPkg *types.Package
 	fset       *token.FileSet
 
-	// All package-level identifiers in the graph (see intraUses for explanation of identifiers). All identifiers in intraUses must be here. This set also contains identifiers that lack
-	// edges.
+	// All package-level identifiers in the graph (see intraUses for explanation of identifiers). All identifiers in intraUses must be here. This set also contains identifiers
+	// that lack edges.
 	identifiers map[string]struct{}
 
-	// intraUses is populated from info.Uses. Keys to the map are defining package-level identifiers (ex: `type Foo struct{}` -> "Foo"). Values are a set of intra-package-level identifiers
-	// that the defining identifier references. Methods are identified with "receiver.funcName" style (ex: "*Foo.Bar" or "Foo.Bar"). Even for recursive funcs, there are never self-references
-	// (ex: "A" -> {"A"} is disallowed), but the graph can form cycles. There is no semantic difference between "x" -> {} and the "x" key not being in the map. Examples:
+	// intraUses is populated from info.Uses. Keys to the map are defining package-level identifiers (ex: `type Foo struct{}` -> "Foo"). Values are a set of intra-package-level
+	// identifiers that the defining identifier references. Methods are identified with "receiver.funcName" style (ex: "*Foo.Bar" or "Foo.Bar"). Even for recursive funcs,
+	// there are never self-references (ex: "A" -> {"A"} is disallowed), but the graph can form cycles. There is no semantic difference between "x" -> {} and the "x"
+	// key not being in the map. Examples:
 	//   - If `type Foo struct { B Bar; Q Qux }`, then "Foo" -> {"Bar", "Qux"}
 	//   - If `var x Foo`, then "x" -> {"Foo"}
 	//   - If `var x int`, then "x" -> {}
 	//   - If `func foo() { bar() }`, then "foo" -> {"bar"}
-	//   - If `func (v *Foo) Bar(b *Baz) { b.Qux() }`, then "*Foo.Bar" -> {"Foo", "Baz", "*Baz.Qux"} // methods reference their receiver type; functions reference args/returns; the body
-	//     references a method
+	//   - If `func (v *Foo) Bar(b *Baz) { b.Qux() }`, then "*Foo.Bar" -> {"Foo", "Baz", "*Baz.Qux"} // methods reference their receiver type; functions reference args/returns;
+	//     the body references a method
 	intraUses map[string]map[string]struct{}
 
 	// crossPackageUses is like intraUses but for cross-package uses. Maps defining-package-level-identifier -> set of cross package refs.
@@ -475,7 +476,8 @@ func (g *Graph) handleValueSpec(genDecl *ast.GenDecl, isTestFile bool) {
 	}
 }
 
-// objectKey returns a unique, predictable key for a types.Object. For methods, it returns a key of the form "ReceiverType.MethodName". For other objects, it returns the object's name.
+// objectKey returns a unique, predictable key for a types.Object. For methods, it returns a key of the form "ReceiverType.MethodName". For other objects, it returns
+// the object's name.
 func (g *Graph) objectKey(obj types.Object) string {
 	// For methods, generate an identifier that uses the canonical receiver
 	// type representation produced by receiverTypeString so that generic type
@@ -499,9 +501,9 @@ func (g *Graph) anonymousIdentifier(p token.Pos) string {
 	return gocode.AnonymousIdentifier(filepath.Base(pos.Filename), pos.Line, pos.Column)
 }
 
-// findUses inspects a node (nil allowed) and returns the set of package-level identifiers it uses. In addition to named types, this includes package-level functions/methods, variables,
-// and constants. For interface method calls, the dependency is recorded on the interface type rather than the method. The `defObj` is the object being defined, which should be excluded
-// from its own use list.
+// findUses inspects a node (nil allowed) and returns the set of package-level identifiers it uses. In addition to named types, this includes package-level functions/methods,
+// variables, and constants. For interface method calls, the dependency is recorded on the interface type rather than the method. The `defObj` is the object being
+// defined, which should be excluded from its own use list.
 func (g *Graph) findUses(n ast.Node, defObj types.Object) map[string]struct{} {
 	uses := make(map[string]struct{})
 	if n == nil {
@@ -605,8 +607,8 @@ func (g *Graph) addUses(defKey string, uses map[string]struct{}) {
 	}
 }
 
-// addCrossPackageUses records cross-package dependencies for a defining identifier. A dependency is represented by an ExternalID capturing the import path and the referenced identifier
-// in the other package.
+// addCrossPackageUses records cross-package dependencies for a defining identifier. A dependency is represented by an ExternalID capturing the import path and the
+// referenced identifier in the other package.
 func (g *Graph) addCrossPackageUses(defKey string, refs map[ExternalID]struct{}) {
 	if len(refs) == 0 {
 		return
@@ -625,8 +627,8 @@ func (g *Graph) addCrossPackageUses(defKey string, refs map[ExternalID]struct{})
 	}
 }
 
-// findCrossPackageUses walks an AST node and returns the set of identifiers that are referenced from other packages (i.e. their types.Object has a different package than the one currently
-// being analysed).
+// findCrossPackageUses walks an AST node and returns the set of identifiers that are referenced from other packages (i.e. their types.Object has a different package
+// than the one currently being analysed).
 func (g *Graph) findCrossPackageUses(n ast.Node) map[ExternalID]struct{} {
 	refs := make(map[ExternalID]struct{})
 	if n == nil {
@@ -718,8 +720,8 @@ func (g *Graph) canonicalTypeName(obj *types.TypeName) string {
 	return obj.Name()
 }
 
-// receiverTypeString returns a canonical string for a receiver type, including a leading '*' for pointer receivers. Generic type parameters are omitted, so for a method on *streamReader[T]
-// this returns "*streamReader".
+// receiverTypeString returns a canonical string for a receiver type, including a leading '*' for pointer receivers. Generic type parameters are omitted, so for
+// a method on *streamReader[T] this returns "*streamReader".
 func (g *Graph) receiverTypeString(t types.Type) string {
 	ptrPrefix := ""
 	if pt, ok := t.(*types.Pointer); ok {

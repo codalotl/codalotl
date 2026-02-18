@@ -5,8 +5,8 @@ package gocodecontext
 //   - All value slices are disjoint (each identifier appears in only one context).
 //   - All identifiers are included in a value slice, unless an identifier is not in groups (in which case, it is ignored).
 //
-// Since finding an optimal solution is NP-hard (see Set-Cover/Exact-Cover), this function creates a minimal context for the first identifier, adds any other identifiers that are free,
-// then creates a new context for the next unhandled identifier, and so on.
+// Since finding an optimal solution is NP-hard (see Set-Cover/Exact-Cover), this function creates a minimal context for the first identifier, adds any other identifiers
+// that are free, then creates a new context for the next unhandled identifier, and so on.
 func NewContextsForIdentifiers(groups []*IdentifierGroup, identifiers []string) map[*Context][]string {
 	// map id -> group
 	idToGroup := make(map[string]*IdentifierGroup)

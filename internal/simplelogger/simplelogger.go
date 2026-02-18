@@ -9,11 +9,9 @@ import (
 
 var mu sync.Mutex
 
-// Log is a minimal printf-style logger. It appends formatted output to the file
-// specified by the CODALOTL_LOG_FILE environment variable.
+// Log is a minimal printf-style logger. It appends formatted output to the file specified by the CODALOTL_LOG_FILE environment variable.
 //
-// If CODALOTL_LOG_FILE is unset/empty or the path can't be opened as a file,
-// Log is a no-op.
+// If CODALOTL_LOG_FILE is unset/empty or the path can't be opened as a file, Log is a no-op.
 func Log(format string, args ...any) {
 	path := os.Getenv("CODALOTL_LOG_FILE")
 	if path == "" {

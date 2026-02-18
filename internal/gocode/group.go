@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// groupFunctionsByType associates functions with their corresponding types. It categorizes functions based on their receiver and return types. Functions with no receiver may be associated
-// with a type T if:
+// groupFunctionsByType associates functions with their corresponding types. It categorizes functions based on their receiver and return types. Functions with no
+// receiver may be associated with a type T if:
 //  1. the function returns T or *T.
 //  2. the function does not return any other type from the same package.
 func groupFunctionsByType(exportedTypes []*TypeSnippet, funcs []*FuncSnippet) map[string][]*FuncSnippet {
@@ -43,7 +43,8 @@ func groupFunctionsByType(exportedTypes []*TypeSnippet, funcs []*FuncSnippet) ma
 	return typeToMethods
 }
 
-// getAssociableReturnType examines a function's return types and determines whether it can be associated with a specific type T. A function can be associated with type T if:
+// getAssociableReturnType examines a function's return types and determines whether it can be associated with a specific type T. A function can be associated with
+// type T if:
 //  1. It returns T, *T, []T, or []*T.
 //  2. It does not return any other type from the same package.
 //

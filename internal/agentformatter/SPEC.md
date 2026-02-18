@@ -484,13 +484,13 @@ const MinTerminalWidth = 30
 type Formatter interface {
 	// FormatEvent returns the content to print in a chat window or stdout-based CLI.
 	//
-	// If terminalWidth > MinTerminalWidth (aka TUI formatting), newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines and the caller can wrap themselves or insert the text in a container
-	// that can deal with long strings.
+	// If terminalWidth > MinTerminalWidth (aka TUI formatting), newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines
+	// and the caller can wrap themselves or insert the text in a container that can deal with long strings.
 	FormatEvent(e agent.Event, terminalWidth int) string
 }
 
-// Config controls the terminal colorization options. We need to know the intended bg/fg, so we can create other colors that are consistent.
-// For instance, if we want to colorize backtick-wrapped paths/identifiers/code different, can modify ForegroundColor to be closer to BackgroundColor.
+// Config controls the terminal colorization options. We need to know the intended bg/fg, so we can create other colors that are consistent. For instance, if we
+// want to colorize backtick-wrapped paths/identifiers/code different, can modify ForegroundColor to be closer to BackgroundColor.
 type Config struct {
 	PlainText       bool             // true: disable colors and ANSI escape characters (bold, italics, etc).
 	BackgroundColor termformat.Color // the terminal's background color. If nil, uses termformat.DefaultFBBGColor.

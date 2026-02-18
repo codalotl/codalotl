@@ -5,26 +5,25 @@ import (
 	"go/token"
 )
 
-// UnattachedComment represents a top-level comment group that is not attached to any
-// declaration snippet (func/type/var/const) and does not appear in any snippet's FullBytes.
+// UnattachedComment represents a top-level comment group that is not attached to any declaration snippet (func/type/var/const) and does not appear in any snippet's
+// FullBytes.
 //
-// It records the raw comment text (newline-terminated), the file it belongs to,
-// a pointer to the next Snippet that follows this comment in the file (if any),
-// and AST-related info for position queries.
+// It records the raw comment text (newline-terminated), the file it belongs to, a pointer to the next Snippet that follows this comment in the file (if any), and
+// AST-related info for position queries.
 type UnattachedComment struct {
 	FileName string  // file name (no dirs) where the comment was found (ex: "foo.go")
 	Comment  string  // the raw comment bytes (including // or /* */), newline-terminated
 	Next     Snippet // the next snippet in this file that appears after the comment; nil if none
-	// AbovePackage is true if this unattached comment appears before the package clause
-	// (i.e., its end offset is at or before the position of the "package" token).
+
+	// AbovePackage is true if this unattached comment appears before the package clause (i.e., its end offset is at or before the position of the "package" token).
 	AbovePackage bool
 
 	fileSet *token.FileSet
 	group   *ast.CommentGroup
 }
 
-// snippetSpan returns the [start,end) byte offsets for a snippet within its file.
-// The computation mirrors how snippet bytes are extracted in the respective extract* helpers.
+// snippetSpan returns the [start,end) byte offsets for a snippet within its file. The computation mirrors how snippet bytes are extracted in the respective extract*
+// helpers.
 func snippetSpan(s Snippet) (fileName string, start, end int) {
 	switch sn := s.(type) {
 	case *FuncSnippet:
@@ -94,10 +93,8 @@ func snippetSpan(s Snippet) (fileName string, start, end int) {
 	}
 }
 
-// extractUnattachedComments finds top-level comments that are not included in any snippet's
-// FullBytes or bytes span for the given file and returns them, ordered by their position.
-// The nextSnippet field is populated by scanning for the next snippet that starts after the
-// comment ends within the same file.
+// extractUnattachedComments finds top-level comments that are not included in any snippet's FullBytes or bytes span for the given file and returns them, ordered
+// by their position. The nextSnippet field is populated by scanning for the next snippet that starts after the comment ends within the same file.
 func extractUnattachedComments(file *File, fileSnippets []Snippet) ([]*UnattachedComment, error) {
 	// Build snippet spans and a start-ordered list for next-snippet resolution.
 	type span struct {

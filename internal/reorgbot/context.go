@@ -11,8 +11,8 @@ import (
 
 // codeContextForPackage returns context we can send to the LLM and a map of canonical ID -> Snippet.
 //
-// All ids in the context are present in the returned map. Some of these IDs are different than the standard gocode IDs -- they are
-// "compound IDs" for a whole var/const/type block, using ambiguous ID format.
+// All ids in the context are present in the returned map. Some of these IDs are different than the standard gocode IDs -- they are "compound IDs" for a whole var/const/type
+// block, using ambiguous ID format.
 func codeContextForPackage(pkg *gocode.Package, ids []string, isTests bool) (string, map[string]gocode.Snippet) {
 
 	var b strings.Builder
@@ -166,10 +166,9 @@ func intraPkgUsedBy(pkg *gocode.Package, graph *gograph.Graph, ids []string) []s
 	return out
 }
 
-// codeContextForFile returns the contents of a single file with an "// id: <id>" comment
-// inserted immediately before each non-package snippet (functions, types, values). The
-// returned map contains canonical id -> snippet for all non-package snippets in the file.
-// Package documentation is emitted as-is (no id comment) and is never included in the map.
+// codeContextForFile returns the contents of a single file with an "// id: <id>" comment inserted immediately before each non-package snippet (functions, types,
+// values). The returned map contains canonical id -> snippet for all non-package snippets in the file. Package documentation is emitted as-is (no id comment) and
+// is never included in the map.
 func codeContextForFile(pkg *gocode.Package, file *gocode.File) (string, map[string]gocode.Snippet) {
 	// Ensure snippets are available for this file (SnippetsByFile loads them lazily)
 	snippets := pkg.SnippetsByFile(nil)[file.FileName]

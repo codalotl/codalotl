@@ -12,8 +12,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 )
 
-// renameFunc abstracts the external CLI rename tool. It is set to goclitools.Rename by default,
-// but tests may override it to stub external behavior.
+// renameFunc abstracts the external CLI rename tool. It is set to goclitools.Rename by default, but tests may override it to stub external behavior.
 var renameFunc = goclitools.Rename
 
 type IdentifierRename struct {
@@ -21,10 +20,12 @@ type IdentifierRename struct {
 	To     string
 	DeclID string // ID from gocode.
 
-	// Context is the full-line context where the From identifier appears. It includes whitespace but excludes newlines.
-	// But if that is ambiguous, Context may have extra preceding lines (newline separated).
-	Context  string
-	FileName string // (basename)
+	// Context is the full-line context where the From identifier appears. It includes whitespace but excludes newlines. But if that is ambiguous, Context may have extra
+	// preceding lines (newline separated).
+	Context string
+
+	// (basename)
+	FileName string
 
 	// On input, should be nil. Will be set on output to any error
 	Err error
@@ -32,8 +33,7 @@ type IdentifierRename struct {
 
 // Rename performs the renames in pkg. It returns (successful renames, failed renames, error). An error is returned for a fatal error like I/O failure.
 //
-// If an element of renames fails to work (without triggering overall failure), its Err field will be set with the reason for failure.
-// Possible reasons include:
+// If an element of renames fails to work (without triggering overall failure), its Err field will be set with the reason for failure. Possible reasons include:
 //   - invalid identifier in From or To
 //   - could not find DeclID
 //   - could not find context, or the context provided is ambiguous.
@@ -136,9 +136,8 @@ func Rename(pkg *gocode.Package, renames []IdentifierRename) ([]IdentifierRename
 	return succeeded, failed, nil
 }
 
-// locateLineFromContext mirrors locateFromInContext but only resolves the absolute file line number from the snippet context.
-// It does not consult the AST and intentionally ignores column resolution so that we can compute all line numbers up-front
-// before executing any renames that may mutate file contents.
+// locateLineFromContext mirrors locateFromInContext but only resolves the absolute file line number from the snippet context. It does not consult the AST and intentionally
+// ignores column resolution so that we can compute all line numbers up-front before executing any renames that may mutate file contents.
 func locateLineFromContext(snippet gocode.Snippet, ctx string, from string) (int, error) {
 	if strings.TrimSpace(ctx) == "" {
 		return 0, fmt.Errorf("context invalid")
@@ -283,8 +282,7 @@ func locateLineFromContext(snippet gocode.Snippet, ctx string, from string) (int
 	return fileLineNo, nil
 }
 
-// findDefColumnInFile searches the file AST for the definition of identifier `from` that
-// appears on the specified 1-based line, and returns its 1-based column.
+// findDefColumnInFile searches the file AST for the definition of identifier `from` that appears on the specified 1-based line, and returns its 1-based column.
 func findDefColumnInFile(file *gocode.File, from string, fileLineNo int) (int, error) {
 	if file == nil || file.FileSet == nil || file.AST == nil {
 		return 0, fmt.Errorf("file not parsed")

@@ -15,14 +15,15 @@ type FindFixDocErrorsOptions struct {
 	BaseOptions // BaseOptions configures model selection, logging/health, and parallelism, and lets callers inject a Conversationalist.
 }
 
-// FindAndFixDocErrors scans pkg for documentation problems on documented functions, methods, and types and applies automatic fixes. It processes the package's non-test files, test
-// files, and any black-box test package.
+// FindAndFixDocErrors scans pkg for documentation problems on documented functions, methods, and types and applies automatic fixes. It processes the package's non-test
+// files, test files, and any black-box test package.
 //
-// If identifiers is empty, all documented functions and types are considered (generated files and testing functions like TestXxx/etc are excluded). If identifiers is non-empty, the
-// scan is restricted to those names and further filtered to documented and unambiguous identifiers (testing functions, generated files, and all snippet types are allowed).
+// If identifiers is empty, all documented functions and types are considered (generated files and testing functions like TestXxx/etc are excluded). If identifiers
+// is non-empty, the scan is restricted to those names and further filtered to documented and unambiguous identifiers (testing functions, generated files, and all
+// snippet types are allowed).
 //
-// The returned slice contains one entry per change applied, each aggregating the feedback that led to that change. The function may return both a non-empty slice and a non-nil error
-// if only part of the package could be scanned or updated; check both return values.
+// The returned slice contains one entry per change applied, each aggregating the feedback that led to that change. The function may return both a non-empty slice
+// and a non-nil error if only part of the package could be scanned or updated; check both return values.
 func FindAndFixDocErrors(pkg *gocode.Package, identifiers []string, options FindFixDocErrorsOptions) ([]IncorporatedFeedback, error) {
 	var incorporatedFeedbacks []IncorporatedFeedback
 
@@ -62,8 +63,8 @@ func FindAndFixDocErrors(pkg *gocode.Package, identifiers []string, options Find
 	return incorporatedFeedbacks, err
 }
 
-// findDocErrorsForIDs scans identifiers in pkg for documentation issues and returns feedback for those that need fixes. Callers must ensure pkg, identifiers, and onlyTests align; identifiers
-// should be pre-validated.
+// findDocErrorsForIDs scans identifiers in pkg for documentation issues and returns feedback for those that need fixes. Callers must ensure pkg, identifiers, and
+// onlyTests align; identifiers should be pre-validated.
 //
 // Identifiers are grouped into minimal analysis contexts and processed in parallel, bounded by options.MaxParallelism (default 5).
 //
@@ -126,7 +127,8 @@ type IdentifierFeedback struct {
 	Feedback   string // Human-readable issue or guidance to address in the docs.
 }
 
-// findDocErrorsBatch calls a single LLM to detect documentation errors for the given identifiers in ctx and returns feedback only for identifiers with non-empty issues.
+// findDocErrorsBatch calls a single LLM to detect documentation errors for the given identifiers in ctx and returns feedback only for identifiers with non-empty
+// issues.
 //
 // ctx must describe the identifiers and their relevant dependencies; this function does not validate identifiers.
 //

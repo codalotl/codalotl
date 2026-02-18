@@ -2,7 +2,8 @@
 //
 //	modellist.GetProviders()
 //
-// Again, it is unopinionated and MUST NOT be tied to specific implementations. For example, don't provide recommended values or defaults if it's actually an application-specific setting.
+// Again, it is unopinionated and MUST NOT be tied to specific implementations. For example, don't provide recommended values or defaults if it's actually an application-specific
+// setting.
 //
 // In order to update the list:
 //   - new providers: add entries in config.go

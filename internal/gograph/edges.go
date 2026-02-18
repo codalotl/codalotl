@@ -27,8 +27,9 @@ func (g *Graph) IdentifiersTo(toID string) []string {
 	return result
 }
 
-// ExternalIdentifiersFrom returns the set of ExternalIDs (identifiers outside the current package) that originated at fromID. If includeVendor and includeStdlib are false, then only
-// edges inside the current module are returned. If includeVendor, edges to vendored code are also included. If includeStdlib, edges to the stdlib are also included.
+// ExternalIdentifiersFrom returns the set of ExternalIDs (identifiers outside the current package) that originated at fromID. If includeVendor and includeStdlib
+// are false, then only edges inside the current module are returned. If includeVendor, edges to vendored code are also included. If includeStdlib, edges to the
+// stdlib are also included.
 func (g *Graph) ExternalIdentifiersFrom(fromID string, includeVendor bool, includeStdlib bool) []ExternalID {
 	refs, exists := g.crossPackageUses[fromID]
 	if !exists {

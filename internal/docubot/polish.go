@@ -22,19 +22,19 @@ type snippetWithIdentifiers struct {
 	identifiers []string // Identifier names whose documentation lives within the snippet; may be multiple for blocks.
 }
 
-// snippetBatch is a slice of snippets grouped together for a single LLM polishing request. The outer slice produced by getSnippetGroupsForPolish preserves deterministic ordering of
-// batches.
+// snippetBatch is a slice of snippets grouped together for a single LLM polishing request. The outer slice produced by getSnippetGroupsForPolish preserves deterministic
+// ordering of batches.
 type snippetBatch []*snippetWithIdentifiers
 
-// Polish updates identifiers' existing documentation by rewording it, fixing superficial mistakes, and applying conventions. An identifier that is part of a block of identifiers causes
-// the entire block to be polished (ex: `var ()` blocks). Both pkg and pkg.TestPackage are polished, and identifiers may be in either.
+// Polish updates identifiers' existing documentation by rewording it, fixing superficial mistakes, and applying conventions. An identifier that is part of a block
+// of identifiers causes the entire block to be polished (ex: `var ()` blocks). Both pkg and pkg.TestPackage are polished, and identifiers may be in either.
 //
 // If the identifiers slice is empty, Polish considers all identifiers eligible under the default identifier filter, but it requires documentation.
 //
 // If an identifier has no documentation, it will not be sent to the LLM for documentation, and no error will be reported.
 //
-// Polish returns the documentation changes as a slice of *gopackagediff.Change. An identifier passed in and not modified is not necessarily a problem: it may already have been good
-// enough, or it may not have had any documentation. An error is returned only for hard errors (ex: I/O error).
+// Polish returns the documentation changes as a slice of *gopackagediff.Change. An identifier passed in and not modified is not necessarily a problem: it may already
+// have been good enough, or it may not have had any documentation. An error is returned only for hard errors (ex: I/O error).
 func Polish(pkg *gocode.Package, identifiers []string, options PolishOptions) ([]*gopackagediff.Change, error) {
 	var changes []*gopackagediff.Change
 
@@ -53,7 +53,8 @@ func Polish(pkg *gocode.Package, identifiers []string, options PolishOptions) ([
 	return changes, err
 }
 
-// polishIDs polishes identifiers in pkg. It assumes all identifiers are in pkg and needs no further filtering or validation. Callers should call separately for pkg and pkg.TestPackage.
+// polishIDs polishes identifiers in pkg. It assumes all identifiers are in pkg and needs no further filtering or validation. Callers should call separately for
+// pkg and pkg.TestPackage.
 func polishIDs(pkg *gocode.Package, identifiers []string, onlyTests bool, options PolishOptions) ([]*gopackagediff.Change, error) {
 
 	// Determine desired parallelism – default to 5 if unset or negative.
@@ -164,8 +165,8 @@ func polishIDs(pkg *gocode.Package, identifiers []string, onlyTests bool, option
 	return docChanges, nil
 }
 
-// getSnippetGroupsForPolish deduplicates identifiers to their unique snippets, filters only those that have docs, groups them into batches of up to polishMaxGroupSize snippets each,
-// and returns the grouped snippets ready for LLM consumption.
+// getSnippetGroupsForPolish deduplicates identifiers to their unique snippets, filters only those that have docs, groups them into batches of up to polishMaxGroupSize
+// snippets each, and returns the grouped snippets ready for LLM consumption.
 func getSnippetGroupsForPolish(pkg *gocode.Package, identifiers []string, options PolishOptions) ([]snippetBatch, error) {
 
 	// Build mapping from snippet pointer to snippetWithIdentifiers.
@@ -216,10 +217,11 @@ func getSnippetGroupsForPolish(pkg *gocode.Package, identifiers []string, option
 	return groups, nil
 }
 
-// polishSnippets sends snippets to an LLM for polishing (see Polish for a summary of the polishing process). Each snippet is just Go code without any triple backtick fences.
+// polishSnippets sends snippets to an LLM for polishing (see Polish for a summary of the polishing process). Each snippet is just Go code without any triple backtick
+// fences.
 //
-// All snippets are sent to the LLM in a single batch; the caller is responsible for batching. Snippets are expected to be returned in the same order as input (assuming the LLM follows
-// instructions).
+// All snippets are sent to the LLM in a single batch; the caller is responsible for batching. Snippets are expected to be returned in the same order as input (assuming
+// the LLM follows instructions).
 //
 // An error is returned for a hard error (ex: failure to communicate with the LLM) or if the number of returned snippets cannot be reconciled with the inputs.
 func polishSnippets(snippets []string, options PolishOptions) ([]string, error) {

@@ -8,10 +8,10 @@ import (
 // statically assert syntheticPackageSnippet is a gocode.Snippet
 var _ gocode.Snippet = &syntheticPackageSnippet{}
 
-// syntheticPackageSnippet represents a generated snippet for package documentation when neither a doc.go file nor a package comment is present. If no such documentation exists for
-// a package, pkg.GetSnippet(gocode.PackageIdentifier) correctly returns nil. However, we still require a snippet for IdentifierGroup.Snippets[gocode.PackageIdentifier], which contains
-// a snippet with just "package foo" (potentially in a non-existent doc.go file), so that IdentifierGroup includes a Snippet for all IDs. This "snippet" can be provided to an LLM as
-// context, allowing instructions that tell the LLM to "document the package".
+// syntheticPackageSnippet represents a generated snippet for package documentation when neither a doc.go file nor a package comment is present. If no such documentation
+// exists for a package, pkg.GetSnippet(gocode.PackageIdentifier) correctly returns nil. However, we still require a snippet for IdentifierGroup.Snippets[gocode.PackageIdentifier],
+// which contains a snippet with just "package foo" (potentially in a non-existent doc.go file), so that IdentifierGroup includes a Snippet for all IDs. This "snippet"
+// can be provided to an LLM as context, allowing instructions that tell the LLM to "document the package".
 type syntheticPackageSnippet struct {
 	pkgName string // pkgName is the name of the package for which this synthetic snippet is created
 }

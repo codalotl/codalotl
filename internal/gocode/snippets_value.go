@@ -14,11 +14,11 @@ import (
 
 var _ Snippet = (*ValueSnippet)(nil) // ValueSnippet implements Snippet
 
-// ValueSnippet describes a const or var declaration (either a single-spec declaration or a parenthesized block). It captures both the rendered bytes as they appear in source and structured
-// documentation for the declaration.
+// ValueSnippet describes a const or var declaration (either a single-spec declaration or a parenthesized block). It captures both the rendered bytes as they appear
+// in source and structured documentation for the declaration.
 //
-// Snippet contains the doc comment(s) and the declaration as written and aliases the file's content buffer. BlockDoc holds the block-level doc (for parenthesized blocks). IdentifierDocs
-// maps each declared identifier to its own doc (which may come from the block doc, spec doc, end-of-line comment, or a combination thereof).
+// Snippet contains the doc comment(s) and the declaration as written and aliases the file's content buffer. BlockDoc holds the block-level doc (for parenthesized
+// blocks). IdentifierDocs maps each declared identifier to its own doc (which may come from the block doc, spec doc, end-of-line comment, or a combination thereof).
 type ValueSnippet struct {
 	Identifiers []string // all identifiers defined by the value block (length is 1 for a single-spec value like "var MyVar int")
 	IsVar       bool     // true for var, false for const
@@ -27,8 +27,8 @@ type ValueSnippet struct {
 	Snippet     []byte   // the docs + decl as it appears in source; shares the buffer with file's contents
 	BlockDoc    string   // empty if not a block; otherwise, the doc above the overall block
 
-	// Identifier -> doc for that identifier. Empty if an identifier has no docs. Multiple identifiers can share the same doc (duplicated strings in the map). Regardless of Doc vs Comment,
-	// each comment is newline-terminated. If an identifier has both Doc and Comment, they are concatenated.
+	// Identifier -> doc for that identifier. Empty if an identifier has no docs. Multiple identifiers can share the same doc (duplicated strings in the map). Regardless
+	// of Doc vs Comment, each comment is newline-terminated. If an identifier has both Doc and Comment, they are concatenated.
 	IdentifierDocs map[string]string
 
 	// File set used to parse the decl.

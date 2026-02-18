@@ -33,13 +33,11 @@ type SendOptions struct {
 	TemperaturePresent bool
 	Temperature        float64 // ex: 1.0
 
-	// ServiceTier may be "", "auto", "priority", or "flex".
-	// Provider behavior:
+	// ServiceTier may be "", "auto", "priority", or "flex". Provider behavior:
 	//   - OpenAI Responses: when set to "priority" or "flex", sets service_tier in the request.
 	ServiceTier string
 
-	// If true, we do not link turns via server persistence. The ONLY context the LLM will have is what is provided in Turns. Note that this
-	// still stores.
+	// If true, we do not link turns via server persistence. The ONLY context the LLM will have is what is provided in Turns. Note that this still stores.
 	NoLink bool
 
 	// For ZDR (zero data retention). Sends store=false so the provider does not store the turn. We'd need to implement reasoning.encrypted_content.
@@ -52,6 +50,7 @@ type StreamingConversation interface {
 	AddTools(tools []Tool) error
 	AddUserTurn(text string) error
 	AddToolResults(toolResults []ToolResult) error
+
 	// SendSync(ctx context.Context) (Turn, error)
 	SendAsync(ctx context.Context, options ...SendOptions) <-chan Event
 }
@@ -62,21 +61,16 @@ type toolCallResult struct {
 }
 
 type streamingConversation struct {
-	modelID llmmodel.ModelID
-
-	turns []Turn
-	tools []Tool
-	// toolCalls maps call_id to paired call/result. An entry can have a nil result (indicating it hasn't happened yet).
-	toolCalls map[string]toolCallResult
-
+	modelID   llmmodel.ModelID
+	turns     []Turn
+	tools     []Tool
+	toolCalls map[string]toolCallResult // toolCalls maps call_id to paired call/result. An entry can have a nil result (indicating it hasn't happened yet).
 	health.Ctx
 
-	// conversationID is provider-specific.
-	// In the case of OpenAI's responses API, it's the ID received using the Conversations API.
+	// conversationID is provider-specific. In the case of OpenAI's responses API, it's the ID received using the Conversations API.
 	providerConversationID string
 
-	// promptCacheKey is a stable identifier used by providers (ex: OpenAI Responses)
-	// to reuse cached prompt prefixes across requests.
+	// promptCacheKey is a stable identifier used by providers (ex: OpenAI Responses) to reuse cached prompt prefixes across requests.
 	promptCacheKey string
 }
 
@@ -135,8 +129,9 @@ func (sc *streamingConversation) AddUserTurn(text string) error {
 	return nil
 }
 
-// AddToolResults appends a message with toolResults to the conversation. It returns an error if the previous message is not an assistant message
-// or if that assistant message contains no tool calls. Each provided tool result must match a prior tool call by call ID, name, and type. Duplicate results for the same call ID are errors.
+// AddToolResults appends a message with toolResults to the conversation. It returns an error if the previous message is not an assistant message or if that assistant
+// message contains no tool calls. Each provided tool result must match a prior tool call by call ID, name, and type. Duplicate results for the same call ID are
+// errors.
 func (sc *streamingConversation) AddToolResults(toolResults []ToolResult) error {
 	if len(toolResults) == 0 {
 		return errors.New("tool results cannot be empty")
@@ -215,15 +210,15 @@ func (sc *streamingConversation) AddToolResults(toolResults []ToolResult) error 
 	return nil
 }
 
-// SendAsync returns immediately. The returned channel can be read to obtain events. Any preflight validation errors (ex: turns with invalid
-// roles) will be sent on the channel before any network work.
+// SendAsync returns immediately. The returned channel can be read to obtain events. Any preflight validation errors (ex: turns with invalid roles) will be sent
+// on the channel before any network work.
 //
 // If options are supplied, only the first option is used.
 //
 // In addition to sending a stream of events, we also update the conversation with any new turns.
 //
-// Errors may be retried. If a network issue (or other retryable error) happens mid-stream, an EventTypeRetry event will be sent and the same
-// output channel will be used to try again.
+// Errors may be retried. If a network issue (or other retryable error) happens mid-stream, an EventTypeRetry event will be sent and the same output channel will
+// be used to try again.
 func (sc *streamingConversation) SendAsync(ctx context.Context, options ...SendOptions) <-chan Event {
 	out := make(chan Event, 1024) // NOTE: I am somewhat concerned about this. If each letter in the output gets a delta event, that's a lot of events
 	go func() {
@@ -355,27 +350,22 @@ func trySendEvent(ctx context.Context, out chan<- Event, ev Event) bool {
 	}
 }
 
-// debounceDeltaInterval controls the minimum time between successive non-done
-// delta events (by kind and ID) that get forwarded to the output channel.
-// Keep modest to maintain a responsive UX while reducing chattiness.
+// debounceDeltaInterval controls the minimum time between successive non-done delta events (by kind and ID) that get forwarded to the output channel. Keep modest
+// to maintain a responsive UX while reducing chattiness.
 const debounceDeltaInterval = 500 * time.Millisecond
 
-// debounceEvents reads events from in and forwards them to out, applying a
-// per-(event kind, content ID) throttle for Text/Reasoning delta events.
+// debounceEvents reads events from in and forwards them to out, applying a per-(event kind, content ID) throttle for Text/Reasoning delta events.
 //
 // Policy:
 //   - Only EventTypeTextDelta and EventTypeReasoningDelta are rate-limited.
 //   - Each ID is debounced independently within its event kind.
-//   - Non-done deltas are sent at most once every debounceDeltaInterval per key.
-//     If multiple arrive in that window, aggregate their deltas and forward the
-//     combined delta once the window elapses (trailing throttle).
-//   - Done variants are forwarded immediately; any pending non-done deltas for
-//     the same key are purged (not flushed). The Done event's delta is computed
-//     to include any unsent characters since the last forwarded event.
+//   - Non-done deltas are sent at most once every debounceDeltaInterval per key. If multiple arrive in that window, aggregate their deltas and forward the combined
+//     delta once the window elapses (trailing throttle).
+//   - Done variants are forwarded immediately; any pending non-done deltas for the same key are purged (not flushed). The Done event's delta is computed to include
+//     any unsent characters since the last forwarded event.
 //   - All other event types bypass debouncing and are forwarded immediately.
 //
-// The function terminates when ctx is done or when the input channel is closed.
-// On input close (normal end), any pending non-done deltas are flushed before exit.
+// The function terminates when ctx is done or when the input channel is closed. On input close (normal end), any pending non-done deltas are flushed before exit.
 func debounceEvents(ctx context.Context, in <-chan Event, out chan<- Event) {
 	type key struct {
 		kind EventType
@@ -600,7 +590,8 @@ func isRetryable(err error) bool    { return errors.Is(err, ErrRetryable) }
 
 // retrySleepDurations' i'th index is the sleep duration for the i'th retry. Any retry after that would use the last value.
 //
-// This is meant to mix exponential backoff, an eager initial retry, keeping sleep times long enough that things might recover but short enough that the user doesn't think things hung.
+// This is meant to mix exponential backoff, an eager initial retry, keeping sleep times long enough that things might recover but short enough that the user doesn't
+// think things hung.
 var retrySleepDurations = []time.Duration{
 	10 * time.Millisecond,
 	500 * time.Millisecond,

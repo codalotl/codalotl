@@ -5,8 +5,7 @@ import (
 	"io"
 )
 
-// SetClipboard requests that the terminal set the clipboard contents to text
-// (copy). This is best-effort and may be ignored by the user's terminal.
+// SetClipboard requests that the terminal set the clipboard contents to text (copy). This is best-effort and may be ignored by the user's terminal.
 func (t *TUI) SetClipboard(text string) {
 	if t == nil {
 		return

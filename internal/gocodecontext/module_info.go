@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// ModuleInfo returns information about the current Go module. It identifies the go.mod file
-// by starting at absDir and walking up until it finds a go.mod file.
+// ModuleInfo returns information about the current Go module. It identifies the go.mod file by starting at absDir and walking up until it finds a go.mod file.
 //
 // The returned string is intended as LLM context and is intentionally opaque to callers.
 //

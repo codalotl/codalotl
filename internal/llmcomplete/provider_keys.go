@@ -5,8 +5,7 @@ import (
 	"strings"
 )
 
-// configuredProviderKeys holds map of provider -> actual api key, set with ConfigureProviderKey.
-// Not thread safe.
+// configuredProviderKeys holds map of provider -> actual api key, set with ConfigureProviderKey. Not thread safe.
 var configuredProviderKeys = map[ProviderID]string{}
 
 func ConfigureProviderKey(providerID ProviderID, key string) {

@@ -11,8 +11,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// Module describes a Go module rooted at a directory containing a go.mod file. It records the module path, absolute root on disk, and a cache of packages loaded from that module. Create
-// Modules with NewModule and load packages via the Load* and ReadPackage methods.
+// Module describes a Go module rooted at a directory containing a go.mod file. It records the module path, absolute root on disk, and a cache of packages loaded
+// from that module. Create Modules with NewModule and load packages via the Load* and ReadPackage methods.
 type Module struct {
 	Name         string              // ex: "" or "github.com/foo/bar"
 	AbsolutePath string              // ex: "/path/to/package"
@@ -20,8 +20,8 @@ type Module struct {
 	cloned       bool                // true if this module was produced via CloneWithoutPackages
 }
 
-// NewModule returns a Module representing an existing Go module. It finds the nearest go.mod file starting from the path. The anyPath parameter can be any folder or filename in the
-// Go module (ex: a Go file, the go.mod file itself, or a folder).
+// NewModule returns a Module representing an existing Go module. It finds the nearest go.mod file starting from the path. The anyPath parameter can be any folder
+// or filename in the Go module (ex: a Go file, the go.mod file itself, or a folder).
 func NewModule(anyPath string) (*Module, error) {
 	// Find the module root (directory containing go.mod)
 	moduleRoot, err := findModuleRoot(anyPath)
@@ -44,16 +44,18 @@ func NewModule(anyPath string) (*Module, error) {
 
 var ErrResolveNotFound = errors.New("could not find package")
 
-// ResolvePackageByRelativeDir resolves pkgRelativeDir relative to m.AbsolutePath.
-// The result is equivalent to Go tooling (ex: `go list`) as if run from within m: the target must be importable from code in m (i.e., in m's module graph). This does not scan
-// arbitrary packages on disk; directories in nested modules not in m's module graph are treated as not found.
+// ResolvePackageByRelativeDir resolves pkgRelativeDir relative to m.AbsolutePath. The result is equivalent to Go tooling (ex: `go list`) as if run from within m:
+// the target must be importable from code in m (i.e., in m's module graph). This does not scan arbitrary packages on disk; directories in nested modules not in
+// m's module graph are treated as not found.
 //
-// Argument pkgRelativeDir is a dir relative to m.AbsolutePath. Ex: "internal/foo"; "."; "" (same as "."); "./some/pkg/path". Any relative path that escapes m.AbsolutePath is rejected.
+// Argument pkgRelativeDir is a dir relative to m.AbsolutePath. Ex: "internal/foo"; "."; "" (same as "."); "./some/pkg/path". Any relative path that escapes m.AbsolutePath
+// is rejected.
 //
 // It returns:
 //   - moduleAbsDir: absolute dir of the package's containing module.
 //   - packageAbsDir: absolute dir of the package.
-//   - packageRelDir: relative dir of the package (relative to moduleAbsDir). Ex: "."; "some/pkg/path". "." is always returned if pkg dir is the same as the module dir. "" is returned if the package is not in a module.
+//   - packageRelDir: relative dir of the package (relative to moduleAbsDir). Ex: "."; "some/pkg/path". "." is always returned if pkg dir is the same as the module
+//     dir. "" is returned if the package is not in a module.
 //   - fqImportPath: fully qualified import path of the package (importable from code in m).
 //   - fnErr: error, if any. ErrResolveNotFound if the package cannot be found, or some non-nil error if other errors are encountered.
 func (m *Module) ResolvePackageByRelativeDir(pkgRelativeDir string) (moduleAbsDir string, packageAbsDir string, packageRelDir string, fqImportPath string, fnErr error) {
@@ -124,15 +126,16 @@ func (m *Module) ResolvePackageByRelativeDir(pkgRelativeDir string) (moduleAbsDi
 	return moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath, nil
 }
 
-// ResolvePackageByImport resolves importPath as a Go import as seen from code in m. The target must be importable from m (i.e., in m's module graph); otherwise ErrResolveNotFound.
-// importPath must be a valid import path (as might be found in a source file's `import ( ... )` section), not a relative path like "./foo".
+// ResolvePackageByImport resolves importPath as a Go import as seen from code in m. The target must be importable from m (i.e., in m's module graph); otherwise
+// ErrResolveNotFound. importPath must be a valid import path (as might be found in a source file's `import ( ... )` section), not a relative path like "./foo".
 //
 // The result is equivalent to Go tooling (ex: `go list`) as if run from within m. Actual implementation may vary, but callers can assume equivalent semantics.
 //
 // It returns:
 //   - moduleAbsDir: absolute dir of the package's containing module (or "" if no module, as in stdlib packages, for instance).
 //   - packageAbsDir: absolute dir of the package.
-//   - packageRelDir: relative dir of the package (relative to moduleAbsDir). Ex: "."; "some/pkg/path". "." is always returned if pkg dir is the same as the module dir. "" is returned if the package is not in a module.
+//   - packageRelDir: relative dir of the package (relative to moduleAbsDir). Ex: "."; "some/pkg/path". "." is always returned if pkg dir is the same as the module
+//     dir. "" is returned if the package is not in a module.
 //   - fqImportPath: fully qualified import path of the package (importable from code in m).
 //   - fnErr: error, if any. ErrResolveNotFound if the package cannot be found, or some non-nil error if other errors are encountered.
 func (m *Module) ResolvePackageByImport(importPath string) (moduleAbsDir string, packageAbsDir string, packageRelDir string, fqImportPath string, fnErr error) {
@@ -249,12 +252,14 @@ func resolveNotFound(loadErr error, pkgs []*packages.Package) bool {
 	return false
 }
 
-// LoadAllPackages recursively traverses the module root looking for Go packages. It calls ReadPackage for each package it finds. All loaded packages are stored in m.Packages.
+// LoadAllPackages recursively traverses the module root looking for Go packages. It calls ReadPackage for each package it finds. All loaded packages are stored
+// in m.Packages.
 func (m *Module) LoadAllPackages() error {
 	return m.traverseDirectory(m.AbsolutePath, "")
 }
 
-// LoadPackageByRelativeDir loads a package from a directory relative to the module root. It returns a cached copy if available; otherwise, it reads from disk and caches the result.
+// LoadPackageByRelativeDir loads a package from a directory relative to the module root. It returns a cached copy if available; otherwise, it reads from disk and
+// caches the result.
 func (m *Module) LoadPackageByRelativeDir(relativeDir string) (*Package, error) {
 
 	importPath := importPathFromRelativeDir(m.Name, relativeDir)
@@ -269,8 +274,8 @@ func (m *Module) LoadPackageByRelativeDir(relativeDir string) (*Package, error) 
 // ErrImportNotInModule is returned by LoadPackageByImportPath when the requested import path does not belong to the module.
 var ErrImportNotInModule = errors.New("import path not module")
 
-// LoadPackageByImportPath loads a package by import path. It returns any cached copy if present; otherwise, it loads from disk and caches it. Any import path not in the module returns
-// the error ErrImportNotInModule.
+// LoadPackageByImportPath loads a package by import path. It returns any cached copy if present; otherwise, it loads from disk and caches it. Any import path not
+// in the module returns the error ErrImportNotInModule.
 func (m *Module) LoadPackageByImportPath(importPath string) (*Package, error) {
 	if pkg, ok := m.Packages[importPath]; ok {
 		return pkg, nil
@@ -285,8 +290,8 @@ func (m *Module) LoadPackageByImportPath(importPath string) (*Package, error) {
 	}
 }
 
-// traverseDirectory recursively walks a directory, looking for Go packages and calling ReadPackage for each package it finds. Initially, relativeDir should be "" for the root module.
-// It accumulates subdirectories as traversal proceeds (ex: "foo/bar").
+// traverseDirectory recursively walks a directory, looking for Go packages and calling ReadPackage for each package it finds. Initially, relativeDir should be ""
+// for the root module. It accumulates subdirectories as traversal proceeds (ex: "foo/bar").
 func (m *Module) traverseDirectory(absDirPath string, relativeDir string) error {
 	// Read the directory entries
 	entries, err := os.ReadDir(absDirPath)
@@ -344,9 +349,9 @@ func (m *Module) traverseDirectory(absDirPath string, relativeDir string) error 
 	return nil
 }
 
-// ReadPackage reads the package at relativeDir and all Go files it contains. In addition to returning the package, it caches it in m. The goFileNames parameter is a list of .go files
-// in the package (filenames only; no directory, even relative to the module). If goFileNames is nil, ReadPackage discovers the files. If any .go files are specified in goFileNames,
-// they are assumed to be the complete list; this function does not verify correctness.
+// ReadPackage reads the package at relativeDir and all Go files it contains. In addition to returning the package, it caches it in m. The goFileNames parameter
+// is a list of .go files in the package (filenames only; no directory, even relative to the module). If goFileNames is nil, ReadPackage discovers the files. If
+// any .go files are specified in goFileNames, they are assumed to be the complete list; this function does not verify correctness.
 //
 // TODO: We likely want to make this method private and have callers rely on LoadPackageByRelativeDir/LoadPackageByImportPath.
 func (m *Module) ReadPackage(relativeDir string, goFileNames []string) (*Package, error) {
@@ -431,7 +436,8 @@ func extractModuleName(moduleRoot string) (string, error) {
 	return "", errors.New("go.mod has no module directive")
 }
 
-// CloneWithoutPackages creates a temporary clone of the module that contains only the go.mod file. The returned module has no packages and has its cloned flag set to true.
+// CloneWithoutPackages creates a temporary clone of the module that contains only the go.mod file. The returned module has no packages and has its cloned flag set
+// to true.
 func (m *Module) CloneWithoutPackages() (*Module, error) {
 	tmpDir, err := os.MkdirTemp("", "gomod-clone-")
 	if err != nil {

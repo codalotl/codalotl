@@ -10,19 +10,20 @@ import (
 	"unicode/utf8"
 )
 
-// enforceEOLVsDocInAST walks the file and modifies the .Doc and .Comment comment nodes for top-level blocks (var/const/type blocks) and struct/interface fields so that long comments
-// are .Doc comments and short comments are .Comment EOL comments (a few other rules besides length apply). Because we have another system which comprehensively reflows comments (changing
-// their line length to fit in a given width), this method mostly does not do that, except for collapsing doc comments if they fit in an EOL comment (since an EOL comment can't have
-// multiple lines).
+// enforceEOLVsDocInAST walks the file and modifies the .Doc and .Comment comment nodes for top-level blocks (var/const/type blocks) and struct/interface fields
+// so that long comments are .Doc comments and short comments are .Comment EOL comments (a few other rules besides length apply). Because we have another system
+// which comprehensively reflows comments (changing their line length to fit in a given width), this method mostly does not do that, except for collapsing doc comments
+// if they fit in an EOL comment (since an EOL comment can't have multiple lines).
 //
 // This function MUST be called with *valid* file positioning information (and thus, before funcs that invalidate it, like reflowDocCommentsInAST).
 //
-// Important note: this will set the .Doc properties in the file ast, but it will not recalculate any offsets. Therefore, after this call, all offset information in file ast is invalid.
+// Important note: this will set the .Doc properties in the file ast, but it will not recalculate any offsets. Therefore, after this call, all offset information
+// in file ast is invalid.
 //
-// A note about the design approach: because this method is called with a snippet, which can contain a subset of fields, and because some changes may be rejected due to policy (ex:
-// options.RejectUpdates), it is possible that the end-result of a user's file that they see does not match the policy this function tries to impose. Another example of failure: snippet
-// is non-block const, but source code is block, so comments aren't EOL-ized. However, we can always pass the source code itself as a snippet, guaranteeing all fields are present, as
-// a second cleanup phase.
+// A note about the design approach: because this method is called with a snippet, which can contain a subset of fields, and because some changes may be rejected
+// due to policy (ex: options.RejectUpdates), it is possible that the end-result of a user's file that they see does not match the policy this function tries to
+// impose. Another example of failure: snippet is non-block const, but source code is block, so comments aren't EOL-ized. However, we can always pass the source
+// code itself as a snippet, guaranteeing all fields are present, as a second cleanup phase.
 func enforceEOLVsDocInAST(file *ast.File, fset *token.FileSet, options Options) {
 	// Default tab and width values if not supplied.
 	tabWidth := options.ReflowTabWidth
@@ -99,7 +100,8 @@ func enforceEOLVsDocInAST(file *ast.File, fset *token.FileSet, options Options) 
 	applyEOLVsDocChangesToInterfaces(file, fieldMap)
 }
 
-// applyEOLVsDocChangesToStructs iterates through the file's type declarations and updates any struct fields' .Doc and .Comment based on the decisions made in the provided fieldMap.
+// applyEOLVsDocChangesToStructs iterates through the file's type declarations and updates any struct fields' .Doc and .Comment based on the decisions made in the
+// provided fieldMap.
 func applyEOLVsDocChangesToStructs(file *ast.File, fieldMap map[string]*eolVsDocField) {
 	// Helper to create an *ast.CommentGroup from a raw string.
 	createCommentGroup := func(comment string) *ast.CommentGroup {
@@ -174,7 +176,9 @@ func applyEOLVsDocChangesToStructs(file *ast.File, fieldMap map[string]*eolVsDoc
 						field.Doc = nil
 						field.Comment = newCG
 					} else if !fieldInfo.shouldBeEOL && field.Doc == nil && field.Comment != nil {
-						newCG := createCommentGroup("// " + field.Comment.Text())
+						// Preserve exact spelling for directives like `//go:embed` by using the
+						// original comment token text (not CommentGroup.Text()).
+						newCG := createCommentGroup(commentBlockFromGroup(field.Comment, false))
 						removeCommentFromFile(file, field.Comment)
 						field.Comment = nil
 						field.Doc = newCG
@@ -200,8 +204,8 @@ func applyEOLVsDocChangesToStructs(file *ast.File, fieldMap map[string]*eolVsDoc
 	}
 }
 
-// applyEOLVsDocChangesToInterfaces iterates through the file's interface type declarations and updates any methods' .Doc and .Comment based on the decisions in fieldMap (which, for
-// interfaces, enforces Doc always).
+// applyEOLVsDocChangesToInterfaces iterates through the file's interface type declarations and updates any methods' .Doc and .Comment based on the decisions in
+// fieldMap (which, for interfaces, enforces Doc always).
 func applyEOLVsDocChangesToInterfaces(file *ast.File, fieldMap map[string]*eolVsDocField) {
 	// Helper to create an *ast.CommentGroup from a raw string.
 	createCommentGroup := func(comment string) *ast.CommentGroup {
@@ -250,7 +254,9 @@ func applyEOLVsDocChangesToInterfaces(file *ast.File, fieldMap map[string]*eolVs
 
 				// Enforce Doc always for interfaces: if we currently have an EOL comment, convert to Doc.
 				if !fieldInfo.shouldBeEOL && field.Doc == nil && field.Comment != nil {
-					newCG := createCommentGroup("// " + field.Comment.Text())
+					// Preserve exact spelling for directives like `//go:...` by using the
+					// original comment token text (not CommentGroup.Text()).
+					newCG := createCommentGroup(commentBlockFromGroup(field.Comment, false))
 					removeCommentFromFile(file, field.Comment)
 					field.Comment = nil
 					field.Doc = newCG
@@ -266,7 +272,8 @@ func applyEOLVsDocChangesToInterfaces(file *ast.File, fieldMap map[string]*eolVs
 	}
 }
 
-// applyEOLVsDocChangesToDecls iterates through the file's declarations and updates the .Doc and .Comment fields of specs based on the decisions made in the provided fieldMap.
+// applyEOLVsDocChangesToDecls iterates through the file's declarations and updates the .Doc and .Comment fields of specs based on the decisions made in the provided
+// fieldMap.
 func applyEOLVsDocChangesToDecls(file *ast.File, fieldMap map[string]*eolVsDocField) {
 	// Helper to create an *ast.CommentGroup from a raw string. The input must already
 	// start with "//" for every line and be newline terminated (except for potential
@@ -327,7 +334,9 @@ func applyEOLVsDocChangesToDecls(file *ast.File, fieldMap map[string]*eolVsDocFi
 					s.Doc = nil
 					s.Comment = newCG
 				} else if !field.shouldBeEOL && s.Doc == nil && s.Comment != nil {
-					newCG := createCommentGroup("// " + s.Comment.Text())
+					// Preserve exact spelling for directives like `//go:embed` by using the
+					// original comment token text (not CommentGroup.Text()).
+					newCG := createCommentGroup(commentBlockFromGroup(s.Comment, false))
 
 					removeCommentFromFile(file, s.Comment)
 					s.Comment = nil
@@ -363,7 +372,9 @@ func applyEOLVsDocChangesToDecls(file *ast.File, fieldMap map[string]*eolVsDocFi
 					s.Doc = nil
 					s.Comment = newCG
 				} else if !field.shouldBeEOL && s.Doc == nil && s.Comment != nil {
-					newCG := createCommentGroup("// " + s.Comment.Text())
+					// Preserve exact spelling for directives like `//go:...` by using the
+					// original comment token text (not CommentGroup.Text()).
+					newCG := createCommentGroup(commentBlockFromGroup(s.Comment, false))
 
 					if s.Comment != nil {
 						removeCommentFromFile(file, s.Comment)
@@ -381,8 +392,8 @@ func applyEOLVsDocChangesToDecls(file *ast.File, fieldMap map[string]*eolVsDocFi
 //   - structPath is the dot notation path of the (nested) struct. ex: `type foo struct { bar struct { baz int } }` -> "foo.bar" (for the bar struct).
 //   - indentLevel is the indent level of the struct (either type or field), and is 0-based, so a top-level `type foo struct { ... }` should be called with indentLevel=0.
 //
-// Returns groups of []*eolVsDocField. Empty structs (no fields) produce zero groups. Non-empty structs produce at least one group, or more if separated by separator comments. Nested
-// structs are separate group(s).
+// Returns groups of []*eolVsDocField. Empty structs (no fields) produce zero groups. Non-empty structs produce at least one group, or more if separated by separator
+// comments. Nested structs are separate group(s).
 func getEolVsDocFieldsForStructType(structPath string, structType *ast.StructType, fset *token.FileSet, allComments []*ast.CommentGroup, indentLevel int, tabWidth int, softMaxCols int) [][]*eolVsDocField {
 	if structType.Fields == nil || len(structType.Fields.List) == 0 {
 		return nil
@@ -483,6 +494,7 @@ func getEolVsDocFieldsForStructType(structPath string, structType *ast.StructTyp
 		} else if !hasNoDocs(field.Comment) {
 			cg = field.Comment
 		}
+		forceDoc := commentGroupForcesDoc(cg)
 
 		var reflowed string
 		if cg != nil {
@@ -509,6 +521,7 @@ func getEolVsDocFieldsForStructType(structPath string, structType *ast.StructTyp
 			codeIsMultiline:    codeMultiline,
 			indentInSpaces:     (indentLevel + 1) * tabWidth,
 			reflowedDocComment: reflowed,
+			forceDoc:           forceDoc,
 			shouldBeEOL:        false,
 		})
 
@@ -533,12 +546,12 @@ func getEolVsDocFieldsForStructType(structPath string, structType *ast.StructTyp
 	return groups
 }
 
-// getEolVsDocFieldsForInterfaceType returns a flat slice of fields for an interface type. Identifier keys are of the form "<InterfaceName>.<MethodOrEmbedded>". Policy: prefer Doc for
-// interface methods and embedded interfaces, but for type terms (ex: int; ~int; unions like "~int | ~float64"), mark shouldBeEOL=true (reason: as of 2025/08/12, Go doesn't attach leading
-// comments to .Doc for type terms).
+// getEolVsDocFieldsForInterfaceType returns a flat slice of fields for an interface type. Identifier keys are of the form "<InterfaceName>.<MethodOrEmbedded>".
+// Policy: prefer Doc for interface methods and embedded interfaces, but for type terms (ex: int; ~int; unions like "~int | ~float64"), mark shouldBeEOL=true (reason:
+// as of 2025/08/12, Go doesn't attach leading comments to .Doc for type terms).
 //
-// NOTE/BUG: there are plain type terms that are unhandled (ex: maps, pointers, and identifiers). Without using go/types, we cannot reliably distinguish `type interface { Foo }` meaning
-// Foo as a constraint or Foo as an embedded interface. In these cases, a Doc will be used.
+// NOTE/BUG: there are plain type terms that are unhandled (ex: maps, pointers, and identifiers). Without using go/types, we cannot reliably distinguish `type interface { Foo }`
+// meaning Foo as a constraint or Foo as an embedded interface. In these cases, a Doc will be used.
 func getEolVsDocFieldsForInterfaceType(interfacePath string, ifaceType *ast.InterfaceType, fset *token.FileSet, allComments []*ast.CommentGroup, indentLevel int, tabWidth int, softMaxCols int) []*eolVsDocField {
 	if ifaceType.Methods == nil || len(ifaceType.Methods.List) == 0 {
 		return nil
@@ -588,6 +601,7 @@ func getEolVsDocFieldsForInterfaceType(interfacePath string, ifaceType *ast.Inte
 		} else if !hasNoDocs(field.Comment) {
 			cg = field.Comment
 		}
+		forceDoc := commentGroupForcesDoc(cg)
 
 		var reflowed string
 		if cg != nil {
@@ -641,15 +655,17 @@ func getEolVsDocFieldsForInterfaceType(interfacePath string, ifaceType *ast.Inte
 			codeIsMultiline:    codeMultiline,
 			indentInSpaces:     (indentLevel + 1) * tabWidth,
 			reflowedDocComment: reflowed,
-			shouldBeEOL:        isTypeTerm,
+			forceDoc:           forceDoc,
+			shouldBeEOL:        isTypeTerm && !forceDoc,
 		})
 	}
 
 	return fields
 }
 
-// getEolVsDocFieldsForDeclBlock returns grouped []*eolVsDocField. Groups are determined by "floating" comments -- comments separating specs that are not attached to any spec via .Doc
-// or .Comment. All comments in the file are supplied in allComments (which is just file.Comments). Each spec's .Doc or .Comment will be reflowed by reflowDocComment and set as reflowedDocComment.
+// getEolVsDocFieldsForDeclBlock returns grouped []*eolVsDocField. Groups are determined by "floating" comments -- comments separating specs that are not attached
+// to any spec via .Doc or .Comment. All comments in the file are supplied in allComments (which is just file.Comments). Each spec's .Doc or .Comment will be reflowed
+// by reflowDocComment and set as reflowedDocComment.
 func getEolVsDocFieldsForDeclBlock(decl *ast.GenDecl, fset *token.FileSet, allComments []*ast.CommentGroup, tabWidth int, softMaxCols int) [][]*eolVsDocField {
 	// Only const/var declarations are expected.
 	if decl.Tok != token.VAR && decl.Tok != token.CONST && decl.Tok != token.TYPE {
@@ -771,6 +787,7 @@ func getEolVsDocFieldsForDeclBlock(decl *ast.GenDecl, fset *token.FileSet, allCo
 			raw := commentBlockFromGroup(cg, false)
 			reflowed = reflowDocComment(raw, 1, tabWidth, softMaxCols)
 		}
+		forceDoc := commentGroupForcesDoc(cg)
 
 		// Comment metrics
 		var runeCount int
@@ -791,6 +808,7 @@ func getEolVsDocFieldsForDeclBlock(decl *ast.GenDecl, fset *token.FileSet, allCo
 			codeIsMultiline:    codeMultiline,
 			indentInSpaces:     tabWidth,
 			reflowedDocComment: reflowed,
+			forceDoc:           forceDoc,
 			shouldBeEOL:        false, // leave unset – caller decides later
 		})
 
@@ -823,8 +841,8 @@ type eolVsDocField struct {
 	isMultiline   bool   // true if reflowedDocComment contains multiple lines (2+ \n's)
 	commentLength int    // length of reflowedDocComment (even if multiline), including leading "//" but excluding the last \n. 0 if no comment
 
-	// length of the code, starting from first non-whitespace char to the last, assuming minimal spaces between tokens (ex: `x int` -> 5, and `x int` -> 5; `X, Y int` -> 8 (2 mandatory
-	// spaces))
+	// length of the code, starting from first non-whitespace char to the last, assuming minimal spaces between tokens (ex: `x int` -> 5, and `x int` -> 5; `X, Y int`
+	// -> 8 (2 mandatory spaces))
 	minCodeLength int
 
 	// true if the code is multiline (ex: a field which is an inline nested struct that spans several lines). Avoid EOL for multiline fields
@@ -833,16 +851,20 @@ type eolVsDocField struct {
 	// indent of the field, in space-equivalents; should be equal for all fields in group
 	indentInSpaces int
 
-	// comment, \n-terminated, starting with "//", if the comment were to be placed as a Doc comment. Result of reflowing the original comment. If this is multiline, we know already we
-	// must keep it a doc comment. If it's single line, we can measure the stripped length to see if it fits EOL.
+	// comment, \n-terminated, starting with "//", if the comment were to be placed as a Doc comment. Result of reflowing the original comment. If this is multiline,
+	// we know already we must keep it a doc comment. If it's single line, we can measure the stripped length to see if it fits EOL.
 	reflowedDocComment string
+
+	// If true, this comment must stay as a leading comment (Doc) even if it would otherwise be eligible to become an EOL comment. This is used for compiler directives
+	// like `//go:embed` which break when moved to EOL position.
+	forceDoc bool
 
 	// will be set to true if this comment should be EOL, otherwise set to false if this comment should be a Doc.
 	shouldBeEOL bool
 }
 
-// decideEOLVsDocForGroup sets each field's shouldBeEOL. All fields belong to the same group. Every property in fields is pre-calculated (except shouldBeEOL). indentInSpaces is the
-// indent level of the fields measured in spaces. Rules to set shouldBeEOL:
+// decideEOLVsDocForGroup sets each field's shouldBeEOL. All fields belong to the same group. Every property in fields is pre-calculated (except shouldBeEOL). indentInSpaces
+// is the indent level of the fields measured in spaces. Rules to set shouldBeEOL:
 //   - If isMultiline or codeIsMultiline, set shouldBeEOL=false
 //   - If there are three consecutive fields where an EOL comment would fit (if we align those fields), set them to shouldBeEOL=true. (No comment counts as EOL)
 //   - If there's only 2 max fields, and all would fit if we align, set them to shouldBeEOL=true.
@@ -890,7 +912,7 @@ func decideEOLVsDocForGroup(fields []*eolVsDocField, softMaxCols int) {
 	// Helper slice marking eligibility (non-multiline comment and non-multiline code).
 	eligible := make([]bool, len(fields))
 	for i, f := range fields {
-		eligible[i] = !(f.isMultiline || f.codeIsMultiline)
+		eligible[i] = !(f.isMultiline || f.codeIsMultiline || f.forceDoc)
 		// initialise default – explicit for clarity
 		fields[i].shouldBeEOL = false
 	}
@@ -953,4 +975,29 @@ func decideEOLVsDocForGroup(fields []*eolVsDocField, softMaxCols int) {
 			}
 		}
 	}
+}
+
+func commentGroupForcesDoc(cg *ast.CommentGroup) bool {
+	if cg == nil {
+		return false
+	}
+	for _, c := range cg.List {
+		if commentTextForcesDoc(c.Text) {
+			return true
+		}
+	}
+	return false
+}
+
+func commentTextForcesDoc(text string) bool {
+	t := strings.TrimSpace(text)
+
+	if strings.HasPrefix(t, "//line ") || strings.HasPrefix(t, "//line\t") {
+		return true
+	}
+
+	// Re-use the existing directive/pragma detection used elsewhere in this
+	// package (build tags, //go:<directive>, cgo pragmas, nolint directives,
+	// generated markers, etc.).
+	return shouldPreserveComment(t)
 }

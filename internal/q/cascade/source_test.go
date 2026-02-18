@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// withJSON creates a new temporary directory, writes a file named name with contents in it, and invokes callback with the file's absolute path. The file is created with 0o644 permissions.
-// Name must be a relative path; the file resides under the temporary directory and will be cleaned up when the test ends. The test fails if name is absolute or if the file cannot be
-// written.
+// withJSON creates a new temporary directory, writes a file named name with contents in it, and invokes callback with the file's absolute path. The file is created
+// with 0o644 permissions. Name must be a relative path; the file resides under the temporary directory and will be cleaned up when the test ends. The test fails
+// if name is absolute or if the file cannot be written.
 func withJSON(t *testing.T, name string, contents string, callback func(path string)) {
 	require.False(t, filepath.IsAbs(name))
 	d := t.TempDir()

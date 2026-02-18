@@ -6,10 +6,11 @@ import (
 	"strings"
 )
 
-// responsesConversationalist returns canned responses in the order they are requested. It matches any user message and records conversations for inspection when needed.
+// responsesConversationalist returns canned responses in the order they are requested. It matches any user message and records conversations for inspection when
+// needed.
 //
-// NOTE: This unified implementation supersedes the old orderedResponsesConversationalist, interceptingConversationalist, and flexibleResponsesConversationalist types that previously
-// existed in this file. Those names are now kept as type aliases for backward compatibility so the actual test code does not need to change.
+// NOTE: This unified implementation supersedes the old orderedResponsesConversationalist, interceptingConversationalist, and flexibleResponsesConversationalist
+// types that previously existed in this file. Those names are now kept as type aliases for backward compatibility so the actual test code does not need to change.
 type responsesConversationalist struct {
 	responses []string
 	convs     []*interceptingConversation

@@ -18,8 +18,7 @@ import (
 //     (none)
 
 type packageSummary struct {
-	// key is root type (ex: "MyType", not "*MyType")
-	// keys can include package selector if type isn't package local.
+	// key is root type (ex: "MyType", not "*MyType") keys can include package selector if type isn't package local.
 	summaryPerType map[string]*typeSummary
 
 	// maps filename (base) to set of root types that the filename uses.
@@ -84,7 +83,8 @@ func (ps *packageSummary) relevantForFile(fileName string) *packageSummary {
 //
 // One basic case where a type be rejected is because there's only a single use of that type.
 //
-// Note that if the complete type varies (ex: function vars named "foos" for []Foo and "foo" for Foo), it's not considered unified per this definition, and we wouldn't reject it.
+// Note that if the complete type varies (ex: function vars named "foos" for []Foo and "foo" for Foo), it's not considered unified per this definition, and we wouldn't
+// reject it.
 func (ps *packageSummary) rejectUnified() {
 	if ps == nil || len(ps.summaryPerType) == 0 {
 		return
@@ -297,10 +297,8 @@ func newPackageSummary(pkg *gocode.Package, tests bool) (*packageSummary, error)
 }
 
 type typeSummary struct {
-	rootType string
-
-	all map[typeSummaryKey]int
-
+	rootType  string
+	all       map[typeSummaryKey]int
 	funcVars  map[typeSummaryKey]int // kind must be IdentifierKindFuncVar
 	params    map[typeSummaryKey]int // kind must be IdentifierKindFuncParam
 	receivers map[typeSummaryKey]int // kind must be IdentifierKindFuncReceiver

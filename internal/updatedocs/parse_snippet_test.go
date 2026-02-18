@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestParseValidateSnippet exercises the validation matrix described in the parseValidateSnippet contract. Each sub-test feeds a code snippet to the helper and asserts whether it should
-// succeed or fail.
+// TestParseValidateSnippet exercises the validation matrix described in the parseValidateSnippet contract. Each sub-test feeds a code snippet to the helper and
+// asserts whether it should succeed or fail.
 func TestParseValidateSnippet(t *testing.T) {
 	t.Parallel()
 

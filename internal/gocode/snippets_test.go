@@ -347,8 +347,8 @@ func assertPackageDocSnippet(t *testing.T, got *PackageDocSnippet, want expected
 	}
 }
 
-// dedent removes any common leading indentation from every non-blank line, allowing readable tests with multi-line strings that do not break indentation hierarchy. Note: gocode cannot
-// use gocodetesting because the latter uses this package.
+// dedent removes any common leading indentation from every non-blank line, allowing readable tests with multi-line strings that do not break indentation hierarchy.
+// Note: gocode cannot use gocodetesting because the latter uses this package.
 func dedent(s string) string {
 	s = strings.Trim(s, "\n") // drop leading/trailing blank lines
 	lines := strings.Split(s, "\n")

@@ -2,8 +2,8 @@ package termformat
 
 import "github.com/codalotl/codalotl/internal/q/uni"
 
-// TextWidthWithANSICodes returns the text width of str for monospace fonts in terminals while ignoring ANSI codes. Ex: color formatting codes don't
-// contribute to the width and so are ignored. In other words, if rendered to a terminal, how many cells does str occupy?
+// TextWidthWithANSICodes returns the text width of str for monospace fonts in terminals while ignoring ANSI codes. Ex: color formatting codes don't contribute to
+// the width and so are ignored. In other words, if rendered to a terminal, how many cells does str occupy?
 func TextWidthWithANSICodes(str string) int {
 	if str == "" {
 		return 0

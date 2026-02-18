@@ -37,8 +37,7 @@ func (e *HealthErr) Unwrap() error {
 	return e.wrapped
 }
 
-// NewErr returns a new error (unlogged). args is in the same format as slog's args to Info: they can be key/values, or slog.Attrs.
-// NOTE: to wrap an error, use Wrap.
+// NewErr returns a new error (unlogged). args is in the same format as slog's args to Info: they can be key/values, or slog.Attrs. NOTE: to wrap an error, use Wrap.
 func NewErr(msg string, args ...any) error {
 	return &HealthErr{Message: msg, attrs: args}
 }
@@ -132,8 +131,7 @@ func writeAttrs(b *strings.Builder, attrs []any) {
 	logger.Log(context.Background(), slog.LevelDebug, "", attrs...)
 }
 
-// noNewlineWriter wraps an io.Writer and strips a single trailing newline
-// from p before writing it to the underlying writer.
+// noNewlineWriter wraps an io.Writer and strips a single trailing newline from p before writing it to the underlying writer.
 type noNewlineWriter struct {
 	w io.Writer
 }

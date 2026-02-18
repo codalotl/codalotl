@@ -694,8 +694,7 @@ func (g grammarTestTool) Info() ToolInfo {
 	}
 }
 
-// twoParamTool has two string parameters where only one is required.
-// This exercises strict=true behavior with an optional nullable param.
+// twoParamTool has two string parameters where only one is required. This exercises strict=true behavior with an optional nullable param.
 type twoParamTool struct{ name string }
 
 func (t twoParamTool) Run(ctx context.Context, call ToolCall) ToolResult {
@@ -793,8 +792,7 @@ func (n noParamTool) Info() ToolInfo {
 	}
 }
 
-// TestOpenAIResponsesProvider_ToolWithNoParams ensures we can register and invoke a function tool
-// that accepts no parameters (empty object schema) without 400 errors.
+// TestOpenAIResponsesProvider_ToolWithNoParams ensures we can register and invoke a function tool that accepts no parameters (empty object schema) without 400 errors.
 func TestOpenAIResponsesProvider_ToolWithNoParams(t *testing.T) {
 	if !runIntegrationTest(t, "OPENAI_API_KEY") {
 		return

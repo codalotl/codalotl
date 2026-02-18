@@ -196,17 +196,14 @@ type Options struct {
 ```go {api}
 // Context is passed to a command handler.
 //
-// Positional args are in Args. Flag values are typically read via variables bound
-// at command construction time (e.g. fs.Bool(...)).
+// Positional args are in Args. Flag values are typically read via variables bound at command construction time (e.g. fs.Bool(...)).
 type Context struct {
 	context.Context
-
 	Command *Command
 	Args    []string
-
-	In  io.Reader
-	Out io.Writer
-	Err io.Writer
+	In      io.Reader
+	Out     io.Writer
+	Err     io.Writer
 }
 ```
 
@@ -214,30 +211,21 @@ type Context struct {
 // RunFunc is a command handler.
 type RunFunc func(c *Context) error
 
-// ArgsFunc validates positional args. It should return a UsageError (or any
-// ExitCoder with code 2) for user-facing usage mistakes.
+// ArgsFunc validates positional args. It should return a UsageError (or any ExitCoder with code 2) for user-facing usage mistakes.
 type ArgsFunc func(args []string) error
 ```
 
 ```go {api}
 // Command defines one CLI command in a command tree.
 type Command struct {
-	// Name is the token used to invoke this command (e.g. "add" in "doc add").
-	Name string
-
-	// Aliases are additional tokens that invoke this command.
-	Aliases []string
-
-	// Hidden hides this command from parent help listings, but it may still be
-	// invoked normally by name or alias.
-	Hidden bool
-
+	Name    string   // Name is the token used to invoke this command (e.g. "add" in "doc add").
+	Aliases []string // Aliases are additional tokens that invoke this command.
+	Hidden  bool     // Hidden hides this command from parent help listings, but it may still be invoked normally by name or alias.
 	Short   string
 	Long    string
 	Example string
-
-	Args ArgsFunc // optional
-	Run  RunFunc  // optional
+	Args    ArgsFunc // optional
+	Run     RunFunc  // optional
 
 	// ...
 }

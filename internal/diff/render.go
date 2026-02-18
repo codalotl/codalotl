@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// RenderPretty returns a human-oriented, colorized rendering of d without unified-diff hunk headers. Each line is prefixed like a unified diff: " " for context, "-" for deletions,
-// and "+" for insertions; replacements are shown as a "-" line followed by a "+" line. Within changed lines, intra-line additions and deletions are highlighted.
+// RenderPretty returns a human-oriented, colorized rendering of d without unified-diff hunk headers. Each line is prefixed like a unified diff: " " for context,
+// "-" for deletions, and "+" for insertions; replacements are shown as a "-" line followed by a "+" line. Within changed lines, intra-line additions and deletions
+// are highlighted.
 //
 // If fromFilename and toFilename are both empty, no header is printed. Otherwise a single cyan header line is emitted in one of these forms:
 //   - "add <to>:" when only toFilename is set
@@ -14,14 +15,14 @@ import (
 //   - "<name>:" when both are equal
 //   - "<from> -> <to>:" otherwise
 //
-// contextSize controls how many unchanged lines are shown before and after each group of changes. Two change groups separated by at most 2*contextSize unchanged lines are merged into
-// a single group with the intervening lines shown as context.
+// contextSize controls how many unchanged lines are shown before and after each group of changes. Two change groups separated by at most 2*contextSize unchanged
+// lines are merged into a single group with the intervening lines shown as context.
 //
-// Lines are rendered without their trailing newline, and the returned string uses "\n" as the line separator. If there are no changes and no header is requested, the result is the
-// empty string.
+// Lines are rendered without their trailing newline, and the returned string uses "\n" as the line separator. If there are no changes and no header is requested,
+// the result is the empty string.
 //
-// The output contains ANSI 256-color escape sequences for line and span highlighting and is intended for terminals; it is not a machine-readable or standards-compliant diff. For a
-// traditional unified diff, use RenderUnifiedDiff.
+// The output contains ANSI 256-color escape sequences for line and span highlighting and is intended for terminals; it is not a machine-readable or standards-compliant
+// diff. For a traditional unified diff, use RenderUnifiedDiff.
 func (d Diff) RenderPretty(fromFilename string, toFilename string, contextSize int) string {
 	// Colors (ANSI) for pretty output.
 	const (

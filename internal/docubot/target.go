@@ -12,9 +12,9 @@ type groupWithCost struct {
 	cost  int                            // Estimated tokens required to add the group to the context.
 }
 
-// prioritizeGroupsForDocumentation filters for undocumented groups and sorts them by "easiness/helpfulness" for documentation. A small function that everything uses (few undocumented
-// deps, high fan-in, small size) should come first, enabling its callers to be documented. Note: algorithms using this do not depend on a particular sort; better ordering can simply
-// make them faster or pick better targets.
+// prioritizeGroupsForDocumentation filters for undocumented groups and sorts them by "easiness/helpfulness" for documentation. A small function that everything
+// uses (few undocumented deps, high fan-in, small size) should come first, enabling its callers to be documented. Note: algorithms using this do not depend on a
+// particular sort; better ordering can simply make them faster or pick better targets.
 func prioritizeGroupsForDocumentation(groups []*gocodecontext.IdentifierGroup) []*gocodecontext.IdentifierGroup {
 	var groupsNeedingDocs []*gocodecontext.IdentifierGroup
 	for _, group := range groups {

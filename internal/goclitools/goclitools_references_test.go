@@ -49,8 +49,7 @@ func TestParseReferencesOutput_MultipleLines(t *testing.T) {
 	assert.Equal(t, 2, refs[1].ColumnEnd)
 }
 
-// This is a smoke test that exercises the References function when gopls is available.
-// It creates a tiny temporary module and queries references for an identifier.
+// This is a smoke test that exercises the References function when gopls is available. It creates a tiny temporary module and queries references for an identifier.
 func TestReferences_Smoke(t *testing.T) {
 	discoverTools()
 	if !goplsAvail {

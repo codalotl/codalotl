@@ -2,8 +2,8 @@ package gograph
 
 // StronglyConnectedComponents computes and returns the strongly connected components of the graph.
 //
-// A strongly connected component of a directed graph is a maximal subgraph where for any two vertices u and v in the subgraph, there is a path from u to v and a path from v to u. In
-// simpler terms, it's a set of nodes where every node is reachable from every other node by following connections forwards.
+// A strongly connected component of a directed graph is a maximal subgraph where for any two vertices u and v in the subgraph, there is a path from u to v and a
+// path from v to u. In simpler terms, it's a set of nodes where every node is reachable from every other node by following connections forwards.
 //
 // The return value is a slice of connected components, where each component is a map of identifiers. A given identifier will only appear in one component.
 func (g *Graph) StronglyConnectedComponents() []map[string]struct{} {
@@ -79,12 +79,14 @@ func (s *sccState) find(u string) {
 
 // WeaklyConnectedComponents returns all weakly connected components of g.
 //
-// A weakly connected component is a maximal set of vertices that remain mutually reachable when edge direction is ignored-that is, in the underlying undirected graph every vertex can
-// reach every other.
+// A weakly connected component is a maximal set of vertices that remain mutually reachable when edge direction is ignored-that is, in the underlying undirected
+// graph every vertex can reach every other.
 //
-// When analysing source code, this reveals clusters of declarations (functions, types, variables) that are logically tied together and should usually be refactored or moved as a unit.
+// When analysing source code, this reveals clusters of declarations (functions, types, variables) that are logically tied together and should usually be refactored
+// or moved as a unit.
 //
-// The result is a slice in which each element is a component represented as a set of vertex identifiers (map[string]struct{}). An identifier appears in exactly one component.
+// The result is a slice in which each element is a component represented as a set of vertex identifiers (map[string]struct{}). An identifier appears in exactly
+// one component.
 func (g *Graph) WeaklyConnectedComponents() []map[string]struct{} {
 	nodes := g.identifiers
 

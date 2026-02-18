@@ -17,15 +17,14 @@ const (
 
 var errEmpty = &ParseError{Message: "empty input", Offset: -1} // errEmpty indicates an empty version string (or only whitespace in non-strict mode).
 
-// Parse parses a semantic version in non-strict mode. It accepts everything allowed by [ParseStrict] and also common variations
-// such as an optional "v" prefix, leading or trailing ASCII whitespace, and missing minor or patch numbers (which are treated
-// as zero). For example, "v2" is interpreted as 2.0.0.
+// Parse parses a semantic version in non-strict mode. It accepts everything allowed by [ParseStrict] and also common variations such as an optional "v" prefix,
+// leading or trailing ASCII whitespace, and missing minor or patch numbers (which are treated as zero). For example, "v2" is interpreted as 2.0.0.
 func Parse(input string) (Version, error) {
 	return parse(input, false)
 }
 
-// ParseStrict parses a semantic version that strictly conforms to SemVer 2.0.0. The input must match MAJOR.MINOR.PATCH with
-// optional pre-release and build metadata sections.
+// ParseStrict parses a semantic version that strictly conforms to SemVer 2.0.0. The input must match MAJOR.MINOR.PATCH with optional pre-release and build metadata
+// sections.
 func ParseStrict(input string) (Version, error) {
 	return parse(input, true)
 }
@@ -41,9 +40,9 @@ func (e *ParseError) Error() string {
 	return "semver: " + e.Message
 }
 
-// parse parses a semantic version from input, with behavior controlled by strict. When strict is false, it also accepts
-// a leading 'v'/'V', leading/trailing ASCII whitespace, and missing minor or patch components (treated as zero). On success
-// it returns the parsed Version; on failure it returns a *ParseError whose Offset indicates the failing byte.
+// parse parses a semantic version from input, with behavior controlled by strict. When strict is false, it also accepts a leading 'v'/'V', leading/trailing ASCII
+// whitespace, and missing minor or patch components (treated as zero). On success it returns the parsed Version; on failure it returns a *ParseError whose Offset
+// indicates the failing byte.
 func parse(input string, strict bool) (Version, error) {
 	if input == "" {
 		return Version{}, errEmpty
@@ -210,9 +209,9 @@ func parse(input string, strict bool) (Version, error) {
 	return v, nil
 }
 
-// parseNumericIdentifier parses a SemVer numeric identifier from input[idx:end]. It requires at least one digit; leading
-// zeros are rejected except for the single digit "0". On success it returns the parsed value and the index of the first
-// non-digit byte. On failure it returns a *ParseError whose Offset indicates the position of the problem.
+// parseNumericIdentifier parses a SemVer numeric identifier from input[idx:end]. It requires at least one digit; leading zeros are rejected except for the single
+// digit "0". On success it returns the parsed value and the index of the first non-digit byte. On failure it returns a *ParseError whose Offset indicates the position
+// of the problem.
 func parseNumericIdentifier(input string, idx, end int) (uint64, int, error) {
 	if idx >= end {
 		return 0, idx, &ParseError{Message: "expected digit", Offset: idx}

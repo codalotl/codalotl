@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// fileSortIsValid validates that proposedSortedIDs is a permutation of ids.
-// It returns an error describing missing, extra, or duplicate ids if invalid.
+// fileSortIsValid validates that proposedSortedIDs is a permutation of ids. It returns an error describing missing, extra, or duplicate ids if invalid.
 func fileSortIsValid(ids []string, proposedSortedIDs []string) error {
 	// Build expected set
 	expected := make(map[string]struct{}, len(ids))
@@ -63,12 +62,10 @@ func fileSortIsValid(ids []string, proposedSortedIDs []string) error {
 	return fmt.Errorf("invalid file sort; %s", strings.Join(parts, "; "))
 }
 
-// orgIsValid ensures the set of IDs present across all groups in org exactly
-// matches the set of canonical IDs present in snippetsByCanonicalID. It also
-// rejects duplicate assignments of the same ID to multiple groups.
+// orgIsValid ensures the set of IDs present across all groups in org exactly matches the set of canonical IDs present in snippetsByCanonicalID. It also rejects
+// duplicate assignments of the same ID to multiple groups.
 //
-// If isTests is true, all filenames in org must end with "_test.go". If false,
-// none of the filenames may end with "_test.go".
+// If isTests is true, all filenames in org must end with "_test.go". If false, none of the filenames may end with "_test.go".
 func orgIsValid(org map[string][]string, snippetsByCanonicalID map[string]gocode.Snippet, isTests bool) error {
 	// Expected IDs from snippets map
 	expected := make(map[string]struct{}, len(snippetsByCanonicalID))

@@ -55,25 +55,26 @@ func (o *BaseOptions) userMessagef(msg string, args ...any) {
 	}
 }
 
-// generateAndApplyDocs generates identifiers' docs via LLM with codeCtx as LLM context, and then applies those changes to pkg. redocument allows docs to be overwritten. It returns
-// the package to continue using (updated if changes were applied; otherwise the original pkg), a list of updated files, and any error. The first return is not guaranteed to be nil
-// when no changes occur; use the updated files list to detect whether modifications were made.
+// generateAndApplyDocs generates identifiers' docs via LLM with codeCtx as LLM context, and then applies those changes to pkg. redocument allows docs to be overwritten.
+// It returns the package to continue using (updated if changes were applied; otherwise the original pkg), a list of updated files, and any error. The first return
+// is not guaranteed to be nil when no changes occur; use the updated files list to detect whether modifications were made.
 //
 // Errors are returned in these situations:
 //   - hard error (ex: I/O error; cannot talk to LLM).
 //   - errNoSnippets if the LLM didn't generate any snippets.
-//   - errSomeSnippetsFailed if we couldn't apply some (or all) snippets the LLM generated. In this case, the returned pkg may include any successful updates; if none succeeded it will
-//     be the original pkg.
+//   - errSomeSnippetsFailed if we couldn't apply some (or all) snippets the LLM generated. In this case, the returned pkg may include any successful updates; if
+//     none succeeded it will be the original pkg.
 //
-// generateAndApplyDocs makes a single LLM request for initial generation, so callers should ensure codeCtx is appropriately sized. If there are errors in application (ex: LLM got the
-// format wrong), it may attempt to call the LLM again for a fix.
+// generateAndApplyDocs makes a single LLM request for initial generation, so callers should ensure codeCtx is appropriately sized. If there are errors in application
+// (ex: LLM got the format wrong), it may attempt to call the LLM again for a fix.
 //
 // Notes:
 //   - identifiers only influence instructions to the LLM. In theory, any code can change, and we don't validate that only identifier docs change.
-//   - generate MUST go with apply, because: application is how we validate (ex: ensure identifiers actually match source code); also: LLMs often return partial snippets: `const Foo = 2 // Foo ...`
-//     when Foo is actually in a const block).
+//   - generate MUST go with apply, because: application is how we validate (ex: ensure identifiers actually match source code); also: LLMs often return partial snippets:
+//     `const Foo = 2 // Foo ...` when Foo is actually in a const block).
 //
-// If callers need a "dry run" mode, they can clone pkg first. If callers need more granular diffs of what was changed, they can diff pkg's changed files with the updated package.
+// If callers need a "dry run" mode, they can clone pkg first. If callers need more granular diffs of what was changed, they can diff pkg's changed files with the
+// updated package.
 func generateAndApplyDocs(pkg *gocode.Package, codeCtx *gocodecontext.Context, identifiers []string, redocument bool, options BaseOptions) (*gocode.Package, []string, error) {
 	if len(identifiers) == 0 {
 		return nil, nil, health.LogNewErr(options.Logger, "generateAndApplyDocs called with no identifiers")

@@ -5,36 +5,35 @@ tui is a package designed to build cross-platform TUIs taking up the full screen
 ## Usage
 
 ```go
-
 type model struct {
-    message       string
-    width, height int
+	message       string
+	width, height int
 }
 
 func (m *model) Init(t *TUI) {}
 func (m *model) Update(t *TUI, msg Message) {
-    switch ev := msg.(type) {
-    case KeyEvent:
-        if ev.ControlKey == ControlKeyCtrlC {
-            t.Quit() // Quit quits without error, which is what we want here.
-        } else if ev.IsRunes() { // Non-control character
-            m.message += string(ev.Runes)
-        }
-    case ResizeEvent:
-        m.width, m.height = ev.Width, ev.Height
-    }
+	switch ev := msg.(type) {
+	case KeyEvent:
+		if ev.ControlKey == ControlKeyCtrlC {
+			t.Quit() // Quit quits without error, which is what we want here.
+		} else if ev.IsRunes() { // Non-control character
+			m.message += string(ev.Runes)
+		}
+	case ResizeEvent:
+		m.width, m.height = ev.Width, ev.Height
+	}
 }
 
 func (m *model) View() string {
-    // NOTE: real code would ensure this text fits within m.width and m.height.
-    return "You typed: '" + m.message + "'"
+	// NOTE: real code would ensure this text fits within m.width and m.height.
+	return "You typed: '" + m.message + "'"
 }
 
 func main() {
-    m := model{}
-    if err := RunTUI(&m, Options{}); err != nil {
-        fmt.Println("Error:", err)
-    }
+	m := model{}
+	if err := RunTUI(&m, Options{}); err != nil {
+		fmt.Println("Error:", err)
+	}
 }
 ```
 
@@ -114,43 +113,42 @@ type ControlKey int
 
 // KeyEvent is sent when the user presses keys or pastes text. Each event will either be a ControlKey, or Runes.
 type KeyEvent struct {
-    // ControlKey is the control key pressed (or ControlKeyNone if the KeyEvent is not a control key event).
-    // NOTE: "control key" does NOT refer to the physical control key on a keyboard, but rather, control characters in general (ex: ENTER, ESC, NEWLINE, Left Arrow, etc).
-    ControlKey ControlKey
+	// ControlKey is the control key pressed (or ControlKeyNone if the KeyEvent is not a control key event). NOTE: "control key" does NOT refer to the physical control
+	// key on a keyboard, but rather, control characters in general (ex: ENTER, ESC, NEWLINE, Left Arrow, etc).
+	ControlKey ControlKey
 
-    // Runes pressed. Cannot contain control characters. Runes is usually a single rune, but may be mulitple (if multiple runes are available to read, or paste was used).
-    Runes []rune
+	// Runes pressed. Cannot contain control characters. Runes is usually a single rune, but may be mulitple (if multiple runes are available to read, or paste was used).
+	Runes []rune
 
-    // A control key or rune was pressed when Alt was held.
-    Alt bool
+	// A control key or rune was pressed when Alt was held.
+	Alt bool
 
-    // Paste is true if the user pasted the runes (via bracketed paste mode). Paste implies ControlKey == ControlKeyNone and !Alt and len(Runes) > 0
-    Paste bool
+	// Paste is true if the user pasted the runes (via bracketed paste mode). Paste implies ControlKey == ControlKeyNone and !Alt and len(Runes) > 0
+	Paste bool
 }
 
 // Rune returns the first rune in ke.Runes, or 0 if there are none.
 func (ke KeyEvent) Rune() rune
 
-
 // Sent during startup and when the terminal window is resized.
 type ResizeEvent struct {
-    Width  int
-    Height int
+	Width  int
+	Height int
 }
 
 // SigResumeEvent will be sent when a program resumes from being suspended.
 type SigResumeEvent struct{}
 
-// SigTermEvent will be sent when a program receives SIGTERM or when the program itself requests termination via Quit. It can be canceled with Cancel.
-// An uncanceled event causes RunTUI to return with a nil error.
+// SigTermEvent will be sent when a program receives SIGTERM or when the program itself requests termination via Quit. It can be canceled with Cancel. An uncanceled
+// event causes RunTUI to return with a nil error.
 type SigTermEvent struct {
-    Cancel CancelFunc
+	Cancel CancelFunc
 }
 
-// SigIntEvent will be sent when a program receives SIGINT or when the program itself requests termination via Interrupt. It can be canceled with Cancel.
-// An uncanceled event causes RunTUI to return with an ErrInterrupted error.
+// SigIntEvent will be sent when a program receives SIGINT or when the program itself requests termination via Interrupt. It can be canceled with Cancel. An uncanceled
+// event causes RunTUI to return with an ErrInterrupted error.
 type SigIntEvent struct {
-    Cancel CancelFunc
+	Cancel CancelFunc
 }
 ```
 
@@ -168,77 +166,73 @@ This is the minimally required public interface. There may be other public types
 
 ```go
 // Model represents a user program.
-//    - Init is called first, after Raw mode is entered.
-//    - Update is called when events occur or when Send sends a user-defined message.
-//    - View returns a string representing the TUI.
+//   - Init is called first, after Raw mode is entered.
+//   - Update is called when events occur or when Send sends a user-defined message.
+//   - View returns a string representing the TUI.
 type Model interface {
-    // Init is called first, after raw mode is entered. Programs may call things like t.SendPeriodically(myEvent, time.Second).
-    Init(t *TUI)
+	// Init is called first, after raw mode is entered. Programs may call things like t.SendPeriodically(myEvent, time.Second).
+	Init(t *TUI)
 
-    // Update is called when events occur or when Send sends a user-defined message.
-    Update(t *TUI, m Message)
+	// Update is called when events occur or when Send sends a user-defined message.
+	Update(t *TUI, m Message)
 
-    // View returns a string of the full screen TUI. View is called shortly after Update (multiple Update calls may occur [ex: due to batching] before a single View call).
-    //
-    // View may return ANY string, and no validation is done on it by this package.
-    //
-    // That being said, well-behaved TUI applications typically have the the mental model of a TUI that it is a rectangular block of rows separated by newlines.
-    // There should be at most ResizeEvent.Height lines. Each line should be at most Width wide in printable, non-ANSI characters. This may include various Unicode
-    // characters (uni.TextWidth can be used to determine width). The string may include ANSI control characters for colorizing the text or background. Again, these
-    // are just recommendations and not enforced by this package.
-    View() string
+	// View returns a string of the full screen TUI. View is called shortly after Update (multiple Update calls may occur [ex: due to batching] before a single View
+	// call).
+	//
+	// View may return ANY string, and no validation is done on it by this package.
+	//
+	// That being said, well-behaved TUI applications typically have the the mental model of a TUI that it is a rectangular block of rows separated by newlines. There
+	// should be at most ResizeEvent.Height lines. Each line should be at most Width wide in printable, non-ANSI characters. This may include various Unicode characters
+	// (uni.TextWidth can be used to determine width). The string may include ANSI control characters for colorizing the text or background. Again, these are just recommendations
+	// and not enforced by this package.
+	View() string
 }
 
 type TUI struct {
-    // ...
+	// ...
 }
 
 type Options struct {
-    // Input overrides os.Stdin when non-nil. Primarily used for testing. A non-tty input will still cause tui to open the controlling TTY for real input.
-    Input io.Reader
+	// Input overrides os.Stdin when non-nil. Primarily used for testing. A non-tty input will still cause tui to open the controlling TTY for real input.
+	Input io.Reader
 
-    // Output overrides os.Stdout when non-nil. Primarily used for testing.
-    Output io.Writer
-
-    // If Framerate is between 60-120 inclusive, the terminal will be refreshed at this framerate (otherwise, it uses 60 FPS).
-    Framerate int
-
-    // EnableMouse enables mouse tracking and delivery of MouseEvent messages.
-    // Disabled by default.
-    EnableMouse bool
+	Output      io.Writer // Output overrides os.Stdout when non-nil. Primarily used for testing.
+	Framerate   int       // If Framerate is between 60-120 inclusive, the terminal will be refreshed at this framerate (otherwise, it uses 60 FPS).
+	EnableMouse bool      // EnableMouse enables mouse tracking and delivery of MouseEvent messages. Disabled by default.
 }
 
-// CancelFunc cancels signal events (ex: SigTermEvent) and periodic send. It can be called idempotently and is always safe to call, even after the TUI has finished running.
+// CancelFunc cancels signal events (ex: SigTermEvent) and periodic send. It can be called idempotently and is always safe to call, even after the TUI has finished
+// running.
 type CancelFunc func()
 
-// RunTUI makes a new TUI and runs it. Alt/raw mode is entered (non-TTYs return ErrNoTTY). RunTUI doesn't return until the TUI stops (Quit or Interrupt is called without canceling their events).
+// RunTUI makes a new TUI and runs it. Alt/raw mode is entered (non-TTYs return ErrNoTTY). RunTUI doesn't return until the TUI stops (Quit or Interrupt is called
+// without canceling their events).
 func RunTUI(m Model, opts Options) error
 
-
 // Calling Quit sends the SigTermEvent. Unless the event is canceled, it causes RunTUI to return with a nil error.
-//    - This can be called inside a Model's Update method, or elsewhere.
-//    - SIGTERM calls Quit().
+//   - This can be called inside a Model's Update method, or elsewhere.
+//   - SIGTERM calls Quit().
 func (t *TUI) Quit()
 
 // Calling Interrupt sends the SigIntEvent. Unless the event is canceled, it causes RunTUI to return with an ErrInterrupted error.
-//    - This can be called inside a Model's Update method, or elsewhere.
-//    - To handle Ctrl-C, user programs need to detect Ctrl-C keystroke and call Interrupt.
-//    - SIGINT calls Interrupt().
+//   - This can be called inside a Model's Update method, or elsewhere.
+//   - To handle Ctrl-C, user programs need to detect Ctrl-C keystroke and call Interrupt.
+//   - SIGINT calls Interrupt().
 func (t *TUI) Interrupt()
 
 // Calling Suspend causes the program to suspend.
-//    - This can be called inside a Model's Update method, or elsewhere.
-//    - To handle Ctrl-Z, user programs need to detect Ctrl-Z keystroke and call Suspend.
-//    - Any outstanding Update/View call will finish before we actually suspend the program, and won't be called any more until the program is resumed.
-//    - SIGTSTP calls Suspend().
-//    - When the program is resumed, a SigResumeEvent will be sent to Update.
+//   - This can be called inside a Model's Update method, or elsewhere.
+//   - To handle Ctrl-Z, user programs need to detect Ctrl-Z keystroke and call Suspend.
+//   - Any outstanding Update/View call will finish before we actually suspend the program, and won't be called any more until the program is resumed.
+//   - SIGTSTP calls Suspend().
+//   - When the program is resumed, a SigResumeEvent will be sent to Update.
 func (t *TUI) Suspend()
 
 // Send enqueues m to be sent to the Model's Update function. Can be called from any goroutine.
 func (t *TUI) Send(m Message)
 
-// Periodically will cause m to be sent to the Model's Update function every d duration. The caller can stop this by calling the returned cancel function.
-// The first time m is sent must be <= d from now, but is otherwise undefined. Good for consistent animations (ex: blinking cursor).
+// Periodically will cause m to be sent to the Model's Update function every d duration. The caller can stop this by calling the returned cancel function. The first
+// time m is sent must be <= d from now, but is otherwise undefined. Good for consistent animations (ex: blinking cursor).
 func (t *TUI) SendPeriodically(m Message, d time.Duration) CancelFunc
 
 // SendOnceAfter will cause m to be sent to the Model's Update function after d time from now. It can be used to produce ad-hoc or variable-timing animations.
@@ -249,7 +243,6 @@ func (t *TUI) SendOnceAfter(m Message, d time.Duration)
 // Go is a great place to do I/O like HTTP requests.
 func (t *TUI) Go(f func(ctx context.Context) Message)
 
-// SetClipboard requests that the terminal set the clipboard contents to text (copy).
-// Implementations use OSC52 (ESC ] 52 ; c ; <base64(text)> BEL).
+// SetClipboard requests that the terminal set the clipboard contents to text (copy). Implementations use OSC52 (ESC ] 52 ; c ; <base64(text)> BEL).
 func (t *TUI) SetClipboard(text string)
 ```

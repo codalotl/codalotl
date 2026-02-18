@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// withHome temporarily points the process's home directory to a new temporary directory and calls callback with that path. It ensures the path has no trailing separator. On non-Windows
-// systems, the original HOME is restored after the callback returns. On Windows, USERPROFILE is set during the callback and restored after it returns, while HOME is unchanged. The
-// test fails if the environment cannot be set.
+// withHome temporarily points the process's home directory to a new temporary directory and calls callback with that path. It ensures the path has no trailing separator.
+// On non-Windows systems, the original HOME is restored after the callback returns. On Windows, USERPROFILE is set during the callback and restored after it returns,
+// while HOME is unchanged. The test fails if the environment cannot be set.
 func withHome(t *testing.T, callback func(home string)) {
 	osHomeEnv := "HOME"
 	if runtime.GOOS == "windows" {
@@ -40,8 +40,8 @@ func withHome(t *testing.T, callback func(home string)) {
 	callback(tempHome)
 }
 
-// withEnv sets the provided environment variables for the duration of callback and then restores their prior values (unsetting those that were previously unset). The test fails if
-// any variable cannot be set.
+// withEnv sets the provided environment variables for the duration of callback and then restores their prior values (unsetting those that were previously unset).
+// The test fails if any variable cannot be set.
 func withEnv(t *testing.T, vars map[string]string, callback func()) {
 	type original struct {
 		value  string

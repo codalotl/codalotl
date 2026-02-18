@@ -97,9 +97,8 @@ func getConfig() (agentName string, modelID llmmodel.ModelID) {
 	return agentName, modelID
 }
 
-// GetFullPrompt returns a prompt using the globally configured agent name and model.
-// Different models have are best prompted in different ways, often based on how they were RL'ed. This method
-// returns a prompt well-suited for that model.
+// GetFullPrompt returns a prompt using the globally configured agent name and model. Different models have are best prompted in different ways, often based on how
+// they were RL'ed. This method returns a prompt well-suited for that model.
 func GetFullPrompt() string {
 	agentName, modelID := getConfig()
 	data := map[string]any{
@@ -137,9 +136,8 @@ const (
 	GoPackageModePromptKindUpdateUsage GoPackageModePromptKind = "update_usage"
 )
 
-// GetGoPackageModeModePrompt returns a system prompt using the globally configured agent name and model that
-// extends GetFullPrompt with a package mode of the requested kind (GoPackageModePromptKindFull is the full,
-// default package mode).
+// GetGoPackageModeModePrompt returns a system prompt using the globally configured agent name and model that extends GetFullPrompt with a package mode of the requested
+// kind (GoPackageModePromptKindFull is the full, default package mode).
 //
 // To make subagents with a subset of tools/capabilities, add a GoPackageModePromptKind with a custom explanation.
 func GetGoPackageModeModePrompt(kind GoPackageModePromptKind) string {

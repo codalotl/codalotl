@@ -97,14 +97,14 @@ some/pkg/foo.go
 
 ## Notable Private Interface Funcs
 
-```go {api exact_docs}
+```go {api}
 // usedBy returns a slice of sorted packages (their import paths) that use this package within this module.
 func usedBy(pkg *gocode.Package) ([]string, error)
 ```
 
-## Public Interface
+## Public API
 
-```go {api exact_docs}
+```go {api}
 // Create returns an initial bundle of information for an LLM starting to work on a single Go package:
 //   - Package information (paths, import)
 //   - All files/dirs in the package's directory.

@@ -30,10 +30,10 @@ type toolChangeAPI struct {
 	authorizer    authdomain.Authorizer
 	toolset       toolsetinterface.Toolset
 
-	// pkgDirAbsPath is the package directory of the agent that is invoking this tool. The tool only allows changing packages
-	// that this package directly imports.
+	// pkgDirAbsPath is the package directory of the agent that is invoking this tool. The tool only allows changing packages that this package directly imports.
 	pkgDirAbsPath string
-	lintSteps     []lints.Step
+
+	lintSteps []lints.Step
 }
 
 type changeAPIParams struct {

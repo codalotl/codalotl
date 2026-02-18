@@ -9,8 +9,8 @@ import (
 )
 
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model ID sent to API endpoints.
-// Consumers can create/register their own ModelID with AddCustomModel, which bundles a provider model as well as a set of parameters.
-// This also lets this package and consumers alias long/awkward ids with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
+// Consumers can create/register their own ModelID with AddCustomModel, which bundles a provider model as well as a set of parameters. This also lets this package
+// and consumers alias long/awkward ids with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
 type ModelID string
 
 // DefaultModel is a good default model. It can be used in tests or in production code.
@@ -37,8 +37,8 @@ func (id ModelID) Valid() bool {
 
 // ModelIDUnknown is an unknown model ID (which is also the zero value).
 //
-// NOTE: I don't want to have ModelIDXyz constants for all our models, because I want them to be more dynamic. I don't want to keep changing them
-// every time a model is added or deprecated. These things move fast.
+// NOTE: I don't want to have ModelIDXyz constants for all our models, because I want them to be more dynamic. I don't want to keep changing them every time a model
+// is added or deprecated. These things move fast.
 const ModelIDUnknown ModelID = ""
 
 type ModelOverrides struct {
@@ -80,7 +80,8 @@ func (pt ProviderAPIType) Valid() bool {
 	}
 }
 
-// Constants for provider IDs. We WILL have each provider have its own constant, unlike models, because we often need to actually add code to support a provider and its API.
+// Constants for provider IDs. We WILL have each provider have its own constant, unlike models, because we often need to actually add code to support a provider
+// and its API.
 const (
 	ProviderIDUnknown   ProviderID = ""
 	ProviderIDOpenAI    ProviderID = "openai"
@@ -97,9 +98,9 @@ var AllProviderIDs = []ProviderID{
 	ProviderIDGemini,
 }
 
-// AddCustomModel adds the custom model to the available models. id is an opaque identifier that can be referred to later from consumers of this package.
-// providerID must match a known provider (note: for truly custom models, just say it's openai, or whatever shape the API is, and use custom URL in overrides).
-// providerModelID is the API parameter sent to the LLM provider for 'model' - matches API provider docs (ex: "claude-opus-4-20250514").
+// AddCustomModel adds the custom model to the available models. id is an opaque identifier that can be referred to later from consumers of this package. providerID
+// must match a known provider (note: for truly custom models, just say it's openai, or whatever shape the API is, and use custom URL in overrides). providerModelID
+// is the API parameter sent to the LLM provider for 'model' - matches API provider docs (ex: "claude-opus-4-20250514").
 //
 // It returns an error if:
 //   - invalid id/providerID
@@ -168,8 +169,8 @@ func AvailableModelIDs() []ModelID {
 	return out
 }
 
-// ModelIDOrFallback returns id if it is valid. Otherwise it returns the default
-// model for ProviderIDOpenAI (or the first available model, if ProviderIDOpenAI has no models).
+// ModelIDOrFallback returns id if it is valid. Otherwise it returns the default model for ProviderIDOpenAI (or the first available model, if ProviderIDOpenAI has
+// no models).
 //
 // This method can be used in cases where the consumer must talk to *some* valid model, but their current model id might be unset or invalid.
 func ModelIDOrFallback(id ModelID) ModelID {
@@ -194,8 +195,7 @@ type ModelInfo struct {
 	SupportedTypes  []ProviderAPIType
 	ProviderModelID string // the model identifier used in API requests.
 	IsDefault       bool
-
-	APIEndpointURL string
+	APIEndpointURL  string
 
 	// Note on pricing: uniformly modeling pricing across all providers is fraught. These numbers serve as rough guidelines. Some providers might be modeled very poorly.
 	// As of 2025/10/23:
@@ -206,15 +206,11 @@ type ModelInfo struct {
 	CostPer1MOut           float64 // CostPer1MOut is the price per 1M output tokens.
 	CostPer1MInCached      float64 // CostPer1MInCached is the price per 1M input tokens when caching applies.
 	CostPer1MInSaveToCache float64 // Cost to SAVE 1M tokens to cache. As of 2025-10-22, applies only to Anthropic.
-
-	ContextWindow int64 // ContextWindow is the maximum token capacity supported by the model.
-
-	MaxOutput int64 // MaxOutput is the max number of output tokens the model can generate per request.
-
-	CanReason          bool // CanReason reports whether the model supports reasoning modes/capabilities.
-	HasReasoningEffort bool // HasReasoningEffort reports whether the API accepts a "reasoning_effort" parameter (or similar).
-	SupportsImages     bool // SupportsImages reports whether the model accepts image inputs.
-
+	ContextWindow          int64   // ContextWindow is the maximum token capacity supported by the model.
+	MaxOutput              int64   // MaxOutput is the max number of output tokens the model can generate per request.
+	CanReason              bool    // CanReason reports whether the model supports reasoning modes/capabilities.
+	HasReasoningEffort     bool    // HasReasoningEffort reports whether the API accepts a "reasoning_effort" parameter (or similar).
+	SupportsImages         bool    // SupportsImages reports whether the model accepts image inputs.
 	ModelOverrides
 }
 
@@ -244,9 +240,8 @@ func ConfigureProviderKey(providerID ProviderID, key string) {
 	providerKeyOverrides[providerID] = key
 }
 
-// EnvHasDefaultKey returns true if the current env has a value for the provider's default key.
-// Example: EnvHasDefaultKey(ProviderIDOpenAI) checks if "OPENAI_API_KEY" is present and non-blank in ENV.
-// Note that this ONLY checks defaults, not any *overridden* env key.
+// EnvHasDefaultKey returns true if the current env has a value for the provider's default key. Example: EnvHasDefaultKey(ProviderIDOpenAI) checks if "OPENAI_API_KEY"
+// is present and non-blank in ENV. Note that this ONLY checks defaults, not any *overridden* env key.
 func EnvHasDefaultKey(providerID ProviderID) bool {
 	env := providerEnvVars[providerID]
 	if env == "" {
@@ -259,8 +254,7 @@ func EnvHasDefaultKey(providerID ProviderID) bool {
 	return val != ""
 }
 
-// ProviderKeyEnvVars returns a map of provider id to default env var (without $) for all providers in AllProviderIDs.
-// Ex: {ProviderIDOpenAI: "OPENAI_API_KEY", ...}
+// ProviderKeyEnvVars returns a map of provider id to default env var (without $) for all providers in AllProviderIDs. Ex: {ProviderIDOpenAI: "OPENAI_API_KEY", ...}
 func ProviderKeyEnvVars() map[ProviderID]string {
 	out := make(map[ProviderID]string, len(providerEnvVars))
 	for pid, env := range providerEnvVars {
@@ -273,8 +267,7 @@ func ProviderKeyEnvVars() map[ProviderID]string {
 //   - ConfigureProviderKey(providerID, key) (in-memory override), or
 //   - the provider's default env var (ex: "OPENAI_API_KEY")
 //
-// If you need to consider per-model overrides (APIActualKey / APIEnvKey), filter at the
-// model level using GetAPIKey(modelID) instead.
+// If you need to consider per-model overrides (APIActualKey / APIEnvKey), filter at the model level using GetAPIKey(modelID) instead.
 func ProviderHasConfiguredKey(providerID ProviderID) bool {
 	if providerID == ProviderIDUnknown {
 		return false
@@ -325,11 +318,9 @@ func GetAPIKey(id ModelID) string {
 	return ""
 }
 
-// AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty
-// effective API key (per GetAPIKey).
+// AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty effective API key (per GetAPIKey).
 //
-// This is useful for presenting an interactive model list that only includes models the
-// user can actually call in the current environment/configuration.
+// This is useful for presenting an interactive model list that only includes models the user can actually call in the current environment/configuration.
 func AvailableModelIDsWithAPIKey() []ModelID {
 	ids := AvailableModelIDs()
 	out := make([]ModelID, 0, len(ids))

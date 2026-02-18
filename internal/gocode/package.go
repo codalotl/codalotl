@@ -16,8 +16,8 @@ import (
 
 // Package represents a Go package whose Go files have been read and parsed for documentation. Use Package to generate documentation and analyze the public API.
 //
-// Most instances are constructed at the Module level. A Package contains all Go source files in a directory, their documentation, and computed doc snippets for exported and unexported
-// symbols.
+// Most instances are constructed at the Module level. A Package contains all Go source files in a directory, their documentation, and computed doc snippets for
+// exported and unexported symbols.
 //
 // If the package contains black-box tests (`package foo_test`), they are represented by the TestPackage field.
 //
@@ -43,29 +43,37 @@ type Package struct {
 	// importPathsVendor is a memoized, deterministically sorted list of third-party (vendored) import paths used by this package. It is filled lazily by ImportPathsVendor().
 	importPathsVendor []string
 
-	// PackageDocSnippets contains the package-level Go documentation comments extracted from each file. There is one entry per file that has a package doc comment, including 'doc.go' and
-	// any other files.
+	// PackageDocSnippets contains the package-level Go documentation comments extracted from each file. There is one entry per file that has a package doc comment,
+	// including 'doc.go' and any other files.
 	PackageDocSnippets []*PackageDocSnippet
 
-	// FuncSnippets holds documentation snippets describing each function or method declared at the top level inside this package. Entries cover both exported and unexported functions,
-	// and interface/receiver methods.
+	// FuncSnippets holds documentation snippets describing each function or method declared at the top level inside this package. Entries cover both exported and unexported
+	// functions, and interface/receiver methods.
 	FuncSnippets []*FuncSnippet
 
 	// ValueSnippets holds documentation snippets for each const and var declaration (including both blocks and single specs), both exported and unexported.
 	ValueSnippets []*ValueSnippet
 
-	// UnattachedComments holds comments that are not attached, or included in, any other snippet. If a comment shows up in .FullBytes() of a snippet,
-	// it's not unattached. An unattached comment must be top-level and not inside of var/const/type block, not inside a function, etc. Usually it will have a
-	// blank line after it (unless the EOF is after it).
+	// UnattachedComments holds comments that are not attached, or included in, any other snippet. If a comment shows up in .FullBytes() of a snippet, it's not unattached.
+	// An unattached comment must be top-level and not inside of var/const/type block, not inside a function, etc. Usually it will have a blank line after it (unless
+	// the EOF is after it).
 	UnattachedComments []*UnattachedComment
 
-	TypeSnippets        []*TypeSnippet            // TypeSnippets holds documentation snippets for all declared types (structs, interfaces, aliases, etc.), both exported and unexported
-	identifierToSnippet map[string]Snippet        // mapping from identifier name to the corresponding code/documentation snippet
-	Files               map[string]*File          // all Go source files in this package, keyed by filename relative to the package dir
-	Module              *Module                   // module containing this package
-	typeToMethods       map[string][]*FuncSnippet // typeToMethods groups method and function documentation: type name -> methods/functions. For functions, "none" is used as the key
-	parentPackage       *Package                  // if set, denotes this as a test package and points to the parent main package
-	parsed              bool                      // true if this package's documentation has been parsed and all fields are populated
+	// TypeSnippets holds documentation snippets for all declared types (structs, interfaces, aliases, etc.), both exported and unexported
+	TypeSnippets []*TypeSnippet
+
+	identifierToSnippet map[string]Snippet // mapping from identifier name to the corresponding code/documentation snippet
+	Files               map[string]*File   // all Go source files in this package, keyed by filename relative to the package dir
+	Module              *Module            // module containing this package
+
+	// typeToMethods groups method and function documentation: type name -> methods/functions. For functions, "none" is used as the key
+	typeToMethods map[string][]*FuncSnippet
+
+	// if set, denotes this as a test package and points to the parent main package
+	parentPackage *Package
+
+	// true if this package's documentation has been parsed and all fields are populated
+	parsed bool
 }
 
 // HasTestPackage reports whether the package has a test package (black-box tests with package foo_test).
@@ -73,15 +81,15 @@ func (p *Package) HasTestPackage() bool {
 	return p.TestPackage != nil
 }
 
-// IsTestPackage reports whether p represents the external test package (the package named "<name>_test"). It returns true only for that test package; for the main package, even if
-// it has external tests, it returns false. For main packages, the corresponding test package (if any) is available via p.TestPackage.
+// IsTestPackage reports whether p represents the external test package (the package named "<name>_test"). It returns true only for that test package; for the main
+// package, even if it has external tests, it returns false. For main packages, the corresponding test package (if any) is available via p.TestPackage.
 func (p *Package) IsTestPackage() bool {
 	return p.parentPackage != nil
 }
 
-// NewPackage creates and parses a Go package from the specified files and directory. All supplied .go files are fully read and parsed; no additional files are discovered. The resulting
-// Package is initialized with its name, file map, import path, metadata, and (if needed) test package. It returns an error if any file cannot be read, if package names are inconsistent,
-// or if standard Go package structure rules are violated. The created package is added to the containing Module's package map.
+// NewPackage creates and parses a Go package from the specified files and directory. All supplied .go files are fully read and parsed; no additional files are discovered.
+// The resulting Package is initialized with its name, file map, import path, metadata, and (if needed) test package. It returns an error if any file cannot be read,
+// if package names are inconsistent, or if standard Go package structure rules are violated. The created package is added to the containing Module's package map.
 func NewPackage(relativeDir string, absoluteDirPath string, goFileNames []string, m *Module) (*Package, error) {
 	if len(goFileNames) == 0 {
 		return nil, fmt.Errorf("no Go files provided")
@@ -190,8 +198,8 @@ func importPathFromRelativeDir(moduleName, relativeDir string) string {
 	return importPath
 }
 
-// Reload returns a new Package without mutating p, but with all files re-read and re-parsed (new files are not discovered). It mutates p.Module, replacing p with the new package. If
-// p has a test package, that package is also reloaded. If p is a test package, its parent package will be reloaded, which in turn reloads p.
+// Reload returns a new Package without mutating p, but with all files re-read and re-parsed (new files are not discovered). It mutates p.Module, replacing p with
+// the new package. If p has a test package, that package is also reloaded. If p is a test package, its parent package will be reloaded, which in turn reloads p.
 func (p *Package) Reload() (*Package, error) {
 	// If p is a test package (i.e. has a parentPackage), reload the parent package
 	// and return the freshly reloaded test package instance.
@@ -232,14 +240,14 @@ func (p *Package) Reload() (*Package, error) {
 	return newPkg, nil
 }
 
-// AbsolutePath returns the absolute filesystem path to p's directory by joining p.Module.AbsolutePath and p.RelativeDir using OS-specific path separators. It does not check that the
-// path exists or resolve symlinks. p.Module must be non-nil.
+// AbsolutePath returns the absolute filesystem path to p's directory by joining p.Module.AbsolutePath and p.RelativeDir using OS-specific path separators. It does
+// not check that the path exists or resolve symlinks. p.Module must be non-nil.
 func (p *Package) AbsolutePath() string {
 	return filepath.Join(p.Module.AbsolutePath, p.RelativeDir)
 }
 
-// Snippets returns all snippets known to the package. The result is a concatenation of function, value, type, and package-documentation snippets and is not sorted. It does not return
-// snippets in p.TestPackage.
+// Snippets returns all snippets known to the package. The result is a concatenation of function, value, type, and package-documentation snippets and is not sorted.
+// It does not return snippets in p.TestPackage.
 func (p *Package) Snippets() []Snippet {
 	var snippets []Snippet
 
@@ -374,8 +382,8 @@ func (p *Package) parse() error {
 	return nil
 }
 
-// WriteDocumentationTo writes package documentation to w. The documentation is human- and AI-readable and consists of exported functions, types, consts, and vars; items without comments
-// are still emitted. Types have unexported fields elided.
+// WriteDocumentationTo writes package documentation to w. The documentation is human- and AI-readable and consists of exported functions, types, consts, and vars;
+// items without comments are still emitted. Types have unexported fields elided.
 func (p *Package) WriteDocumentationTo(w io.Writer) (int64, error) {
 	// Write all types first, then vars/consts, and finally functions.
 	var totalBytes int64
@@ -571,8 +579,8 @@ func (p *Package) GetSnippet(identifier string) Snippet {
 	return p.identifierToSnippet[identifier]
 }
 
-// Identifiers(false) returns all named identifiers, excluding init() functions. Identifiers(true) returns all named, ambiguous, or anonymous identifiers. It does not return identifiers
-// in p.TestPackage.
+// Identifiers(false) returns all named identifiers, excluding init() functions. Identifiers(true) returns all named, ambiguous, or anonymous identifiers. It does
+// not return identifiers in p.TestPackage.
 func (p *Package) Identifiers(includeAmbiguous bool) []string {
 	var idents []string
 	for id := range p.identifierToSnippet {
@@ -587,8 +595,8 @@ func (p *Package) Identifiers(includeAmbiguous bool) []string {
 	return idents
 }
 
-// PartitionGeneratedIdentifiers partitions identifiers into non-generated and generated identifiers. A generated identifier is defined as an identifier that originated in a generated
-// file (as per File.IsCodeGenerated).
+// PartitionGeneratedIdentifiers partitions identifiers into non-generated and generated identifiers. A generated identifier is defined as an identifier that originated
+// in a generated file (as per File.IsCodeGenerated).
 //
 // Identifiers may include ambiguous identifiers. Any invalid identifier (not returned in p.Identifiers(true)) will be partitioned into the first bucket.
 //
@@ -617,8 +625,8 @@ func (p *Package) PartitionGeneratedIdentifiers(identifiers []string) ([]string,
 	return nonGenerated, generated
 }
 
-// IdentifiersInFile returns identifiers associated with fileName. If includeAmbiguous is false, ambiguous names (ex: "_" and init identifiers) are excluded. It does not return identifiers
-// in p.TestPackage, even if fileName is in TestPackage.
+// IdentifiersInFile returns identifiers associated with fileName. If includeAmbiguous is false, ambiguous names (ex: "_" and init identifiers) are excluded. It
+// does not return identifiers in p.TestPackage, even if fileName is in TestPackage.
 //
 // Deprecated: use FilterIdentifiers.
 func (p *Package) IdentifiersInFile(fileName string, includeAmbiguous bool) []string {
@@ -802,8 +810,8 @@ func (p *Package) FilterIdentifiers(identifiers []string, options FilterIdentifi
 	return result
 }
 
-// validateAndDetectTestPackage returns true if and only if the collection contains both a "normal" package `foo` (at least one non-test file or a white-box test that declares `package foo`)
-// and a black-box test package `foo_test`.
+// validateAndDetectTestPackage returns true if and only if the collection contains both a "normal" package `foo` (at least one non-test file or a white-box test
+// that declares `package foo`) and a black-box test package `foo_test`.
 //
 // It is legal for a directory to contain only `*_test.go` files, provided they are consistent:
 //   - All test files must belong to exactly one base package `foo` (either `package foo` or `package foo_test`).
@@ -812,8 +820,8 @@ func (p *Package) FilterIdentifiers(identifiers []string, options FilterIdentifi
 // Note that it is valid for a package to have the names `foo_test` and `foo_test_test`. Errors are reported for mixed base packages or mismatched names.
 //
 // The function returns:
-//   - hasTestPackage: true iff both `foo` and `foo_test` are present; false if the directory contains only one of them (including the case of only `foo_test` files, which is treated
-//     as a normal package).
+//   - hasTestPackage: true iff both `foo` and `foo_test` are present; false if the directory contains only one of them (including the case of only `foo_test` files,
+//     which is treated as a normal package).
 //   - mainPackageName: the name of the main package.
 //   - error: any validation errors encountered
 func validateAndDetectTestPackage(files map[string]*File) (bool, string, error) {
@@ -886,8 +894,8 @@ func validateAndDetectTestPackage(files map[string]*File) (bool, string, error) 
 	}
 }
 
-// ImportPathsModule returns the import paths that belong to the current module (ex: they share the module path prefix). The result is memoized and returned in a deterministic, sorted
-// order.
+// ImportPathsModule returns the import paths that belong to the current module (ex: they share the module path prefix). The result is memoized and returned in a
+// deterministic, sorted order.
 func (p *Package) ImportPathsModule() []string {
 	p.categorizeImportPaths()
 	return p.importPathsModule
@@ -899,8 +907,8 @@ func (p *Package) ImportPathsStdlib() []string {
 	return p.importPathsStdlib
 }
 
-// ImportPathsVendor returns the list of third-party (vendored) import paths (ex: any import that is not in the standard library and does not belong to the current module). The result
-// is memoized and returned in a deterministic, sorted order.
+// ImportPathsVendor returns the list of third-party (vendored) import paths (ex: any import that is not in the standard library and does not belong to the current
+// module). The result is memoized and returned in a deterministic, sorted order.
 func (p *Package) ImportPathsVendor() []string {
 	p.categorizeImportPaths()
 	return p.importPathsVendor

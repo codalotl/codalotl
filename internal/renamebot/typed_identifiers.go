@@ -20,42 +20,47 @@ const (
 	IdentifierKindPkgVar       IdentifierKind = "pkg_var"       // package-level var
 	IdentifierKindPkgConst     IdentifierKind = "pkg_const"     // package-level func
 	IdentifierKindType         IdentifierKind = "type"          // type (inside or outside of func)
+
 	// NOTE: could add function/method names; interface methods
 	// other identifiers that we probably won't add: goto labels; import aliases; package names; type parameters
 )
 
 type typedIdentifier struct {
-	Kind       IdentifierKind
-	Identifier string // name. ex: "foo" for "var foo int".
-	// root type string, stripping off all indirections (ex: "myType" for "[]*myType").
-	// Unnamed structs or interfaces are just "struct{...}" or "interface{...}" (literally, with actual triple dots).
-	// Function types ar just "func()" regardless of the shape of the function.
-	// Root type for maps is just the map (ex: "map[int]myType").
-	// If the type is defined in the same package, it must not have a package selector; if it's via import, it must (ex: "myType" vs "otherpkg.TheirType").
-	// TODO: what if type is imported with "."?
-	RootType     string
-	CompleteType string // raw type string, including all indirections. ex: "[]*myType"
+	Kind IdentifierKind
 
-	IsNamedType bool // true if the root type contains a non-standard type. `int` and `error` are built-in, whereas `myType` is named. Note that std-lib types like bytes.Buffer are still named.
-	IsSlice     bool // true if the type is a "slice of X" (ex: `[]int`). Note that something like `*[]int` is NOT a slice.
-	IsMap       bool // true if the type is a map
-	IsPtr       bool // true if the type is pointer to something.
-	IsTypeParam bool // true if the type is a type parameter (ex: `var x T`, where T is parametric with it's container)
+	// name. ex: "foo" for "var foo int".
+	Identifier string
 
-	Expr     ast.Expr // expression for the named identifier.
-	FileName string   // file name (no directory) where the identifier was found.
+	// root type string, stripping off all indirections (ex: "myType" for "[]*myType"). Unnamed structs or interfaces are just "struct{...}" or "interface{...}" (literally,
+	// with actual triple dots). Function types ar just "func()" regardless of the shape of the function. Root type for maps is just the map (ex: "map[int]myType").
+	// If the type is defined in the same package, it must not have a package selector; if it's via import, it must (ex: "myType" vs "otherpkg.TheirType"). TODO: what
+	// if type is imported with "."?
+	RootType string
+
+	// raw type string, including all indirections. ex: "[]*myType"
+	CompleteType string
+
+	// true if the root type contains a non-standard type. `int` and `error` are built-in, whereas `myType` is named. Note that std-lib types like bytes.Buffer are still
+	// named.
+	IsNamedType bool
+
+	IsSlice     bool     // true if the type is a "slice of X" (ex: `[]int`). Note that something like `*[]int` is NOT a slice.
+	IsMap       bool     // true if the type is a map
+	IsPtr       bool     // true if the type is pointer to something.
+	IsTypeParam bool     // true if the type is a type parameter (ex: `var x T`, where T is parametric with it's container)
+	Expr        ast.Expr // expression for the named identifier.
+	FileName    string   // file name (no directory) where the identifier was found.
 
 	// IDEA: IsMasked bool // true if the identifier is masked, or masks any other identifier, of the same name at it's scope
 
-	// The gocode snipet identifier where this named identifier occured.
-	// If the identifer was in a func (including param/receiever), this is the function id (ex: "myFunc" or "*myType.MyFunc").
-	// If the identifier was in an unnamed func at the package level, this is the snippet ID of where it occurred (ex: `var f = func() {... }` would be "f").
+	// The gocode snipet identifier where this named identifier occured. If the identifer was in a func (including param/receiever), this is the function id (ex: "myFunc"
+	// or "*myType.MyFunc"). If the identifier was in an unnamed func at the package level, this is the snippet ID of where it occurred (ex: `var f = func() {... }`
+	// would be "f").
 	SnippetIdentifier string
 }
 
-// if !tests, no testing identifiers. If tests, we ONLY include testing identifiers.
-// note that pkg might be a _test package, in which case tests must be true.
-// In addition to the identifiers, an updated package is also returned, since it needs to be reparsed with type info.
+// if !tests, no testing identifiers. If tests, we ONLY include testing identifiers. note that pkg might be a _test package, in which case tests must be true. In
+// addition to the identifiers, an updated package is also returned, since it needs to be reparsed with type info.
 func typedIdentifiersInPackage(pkg *gocode.Package, tests bool) ([]*typedIdentifier, *gocode.Package, error) {
 	// Validate: if pkg is an external test package, we must be collecting test identifiers
 	if pkg.IsTestPackage() && !tests {

@@ -2,8 +2,8 @@ package gocode
 
 import "sort"
 
-// SnippetsByFile returns snippets grouped by file name. If ids is non-empty, only ids will be present (missing ids are ignored).
-// The snippets will be in the same order as they occur on in source.
+// SnippetsByFile returns snippets grouped by file name. If ids is non-empty, only ids will be present (missing ids are ignored). The snippets will be in the same
+// order as they occur on in source.
 func (p *Package) SnippetsByFile(ids []string) map[string][]Snippet {
 	result := make(map[string][]Snippet)
 

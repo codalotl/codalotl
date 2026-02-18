@@ -16,12 +16,14 @@ type CodeUnit struct {
 	name         string
 	baseDir      string
 	includedDirs map[string]struct{}
+
 	// We intentionally avoid caching per-file membership so massive codebases stay light,
 	// freshly created files are immediately visible, and because this exists for an LLM loop, which is dominiated
 	// by the LLM thinking.
 }
 
-// NewCodeUnit creates a new code unit named name (ex: "package codeunit") that includes absBaseDir and all direct files (but not directories) in it. It is non-recursive. absBaseDir must be absolute.
+// NewCodeUnit creates a new code unit named name (ex: "package codeunit") that includes absBaseDir and all direct files (but not directories) in it. It is non-recursive.
+// absBaseDir must be absolute.
 func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error) {
 	if !filepath.IsAbs(absBaseDir) {
 		return nil, fmt.Errorf("base directory must be absolute: %s", absBaseDir)
@@ -57,8 +59,8 @@ func (c *CodeUnit) BaseDir() string {
 	return c.baseDir
 }
 
-// Includes returns true if the code unit includes path. path can be relative to baseDir or absolute. path can be a directory or a file.
-// A non-existent path returns true iff its filepath.Dir is already in the file set.
+// Includes returns true if the code unit includes path. path can be relative to baseDir or absolute. path can be a directory or a file. A non-existent path returns
+// true iff its filepath.Dir is already in the file set.
 func (c *CodeUnit) Includes(path string) bool {
 	if path == "" {
 		return false
@@ -133,8 +135,8 @@ func (c *CodeUnit) IncludeEntireSubtree() {
 	})
 }
 
-// IncludeDir includes dirPath (and all files in it) in the code unit. dirPath must be a dir (either relative or absolute), and its parent must already be in the code unit. If includeSubtree is true,
-// all directories in dirPath are recursively included.
+// IncludeDir includes dirPath (and all files in it) in the code unit. dirPath must be a dir (either relative or absolute), and its parent must already be in the
+// code unit. If includeSubtree is true, all directories in dirPath are recursively included.
 func (c *CodeUnit) IncludeDir(dirPath string, includeSubtree bool) error {
 	dirAbs, err := c.normalizeExistingDir(dirPath)
 	if err != nil {
@@ -166,8 +168,8 @@ func (c *CodeUnit) IncludeDir(dirPath string, includeSubtree bool) error {
 	return nil
 }
 
-// IncludeSubtreeUnlessContains recursively includes all dirs in BaseDir() unless the directory contains files matched by any glob pattern. For example, in Go, we could do
-// IncludeSubtreeUnlessContains("*.go") which will not include nested packages, but will include supporting data directories.
+// IncludeSubtreeUnlessContains recursively includes all dirs in BaseDir() unless the directory contains files matched by any glob pattern. For example, in Go, we
+// could do IncludeSubtreeUnlessContains("*.go") which will not include nested packages, but will include supporting data directories.
 func (c *CodeUnit) IncludeSubtreeUnlessContains(globPattern ...string) error {
 	queue := []string{c.baseDir}
 

@@ -33,8 +33,7 @@ func (n *noopTerminal) Enter() error { return nil }
 
 func (n *noopTerminal) Exit() error { return nil }
 
-// mouseModeSetter is an internal hook used by the default terminal controller
-// to optionally enable mouse tracking based on Options.
+// mouseModeSetter is an internal hook used by the default terminal controller to optionally enable mouse tracking based on Options.
 type mouseModeSetter interface {
 	setMouseEnabled(enabled bool)
 }

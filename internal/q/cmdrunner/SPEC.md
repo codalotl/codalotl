@@ -120,29 +120,29 @@ type InputType string
 
 // InputType values.
 //
-// Path types can be absolute or relative to the root. The Any/Dir/File types are checked for existence (or Run will return an error). InputTypePathUnchecked is not checked for existence.
-// All paths are converted to absolute paths before being passed to the templates. Paths are allowed to be outside the root. No special symlink handling is performed.
-// InputTypePathDir can be a file in the input. If it is, it must exist as a file. But it is then converted to a directory using filepath.Dir().
+// Path types can be absolute or relative to the root. The Any/Dir/File types are checked for existence (or Run will return an error). InputTypePathUnchecked is
+// not checked for existence. All paths are converted to absolute paths before being passed to the templates. Paths are allowed to be outside the root. No special
+// symlink handling is performed. InputTypePathDir can be a file in the input. If it is, it must exist as a file. But it is then converted to a directory using filepath.Dir().
 const (
-	InputTypePathAny         InputType = "path_any"
-	InputTypePathDir         InputType = "path_dir"
-	InputTypePathFile        InputType = "path_file"
-	InputTypePathUnchecked   InputType = "path_unchecked"
-	InputTypeBool            InputType = "bool"
-	InputTypeString          InputType = "string"
-	InputTypeInt             InputType = "int"
+	InputTypePathAny       InputType = "path_any"
+	InputTypePathDir       InputType = "path_dir"
+	InputTypePathFile      InputType = "path_file"
+	InputTypePathUnchecked InputType = "path_unchecked"
+	InputTypeBool          InputType = "bool"
+	InputTypeString        InputType = "string"
+	InputTypeInt           InputType = "int"
 )
 ```
 
 ```go {api}
 type Runner struct {
 	inputSchema    map[string]InputType
-    requiredInputs []string
-    commands []Command
+	requiredInputs []string
+	commands       []Command
 }
 
-// Run runs all commands. An error is returned if inputs are invalid or don't match the schema, or if templating fails on any command. Any error encountered
-// during execing the command is encapsulated in Result.
+// Run runs all commands. An error is returned if inputs are invalid or don't match the schema, or if templating fails on any command. Any error encountered during
+// execing the command is encapsulated in Result.
 func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any) (Result, error)
 
 // AddCommand adds c to the runner.
@@ -156,26 +156,26 @@ type Command struct {
 	Args    []string
 	CWD     string // optional working directory for the command. Defaults to the root dir.
 
-    // If OutcomeFailIfAnyOutput, any output causes the command to have a failed outcome (ex: `gofmt -l` is blank when no-lint-issues and non-blank when lint-issues).
+	// If OutcomeFailIfAnyOutput, any output causes the command to have a failed outcome (ex: `gofmt -l` is blank when no-lint-issues and non-blank when lint-issues).
 	OutcomeFailIfAnyOutput bool
 
-    // If non-empty and the command's Output is empty, will add a `message` attribute to the opening tag in `ToXML` set to this value.
-    MessageIfNoOutput string
+	// If non-empty and the command's Output is empty, will add a `message` attribute to the opening tag in `ToXML` set to this value.
+	MessageIfNoOutput string
 
-    // If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.
-    ShowCWD bool
+	// If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.
+	ShowCWD bool
 
-    // Attrs are pairs of keys/values that will be added to the corresponding CommandResult's ToXML tag. len(Attrs) must be a mulitple of 2. Strings are NOT validated or escaped.
-    // For instance, ["dryrun", "true"] renders (for instance) `<command ok="true" dryrun="true">...</command>`.
-    //
-    // This can be used to communicate metadata to a consuming LLM about the command.
-    Attrs []string
+	// Attrs are pairs of keys/values that will be added to the corresponding CommandResult's ToXML tag. len(Attrs) must be a mulitple of 2. Strings are NOT validated
+	// or escaped. For instance, ["dryrun", "true"] renders (for instance) `<command ok="true" dryrun="true">...</command>`.
+	//
+	// This can be used to communicate metadata to a consuming LLM about the command.
+	Attrs []string
 }
 ```
 
 ```go {api}
 type Result struct {
-	Results []CommandResult	
+	Results []CommandResult
 }
 
 // Success returns true if all results are OutcomeSuccess.
@@ -184,11 +184,11 @@ func (r Result) Success() bool
 type ExecStatus string
 
 const (
-    ExecStatusCompleted     ExecStatus = "completed"       // process exited (any code)
-    ExecStatusFailedToStart ExecStatus = "failed_to_start" // ENOENT, EPERM, bad shebang, cwd missing
-    ExecStatusTimedOut      ExecStatus = "timed_out"
-    ExecStatusCanceled      ExecStatus = "canceled"
-    ExecStatusTerminated    ExecStatus = "terminated"      // by signal; see Signal
+	ExecStatusCompleted     ExecStatus = "completed"       // process exited (any code)
+	ExecStatusFailedToStart ExecStatus = "failed_to_start" // ENOENT, EPERM, bad shebang, cwd missing
+	ExecStatusTimedOut      ExecStatus = "timed_out"
+	ExecStatusCanceled      ExecStatus = "canceled"
+	ExecStatusTerminated    ExecStatus = "terminated" // by signal; see Signal
 )
 
 // Outcome is a semantic command-relative status. Examples:
@@ -204,27 +204,25 @@ const (
 type Outcome string
 
 const (
-    OutcomeSuccess Outcome = "success"
-    OutcomeFailed  Outcome = "failed"
+	OutcomeSuccess Outcome = "success"
+	OutcomeFailed  Outcome = "failed"
 )
 
 type CommandResult struct {
-    Command string // Command is the actual, rendered command ran.
-    Args []string // Args are the actual, rendered args used.
-    CWD string // CWD is the actual, rendered CWD used.
-
-    Output string // The stdout + stderr of the command.
-    ExecStatus ExecStatus
-    ExecError error // if an error is returned from exec'ing the command, it's set here.
-    ExitCode int
-    Signal string // if the command was terminated due to a signal (ex: "TERM")
-    Outcome Outcome
-    Duration time.Duration
+	Command    string   // Command is the actual, rendered command ran.
+	Args       []string // Args are the actual, rendered args used.
+	CWD        string   // CWD is the actual, rendered CWD used.
+	Output     string   // The stdout + stderr of the command.
+	ExecStatus ExecStatus
+	ExecError  error // if an error is returned from exec'ing the command, it's set here.
+	ExitCode   int
+	Signal     string // if the command was terminated due to a signal (ex: "TERM")
+	Outcome    Outcome
+	Duration   time.Duration
 }
 ```
 
 ```go {api}
-
 // ManifestDir returns the manifest dir for `path` and the path relative to that manifest dir.
 //
 // Conceptually equivalent to:

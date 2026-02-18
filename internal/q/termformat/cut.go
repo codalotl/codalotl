@@ -6,25 +6,18 @@ import (
 	"github.com/codalotl/codalotl/internal/q/uni"
 )
 
-// Cut removes `left` terminal-cell width from the start of `s` and `right`
-// terminal-cell width from the end of `s`, returning the remaining substring.
+// Cut removes `left` terminal-cell width from the start of `s` and `right` terminal-cell width from the end of `s`, returning the remaining substring.
 //
-// `s` must not contain newlines. `s` may contain ANSI escape sequences.
-// Recognized escape sequences are not counted toward width.
+// `s` must not contain newlines. `s` may contain ANSI escape sequences. Recognized escape sequences are not counted toward width.
 //
-// Width removal is grapheme-cluster-aware: if a grapheme cluster has width 2 and
-// only 1 width is to be removed, the entire cluster is removed.
+// Width removal is grapheme-cluster-aware: if a grapheme cluster has width 2 and only 1 width is to be removed, the entire cluster is removed.
 //
-// Cut preserves ANSI SGR styling: every remaining printable grapheme is rendered
-// with the same SGR state (bold/italic/underline/reverse, fg/bg color) that it
-// had at that position in the original `s`, even if the SGR sequences that
-// establish that state were entirely within the removed left/right portions.
+// Cut preserves ANSI SGR styling: every remaining printable grapheme is rendered with the same SGR state (bold/italic/underline/reverse, fg/bg color) that it had
+// at that position in the original `s`, even if the SGR sequences that establish that state were entirely within the removed left/right portions.
 //
-// The returned string is self-contained: if the result ends with a non-default
-// SGR state, Cut appends `ANSIReset` so styles don’t leak into subsequent output.
+// The returned string is self-contained: if the result ends with a non-default SGR state, Cut appends `ANSIReset` so styles don’t leak into subsequent output.
 //
-// If `left` or `right` is negative, it is treated as 0. If `left+right` removes
-// all width, Cut returns "".
+// If `left` or `right` is negative, it is treated as 0. If `left+right` removes all width, Cut returns "".
 //
 // Examples (using tags for readability; real strings contain ANSI escape codes):
 //   - Cut("hello", 1, 1) -> "ell"

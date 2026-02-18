@@ -25,8 +25,8 @@ var errNoSnippets = fmt.Errorf("no snippets")
 //   - modified files.
 //   - any error.
 //
-// The error returned is errNoSnippets if there are no snippets. A nil error is returned for non-fatal cases where we tried to get a fix but the LLM provided junk again. A real error
-// is returned in fatal cases (ex: failure to communicate with the LLM or an I/O error).
+// The error returned is errNoSnippets if there are no snippets. A nil error is returned for non-fatal cases where we tried to get a fix but the LLM provided junk
+// again. A real error is returned in fatal cases (ex: failure to communicate with the LLM or an I/O error).
 func fixDocumentation(pkg *gocode.Package, snippetErrors []updatedocs.SnippetError, codeContext string, redocument bool, options BaseOptions) (*gocode.Package, []string, []updatedocs.SnippetError, map[string]struct{}, error) {
 	if len(snippetErrors) == 0 {
 		panic("no snippet errors")

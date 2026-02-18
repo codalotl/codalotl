@@ -9,16 +9,16 @@ import (
 	"strings"
 )
 
-// PackageIdentifier is the identifier for the package-level documentation. Ideally, there is a single package doc comment in one file, but multiple files may include package comments.
-// To handle this:
+// PackageIdentifier is the identifier for the package-level documentation. Ideally, there is a single package doc comment in one file, but multiple files may include
+// package comments. To handle this:
 //   - PackageIdentifier returns the single package doc wherever it is, as long as there is only one.
 //   - If there are multiple, PackageIdentifier returns the "main" comment (the one in doc.go, or if that is missing, in <packagename>.go).
 //   - If there are multiple and none are in the canonical location, PackageIdentifier returns the lexicographically first by file name.
 //   - In all cases, PackageIdentifierPerFile still works and may identify the same package doc as PackageIdentifier.
 const PackageIdentifier = "package"
 
-// PackageIdentifierPerFile returns an identifier for package-level documentation, scoped to a specific file (fileName should have no path). This can be used to differentiate package
-// documentation snippets when there are multiple.
+// PackageIdentifierPerFile returns an identifier for package-level documentation, scoped to a specific file (fileName should have no path). This can be used to
+// differentiate package documentation snippets when there are multiple.
 func PackageIdentifierPerFile(fileName string) string {
 	return fmt.Sprintf("package:%s", fileName)
 }
@@ -49,8 +49,8 @@ func ambiguousIdentifier(identifier string, fileName string, line int, col int) 
 	return fmt.Sprintf("%s:%s:%d:%d", identifier, fileName, line, col)
 }
 
-// IsAnonymousIdentifier reports whether id is anonymous: either the plain "_" identifier, the form "_:file:line:col" from `var _ int`, or the form "*MyType._:file:line:col" from `func (m *MyType) _()`.
-// It does not include init functions.
+// IsAnonymousIdentifier reports whether id is anonymous: either the plain "_" identifier, the form "_:file:line:col" from `var _ int`, or the form "*MyType._:file:line:col"
+// from `func (m *MyType) _()`. It does not include init functions.
 func IsAnonymousIdentifier(id string) bool {
 	// Note: "_" check by itself is just for safety and robustness; this package doesn't currently use _ by itself.
 	if id == "_" || strings.HasPrefix(id, "_:") {
@@ -66,15 +66,16 @@ func IsInitIdentifier(id string) bool {
 	return id == "init" || strings.HasPrefix(id, "init:")
 }
 
-// IsAmbiguousIdentifier reports whether id is an anonymous identifier ("_") or an init identifier, even if disambiguated with "_:file:line:col" syntax. Ambiguous identifiers are anonymous
-// identifiers and init() functions.
+// IsAmbiguousIdentifier reports whether id is an anonymous identifier ("_") or an init identifier, even if disambiguated with "_:file:line:col" syntax. Ambiguous
+// identifiers are anonymous identifiers and init() functions.
 func IsAmbiguousIdentifier(id string) bool {
 	return IsAnonymousIdentifier(id) || IsInitIdentifier(id)
 }
 
 // FuncIdentifier returns an identifier for a function declaration.
 //
-// Normal functions look like "M", "T.M", or "*T.M" (ex: "*myType.DoThing"). Anonymous and ambiguous functions encode file/position information from fset (ex: "_:file.go:12:7"; "init:file.go:28:7").
+// Normal functions look like "M", "T.M", or "*T.M" (ex: "*myType.DoThing"). Anonymous and ambiguous functions encode file/position information from fset (ex: "_:file.go:12:7";
+// "init:file.go:28:7").
 func FuncIdentifier(receiverType string, funcName string, fileName string, line int, col int) string {
 	if receiverType == "" {
 		switch funcName {
@@ -96,15 +97,16 @@ func FuncIdentifier(receiverType string, funcName string, fileName string, line 
 
 // FuncIdentifierFromDecl builds an identifier for the given function or method declaration.
 //
-// Normal functions look like "M", "T.M", or "*T.M" (ex: "*myType.DoThing"). Anonymous and ambiguous functions encode file/position information from fset (ex: "_:file.go:12:7"; "init:file.go:28:7").
+// Normal functions look like "M", "T.M", or "*T.M" (ex: "*myType.DoThing"). Anonymous and ambiguous functions encode file/position information from fset (ex: "_:file.go:12:7";
+// "init:file.go:28:7").
 func FuncIdentifierFromDecl(funcDecl *ast.FuncDecl, fset *token.FileSet) string {
 	pos := fset.Position(funcDecl.Name.Pos())
 	receiverType, name := GetReceiverFuncName(funcDecl)
 	return FuncIdentifier(receiverType, name, pos.Filename, pos.Line, pos.Column)
 }
 
-// FuncIdentifierUse returns a function identifier (ex: "myType.myFunc"; for receiver-less: "myFunc"). These functions must be callable by (in other words, used by) other code, so it
-// cannot be an anonymous func or init func.
+// FuncIdentifierUse returns a function identifier (ex: "myType.myFunc"; for receiver-less: "myFunc"). These functions must be callable by (in other words, used
+// by) other code, so it cannot be an anonymous func or init func.
 func FuncIdentifierUse(receiverType string, funcName string) string {
 	if receiverType == "" {
 		return funcName
@@ -112,8 +114,9 @@ func FuncIdentifierUse(receiverType string, funcName string) string {
 	return fmt.Sprintf("%s.%s", receiverType, funcName)
 }
 
-// GetReceiverFuncName returns the receiver type and function name of a FuncDecl. If there is no receiver, ("", function name) is returned. Pointer receivers like "*MyType" are preserved.
-// Generic receivers such as "func (t *MyType[T]) Foo()" or "func (r MyType[T, U]) Bar()" are normalized by stripping the type parameter list, resulting in "*MyType" or "MyType".
+// GetReceiverFuncName returns the receiver type and function name of a FuncDecl. If there is no receiver, ("", function name) is returned. Pointer receivers like
+// "*MyType" are preserved. Generic receivers such as "func (t *MyType[T]) Foo()" or "func (r MyType[T, U]) Bar()" are normalized by stripping the type parameter
+// list, resulting in "*MyType" or "MyType".
 func GetReceiverFuncName(funcDecl *ast.FuncDecl) (string, string) {
 	if funcDecl.Name == nil {
 		panic("funcDecl.Name is nil in GetReceiverFuncName")
@@ -131,9 +134,9 @@ func GetReceiverFuncName(funcDecl *ast.FuncDecl) (string, string) {
 	return receiverType, name
 }
 
-// DeparenthesizeIdentifier normalizes identifiers like `(*SomeType).SomeMethod` to `*SomeType.SomeMethod`. It also strips any generic type argument lists from
-// the receiver side (ex: `(*SomeType[T]).SomeMethod` -> `*SomeType.SomeMethod`, `SomeType[T].SomeMethod` -> `SomeType.SomeMethod`). If ident cannot be parsed
-// or any errors are encountered while processing it, ident is returned unchanged.
+// DeparenthesizeIdentifier normalizes identifiers like `(*SomeType).SomeMethod` to `*SomeType.SomeMethod`. It also strips any generic type argument lists from the
+// receiver side (ex: `(*SomeType[T]).SomeMethod` -> `*SomeType.SomeMethod`, `SomeType[T].SomeMethod` -> `SomeType.SomeMethod`). If ident cannot be parsed or any
+// errors are encountered while processing it, ident is returned unchanged.
 //
 // Normally, using this method isn't needed. You should NOT need it on a regular basis. However, if some LLM insists on using the parenthesized identifier format
 // despite prompting, you can pass it through this method.
@@ -210,8 +213,8 @@ func splitParenthesizedOrGenericReceiver(ident string) (receiverExpr string, res
 	return receiver, selector, true
 }
 
-// extractReceiverType converts an AST expression describing a method receiver type into the canonical string representation used by this package. It preserves leading pointer stars
-// and selector expressions but strips any generic type parameter lists, as these are not part of the identifier. Examples:
+// extractReceiverType converts an AST expression describing a method receiver type into the canonical string representation used by this package. It preserves leading
+// pointer stars and selector expressions but strips any generic type parameter lists, as these are not part of the identifier. Examples:
 //
 //	*MyType[T]     -> *MyType
 //	MyType[T, U]   -> MyType

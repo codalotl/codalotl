@@ -7,10 +7,11 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 )
 
-// CountTokensSpecificModel returns the token count for text using the tokenizer appropriate for the model. For Anthropic models, it applies a 1.2x multiplier to approximate their tokenizer
-// behavior.
+// CountTokensSpecificModel returns the token count for text using the tokenizer appropriate for the model. For Anthropic models, it applies a 1.2x multiplier to
+// approximate their tokenizer behavior.
 //
-// NOTE: as of 2025/08/26, based on the models/providers we support (OpenAI - latest models, Grok3/4, Anthropic), we just use tokenizer.O200kBase for all models (with Anthropic adjustment).
+// NOTE: as of 2025/08/26, based on the models/providers we support (OpenAI - latest models, Grok3/4, Anthropic), we just use tokenizer.O200kBase for all models
+// (with Anthropic adjustment).
 func CountTokensSpecificModel(text string, modelID ModelID) int {
 	enc, err := tokenizer.Get(tokenizer.O200kBase)
 	if err != nil {

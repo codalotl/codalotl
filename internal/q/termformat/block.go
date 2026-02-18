@@ -6,8 +6,8 @@ import (
 	"github.com/codalotl/codalotl/internal/q/uni"
 )
 
-// BlockWidth calculates TextWidthWithANSICodes for each line in str and returns the max value. In other words, it's the number
-// of columns that printing a block of text would occupy.
+// BlockWidth calculates TextWidthWithANSICodes for each line in str and returns the max value. In other words, it's the number of columns that printing a block
+// of text would occupy.
 func BlockWidth(str string) int {
 	maxWidth := 0
 	lineStart := 0
@@ -58,8 +58,10 @@ const (
 //
 // Consider a str that is styled with ANSI codes. The styles may span lines. You may or may not want those styles to apply to the spaces added.
 //   - BlockNormalizeModeNaive just adds spaces to each line, with no special logic. Sometimes those spaces inherit styles, sometimes not. Best for an unstyled block.
-//   - BlockNormalizeModeTerminate ensures an ANSI reset is present on each line, if that line contains ongoing styles. Spaces added have default terminal styles. If styles were terminated, they're resumed on the next line.
-//   - BlockNormalizeModeExtend ensure spaces added inherit the style of the ongoing style of the line. This effectively means adding spaces before a reset, if a reset exists.
+//   - BlockNormalizeModeTerminate ensures an ANSI reset is present on each line, if that line contains ongoing styles. Spaces added have default terminal styles.
+//     If styles were terminated, they're resumed on the next line.
+//   - BlockNormalizeModeExtend ensure spaces added inherit the style of the ongoing style of the line. This effectively means adding spaces before a reset, if a
+//     reset exists.
 func BlockNormalizeWidth(str string, mode BlockNormalizeMode) string {
 	if str == "" {
 		return ""
@@ -133,7 +135,8 @@ func BlockNormalizeWidth(str string, mode BlockNormalizeMode) string {
 	return strings.Join(out, "\n")
 }
 
-// BlockStylePerLine ensures str's ANSI styles are applied and reset on a per-line basis. The returned string should be displayed identically in terminals to the original.
+// BlockStylePerLine ensures str's ANSI styles are applied and reset on a per-line basis. The returned string should be displayed identically in terminals to the
+// original.
 //
 // Examples (using tags for ease of human reading - actually ANSI codes):
 //   - "" -> ""
@@ -665,25 +668,25 @@ const (
 // Margin goes outside the border, padding inside.
 type BlockStyle struct {
 	BlockNormalizeMode BlockNormalizeMode
+	MarginLeft         int
+	MarginRight        int
+	MarginTop          int
+	MarginBottom       int
+	Margin             int // Margin is used for Margin{Left,Right,Top,Bottom}, if that margin is 0.
+	PaddingLeft        int
+	PaddingRight       int
+	PaddingTop         int
+	PaddingBottom      int
+	Padding            int // Padding is used for Padding{Left,Right,Top,Bottom}, if that padding is 0.
 
-	MarginLeft   int
-	MarginRight  int
-	MarginTop    int
-	MarginBottom int
-	Margin       int // Margin is used for Margin{Left,Right,Top,Bottom}, if that margin is 0.
-
-	PaddingLeft   int
-	PaddingRight  int
-	PaddingTop    int
-	PaddingBottom int
-	Padding       int // Padding is used for Padding{Left,Right,Top,Bottom}, if that padding is 0.
-
-	// If present, the final styled block will be exactly TotalWidth, including inner text, margin, padding, and border. If the text's block width + margin + padding + border is less than TotalWidth,
-	// spaces will be added to each line of the text using BlockNormalizeMode until the width is achieved. If TotalWidth is too small for the text+margin+padding+border, text is wrapped and the block is
-	// re-normalized using BlockNormalizeMode. If padding+margin+border is greater than TotalWidth, panic.
+	// If present, the final styled block will be exactly TotalWidth, including inner text, margin, padding, and border. If the text's block width + margin + padding
+	// + border is less than TotalWidth, spaces will be added to each line of the text using BlockNormalizeMode until the width is achieved. If TotalWidth is too small
+	// for the text+margin+padding+border, text is wrapped and the block is re-normalized using BlockNormalizeMode. If padding+margin+border is greater than TotalWidth,
+	// panic.
 	TotalWidth int
 
-	// If present, the final styled block will be at least MinTotalHeight. Rows with full of spaces will be added to text using BlockNormalizeMode until MinTotalHeight is achieved:
+	// If present, the final styled block will be at least MinTotalHeight. Rows with full of spaces will be added to text using BlockNormalizeMode until MinTotalHeight
+	// is achieved:
 	//   - BlockNormalizeModeNaive: just naively add line endings (\n or \r\n) with spaces
 	//   - BlockNormalizeModeTerminate: ensure styles are terminated, then add the rows.
 	//   - BlockNormalizeModeExtend: ensure rows inherit the styling of the last row, just before it was reset.
@@ -694,14 +697,18 @@ type BlockStyle struct {
 
 	BorderStyle BorderStyle
 
-	TextBackground    Color // if set, applies this bg color to the wrapped text block (including spaces added during normalization) using Style.Apply. The entire inner box (not margin/border/padding) will be this color bg.
+	// if set, applies this bg color to the wrapped text block (including spaces added during normalization) using Style.Apply. The entire inner box (not margin/border/padding)
+	// will be this color bg.
+	TextBackground Color
+
 	MarginBackground  Color // if set, bg color applied to any add margin.
 	PaddingBackground Color // if set, bg color applied to any add padding.
 	BorderForeground  Color // if set and BorderStyle != BorderStyleNone, fg color applied to border.
 	BorderBackground  Color // if set and BorderStyle != BorderStyleNone, bg color applied to border.
 }
 
-// Apply applies the block styles to str, which may already have formatting. If str is not already of equal width per row, it will be normalized with BlockNormalizeWidth. See BlockStyle for details.
+// Apply applies the block styles to str, which may already have formatting. If str is not already of equal width per row, it will be normalized with BlockNormalizeWidth.
+// See BlockStyle for details.
 //
 // The returned string's rows will all be equal width. Apply will panic if MaxTotalWidth cannot contain the specified padding/margin/border.
 func (bs BlockStyle) Apply(str string) string {

@@ -12,49 +12,36 @@ import (
 
 // TextArea lets user enter multiline text in a terminal area.
 //
-// Text is wrapped at word boundaries (or grapheme boundaries when needed to
-// prevent overflowing). Wrapping is based on display cells (uni.TextWidth).
+// Text is wrapped at word boundaries (or grapheme boundaries when needed to prevent overflowing). Wrapping is based on display cells (uni.TextWidth).
 //
-// The caret is rendered as a background color at the location where the next
-// character would be inserted. It does not blink.
+// The caret is rendered as a background color at the location where the next character would be inserted. It does not blink.
 type TextArea struct {
-	// Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
-	Placeholder string
-
+	Placeholder      string // Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
 	BackgroundColor  termformat.Color
 	ForegroundColor  termformat.Color
 	PlaceholderColor termformat.Color
+	CaretColor       termformat.Color // CaretColor is the color of the caret/cursor. It should be visible on the background color.
 
-	// CaretColor is the color of the caret/cursor. It should be visible on the background color.
-	CaretColor termformat.Color
-
-	// Prompt is the first characters to display in the upper-left of the box. The user's first character typed would immediately follow it.
-	// Subsequent lines don't have Prompt, but the user's text is aligned to the column of their first character.
+	// Prompt is the first characters to display in the upper-left of the box. The user's first character typed would immediately follow it. Subsequent lines don't have
+	// Prompt, but the user's text is aligned to the column of their first character.
 	Prompt string
 
-	width  int
-	height int
-
-	contents  string
-	caretByte int
-
-	displayOffset int
-
-	// preferredCol is the desired visual column (cells) used for vertical caret navigation.
-	preferredCol    int
+	width           int
+	height          int
+	contents        string
+	caretByte       int
+	displayOffset   int
+	preferredCol    int // preferredCol is the desired visual column (cells) used for vertical caret navigation.
 	hasPreferredCol bool
+	keyMap          *KeyMap
+	layoutDirty     bool
+	lastLayoutText  string
+	lastPrompt      string
+	lastWidth       int
+	segments        []displaySegment
 
-	keyMap *KeyMap
-
-	layoutDirty    bool
-	lastLayoutText string
-	lastPrompt     string
-	lastWidth      int
-
-	segments []displaySegment
-
-	// promptedLines mirrors segments, but includes the prompt on the first line and the hanging indent on subsequent lines.
-	// It is cached alongside segments and is used by View() so other callers can share identical wrapping logic.
+	// promptedLines mirrors segments, but includes the prompt on the first line and the hanging indent on subsequent lines. It is cached alongside segments and is used
+	// by View() so other callers can share identical wrapping logic.
 	promptedLines []string
 }
 
@@ -305,8 +292,8 @@ func (ta *TextArea) DisplayLines() int {
 	return len(ta.segments)
 }
 
-// ClippedDisplayContents returns the per-display-line user text that is currently displayed in the text area view (contains no \n).
-// It reflects Contents() after wrapping and vertical clipping.
+// ClippedDisplayContents returns the per-display-line user text that is currently displayed in the text area view (contains no \n). It reflects Contents() after
+// wrapping and vertical clipping.
 //
 // This is useful as a testing hook.
 func (ta *TextArea) ClippedDisplayContents() []string {
@@ -342,8 +329,8 @@ func (ta *TextArea) ClippedDisplayContents() []string {
 	return out
 }
 
-// CaretPositionByteOffset returns the position of the caret (the location of the next inserted character) in Contents(), measured in bytes.
-// This position must fall on a grapheme cluster boundary.
+// CaretPositionByteOffset returns the position of the caret (the location of the next inserted character) in Contents(), measured in bytes. This position must fall
+// on a grapheme cluster boundary.
 func (ta *TextArea) CaretPositionByteOffset() int {
 	if ta == nil {
 		return 0
@@ -1212,10 +1199,9 @@ func wrapLineWordBoundary(line string, width int) []wrapSeg {
 }
 
 type wrapGrapheme struct {
-	start int
-	end   int
-	width int
-
+	start    int
+	end      int
+	width    int
 	isSpace  bool
 	isAlnum  bool
 	hasWJ    bool // U+2060 WORD JOINER

@@ -7,8 +7,8 @@ import (
 	"sort"
 )
 
-// FilterGroupsForIdentifiers returns the groups containing at least one of the ids. The returned slice maintains the original input groups' order. Each group appears at most once in
-// the result.
+// FilterGroupsForIdentifiers returns the groups containing at least one of the ids. The returned slice maintains the original input groups' order. Each group appears
+// at most once in the result.
 func FilterGroupsForIdentifiers(groups []*IdentifierGroup, ids []string) []*IdentifierGroup {
 	if len(ids) == 0 || len(groups) == 0 {
 		return nil
@@ -73,8 +73,8 @@ func (g *IdentifierGroup) GetSnippet(id string) gocode.Snippet {
 	return snippet
 }
 
-// AllDirectDepsDocumented reports whether all of g's direct dependencies are documented. It checks only g.DirectDeps (not transitive dependencies) and treats external groups as documented
-// via their IsDocumented status.
+// AllDirectDepsDocumented reports whether all of g's direct dependencies are documented. It checks only g.DirectDeps (not transitive dependencies) and treats external
+// groups as documented via their IsDocumented status.
 func (g *IdentifierGroup) AllDirectDepsDocumented() bool {
 	for _, dd := range g.DirectDeps {
 		if !dd.IsDocumented {
@@ -86,20 +86,26 @@ func (g *IdentifierGroup) AllDirectDepsDocumented() bool {
 
 // GroupOptions configures how identifier groups are constructed for a package.
 type GroupOptions struct {
-	IncludePackageDocs          bool // if true, include package-level documentation groups
-	IncludeTestFiles            bool // if true, include identifiers and groups from test files
-	IncludeExternalDeps         bool // if true, include dependencies from external packages as snippet-only groups
-	ConsiderAmbiguousDocumented bool // if true, treat ambiguous identifiers (such as compiler-generated names) as documented to avoid requesting their documentation
-	ConsiderTestFuncsDocumented bool // if true, treat test functions as documented, excluding them from identifiers needing documentation
+	IncludePackageDocs  bool // if true, include package-level documentation groups
+	IncludeTestFiles    bool // if true, include identifiers and groups from test files
+	IncludeExternalDeps bool // if true, include dependencies from external packages as snippet-only groups
 
-	// If true, a const block with a comment above the block makes all consts documented, even if specs don't have documentation (ex: "// These consts...\nconst ( ... )").
+	// if true, treat ambiguous identifiers (such as compiler-generated names) as documented to avoid requesting their documentation
+	ConsiderAmbiguousDocumented bool
+
+	// if true, treat test functions as documented, excluding them from identifiers needing documentation
+	ConsiderTestFuncsDocumented bool
+
+	// If true, a const block with a comment above the block makes all consts documented, even if specs don't have documentation (ex: "// These consts...\nconst ( ...
+	// )").
 	ConsiderConstBlocksDocumenting bool
 
 	// CountTokens returns the token count for the relevant code bytes; if nil, a default implementation is used
 	CountTokens CountTokensFunc
 }
 
-// CountTokensFunc is a function that computes the token count of the provided code bytes. It is used to estimate context cost; callers should supply a model-appropriate implementation.
+// CountTokensFunc is a function that computes the token count of the provided code bytes. It is used to estimate context cost; callers should supply a model-appropriate
+// implementation.
 type CountTokensFunc func(code []byte) int
 
 // Groups returns identifier groups for pkg. Mod is used to look up external packages. See GroupOptions for additional input parameters.
@@ -398,9 +404,9 @@ func Groups(mod *gocode.Module, pkg *gocode.Package, options GroupOptions) ([]*I
 	return groups, nil
 }
 
-// addExternalGroups adds edges to each group in internalGroups' group.DirectDeps that represent external package documentation. The mod parameter must reference a non-cloned module
-// with full source code and is used to look up external packages. External groups are added only as dependencies to internalGroups - they are not appended to the groups slice, since
-// we do not need to document them.
+// addExternalGroups adds edges to each group in internalGroups' group.DirectDeps that represent external package documentation. The mod parameter must reference
+// a non-cloned module with full source code and is used to look up external packages. External groups are added only as dependencies to internalGroups - they are
+// not appended to the groups slice, since we do not need to document them.
 func addExternalGroups(mod *gocode.Module, graph *gograph.Graph, internalGroups []*IdentifierGroup, options GroupOptions) error {
 	// Cache for created external groups to avoid redundant work.
 	externalGroupsCache := make(map[gograph.ExternalID]*IdentifierGroup)

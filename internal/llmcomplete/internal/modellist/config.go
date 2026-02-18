@@ -58,8 +58,8 @@ type configProvider struct {
 	name     string // name is the provider identifier (ex: "openai") used for listing and error reporting.
 }
 
-// configs contains all embedded provider configurations in the order they are exposed. The order is stable and defines the iteration order for GetProviders and the names returned by
-// GetProviderNames.
+// configs contains all embedded provider configurations in the order they are exposed. The order is stable and defines the iteration order for GetProviders and
+// the names returned by GetProviderNames.
 var configs = []configProvider{
 	{rawBytes: openAIConfig, name: "openai"},
 	{rawBytes: xaiConfig, name: "xai"},
@@ -79,8 +79,8 @@ var configs = []configProvider{
 	{rawBytes: zaiConfig, name: "zai"},
 }
 
-// GetProviderNames returns the identifiers of all embedded providers in a stable order. The order matches the internal configs list. The returned slice is a fresh allocation when non-empty;
-// it is nil if no providers are configured.
+// GetProviderNames returns the identifiers of all embedded providers in a stable order. The order matches the internal configs list. The returned slice is a fresh
+// allocation when non-empty; it is nil if no providers are configured.
 func GetProviderNames() []string {
 	var out []string
 
