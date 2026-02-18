@@ -16,7 +16,7 @@ import (
 // NOTE: our current build system does not do this - we just bump versions with ./bump_release.sh, which edits this source file.
 var Version = "0.11.0"
 
-// RunOptions overrides standard I/O. If nil, defaults are used. Overriding is useful for testing.
+// In/Out/Err override standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
 // Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably
 // print to Stdout.

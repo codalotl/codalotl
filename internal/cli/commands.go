@@ -369,7 +369,15 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			return specmd.FormatDiffs(diffs, c.Out)
 		}),
 	}
-	specCmd.AddCommand(fmtCmd, diffCmd)
+	lsMismatchCmd := &qcli.Command{
+		Name:  "ls-mismatch",
+		Short: "List packages where SPEC.md differs from the implementation.",
+		Args:  qcli.ExactArgs(1),
+		Run: runWithConfig("spec_ls_mismatch", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			return runSpecLsMismatch(c.Context, c.Out, c.Args[0])
+		}),
+	}
+	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd)
 
 	panicCmd := &qcli.Command{
 		Name:   "panic",
