@@ -32,7 +32,7 @@ NOTE: in the future, we may want to give the LLM a `find` tool to execute more `
 
 ## Public API
 
-```go {api exact_docs}
+```go {api}
 // ClarifyAPI clarifies the API/docs for identifier found in path and returns an answer. An error is returned for invalid inputs, failure to communicate with the
 // LLM, etc. If the LLM can't find the identifier as it relates to path, it may say so in the answer, which doesn't produce an error.
 //   - sandboxAbsDir is used for tool construction and relative path resolution, not as a confinement mechanism.

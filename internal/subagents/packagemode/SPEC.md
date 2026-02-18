@@ -12,7 +12,7 @@ The toolset will be injected. It is expected to be `toolsets.PackageAgentTools`.
 
 ## Public API
 
-```go {api exact_docs}
+```go {api}
 // Run runs an agent with the given instructions and tools on a specific package.
 //
 // It returns the agent's last message. An error is returned for invalid inputs, failure to communicate with the LLM, etc. If the LLM can't make the updates as per

@@ -72,12 +72,12 @@ Finally, if we need to do an operation for each of K identifiers (ex: find bugs 
 ctxMap := NewContextsForIdentifiers(targets, ids)
 ```
 
-## Package documentation
+## Public API
 
 During their exploration phase, agent-based LLMs typically `ls` directories and `read` a few .go files in it, then use some form of `grep` to find related code that they're curious about. Instead, we can provide tools for them to get a 'lay of the land' much more quickly:
 
 
-```go {api exact_docs}
+```go {api}
 // PublicPackageDocumentation returns a godoc-like documentation string for the package:
 //   - Grouped by file (with file comment markers, ex: `// user.go:`).
 //   - Each file only has public snippets (no imports; no package-private vars/etc).
@@ -94,7 +94,7 @@ During their exploration phase, agent-based LLMs typically `ls` directories and 
 func PublicPackageDocumentation(pkg *gocode.Package, identifiers ...string) (string, error)
 ```
 
-```go {api exact_docs}
+```go {api}
 // InternalPackageSignatures returns a string for the package:
 //   - Grouped by file (with file comment markers, ex: `// user.go:`).
 //   - Each file has public and private snippets; includes imports; includes "floating" comments if includeDocs.
@@ -109,7 +109,7 @@ func InternalPackageSignatures(pkg *gocode.Package, tests bool, includeDocs bool
 
 ## Identifier usage
 
-```go {api exact_docs}
+```go {api}
 type IdentifierUsageRef struct {
 	ImportPath       string // using package's import path
 	AbsFilePath      string // using file's absolute path
@@ -120,7 +120,7 @@ type IdentifierUsageRef struct {
 }
 ```
 
-```go {api exact_docs}
+```go {api}
 // IdentifierUsage returns usages of identifier as defined in packageAbsDir (i.e., the abs dir of a package).
 //
 // By default (includeIntraPackageUsages=false), none of the returned usages will be from within the defining package itself. All usages will be from other packages
@@ -172,7 +172,7 @@ func createContext(pkg *gocode.Package) (string, error) {
 
 ## Package lists and module info
 
-```go {api exact_docs}
+```go {api}
 // PackageList returns a list of packages available in the current module. It identifies the go.mod file by starting at absDir and walking up until it finds a go.mod
 // file.
 //
@@ -207,7 +207,7 @@ func createContext(pkg *gocode.Package) (string, error) {
 func PackageList(absDir, search string, includeDepPackages bool) ([]string, string, error)
 ```
 
-```go {api exact_docs}
+```go {api}
 // ModuleInfo returns information about the current Go module. It identifies the go.mod file by starting at absDir and walking up until it finds a go.mod file.
 //
 // It returns an LLM context string that can be directly dropped into an LLM, and an error, if any.
