@@ -99,6 +99,7 @@ type SpecDiff struct {
 //   - Only PublicAPIGoCodeBlocks are checked.
 //   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
+//   - If the corresponding Go package cannot be loaded (ex: syntax error; no Go files), an error is returned.
 func (s *Spec) ImplemenationDiffs() ([]SpecDiff, error)
 
 // FormatDiffs formats and writes diffs to out, in a manner that would be helpful to a human or LLM in syncing up the spec and implementation.
