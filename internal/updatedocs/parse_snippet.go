@@ -91,11 +91,11 @@ type rejectionError struct {
 	error
 }
 
-// parseValidateSnippet parses *snippet* as if it were a Go source file and returns the parsed *ast.File, the token.FileSet used during parsing, plus the snippet's kind if it satisfies
-// the UpdateDocumentation rules. Otherwise it returns an error.
+// parseValidateSnippet parses *snippet* as if it were a Go source file and returns the parsed *ast.File, the token.FileSet used during parsing, plus the snippet's
+// kind if it satisfies the UpdateDocumentation rules. Otherwise it returns an error.
 //
-// parseValidateSnippet does NOT know about the target source file and so cannot validate that it can be safely matched to a source file. It only validates that the snippet could be
-// valid for *some* source file in a package with pkgName.
+// parseValidateSnippet does NOT know about the target source file and so cannot validate that it can be safely matched to a source file. It only validates that
+// the snippet could be valid for *some* source file in a package with pkgName.
 func parseValidateSnippet(pkgName, snippet string, options Options) (*ast.File, *token.FileSet, snippetKind, error) {
 	fset := token.NewFileSet()
 
@@ -190,7 +190,8 @@ func hasPackageDocComment(f *ast.File) bool {
 	return false
 }
 
-// classifyAndValidateDecls validates that f (known to have no package-doc comment) matches exactly one of the allowed declaration forms and returns the corresponding snippetKind.
+// classifyAndValidateDecls validates that f (known to have no package-doc comment) matches exactly one of the allowed declaration forms and returns the corresponding
+// snippetKind.
 func classifyAndValidateDecls(f *ast.File) (snippetKind, error) {
 	var funcCnt, typeCnt, varCnt, constCnt int
 
@@ -399,7 +400,8 @@ func validCommentsInType(expr ast.Expr) error {
 //
 // Caveat: it does not reflow struct/interface fields in non-type decls (ex: anonymous struct types in vars; inside functions).
 //
-// Important note: this will set the .Doc properties in the file ast, but it will not recalculate any offsets. Therefore, after this call, all offset information in file ast is invalid.
+// Important note: this will set the .Doc properties in the file ast, but it will not recalculate any offsets. Therefore, after this call, all offset information
+// in file ast is invalid.
 func reflowDocCommentsInAST(file *ast.File, options Options) {
 	const (
 		indentLevel = 0 // Package-level declarations have no indentation

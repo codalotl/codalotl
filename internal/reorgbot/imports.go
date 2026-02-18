@@ -31,7 +31,8 @@ func (ai aliasedImport) render() string {
 	return ai.Alias + " " + ai.PathLiteral
 }
 
-// importPlanner encapsulates import analysis and rendering across a reorganization phase (tests vs non-tests). It maintains state to ensure certain imports appear at least once.
+// importPlanner encapsulates import analysis and rendering across a reorganization phase (tests vs non-tests). It maintains state to ensure certain imports appear
+// at least once.
 type importPlanner struct {
 	pkg                        *gocode.Package            // package being reorganized
 	onlyTests                  bool                       // true if reorganizing test files, false otherwise
@@ -95,8 +96,7 @@ func snippetFileName(s gocode.Snippet) string {
 	return filepath.Base(s.Position().Filename)
 }
 
-// extractAliasedImportsFromFile returns all aliased (including dot) imports in f. Side-effect
-// imports (alias "_") are ignored.
+// extractAliasedImportsFromFile returns all aliased (including dot) imports in f. Side-effect imports (alias "_") are ignored.
 func extractAliasedImportsFromFile(f *gocode.File) []aliasedImport {
 	if f == nil || f.AST == nil {
 		return nil
@@ -118,8 +118,8 @@ func extractAliasedImportsFromFile(f *gocode.File) []aliasedImport {
 	return out
 }
 
-// extractSideEffectImportsFromFile returns all side-effect (blank identifier) import path literals
-// from the given file, e.g., "\"net/http/pprof\"". Returns nil if none.
+// extractSideEffectImportsFromFile returns all side-effect (blank identifier) import path literals from the given file, e.g., "\"net/http/pprof\"". Returns nil
+// if none.
 func extractSideEffectImportsFromFile(f *gocode.File) []string {
 	if f == nil || f.AST == nil {
 		return nil
@@ -140,8 +140,7 @@ func extractSideEffectImportsFromFile(f *gocode.File) []string {
 	return out
 }
 
-// writeImports writes all import sections for a destination file into buf.
-// It preserves original imports, adds aliased imports from moved snippets, ensures go:embed
+// writeImports writes all import sections for a destination file into buf. It preserves original imports, adds aliased imports from moved snippets, ensures go:embed
 // and phase side-effect imports are present at least once across files.
 func (p *importPlanner) writeImports(buf *bytes.Buffer, destFileName string, ids []string, idToSnippet map[string]gocode.Snippet, idToPreComments map[string][]string) {
 	// Preserve original import declarations (if any)
@@ -259,9 +258,8 @@ func (p *importPlanner) writeImports(buf *bytes.Buffer, destFileName string, ids
 	}
 }
 
-// extractImportDeclBytes returns the exact bytes of all import declarations in f, in
-// the order they appeared in the original file. If no imports exist or the file is
-// not parsed, it returns nil.
+// extractImportDeclBytes returns the exact bytes of all import declarations in f, in the order they appeared in the original file. If no imports exist or the file
+// is not parsed, it returns nil.
 func extractImportDeclBytes(f *gocode.File) []byte {
 	if f == nil || f.AST == nil || f.FileSet == nil || len(f.Contents) == 0 {
 		return nil

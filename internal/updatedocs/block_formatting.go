@@ -10,7 +10,9 @@ import (
 
 // blockFormattingEntity is a spec, field, or floating comment within a block/struct/interface.
 type blockFormattingEntity struct {
-	isFloater       bool // true if entity is just a floating comment. If it is, entityStartLine == codeStartLine == start of comment, endLine == end of comment, hasDoc == true
+	// true if entity is just a floating comment. If it is, entityStartLine == codeStartLine == start of comment, endLine == end of comment, hasDoc == true
+	isFloater bool
+
 	entityStartLine int  // start line of the code or doc
 	codeStartLine   int  // start line of the code
 	endLine         int  // end line of the code
@@ -18,8 +20,8 @@ type blockFormattingEntity struct {
 	docLine         int  // if hasDoc, first line of .Doc; otherwise 0
 }
 
-// getFormatEditsForBlockOrStruct returns edits to file so that blocks and type structs/interfaces are nicely formatted (ex: consts in a block with EOL comments don't have newlines
-// between them). Only those decls with identifiers are modified. File is assumed to be gofmt'ed already.
+// getFormatEditsForBlockOrStruct returns edits to file so that blocks and type structs/interfaces are nicely formatted (ex: consts in a block with EOL comments
+// don't have newlines between them). Only those decls with identifiers are modified. File is assumed to be gofmt'ed already.
 //
 // Rules:
 //   - If two adjacent one-line specs/fields have EOL comments (or no comment), then no blank lines should be between them.
@@ -190,7 +192,8 @@ func getFormatEditsForBlockOrStruct(file *gocode.File, identifiers []string) []L
 	return edits
 }
 
-// getDetatchedCommentsInFile returns a set of all comments in a file that are 1. top level (not in a function) and 2. not attached to .Doc or .Comment of any decl, spec, or field.
+// getDetatchedCommentsInFile returns a set of all comments in a file that are 1. top level (not in a function) and 2. not attached to .Doc or .Comment of any decl,
+// spec, or field.
 func getDetatchedCommentsInFile(file *gocode.File) map[*ast.CommentGroup]bool {
 	if file == nil || file.AST == nil || file.FileSet == nil {
 		return nil
@@ -316,9 +319,9 @@ func sortEntitiesBySourceOrder(entities []blockFormattingEntity) {
 
 // editsForLinesAndBlockEntities returns edits (in the form of blank line insertions and deletions) to nicely format value blocks and structs. See getFormatEditsForBlockOrStruct.
 //
-// Lines are the lines in the file, and each item in blockEntities is a spec, field, or floating comment. This function is called on a per-block basis (so all blockEntities belong to
-// the same block or struct). Note that .startLine is 1-based, while lines is 0-based. This function relies on the fact that lines is already gofmt, so it doesn't have to deal with
-// many types of formatting issues.
+// Lines are the lines in the file, and each item in blockEntities is a spec, field, or floating comment. This function is called on a per-block basis (so all blockEntities
+// belong to the same block or struct). Note that .startLine is 1-based, while lines is 0-based. This function relies on the fact that lines is already gofmt, so
+// it doesn't have to deal with many types of formatting issues.
 func editsForLinesAndBlockEntities(lines []string, blockEntities []blockFormattingEntity) []LineEdit {
 	var edits []LineEdit
 

@@ -48,8 +48,9 @@ type reflowGroup struct {
 	listItems []reflowGroup // all groups here must be reflowGroupKindListItem
 }
 
-// reflowDocComment reflows "//" doc comments to fit within softMaxCols columns, adding or removing newlines so that each line is approximately softMaxCols cols. Lines may exceed softMaxCols
-// if there's a long word or inline `code snippet`. Preserves multiple paragraphs and code blocks; preserves list structure while reflowing list item text to fit the width.
+// reflowDocComment reflows "//" doc comments to fit within softMaxCols columns, adding or removing newlines so that each line is approximately softMaxCols cols.
+// Lines may exceed softMaxCols if there's a long word or inline `code snippet`. Preserves multiple paragraphs and code blocks; preserves list structure while reflowing
+// list item text to fit the width.
 //
 // Output format: gofmt-style comment lines with indentLevel leading tabs.
 //   - Paragraph lines: indent + "// " + text
@@ -194,7 +195,8 @@ func reflowDocComment(doc string, indentLevel int, spacesPerTab int, softMaxCols
 	return strings.Join(result, "\n") + "\n"
 }
 
-// formatDocComment uses go/format to clean up a doc comment and put it in gofmt-approved format. It takes the comment lines and returns the formatted comment as a string, newline-terminated.
+// formatDocComment uses go/format to clean up a doc comment and put it in gofmt-approved format. It takes the comment lines and returns the formatted comment as
+// a string, newline-terminated.
 func formatDocComment(lines []string) (string, error) {
 	if len(lines) == 0 {
 		return "\n", nil
@@ -597,8 +599,8 @@ func removeBulletPrefix(s string) string {
 	return s
 }
 
-// reflowTextPreservingInlineCode soft-wraps text to approximately the specified width while preserving inline code blocks. Inline code blocks (text enclosed in backticks) are treated
-// as single units that cannot be broken; lines may exceed the width for long tokens or due to the soft wrap heuristic.
+// reflowTextPreservingInlineCode soft-wraps text to approximately the specified width while preserving inline code blocks. Inline code blocks (text enclosed in
+// backticks) are treated as single units that cannot be broken; lines may exceed the width for long tokens or due to the soft wrap heuristic.
 func reflowTextPreservingInlineCode(text string, width int) []string {
 	if width <= 0 {
 		return []string{text}

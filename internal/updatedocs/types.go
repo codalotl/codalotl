@@ -101,9 +101,10 @@ func updateTypeDoc(pkg *gocode.Package, ps *parsedSnippet, options Options) (*go
 	return newFile, nil, nil
 }
 
-// updateTypeDocOneComment returns new file contents by applying a single comment from ps to contents. If it does so, it *mutates* ps.ast by deleting the applied comment, which is okay
-// because we don't need ps.ast's byte positioning information. If there are no comments to apply (ex: no comments in snippet ast; TODO any more?), return values are (nil, false, nil,
-// nil). If a comment was applied, it returns (new contents, true, nil, nil). If a comment was rejected, it returns (nil, true, nil, nil).
+// updateTypeDocOneComment returns new file contents by applying a single comment from ps to contents. If it does so, it *mutates* ps.ast by deleting the applied
+// comment, which is okay because we don't need ps.ast's byte positioning information. If there are no comments to apply (ex: no comments in snippet ast; TODO any
+// more?), return values are (nil, false, nil, nil). If a comment was applied, it returns (new contents, true, nil, nil). If a comment was rejected, it returns (nil,
+// true, nil, nil).
 func updateTypeDocOneComment(contents []byte, contentsAST *ast.File, fileSet *token.FileSet, genDecl *ast.GenDecl, snippetTypeSpec *ast.TypeSpec, ps *parsedSnippet, options Options) ([]byte, bool, *SnippetError, error) {
 
 	// Here's how Go handles comments on types:
@@ -378,8 +379,8 @@ func updateTypeDocOneComment(contents []byte, contentsAST *ast.File, fileSet *to
 	return nil, false, nil, fmt.Errorf("did not find type decl")
 }
 
-// updateStructTypeDoc recursively handles struct field documentation updates. If a change was made, returns (new contents, true, nil). If a change was rejected, returns (nil, true,
-// nil). Otherwise, returns (nil, false, nil or error) -- aka, don't continue, we're done.
+// updateStructTypeDoc recursively handles struct field documentation updates. If a change was made, returns (new contents, true, nil). If a change was rejected,
+// returns (nil, true, nil). Otherwise, returns (nil, false, nil or error) -- aka, don't continue, we're done.
 func updateStructTypeDoc(contents []byte, fileSet *token.FileSet, sourceStruct *ast.StructType, snippetStruct *ast.StructType, ps *parsedSnippet, options Options) ([]byte, bool, error) {
 	if snippetStruct.Fields == nil {
 		return nil, false, nil
@@ -508,8 +509,8 @@ func updateStructTypeDoc(contents []byte, fileSet *token.FileSet, sourceStruct *
 	return nil, false, nil
 }
 
-// updateInterfaceTypeDoc handles interface documentation updates. If a change was made, returns (new contents, true, nil). If a change was rejected, returns (nil, true, nil). Otherwise
-// returns (nil, false, nil or error).
+// updateInterfaceTypeDoc handles interface documentation updates. If a change was made, returns (new contents, true, nil). If a change was rejected, returns (nil,
+// true, nil). Otherwise returns (nil, false, nil or error).
 func updateInterfaceTypeDoc(contents []byte, fileSet *token.FileSet, sourceInterface *ast.InterfaceType, snippetInterface *ast.InterfaceType, ps *parsedSnippet, options Options) ([]byte, bool, error) {
 	if snippetInterface.Methods == nil {
 		return nil, false, nil
@@ -629,8 +630,8 @@ func updateInterfaceTypeDoc(contents []byte, fileSet *token.FileSet, sourceInter
 	return nil, false, nil
 }
 
-// identsKey generates a key for names in a struct field. ex: Foo, Bar int -> "Foo&Bar"; A int -> "A". Useful to map between two structs' fields. TODO: can idents be _? If so, what
-// breaks? Like multiple _ in a var block.
+// identsKey generates a key for names in a struct field. ex: Foo, Bar int -> "Foo&Bar"; A int -> "A". Useful to map between two structs' fields. TODO: can idents
+// be _? If so, what breaks? Like multiple _ in a var block.
 func identsKey(idents []*ast.Ident) string {
 	if len(idents) == 0 {
 		panic("expected some idents")
@@ -801,18 +802,19 @@ func fieldKey(field *ast.Field) string {
 	panic("fieldKey: unexpectedly didn't find case for field.Type")
 }
 
-// typesSameShape returns true if source and snippet are both types of the same kind (ex: both int; both struct) and, in the case of struct, snippet's struct fields are a subset of
-// source's fields. This func is intended to be used for the purpose of applying documentation to source via a snippet. We allow fields to be elided in the snippet if there are no docs
-// we intend to apply with it. However, we want to make sure that the snippet is compatible with the source.
+// typesSameShape returns true if source and snippet are both types of the same kind (ex: both int; both struct) and, in the case of struct, snippet's struct fields
+// are a subset of source's fields. This func is intended to be used for the purpose of applying documentation to source via a snippet. We allow fields to be elided
+// in the snippet if there are no docs we intend to apply with it. However, we want to make sure that the snippet is compatible with the source.
 //
-// Examples, with stylized syntax for brevity: typesSameShape(int, int) -> true typesSameShape(int, int64) -> false typesSameShape(int, struct{}) -> false typesSameShape(int, myIntType)
-// -> false // even if 'type myIntType int' typesSameShape(struct{}, struct{}) -> true typesSameShape(struct{Foo int, Bar string}, struct{Foo int, Bar string}) -> true typesSameShape(struct{Foo
-// int, Bar string}, struct{Bar string}) -> true typesSameShape(struct{Foo int, Bar string}, struct{}) -> true typesSameShape(struct{Foo int, Bar string}, struct{Baz int}) -> false
-// // Baz is not present in source's struct typesSameShape(struct{Foo int, Bar string}, struct{Foo string}) -> false // Foo is a different type typesSameShape(struct{Foo int, Bar string},
-// struct{Foo int, Bar string, Baz int}) -> false // Baz is not present in source's struct typesSameShape(struct{Foo struct{Bar string Baz string}}, struct{Foo struct{Bar string}})
-// -> true // nested structs are handled recursively typesSameShape(struct{Foo int}, Bar) -> false // even if Bar is type struct {Foo int}, they are different types typesSameShape(interface{},
-// interface{}) -> true typesSameShape(interface{Foo()}, interface{}) -> true typesSameShape(interface{Foo()}, interface{Foo()}) -> true typesSameShape(interface{Foo(), Bar()}, interface{Foo()})
-// -> true typesSameShape(interface{Foo()}, interface{Foo(), Bar()}) -> false typesSameShape(interface{Foo(int)}, interface{Foo(int)}) -> true typesSameShape(interface{Foo(int)}, interface{Foo(string)})
+// Examples, with stylized syntax for brevity: typesSameShape(int, int) -> true typesSameShape(int, int64) -> false typesSameShape(int, struct{}) -> false typesSameShape(int,
+// myIntType) -> false // even if 'type myIntType int' typesSameShape(struct{}, struct{}) -> true typesSameShape(struct{Foo int, Bar string}, struct{Foo int, Bar
+// string}) -> true typesSameShape(struct{Foo int, Bar string}, struct{Bar string}) -> true typesSameShape(struct{Foo int, Bar string}, struct{}) -> true typesSameShape(struct{Foo
+// int, Bar string}, struct{Baz int}) -> false // Baz is not present in source's struct typesSameShape(struct{Foo int, Bar string}, struct{Foo string}) -> false
+// // Foo is a different type typesSameShape(struct{Foo int, Bar string}, struct{Foo int, Bar string, Baz int}) -> false // Baz is not present in source's struct
+// typesSameShape(struct{Foo struct{Bar string Baz string}}, struct{Foo struct{Bar string}}) -> true // nested structs are handled recursively typesSameShape(struct{Foo
+// int}, Bar) -> false // even if Bar is type struct {Foo int}, they are different types typesSameShape(interface{}, interface{}) -> true typesSameShape(interface{Foo()},
+// interface{}) -> true typesSameShape(interface{Foo()}, interface{Foo()}) -> true typesSameShape(interface{Foo(), Bar()}, interface{Foo()}) -> true typesSameShape(interface{Foo()},
+// interface{Foo(), Bar()}) -> false typesSameShape(interface{Foo(int)}, interface{Foo(int)}) -> true typesSameShape(interface{Foo(int)}, interface{Foo(string)})
 // -> false typesSameShape(interface{Foo(int)}, interface{Foo(int, string)}) -> false typesSameShape(interface{Foo(int, string)}, interface{Foo(int)}) -> false typesSameShape(struct{A,
 // B int}, struct{A, B int}) -> true // multiple field names for same field must match exactly typesSameShape(struct{A, B int}, struct{A int}) -> false // see above
 func typesSameShape(source ast.Expr, snippet ast.Expr) bool {

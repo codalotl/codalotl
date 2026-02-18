@@ -177,9 +177,8 @@ func askLLMForOrganization(ctx string, oneshot bool, opts BaseOptions) (map[stri
 	return org, nil
 }
 
-// ResortFile sort's pkg's fileName file only. fileName must be a file in pkg or pkg.TestPackage (ex: "foo.go").
-// It does the by asking the LLM to re-order the snippets of a file.
-// The imports and everything above the package keyword remain identical.
+// ResortFile sort's pkg's fileName file only. fileName must be a file in pkg or pkg.TestPackage (ex: "foo.go"). It does the by asking the LLM to re-order the snippets
+// of a file. The imports and everything above the package keyword remain identical.
 func ResortFile(pkg *gocode.Package, fileName string, options ReorgOptions) error {
 	// Determine which package owns the file
 	p := pkg
@@ -249,9 +248,8 @@ func askLLMForFileSort(ctx string, opts BaseOptions) ([]string, error) {
 	return fileSort, nil
 }
 
-// applyResort rewrites a single file in p by preserving its header (package doc and clause)
-// and import section verbatim, and re-emitting all other snippets in sortedIDs order.
-// Package doc snippets in sortedIDs are ignored when emitting, since they are part of the preserved header.
+// applyResort rewrites a single file in p by preserving its header (package doc and clause) and import section verbatim, and re-emitting all other snippets in sortedIDs
+// order. Package doc snippets in sortedIDs are ignored when emitting, since they are part of the preserved header.
 func applyResort(p *gocode.Package, fileName string, sortedIDs []string, idToSnippet map[string]gocode.Snippet) error {
 	// Locate file (main or test package)
 	file := p.Files[fileName]

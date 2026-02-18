@@ -7,9 +7,9 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 )
 
-// updatePackageDoc updates package documentation (comment above the package keyword) based on the parsedSnippet. If successful, it will save to disk a new or existing .go file with
-// updated docs, and return the updated File. This helper does not construct or return a SnippetError; callers handle snippet-level failures. If there was a program or I/O error, we'll
-// return an overall error.
+// updatePackageDoc updates package documentation (comment above the package keyword) based on the parsedSnippet. If successful, it will save to disk a new or existing
+// .go file with updated docs, and return the updated File. This helper does not construct or return a SnippetError; callers handle snippet-level failures. If there
+// was a program or I/O error, we'll return an overall error.
 func updatePackageDoc(pkg *gocode.Package, ps *parsedSnippet, options Options) (*gocode.File, *SnippetError, error) {
 	if ps.kind != snippetKindPackageDoc {
 		panic("expected package doc kind")

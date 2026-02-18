@@ -20,41 +20,18 @@ var (
 	// //go:embed fragments/header.md
 	// genericHeader string
 
-	//go:embed fragments/header-codex.md
-	codexHeader string
-
-	//go:embed fragments/sub-header.md
-	capabilitiesSection string
-
-	//go:embed fragments/personality.md
-	personalitySection string
-
-	//go:embed fragments/code-editing.md
-	codeEditingSection string
-
-	//go:embed fragments/sandbox-approvals-safety.md
-	sandboxApprovalsSafetySection string
-
-	//go:embed fragments/tools.md
-	toolsSection string
-
-	//go:embed fragments/planning.md
-	planningSection string
-
-	//go:embed fragments/git-and-version-control.md
-	gitAndVersionControlSection string
-
-	//go:embed fragments/final-message.md
-	finalMessageSection string
-
-	//go:embed fragments/message-formatting.md
-	messageFormattingSection string
-
-	//go:embed fragments/go-package-mode.md
-	goPackageModeSection string
-
-	//go:embed fragments/go-package-mode-update_usage.md
-	goPackageModeUpdateUsageSection string
+	codexHeader                     string //go:embed fragments/header-codex.md
+	capabilitiesSection             string //go:embed fragments/sub-header.md
+	personalitySection              string //go:embed fragments/personality.md
+	codeEditingSection              string //go:embed fragments/code-editing.md
+	sandboxApprovalsSafetySection   string //go:embed fragments/sandbox-approvals-safety.md
+	toolsSection                    string //go:embed fragments/tools.md
+	planningSection                 string //go:embed fragments/planning.md
+	gitAndVersionControlSection     string //go:embed fragments/git-and-version-control.md
+	finalMessageSection             string //go:embed fragments/final-message.md
+	messageFormattingSection        string //go:embed fragments/message-formatting.md
+	goPackageModeSection            string //go:embed fragments/go-package-mode.md
+	goPackageModeUpdateUsageSection string //go:embed fragments/go-package-mode-update_usage.md
 )
 
 var (
@@ -97,9 +74,8 @@ func getConfig() (agentName string, modelID llmmodel.ModelID) {
 	return agentName, modelID
 }
 
-// GetFullPrompt returns a prompt using the globally configured agent name and model.
-// Different models have are best prompted in different ways, often based on how they were RL'ed. This method
-// returns a prompt well-suited for that model.
+// GetFullPrompt returns a prompt using the globally configured agent name and model. Different models have are best prompted in different ways, often based on how
+// they were RL'ed. This method returns a prompt well-suited for that model.
 func GetFullPrompt() string {
 	agentName, modelID := getConfig()
 	data := map[string]any{
@@ -137,9 +113,8 @@ const (
 	GoPackageModePromptKindUpdateUsage GoPackageModePromptKind = "update_usage"
 )
 
-// GetGoPackageModeModePrompt returns a system prompt using the globally configured agent name and model that
-// extends GetFullPrompt with a package mode of the requested kind (GoPackageModePromptKindFull is the full,
-// default package mode).
+// GetGoPackageModeModePrompt returns a system prompt using the globally configured agent name and model that extends GetFullPrompt with a package mode of the requested
+// kind (GoPackageModePromptKindFull is the full, default package mode).
 //
 // To make subagents with a subset of tools/capabilities, add a GoPackageModePromptKind with a custom explanation.
 func GetGoPackageModeModePrompt(kind GoPackageModePromptKind) string {

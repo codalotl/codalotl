@@ -432,8 +432,8 @@ func identifiersInFile(file *ast.File, fset *token.FileSet) []string {
 	return identifiers
 }
 
-// Returns (ANY identifier in snippetDecl is in sourceDecl, ALL identifiers in snippetDecl are in sourceDecl). An identifier only matches if the whole spec's identifier list matches
-// exactly (using identsKey).
+// Returns (ANY identifier in snippetDecl is in sourceDecl, ALL identifiers in snippetDecl are in sourceDecl). An identifier only matches if the whole spec's identifier
+// list matches exactly (using identsKey).
 //
 // Example:
 //

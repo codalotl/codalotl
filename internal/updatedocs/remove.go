@@ -10,11 +10,11 @@ import (
 	"strings"
 )
 
-// RemoveDocumentation removes package-level documentation across files in pkg and any associated test packages, and writes any modified files to disk. If no file is changed, it returns
-// pkg unchanged; otherwise it reloads and returns the updated package. See RemoveDocumentationInFile for more specific rules.
+// RemoveDocumentation removes package-level documentation across files in pkg and any associated test packages, and writes any modified files to disk. If no file
+// is changed, it returns pkg unchanged; otherwise it reloads and returns the updated package. See RemoveDocumentationInFile for more specific rules.
 //
-// The identifiers slice controls what to strip. If identifiers is empty, all package-level documentation is removed (including the package comment; use gocode.PackageIdentifier to
-// target it). Otherwise, the specified identifiers are stripped.
+// The identifiers slice controls what to strip. If identifiers is empty, all package-level documentation is removed (including the package comment; use gocode.PackageIdentifier
+// to target it). Otherwise, the specified identifiers are stripped.
 //
 // Only files that change are written. An error is returned if pkg is nil, if a file fails to update or persist, or if reloading the package fails.
 func RemoveDocumentation(pkg *gocode.Package, identifiers []string) (*gocode.Package, error) {
@@ -76,18 +76,18 @@ func RemoveDocumentation(pkg *gocode.Package, identifiers []string) (*gocode.Pac
 
 // RemoveDocumentationInFile removes documentation attached to package-level identifiers from file.AST and updates file.Contents. It does not write the file to disk.
 //
-// If identifiers is nil, documentation for all package-level identifiers is removed, including the package comment (use gocode.PackageIdentifier to refer to it). If identifiers is
-// non-nil, only identifiers named in the slice are affected; an empty slice removes nothing.
+// If identifiers is nil, documentation for all package-level identifiers is removed, including the package comment (use gocode.PackageIdentifier to refer to it).
+// If identifiers is non-nil, only identifiers named in the slice are affected; an empty slice removes nothing.
 //
 // The function removes:
 //   - Leading Doc comments on the package (file.AST.Doc), GenDecls, ValueSpecs, TypeSpecs, and FuncDecls.
 //   - End-of-line comments attached to GenDecls and their Specs.
 //
-// Within any affected comment group, build tags, //go:<directive> lines (e.g., //go:build, //go:generate, //go:embed), cgo directives (// #cgo), nolint directives, and “generated”
-// markers are preserved. Comments not attached to those nodes (ex: inside function bodies) are left intact.
+// Within any affected comment group, build tags, //go:<directive> lines (e.g., //go:build, //go:generate, //go:embed), cgo directives (// #cgo), nolint directives,
+// and “generated” markers are preserved. Comments not attached to those nodes (ex: inside function bodies) are left intact.
 //
-// In var/const/type blocks, only the matching spec loses its comments; the declaration’s Doc is removed only when removing all docs or when the declaration contains a single spec
-// that matches. For struct and interface types, removing the type’s docs also removes comments from struct fields and interface methods.
+// In var/const/type blocks, only the matching spec loses its comments; the declaration’s Doc is removed only when removing all docs or when the declaration contains
+// a single spec that matches. For struct and interface types, removing the type’s docs also removes comments from struct fields and interface methods.
 //
 // It returns true if any comment group was altered or deleted. An error is returned only if formatting the updated AST fails.
 func RemoveDocumentationInFile(file *gocode.File, identifiers []string) (bool, error) {
@@ -334,8 +334,8 @@ func removeFieldDocs(fields *ast.FieldList, removedComments map[*ast.CommentGrou
 	}
 }
 
-// filterDocGroup removes all comments from cg that are not generated markers or special comment tags (ex: //go:build; //nolint; //revive:...; etc). It returns the new comment group
-// and whether any modification occurred.
+// filterDocGroup removes all comments from cg that are not generated markers or special comment tags (ex: //go:build; //nolint; //revive:...; etc). It returns the
+// new comment group and whether any modification occurred.
 func filterDocGroup(cg *ast.CommentGroup) (*ast.CommentGroup, bool) {
 	if cg == nil {
 		return nil, false
@@ -365,9 +365,9 @@ var lintPrefixes = []string{
 
 var genRE = regexp.MustCompile(`(?m)^//\s*Code generated .* DO NOT EDIT\.?`)
 
-// shouldPreserveComment reports whether text belongs to one of the special comment categories that must not be removed while pruning: build tags (//go:build or the legacy // +build
-// form), any //go:<directive> such as //go:generate or //go:embed, cgo directives (// #cgo), nolint / static-analysis directives (//nolint, //lint:ignore, //#nosec, //revive:...),
-// and the standard "Code generated ... DO NOT EDIT" marker.
+// shouldPreserveComment reports whether text belongs to one of the special comment categories that must not be removed while pruning: build tags (//go:build or
+// the legacy // +build form), any //go:<directive> such as //go:generate or //go:embed, cgo directives (// #cgo), nolint / static-analysis directives (//nolint,
+// //lint:ignore, //#nosec, //revive:...), and the standard "Code generated ... DO NOT EDIT" marker.
 func shouldPreserveComment(text string) bool {
 	t := strings.TrimSpace(text)
 

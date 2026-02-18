@@ -34,16 +34,18 @@ type Options struct {
 	ReflowTabWidth int  // only if Reflow; width of tab measured in spaces; if 0, defaults to 4
 	ReflowMaxWidth int  // only if Reflow; when to wrap text; if 0, defaults to 80
 
-	// If RejectUpdates is true, we will not replace any existing documentation for a symbol. Note that a single snippet may update some docs but others may be rejected (ex: a struct type
-	// with many fields; a value block with many specs).
+	// If RejectUpdates is true, we will not replace any existing documentation for a symbol. Note that a single snippet may update some docs but others may be rejected
+	// (ex: a struct type with many fields; a value block with many specs).
 	RejectUpdates bool
 }
 
-// UpdateDocumentation updates documentation in pkg based on the supplied snippets and writes any changes to disk. Snippets may be raw Go declarations or wrapped in triple backticks,
-// and can target package docs, functions/methods, types (including fields/methods on structs/interfaces), and vars/consts (single decls or blocks).
+// UpdateDocumentation updates documentation in pkg based on the supplied snippets and writes any changes to disk. Snippets may be raw Go declarations or wrapped
+// in triple backticks, and can target package docs, functions/methods, types (including fields/methods on structs/interfaces), and vars/consts (single decls or
+// blocks).
 //
-// Each snippet is unwrapped, parsed, and validated for general Go correctness, then matched to the package and applied. Comment text may be reflowed when options.Reflow is true (defaults:
-// ReflowMaxWidth=80, ReflowTabWidth=4). If options.RejectUpdates is true, existing documentation for matching symbols will not be replaced; such cases are reported as partial rejections.
+// Each snippet is unwrapped, parsed, and validated for general Go correctness, then matched to the package and applied. Comment text may be reflowed when options.Reflow
+// is true (defaults: ReflowMaxWidth=80, ReflowTabWidth=4). If options.RejectUpdates is true, existing documentation for matching symbols will not be replaced; such
+// cases are reported as partial rejections.
 //
 // The function can partially succeed:
 //   - newPkg is a reloaded Package when at least one file was updated; otherwise it is nil and callers should continue using the original pkg.
@@ -191,9 +193,9 @@ func hasNoDocs(group *ast.CommentGroup) bool {
 	return group == nil || len(group.List) == 0
 }
 
-// commentBlockFromGroup returns the comment block, newline (\n) terminated. No docs return "". leadingNewline puts "\n" at the front, so that the string can be inserted as a Doc comment,
-// giving breathing room from whatever is above it (multiple newlines are eventually collapsed to one by a gofmt step in this package). There is no leading whitespace inserted here
-// (that's fixed, again, by gofmt).
+// commentBlockFromGroup returns the comment block, newline (\n) terminated. No docs return "". leadingNewline puts "\n" at the front, so that the string can be
+// inserted as a Doc comment, giving breathing room from whatever is above it (multiple newlines are eventually collapsed to one by a gofmt step in this package).
+// There is no leading whitespace inserted here (that's fixed, again, by gofmt).
 func commentBlockFromGroup(group *ast.CommentGroup, leadingNewline bool) string {
 	if hasNoDocs(group) {
 		return ""
@@ -217,8 +219,8 @@ func commentBlockFromGroup(group *ast.CommentGroup, leadingNewline bool) string 
 	return buf.String()
 }
 
-// eolCommentFromGroup returns "" for no EOL comment, a non-newline-terminated string (ex: " // some comment"), or panics if this is unexpectedly multiline. The returned string always
-// has exactly one leading space before the original comment text, which may begin with "//" or "/*".
+// eolCommentFromGroup returns "" for no EOL comment, a non-newline-terminated string (ex: " // some comment"), or panics if this is unexpectedly multiline. The
+// returned string always has exactly one leading space before the original comment text, which may begin with "//" or "/*".
 func eolCommentFromGroup(group *ast.CommentGroup) string {
 	if hasNoDocs(group) {
 		return ""
@@ -229,7 +231,8 @@ func eolCommentFromGroup(group *ast.CommentGroup) string {
 	return " " + strings.TrimSpace(group.List[0].Text)
 }
 
-// spliceStringIntoBytes returns a copy of b with b[spliceStart:spliceEnd] replaced by str. It panics if spliceStart < 0, spliceEnd < spliceStart, or spliceEnd > len(b).
+// spliceStringIntoBytes returns a copy of b with b[spliceStart:spliceEnd] replaced by str. It panics if spliceStart < 0, spliceEnd < spliceStart, or spliceEnd >
+// len(b).
 func spliceStringIntoBytes(b []byte, str string, spliceStart, spliceEnd int) []byte {
 	if spliceStart < 0 || spliceEnd < spliceStart || spliceEnd > len(b) {
 		panic("invalid splice range")
@@ -245,9 +248,9 @@ func spliceStringIntoBytes(b []byte, str string, spliceStart, spliceEnd int) []b
 	return out
 }
 
-// deleteRangeInBytes returns a copy of b with b[spliceStart:spliceEnd] deleted. If deleteLeftWhitespace, it will also delete whitespace at spliceStart-1 and leftwards until it gets
-// to a non-whitespace character, or AFTER it deletes a single newline. This allows it to delete .Doc comments, including the line they are on. It panics if spliceStart < 0, spliceEnd
-// < spliceStart, or spliceEnd > len(b).
+// deleteRangeInBytes returns a copy of b with b[spliceStart:spliceEnd] deleted. If deleteLeftWhitespace, it will also delete whitespace at spliceStart-1 and leftwards
+// until it gets to a non-whitespace character, or AFTER it deletes a single newline. This allows it to delete .Doc comments, including the line they are on. It
+// panics if spliceStart < 0, spliceEnd < spliceStart, or spliceEnd > len(b).
 func deleteRangeInBytes(b []byte, spliceStart, spliceEnd int, deleteLeftWhitespace bool) []byte {
 	if spliceStart < 0 || spliceEnd < spliceStart || spliceEnd > len(b) {
 		panic("invalid splice range")

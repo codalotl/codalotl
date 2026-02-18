@@ -24,23 +24,19 @@ const (
 	rgContextLines = "4"
 )
 
-// ClarifyAPI clarifies the API/docs for identifier found in path and returns an answer. An error is returned for invalid
-// inputs, failure to communicate with the LLM, etc. If the LLM can't find the identifier as it relates to path, it may say
-// so in the answer, which doesn't produce an error.
+// ClarifyAPI clarifies the API/docs for identifier found in path and returns an answer. An error is returned for invalid inputs, failure to communicate with the
+// LLM, etc. If the LLM can't find the identifier as it relates to path, it may say so in the answer, which doesn't produce an error.
 //   - sandboxAbsDir is used for tool construction and relative path resolution, not as a confinement mechanism.
 //   - authorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind).
 //   - toolset toolsetinterface.Toolset are the tools available for use. Injected to cut dependencies. Should be ls/read_file.
-//   - path is absolute or relative to sandboxAbsDir. If absolute, it may be outside of sandboxAbsDir (for instance, when
-//     clarifying dep packages or stdlib packages).
+//   - path is absolute or relative to sandboxAbsDir. If absolute, it may be outside of sandboxAbsDir (for instance, when clarifying dep packages or stdlib packages).
 //   - identifier is language-specific and opaque. For Go, it looks like "MyVar", "*MyType.MyFunc", etc.
 //
-// When clarifying a dep package outside of the sandbox, and authorizer is not nil, it is recommended for UX reasons (but
-// not required) to construct an authorizer to allow reads. There are many ways to do this - one is to create a new authorizer
-// with sandbox root of the dep; another is to add a 'grant' to the authorizer.
+// When clarifying a dep package outside of the sandbox, and authorizer is not nil, it is recommended for UX reasons (but not required) to construct an authorizer
+// to allow reads. There are many ways to do this - one is to create a new authorizer with sandbox root of the dep; another is to add a 'grant' to the authorizer.
 //
-// Example question: "What does the first return parameter (a string) look like in the ClarifyAPI func?". Example answer
-// that might be returned: "The ClarifyAPI func returns a human- or LLM-readable answer to the specified question. It will
-// be the empty string if an error occurred."
+// Example question: "What does the first return parameter (a string) look like in the ClarifyAPI func?". Example answer that might be returned: "The ClarifyAPI
+// func returns a human- or LLM-readable answer to the specified question. It will be the empty string if an error occurred."
 func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbsDir string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, path string, identifier string, question string) (string, error) {
 	if agentCreator == nil {
 		return "", errors.New("agentCreator is required")

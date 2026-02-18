@@ -332,12 +332,13 @@ func ReflowAllDocumentation(pkg *gocode.Package, options ...Options) (*gocode.Pa
 
 // ReflowDocumentation will reflow identifiers' documentation in pkg (nil/empty identifiers reflows nothing). Reflowing means three things:
 //  1. Wrap text at options.ReflowMaxWidth (also unwrap if it was previously wrapped at lesser width).
-//  2. Convert fields/specs to EOL vs. Doc comments based on whether they can fit, and based on maximizing uniformity (ex: if everything is a .Doc comment except for one field, make
-//     that field a .Doc comment as well).
+//  2. Convert fields/specs to EOL vs. Doc comments based on whether they can fit, and based on maximizing uniformity (ex: if everything is a .Doc comment except
+//     for one field, make that field a .Doc comment as well).
 //  3. Adjust newline whitespace within struct types and value blocks (ex: a .Doc comment should have a blank line above it, not code).
 //
-// options is only used for ReflowMaxWidth and ReflowTabWidth - other fields are unused. It returns a reloaded Package if anything was modified (just like UpdateDocumentation), any
-// identifiers that were NOT successfully reflowed, and any hard error (ex: I/O error). Identifiers that were not successfully reflowed will NOT cause this function to return an error.
+// options is only used for ReflowMaxWidth and ReflowTabWidth - other fields are unused. It returns a reloaded Package if anything was modified (just like UpdateDocumentation),
+// any identifiers that were NOT successfully reflowed, and any hard error (ex: I/O error). Identifiers that were not successfully reflowed will NOT cause this function
+// to return an error.
 func ReflowDocumentation(pkg *gocode.Package, identifiers []string, options ...Options) (*gocode.Package, []string, error) {
 	if len(identifiers) == 0 {
 		return pkg, nil, nil
