@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -20,6 +21,7 @@ const ToolNameRunTests = "run_tests"
 type toolRunTests struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
+	lintSteps     []lints.Step
 }
 
 type runTestsParams struct {
@@ -28,11 +30,12 @@ type runTestsParams struct {
 	Verbose  bool   `json:"verbose"`
 }
 
-func NewRunTestsTool(authorizer authdomain.Authorizer) llmstream.Tool {
+func NewRunTestsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolRunTests{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
+		lintSteps:     lintSteps,
 	}
 }
 
@@ -87,6 +90,15 @@ func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	if err != nil {
 		return coretools.NewToolErrorResult(call, fmt.Sprintf("failed to run go test: %v", err), err)
 	}
+	lintOutput, err := runLints(ctx, t.sandboxAbsDir, absPkgPath, t.lintSteps, lints.SituationTests)
+	if err != nil {
+		return coretools.NewToolErrorResult(call, fmt.Sprintf("failed to run lints: %v", err), err)
+	}
+	if strings.HasSuffix(output, "\n") {
+		output += lintOutput
+	} else {
+		output += "\n" + lintOutput
+	}
 
 	return llmstream.ToolResult{
 		CallID: call.CallID,
@@ -96,8 +108,8 @@ func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 }
 
-// RunTests returns the output of the `go test` command, optionally verbose, optionally matched with namePattern. ctx controls
-// command cancellation; if nil, context.Background is used. The result is wrapped in a <test-status> XML tag:
+// RunTests returns the output of the `go test` command, optionally verbose, optionally matched with namePattern. ctx controls command cancellation; if nil, context.Background
+// is used. The result is wrapped in a <test-status> XML tag:
 //
 //	<test-status ok="true">
 //	$ go test -run TestMyTest ./codeai/tools

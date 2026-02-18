@@ -22,8 +22,8 @@ type Options = toolsetinterface.Options
 
 // CoreAgentTools offers tools similar to a Codex-style agent: read_file, ls, apply_patch, shell, and update_plan.
 //
-// sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's `authorizer` that actually **implements** the jail. The purpose
-// of accepting sandboxDir here is so that relative paths received by the LLM can be made absolute.
+// sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's authorizer that actually implements the jail. The purpose of accepting
+// sandboxDir here is so that relative paths received by the LLM can be made absolute.
 func CoreAgentTools(opts Options) ([]llmstream.Tool, error) {
 	var err error
 	opts, err = normalizeSandboxDir(opts)
@@ -56,7 +56,7 @@ func normalizeSandboxDir(opts Options) (Options, error) {
 }
 
 // PackageAgentTools offers tools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch, update_plan
+//   - core tools: read_file, ls, apply_patch, skill_shell, update_plan
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests, run_project_tests
 //   - package tools: module_info, get_public_api, clarify_public_api, get_usage, update_usage, change_api
 //
@@ -90,7 +90,7 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 		coretools.NewUpdatePlanTool(authorizer),
 		exttools.NewDiagnosticsTool(authorizer),
 		exttools.NewFixLintsTool(authorizer, lintSteps),
-		exttools.NewRunTestsTool(authorizer),
+		exttools.NewRunTestsTool(authorizer, lintSteps),
 		exttools.NewRunProjectTestsTool(opts.GoPkgAbsDir, authorizer),
 		pkgtools.NewModuleInfoTool(authorizer),
 		pkgtools.NewGetPublicAPITool(authorizer),
@@ -123,7 +123,7 @@ func SimpleReadOnlyTools(opts Options) ([]llmstream.Tool, error) {
 }
 
 // LimitedPackageAgentTools offers more limited tools than PackageAgentTools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch (not included: update_plan)
+//   - core tools: read_file, ls, apply_patch, skill_shell (not included: update_plan)
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests (not included: run_project_tests)
 //   - package tools: get_public_api, clarify_public_api (not included: get_usage, update_usage)
 //
@@ -156,7 +156,7 @@ func LimitedPackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 		coretools.NewSkillShellTool(authorizer),
 		exttools.NewDiagnosticsTool(authorizer),
 		exttools.NewFixLintsTool(authorizer, lintSteps),
-		exttools.NewRunTestsTool(authorizer),
+		exttools.NewRunTestsTool(authorizer, lintSteps),
 		pkgtools.NewGetPublicAPITool(authorizer),
 		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
 	}

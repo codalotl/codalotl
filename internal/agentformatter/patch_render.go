@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
@@ -70,6 +71,10 @@ func (f *textTUIFormatter) cliApplyPatchToolCall(e agent.Event) string {
 }
 
 func (f *textTUIFormatter) tuiApplyPatchToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
+	if e.ToolResult != nil && applypatch.IsInvalidPatch(e.ToolResult.SourceErr) {
+		return f.tuiApplyPatchToolCompleteInvalidPatch(e, width)
+	}
+
 	changes, err := extractApplyPatchChanges(e.ToolCall)
 	if err != nil || len(changes) == 0 {
 		return f.tuiGenericToolComplete(e, width, success, "", output)
@@ -93,6 +98,10 @@ func (f *textTUIFormatter) tuiApplyPatchToolComplete(e agent.Event, width int, s
 }
 
 func (f *textTUIFormatter) cliApplyPatchToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
+	if e.ToolResult != nil && applypatch.IsInvalidPatch(e.ToolResult.SourceErr) {
+		return f.cliApplyPatchToolCompleteInvalidPatch(e)
+	}
+
 	changes, err := extractApplyPatchChanges(e.ToolCall)
 	if err != nil || len(changes) == 0 {
 		return f.cliGenericToolComplete(e, success, "", output)
@@ -108,6 +117,76 @@ func (f *textTUIFormatter) cliApplyPatchToolComplete(e agent.Event, success bool
 			tail = output
 		}
 		sections = append(sections, f.renderApplyPatchChangeCLI(bullet, change, tail))
+	}
+	return strings.Join(sections, "\n")
+}
+
+func (f *textTUIFormatter) tuiApplyPatchToolCompleteInvalidPatch(e agent.Event, width int) string {
+	changes := bestEffortApplyPatchChanges(e.ToolCall)
+	if len(changes) == 0 {
+		var builder strings.Builder
+		builder.WriteString(f.tuiBulletLine(width, colorRed,
+			textSegment{text: "Apply Patch", style: runeStyle{color: colorColorful, bold: true}},
+		))
+		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
+			text:          "Failed: LLM supplied an invalid patch.",
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		}})
+		return builder.String()
+	}
+
+	for i := range changes {
+		changes[i].lines = nil
+	}
+
+	var builder strings.Builder
+	for idx, change := range changes {
+		if idx > 0 {
+			builder.WriteByte('\n')
+		}
+		var tail []toolOutputLine
+		if idx == len(changes)-1 {
+			tail = []toolOutputLine{{
+				text:          "Failed: LLM supplied an invalid patch.",
+				style:         runeStyle{color: colorAccent},
+				highlightCode: false,
+			}}
+		}
+		f.renderApplyPatchChangeTUI(&builder, width, colorRed, change, tail)
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliApplyPatchToolCompleteInvalidPatch(e agent.Event) string {
+	changes := bestEffortApplyPatchChanges(e.ToolCall)
+	if len(changes) == 0 {
+		lines := []string{
+			f.cliBulletLine(colorRed, textSegment{text: "Apply Patch", style: runeStyle{color: colorColorful, bold: true}}),
+		}
+		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
+			text:          "Failed: LLM supplied an invalid patch.",
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		}})...)
+		return strings.Join(lines, "\n")
+	}
+
+	for i := range changes {
+		changes[i].lines = nil
+	}
+
+	var sections []string
+	for idx, change := range changes {
+		var tail []toolOutputLine
+		if idx == len(changes)-1 {
+			tail = []toolOutputLine{{
+				text:          "Failed: LLM supplied an invalid patch.",
+				style:         runeStyle{color: colorAccent},
+				highlightCode: false,
+			}}
+		}
+		sections = append(sections, f.renderApplyPatchChangeCLI(colorRed, change, tail))
 	}
 	return strings.Join(sections, "\n")
 }
@@ -252,6 +331,45 @@ func extractApplyPatchSource(call *llmstream.ToolCall) (string, bool) {
 		}
 	}
 	return input, true
+}
+
+func bestEffortApplyPatchChanges(call *llmstream.ToolCall) []patchChange {
+	source, ok := extractApplyPatchSource(call)
+	if !ok {
+		return nil
+	}
+	source = strings.ReplaceAll(source, "\r\n", "\n")
+	lines := strings.Split(source, "\n")
+
+	var changes []patchChange
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		switch {
+		case strings.HasPrefix(line, "*** Add File: "):
+			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Add File: "))
+			if path == "" {
+				continue
+			}
+			changes = append(changes, patchChange{kind: patchChangeAdd, path: path})
+		case strings.HasPrefix(line, "*** Delete File: "):
+			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Delete File: "))
+			if path == "" {
+				continue
+			}
+			changes = append(changes, patchChange{kind: patchChangeDelete, path: path})
+		case strings.HasPrefix(line, "*** Update File: "):
+			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Update File: "))
+			if path == "" {
+				continue
+			}
+			toPath := ""
+			if i+1 < len(lines) && strings.HasPrefix(lines[i+1], "*** Move to: ") {
+				toPath = strings.TrimSpace(strings.TrimPrefix(lines[i+1], "*** Move to: "))
+			}
+			changes = append(changes, patchChange{kind: patchChangeEdit, path: path, toPath: toPath})
+		}
+	}
+	return changes
 }
 
 func parseApplyPatch(input string) ([]patchChange, error) {

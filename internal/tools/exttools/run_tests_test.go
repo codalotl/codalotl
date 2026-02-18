@@ -4,8 +4,11 @@ import (
 	"context"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,7 +42,16 @@ func TestRunTests_Run_VerboseSingleTest(t *testing.T) {
 		`),
 	}, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewRunTestsTool(auth)
+		tool := NewRunTestsTool(auth, []lints.Step{
+			{
+				ID:         "custom-lint",
+				Situations: []lints.Situation{lints.SituationTests},
+				Check: &cmdrunner.Command{
+					Command: "sh",
+					Args:    []string{"-c", "echo custom-lint"},
+				},
+			},
+		})
 		call := llmstream.ToolCall{
 			CallID: "call1",
 			Name:   ToolNameRunTests,
@@ -56,5 +68,9 @@ func TestRunTests_Run_VerboseSingleTest(t *testing.T) {
 		assert.NotContains(t, res.Result, "TestOther")
 		assert.Contains(t, res.Result, "PASS")
 		assert.Contains(t, res.Result, "</test-status>")
+		assert.Contains(t, res.Result, "<lint-status")
+		assert.Contains(t, res.Result, "custom-lint")
+		assert.Contains(t, res.Result, "</test-status>\n<lint-status")
+		assert.Less(t, strings.Index(res.Result, "</test-status>"), strings.Index(res.Result, "<lint-status"))
 	})
 }

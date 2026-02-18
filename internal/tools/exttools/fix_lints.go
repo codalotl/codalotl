@@ -5,11 +5,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
-	"strings"
 )
 
 //go:embed fix_lints.md
@@ -77,7 +78,7 @@ func (t *toolFixLints) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		}
 	}
 
-	output, err := FixLints(ctx, t.sandboxAbsDir, absPkgPath, t.lintSteps)
+	output, err := runLints(ctx, t.sandboxAbsDir, absPkgPath, t.lintSteps, lints.SituationFix)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
@@ -88,16 +89,6 @@ func (t *toolFixLints) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		Type:   call.Type,
 		Result: output,
 	}
-}
-
-// FixLints runs the configured lint pipeline against targetPath (file or directory), returning a lint-status XML block.
-func FixLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step) (string, error) {
-	return runLints(ctx, sandboxDir, targetPath, steps, lints.SituationFix)
-}
-
-// CheckLints runs the configured lint pipeline in check mode against targetPath (file or directory), returning a lint-status XML block.
-func CheckLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step) (string, error) {
-	return runLints(ctx, sandboxDir, targetPath, steps, lints.SituationCheck)
 }
 
 func runLints(ctx context.Context, sandboxDir string, targetPath string, steps []lints.Step, situation lints.Situation) (string, error) {

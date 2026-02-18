@@ -112,8 +112,8 @@ func usedBy(pkg *gocode.Package) ([]string, error)
 //   - A list of all packages that import your package.
 //   - Current state of build errors, tests, and lints.
 //
-// If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by sections. Instead, it
-// emits the corresponding status blocks with a "not run" message.
+// If skipAllChecks is true, this function does not run diagnostics, tests, lints, or used-by sections. Instead, it emits the corresponding status blocks with a
+// "not run" message.
 //
 // lintSteps controls which lints are run. If lintSteps is nil, lints.DefaultSteps() is used.
 func Create(pkg *gocode.Package, lintSteps []lints.Step, skipAllChecks bool) (string, error)

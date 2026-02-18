@@ -16,8 +16,20 @@ import (
 func TestResolveSteps_Defaults(t *testing.T) {
 	steps, err := ResolveSteps(nil, 0)
 	require.NoError(t, err)
-	require.Len(t, steps, 1)
+	require.Len(t, steps, 3)
 	require.Equal(t, "gofmt", steps[0].ID)
+	require.Equal(t, "spec-fmt", steps[1].ID)
+	require.Equal(t, []Situation{SituationPatch, SituationFix}, steps[1].Situations)
+	require.Nil(t, steps[1].Check)
+	require.NotNil(t, steps[1].Fix)
+	require.Equal(t, "{{ .moduleDir }}", steps[1].Fix.CWD)
+	require.Contains(t, steps[1].Fix.Args, "{{ .relativePackageDir }}")
+	require.Equal(t, "spec-diff", steps[2].ID)
+	require.Equal(t, []Situation{SituationTests, SituationFix}, steps[2].Situations)
+	require.NotNil(t, steps[2].Check)
+	require.Nil(t, steps[2].Fix)
+	require.Equal(t, "{{ .moduleDir }}", steps[2].Check.CWD)
+	require.Contains(t, steps[2].Check.Args, "{{ .relativePackageDir }}")
 
 	require.Equal(t, "{{ .moduleDir }}", steps[0].Check.CWD)
 	require.Contains(t, steps[0].Check.Args, "{{ .relativePackageDir }}")
@@ -55,7 +67,9 @@ func TestResolveSteps_Disable(t *testing.T) {
 	}
 	steps, err := ResolveSteps(cfg, 120)
 	require.NoError(t, err)
-	require.Len(t, steps, 0)
+	require.Len(t, steps, 2)
+	require.Equal(t, "spec-fmt", steps[0].ID)
+	require.Equal(t, "spec-diff", steps[1].ID)
 }
 
 func TestResolveSteps_ExtendCanAddPreconfiguredReflowByID(t *testing.T) {
@@ -68,19 +82,22 @@ func TestResolveSteps_ExtendCanAddPreconfiguredReflowByID(t *testing.T) {
 
 	steps, err := ResolveSteps(cfg, 123)
 	require.NoError(t, err)
-	require.Len(t, steps, 2)
+	require.Len(t, steps, 4)
 	require.Equal(t, "gofmt", steps[0].ID)
-	require.Equal(t, "reflow", steps[1].ID)
+	require.Equal(t, "spec-fmt", steps[1].ID)
+	require.Equal(t, "spec-diff", steps[2].ID)
+	require.Equal(t, "reflow", steps[3].ID)
+	reflow := steps[3]
 
-	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
-	require.Contains(t, steps[1].Check.Args, "{{ .relativePackageDir }}")
-	require.Contains(t, steps[1].Check.Args, "--check")
-	require.Contains(t, steps[1].Check.Args, "--width=123")
-	require.NotContains(t, steps[1].Fix.Args, "--check")
-	require.Contains(t, steps[1].Fix.Args, "--width=123")
+	require.Equal(t, "{{ .moduleDir }}", reflow.Check.CWD)
+	require.Contains(t, reflow.Check.Args, "{{ .relativePackageDir }}")
+	require.Contains(t, reflow.Check.Args, "--check")
+	require.Contains(t, reflow.Check.Args, "--width=123")
+	require.NotContains(t, reflow.Fix.Args, "--check")
+	require.Contains(t, reflow.Fix.Args, "--width=123")
 
 	// The preconfigured reflow step is intentionally excluded from initial.
-	require.NotContains(t, steps[1].Situations, SituationInitial)
+	require.NotContains(t, reflow.Situations, SituationInitial)
 }
 
 func TestResolveSteps_ExtendAllowsOverridingSituationsForPreconfiguredStep(t *testing.T) {
@@ -93,9 +110,9 @@ func TestResolveSteps_ExtendAllowsOverridingSituationsForPreconfiguredStep(t *te
 
 	steps, err := ResolveSteps(cfg, 123)
 	require.NoError(t, err)
-	require.Len(t, steps, 2)
-	require.Equal(t, "reflow", steps[1].ID)
-	require.Equal(t, []Situation{SituationFix}, steps[1].Situations)
+	require.Len(t, steps, 4)
+	require.Equal(t, "reflow", steps[3].ID)
+	require.Equal(t, []Situation{SituationFix}, steps[3].Situations)
 }
 
 func TestResolveSteps_ExtendCanAddPreconfiguredStaticcheckByID(t *testing.T) {
@@ -108,13 +125,15 @@ func TestResolveSteps_ExtendCanAddPreconfiguredStaticcheckByID(t *testing.T) {
 
 	steps, err := ResolveSteps(cfg, 120)
 	require.NoError(t, err)
-	require.Len(t, steps, 2)
+	require.Len(t, steps, 4)
 	require.Equal(t, "gofmt", steps[0].ID)
-	require.Equal(t, "staticcheck", steps[1].ID)
-	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
-	require.Contains(t, steps[1].Check.Args, "./{{ .relativePackageDir }}")
-	require.Nil(t, steps[1].Situations)
-	require.Nil(t, steps[1].Fix)
+	require.Equal(t, "spec-fmt", steps[1].ID)
+	require.Equal(t, "spec-diff", steps[2].ID)
+	require.Equal(t, "staticcheck", steps[3].ID)
+	require.Equal(t, "{{ .moduleDir }}", steps[3].Check.CWD)
+	require.Contains(t, steps[3].Check.Args, "./{{ .relativePackageDir }}")
+	require.Nil(t, steps[3].Situations)
+	require.Nil(t, steps[3].Fix)
 }
 
 func TestResolveSteps_ExtendCanAddPreconfiguredGolangciLintByID(t *testing.T) {
@@ -127,13 +146,15 @@ func TestResolveSteps_ExtendCanAddPreconfiguredGolangciLintByID(t *testing.T) {
 
 	steps, err := ResolveSteps(cfg, 120)
 	require.NoError(t, err)
-	require.Len(t, steps, 2)
+	require.Len(t, steps, 4)
 	require.Equal(t, "gofmt", steps[0].ID)
-	require.Equal(t, "golangci-lint", steps[1].ID)
-	require.Equal(t, "{{ .moduleDir }}", steps[1].Check.CWD)
-	require.Contains(t, steps[1].Check.Args, "./{{ .relativePackageDir }}")
-	require.Contains(t, steps[1].Fix.Args, "--fix")
-	require.Nil(t, steps[1].Situations)
+	require.Equal(t, "spec-fmt", steps[1].ID)
+	require.Equal(t, "spec-diff", steps[2].ID)
+	require.Equal(t, "golangci-lint", steps[3].ID)
+	require.Equal(t, "{{ .moduleDir }}", steps[3].Check.CWD)
+	require.Contains(t, steps[3].Check.Args, "./{{ .relativePackageDir }}")
+	require.Contains(t, steps[3].Fix.Args, "--fix")
+	require.Nil(t, steps[3].Situations)
 }
 
 func TestResolveSteps_AllowsDuplicateUnsetID(t *testing.T) {
@@ -204,8 +225,75 @@ func TestResolveSteps_ReflowWidthErrorsOnMultiple(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLints_Reflows(t *testing.T) {
+	t.Run("default false", func(t *testing.T) {
+		require.False(t, (Lints{}).Reflows())
+	})
+
+	t.Run("extend with reflow", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeExtend,
+			Steps: []Step{
+				{ID: "reflow"},
+			},
+		}
+		require.True(t, cfg.Reflows())
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		cfg := Lints{
+			Mode:    ConfigModeExtend,
+			Disable: []string{"reflow"},
+			Steps: []Step{
+				{ID: "reflow"},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+
+	t.Run("situations empty means never runs", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{}},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+
+	t.Run("situations initial only means never runs", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{SituationInitial}},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+
+	t.Run("situations fix means runs", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{SituationFix}},
+			},
+		}
+		require.True(t, cfg.Reflows())
+	})
+
+	t.Run("invalid config false", func(t *testing.T) {
+		cfg := Lints{
+			Mode: ConfigModeReplace,
+			Steps: []Step{
+				{ID: "reflow", Situations: []Situation{"bogus"}},
+			},
+		}
+		require.False(t, cfg.Reflows())
+	})
+}
+
 func TestRun_NoSteps(t *testing.T) {
-	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, SituationCheck)
+	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
 }
@@ -214,6 +302,171 @@ func TestRun_SkipsReflowDuringInitial(t *testing.T) {
 	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), []Step{{ID: "reflow"}}, SituationInitial)
 	require.NoError(t, err)
 	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+
+func TestRun_SpecDiffSkippedWhenNoSpecMD(t *testing.T) {
+	sandboxDir, target, _ := writeTempModule(t)
+	step, ok := preconfiguredStep("spec-diff", 0)
+	require.True(t, ok)
+
+	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationFix)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+func TestRun_SpecFmtSkippedWhenNoSpecMD(t *testing.T) {
+	sandboxDir, target, _ := writeTempModule(t)
+	step, ok := preconfiguredStep("spec-fmt", 0)
+	require.True(t, ok)
+	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationPatch)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+func TestRun_SpecFmtAlsoSkippedWhenNoSpecMD_InFix(t *testing.T) {
+	sandboxDir, target, _ := writeTempModule(t)
+	step, ok := preconfiguredStep("spec-fmt", 0)
+	require.True(t, ok)
+	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationFix)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+
+func TestRun_SpecDiffRunsInProcess(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+
+	// Minimal implementation for the package so specmd can diff against it.
+	err := os.WriteFile(filepath.Join(target, "tgt.go"), []byte("package tgt\n"), 0o644)
+	require.NoError(t, err)
+
+	// A SPEC with a declared public API that is missing in the implementation.
+	spec := strings.Join([]string{
+		"# spec",
+		"",
+		"## Public API",
+		"",
+		"```go {api}",
+		"func Foo() {",
+		"}",
+		"```",
+		"",
+	}, "\n")
+	err = os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
+	require.NoError(t, err)
+
+	// Even if the configured command is something else, `spec-diff` is executed
+	// in-process.
+	steps := []Step{{
+		ID:         "spec-diff",
+		Situations: []Situation{SituationFix},
+		Check:      helperCmd("should-not-run", 0, false),
+	}}
+
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationFix)
+	require.NoError(t, err)
+
+	require.Contains(t, out, `lint-status ok="false"`)
+	require.Contains(t, out, "\n$ codalotl spec diff "+relativePackageDir+"\n")
+	require.Contains(t, out, `mode="check"`)
+	require.NotContains(t, out, `mode="fix"`)
+	require.Contains(t, out, "Foo")
+	require.Contains(t, out, "Fixing SPEC diff failures")
+	require.NotContains(t, out, "should-not-run")
+}
+func TestRun_SpecFmtRunsInProcess(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+	spec := strings.Join([]string{
+		"# spec",
+		"",
+		"```go",
+		"func  Foo( ) {",
+		"}",
+		"```",
+		"",
+	}, "\n")
+	err := os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
+	require.NoError(t, err)
+	steps := []Step{{
+		ID:         "spec-fmt",
+		Situations: []Situation{SituationPatch},
+		Fix:        helperCmd("should-not-run", 0, false),
+	}}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationPatch)
+	require.NoError(t, err)
+	require.Contains(t, out, `lint-status ok="true"`)
+	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
+	require.Contains(t, out, `mode="fix"`)
+	require.NotContains(t, out, "should-not-run")
+	require.Contains(t, out, relativePackageDir+"/SPEC.md")
+	b, err := os.ReadFile(filepath.Join(target, "SPEC.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(b), "func Foo() {")
+	require.NotContains(t, string(b), "func  Foo")
+}
+func TestRun_SpecFmtRunsInProcess_InFix(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+	spec := strings.Join([]string{
+		"# spec",
+		"",
+		"```go",
+		"func  Foo( ) {",
+		"}",
+		"```",
+		"",
+	}, "\n")
+	err := os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
+	require.NoError(t, err)
+	steps := []Step{{
+		ID:         "spec-fmt",
+		Situations: []Situation{SituationFix},
+		Fix:        helperCmd("should-not-run", 0, false),
+	}}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationFix)
+	require.NoError(t, err)
+	require.Contains(t, out, `lint-status ok="true"`)
+	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
+	require.Contains(t, out, `mode="fix"`)
+	require.NotContains(t, out, "should-not-run")
+	require.Contains(t, out, relativePackageDir+"/SPEC.md")
+	b, err := os.ReadFile(filepath.Join(target, "SPEC.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(b), "func Foo() {")
+	require.NotContains(t, string(b), "func  Foo")
+}
+
+func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+
+	err := os.WriteFile(filepath.Join(target, "tgt.go"), []byte("package tgt\n\nfunc Foo() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	spec := strings.Join([]string{
+		"# spec",
+		"",
+		"## Public API",
+		"",
+		"```go {api}",
+		"func Foo() {",
+		"}",
+		"```",
+		"",
+	}, "\n")
+	err = os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
+	require.NoError(t, err)
+
+	cr := runSpecDiff(relativePackageDir, target)
+	require.Equal(t, cmdrunner.OutcomeSuccess, cr.Outcome)
+	require.Empty(t, cr.Output)
+	require.NotContains(t, cr.Output, "Fixing SPEC diff failures")
+	require.NoError(t, cr.ExecError)
+	require.Equal(t, "codalotl", cr.Command)
+	require.Equal(t, []string{"spec", "diff", relativePackageDir}, cr.Args)
+	require.Equal(t, []string{"mode", "check"}, cr.Attrs)
+
+	// Silence unused in case a future refactor removes a module-dir dependency.
+	_ = sandboxDir
 }
 
 func writeTempModule(t *testing.T) (sandboxDir string, targetPkgAbsDir string, relativePackageDir string) {
@@ -249,7 +502,7 @@ func TestRun_CheckModeRunsAllSteps(t *testing.T) {
 		},
 	}
 
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 
 	require.Contains(t, out, `lint-status ok="false"`)
@@ -296,7 +549,7 @@ func TestRun_FiltersBySituation(t *testing.T) {
 	steps := []Step{
 		{
 			ID:         "check-only",
-			Situations: []Situation{SituationCheck},
+			Situations: []Situation{SituationTests},
 			Check:      helperCmd("", 0, true),
 		},
 		{
@@ -307,7 +560,7 @@ func TestRun_FiltersBySituation(t *testing.T) {
 		},
 	}
 
-	outCheck, err := Run(context.Background(), sandboxDir, target, steps, SituationCheck)
+	outCheck, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
 	require.NoError(t, err)
 	require.Equal(t, 1, strings.Count(outCheck, "\n$ "))
 
@@ -316,6 +569,74 @@ func TestRun_FiltersBySituation(t *testing.T) {
 	require.Equal(t, 1, strings.Count(outFix, "\n$ "))
 }
 
+func TestRun_ConditionalStepInactiveIsSkipped(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID:     "a",
+			Active: helperCmd("", 0, false), // inactive
+			Check:  helperCmd("should-not-run", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+
+func TestRun_ConditionalStepWhitespaceOutputIsInactive(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID:     "a",
+			Active: helperCmd("\n", 0, false), // treated as empty output
+			Check:  helperCmd("should-not-run", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
+	require.NoError(t, err)
+	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+}
+
+func TestRun_ConditionalStepActiveRunsAndActiveOutputIsInvisible(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID:     "a",
+			Active: helperCmd("SECRET", 0, false), // active
+			Check:  helperCmd("ran", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(out, "\n$ "))
+	require.Contains(t, out, "ran")
+	require.NotContains(t, out, "SECRET")
+}
+
+func TestRun_ConditionalStepErrorIsTreatedActive(t *testing.T) {
+	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+	sandboxDir, target, _ := writeTempModule(t)
+	steps := []Step{
+		{
+			ID: "a",
+			Active: &cmdrunner.Command{
+				Command: "echo",
+				Args: []string{
+					"{{ .notARealVar }}",
+				},
+				CWD: "{{ .moduleDir }}",
+			},
+			Check: helperCmd("ran", 0, false),
+		},
+	}
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(out, "\n$ "))
+	require.Contains(t, out, "ran")
+}
 func helperCmd(stdout string, exitCode int, failIfAnyOutput bool) *cmdrunner.Command {
 	return &cmdrunner.Command{
 		Command: os.Args[0],
