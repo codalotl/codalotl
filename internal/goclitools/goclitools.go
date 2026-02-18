@@ -32,6 +32,7 @@ type Ref struct {
 	ColumnEnd   int
 }
 
+// Gofmt runs `gofmt` on filenameOrDir with -w -l. It returns true if anything was formatted.
 func Gofmt(filenameOrDir string) (bool, error) {
 	discoverTools()
 
