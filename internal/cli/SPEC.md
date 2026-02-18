@@ -139,6 +139,12 @@ Output:
 - If differences are found, they are printed to stdout via `specmd.FormatDiffs`.
 - If no differences are found, the command prints nothing and exits successfully.
 
+### codalotl spec ls-mismatch <pkg/pattern>
+
+Accepts a Go-style package pattern (including `./...`). Prints one line per package (prints the package, ex: `./path/to/pkg`) where `codalotl spec diff` produces a diff. If there's no SPEC.md with mismatched packages, there's no output. If `codalotl spec diff` would produce an error (but no diff), no line is output.
+
+This may only produce a line for a dir if the dir has both a SPEC.md and a valid Go package.
+
 ## Configuration
 
 This package is responsible for loading a configuation file and passing various configuration to other packages. The configuration is loaded with `internal/q/cascade`. The configuration is loaded and validated for all commands, except those that obviously don't need it, like `version` and `-h`. An invalid configuration prints out a helpful error message and returns with an non-zero exit code.
