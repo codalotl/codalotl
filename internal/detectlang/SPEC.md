@@ -14,6 +14,7 @@ Future improvements:
 ## Public API
 
 ```go
+// Lang represents a detected programming language.
 type Lang string
 
 const (
