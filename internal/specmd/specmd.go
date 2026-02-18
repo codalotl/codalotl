@@ -112,8 +112,7 @@ func (s *Spec) PublicAPIGoCodeBlocks() ([]string, error) {
 
 // FormatGoCodeBlocks runs each Go code block through the equivalent of `gofmt`, updating the file on disk and s.Body.
 //
-// If reflowWidth is 0, documentation is not reflowed. If reflowWidth is > 0, documentation in each code block is reflowed using internal/updatedocs to the specified
-// width (best-effort).
+// If reflowWidth is 0, documentation is not reflowed. If reflowWidth is > 0, documentation in each code block is reflowed to the specified width.
 //
 // If any Go code block has erroneous Go code (e.g. syntax error), it is ignored. The other Go code blocks are still formatted.
 //
@@ -227,6 +226,7 @@ type SpecDiff struct {
 //   - Only PublicAPIGoCodeBlocks are checked.
 //   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
+//   - If the corresponding Go package cannot be loaded (ex: syntax error; no Go files), an error is returned.
 func (s *Spec) ImplemenationDiffs() ([]SpecDiff, error) {
 	if s == nil {
 		return nil, errors.New("specmd: ImplemenationDiffs: nil Spec")
