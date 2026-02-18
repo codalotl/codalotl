@@ -468,6 +468,32 @@ func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
 	// Silence unused in case a future refactor removes a module-dir dependency.
 	_ = sandboxDir
 }
+func TestRun_SpecDiffReadErrorIsVisibleInOutput(t *testing.T) {
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+	require.NoError(t, os.Mkdir(filepath.Join(target, "SPEC.md"), 0o755))
+	step, ok := preconfiguredStep("spec-diff", 0)
+	require.True(t, ok)
+	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationFix)
+	require.NoError(t, err)
+	require.Contains(t, out, `lint-status ok="false"`)
+	require.Contains(t, out, "\n$ codalotl spec diff "+relativePackageDir+"\n")
+	require.Contains(t, out, "Error: ")
+	require.Contains(t, out, relativePackageDir+"/SPEC.md")
+	require.NotContains(t, out, `message="no issues found"`)
+}
+func TestRun_SpecFmtReadErrorIsVisibleInOutput(t *testing.T) {
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+	require.NoError(t, os.Mkdir(filepath.Join(target, "SPEC.md"), 0o755))
+	step, ok := preconfiguredStep("spec-fmt", 0)
+	require.True(t, ok)
+	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationPatch)
+	require.NoError(t, err)
+	require.Contains(t, out, `lint-status ok="false"`)
+	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
+	require.Contains(t, out, "Error: ")
+	require.Contains(t, out, relativePackageDir+"/SPEC.md")
+	require.NotContains(t, out, `message="no issues found"`)
+}
 
 func writeTempModule(t *testing.T) (sandboxDir string, targetPkgAbsDir string, relativePackageDir string) {
 	t.Helper()

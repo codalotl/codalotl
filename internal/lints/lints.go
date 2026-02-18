@@ -866,6 +866,20 @@ func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.Co
 		}
 		output += SpecDiffInstructions
 	}
+	if execErr != nil {
+		// cmdrunner's XML rendering can fall back to MessageIfNoOutput when Output is
+		// empty, which is misleading for failures. Ensure errors are visible.
+		specRel := relativePackageDir
+		if specRel == "" {
+			specRel = "SPEC.md"
+		} else {
+			specRel = strings.TrimSuffix(specRel, "/") + "/SPEC.md"
+		}
+		if output != "" {
+			output += "\n\n"
+		}
+		output += "Error: " + specRel + ": " + execErr.Error()
+	}
 
 	cr := cmdrunner.CommandResult{
 		Command:           "codalotl",
@@ -901,6 +915,13 @@ func runSpecFmt(moduleDir string, relativePackageDir string, targetPkgAbsDir str
 	var output string
 	if modified {
 		output = relPathForOutput(moduleDir, specPath)
+	}
+	if execErr != nil {
+		// Ensure errors render even when there are no modified files to list.
+		if output != "" {
+			output += "\n\n"
+		}
+		output += "Error: " + relPathForOutput(moduleDir, specPath) + ": " + execErr.Error()
 	}
 	cr := cmdrunner.CommandResult{
 		Command:           "codalotl",
