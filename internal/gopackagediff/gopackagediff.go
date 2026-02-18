@@ -10,8 +10,8 @@ import (
 
 // Change represents a change in a gocode.Snippet from the old package version to the new package version.
 //
-// If snippets are added or deleted (ex: adding an entirely new func), one of OldIdentifiers or NewIdentifiers will be nil, one of NewCode or OldCode will be "", and one snippet will
-// be nil.
+// If snippets are added or deleted (ex: adding an entirely new func), one of OldIdentifiers or NewIdentifiers will be nil, one of NewCode or OldCode will be "",
+// and one snippet will be nil.
 //
 // Invariants:
 //   - If OldSnippet != nil && NewSnippet != nil, then same snippet kind in both versions (ex: changing an id from func to var cannot be done in a single Change).
@@ -19,13 +19,15 @@ import (
 //   - At least one of OldIdentifiers or NewIdentifiers is non-nil/non-empty. Same for OldCode/NewCode, and OldSnippet/NewSnippet.
 //   - OldCode != NewCode.
 type Change struct {
-	IdentifiersChanged bool // If the identifiers for a snippet are the same in both the new and old package, IdentifiersChanged == false and OldIdentifiers == NewIdentifiers.
-	OldIdentifiers     []string
-	NewIdentifiers     []string
-	OldCode            string // old snippet's code (full function body presence is based on Diff's excludeFuncBody)
-	NewCode            string // new snippet's code
-	OldSnippet         gocode.Snippet
-	NewSnippet         gocode.Snippet
+	// If the identifiers for a snippet are the same in both the new and old package, IdentifiersChanged == false and OldIdentifiers == NewIdentifiers.
+	IdentifiersChanged bool
+
+	OldIdentifiers []string
+	NewIdentifiers []string
+	OldCode        string // old snippet's code (full function body presence is based on Diff's excludeFuncBody)
+	NewCode        string // new snippet's code
+	OldSnippet     gocode.Snippet
+	NewSnippet     gocode.Snippet
 }
 
 // ColorizedDiff returns a character-level colored diff using diffmatchpatch's pretty text representation.
@@ -66,19 +68,19 @@ func (c Change) IDs() []string {
 }
 
 // Diff computes the changes from origPkg to newPkg.
-//   - If identifiers is nil, all identifiers are considered. Otherwise, only snippets for the listed identifiers are considered. An identifier may exist only in origPkg or only in newPkg.
-//     If an identifier is in neither, it is ignored.
-//   - If files is nil, all files are considered. Otherwise, only identifiers in the listed files (union of old and new files' identifiers) are considered. If a file does not exist,
-//     it is ignored. Each element of files is just a bare file name.
+//   - If identifiers is nil, all identifiers are considered. Otherwise, only snippets for the listed identifiers are considered. An identifier may exist only in
+//     origPkg or only in newPkg. If an identifier is in neither, it is ignored.
+//   - If files is nil, all files are considered. Otherwise, only identifiers in the listed files (union of old and new files' identifiers) are considered. If a file
+//     does not exist, it is ignored. Each element of files is just a bare file name.
 //   - If both identifiers and files are non-nil, the intersection is used.
-//   - If excludeFuncBody is true, the diff covers only non-function-body code and documentation. OldCode and NewCode will not include function bodies, and differences inside function
-//     bodies are ignored.
+//   - If excludeFuncBody is true, the diff covers only non-function-body code and documentation. OldCode and NewCode will not include function bodies, and differences
+//     inside function bodies are ignored.
 //
 // It returns the changes and any error.
 //   - An identifier can be found in at most one of changes' OldIdentifiers (OldIdentifiers are disjoint). Similarly, NewIdentifiers are disjoint.
 //   - Similarly, an OldSnippet can be in at most one Change; a NewSnippet can be in at most one Change.
-//   - Otherwise, the specific grouping of changes is an implementation detail (ex: if two lone consts are merged into one block snippet, the change could be represented by one Change
-//     gaining an identifier and another losing an identifier, or by both original snippets being deleted and a third created with both identifiers).
+//   - Otherwise, the specific grouping of changes is an implementation detail (ex: if two lone consts are merged into one block snippet, the change could be represented
+//     by one Change gaining an identifier and another losing an identifier, or by both original snippets being deleted and a third created with both identifiers).
 func Diff(origPkg *gocode.Package, newPkg *gocode.Package, identifiers []string, files []string, excludeFuncBody bool) ([]*Change, error) {
 	// Normalize nil packages:
 	if origPkg == nil || newPkg == nil {

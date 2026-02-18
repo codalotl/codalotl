@@ -10,18 +10,17 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// TypeInfo holds type-checker facts for a single package as produced by go/types. It is typically constructed by LoadTypeInfoInto
-// and should be treated as a read-only snapshot of the package's type information.
+// TypeInfo holds type-checker facts for a single package as produced by go/types. It is typically constructed by LoadTypeInfoInto and should be treated as a read-only
+// snapshot of the package's type information.
 type TypeInfo struct {
-	// Info contains the go/types facts (Uses, Defs, Types, Selections, etc.) for the loaded package, keyed by AST nodes from
-	// the package's current FileSet and AST.
+	// Info contains the go/types facts (Uses, Defs, Types, Selections, etc.) for the loaded package, keyed by AST nodes from the package's current FileSet and AST.
 	Info types.Info
 }
 
 // TODO: deal wtih test package
 
-// LoadTypeInfoInto uses x/toolsgo/packages to load type information for pkg. ALERT: it replaces pkg's files' AST and FileSet information
-// with a new version created from packages.Load, because Info's maps' keys are pointers from AST nodes.
+// LoadTypeInfoInto uses x/toolsgo/packages to load type information for pkg. ALERT: it replaces pkg's files' AST and FileSet information with a new version created
+// from packages.Load, because Info's maps' keys are pointers from AST nodes.
 func LoadTypeInfoInto(pkg *gocode.Package, includeTests bool) (*TypeInfo, error) {
 	if pkg.IsTestPackage() && !includeTests {
 		return nil, fmt.Errorf("pkg is a _test package, but includeTests is false")
