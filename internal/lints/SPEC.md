@@ -307,7 +307,9 @@ type Step struct {
 func DefaultSteps() []Step
 
 // ResolveSteps merges defaults and user config, applying disable rules. Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
-// error. It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
+// error. It normalizes width handling:
+//   - `reflow` steps include `--width=<reflowWidth>` when missing.
+//   - `spec-fmt` steps inherit `--width=<reflowWidth>` when reflow is enabled.
 func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error)
 
 // Run executes steps for the given situation against targetPkgAbsDir and returns cmdrunner XML (`lint-status`).
