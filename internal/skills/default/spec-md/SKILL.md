@@ -7,13 +7,17 @@ description: Guidance for creating, editing, and reviewing SPEC.md files in Go p
 
 This skill provides guidance for creating and editing SPEC.md files in Go packages.
 
-A SPEC.md is a specification of a Go package. It serves as both an initial recipe for creation of a Go package, and as documentation for the evolution and maintence of the Go package. Given a SPEC.md file, an engineer or agent can create a conforming Go package. Given both a SPEC.md and an implementation, an engineer or agent can answer the question: does the implementation conform to the spec?
+A SPEC.md is the control panel of a Go package: it permits operators to manage facts about how the Go package behaves. Agents or engineers can detect diffs in SPEC.md files and create or modify Go packages that conform.
 
 ## Ambiguity
 
-SPEC.md files are deliberately ambiguous, and should almost never be so detailed as to be unambiguous (except in trivial cases). Ambiguity is a good thing and should be embraced. A SPEC.md file is not a detailed set of instructions given to a junior engineer, but rather, a guide for a senior engineer. The senior engineer still has latitude to make decisions. When the implementation is done, it can be evaluated against the SPEC.md file: does it match? A SPEC.md permits many valid matching implementations. A good SPEC.md can quickly be evaluated with an implementation to output "conforming" or "non-conforming".
+Unlike other "specifications", SPEC.md files are deliberately ambiguous, and should almost never be so detailed as to be unambiguous.
 
-One good candidate to leave ambiguous are design aspects where there's one or more good solutions. The implementor is free to just pick one.
+Again: ambiguity is GOOD and should be embraced. A natural temptation in reviewing SPEC.md files is to identify and remove ambiguity. Specify more things. But this is wrong. Ambiguity WILL be removed from the **implementation**, but the SPEC.md is not the finished product. It is simply a minimal document that can control and adjust behavior in a Go package.
+
+A SPEC.md permits many valid conforming implementations. A good SPEC.md can quickly be evaluated with an implementation to output "conforming" or "non-conforming".
+
+A good SPEC.md leaves unsaid design aspects where there's a good, obvious solution. If it's obvious to you that something should be specified, that might be a signal that it is in fact better left unsaid: it will probably be obvious to the implementor as well. A good SPEC.md is a **minimal** document that achieves a business outcome, where in the face of ambiguity, implementors will easily find good solutions.
 
 ### Trap ambiguity ("no good solution")
 
@@ -36,7 +40,7 @@ This point often shows up when a general statement (which is often true) is in o
 
 - Use concise, terse language. When creating SPEC.md files, often skip using articles like 'the' and 'an' (but don't remove them if the user writes them).
 - Use bullet points to list details, often after a brief introductory non-bulleted paragraph.
-- Delete non-essential words, sentence fragments, and full sentences, that don't add value.
+- Delete non-essential words, sentence fragments, parentheticals, and full sentences, that don't add value.
 
 ## Typical Sections
 
@@ -55,6 +59,7 @@ The SPEC.md should usually have a `## Public API` section, which consists of one
 - This documented Public API is usually not exhaustive/complete.
 - The Go identifiers in Public API should usually have documentation.
 - Any doc comments should be matched verbatim in the implementation. These public APIs (including doc comments) should be kept in sync.
+- The implementation may be a superset (extra fields/methods/block elements are OK)
 
 ## Common Tasks
 
@@ -88,9 +93,23 @@ When asked to "impl":
     - Rule of thumb: 80% coverage at 20% of the cost.
     - When making small changes (e.g., based on a new section, or changes to existing sections), it sometimes does NOT warrant a NEW test case (these tend to violate the above rule of thumb).
 
-(the following are common tasks; needs to be written)
-
 ### Check Conformance
+
+When asked to "check conformance":
+- Your goal is to decide whether the implementation of a package "conforms to" a SPEC.md file.
+    - Do NOT fix any non-conformance. This is a read-only task.
+- First, this requires the SPEC.md file to be consistent (see `## Consistent` above).
+    - An implementation cannot conform to a contradictory SPEC.md.
+    - Many "consistency" issues are actually non-issues: when the SPEC.md is read in its totality, the intent is clear. Don't fall into this trap.
+- Run the fix lints tool - it runs `codalotl spec diff path/to/pkg`. It will identify mechanical differences between in the public API.
+- Finally, determine if all the "facts" in the SPEC.md are matched by the implementation:
+    - Create a list of facts in the SPEC.md. Go section-by-section, method-by-method, bullet-by-bullet.
+    - Ensure the implementation abides by the fact.
+- Output:
+    - "The implementation conforms" or "The implementation does not conform".
+    - A list of any non-conformances. Include whether it's a "major" or "minor", or "trivial" non-conformance.
+
+(the following are common tasks; needs to be written)
 
 ### Synchronize SPEC.md and Implementation
 
