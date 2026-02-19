@@ -1,6 +1,6 @@
 # specmd
 
-This package implements tools for processing SPEC.md files: parsing, formatting, and extracting code blocks.
+This package implements tools for processing SPEC.md files: parsing, formatting, and extracting code blocks. It can also programmatically determine if a particular implementation conforms to a spec by comparing their public API.
 
 SPEC.md files are currently assumed to be for Go packages only.
 
@@ -9,6 +9,87 @@ SPEC.md files are currently assumed to be for Go packages only.
 - Markdown parsed with `github.com/yuin/goldmark`
 - Go code parsed with `internal/gocode`
 - Go code parsed with `internal/updatedocs`
+
+## Conformance
+
+ImplemenationDiffs finds differences between SPEC.md and implementation. An implementation snippet **conforms** to a SPEC.md snippet as follows:
+- For functions, the method body is ignored.
+- Exact matches conform.
+- If a decl (or field, or similar) in the SPEC.md has a comment, the implementation must have the **exact** same comment (in the same spot - doc vs eol).
+- If a decl (or field, or similar) in the SPEC.md does NOT have a comment, the implementation MAY have a comment without affecting conformance.
+- Fields may be added to a struct or interface in the implementation without affecting conformance.
+- items may be added to a var/const/type block without affecting conformance.
+
+### Example: exact match
+
+Impl:
+
+```go
+// Foo does x.
+func Foo(b int) error
+```
+
+Conforms to SPEC.md:
+
+```go
+// Foo does x.
+func Foo(b int) error
+```
+
+### Example: no comment
+
+Impl:
+
+```go
+// Foo does x.
+func Foo(b int) error
+```
+
+Conforms to SPEC.md:
+
+```go
+func Foo(b int) error
+```
+
+### Example: added field is ok
+
+Impl:
+
+```go
+type Foo struct {
+	Foo int
+	hidden int
+}
+```
+
+Conforms to SPEC.md:
+
+```go
+type Foo struct {
+	Foo int
+}
+```
+
+### Example: added field is ok
+
+Impl:
+
+```go
+const (
+	LangRuby string = "ruby"
+	LangGo string = "go"
+	LangRust string = "rust"
+)
+```
+
+Conforms to SPEC.md:
+
+```go
+const (
+	LangRuby string = "ruby"
+	LangGo string = "go"
+)
+```
 
 ## Public API
 
