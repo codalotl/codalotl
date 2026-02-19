@@ -166,17 +166,25 @@ func (r *Runner) AddCommand(c Command) {
 	r.commands = append(r.commands, c)
 }
 
-// Command defines a templated command to run. Command, Args, and CWD fields support templating prior to execution.
+// A Command is a templated command to run. The Command/Args/CWD fields support templates.
 type Command struct {
-	Command                string   `json:"command"`
-	Args                   []string `json:"args"`
-	CWD                    string   `json:"cwd"`
-	OutcomeFailIfAnyOutput bool     `json:"outcomefailifanyoutput"`
-	MessageIfNoOutput      string   `json:"messageifnooutput"`
-	ShowCWD                bool     `json:"showcwd"` // ShowCWD, when true, instructs XML rendering to include the command's CWD.
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	CWD     string   `json:"cwd"` // optional working directory for the command. Defaults to the root dir.
 
-	// Attrs are pairs of keys/values that will be added to the corresponding command tag when rendering ToXML output. len(Attrs) must be a multiple of 2. Strings are
-	// NOT validated or escaped.
+	// If OutcomeFailIfAnyOutput, any output causes the command to have a failed outcome (ex: `gofmt -l` is blank when no-lint-issues and non-blank when lint-issues).
+	OutcomeFailIfAnyOutput bool `json:"outcomefailifanyoutput"`
+
+	// If non-empty and the command's Output is empty, will add a `message` attribute to the opening tag in `ToXML` set to this value.
+	MessageIfNoOutput string `json:"messageifnooutput"`
+
+	// If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.
+	ShowCWD bool `json:"showcwd"`
+
+	// Attrs are pairs of keys/values that will be added to the corresponding CommandResult's ToXML tag. len(Attrs) must be a multiple of 2. Strings are NOT validated
+	// or escaped. For instance, ["dryrun", "true"] renders (for instance) `<command ok="true" dryrun="true">...</command>`.
+	//
+	// This can be used to communicate metadata to a consuming LLM about the command.
 	Attrs []string `json:"attrs"`
 }
 
@@ -199,11 +207,11 @@ func (r Result) Success() bool {
 type ExecStatus string
 
 const (
-	ExecStatusCompleted     ExecStatus = "completed"
-	ExecStatusFailedToStart ExecStatus = "failed_to_start"
+	ExecStatusCompleted     ExecStatus = "completed"       // process exited (any code)
+	ExecStatusFailedToStart ExecStatus = "failed_to_start" // ENOENT, EPERM, bad shebang, cwd missing
 	ExecStatusTimedOut      ExecStatus = "timed_out"
 	ExecStatusCanceled      ExecStatus = "canceled"
-	ExecStatusTerminated    ExecStatus = "terminated"
+	ExecStatusTerminated    ExecStatus = "terminated" // by signal; see Signal
 )
 
 // Outcome is a semantic command-relative status. Examples:
@@ -225,19 +233,23 @@ const (
 
 // CommandResult captures the execution details for a single command.
 type CommandResult struct {
-	Command           string
-	Args              []string
-	CWD               string
-	Output            string
-	MessageIfNoOutput string
-	ShowCWD           bool
-	Attrs             []string
-	ExecStatus        ExecStatus
-	ExecError         error
-	ExitCode          int
-	Signal            string
-	Outcome           Outcome
-	Duration          time.Duration
+	Command           string   // Command is the actual, rendered command run.
+	Args              []string // Args are the actual, rendered args used.
+	CWD               string   // CWD is the actual, rendered CWD used.
+	Output            string   // The stdout + stderr of the command.
+	MessageIfNoOutput string   // If non-empty and Output is empty, will render a `message` attribute in `ToXML` set to this value.
+	ShowCWD           bool     // If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.
+
+	// Attrs are pairs of keys/values that will be added to the corresponding command tag when rendering ToXML output. len(Attrs) must be a multiple of 2. Strings are
+	// NOT validated or escaped.
+	Attrs []string
+
+	ExecStatus ExecStatus
+	ExecError  error // if an error is returned from exec'ing the command, it's set here.
+	ExitCode   int
+	Signal     string // if the command was terminated due to a signal (ex: "TERM")
+	Outcome    Outcome
+	Duration   time.Duration
 }
 
 func (r *Runner) normalizeInputs(rootDir string, inputs map[string]any) (map[string]any, error) {

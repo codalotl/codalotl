@@ -42,7 +42,7 @@ if result.Success() {
     r0 := result.Results[0]
     fmt.Println("output:")
     fmt.Println(r0.Output)
-    fmt.Printf("ExecutionStatus: %v ExitStatus: %d Outcome: %v Duration: %v\n", r0.ExecutionStatus, r0.ExitCode, r0.Outcome, r0.Duration)
+    fmt.Printf("ExecStatus: %v ExitStatus: %d Outcome: %v Duration: %v\n", r0.ExecStatus, r0.ExitCode, r0.Outcome, r0.Duration)
 }
 ```
 
@@ -154,24 +154,24 @@ func (r *Runner) AddCommand(c Command)
 ```go {api}
 // A Command is a templated command to run. The Command/Args/CWD fields support templates.
 type Command struct {
-	Command string
-	Args    []string
-	CWD     string // optional working directory for the command. Defaults to the root dir.
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	CWD     string   `json:"cwd"` // optional working directory for the command. Defaults to the root dir.
 
 	// If OutcomeFailIfAnyOutput, any output causes the command to have a failed outcome (ex: `gofmt -l` is blank when no-lint-issues and non-blank when lint-issues).
-	OutcomeFailIfAnyOutput bool
+	OutcomeFailIfAnyOutput bool `json:"outcomefailifanyoutput"`
 
 	// If non-empty and the command's Output is empty, will add a `message` attribute to the opening tag in `ToXML` set to this value.
-	MessageIfNoOutput string
+	MessageIfNoOutput string `json:"messageifnooutput"`
 
 	// If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.
-	ShowCWD bool
+	ShowCWD bool `json:"showcwd"`
 
-	// Attrs are pairs of keys/values that will be added to the corresponding CommandResult's ToXML tag. len(Attrs) must be a mulitple of 2. Strings are NOT validated
+	// Attrs are pairs of keys/values that will be added to the corresponding CommandResult's ToXML tag. len(Attrs) must be a multiple of 2. Strings are NOT validated
 	// or escaped. For instance, ["dryrun", "true"] renders (for instance) `<command ok="true" dryrun="true">...</command>`.
 	//
 	// This can be used to communicate metadata to a consuming LLM about the command.
-	Attrs []string
+	Attrs []string `json:"attrs"`
 }
 ```
 
@@ -212,11 +212,19 @@ const (
 	OutcomeFailed  Outcome = "failed"
 )
 
+// CommandResult captures the execution details for a single command.
 type CommandResult struct {
-	Command    string   // Command is the actual, rendered command ran.
-	Args       []string // Args are the actual, rendered args used.
-	CWD        string   // CWD is the actual, rendered CWD used.
-	Output     string   // The stdout + stderr of the command.
+	Command           string   // Command is the actual, rendered command run.
+	Args              []string // Args are the actual, rendered args used.
+	CWD               string   // CWD is the actual, rendered CWD used.
+	Output            string   // The stdout + stderr of the command.
+	MessageIfNoOutput string   // If non-empty and Output is empty, will render a `message` attribute in `ToXML` set to this value.
+	ShowCWD           bool     // If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.
+
+	// Attrs are pairs of keys/values that will be added to the corresponding command tag when rendering ToXML output. len(Attrs) must be a multiple of 2. Strings are
+	// NOT validated or escaped.
+	Attrs []string
+
 	ExecStatus ExecStatus
 	ExecError  error // if an error is returned from exec'ing the command, it's set here.
 	ExitCode   int
