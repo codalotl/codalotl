@@ -33,7 +33,7 @@ const (
 //   - Specifics are an implementation detail. Callers should just pass this opaque blob to an LLM.
 //
 // If packageAbsDir is invalid, or identifier is not defined in packageAbsDir, an error will be returned.
-func IdentifierUsage(packageAbsDir string, identifier string, includeIntraPackageUsages bool) ([]IdentifierUsageRef, string, error) {
+func IdentifierUsage(packageAbsDir, identifier string, includeIntraPackageUsages bool) ([]IdentifierUsageRef, string, error) {
 	mod, err := gocode.NewModule(packageAbsDir)
 	if err != nil {
 		return nil, "", fmt.Errorf("load module: %w", err)
@@ -142,7 +142,6 @@ func IdentifierUsage(packageAbsDir string, identifier string, includeIntraPackag
 	return out, formatIdentifierUsageSummary(mod, out), nil
 }
 
-// IdentifierUsageRef holds a single usage location for an identifier. This matches the SPEC fields for IdentifierUsageRef.
 type IdentifierUsageRef struct {
 	ImportPath       string // using package's import path
 	AbsFilePath      string // using file's absolute path

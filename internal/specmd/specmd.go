@@ -24,7 +24,7 @@ type Spec struct {
 	Body    string // Full contents of the file
 }
 
-// Read reads the path to create a Spec. If the path is not a "SPEC.md" file (case sensitive), an error is returned. The file is NOT parsed, nor verified to be markdown.
+// Read reads the path to create a Spec. If the path is not a "SPEC.md" file (case-sensitive), an error is returned. The file is NOT parsed, nor verified to be markdown.
 func Read(path string) (*Spec, error) {
 	if filepath.Base(path) != "SPEC.md" {
 		return nil, fmt.Errorf("specmd: Read: path must be a SPEC.md file: %q", path)
@@ -64,7 +64,7 @@ func (s *Spec) Validate() error {
 
 // GoCodeBlocks returns all multi-line Go code blocks in a ```go``` fence.
 //   - These must be triple-backtick and multi-line, not inline `single-backtick` code spans.
-//   - The fences MUST be tagged with `go`. Go code in triple-backtick fences without the Go tag are not included.
+//   - The fences MUST be tagged with `go`. Go code in triple-backtick fences without the Go tag is not included.
 //
 // If there are any problems parsing the markdown or if there are malformed code blocks (e.g. no closing triple-backticks), an error is returned. The Go code itself
 // is not checked for errors.
@@ -112,8 +112,7 @@ func (s *Spec) PublicAPIGoCodeBlocks() ([]string, error) {
 
 // FormatGoCodeBlocks runs each Go code block through the equivalent of `gofmt`, updating the file on disk and s.Body.
 //
-// If reflowWidth is 0, documentation is not reflowed. If reflowWidth is > 0, documentation in each code block is reflowed using internal/updatedocs to the specified
-// width (best-effort).
+// If reflowWidth is 0, documentation is not reflowed. If reflowWidth is > 0, documentation in each code block is reflowed to the specified width.
 //
 // If any Go code block has erroneous Go code (e.g. syntax error), it is ignored. The other Go code blocks are still formatted.
 //
@@ -222,17 +221,18 @@ type SpecDiff struct {
 	DiffType DiffType
 }
 
-// ImplemenationDiffs finds differences between the public API declared in the SPEC.md and the actual public API in the corresponding Go package. It only checks
+// ImplementationDiffs finds differences between the public API declared in the SPEC.md and the actual public API in the corresponding Go package. It only checks
 // those identifiers defined in the SPEC.md - if the public API is a strict superset, no differences are returned. If no differences are found, nil is returned.
 //   - Only PublicAPIGoCodeBlocks are checked.
 //   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
-func (s *Spec) ImplemenationDiffs() ([]SpecDiff, error) {
+//   - If the corresponding Go package cannot be loaded (ex: syntax error; no Go files), an error is returned.
+func (s *Spec) ImplementationDiffs() ([]SpecDiff, error) {
 	if s == nil {
-		return nil, errors.New("specmd: ImplemenationDiffs: nil Spec")
+		return nil, errors.New("specmd: ImplementationDiffs: nil Spec")
 	}
 	if s.AbsPath == "" {
-		return nil, errors.New("specmd: ImplemenationDiffs: empty AbsPath")
+		return nil, errors.New("specmd: ImplementationDiffs: empty AbsPath")
 	}
 	// Parse markdown once so we can compute SPEC line numbers.
 	md, err := parseMarkdown([]byte(s.Body))
@@ -265,7 +265,7 @@ func (s *Spec) ImplemenationDiffs() ([]SpecDiff, error) {
 			SpecLine:    sd.SpecLine,
 			DiffType:    DiffTypeOther,
 		}
-		implSnippet, implPos, implBytes, implDocRaw, implNorm, implErr := findImplForSpecDecl(pkg, sd)
+		implSnippet, implPos, implErr := findImplForSpecDecl(pkg, sd)
 		if implErr != nil {
 			return nil, implErr
 		}
@@ -282,22 +282,16 @@ func (s *Spec) ImplemenationDiffs() ([]SpecDiff, error) {
 			diffs = append(diffs, diff)
 			continue
 		}
-		if sd.NormalizedCode != implNorm {
-			diff.DiffType = DiffTypeCodeMismatch
+		conforms, dt, err := conformanceDiffType(sd.Snippet, implSnippet)
+		if err != nil {
+			return nil, err
+		}
+		if !conforms {
+			diff.DiffType = dt
 			diffs = append(diffs, diff)
 			continue
 		}
-		_ = implBytes
-		if sd.DocRaw != implDocRaw {
-			if normalizeDocWhitespace(sd.DocRaw) == normalizeDocWhitespace(implDocRaw) {
-				diff.DiffType = DiffTypeDocWhitespace
-			} else {
-				diff.DiffType = DiffTypeDocMismatch
-			}
-			diffs = append(diffs, diff)
-			continue
-		}
-		// No diff for this snippet.
+		// Conforms: no diff for this snippet.
 	}
 	if len(diffs) == 0 {
 		return nil, nil
@@ -312,15 +306,15 @@ type implSnippetPos struct {
 	idMismatch bool
 }
 
-func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, pos implSnippetPos, implBytes []byte, implDocRaw string, implNormCode string, fnErr error) {
+func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, pos implSnippetPos, fnErr error) {
 	if len(sd.IDs) == 0 {
-		return "", implSnippetPos{missing: true}, nil, "", "", nil
+		return "", implSnippetPos{missing: true}, nil
 	}
 	var snippets []gocode.Snippet
 	for _, id := range sd.IDs {
 		sn := pkg.GetSnippet(id)
 		if sn == nil {
-			return "", implSnippetPos{missing: true}, nil, "", "", nil
+			return "", implSnippetPos{missing: true}, nil
 		}
 		snippets = append(snippets, sn)
 	}
@@ -328,52 +322,39 @@ func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, 
 	for _, sn := range snippets[1:] {
 		if sn != first {
 			// All IDs exist, but they point at different decl blocks.
-			return "", implSnippetPos{idMismatch: true}, nil, "", "", nil
+			return "", implSnippetPos{idMismatch: true}, nil
 		}
 	}
 	p := first.Position()
 	pos.file = filepath.Base(p.Filename)
 	pos.line = p.Line
-	implBytes = first.FullBytes()
 	implSnippet = string(first.Bytes())
-	decl, fset, wrapper, err := parseDeclFromSnippetBytes(implBytes)
-	if err != nil {
-		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplemenationDiffs: parse impl snippet %v: %w", sd.IDs, err)
-	}
-	implDocRaw = rawDocForDecl(decl, fset, wrapper)
-	stripCommentsAndBodies(decl)
-	implNormCode, err = formatDeclNoComments(decl)
-	if err != nil {
-		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplemenationDiffs: format impl decl %v: %w", sd.IDs, err)
-	}
-	return implSnippet, pos, implBytes, implDocRaw, implNormCode, nil
+	return implSnippet, pos, nil
 }
 func loadImplPackageForSpec(specAbsPath string) (*gocode.Package, error) {
 	mod, err := gocode.NewModule(specAbsPath)
 	if err != nil {
-		return nil, fmt.Errorf("specmd: ImplemenationDiffs: load module: %w", err)
+		return nil, fmt.Errorf("specmd: ImplementationDiffs: load module: %w", err)
 	}
 	specDir := filepath.Dir(specAbsPath)
 	relDir, err := filepath.Rel(mod.AbsolutePath, specDir)
 	if err != nil {
-		return nil, fmt.Errorf("specmd: ImplemenationDiffs: compute package relative dir: %w", err)
+		return nil, fmt.Errorf("specmd: ImplementationDiffs: compute package relative dir: %w", err)
 	}
 	if relDir == "" {
 		relDir = "."
 	}
 	pkg, err := mod.LoadPackageByRelativeDir(relDir)
 	if err != nil {
-		return nil, fmt.Errorf("specmd: ImplemenationDiffs: load package %q: %w", relDir, err)
+		return nil, fmt.Errorf("specmd: ImplementationDiffs: load package %q: %w", relDir, err)
 	}
 	return pkg, nil
 }
 
 type specDecl struct {
-	IDs            []string
-	Snippet        string
-	SpecLine       int
-	DocRaw         string
-	NormalizedCode string
+	IDs      []string
+	Snippet  string
+	SpecLine int
 }
 
 func parseSpecDeclsFromCodeBlock(code string, codeStartLine int) ([]specDecl, error) {
@@ -400,18 +381,10 @@ func parseSpecDeclsFromCodeBlock(code string, codeStartLine int) ([]specDecl, er
 		if err != nil {
 			return nil, err
 		}
-		docRaw := rawDocForDecl(d, fset, wrapper)
-		stripCommentsAndBodies(d)
-		norm, err := formatDeclNoComments(d)
-		if err != nil {
-			return nil, err
-		}
 		decls = append(decls, specDecl{
-			IDs:            ids,
-			Snippet:        snippet,
-			SpecLine:       specLine,
-			DocRaw:         docRaw,
-			NormalizedCode: norm,
+			IDs:      ids,
+			Snippet:  snippet,
+			SpecLine: specLine,
 		})
 	}
 	return decls, nil
@@ -538,24 +511,6 @@ func formatDeclNoComments(d ast.Decl) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
-}
-func rawDocForDecl(d ast.Decl, fset *token.FileSet, wrapper []byte) string {
-	doc := docGroupForDecl(d)
-	if doc == nil {
-		return ""
-	}
-	startOff, err := offsetForPos(fset, doc.Pos())
-	if err != nil {
-		return ""
-	}
-	endOff, err := offsetForPos(fset, doc.End())
-	if err != nil {
-		return ""
-	}
-	if startOff < 0 || endOff < startOff || endOff > len(wrapper) {
-		return ""
-	}
-	return string(wrapper[startOff:endOff])
 }
 func normalizeDocWhitespace(s string) string {
 	// Canonicalize whitespace for doc whitespace-only diffs.

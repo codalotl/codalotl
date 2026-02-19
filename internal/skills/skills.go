@@ -141,6 +141,19 @@ func SearchPaths(startDir string) []string {
 // shellToolName indicates the tool name the LLM should use to invoke skill scripts and execute shell commands.
 //
 // isPackageMode indicates whether the LLM is running in package-mode (no general-purpose shell tool; shell is typically only available via the skills tool).
+//
+// It takes this form:
+//
+//	# Skills
+//	A skill is a...
+//	## Available skills
+//	- skill-1: This is skill 1 description. (file: /path/to/skill-1/SKILL.md)
+//	- skill-2: This is skill 2 description. (file: /path/to/skill-2/SKILL.md)
+//	## How to use skills
+//	- Discovery: The list above is...
+//	- Missing/blocked: If a named skill...
+//
+// In other words, three headers, with an overview, list of actual skills and their location, and then a guide on how to use skills with various rules and tips.
 func Prompt(skills []Skill, shellToolName string, isPackageMode bool) string {
 	// Keep output deterministic regardless of input order.
 	sorted := append([]Skill(nil), skills...)

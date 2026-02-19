@@ -17,8 +17,8 @@ import (
 func isolateUserConfig(t *testing.T) {
 	t.Helper()
 	// Prevent tests from reading developer machine config (ex: ~/.codalotl/config.json).
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("HOME", mkdirTempWithRemoveRetry(t, "codalotl-test-home-"))
+	t.Setenv("LOCALAPPDATA", mkdirTempWithRemoveRetry(t, "codalotl-test-localappdata-"))
 
 	// llmmodel key overrides are process-global; ensure tests don't leak state.
 	for _, pid := range llmmodel.AllProviderIDs {
@@ -51,7 +51,7 @@ func isolateUserConfig(t *testing.T) {
 func ensureToolStubs(t *testing.T, names ...string) {
 	t.Helper()
 
-	binDir := t.TempDir()
+	binDir := mkdirTempWithRemoveRetry(t, "codalotl-test-bin-")
 
 	for _, name := range names {
 		name = strings.TrimSpace(name)

@@ -119,9 +119,16 @@ for {
 ## Public API
 
 ```go
+// NewSandboxAuthorizer constructs an Authorizer implementing the Sandbox policy.
 func NewSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error)
+
+// NewPermissiveSandboxAuthorizer constructs an Authorizer implementing the Permissive Sandbox policy.
 func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error)
+
+// NewAutoApproveAuthorizer constructs the AutoApprove policy Authorizer.
 func NewAutoApproveAuthorizer(sandboxDir string) Authorizer
+
+// NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback. Close also closes fallback.
 func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer
 
 // AddGrantsFromUserMessage adds grants from userMessage to the authorizer. Grants in userMessage are of the form `@relative/path/to/file`, `@/path/to/file`, or
@@ -145,7 +152,10 @@ func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, e
 //
 // The zero value ShellAllowedCommands{} has empty lists.
 type ShellAllowedCommands struct {
-	// ...
+	mu        sync.RWMutex
+	blocked   map[string]CommandMatcher
+	dangerous map[string]CommandMatcher
+	safe      map[string]CommandMatcher
 }
 
 type CommandMatcher struct {
@@ -166,13 +176,19 @@ func NewShellAllowedCommands() *ShellAllowedCommands
 // homebrew access.
 func (s *ShellAllowedCommands) DefaultBlockedCommandMatchers() []CommandMatcher
 
+// DefaultDangerousCommandMatchers returns a copy of the built-in dangerous matchers.
 func (s *ShellAllowedCommands) DefaultDangerousCommandMatchers() []CommandMatcher
+
+// DefaultSafeCommandMatchers returns a copy of the built-in safe matchers.
 func (s *ShellAllowedCommands) DefaultSafeCommandMatchers() []CommandMatcher
 
 // Returns all currently blocked command matchers.
 func (s *ShellAllowedCommands) BlockedCommandMatchers() []CommandMatcher
 
+// DangerousCommandMatchers returns the currently registered dangerous matchers.
 func (s *ShellAllowedCommands) DangerousCommandMatchers() []CommandMatcher
+
+// SafeCommandMatchers returns the currently registered safe matchers.
 func (s *ShellAllowedCommands) SafeCommandMatchers() []CommandMatcher
 
 // Filters currently blocked command matchers by those commands that are just completely blocked regardless of arguments. ex: "brew", "apt". If args or flags are
@@ -185,12 +201,19 @@ func (s *ShellAllowedCommands) AddBlocked(m CommandMatcher)
 // RemoveBlocked unblocks m.
 func (s *ShellAllowedCommands) RemoveBlocked(m CommandMatcher) error
 
+// AddDangerous adds a matcher to the dangerous set.
 func (s *ShellAllowedCommands) AddDangerous(m CommandMatcher)
+
+// RemoveDangerous removes a matcher from the dangerous set.
 func (s *ShellAllowedCommands) RemoveDangerous(m CommandMatcher) error
+
+// AddSafe adds a matcher to the safe set.
 func (s *ShellAllowedCommands) AddSafe(m CommandMatcher)
+
+// RemoveSafe removes a matcher from the safe set.
 func (s *ShellAllowedCommands) RemoveSafe(m CommandMatcher) error
 
-// Check checks arg lexically against the blocked/dangerous/safe commands. It returns a CommandCheckResult (eg, blocked, safe, dangerous, inscrutable, none), or
+// Check checks argv lexically against the blocked/dangerous/safe commands. It returns a CommandCheckResult (eg, blocked, safe, dangerous, inscrutable, none), or
 // an error.
 //   - Precedence: safe > blocked > dangerous. So a match on the safe list overrules everything.
 //   - This implies there's no super-clean way to specify "allow go commands, except for go install". You'd need to either explicitly enumerate safe go commands,

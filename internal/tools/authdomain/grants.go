@@ -14,6 +14,16 @@ type grantMessageAcceptor interface {
 	addGrantUserMessage(userMessage string)
 }
 
+// AddGrantsFromUserMessage adds grants from userMessage to the authorizer. Grants in userMessage are of the form `@relative/path/to/file`, `@/path/to/file`, or
+// `@"path with spaces"`. Note that userMessage is a full message typed by the user to the agent, and may contain no grants, errant `@` signs, bad syntax, commas
+// or other punctuation after the grant, and so on. This means AddGrantsFromUserMessage needs to robustly handle anything the user may type, and may not know **at
+// the time of calling** what grants are actually being made.
+//
+// The grants are added to the authorizer as well as its fallback, if present. Note: strict sandbox authorizers never allow grants to authorize reads outside of
+// their sandbox dir.
+//
+// An error is only returned if authorizer is not capable of accepting grants. Any other "errors" simply result in no grants being added (ex: file doesn't exist;
+// bad glob format).
 func AddGrantsFromUserMessage(authorizer Authorizer, userMessage string) error {
 	if authorizer == nil {
 		return ErrAuthorizerCannotAcceptGrants

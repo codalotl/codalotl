@@ -7,6 +7,7 @@ This repo includes a saved copy of that spec at agentskills_spec.mdx.
 ## Public API
 
 ```go
+// Skill is an Agent Skill, loaded from a skill directory containing a SKILL.md file.
 type Skill struct {
 	AbsDir        string // AbsDir is the dir that contains the SKILL.md file. Should not end in "/". Its last segment must match Name in valid Skills.
 	Name          string
@@ -26,11 +27,11 @@ func LoadSkill(path string) (Skill, error)
 // LoadSkills looks non-recursively in searchDirs (ex: `[]string{"/myproj/.skills"}`) for skills. It tries to load a skill in these dirs only if the subdir has a
 // SKILL.md file in it (ex: `/myproj/.skills/myskill/SKILL.md`).
 //
-//	It returns:
-//	 - validSkills: valid skills with no Validate() issues.
-//	 - invalidSkills: skills which partially loaded but fail Validate().
-//	 - failedSkillLoads: dirs in searchDirs (i.e., possible skills) but for which LoadSkill returned an error.
-//	 - fnErr: only non-nil if there was a fatal error (ex: IO error). The presence of, e.g., failedSkillLoads, does NOT by itself cause fnErr to be non-nil.
+// It returns:
+//   - validSkills: valid skills with no Validate() issues.
+//   - invalidSkills: skills which partially loaded but fail Validate().
+//   - failedSkillLoads: dirs in searchDirs (i.e., possible skills) but for which LoadSkill returned an error.
+//   - fnErr: only non-nil if there was a fatal error (ex: IO error). The presence of, e.g., failedSkillLoads, does NOT by itself cause fnErr to be non-nil.
 func LoadSkills(searchDirs []string) (validSkills []Skill, invalidSkills []Skill, failedSkillLoads []error, fnErr error)
 
 // FormatSkillErrors accepts invalid skills and skills that failed to load (from LoadSkills) and formats them in a nice user message that is suitable to be printed
@@ -43,8 +44,13 @@ func FormatSkillErrors(invalidSkills []Skill, failedSkillLoads []error) string
 //   - Invalid skill name (from the spec, skill name must be: `Max 64 characters. Lowercase letters, numbers, and hyphens only. Must not start or end with a hyphen.`)
 func (s Skill) Validate() error
 
-// Prompt returns a string suitable to be given to the LLM that explains skills. If there are no skills, a minimal snippet is given indicating that. The param shellToolName
-// indicates the tool that the LLM should use to invoke skill scripts and execute shell commands.
+// Prompt returns a markdown string suitable to be given to the LLM that explains skills and enumerates the provided available skills.
+//
+// If there are no skills, Prompt returns a minimal snippet indicating that.
+//
+// shellToolName indicates the tool name the LLM should use to invoke skill scripts and execute shell commands.
+//
+// isPackageMode indicates whether the LLM is running in package-mode (no general-purpose shell tool; shell is typically only available via the skills tool).
 //
 // It takes this form:
 //
@@ -58,7 +64,7 @@ func (s Skill) Validate() error
 //	- Missing/blocked: If a named skill...
 //
 // In other words, three headers, with an overview, list of actual skills and their location, and then a guide on how to use skills with various rules and tips.
-func Prompt(skills []Skill, shellToolName string) string
+func Prompt(skills []Skill, shellToolName string, isPackageMode bool) string
 
 // Authorize adds read grants for the provided skills' directories to authorizer. Each skill must be valid (Validate() returns nil) and unique.
 //
@@ -68,7 +74,8 @@ func Authorize(skills []Skill, authorizer authdomain.Authorizer) error
 // SearchPaths returns absolute directories where skills may be located.
 //
 // Starting in startDir (can be "" for cwd), it looks for `$DIR/.codalotl/skills`, then repeats for each parent directory up to the filesystem root. Lastly, it checks
-// `~/.codalotl/skills` (where `~` resolves to the current user's home directory). This search order mirrors that of cascade's config files.
+// `~/.codalotl/skills` and `~/.codalotl/skills/.system` (where `~` resolves to the current user's home directory). This search order mirrors that of cascade's config
+// files.
 //
 // A candidate `.codalotl/skills` directory is only returned if it contains at least one subdirectory (i.e., at least one potential skill dir). Empty directories,
 // or directories containing only files, are ignored.

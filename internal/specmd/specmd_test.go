@@ -315,7 +315,7 @@ func TestImplementationDiffs(t *testing.T) {
 	require.NoError(t, os.WriteFile(specPath, []byte(specBody), 0o644))
 	s, err := Read(specPath)
 	require.NoError(t, err)
-	diffs, err := s.ImplemenationDiffs()
+	diffs, err := s.ImplementationDiffs()
 	require.NoError(t, err)
 	require.NotNil(t, diffs)
 	require.Len(t, diffs, 4)
@@ -330,4 +330,55 @@ func TestImplementationDiffs(t *testing.T) {
 	require.Equal(t, DiffTypeDocWhitespace, byID["DocWS"].DiffType)
 	require.Equal(t, DiffTypeIDMismatch, byID["A"].DiffType)
 	require.Equal(t, DiffTypeImplMissing, byID["Missing"].DiffType)
+}
+
+func TestImplementationDiffs_ConformanceAllowsExtraElements(t *testing.T) {
+	modDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(modDir, "go.mod"), []byte(strings.Join([]string{
+		"module example.com/tmp",
+		"",
+		"go 1.24.4",
+		"",
+	}, "\n")), 0o644))
+	pkgDir := filepath.Join(modDir, "mypkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	impl := strings.Join([]string{
+		"package mypkg",
+		"",
+		"type Foo struct {",
+		"\tFoo    int",
+		"\thidden int",
+		"}",
+		"",
+		"const (",
+		"\tLangRuby string = \"ruby\"",
+		"\tLangGo   string = \"go\"",
+		"\tLangRust string = \"rust\"",
+		")",
+		"",
+	}, "\n")
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "impl.go"), []byte(impl), 0o644))
+	specBody := strings.Join([]string{
+		"# mypkg",
+		"",
+		"## Public API",
+		"```go",
+		"type Foo struct {",
+		"\tFoo int",
+		"}",
+		"",
+		"const (",
+		"\tLangRuby string = \"ruby\"",
+		"\tLangGo   string = \"go\"",
+		")",
+		"```",
+		"",
+	}, "\n")
+	specPath := filepath.Join(pkgDir, "SPEC.md")
+	require.NoError(t, os.WriteFile(specPath, []byte(specBody), 0o644))
+	s, err := Read(specPath)
+	require.NoError(t, err)
+	diffs, err := s.ImplementationDiffs()
+	require.NoError(t, err)
+	require.Nil(t, diffs)
 }

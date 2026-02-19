@@ -25,19 +25,37 @@ var ErrCodeUnitPathOutside = errors.New("authdomain: path outside code unit")
 
 const userRequestBufferSize = 16
 
-// UserRequest describes work that requires a human decision.
+// Allow/Disallow should be invoked exactly once; they are internally guarded so extra calls are cheap no-ops. The caller choosing neither leaves the underlying
+// authorization call blocked until Close is invoked.
 type UserRequest struct {
-	ToolCallID string
-	ToolName   string
-	Prompt     string
-	Argv       []string
-	Allow      func()
-	Disallow   func()
+	ToolCallID string   // The related tool call ID, if available
+	ToolName   string   // Name of the tool. Should match a tool's Name() value
+	Prompt     string   // human-readable question to surface to the user.
+	Argv       []string // argv of the shell command to allow; nil unless a shell request
+	Allow      func()   // idempotent; unblocks the pending authorization with an "allow".
+	Disallow   func()   // idempotent; unblocks the pending authorization with a "deny".
+
+	// private fields ok
 }
 
-// An Authorizer answers whether a tool is allowed to be used with respect to configured domains.
+// An Authorizer can answer whether a tool is allowed to be used with respect to a number of paths and parameters.
+//
+// Authorizers accept an optional requestPermission flag, with an optional reason. If requestPermission=true, the LLM is specifically requesting permission to do
+// the operation. This permits the implementation of policies where:
+//   - Requests that are normally authorized can get the user permission (ex: reading .env, perhaps)
+//   - Requests that are normally denied can be requested from the user with a reason.
+//   - Of course, the authorizer is free to disregard this param (auto-approve-all, or deny-all-outside of sandbox).
+//
+// Implementors may implement pure functions over these params (for instance, implementing policies like "never r/w outside of sandbox"), or they may base their
+// answer on actual contents of the file system (for instance, pre-opening a file and checking to see if it has secrets). They may also decide to base their answer
+// at any time on synchronous user input (ex: Do you want to allow Read of some/file? Yes or No).
+//
+// Note that even if Authorizer returns nil, actual filesystem permissions or OS-level sandboxing may prevent a read or write.
+//
+// Finally, a design note: we're not passing the tool call itself in, nor the raw parameters. Ideally, an Authorizer shouldn't need to know about specific tools
+// or their implementation.
 type Authorizer interface {
-	// SandboxDir returns the cleaned, absolute path of the sandbox root for this authorizer.
+	// SandboxDir returns the normalized sandbox root for this authorizer.
 	SandboxDir() string
 
 	// CodeUnitDir returns the code unit base dir if a code unit domain is active, else "".
@@ -46,7 +64,7 @@ type Authorizer interface {
 	// IsCodeUnitDomain reports whether this authorizer enforces a code unit domain.
 	IsCodeUnitDomain() bool
 
-	// WithoutCodeUnit returns an authorizer with code-unit restrictions removed.
+	// WithoutCodeUnit returns an authorizer with code-unit restrictions removed (typically the fallback sandbox authorizer).
 	WithoutCodeUnit() Authorizer
 
 	// IsAuthorizedForRead returns nil if all absPath are authorized to be read. It returns an error otherwise, where the error explains why authorization was denied.
@@ -127,6 +145,8 @@ func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authori
 }
 
 // WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same ShellAllowedCommands, request channel, grants, etc.
+//
+// This can be used to run subagents in other directories outside the sandbox (e.g., investigating a shared library).
 func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, error) {
 	if authorizer == nil {
 		return nil, errors.New("authorizer is nil")

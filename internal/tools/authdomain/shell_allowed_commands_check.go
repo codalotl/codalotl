@@ -9,7 +9,16 @@ import (
 // ErrEmptyCommand is returned when Check is invoked with an empty argv.
 var ErrEmptyCommand = errors.New("shell command argv is empty")
 
-// Check evaluates argv against configured allow/deny lists and heuristics.
+// Check checks argv lexically against the blocked/dangerous/safe commands. It returns a CommandCheckResult (eg, blocked, safe, dangerous, inscrutable, none), or
+// an error.
+//   - Precedence: safe > blocked > dangerous. So a match on the safe list overrules everything.
+//   - This implies there's no super-clean way to specify "allow go commands, except for go install". You'd need to either explicitly enumerate safe go commands,
+//     or not add go to the safe list.
+//   - inscrutable is returned if we detect argv contains a set of pipes, subshells, xargs, or various other non-simple elements, which we don't support reasoning
+//     about.
+//   - a command is marked as dangerous if it does not match any list and argv[0] is a path-qualified command (absolute or uses ".."); this is treated as "outside
+//     sandbox" heuristically.
+//   - a scrutable command that is on no list is 'none'.
 func (s *ShellAllowedCommands) Check(argv []string) (CommandCheckResult, error) {
 	if len(argv) == 0 {
 		return CommandCheckResultNone, ErrEmptyCommand
