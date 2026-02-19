@@ -265,7 +265,7 @@ func (s *Spec) ImplementationDiffs() ([]SpecDiff, error) {
 			SpecLine:    sd.SpecLine,
 			DiffType:    DiffTypeOther,
 		}
-		implSnippet, implPos, implBytes, implDocRaw, implNorm, implErr := findImplForSpecDecl(pkg, sd)
+		implSnippet, implPos, implErr := findImplForSpecDecl(pkg, sd)
 		if implErr != nil {
 			return nil, implErr
 		}
@@ -282,22 +282,16 @@ func (s *Spec) ImplementationDiffs() ([]SpecDiff, error) {
 			diffs = append(diffs, diff)
 			continue
 		}
-		if sd.NormalizedCode != implNorm {
-			diff.DiffType = DiffTypeCodeMismatch
+		conforms, dt, err := conformanceDiffType(sd.Snippet, implSnippet)
+		if err != nil {
+			return nil, err
+		}
+		if !conforms {
+			diff.DiffType = dt
 			diffs = append(diffs, diff)
 			continue
 		}
-		_ = implBytes
-		if sd.DocRaw != implDocRaw {
-			if normalizeDocWhitespace(sd.DocRaw) == normalizeDocWhitespace(implDocRaw) {
-				diff.DiffType = DiffTypeDocWhitespace
-			} else {
-				diff.DiffType = DiffTypeDocMismatch
-			}
-			diffs = append(diffs, diff)
-			continue
-		}
-		// No diff for this snippet.
+		// Conforms: no diff for this snippet.
 	}
 	if len(diffs) == 0 {
 		return nil, nil
@@ -312,15 +306,15 @@ type implSnippetPos struct {
 	idMismatch bool
 }
 
-func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, pos implSnippetPos, implBytes []byte, implDocRaw string, implNormCode string, fnErr error) {
+func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, pos implSnippetPos, fnErr error) {
 	if len(sd.IDs) == 0 {
-		return "", implSnippetPos{missing: true}, nil, "", "", nil
+		return "", implSnippetPos{missing: true}, nil
 	}
 	var snippets []gocode.Snippet
 	for _, id := range sd.IDs {
 		sn := pkg.GetSnippet(id)
 		if sn == nil {
-			return "", implSnippetPos{missing: true}, nil, "", "", nil
+			return "", implSnippetPos{missing: true}, nil
 		}
 		snippets = append(snippets, sn)
 	}
@@ -328,25 +322,14 @@ func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, 
 	for _, sn := range snippets[1:] {
 		if sn != first {
 			// All IDs exist, but they point at different decl blocks.
-			return "", implSnippetPos{idMismatch: true}, nil, "", "", nil
+			return "", implSnippetPos{idMismatch: true}, nil
 		}
 	}
 	p := first.Position()
 	pos.file = filepath.Base(p.Filename)
 	pos.line = p.Line
-	implBytes = first.FullBytes()
 	implSnippet = string(first.Bytes())
-	decl, fset, wrapper, err := parseDeclFromSnippetBytes(implBytes)
-	if err != nil {
-		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplementationDiffs: parse impl snippet %v: %w", sd.IDs, err)
-	}
-	implDocRaw = rawDocForDecl(decl, fset, wrapper)
-	stripCommentsAndBodies(decl)
-	implNormCode, err = formatDeclNoComments(decl)
-	if err != nil {
-		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplementationDiffs: format impl decl %v: %w", sd.IDs, err)
-	}
-	return implSnippet, pos, implBytes, implDocRaw, implNormCode, nil
+	return implSnippet, pos, nil
 }
 func loadImplPackageForSpec(specAbsPath string) (*gocode.Package, error) {
 	mod, err := gocode.NewModule(specAbsPath)
@@ -369,11 +352,9 @@ func loadImplPackageForSpec(specAbsPath string) (*gocode.Package, error) {
 }
 
 type specDecl struct {
-	IDs            []string
-	Snippet        string
-	SpecLine       int
-	DocRaw         string
-	NormalizedCode string
+	IDs      []string
+	Snippet  string
+	SpecLine int
 }
 
 func parseSpecDeclsFromCodeBlock(code string, codeStartLine int) ([]specDecl, error) {
@@ -400,18 +381,10 @@ func parseSpecDeclsFromCodeBlock(code string, codeStartLine int) ([]specDecl, er
 		if err != nil {
 			return nil, err
 		}
-		docRaw := rawDocForDecl(d, fset, wrapper)
-		stripCommentsAndBodies(d)
-		norm, err := formatDeclNoComments(d)
-		if err != nil {
-			return nil, err
-		}
 		decls = append(decls, specDecl{
-			IDs:            ids,
-			Snippet:        snippet,
-			SpecLine:       specLine,
-			DocRaw:         docRaw,
-			NormalizedCode: norm,
+			IDs:      ids,
+			Snippet:  snippet,
+			SpecLine: specLine,
 		})
 	}
 	return decls, nil
