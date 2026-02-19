@@ -6,7 +6,7 @@
 - Store JSON metadata under `(namespace, hash)`.
 - Retrieve metadata later by recomputing the hash. If content changes, the hash changes and the record is naturally missed.
 
-This package stores metadata. It is optimized for small (< 2kb) JSON metadata.
+This package stores metadata. It is optimized for small (< 2 KB) JSON metadata.
 
 ## Use cases
 
@@ -22,33 +22,34 @@ Example 2: given a Go function, its surrounding code, and its documentation (as 
     - `namespace` (separates different kinds of metadata)
     - `hash` (content-derived key)
 - `namespace` is an identifier representing the category of the metadata result. Ex: "securityreview-1.0"; "docaudit-1.2". Recommended to be versioned.
-- `AdditionalInfo` are optional provenance/info about how/when a record was computed. Stored in same record as primary metadata payload.
+- `AdditionalInfo` is optional provenance info about how/when a record was computed. Stored in same record as primary metadata payload.
 
 ## Storage
 
 - Backed by the filesystem, rooted at `DB.AbsRoot`.
-- Data stored in this DB can be checked into git repositories with minimal merge conflicts.
-    - Merge conflict only if metadata is computed against the exact same content.
-    - But if two engineers are simultaneously coding against the same package, they typically shouldn't get merge conflicts on this cas system.
- - Records stored at `DB.AbsRoot/<namespace>/<hash[0:2]>/<hash[2:]>`
+- Data stored in this DB can be checked into Git repositories with minimal merge conflicts.
+    - Merge conflict only if two writers store different metadata for the same `(namespace, hash)`.
+    - But if two engineers are simultaneously coding against the same package, they typically shouldn't get merge conflicts on this CAS system.
+- Records stored at `DB.AbsRoot/<namespace>/<hash[0:2]>/<hash[2:]>`.
 
 ## Public API
 
 ```go
 // Hasher identifies a CAS record by hash.
 type Hasher interface {
-	// Hash must be filesystem safe with no separators.
+	// Hash must be filesystem-safe with no path separators.
 	Hash() string
 }
 
-// NewFileSetHasher returns a Hasher for the given paths. Path order does not matter. Paths should be relative paths, as they are used to compute the hash (and should
-// ideally be stable across computers).
+// NewFileSetHasher returns a Hasher for the given paths. Path order does not matter.
+//
+// Paths should be relative paths, as they are used to compute the hash (and should ideally be stable across computers).
 //
 // Returns an error if, for instance, a path cannot be read.
 func NewFileSetHasher(paths []string) (Hasher, error)
 
-// NewDirRelativeFileSetHasher is like NewFileSetHasher, but the hash is based on the dir-relative portion of p in paths. Returns an error if any p in paths is not
-// in dir.
+// NewDirRelativeFileSetHasher is like NewFileSetHasher, but the hash is based on the dir-relative portion of each p in paths. Returns an error if any p in paths
+// is not in dir.
 //
 // This allows the group of files to be moved as a unit without affecting their hash.
 func NewDirRelativeFileSetHasher(dir string, paths []string) (Hasher, error)
@@ -61,12 +62,12 @@ type DB struct {
 	AbsRoot string
 }
 
-// AdditionalInfo is saved and retrieved besides the primary Store'd payload.
+// AdditionalInfo is saved and retrieved besides the primary Store payload.
 type AdditionalInfo struct {
-	// Seconds since epoch.
+	// Seconds since Unix epoch.
 	UnixTimestamp int
 
-	// Caller-supplied opaque paths. Caller may often try to align these with paths passed to, eg, NewFileSetHasher, but this package does not verify.
+	// Caller-supplied opaque paths. Caller may often try to align these with paths passed to, e.g., NewFileSetHasher, but this package does not verify them.
 	Paths []string
 
 	GitClean     bool   // True if computed with a clean git worktree.
@@ -74,18 +75,20 @@ type AdditionalInfo struct {
 	GitMergeBase string // Merge-base for GitCommit (if relevant).
 }
 
-// Options let callers supply AdditionalInfo fields if desired. Also exists for extensibility of Store in the future.
+// Options let callers supply AdditionalInfo fields if desired. Also exists for future Store extensibility.
 type Options struct {
 	AdditionalInfo
 }
 
-// Store serializes jsonable (as JSON, using json.Marshal) and stores it for (namespace, hasher.Hash()). namespace must be filesystem safe with no separators. If
-// opts is passed with non-zero AdditionalInfo, the additional info is stored (in the same record as jsonable).
+// Store serializes jsonable as JSON (using json.Marshal) and stores it for (namespace, hasher.Hash()).
+//
+// namespace must be filesystem-safe with no path separators. If opts is passed with non-zero AdditionalInfo, the additional info is stored (in the same record as
+// jsonable).
 func (db *DB) Store(hasher Hasher, namespace string, jsonable any, opts *Options) error
 
 // Retrieve loads metadata for (namespace, hasher.Hash()) into target. It returns whether metadata was found, additional info, and any error. Metadata not being
 // found is not, by itself, an error.
 //   - target must be a pointer that is passed to json.Unmarshal.
-//   - namespace must be filesystem safe with no separators.
+//   - namespace must be filesystem-safe with no path separators.
 func (db *DB) Retrieve(hasher Hasher, namespace string, target any) (bool, AdditionalInfo, error)
 ```
