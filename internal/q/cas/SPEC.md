@@ -21,7 +21,7 @@ Example 2: given a Go function, its surrounding code, and its documentation (as 
 - A "record" is keyed by:
     - `namespace` (separates different kinds of metadata)
     - `hash` (content-derived key)
-- `namespace` is an opaque identifier representing the category of the metadata result. Ex: "securityreview-1.0"; "docaudit-1.2". Recommended to be versioned.
+- `namespace` is an identifier representing the category of the metadata result. Ex: "securityreview-1.0"; "docaudit-1.2". Recommended to be versioned.
 - `Options` are optional provenance about how/when a record was computed (as well as other options for storing).
     - Intended for debugging, audits, and future behaviors.
     - Not required to store a record.
@@ -30,22 +30,27 @@ Example 2: given a Go function, its surrounding code, and its documentation (as 
 ## Storage
 
 - Backed by the filesystem, rooted at `DB.AbsRoot`.
-- Data stored in this DB canbe checked into git repositories with no merge conflicts.
+- Data stored in this DB can be checked into git repositories with minimal merge conflicts.
+    - Merge conflict only if metadata is computed against the exact same content.
+    - But if two engineers are simultaneously coding against the same package, they typically shouldn't get merge conflicts on this cas system.
 
 ## Public API
 
 ```go
 // Hasher identifies a CAS record by hash.
 type Hasher interface {
+	// Hash must be filesystem safe with no separators.
 	Hash() string
 }
 
-// NewFileSetHasher returns a Hasher for the given paths. paths order does not matter. paths should be relative paths, as they are used to compute the hash (and should ideally be stable across computers).
+// NewFileSetHasher returns a Hasher for the given paths. Path order does not matter. Paths should be relative paths, as they are used to compute the hash (and should
+// ideally be stable across computers).
 //
 // Returns an error if, for instance, a path cannot be read.
 func NewFileSetHasher(paths []string) (Hasher, error)
 
-// NewDirRelativeFileSetHasher is like NewFileSetHasher, but the hash is based on the dir-relative portion of p in paths. An error returned if any p in paths is not in dir.
+// NewDirRelativeFileSetHasher is like NewFileSetHasher, but the hash is based on the dir-relative portion of p in paths. Returns an error if any p in paths is not
+// in dir.
 //
 // This allows the group of files to be moved as a unit without affecting their hash.
 func NewDirRelativeFileSetHasher(dir string, paths []string) (Hasher, error)
@@ -65,11 +70,12 @@ type Options struct {
 	GitMergeBase string // Merge-base for GitCommit (if relevant).
 }
 
-// Store serializes jsonable (as JSON, using json.Marshal) and stores it for (namespace, hasher.Hash()).
+// Store serializes jsonable (as JSON, using json.Marshal) and stores it for (namespace, hasher.Hash()). namespace must be filesystem safe with no separators.
 func (db *DB) Store(hasher Hasher, namespace string, jsonable any, opts *Options) error
 
-// Retrieve loads metadata for (namespace, hasher.Hash()) into target. It returns whether metadata was found, plus any error. Metadata not being found is not, by itself, an error.
-//
-// target must be a pointer that is passed to json.Unmarshal.
+// Retrieve loads metadata for (namespace, hasher.Hash()) into target. It returns whether metadata was found, plus any error. Metadata not being found is not, by
+// itself, an error.
+//   - target must be a pointer that is passed to json.Unmarshal.
+//   - namespace must be filesystem safe with no separators.
 func (db *DB) Retrieve(hasher Hasher, namespace string, target any) (bool, error)
 ```
