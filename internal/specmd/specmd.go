@@ -512,24 +512,6 @@ func formatDeclNoComments(d ast.Decl) (string, error) {
 	}
 	return buf.String(), nil
 }
-func rawDocForDecl(d ast.Decl, fset *token.FileSet, wrapper []byte) string {
-	doc := docGroupForDecl(d)
-	if doc == nil {
-		return ""
-	}
-	startOff, err := offsetForPos(fset, doc.Pos())
-	if err != nil {
-		return ""
-	}
-	endOff, err := offsetForPos(fset, doc.End())
-	if err != nil {
-		return ""
-	}
-	if startOff < 0 || endOff < startOff || endOff > len(wrapper) {
-		return ""
-	}
-	return string(wrapper[startOff:endOff])
-}
 func normalizeDocWhitespace(s string) string {
 	// Canonicalize whitespace for doc whitespace-only diffs.
 	return strings.Join(strings.Fields(s), " ")

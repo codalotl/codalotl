@@ -20,6 +20,8 @@ ImplementationDiffs finds differences between SPEC.md and implementation. An imp
 - Extra fields/methods may be added to a struct/interface in the implementation without affecting conformance.
 - Extra elements may be added to a var/const/type block in the implementation without affecting conformance.
 - All cases above that involve a field in a struct apply recursively for nested structs.
+- Ordering matters.
+- AST structure is undefined (ex: `var Foo, Bar int` in impl vs `var Foo int` in spec). Callers should not assume any particular behavior here.
 
 ### Example: exact match
 

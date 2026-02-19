@@ -161,19 +161,20 @@ func typeSpecMemberDocsConform(specTS, implTS *ast.TypeSpec) (ok bool, whitespac
 		if it == nil {
 			return true, false, nil
 		}
-		return fieldListDocsConform(st.Fields, it.Fields)
+		return fieldListDocsConform(st.Fields, it.Fields, true)
 	case *ast.InterfaceType:
 		it, _ := implTS.Type.(*ast.InterfaceType)
 		if it == nil {
 			return true, false, nil
 		}
-		return fieldListDocsConform(st.Methods, it.Methods)
+		// Recursive nested-struct rules are only for struct fields, not interface methods.
+		return fieldListDocsConform(st.Methods, it.Methods, false)
 	default:
 		return true, false, nil
 	}
 }
 
-func fieldListDocsConform(specFL, implFL *ast.FieldList) (ok bool, whitespaceOnly bool, err error) {
+func fieldListDocsConform(specFL, implFL *ast.FieldList, recurseNestedStructs bool) (ok bool, whitespaceOnly bool, err error) {
 	if specFL == nil || len(specFL.List) == 0 {
 		return true, false, nil
 	}
@@ -197,6 +198,13 @@ func fieldListDocsConform(specFL, implFL *ast.FieldList) (ok bool, whitespaceOnl
 		if ok, wsOnly := requiredCommentGroupEqual(sf.Comment, ifl.Comment); !ok {
 			recordMismatch(wsOnly)
 		}
+		if recurseNestedStructs {
+			if ok, wsOnly, err := nestedStructDocsConform(sf.Type, ifl.Type); err != nil {
+				return false, false, err
+			} else if !ok {
+				recordMismatch(wsOnly)
+			}
+		}
 	}
 	if !anyMismatch {
 		return true, false, nil
@@ -205,6 +213,71 @@ func fieldListDocsConform(specFL, implFL *ast.FieldList) (ok bool, whitespaceOnl
 		return false, false, nil
 	}
 	return false, true, nil
+}
+
+func nestedStructDocsConform(specType, implType ast.Expr) (ok bool, whitespaceOnly bool, err error) {
+	if specType == nil || implType == nil {
+		return true, false, nil
+	}
+	switch st := specType.(type) {
+	case *ast.ParenExpr:
+		it, ok := implType.(*ast.ParenExpr)
+		if !ok {
+			return false, false, nil
+		}
+		return nestedStructDocsConform(st.X, it.X)
+	case *ast.StarExpr:
+		it, ok := implType.(*ast.StarExpr)
+		if !ok {
+			return false, false, nil
+		}
+		return nestedStructDocsConform(st.X, it.X)
+	case *ast.ArrayType:
+		it, ok := implType.(*ast.ArrayType)
+		if !ok {
+			return false, false, nil
+		}
+		return nestedStructDocsConform(st.Elt, it.Elt)
+	case *ast.MapType:
+		it, ok := implType.(*ast.MapType)
+		if !ok {
+			return false, false, nil
+		}
+		// Recurse into both key and value types; map keys may be anonymous structs if comparable.
+		keyOK, keyWS, err := nestedStructDocsConform(st.Key, it.Key)
+		if err != nil {
+			return false, false, err
+		}
+		valOK, valWS, err := nestedStructDocsConform(st.Value, it.Value)
+		if err != nil {
+			return false, false, err
+		}
+		if keyOK && valOK {
+			return true, false, nil
+		}
+		wsOnly := true
+		if !keyOK {
+			wsOnly = wsOnly && keyWS
+		}
+		if !valOK {
+			wsOnly = wsOnly && valWS
+		}
+		return false, wsOnly, nil
+	case *ast.ChanType:
+		it, ok := implType.(*ast.ChanType)
+		if !ok {
+			return false, false, nil
+		}
+		return nestedStructDocsConform(st.Value, it.Value)
+	case *ast.StructType:
+		it, ok := implType.(*ast.StructType)
+		if !ok {
+			return false, false, nil
+		}
+		return fieldListDocsConform(st.Fields, it.Fields, true)
+	default:
+		return true, false, nil
+	}
 }
 
 func requiredCommentGroupEqual(spec, impl *ast.CommentGroup) (ok bool, whitespaceOnly bool) {
@@ -270,22 +343,58 @@ func parseDeclFragment(code string) (ast.Decl, error) {
 }
 
 func snippetStartsWithFuncDecl(code string) bool {
-	lines := strings.Split(code, "\n")
-	for _, ln := range lines {
-		trim := strings.TrimLeft(ln, " \t")
-		if trim == "" {
+	// Determine whether this fragment begins with a function declaration, ignoring any leading
+	// whitespace and comments. This lets us accept SPEC snippets that omit function bodies.
+	b := []byte(code)
+	i := 0
+	for {
+		// Skip whitespace.
+		for i < len(b) {
+			switch b[i] {
+			case ' ', '\t', '\n', '\r':
+				i++
+			default:
+				goto nonWS
+			}
+		}
+		return false
+	nonWS:
+		// Skip line comments.
+		if i+1 < len(b) && b[i] == '/' && b[i+1] == '/' {
+			i += 2
+			for i < len(b) && b[i] != '\n' {
+				i++
+			}
 			continue
 		}
-		if strings.HasPrefix(trim, "//") {
+		// Skip block comments.
+		if i+1 < len(b) && b[i] == '/' && b[i+1] == '*' {
+			i += 2
+			for i+1 < len(b) && !(b[i] == '*' && b[i+1] == '/') {
+				i++
+			}
+			if i+1 >= len(b) {
+				// Unterminated comment; treat as not-a-func snippet.
+				return false
+			}
+			i += 2
 			continue
 		}
-		if strings.HasPrefix(trim, "/*") {
-			// If a snippet starts with a block comment, we conservatively bail out (rare in SPEC.md).
-			return false
-		}
-		return strings.HasPrefix(trim, "func ")
+		break
 	}
-	return false
+	rest := b[i:]
+	if len(rest) < 4 || string(rest[:4]) != "func" {
+		return false
+	}
+	if len(rest) == 4 {
+		return true
+	}
+	switch rest[4] {
+	case ' ', '\t', '\n', '\r':
+		return true
+	default:
+		return false
+	}
 }
 
 func addEmptyFuncBody(code string) string {
@@ -380,36 +489,37 @@ func filterImplTypeSpecMembers(specTS, implTS *ast.TypeSpec) {
 		if !ok {
 			return
 		}
-		filterImplFieldListToSpec(st.Fields, it.Fields)
+		filterImplFieldListToSpec(st.Fields, it.Fields, true)
 	case *ast.InterfaceType:
 		it, ok := implTS.Type.(*ast.InterfaceType)
 		if !ok {
 			return
 		}
-		filterImplFieldListToSpec(st.Methods, it.Methods)
+		// Recursive nested-struct rules are only for struct fields, not interface methods.
+		filterImplFieldListToSpec(st.Methods, it.Methods, false)
 	default:
 	}
 }
 
-func filterImplFieldListToSpec(specFL, implFL *ast.FieldList) {
+func filterImplFieldListToSpec(specFL, implFL *ast.FieldList, recurseNestedStructs bool) {
 	if specFL == nil || implFL == nil {
 		return
 	}
-	requiredNamed := map[string]bool{}
-	requiredEmbedded := map[string]bool{}
+	requiredNamed := map[string]*ast.Field{}
+	requiredEmbedded := map[string]*ast.Field{}
 	for _, f := range specFL.List {
 		if f == nil {
 			continue
 		}
 		if len(f.Names) == 0 {
-			requiredEmbedded[exprString(f.Type)] = true
+			requiredEmbedded[exprString(f.Type)] = f
 			continue
 		}
 		for _, n := range f.Names {
 			if n == nil {
 				continue
 			}
-			requiredNamed[n.Name] = true
+			requiredNamed[n.Name] = f
 		}
 	}
 
@@ -419,27 +529,85 @@ func filterImplFieldListToSpec(specFL, implFL *ast.FieldList) {
 			continue
 		}
 		if len(f.Names) == 0 {
-			if requiredEmbedded[exprString(f.Type)] {
+			specField := requiredEmbedded[exprString(f.Type)]
+			if specField != nil {
+				// Embedded fields can't be unnamed struct literals, so no recursion needed here.
 				out = append(out, f)
 			}
 			continue
 		}
 		origNames := f.Names
 		f.Names = f.Names[:0]
+		var firstSpecField *ast.Field
 		for _, n := range origNames {
 			if n == nil {
 				continue
 			}
-			if requiredNamed[n.Name] {
+			specField := requiredNamed[n.Name]
+			if specField != nil {
+				if firstSpecField == nil {
+					firstSpecField = specField
+				}
 				f.Names = append(f.Names, n)
 			}
 		}
 		if len(f.Names) == 0 {
 			continue
 		}
+		if recurseNestedStructs && firstSpecField != nil {
+			// Apply "extra fields are ok" recursively for nested structs.
+			filterImplNestedStructTypes(firstSpecField.Type, f.Type)
+		}
 		out = append(out, f)
 	}
 	implFL.List = out
+}
+
+func filterImplNestedStructTypes(specType, implType ast.Expr) {
+	if specType == nil || implType == nil {
+		return
+	}
+	switch st := specType.(type) {
+	case *ast.ParenExpr:
+		it, ok := implType.(*ast.ParenExpr)
+		if !ok {
+			return
+		}
+		filterImplNestedStructTypes(st.X, it.X)
+	case *ast.StarExpr:
+		it, ok := implType.(*ast.StarExpr)
+		if !ok {
+			return
+		}
+		filterImplNestedStructTypes(st.X, it.X)
+	case *ast.ArrayType:
+		it, ok := implType.(*ast.ArrayType)
+		if !ok {
+			return
+		}
+		filterImplNestedStructTypes(st.Elt, it.Elt)
+	case *ast.MapType:
+		it, ok := implType.(*ast.MapType)
+		if !ok {
+			return
+		}
+		// Recurse into both key and value types; map keys may be anonymous structs if comparable.
+		filterImplNestedStructTypes(st.Key, it.Key)
+		filterImplNestedStructTypes(st.Value, it.Value)
+	case *ast.ChanType:
+		it, ok := implType.(*ast.ChanType)
+		if !ok {
+			return
+		}
+		filterImplNestedStructTypes(st.Value, it.Value)
+	case *ast.StructType:
+		it, ok := implType.(*ast.StructType)
+		if !ok {
+			return
+		}
+		filterImplFieldListToSpec(st.Fields, it.Fields, true)
+	default:
+	}
 }
 
 func filterImplValueSpec(required map[string]bool, vs *ast.ValueSpec) {

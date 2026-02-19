@@ -123,6 +123,22 @@ func TestConformanceDiffType(t *testing.T) {
 			wantType: DiffTypeDocWhitespace,
 		},
 		{
+			name: "decl_doc_block_comment_allowed_for_bodyless_func",
+			spec: dd(`
+				/*
+				Foo does x.
+				*/
+				func Foo(b int) error
+			`),
+			impl: dd(`
+				/*
+				Foo does x.
+				*/
+				func Foo(b int) error { return nil }
+			`),
+			wantOK: true,
+		},
+		{
 			name: "spec_missing_comment_allows_impl_comment",
 			spec: dd(`
 				func Foo()
@@ -250,6 +266,201 @@ func TestConformanceDiffType(t *testing.T) {
 				)
 			`),
 			wantOK: true,
+		},
+		{
+			name: "nested_struct_extra_field_is_ok",
+			spec: dd(`
+				type T struct {
+					N struct {
+						A int
+					}
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					N struct {
+						A int
+						B int
+					}
+				}
+			`),
+			wantOK: true,
+		},
+		{
+			name: "nested_struct_map_key_extra_field_is_ok",
+			spec: dd(`
+				type T struct {
+					M map[struct {
+						A int
+					}]int
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					M map[struct {
+						A int
+						B int
+					}]int
+				}
+			`),
+			wantOK: true,
+		},
+		{
+			name: "nested_struct_map_key_missing_required_field_is_code_mismatch",
+			spec: dd(`
+				type T struct {
+					M map[struct {
+						A int
+					}]int
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					M map[struct{}]int
+				}
+			`),
+			wantOK:   false,
+			wantType: DiffTypeCodeMismatch,
+		},
+		{
+			name: "nested_struct_map_key_field_comment_required_exact",
+			spec: dd(`
+				type T struct {
+					M map[struct {
+						A int // a
+					}]int
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					M map[struct {
+						A int // b
+						B int
+					}]int
+				}
+			`),
+			wantOK:   false,
+			wantType: DiffTypeDocMismatch,
+		},
+		{
+			name: "nested_struct_map_key_field_comment_whitespace_only_diff",
+			spec: dd(`
+				type T struct {
+					M map[struct {
+						A int // a b
+					}]int
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					M map[struct {
+						A int // a	b
+						B int
+					}]int
+				}
+			`),
+			wantOK:   false,
+			wantType: DiffTypeDocWhitespace,
+		},
+		{
+			name: "nested_struct_deep_extra_field_is_ok",
+			spec: dd(`
+				type T struct {
+					N struct {
+						Inner struct {
+							A int
+						}
+					}
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					N struct {
+						Inner struct {
+							A int
+							B int
+						}
+					}
+				}
+			`),
+			wantOK: true,
+		},
+		{
+			name: "nested_struct_missing_required_field_is_code_mismatch",
+			spec: dd(`
+				type T struct {
+					N struct {
+						A int
+					}
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					N struct{}
+				}
+			`),
+			wantOK:   false,
+			wantType: DiffTypeCodeMismatch,
+		},
+		{
+			name: "nested_struct_field_comment_required_exact",
+			spec: dd(`
+				type T struct {
+					N struct {
+						A int // a
+					}
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					N struct {
+						A int // b
+						B int
+					}
+				}
+			`),
+			wantOK:   false,
+			wantType: DiffTypeDocMismatch,
+		},
+		{
+			name: "interface_method_returning_struct_literal_is_not_subject_to_recursive_field_rules",
+			spec: dd(`
+				type I interface {
+					A() struct {
+						X int
+					}
+				}
+			`),
+			impl: dd(`
+				type I interface {
+					A() struct {
+						X int
+						Y int
+					}
+				}
+			`),
+			wantOK:   false,
+			wantType: DiffTypeCodeMismatch,
+		},
+		{
+			name: "struct_field_func_returning_struct_literal_is_not_subject_to_recursive_field_rules",
+			spec: dd(`
+				type T struct {
+					F func() struct {
+						X int
+					}
+				}
+			`),
+			impl: dd(`
+				type T struct {
+					F func() struct {
+						X int
+						Y int
+					}
+				}
+			`),
+			wantOK:   false,
+			wantType: DiffTypeCodeMismatch,
 		},
 		{
 			name: "code_mismatch_takes_precedence_over_doc_mismatch",
