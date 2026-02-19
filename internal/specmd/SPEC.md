@@ -13,12 +13,13 @@ SPEC.md files are currently assumed to be for Go packages only.
 ## Conformance
 
 ImplementationDiffs finds differences between SPEC.md and implementation. An implementation snippet **conforms** to a SPEC.md snippet as follows:
-- For functions, the function body is ignored.
+- For functions, the function body is ignored (functions in SPEC.md shouldn't even typically have bodies).
 - Exact matches conform.
 - If a decl (or field, or similar) in the SPEC.md has a comment, the implementation must have the **exact** same comment (in the same spot - doc vs eol).
 - If a decl (or field, or similar) in the SPEC.md does NOT have a comment, the implementation MAY have a comment without affecting conformance.
-- Fields/methods may be added to a struct/interface in the implementation without affecting conformance.
-- Elements may be added to a var/const/type block in the implementation without affecting conformance.
+- Extra fields/methods may be added to a struct/interface in the implementation without affecting conformance.
+- Extra elements may be added to a var/const/type block in the implementation without affecting conformance.
+- All cases above that involve a field in a struct apply recursively for nested structs.
 
 ### Example: exact match
 
