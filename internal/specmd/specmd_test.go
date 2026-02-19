@@ -315,7 +315,7 @@ func TestImplementationDiffs(t *testing.T) {
 	require.NoError(t, os.WriteFile(specPath, []byte(specBody), 0o644))
 	s, err := Read(specPath)
 	require.NoError(t, err)
-	diffs, err := s.ImplemenationDiffs()
+	diffs, err := s.ImplementationDiffs()
 	require.NoError(t, err)
 	require.NotNil(t, diffs)
 	require.Len(t, diffs, 4)

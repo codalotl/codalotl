@@ -359,7 +359,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			if err != nil {
 				return err
 			}
-			diffs, err := spec.ImplemenationDiffs()
+			diffs, err := spec.ImplementationDiffs()
 			if err != nil {
 				return err
 			}

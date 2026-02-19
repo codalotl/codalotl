@@ -221,18 +221,18 @@ type SpecDiff struct {
 	DiffType DiffType
 }
 
-// ImplemenationDiffs finds differences between the public API declared in the SPEC.md and the actual public API in the corresponding Go package. It only checks
+// ImplementationDiffs finds differences between the public API declared in the SPEC.md and the actual public API in the corresponding Go package. It only checks
 // those identifiers defined in the SPEC.md - if the public API is a strict superset, no differences are returned. If no differences are found, nil is returned.
 //   - Only PublicAPIGoCodeBlocks are checked.
 //   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
 //   - If the corresponding Go package cannot be loaded (ex: syntax error; no Go files), an error is returned.
-func (s *Spec) ImplemenationDiffs() ([]SpecDiff, error) {
+func (s *Spec) ImplementationDiffs() ([]SpecDiff, error) {
 	if s == nil {
-		return nil, errors.New("specmd: ImplemenationDiffs: nil Spec")
+		return nil, errors.New("specmd: ImplementationDiffs: nil Spec")
 	}
 	if s.AbsPath == "" {
-		return nil, errors.New("specmd: ImplemenationDiffs: empty AbsPath")
+		return nil, errors.New("specmd: ImplementationDiffs: empty AbsPath")
 	}
 	// Parse markdown once so we can compute SPEC line numbers.
 	md, err := parseMarkdown([]byte(s.Body))
@@ -338,32 +338,32 @@ func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, 
 	implSnippet = string(first.Bytes())
 	decl, fset, wrapper, err := parseDeclFromSnippetBytes(implBytes)
 	if err != nil {
-		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplemenationDiffs: parse impl snippet %v: %w", sd.IDs, err)
+		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplementationDiffs: parse impl snippet %v: %w", sd.IDs, err)
 	}
 	implDocRaw = rawDocForDecl(decl, fset, wrapper)
 	stripCommentsAndBodies(decl)
 	implNormCode, err = formatDeclNoComments(decl)
 	if err != nil {
-		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplemenationDiffs: format impl decl %v: %w", sd.IDs, err)
+		return "", implSnippetPos{}, nil, "", "", fmt.Errorf("specmd: ImplementationDiffs: format impl decl %v: %w", sd.IDs, err)
 	}
 	return implSnippet, pos, implBytes, implDocRaw, implNormCode, nil
 }
 func loadImplPackageForSpec(specAbsPath string) (*gocode.Package, error) {
 	mod, err := gocode.NewModule(specAbsPath)
 	if err != nil {
-		return nil, fmt.Errorf("specmd: ImplemenationDiffs: load module: %w", err)
+		return nil, fmt.Errorf("specmd: ImplementationDiffs: load module: %w", err)
 	}
 	specDir := filepath.Dir(specAbsPath)
 	relDir, err := filepath.Rel(mod.AbsolutePath, specDir)
 	if err != nil {
-		return nil, fmt.Errorf("specmd: ImplemenationDiffs: compute package relative dir: %w", err)
+		return nil, fmt.Errorf("specmd: ImplementationDiffs: compute package relative dir: %w", err)
 	}
 	if relDir == "" {
 		relDir = "."
 	}
 	pkg, err := mod.LoadPackageByRelativeDir(relDir)
 	if err != nil {
-		return nil, fmt.Errorf("specmd: ImplemenationDiffs: load package %q: %w", relDir, err)
+		return nil, fmt.Errorf("specmd: ImplementationDiffs: load package %q: %w", relDir, err)
 	}
 	return pkg, nil
 }

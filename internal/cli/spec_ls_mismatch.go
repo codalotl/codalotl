@@ -43,7 +43,7 @@ func runSpecLsMismatch(ctx context.Context, out io.Writer, pattern string) error
 		if err != nil {
 			continue
 		}
-		diffs, err := spec.ImplemenationDiffs()
+		diffs, err := spec.ImplementationDiffs()
 		if err != nil {
 			continue
 		}

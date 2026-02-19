@@ -840,7 +840,7 @@ func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.Co
 	var diffs []specmd.SpecDiff
 
 	if readErr == nil {
-		diffs, diffErr = s.ImplemenationDiffs()
+		diffs, diffErr = s.ImplementationDiffs()
 	}
 	if readErr == nil && diffErr == nil && len(diffs) > 0 {
 		diffErr = specmd.FormatDiffs(diffs, &out)
