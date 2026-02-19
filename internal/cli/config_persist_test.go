@@ -11,9 +11,9 @@ import (
 
 func isolateUserConfigWithHome(t *testing.T) string {
 	t.Helper()
-	home := t.TempDir()
+	home := mkdirTempWithRemoveRetry(t, "codalotl-test-home-")
 	t.Setenv("HOME", home)
-	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("LOCALAPPDATA", mkdirTempWithRemoveRetry(t, "codalotl-test-localappdata-"))
 	return home
 }
 

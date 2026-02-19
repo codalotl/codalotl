@@ -10,7 +10,7 @@ import (
 
 func TestRun_SpecLsMismatch_ListsOnlyMismatches(t *testing.T) {
 	isolateUserConfig(t)
-	tmp := t.TempDir()
+	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-mod-")
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
 	// p1: mismatch (SPEC signature differs from implementation).
 	p1 := filepath.Join(tmp, "p1")
@@ -50,7 +50,7 @@ func TestRun_SpecLsMismatch_ListsOnlyMismatches(t *testing.T) {
 }
 func TestRun_SpecLsMismatch_OutputSorted(t *testing.T) {
 	isolateUserConfig(t)
-	tmp := t.TempDir()
+	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-mod-")
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
 	for _, name := range []string{"b", "a"} {
 		p := filepath.Join(tmp, name)
