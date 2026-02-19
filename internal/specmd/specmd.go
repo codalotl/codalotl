@@ -24,7 +24,7 @@ type Spec struct {
 	Body    string // Full contents of the file
 }
 
-// Read reads the path to create a Spec. If the path is not a "SPEC.md" file (case sensitive), an error is returned. The file is NOT parsed, nor verified to be markdown.
+// Read reads the path to create a Spec. If the path is not a "SPEC.md" file (case-sensitive), an error is returned. The file is NOT parsed, nor verified to be markdown.
 func Read(path string) (*Spec, error) {
 	if filepath.Base(path) != "SPEC.md" {
 		return nil, fmt.Errorf("specmd: Read: path must be a SPEC.md file: %q", path)
@@ -64,7 +64,7 @@ func (s *Spec) Validate() error {
 
 // GoCodeBlocks returns all multi-line Go code blocks in a ```go``` fence.
 //   - These must be triple-backtick and multi-line, not inline `single-backtick` code spans.
-//   - The fences MUST be tagged with `go`. Go code in triple-backtick fences without the Go tag are not included.
+//   - The fences MUST be tagged with `go`. Go code in triple-backtick fences without the Go tag is not included.
 //
 // If there are any problems parsing the markdown or if there are malformed code blocks (e.g. no closing triple-backticks), an error is returned. The Go code itself
 // is not checked for errors.

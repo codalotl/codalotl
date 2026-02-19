@@ -8,17 +8,17 @@ SPEC.md files are currently assumed to be for Go packages only.
 
 - Markdown parsed with `github.com/yuin/goldmark`
 - Go code parsed with `internal/gocode`
-- Go code parsed with `internal/updatedocs`
+- Documentation reflowed with `internal/updatedocs`
 
 ## Conformance
 
 ImplemenationDiffs finds differences between SPEC.md and implementation. An implementation snippet **conforms** to a SPEC.md snippet as follows:
-- For functions, the method body is ignored.
+- For functions, the function body is ignored.
 - Exact matches conform.
 - If a decl (or field, or similar) in the SPEC.md has a comment, the implementation must have the **exact** same comment (in the same spot - doc vs eol).
 - If a decl (or field, or similar) in the SPEC.md does NOT have a comment, the implementation MAY have a comment without affecting conformance.
-- Fields may be added to a struct or interface in the implementation without affecting conformance.
-- items may be added to a var/const/type block without affecting conformance.
+- Fields/methods may be added to a struct/interface in the implementation without affecting conformance.
+- Elements may be added to a var/const/type block in the implementation without affecting conformance.
 
 ### Example: exact match
 
@@ -26,7 +26,7 @@ Impl:
 
 ```go
 // Foo does x.
-func Foo(b int) error
+func Foo(b int) error { return nil }
 ```
 
 Conforms to SPEC.md:
@@ -42,7 +42,7 @@ Impl:
 
 ```go
 // Foo does x.
-func Foo(b int) error
+func Foo(b int) error { return nil }
 ```
 
 Conforms to SPEC.md:
@@ -57,7 +57,7 @@ Impl:
 
 ```go
 type Foo struct {
-	Foo int
+	Foo    int
 	hidden int
 }
 ```
@@ -70,14 +70,14 @@ type Foo struct {
 }
 ```
 
-### Example: added field is ok
+### Example: added const is ok
 
 Impl:
 
 ```go
 const (
 	LangRuby string = "ruby"
-	LangGo string = "go"
+	LangGo   string = "go"
 	LangRust string = "rust"
 )
 ```
@@ -87,7 +87,7 @@ Conforms to SPEC.md:
 ```go
 const (
 	LangRuby string = "ruby"
-	LangGo string = "go"
+	LangGo   string = "go"
 )
 ```
 
@@ -100,7 +100,7 @@ type Spec struct {
 	Body    string // Full contents of the file
 }
 
-// Read reads the path to create a Spec. If the path is not a "SPEC.md" file (case sensitive), an error is returned. The file is NOT parsed, nor verified to be markdown.
+// Read reads the path to create a Spec. If the path is not a "SPEC.md" file (case-sensitive), an error is returned. The file is NOT parsed, nor verified to be markdown.
 func Read(path string) (*Spec, error)
 
 // Validate parses Body as a markdown file, and ensures each Go code block has valid code without syntax errors. The code is not checked for type errors. The first
@@ -109,7 +109,7 @@ func (s *Spec) Validate() error
 
 // GoCodeBlocks returns all multi-line Go code blocks in a ```go``` fence.
 //   - These must be triple-backtick and multi-line, not inline `single-backtick` code spans.
-//   - The fences MUST be tagged with `go`. Go code in triple-backtick fences without the Go tag are not included.
+//   - The fences MUST be tagged with `go`. Go code in triple-backtick fences without the Go tag is not included.
 //
 // If there are any problems parsing the markdown or if there are malformed code blocks (e.g. no closing triple-backticks), an error is returned. The Go code itself
 // is not checked for errors.
