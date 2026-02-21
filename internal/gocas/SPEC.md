@@ -75,15 +75,15 @@ type DB struct {
 // StoreOnCodeUnit returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
 func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, jsonable any) error
 
-// Retrieve loads the stored value for (unit, namespace) into target.
+// RetrieveOnCodeUnit loads the stored value for (unit, namespace) into target.
 //
 // ok reports whether a value existed. When ok is false, target is left unchanged.
 //
 // additionalInfo is returned from the underlying CAS layer and may include best-effort git metadata captured at store time. Most callers should treat AdditionalInfo
 // as optional; see cas.AdditionalInfo field docs for details.
 //
-// Retrieve returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
-func (db *DB) Retrieve(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
+// RetrieveOnCodeUnit returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
+func (db *DB) RetrieveOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
 
 // StoreOnPackage stores jsonable for (pkg, namespace).
 //

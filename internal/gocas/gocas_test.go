@@ -63,7 +63,7 @@ func TestStoreOnCodeUnitAndRetrieve_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, ai, err := db.Retrieve(unit, NamespaceSpecConforms, &got)
+	ok, ai, err := db.RetrieveOnCodeUnit(unit, NamespaceSpecConforms, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 7, got.N)
@@ -114,7 +114,7 @@ func TestRetrieve_MissDoesNotMutateTarget(t *testing.T) {
 	}
 
 	target := testPayload{N: 123}
-	ok, _, err := db.Retrieve(unit, NamespaceSpecConforms, &target)
+	ok, _, err := db.RetrieveOnCodeUnit(unit, NamespaceSpecConforms, &target)
 	require.NoError(t, err)
 	require.False(t, ok)
 	require.Equal(t, 123, target.N)
@@ -172,7 +172,7 @@ func TestHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db2.Retrieve(unit2, NamespaceSpecConforms, &got)
+	ok, _, err := db2.RetrieveOnCodeUnit(unit2, NamespaceSpecConforms, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 9, got.N)
