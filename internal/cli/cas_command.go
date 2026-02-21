@@ -2,11 +2,12 @@ package cli
 
 import (
 	"fmt"
-	"github.com/codalotl/codalotl/internal/gocas"
-	qcas "github.com/codalotl/codalotl/internal/q/cas"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/codalotl/codalotl/internal/gocas"
+	qcas "github.com/codalotl/codalotl/internal/q/cas"
 )
 
 type casRetrieveOutput struct {
@@ -88,7 +89,7 @@ func nearestGitDir(start string) (string, error) {
 	for {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			return dir, nil
-		} else if err != nil && !os.IsNotExist(err) {
+		} else if !os.IsNotExist(err) {
 			return "", err
 		}
 		parent := filepath.Dir(dir)
