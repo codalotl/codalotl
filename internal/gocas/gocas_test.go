@@ -26,6 +26,8 @@ func writeTestModuleWithPackage(t *testing.T, modDir string) *gocode.Package {
 	pkgDir := filepath.Join(modDir, "foo")
 	err = os.MkdirAll(pkgDir, 0o755)
 	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(pkgDir, "SPEC.md"), []byte("# foo\n\npackage spec\n"), 0o644)
+	require.NoError(t, err)
 
 	err = os.WriteFile(filepath.Join(pkgDir, "foo.go"), []byte("package foo\n\nfunc A() {}\n"), 0o644)
 	require.NoError(t, err)
@@ -64,7 +66,7 @@ func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 7, got.N)
 	require.Greater(t, ai.UnixTimestamp, 0)
-	require.Equal(t, []string{"foo/foo.go", "foo/foo_test.go"}, ai.Paths)
+	require.Equal(t, []string{"foo/SPEC.md", "foo/foo.go", "foo/foo_test.go"}, ai.Paths)
 }
 
 func TestRetrieveOnPackage_MissDoesNotMutateTarget(t *testing.T) {
@@ -141,6 +143,31 @@ func TestStoreOnPackage_ErrOnUnreadableFile(t *testing.T) {
 
 	err = db.StoreOnPackage(pkg, testNamespace, testPayload{N: 1})
 	require.Error(t, err)
+}
+
+func TestStoreOnPackageAndRetrieveOnPackage_SpecMdAffectsKey(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "SPEC.md"), []byte("# foo\n\nchanged\n"), 0o644)
+	require.NoError(t, err)
+
+	var got testPayload
+	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
+	require.NoError(t, err)
+	require.False(t, ok)
 }
 
 func TestStoreOnPackage_ErrOnRelativeBaseDir(t *testing.T) {

@@ -54,6 +54,8 @@ type DB struct {
 // Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative
 // to BaseDir), plus namespace.
 //
+// If a package-local SPEC.md exists in the package directory, it is also included in the storage key.
+//
 // If any package file cannot be read, StoreOnPackage returns an error.
 //
 // jsonable must be encodable by encoding/json (and is stored as JSON bytes).
@@ -173,6 +175,37 @@ func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error
 
 	seen := make(map[string]struct{})
 	recs := make([]fileRec, 0, len(pkg.Files))
+	addAbsPath := func(abs string, allowNotExist bool) error {
+		if abs == "" {
+			return errors.New("package file has empty absolute path")
+		}
+		if _, ok := seen[abs]; ok {
+			return nil
+		}
+		seen[abs] = struct{}{}
+		fi, err := os.Stat(abs)
+		if err != nil {
+			if allowNotExist && errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if fi.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(db.BaseDir, abs)
+		if err != nil {
+			return err
+		}
+		if rel == ".." ||
+			strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
+			strings.HasPrefix(rel, "../") ||
+			strings.HasPrefix(rel, `..\`) {
+			return fmt.Errorf("package file %q is outside BaseDir %q", abs, db.BaseDir)
+		}
+		recs = append(recs, fileRec{abs: abs, rel: rel})
+		return nil
+	}
 	addFiles := func(p *gocode.Package) error {
 		if p == nil {
 			return nil
@@ -181,42 +214,29 @@ func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error
 			if f == nil {
 				continue
 			}
-			if f.AbsolutePath == "" {
-				return errors.New("package file has empty absolute path")
-			}
-			if _, ok := seen[f.AbsolutePath]; ok {
-				continue
-			}
-			seen[f.AbsolutePath] = struct{}{}
-
-			fi, err := os.Stat(f.AbsolutePath)
-			if err != nil {
+			if err := addAbsPath(f.AbsolutePath, false); err != nil {
 				return err
 			}
-			if fi.IsDir() {
-				continue
-			}
-
-			rel, err := filepath.Rel(db.BaseDir, f.AbsolutePath)
-			if err != nil {
-				return err
-			}
-			if rel == ".." ||
-				strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
-				strings.HasPrefix(rel, "../") ||
-				strings.HasPrefix(rel, `..\`) {
-				return fmt.Errorf("package file %q is outside BaseDir %q", f.AbsolutePath, db.BaseDir)
-			}
-
-			recs = append(recs, fileRec{abs: f.AbsolutePath, rel: rel})
 		}
 		return nil
+	}
+	addOptionalSpec := func(p *gocode.Package) error {
+		if p == nil {
+			return nil
+		}
+		return addAbsPath(filepath.Join(p.AbsolutePath(), "SPEC.md"), true)
 	}
 
 	if err := addFiles(pkg); err != nil {
 		return nil, nil, err
 	}
 	if err := addFiles(pkg.TestPackage); err != nil {
+		return nil, nil, err
+	}
+	if err := addOptionalSpec(pkg); err != nil {
+		return nil, nil, err
+	}
+	if err := addOptionalSpec(pkg.TestPackage); err != nil {
 		return nil, nil, err
 	}
 

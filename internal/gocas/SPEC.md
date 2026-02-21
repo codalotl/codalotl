@@ -55,6 +55,8 @@ type DB struct {
 // Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative
 // to BaseDir), plus namespace.
 //
+// If a package-local SPEC.md exists in the package directory, it is also included in the storage key.
+//
 // If any package file cannot be read, StoreOnPackage returns an error.
 //
 // jsonable must be encodable by encoding/json (and is stored as JSON bytes).
