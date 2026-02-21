@@ -8,7 +8,9 @@ This package stores metadata about Go packages using content-addressable storage
 
 ## Design Notes
 
-- We can make more methods like StoreOnPackage, StoreOnSnippet, etc, that all take differently typed first args.
+- This package intentionally offers multiple "StoreOn*" entrypoints (ex: StoreOnCodeUnit, StoreOnPackage) that all share the same underlying rules:
+    - Keys are derived from (namespace + BaseDir-relative file paths + file contents).
+    - Values are stored as JSON.
 - Currently putting consts of Namespace in this package, but it may be better to move those to other packages.
 
 ## AdditionalInfo
@@ -82,4 +84,28 @@ func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, json
 //
 // Retrieve returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
 func (db *DB) Retrieve(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
+```
+Additional package-based API (based on `internal/gocode.Package`):
+```go
+// StoreOnPackage stores jsonable for (pkg, namespace).
+//
+// Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative
+// to BaseDir), plus namespace.
+//
+// If any package file cannot be read, StoreOnPackage returns an error.
+//
+// jsonable must be encodable by encoding/json (and is stored as JSON bytes).
+//
+// StoreOnPackage returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
+func (db *DB) StoreOnPackage(pkg *gocode.Package, namespace Namespace, jsonable any) error
+
+// RetrieveOnPackage loads the stored value for (pkg, namespace) into target.
+//
+// ok reports whether a value existed. When ok is false, target is left unchanged.
+//
+// additionalInfo is returned from the underlying CAS layer and may include best-effort git metadata captured at store time. Most callers should treat AdditionalInfo
+// as optional; see cas.AdditionalInfo field docs for details.
+//
+// RetrieveOnPackage returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
+func (db *DB) RetrieveOnPackage(pkg *gocode.Package, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
 ```

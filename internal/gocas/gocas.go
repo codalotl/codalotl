@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/codalotl/codalotl/internal/codeunit"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/q/cas"
 )
 
@@ -97,6 +99,49 @@ func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, json
 	})
 }
 
+// StoreOnPackage stores jsonable for (pkg, namespace).
+//
+// Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative
+// to BaseDir), plus namespace.
+//
+// If any package file cannot be read, StoreOnPackage returns an error.
+//
+// jsonable must be encodable by encoding/json (and is stored as JSON bytes).
+//
+// StoreOnPackage returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
+func (db *DB) StoreOnPackage(pkg *gocode.Package, namespace Namespace, jsonable any) error {
+	if db == nil {
+		return errors.New("gocas DB is nil")
+	}
+	if pkg == nil {
+		return errors.New("package is nil")
+	}
+	if err := validateNamespace(namespace); err != nil {
+		return err
+	}
+	if err := validateAbsDir("BaseDir", db.BaseDir); err != nil {
+		return err
+	}
+	if err := validateAbsDir("cas.DB.AbsRoot", db.DB.AbsRoot); err != nil {
+		return err
+	}
+
+	hasher, relPaths, err := db.hasherForPackage(pkg)
+	if err != nil {
+		return err
+	}
+
+	additionalInfo := cas.AdditionalInfo{
+		UnixTimestamp: int(time.Now().Unix()),
+		Paths:         relPaths,
+	}
+	db.bestEffortPopulateGitInfo(&additionalInfo)
+
+	return db.DB.Store(hasher, string(namespace), jsonable, &cas.Options{
+		AdditionalInfo: additionalInfo,
+	})
+}
+
 // Retrieve loads the stored value for (unit, namespace) into target.
 //
 // ok reports whether a value existed. When ok is false, target is left unchanged.
@@ -126,6 +171,51 @@ func (db *DB) Retrieve(unit *codeunit.CodeUnit, namespace Namespace, target any)
 	}
 
 	hasher, _, err := db.hasherForCodeUnit(unit)
+	if err != nil {
+		return false, cas.AdditionalInfo{}, err
+	}
+
+	var raw json.RawMessage
+	ok, additionalInfo, err = db.DB.Retrieve(hasher, string(namespace), &raw)
+	if err != nil || !ok {
+		return ok, additionalInfo, err
+	}
+
+	if err := json.Unmarshal(raw, target); err != nil {
+		return true, additionalInfo, err
+	}
+	return true, additionalInfo, nil
+}
+
+// RetrieveOnPackage loads the stored value for (pkg, namespace) into target.
+//
+// ok reports whether a value existed. When ok is false, target is left unchanged.
+//
+// additionalInfo is returned from the underlying CAS layer and may include best-effort git metadata captured at store time. Most callers should treat AdditionalInfo
+// as optional; see cas.AdditionalInfo field docs for details.
+//
+// RetrieveOnPackage returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
+func (db *DB) RetrieveOnPackage(pkg *gocode.Package, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error) {
+	if db == nil {
+		return false, cas.AdditionalInfo{}, errors.New("gocas DB is nil")
+	}
+	if pkg == nil {
+		return false, cas.AdditionalInfo{}, errors.New("package is nil")
+	}
+	if err := validateNamespace(namespace); err != nil {
+		return false, cas.AdditionalInfo{}, err
+	}
+	if err := validateAbsDir("BaseDir", db.BaseDir); err != nil {
+		return false, cas.AdditionalInfo{}, err
+	}
+	if err := validateAbsDir("cas.DB.AbsRoot", db.DB.AbsRoot); err != nil {
+		return false, cas.AdditionalInfo{}, err
+	}
+	if target == nil {
+		return false, cas.AdditionalInfo{}, errors.New("target is nil")
+	}
+
+	hasher, _, err := db.hasherForPackage(pkg)
 	if err != nil {
 		return false, cas.AdditionalInfo{}, err
 	}
@@ -196,6 +286,76 @@ func (db *DB) hasherForCodeUnit(unit *codeunit.CodeUnit) (cas.Hasher, []string, 
 
 		fileAbsPaths = append(fileAbsPaths, p)
 		fileRelPaths = append(fileRelPaths, rel)
+	}
+
+	hasher, err := cas.NewDirRelativeFileSetHasher(db.BaseDir, fileAbsPaths)
+	if err != nil {
+		return nil, nil, err
+	}
+	return hasher, fileRelPaths, nil
+}
+
+func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error) {
+	type fileRec struct {
+		abs string
+		rel string
+	}
+
+	seen := make(map[string]struct{})
+	recs := make([]fileRec, 0, len(pkg.Files))
+	addFiles := func(p *gocode.Package) error {
+		if p == nil {
+			return nil
+		}
+		for _, f := range p.Files {
+			if f == nil {
+				continue
+			}
+			if f.AbsolutePath == "" {
+				return errors.New("package file has empty absolute path")
+			}
+			if _, ok := seen[f.AbsolutePath]; ok {
+				continue
+			}
+			seen[f.AbsolutePath] = struct{}{}
+
+			fi, err := os.Stat(f.AbsolutePath)
+			if err != nil {
+				return err
+			}
+			if fi.IsDir() {
+				continue
+			}
+
+			rel, err := filepath.Rel(db.BaseDir, f.AbsolutePath)
+			if err != nil {
+				return err
+			}
+			if rel == ".." ||
+				strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
+				strings.HasPrefix(rel, "../") ||
+				strings.HasPrefix(rel, `..\`) {
+				return fmt.Errorf("package file %q is outside BaseDir %q", f.AbsolutePath, db.BaseDir)
+			}
+
+			recs = append(recs, fileRec{abs: f.AbsolutePath, rel: rel})
+		}
+		return nil
+	}
+
+	if err := addFiles(pkg); err != nil {
+		return nil, nil, err
+	}
+	if err := addFiles(pkg.TestPackage); err != nil {
+		return nil, nil, err
+	}
+
+	sort.Slice(recs, func(i, j int) bool { return recs[i].rel < recs[j].rel })
+	fileAbsPaths := make([]string, 0, len(recs))
+	fileRelPaths := make([]string, 0, len(recs))
+	for _, r := range recs {
+		fileAbsPaths = append(fileAbsPaths, r.abs)
+		fileRelPaths = append(fileRelPaths, r.rel)
 	}
 
 	hasher, err := cas.NewDirRelativeFileSetHasher(db.BaseDir, fileAbsPaths)
