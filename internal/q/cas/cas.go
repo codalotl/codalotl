@@ -118,14 +118,14 @@ type DB struct {
 // AdditionalInfo is saved and retrieved besides the primary Store payload.
 type AdditionalInfo struct {
 	// Seconds since Unix epoch.
-	UnixTimestamp int
+	UnixTimestamp int `json:"unix_timestamp"`
 
 	// Caller-supplied opaque paths. Caller may often try to align these with paths passed to, e.g., NewFileSetHasher, but this package does not verify them.
-	Paths []string
+	Paths []string `json:"paths"`
 
-	GitClean     bool   // True if computed with a clean git worktree.
-	GitCommit    string // Git commit the metadata was computed against.
-	GitMergeBase string // Merge-base for GitCommit (if relevant).
+	GitClean     bool   `json:"git_clean"`      // True if computed with a clean git worktree.
+	GitCommit    string `json:"git_commit"`     // Git commit the metadata was computed against.
+	GitMergeBase string `json:"git_merge_base"` // Merge-base for GitCommit (if relevant).
 }
 
 // Options let callers supply AdditionalInfo fields if desired. Also exists for future Store extensibility.
