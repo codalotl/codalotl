@@ -25,13 +25,6 @@ import (
 //   - Bump it when the stored JSON schema or semantics change, to avoid decoding old data into a new type.
 type Namespace string
 
-const (
-	// NamespaceSpecConforms stores results produced by spec conformance checks.
-	//
-	// Version suffix is bumped when the stored JSON schema or semantics change.
-	NamespaceSpecConforms Namespace = "specconforms-1"
-)
-
 // DB stores and retrieves Go-package-adjacent metadata in content-addressable storage (CAS).
 //
 // Keys are derived from the contents of a code unit (see StoreOnCodeUnit) plus a Namespace. Values are stored as JSON.

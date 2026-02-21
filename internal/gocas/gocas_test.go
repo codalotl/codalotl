@@ -17,6 +17,8 @@ type testPayload struct {
 	N int `json:"n"`
 }
 
+const testNamespace Namespace = "gocas-test"
+
 func writeTestModuleWithPackage(t *testing.T, modDir string) *gocode.Package {
 	t.Helper()
 
@@ -59,11 +61,11 @@ func TestStoreOnCodeUnitAndRetrieve_RoundTrip(t *testing.T) {
 		},
 	}
 
-	err = db.StoreOnCodeUnit(unit, NamespaceSpecConforms, testPayload{N: 7})
+	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 7})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, ai, err := db.RetrieveOnCodeUnit(unit, NamespaceSpecConforms, &got)
+	ok, ai, err := db.RetrieveOnCodeUnit(unit, testNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 7, got.N)
@@ -84,11 +86,11 @@ func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
 		},
 	}
 
-	err := db.StoreOnPackage(pkg, NamespaceSpecConforms, testPayload{N: 7})
+	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 7})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, ai, err := db.RetrieveOnPackage(pkg, NamespaceSpecConforms, &got)
+	ok, ai, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 7, got.N)
@@ -114,7 +116,7 @@ func TestRetrieve_MissDoesNotMutateTarget(t *testing.T) {
 	}
 
 	target := testPayload{N: 123}
-	ok, _, err := db.RetrieveOnCodeUnit(unit, NamespaceSpecConforms, &target)
+	ok, _, err := db.RetrieveOnCodeUnit(unit, testNamespace, &target)
 	require.NoError(t, err)
 	require.False(t, ok)
 	require.Equal(t, 123, target.N)
@@ -134,7 +136,7 @@ func TestRetrieveOnPackage_MissDoesNotMutateTarget(t *testing.T) {
 	}
 
 	target := testPayload{N: 123}
-	ok, _, err := db.RetrieveOnPackage(pkg, NamespaceSpecConforms, &target)
+	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &target)
 	require.NoError(t, err)
 	require.False(t, ok)
 	require.Equal(t, 123, target.N)
@@ -168,11 +170,11 @@ func TestHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {
 		},
 	}
 
-	err = db1.StoreOnCodeUnit(unit1, NamespaceSpecConforms, testPayload{N: 9})
+	err = db1.StoreOnCodeUnit(unit1, testNamespace, testPayload{N: 9})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db2.RetrieveOnCodeUnit(unit2, NamespaceSpecConforms, &got)
+	ok, _, err := db2.RetrieveOnCodeUnit(unit2, testNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 9, got.N)
@@ -199,11 +201,11 @@ func TestPackageHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {
 		},
 	}
 
-	err := db1.StoreOnPackage(pkg1, NamespaceSpecConforms, testPayload{N: 9})
+	err := db1.StoreOnPackage(pkg1, testNamespace, testPayload{N: 9})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db2.RetrieveOnPackage(pkg2, NamespaceSpecConforms, &got)
+	ok, _, err := db2.RetrieveOnPackage(pkg2, testNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 9, got.N)
@@ -235,7 +237,7 @@ func TestStoreOnCodeUnit_ErrOnUnreadableIncludedFile(t *testing.T) {
 		},
 	}
 
-	err = db.StoreOnCodeUnit(unit, NamespaceSpecConforms, testPayload{N: 1})
+	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 1})
 	require.Error(t, err)
 }
 
@@ -260,7 +262,7 @@ func TestStoreOnPackage_ErrOnUnreadableFile(t *testing.T) {
 		},
 	}
 
-	err = db.StoreOnPackage(pkg, NamespaceSpecConforms, testPayload{N: 1})
+	err = db.StoreOnPackage(pkg, testNamespace, testPayload{N: 1})
 	require.Error(t, err)
 }
 
@@ -281,7 +283,7 @@ func TestStoreOnCodeUnit_ErrOnRelativeBaseDir(t *testing.T) {
 		},
 	}
 
-	err = db.StoreOnCodeUnit(unit, NamespaceSpecConforms, testPayload{N: 1})
+	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 1})
 	require.Error(t, err)
 }
 
@@ -298,6 +300,6 @@ func TestStoreOnPackage_ErrOnRelativeBaseDir(t *testing.T) {
 		},
 	}
 
-	err := db.StoreOnPackage(pkg, NamespaceSpecConforms, testPayload{N: 1})
+	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 1})
 	require.Error(t, err)
 }

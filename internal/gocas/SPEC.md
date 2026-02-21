@@ -11,7 +11,6 @@ This package stores metadata about Go packages using content-addressable storage
 - This package intentionally offers multiple "StoreOn*" entrypoints (ex: StoreOnCodeUnit, StoreOnPackage) that all share the same underlying rules:
     - Keys are derived from (namespace + BaseDir-relative file paths + file contents).
     - Values are stored as JSON.
-- Currently putting consts of Namespace in this package, but it may be better to move those to other packages.
 
 ## AdditionalInfo
 
@@ -31,13 +30,6 @@ This package stores metadata about Go packages using content-addressable storage
 //   - Keep it stable for a given JSON shape + meaning.
 //   - Bump it when the stored JSON schema or semantics change, to avoid decoding old data into a new type.
 type Namespace string
-
-const (
-	// NamespaceSpecConforms stores results produced by spec conformance checks.
-	//
-	// Version suffix is bumped when the stored JSON schema or semantics change.
-	NamespaceSpecConforms Namespace = "specconforms-1"
-)
 
 // DB stores and retrieves Go-package-adjacent metadata in content-addressable storage (CAS).
 //
