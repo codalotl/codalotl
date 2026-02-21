@@ -230,3 +230,8 @@ When not in package mode, the UI will say:
 Package: <none>
 Use `/package path/to/pkg` to select a package.
 ```
+
+Under package, lists bullets based on certain checks:
+
+- `• SPEC.md conformance: <value>` where `<value>` is `-` or `✓`.
+    - `✓` is only shown if `internal/gocas/casconformance.Retrieve` returns true for conformance, otherwise `-`.
