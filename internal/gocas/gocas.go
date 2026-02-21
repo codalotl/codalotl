@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/q/cas"
 )
@@ -27,17 +26,17 @@ type Namespace string
 
 // DB stores and retrieves Go-package-adjacent metadata in content-addressable storage (CAS).
 //
-// Keys are derived from the contents of a code unit (see StoreOnCodeUnit) plus a Namespace. Values are stored as JSON.
+// Keys are derived from the Go source files in a package (see StoreOnPackage) plus a Namespace. Values are stored as JSON.
 //
 // DB wraps cas.DB to add:
-//   - keying based on codeunit.CodeUnit (file-content hashing)
+//   - keying based on gocode.Package files (file-content hashing)
 //   - best-effort git metadata capture (returned as cas.AdditionalInfo)
 //
 // Most callers should use the methods on *DB, rather than calling methods on the embedded cas.DB directly.
 type DB struct {
-	// BaseDir is the project root used when hashing paths from a code unit.
+	// BaseDir is the project root used when hashing package file paths.
 	//
-	// BaseDir must be absolute. All paths returned by unit.IncludedFiles() must be within BaseDir.
+	// BaseDir must be absolute. All package file paths must be within BaseDir.
 	//
 	// Hashing is based on the BaseDir-relative portion of each path, so hashing the same project from different working directories produces the same keys.
 	BaseDir string
@@ -48,48 +47,6 @@ type DB struct {
 	//
 	//	<AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>
 	cas.DB
-}
-
-// StoreOnCodeUnit stores jsonable for (unit, namespace).
-//
-// Storage key is content-addressed from unit.IncludedFiles() and their file contents (paths are interpreted relative to BaseDir), plus namespace.
-//
-// If any included file cannot be read, StoreOnCodeUnit returns an error.
-//
-// jsonable must be encodable by encoding/json (and is stored as JSON bytes).
-//
-// StoreOnCodeUnit returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
-func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, jsonable any) error {
-	if db == nil {
-		return errors.New("gocas DB is nil")
-	}
-	if unit == nil {
-		return errors.New("code unit is nil")
-	}
-	if err := validateNamespace(namespace); err != nil {
-		return err
-	}
-	if err := validateAbsDir("BaseDir", db.BaseDir); err != nil {
-		return err
-	}
-	if err := validateAbsDir("cas.DB.AbsRoot", db.DB.AbsRoot); err != nil {
-		return err
-	}
-
-	hasher, relPaths, err := db.hasherForCodeUnit(unit)
-	if err != nil {
-		return err
-	}
-
-	additionalInfo := cas.AdditionalInfo{
-		UnixTimestamp: int(time.Now().Unix()),
-		Paths:         relPaths,
-	}
-	db.bestEffortPopulateGitInfo(&additionalInfo)
-
-	return db.DB.Store(hasher, string(namespace), jsonable, &cas.Options{
-		AdditionalInfo: additionalInfo,
-	})
 }
 
 // StoreOnPackage stores jsonable for (pkg, namespace).
@@ -133,51 +90,6 @@ func (db *DB) StoreOnPackage(pkg *gocode.Package, namespace Namespace, jsonable 
 	return db.DB.Store(hasher, string(namespace), jsonable, &cas.Options{
 		AdditionalInfo: additionalInfo,
 	})
-}
-
-// RetrieveOnCodeUnit loads the stored value for (unit, namespace) into target.
-//
-// ok reports whether a value existed. When ok is false, target is left unchanged.
-//
-// additionalInfo is returned from the underlying CAS layer and may include best-effort git metadata captured at store time. Most callers should treat AdditionalInfo
-// as optional; see cas.AdditionalInfo field docs for details.
-//
-// RetrieveOnCodeUnit returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
-func (db *DB) RetrieveOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error) {
-	if db == nil {
-		return false, cas.AdditionalInfo{}, errors.New("gocas DB is nil")
-	}
-	if unit == nil {
-		return false, cas.AdditionalInfo{}, errors.New("code unit is nil")
-	}
-	if err := validateNamespace(namespace); err != nil {
-		return false, cas.AdditionalInfo{}, err
-	}
-	if err := validateAbsDir("BaseDir", db.BaseDir); err != nil {
-		return false, cas.AdditionalInfo{}, err
-	}
-	if err := validateAbsDir("cas.DB.AbsRoot", db.DB.AbsRoot); err != nil {
-		return false, cas.AdditionalInfo{}, err
-	}
-	if target == nil {
-		return false, cas.AdditionalInfo{}, errors.New("target is nil")
-	}
-
-	hasher, _, err := db.hasherForCodeUnit(unit)
-	if err != nil {
-		return false, cas.AdditionalInfo{}, err
-	}
-
-	var raw json.RawMessage
-	ok, additionalInfo, err = db.DB.Retrieve(hasher, string(namespace), &raw)
-	if err != nil || !ok {
-		return ok, additionalInfo, err
-	}
-
-	if err := json.Unmarshal(raw, target); err != nil {
-		return true, additionalInfo, err
-	}
-	return true, additionalInfo, nil
 }
 
 // RetrieveOnPackage loads the stored value for (pkg, namespace) into target.
@@ -251,41 +163,6 @@ func validateAbsDir(fieldName, p string) error {
 		return fmt.Errorf("%s is not a directory: %q", fieldName, p)
 	}
 	return nil
-}
-
-func (db *DB) hasherForCodeUnit(unit *codeunit.CodeUnit) (cas.Hasher, []string, error) {
-	absPaths := unit.IncludedFiles()
-	fileAbsPaths := make([]string, 0, len(absPaths))
-	fileRelPaths := make([]string, 0, len(absPaths))
-	for _, p := range absPaths {
-		fi, err := os.Stat(p)
-		if err != nil {
-			return nil, nil, err
-		}
-		if fi.IsDir() {
-			continue
-		}
-
-		rel, err := filepath.Rel(db.BaseDir, p)
-		if err != nil {
-			return nil, nil, err
-		}
-		if rel == ".." ||
-			strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
-			strings.HasPrefix(rel, "../") ||
-			strings.HasPrefix(rel, `..\`) {
-			return nil, nil, fmt.Errorf("included file %q is outside BaseDir %q", p, db.BaseDir)
-		}
-
-		fileAbsPaths = append(fileAbsPaths, p)
-		fileRelPaths = append(fileRelPaths, rel)
-	}
-
-	hasher, err := cas.NewDirRelativeFileSetHasher(db.BaseDir, fileAbsPaths)
-	if err != nil {
-		return nil, nil, err
-	}
-	return hasher, fileRelPaths, nil
 }
 
 func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error) {
