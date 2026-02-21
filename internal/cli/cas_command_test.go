@@ -43,7 +43,7 @@ func TestRun_CAS_StoreAndRetrieve_RoundTrip(t *testing.T) {
 		require.Equal(t, "ok", val["result"])
 	}
 }
-func TestRun_CAS_Retrieve_Miss_PrintsOKFalse(t *testing.T) {
+func TestRun_CAS_Retrieve_Miss_PrintsNothingAndExit1(t *testing.T) {
 	isolateUserConfig(t)
 	tmp := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
@@ -58,14 +58,10 @@ func TestRun_CAS_Retrieve_Miss_PrintsOKFalse(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code, err := Run([]string{"codalotl", "cas", "get", "ns-1.0", "./p"}, &RunOptions{Out: &out, Err: &errOut})
-	require.NoError(t, err)
-	require.Equal(t, 0, code)
+	require.Error(t, err)
+	require.Equal(t, 1, code)
 	require.Empty(t, errOut.String())
-	var got map[string]any
-	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
-	require.Equal(t, false, got["ok"])
-	_, hasValue := got["value"]
-	require.False(t, hasValue)
+	require.Empty(t, out.String())
 }
 func TestRun_CAS_Store_UsesCODALOTL_CAS_DB(t *testing.T) {
 	isolateUserConfig(t)

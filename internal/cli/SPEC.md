@@ -161,7 +161,7 @@ The BaseDir is the package's module dir. The database dir is, by priority:
 
 ### codalotl cas get <namespace> <path/to/pkg>
 
-Uses `internal/gocas` to get the stored value (and associated metadata) for (package, namespace), for the current package contents.
+Uses `internal/gocas` to get the stored value (and associated metadata) for (package, namespace), for the current package contents. Prints entire record (including additional information) if found. Otherwise prints nothing and exits 1.
 
 ## Configuration
 

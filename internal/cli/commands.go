@@ -430,13 +430,14 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			if err != nil {
 				return err
 			}
+			if !ok {
+				return qcli.ExitError{Code: 1, Err: errors.New("")}
+			}
 			out := casRetrieveOutput{
 				OK: ok,
 			}
-			if ok {
-				out.Value = value
-				out.AdditionalInfo = info
-			}
+			out.Value = value
+			out.AdditionalInfo = info
 			enc := json.NewEncoder(c.Out)
 			enc.SetIndent("", "  ")
 			enc.SetEscapeHTML(false)
