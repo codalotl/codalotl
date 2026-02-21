@@ -9,7 +9,7 @@ import (
 )
 
 func TestTextareaHeightUsesDisplayLinesForWrappedInput(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	// Keep the viewport/text area narrow so a single long logical line wraps into
 	// multiple user-visible lines.
@@ -24,7 +24,7 @@ func TestTextareaHeightUsesDisplayLinesForWrappedInput(t *testing.T) {
 }
 
 func TestTextareaHeightClampsToMaxVisibleLinesUsingWrappedInput(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	m.Update(nil, qtui.ResizeEvent{Width: 20, Height: 20})
 

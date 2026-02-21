@@ -6,6 +6,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 )
@@ -23,6 +24,7 @@ type Config struct {
 	ModelID      llmmodel.ModelID        // ModelID selects the LLM model to use. If empty, the TUI uses llmmodel.DefaultModel.
 	LintSteps    []lints.Step            // LintSteps controls which lint steps the agent runs.
 	ReflowWidth  int                     // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
+	CASDB        *cas.DB                 // CASDB, when set, enables reading CAS-backed metadata for UI checks (ex: SPEC.md conformance).
 
 	// PersistModelID, when non-nil, is called by the TUI when the user changes the active model via UI commands (ex: the planned `/model` command).
 	//

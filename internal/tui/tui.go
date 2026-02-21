@@ -13,6 +13,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/codalotl/codalotl/internal/q/clipboard"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
@@ -112,6 +113,13 @@ type packageContextResultMsg struct {
 	errMsg string
 }
 
+type specConformanceResultMsg struct {
+	runID    int
+	found    bool
+	conforms bool
+	errMsg   string
+}
+
 // Run launches the TUI in an alternate screen buffer.
 func Run() error {
 	return RunWithConfig(Config{})
@@ -141,7 +149,7 @@ func RunWithConfig(cfg Config) error {
 		return err
 	}
 
-	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession, cfg.PersistModelID, cfg.Monitor)
+	model := newModel(palette, agentFormatter, initialSession, initialCfg, newSession, cfg.PersistModelID, cfg.Monitor, cfg.CASDB)
 
 	return qtui.RunTUI(model, qtui.Options{
 		Input:       os.Stdin,
@@ -214,18 +222,21 @@ type model struct {
 	// /model) but still want to confirm what happened.
 	pendingPostResetMessage string
 
-	monitor              *remotemonitor.Monitor
-	latestVersion        string
-	versionCheckStarted  bool
-	overlayMode          bool              // Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
-	overlayCopyFeedback  map[int]time.Time // overlayCopyFeedback tracks transient "copied!" feedback per message index.
-	overlayTargets       []overlayTarget   // overlayTargets are computed on each refreshViewport; they map viewport content rows to message indices for hit-testing.
-	lastLeftClickAt      time.Time         // lastLeftClick* is used for best-effort double-click detection.
-	lastLeftClickX       int
-	lastLeftClickY       int
-	clipboardSetter      func(text string) // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
-	osClipboardAvailable func() bool       // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
-	osClipboardWrite     func(text string) error
+	monitor               *remotemonitor.Monitor
+	latestVersion         string
+	versionCheckStarted   bool
+	casDB                 *cas.DB
+	specConformance       *specConformanceState
+	nextSpecConformanceID int
+	overlayMode           bool              // Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
+	overlayCopyFeedback   map[int]time.Time // overlayCopyFeedback tracks transient "copied!" feedback per message index.
+	overlayTargets        []overlayTarget   // overlayTargets are computed on each refreshViewport; they map viewport content rows to message indices for hit-testing.
+	lastLeftClickAt       time.Time         // lastLeftClick* is used for best-effort double-click detection.
+	lastLeftClickX        int
+	lastLeftClickY        int
+	clipboardSetter       func(text string) // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
+	osClipboardAvailable  func() bool       // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
+	osClipboardWrite      func(text string) error
 
 	// now allows deterministic tests around transient UI state (ex: "copied!").
 	now func() time.Time
@@ -242,6 +253,7 @@ func newModel(
 	factory func(sessionConfig) (*session, error),
 	persistModelID func(newModelID llmmodel.ModelID) error,
 	monitor *remotemonitor.Monitor,
+	casDB *cas.DB,
 ) *model {
 	ti := newTextArea()
 	vp := tuicontrols.NewView(0, 0)
@@ -270,6 +282,7 @@ func newModel(
 		cycleIndex:           historyIndexNone,
 		editingHistoryIndex:  historyIndexNone,
 		monitor:              monitor,
+		casDB:                casDB,
 		now:                  time.Now,
 		osClipboardAvailable: clipboard.Available,
 		osClipboardWrite:     clipboard.Write,
@@ -291,6 +304,7 @@ func (m *model) Init(t *qtui.TUI) {
 		m.startUserRequestListener(m.requestSource, m.requests)
 	}
 	m.startLatestVersionCheck()
+	m.startSpecConformanceCheck()
 }
 
 func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
@@ -363,6 +377,8 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 			break
 		}
 		m.latestVersion = ev.latest
+	case specConformanceResultMsg:
+		m.handleSpecConformanceResult(ev)
 	case overlayCopyExpiredMsg:
 		m.clearExpiredOverlayCopyFeedback()
 		m.refreshViewport(false)
@@ -2078,7 +2094,11 @@ func (m *model) packageSection() string {
 		return "Package: <none>\nUse `/package path/to/pkg` to select a package."
 	}
 
-	return fmt.Sprintf("Package: %s", pkgPath)
+	lines := []string{fmt.Sprintf("Package: %s", pkgPath)}
+	if m.shouldShowSpecConformance() {
+		lines = append(lines, fmt.Sprintf("• SPEC.md conformance: %s", m.specConformanceIndicator()))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *model) currentModelInfo() llmmodel.ModelInfo {
@@ -2372,6 +2392,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.pendingSessionConfig = nil
 	m.pendingPostResetMessage = ""
 	m.packageContext = nil
+	m.specConformance = nil
 	m.exitEditingState()
 	m.editedHistoryDrafts = nil
 	if m.textarea != nil {
@@ -2381,6 +2402,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.refreshPermissionView()
 	m.updatePlaceholder()
 	m.startPackageContextGather()
+	m.startSpecConformanceCheck()
 	m.refreshViewport(true)
 	if m.requests != nil {
 		m.startUserRequestListener(m.requestSource, m.requests)

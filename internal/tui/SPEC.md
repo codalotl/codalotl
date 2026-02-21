@@ -9,6 +9,7 @@ The tui package is the primary package that implements the coding agent TUI, bri
 - `internal/llmstream` is the library to communicate with LLMs.
 - `internal/skills` is the library to implement skills.
 - `internal/q/termformat` should be used where possible for terminal formatting.
+- `internal/q/cas` may be used for optional, CAS-backed metadata checks in the UI.
 - `internal/q/tui` is the TUI runtime (raw mode, alt screen, input, resize, render loop).
 - `internal/q/tui/tuicontrols` provides common controls like a scrollable view and text area.
 
@@ -233,5 +234,5 @@ Use `/package path/to/pkg` to select a package.
 
 Under package, lists bullets based on certain checks:
 
-- `• SPEC.md conformance: <value>` where `<value>` is `-` or `✓`.
-    - `✓` is only shown if `internal/gocas/casconformance.Retrieve` returns true for conformance, otherwise `-`.
+- If `tui.Config.CASDB` is set, show `• SPEC.md conformance: <value>` where `<value>` is `-` or `✓`.
+    - `✓` is only shown if `internal/gocas/casconformance.Retrieve` returns true for conformance; otherwise `-`.
