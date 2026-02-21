@@ -84,9 +84,7 @@ func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, json
 //
 // Retrieve returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
 func (db *DB) Retrieve(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
-```
-Additional package-based API (based on `internal/gocode.Package`):
-```go
+
 // StoreOnPackage stores jsonable for (pkg, namespace).
 //
 // Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative
