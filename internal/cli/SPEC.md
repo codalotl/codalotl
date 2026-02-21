@@ -163,6 +163,10 @@ The BaseDir is the package's module dir. The database dir is, by priority:
 
 Uses `internal/gocas` to get the stored value (and associated metadata) for (package, namespace), for the current package contents. Prints entire record (including additional information) if found. Otherwise prints nothing and exits 1.
 
+### codalotl cas ls-unset <namespace>
+
+Lists packages (one per line, of the form `./path/to/pkg`) that don't have a corresponding `cas get` entry set for the package. Considers packages in the module (based on cwd).
+
 ## Configuration
 
 This package is responsible for loading a configuation file and passing various configuration to other packages. The configuration is loaded with `internal/q/cascade`. The configuration is loaded and validated for all commands, except those that obviously don't need it, like `version` and `-h`. An invalid configuration prints out a helpful error message and returns with an non-zero exit code.
