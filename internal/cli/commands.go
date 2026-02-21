@@ -13,11 +13,13 @@ import (
 
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/goclitools"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
+	qcas "github.com/codalotl/codalotl/internal/q/cas"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/specmd"
@@ -125,11 +127,22 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			if err != nil {
 				return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
 			}
+			var casDB *qcas.DB
+			if wd, err := os.Getwd(); err == nil {
+				// Best-effort: CAS is optional for TUI, but when available we want
+				// consistent root selection with `codalotl cas set`.
+				if mod, err := gocode.NewModule(wd); err == nil {
+					if db, err := casQDBForBaseDir(mod.AbsolutePath); err == nil {
+						casDB = db
+					}
+				}
+			}
 
 			return runTUIWithConfig(tui.Config{
 				ModelID:     modelID,
 				LintSteps:   steps,
 				ReflowWidth: cfg.ReflowWidth,
+				CASDB:       casDB,
 				Monitor:     m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
 					return persistPreferredModelID(cfg, newModelID)
@@ -444,7 +457,15 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			return enc.Encode(out)
 		}),
 	}
-	casCmd.AddCommand(setCmd, getCmd)
+	lsUnsetCmd := &qcli.Command{
+		Name:  "ls-unset",
+		Short: "List packages in the current module missing a CAS entry for a namespace.",
+		Args:  qcli.ExactArgs(1),
+		Run: runWithConfig("cas_ls_unset", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			return runCASLsUnset(c.Context, c.Out, c.Args[0])
+		}),
+	}
+	casCmd.AddCommand(setCmd, getCmd, lsUnsetCmd)
 
 	panicCmd := &qcli.Command{
 		Name:   "panic",

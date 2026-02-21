@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -132,4 +133,56 @@ func TestRun_CAS_Store_InvalidValue_IsUsageError(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 2, code)
 	require.NotEmpty(t, errOut.String())
+}
+
+func TestRun_CAS_LSUnset_ListsPackagesMissingNamespace(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+
+	p1Dir := filepath.Join(tmp, "p1")
+	require.NoError(t, os.MkdirAll(p1Dir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(p1Dir, "p1.go"), []byte("package p1\n\nfunc P1() {}\n"), 0644))
+
+	p2Dir := filepath.Join(tmp, "p2")
+	require.NoError(t, os.MkdirAll(p2Dir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(p2Dir, "p2.go"), []byte("package p2\n\nfunc P2() {}\n"), 0644))
+
+	t.Setenv("CODALOTL_CAS_DB", filepath.Join(tmp, "casdb"))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	{
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		code, err := Run([]string{"codalotl", "cas", "set", "ns-1.0", "./p1", `"OK"`}, &RunOptions{Out: &out, Err: &errOut})
+		require.NoError(t, err)
+		require.Equal(t, 0, code)
+		require.Empty(t, errOut.String())
+		require.Empty(t, out.String())
+	}
+
+	{
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		code, err := Run([]string{"codalotl", "cas", "ls-unset", "ns-1.0"}, &RunOptions{Out: &out, Err: &errOut})
+		require.NoError(t, err)
+		require.Equal(t, 0, code)
+		require.Empty(t, errOut.String())
+
+		got := map[string]bool{}
+		for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				got[line] = true
+			}
+		}
+
+		require.True(t, got["./p2"])
+		require.False(t, got["./p1"])
+	}
 }

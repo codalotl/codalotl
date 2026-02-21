@@ -53,6 +53,26 @@ func casDBForBaseDir(baseDir string) (*gocas.DB, error) {
 		},
 	}, nil
 }
+func casQDBForBaseDir(baseDir string) (*qcas.DB, error) {
+	baseDir = strings.TrimSpace(baseDir)
+	if baseDir == "" {
+		return nil, fmt.Errorf("cas: missing base dir")
+	}
+	if !filepath.IsAbs(baseDir) {
+		abs, err := filepath.Abs(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("cas: resolve base dir: %w", err)
+		}
+		baseDir = abs
+	}
+	absRoot, err := casDBRootDir(baseDir)
+	if err != nil {
+		return nil, err
+	}
+	// Unlike `cas set`, TUI only needs read access; avoid creating directories as
+	// a side effect of launching the UI.
+	return &qcas.DB{AbsRoot: absRoot}, nil
+}
 func casDBRootDir(baseDir string) (string, error) {
 	if v := strings.TrimSpace(os.Getenv("CODALOTL_CAS_DB")); v != "" {
 		if filepath.IsAbs(v) {
