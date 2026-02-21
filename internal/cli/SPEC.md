@@ -145,9 +145,9 @@ Accepts a Go-style package pattern (including `./...`). Prints one line per pack
 
 This may only produce a line for a dir if the dir has both a SPEC.md and a valid Go package.
 
-### codalotl cas store <namespace> <path/to/pkg> <value>
+### codalotl cas set <namespace> <path/to/pkg> <value>
 
-Uses `internal/gocas` to store `<value>` for (package, namespace).
+Uses `internal/gocas` to set `<value>` for (package, namespace).
 
 Notes:
 - `<namespace>` is a schema/version string and must be filesystem-safe (no path separators), since it is used as a directory name under the CAS root.
@@ -159,9 +159,9 @@ The BaseDir is the package's module dir. The database dir is, by priority:
 - Let `$NEAREST_GIT_DIR` = nearest dir containing a `.git` entry (dir or file); `$NEAREST_GIT_DIR/.codalotl/cas` (if `$NEAREST_GIT_DIR` is not blank)
 - BaseDir
 
-### codalotl cas retrieve <namespace> <path/to/pkg>
+### codalotl cas get <namespace> <path/to/pkg>
 
-Uses `internal/gocas` to retrieve the stored value (and associated metadata) for (package, namespace), for the current package contents.
+Uses `internal/gocas` to get the stored value (and associated metadata) for (package, namespace), for the current package contents.
 
 ## Configuration
 

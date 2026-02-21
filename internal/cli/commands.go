@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
@@ -378,6 +380,70 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		}),
 	}
 	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd)
+	casCmd := &qcli.Command{
+		Name:  "cas",
+		Short: "Content-addressable metadata storage (CAS).",
+	}
+	setCmd := &qcli.Command{
+		Name:  "set",
+		Short: "Set a JSON value for (package, namespace).",
+		Args:  qcli.ExactArgs(3),
+		Run: runWithConfig("cas_set", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			namespace := c.Args[0]
+			if err := validateCASNamespace(namespace); err != nil {
+				return qcli.UsageError{Message: err.Error()}
+			}
+			pkg, mod, err := loadPackageArg(c.Args[1])
+			if err != nil {
+				return err
+			}
+			var value any
+			if err := json.Unmarshal([]byte(c.Args[2]), &value); err != nil {
+				return qcli.UsageError{Message: fmt.Sprintf("invalid <value>: must be valid JSON (ex: %q or %q)", `"OK"`, `{"result":"ok"}`)}
+			}
+			db, err := casDBForBaseDir(mod.AbsolutePath)
+			if err != nil {
+				return err
+			}
+			return db.StoreOnPackage(pkg, gocas.Namespace(namespace), value)
+		}),
+	}
+	getCmd := &qcli.Command{
+		Name:  "get",
+		Short: "Get a JSON value for (package, namespace).",
+		Args:  qcli.ExactArgs(2),
+		Run: runWithConfig("cas_get", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			namespace := c.Args[0]
+			if err := validateCASNamespace(namespace); err != nil {
+				return qcli.UsageError{Message: err.Error()}
+			}
+			pkg, mod, err := loadPackageArg(c.Args[1])
+			if err != nil {
+				return err
+			}
+			db, err := casDBForBaseDir(mod.AbsolutePath)
+			if err != nil {
+				return err
+			}
+			var value any
+			ok, info, err := db.RetrieveOnPackage(pkg, gocas.Namespace(namespace), &value)
+			if err != nil {
+				return err
+			}
+			out := casRetrieveOutput{
+				OK: ok,
+			}
+			if ok {
+				out.Value = value
+				out.AdditionalInfo = info
+			}
+			enc := json.NewEncoder(c.Out)
+			enc.SetIndent("", "  ")
+			enc.SetEscapeHTML(false)
+			return enc.Encode(out)
+		}),
+	}
+	casCmd.AddCommand(setCmd, getCmd)
 
 	panicCmd := &qcli.Command{
 		Name:   "panic",
@@ -449,7 +515,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, panicCmd)
+	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, casCmd, panicCmd)
 	return root, runState
 }
 
