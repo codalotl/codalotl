@@ -476,7 +476,7 @@ Examples, relating to these style of events:
 - Uses q/termformat for terminal formatting / ANSI codes.
 - Cell width calculation uses q/termformat and q/uni.
 
-## Public Interface
+## Public API
 
 ```go
 const MinTerminalWidth = 30

@@ -118,7 +118,7 @@ type Event struct {
 - Uses codeai/llmstream (and not llmcomplete)
 - Does not use 3rd party packages directly
 
-## Public Interface
+## Public API
 
 See Usage for implied interface. Additionally:
 

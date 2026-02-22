@@ -177,11 +177,9 @@ The first pass intentionally excludes:
 - Global/package-level behavior toggles
 - Process-exiting helpers (library APIs must not `os.Exit`)
 
-## Public Interface
+## Public API
 
 ```go {api}
-package cli
-
 type Options struct {
 	// Args is the argv excluding the program name (typically os.Args[1:]).
 	Args []string
