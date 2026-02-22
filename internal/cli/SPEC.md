@@ -145,6 +145,18 @@ Accepts a Go-style package pattern (including `./...`). Prints one line per pack
 
 This may only produce a line for a dir if the dir has both a SPEC.md and a valid Go package.
 
+### codalotl spec status
+
+This prints out the per-package status of SPEC.md files. It takes no argument (implies `./...` based on cwd).
+
+Per line:
+- package (ex: `./path/to/pkg`)
+- has SPEC.md file (ex: `true`)
+- matching `Public API` - i.e., `codalotl spec diff` produces NO output (ex: `false`)
+- impl conforms to spec as per cas system, via `casconformance.Retrieve` (ex: `true`)
+
+Sort: 1. has_spec (true first) 2. api_match (true first) 3. conforms (true first) 4. package (a->z)
+
 ### codalotl cas set <namespace> <path/to/pkg> <value>
 
 Uses `internal/gocas` to set `<value>` for (package, namespace).

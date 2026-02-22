@@ -392,7 +392,15 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			return runSpecLsMismatch(c.Context, c.Out, c.Args[0])
 		}),
 	}
-	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd)
+	statusCmd := &qcli.Command{
+		Name:  "status",
+		Short: "Print per-package SPEC.md status (implies ./...).",
+		Args:  qcli.NoArgs,
+		Run: runWithConfig("spec_status", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			return runSpecStatus(c.Context, c.Out)
+		}),
+	}
+	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd, statusCmd)
 	casCmd := &qcli.Command{
 		Name:  "cas",
 		Short: "Content-addressable metadata storage (CAS).",
