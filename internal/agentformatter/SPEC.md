@@ -173,7 +173,8 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - Update Plan is Bold, Colorful.
 - The `└` and the message afterwards is always Accent.
 - If the message is blank, start printing the bullets right after the `└` (the └ shouldn't be on a line all by itself).
-- The FIRST uncompleted todo is Colorful and bold.
+- In progress items are bold.
+- The FIRST uncompleted todo is Colorful.
 - All other bulleted lines are Accent (all completed todos are always Accent; uncompleted todos are Accent unless they're the first uncompleted todo).
 
 ### EventTypeToolCall and EventTypeToolComplete - get_public_api
@@ -450,19 +451,21 @@ If a tool isn't especially handled, here's example output:
     }
 ```
 
-### EventTypeError, EventTypeWarning, EventTypeCanceled
+### EventTypeError, EventTypeWarning, EventTypeRetry, EventTypeCanceled
 
 Examples, relating to these style of events:
 
 ```
 • Error: some error has occurred.
 • Warning: some warning has occurred.
+• Retry: transient error.
 • Canceled: deadline exceeded.
 ```
 
-- In the above examples, the first word is bold (ex: `Error`).
-- The colon and onwards is nonbold.
-- All text is red.
+- Bullet indicates severity:
+    - Warning: Accent
+    - Retry: Colorful
+    - Canceled/Error: Red
 
 ### EventTypeAssistantTurnComplete
 
