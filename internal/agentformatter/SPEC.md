@@ -484,8 +484,8 @@ const MinTerminalWidth = 30
 type Formatter interface {
 	// FormatEvent returns the content to print in a chat window or stdout-based CLI.
 	//
-	// If terminalWidth > MinTerminalWidth (aka TUI formatting), newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines
-	// and the caller can wrap themselves or insert the text in a container that can deal with long strings.
+	// If terminalWidth > MinTerminalWidth, newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines and the caller
+	// can wrap themselves or insert the text in a container that can deal with long strings.
 	FormatEvent(e agent.Event, terminalWidth int) string
 }
 
@@ -497,8 +497,12 @@ type Config struct {
 	ForegroundColor termformat.Color // the terminal's foreground color. If nil, uses termformat.DefaultFBBGColor.
 	AccentColor     termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
 	ColorfulColor   termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	SuccessColor    termformat.Color // If nil, uses a default green suitable for terminals, downsampled to the detected color profile.
+	ErrorColor      termformat.Color // If nil, uses a default red suitable for terminals, downsampled to the detected color profile.
 }
 
-// creates a new Formatter
+// NewTUIFormatter creates a new Formatter configured for chat/TUI rendering.
+//
+// If ForegroundColor/BackgroundColor in c aren't passed in, they're determined by sending OSC codes to the terminal. The terminal can't be in Alt mode at this time.
 func NewTUIFormatter(c Config) Formatter
 ```

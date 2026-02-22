@@ -123,22 +123,22 @@ type Event struct {
 See Usage for implied interface. Additionally:
 
 ```go
-// eg, running, stopped
+// Status reports whether the agent is currently processing a turn.
 func (a *Agent) Status() Status
 ```
 
 ```go
-// Turns returns the underlying conversation's Turns. This should work even if the agent is running in a thread-safe way.
+// Turns returns a snapshot of the conversation turns so far.
 func (a *Agent) Turns() []llmstream.Turn
 ```
 
 ```go
-// TokenUsage returns the cumulative token usage.
+// TokenUsage returns the cumulative token usage across assistant turns.
 func (a *Agent) TokenUsage() llmstream.TokenUsage
 ```
 
 ```go
-// ContextUsagePercent returns an int in [0, 100] indicating the percent of the context window used. 0 is unused, 100 is full.
+// ContextUsagePercent estimates how much of the model's context window is consumed based on the latest assistant turn. Returns 0 when unknown.
 func (a *Agent) ContextUsagePercent() int
 ```
 

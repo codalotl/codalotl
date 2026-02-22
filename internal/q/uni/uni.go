@@ -5,21 +5,21 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-// Options control width calculations.
+// Options control width calculation in NewGraphemeIterator and other iterators.
 //
-// EastAsianWidth toggles ambiguous-width characters, and TreatEmojiAsWide only applies when EastAsianWidth is true.
+// Currently only relevant for East Asian code points and their locale.
 type Options struct {
-	EastAsianWidth   bool
-	TreatEmojiAsWide bool
+	EastAsianWidth   bool // if true, treats certain East Asian code points as 2 wide (e.g., Chinese, Japanese, Korean). Use if the locale is one of CJK.
+	TreatEmojiAsWide bool // Only considered if EastAsianWidth. If true, treats emoji as wide (2 columns).
 }
 
-// TextWidth returns the monospace width of str. If opts is nil, locale is assumed to be non-East Asian.
+// TextWidth returns the text width of str for monospace fonts in terminals. If opts is nil, locale is assumed to be non-East Asian.
 func TextWidth[T string | []byte](str T, opts *Options) int {
 	cond := conditionFromOptions(opts)
 	return textWidth(str, cond)
 }
 
-// RuneWidth returns the monospace width of r. If opts is nil, locale is assumed to be non-East Asian.
+// RuneWidth returns the width of r for monospace fonts in terminals. If opts is nil, locale is assumed to be non-East Asian.
 func RuneWidth(r rune, opts *Options) int {
 	cond := conditionFromOptions(opts)
 	return cond.RuneWidth(rune(r))
@@ -31,7 +31,7 @@ type Iterator[T string | []byte] struct {
 	cond *runewidth.Condition
 }
 
-// NewGraphemeIterator returns a new grapheme iterator for str. If opts is nil, locale is assumed to be non-East Asian.
+// NewGraphemeIterator returns a new grapheme iterator for str (string or []byte). If opts is nil, locale is assumed to be non-East Asian.
 func NewGraphemeIterator[T string | []byte](str T, opts *Options) *Iterator[T] {
 	cond := conditionFromOptions(opts)
 	return &Iterator[T]{
@@ -53,12 +53,12 @@ func (iter *Iterator[T]) Start() int {
 	return iter.iter.Start()
 }
 
-// End returns the byte position after the current token in the original data.
+// End returns the byte position after the current token in the original data. Allows looping over bytes [Start(), End()).
 func (iter *Iterator[T]) End() int {
 	return iter.iter.End()
 }
 
-// TextWidth returns the monospace width of the current value.
+// TextWidth returns the text width of the current value for monospace fonts in terminals.
 func (iter *Iterator[T]) TextWidth() int {
 	return textWidth(iter.iter.Value(), iter.cond)
 }

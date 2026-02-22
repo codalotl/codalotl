@@ -181,13 +181,10 @@ The first pass intentionally excludes:
 
 ```go {api}
 type Options struct {
-	// Args is the argv excluding the program name (typically os.Args[1:]).
-	Args []string
-
-	// In/Out/Err override standard I/O. If nil, defaults are used.
-	In  io.Reader
-	Out io.Writer
-	Err io.Writer
+	Args []string  // Args is the argv excluding the program name (typically os.Args[1:]).
+	In   io.Reader // In/Out/Err override standard I/O. If nil, defaults are used.
+	Out  io.Writer
+	Err  io.Writer
 }
 ```
 
@@ -285,7 +282,7 @@ func (e ExitError) ExitCode() int
 ```
 
 ```go {api}
-// Args helpers.
+// NoArgs validates that there are no positional args.
 func NoArgs(args []string) error
 func ExactArgs(n int) ArgsFunc
 func MinimumArgs(n int) ArgsFunc

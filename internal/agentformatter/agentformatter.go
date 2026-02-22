@@ -39,15 +39,16 @@ type Formatter interface {
 	FormatEvent(e agent.Event, terminalWidth int) string
 }
 
-// Config controls the terminal colorization options.
+// Config controls the terminal colorization options. We need to know the intended bg/fg, so we can create other colors that are consistent. For instance, if we
+// want to colorize backtick-wrapped paths/identifiers/code different, can modify ForegroundColor to be closer to BackgroundColor.
 type Config struct {
-	PlainText       bool
-	BackgroundColor termformat.Color
-	ForegroundColor termformat.Color
-	AccentColor     termformat.Color
-	ColorfulColor   termformat.Color
-	SuccessColor    termformat.Color
-	ErrorColor      termformat.Color
+	PlainText       bool             // true: disable colors and ANSI escape characters (bold, italics, etc).
+	BackgroundColor termformat.Color // the terminal's background color. If nil, uses termformat.DefaultFBBGColor.
+	ForegroundColor termformat.Color // the terminal's foreground color. If nil, uses termformat.DefaultFBBGColor.
+	AccentColor     termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	ColorfulColor   termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	SuccessColor    termformat.Color // If nil, uses a default green suitable for terminals, downsampled to the detected color profile.
+	ErrorColor      termformat.Color // If nil, uses a default red suitable for terminals, downsampled to the detected color profile.
 }
 
 type textTUIFormatter struct {
