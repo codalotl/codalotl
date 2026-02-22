@@ -12,8 +12,8 @@ import (
 const agentsFilename = "AGENTS.md"
 
 // Read will read AGENTS.md files in cwd, its parent, up to sandboxDir. It returns a concatenation of all AGENTS.md files it finds, in a format that can be directly
-// supplied to an LLM. This returned concatenated string may have some explanation and metadata (ex: filenames), in addition to the actual bytes from the files.
-// If there are no AGENTS.md files (or they are empty), Read returns ("", nil).
+// supplied to an LLM. This returned concatenated string may have some explanation and metadata (ex: filenames). If there are no AGENTS.md files (or they are empty/whitespace-only),
+// Read returns ("", nil).
 //
 // cwd must be in sandboxDir. They may be the same path.
 //
