@@ -198,7 +198,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 The EventTypeToolCall looks like this:
 
 ```
-• Clarifying someIdentifier in /path/to/something
+• Clarifying API someIdentifier in /path/to/something
   └ What does someIdentifier return in its second parameter? Give an example.
 ```
 
@@ -210,7 +210,7 @@ The EventTypeToolCall looks like this:
 The EventTypeToolComplete looks like this:
 
 ```
-• Clarified someIdentifier in /path/to/something
+• Clarified API someIdentifier in /path/to/something
   └ The someIdentifier returns a description in the 2nd parameter. For example, ...
 ```
 
@@ -364,42 +364,13 @@ Example:
 
 ```
 • Edit some/file.go
-     18  	"axi/codeai/llmstream"
-     19 +	"axi/codeai/prompt"
-     20  	"axi/codeai/tools/coretools"
-        ⋮
-     23
-     24 +const agentName = "CodAgent"
-     25 +
-     26  func main() {
-        ⋮
-     47
-     45 -	systemPrompt, err := loadSystemPrompt(sandboxDir)
-     46 -	if err != nil {
-     47 -		return err
-     48 -	}
-     48 +	modelID := llmstream.ModelID("gpt-5")
-     49 +	systemPrompt := prompt.GetFullPrompt(agentName, modelID)
-     50
-     50 -	agentInstance, err := agent.NewAgent(llmstream.ModelID("gpt-5"), systemPrompt, buildTools(sandboxDir))
-     51 +	agentInstance, err := agent.NewAgent(modelID, systemPrompt, buildTools(sandboxDir))
-     52  	if err != nil {
-        ⋮
-    117  	return filepath.Clean(cwd), nil
-    117 -}
-    118 -
-    119 -func loadSystemPrompt(repoRoot string) (string, error) {
-    120 -	path := filepath.Join(repoRoot, "codeai", "agent-prototype", "generic-prompt.md")
-    121 -	data, err := os.ReadFile(path)
-    122 -	if err != nil {
-    123 -		return "", err
-    124 -	}
-    125 -	return string(data), nil
-    118  }
+     - old line
+     + new line
 ```
 
 - No hunks anchors are shown (eg, `@@ func SomeAnchor() {`).
-- Line numbers and `⋮` are accent-colored.
+- Line numbers are not shown.
+- `⋮` is accent-colored.
 - Context lines (` `) are normal; `+` lines are green; `-` lines are red.
 
 Delete example:
@@ -418,19 +389,16 @@ Rename example (no hunks are changed):
 Rename example (hunks are changed):
 ```
 • Edit some/file.go → some/other.go
-     18  	"axi/codeai/llmstream"
-     19 +	"axi/codeai/prompt"
-     20  	"axi/codeai/tools/coretools"
+     - old line
+     + new line
 ```
 
 If a line exceeds the tuiWidth in TUI width mode, it will be wrapped:
 
 ```
 • Edit some/file.go
-     24 +const description = "This line is very long. It will wrap eventua
-         lly."
-     25 +
-     26  func main() {
+     +This line is very long. It will wrap eventua
+       lly.
 ```
 
 If the underlying error `applypatch.IsInvalidPatch`, don't print out the whole invalid patch. Instead, for instance:
