@@ -1,0 +1,1 @@
+{"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{"unix_timestamp":1771779162,"paths":["internal/lints/SPEC.md","internal/lints/lints.go","internal/lints/lints_test.go"],"git_clean":true,"git_commit":"06439b35b1592748992cc4757ed53bf2d589a9e0","git_merge_base":"0501f01988c7e4e51e4fffa37fdecfbb565747da"}}
