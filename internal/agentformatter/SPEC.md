@@ -18,7 +18,7 @@ agentformatter formats events from agents for insertion into a fixed-width TUI, 
 - Agent bullets (`•`) are typically Accent-colored; completed tools are Green vs Red. (NOTE: not to be confused with bullets WITHIN messages - aka markdown bullets - which are just normal `-`).
 - The tool response indicator `└` is Accent.
 - Text within AssistantText will convert backtick-wrapped text to colorized Accent text, dropping the backticks.
-- All coloring must be done with ANSI 256-color codes, not true color.
+- Coloring (ex: 256 color; true color) must be converted to the terminal's color profile (assuming !PlainText).
 
 ## SubAgent Events
 
@@ -466,7 +466,9 @@ Examples, relating to these style of events:
 
 ### EventTypeAssistantTurnComplete
 
-- Not useful to print (returns "")
+Print a single line summarizing the turn usage:
+
+`• Turn complete: finish=<finishReason> input=<n> output=<n> reasoning=<n> cached_input=<n>`
 
 ## Dependencies
 
