@@ -79,7 +79,7 @@ Details:
 - Because user messages are messy and inexact, adding grants is **lazy**. We cannot immediately parse the message to extract grants.
 - Instead, if we get `IsAuthorizedForRead` for a specific file, for instance, we examine the user message grants and see if the file is granted by the message.
 - This allows messages like `Read @README.md. Then ...` to accept either `README.md` or `README.md.` as grants.
-    - Similarly, `in @my file.txt, read the docs` allows files `my`, `my file`, `my file.txt`, and others.
+    - For paths with spaces, the user should quote them as `@"my file.txt"`.
 - No `os.Stat` may occur during AddGrantsFromUserMessage.
 
 ## User permission requests
