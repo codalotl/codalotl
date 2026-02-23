@@ -131,7 +131,7 @@ There exists a non-colorized mode. In this mode, no colors will be applied. Text
 In a colorized mode, there exists a palette. **All colors used must be defined in the palette** (see caveat on text animation). Callers of this package may specify a palette by name (they cannot indicate individual colors). By default, the palette will be based on the default terminal palette, as determined by `internal/q/termformat`.
 
 Supported palette names:
-- `auto` - derive colors from the terminal (default)
+- `auto` - choose light vs dark built-in palette based on terminal default background lightness (default)
 - `dark` - force the built-in dark palette
 - `light` - force the built-in light palette
 - `plain` - disable colors entirely

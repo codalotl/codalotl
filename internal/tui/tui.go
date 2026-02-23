@@ -127,8 +127,6 @@ func Run() error {
 
 // RunWithConfig launches the TUI using the provided configuration.
 func RunWithConfig(cfg Config) error {
-	// TODO: allow callers to select palette; for now force dark mode for experimentation.
-	cfg.Palette = PaletteDark
 	palette := newColorPalette(cfg)
 	formatterCfg := agentformatter.Config{
 		PlainText:       !palette.colorized,
