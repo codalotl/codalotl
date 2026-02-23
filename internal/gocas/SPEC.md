@@ -11,7 +11,6 @@ This package stores metadata about Go packages using content-addressable storage
 - StoreOnPackage captures `cas.AdditionalInfo` in a best-effort way by shelling out to `git`.
 - If `git` isn't found, there's no `git` repo, there's no current branch (or similar), no error is returned. Those fields are left as zero values on `cas.AdditionalInfo`.
     - StoreOnPackage should not fail just because the user doesn't use git or their git state is unusual.
-- Other errors (I/O, permissions, etc) are returned.
 
 ## Public API
 
