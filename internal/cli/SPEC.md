@@ -84,6 +84,7 @@ Current Configuration:
     "openai": "sk-p..._LQA"
   },
   "reflowwidth": 160,
+  "theme": "",
   "preferredprovider": "",
   "preferredmodel": ""
 }
@@ -202,8 +203,9 @@ type Config struct {
 	// NOTE: for now, this is only used by the `context initial` command.
 	Lints lints.Lints `json:"lints,omitempty"`
 
-	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`
-	DisableCrashReporting bool `json:"disablecrashreporting,omitempty"`
+	DisableTelemetry      bool   `json:"disabletelemetry,omitempty"`
+	DisableCrashReporting bool   `json:"disablecrashreporting,omitempty"`
+	Theme                 string `json:"theme"` // Theme selects the TUI color palette. Allowed values: "", "dark", "light".
 
 	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
 	PreferredProvider string `json:"preferredprovider"`
@@ -240,6 +242,7 @@ type CustomModel struct {
 Notes:
 - If a provider's key is configured via the configuration file, call `llmmodel.ConfigureProviderKey` to use it.
 - Custom models are listed, they may be referred to by ID with `PreferredModel` (also, see `llmmodel.AddCustomModel`).
+- Theme is passed to the TUI as its palette selection. If unset, the TUI uses its default/auto palette behavior.
 
 ## Metrics/Crash Reporting and Version Notices
 

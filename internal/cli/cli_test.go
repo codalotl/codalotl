@@ -394,7 +394,8 @@ func TestRun_Config_PrintsJSON(t *testing.T) {
 	cfgPath := filepath.Join(tmp, ".codalotl", "config.json")
 	cfg := `{
   "providerkeys": { "openai": "sk-test" },
-  "reflowwidth": 80
+  "reflowwidth": 80,
+  "theme": "dark"
 }`
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0644); err != nil {
 		t.Fatalf("write config.json: %v", err)
@@ -443,6 +444,9 @@ func TestRun_Config_PrintsJSON(t *testing.T) {
 	}
 	if got.ReflowWidth != 80 {
 		t.Fatalf("expected reflowwidth=80, got %d", got.ReflowWidth)
+	}
+	if got.Theme != "dark" {
+		t.Fatalf("expected theme=dark, got %q", got.Theme)
 	}
 	if got.ProviderKeys.OpenAI != "*******" {
 		t.Fatalf("expected providerkeys.openai to be redacted, got %q", got.ProviderKeys.OpenAI)

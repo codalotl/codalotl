@@ -139,6 +139,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			}
 
 			return runTUIWithConfig(tui.Config{
+				Palette:     tui.PaletteName(cfg.Theme),
 				ModelID:     modelID,
 				LintSteps:   steps,
 				ReflowWidth: cfg.ReflowWidth,

@@ -27,12 +27,9 @@ type Config struct {
 	Lints                 lints.Lints        `json:"lints,omitempty"` // Lints configures the lint pipeline.
 	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
 	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
-
-	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though).
-	PreferredProvider string `json:"preferredprovider"`
-
-	// Optional. If set, use this model specifically.
-	PreferredModel string `json:"preferredmodel"`
+	Theme                 string             `json:"theme"`
+	PreferredProvider     string             `json:"preferredprovider"` // Optional. If set, use this provider if possible (lower precedence than PreferredModel, though).
+	PreferredModel        string             `json:"preferredmodel"`    // Optional. If set, use this model specifically.
 
 	// PreferredModelProvidence indicates which source set PreferredModel, when any source actually did. This is used to decide which config file should be updated if
 	// the TUI asks to persist a newly selected model.
@@ -85,6 +82,7 @@ func loadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("load configuration: %w", err)
 	}
+	cfg.Theme = strings.ToLower(strings.TrimSpace(cfg.Theme))
 	cfg.configLocations = configLocationsFromReport(report)
 
 	if err := configureCustomModelsFromConfig(cfg.CustomModels); err != nil {
@@ -102,6 +100,11 @@ func loadConfig() (Config, error) {
 func validateConfig(cfg Config) error {
 	if cfg.ReflowWidth <= 0 {
 		return fmt.Errorf("invalid configuration: reflowwidth must be > 0 (got %d)", cfg.ReflowWidth)
+	}
+	switch cfg.Theme {
+	case "", "dark", "light":
+	default:
+		return fmt.Errorf("invalid configuration: theme must be \"dark\" or \"light\" (got %q)", cfg.Theme)
 	}
 	return nil
 }
