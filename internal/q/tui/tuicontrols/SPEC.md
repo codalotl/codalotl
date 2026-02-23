@@ -180,11 +180,13 @@ Word wrapping details:
       - Option/Alt+Left: move to the start of the previous word unit (ignoring any whitespace immediately left of the cursor).
       - Option/Alt+Right: move to the end of the next word unit (ignoring any whitespace immediately right of the cursor).
   - Word breaks (line wrapping)
-      - Primary rule: compute line-break opportunities using the Unicode Line Breaking Algorithm (UAX #14) on the plain text.
-      - Hyphen tailoring: do not treat hyphen-minus - (U+002D) or soft hyphen (U+00AD) as break opportunities at the UAX #14 stage.
-      - Hyphen splitting (secondary rule): allow splitting inside a word at an existing - only when it is between two alphanumeric characters; the split point is after the - (so the hyphen stays at the end of the line).
-      - Empirical punctuation results (alnum–punct–alnum cases): breaks occur after `/` and `|` (also after `!`, `?`, and `}`); breaks do not occur at `.` or `,` in that context.
-      - Word-joiner: U+2060 (WORD JOINER) prevents breaks between the surrounding characters.
+      - Break opportunities:
+          - Always after Unicode whitespace.
+          - After ASCII: `/`, `|`, `!`, `?`, `}`.
+          - After `.` and `,`, except when between two alphanumeric characters.
+          - After `-` only when between two alphanumeric characters (so `-` stays at end of line).
+      - Soft hyphen: U+00AD is not a break opportunity.
+      - Word joiner: U+2060 prevents breaks between the surrounding characters.
 
 Public API:
 
