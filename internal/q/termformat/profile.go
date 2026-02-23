@@ -55,14 +55,15 @@ func (p ColorProfile) Convert(c Color) Color {
 	case NoColor:
 		return v
 	case ANSIColor:
-		base := v.RGBColor()
 		switch p {
 		case ColorProfileANSI:
 			return v
 		case ColorProfileANSI256:
-			return base.ANSI256Color()
+			// ANSI 0-15 are a strict subset of the 256-color palette; keep the
+			// system color index stable rather than re-matching by RGB.
+			return ANSI256Color(v)
 		case ColorProfileTrueColor:
-			return base
+			return v.RGBColor()
 		}
 	case ANSI256Color:
 		base := v.RGBColor()
