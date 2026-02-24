@@ -115,7 +115,7 @@ type Event struct {
 
 ## Dependencies
 
-- Uses codeai/llmstream (and not llmcomplete)
+- Uses `internal/llmstream` (and not llmcomplete)
 - Does not use 3rd party packages directly
 
 ## Public API
@@ -125,37 +125,13 @@ See Usage for implied interface. Additionally:
 ```go
 // Status reports whether the agent is currently processing a turn.
 func (a *Agent) Status() Status
-```
 
-```go
 // Turns returns a snapshot of the conversation turns so far.
 func (a *Agent) Turns() []llmstream.Turn
-```
 
-```go
 // TokenUsage returns the cumulative token usage across assistant turns.
 func (a *Agent) TokenUsage() llmstream.TokenUsage
-```
 
-```go
 // ContextUsagePercent estimates how much of the model's context window is consumed based on the latest assistant turn. Returns 0 when unknown.
 func (a *Agent) ContextUsagePercent() int
 ```
-
-NOTE: function signatures are hard requirements. Documentation in comments are **conceptual requirements** - the actual production comment must contain these ideas, but may use different words, and may contain additional, unspecified ideas, provided they are congruent with this design.
-
-
-## Inactive
-
-These are not requirements yet, but will be. They are inactive either because we lack certain infrastructure, or to simplify the design for initial implementation.
-
-If possible, do not do anything that makes implementing them actively harder in the future.
-
-```go
-// ContextUsage returns the (current context usage, total context available), in tokens. Inactive because we lack context window data in llmstream (it's in llmcomplete).
-func (a *Agent) ContextUsage() (int, int)
-```
-
-## Meta
-
-- Tested
