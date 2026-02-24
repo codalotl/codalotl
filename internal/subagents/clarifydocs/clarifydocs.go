@@ -26,14 +26,11 @@ const (
 
 // ClarifyAPI clarifies the API/docs for identifier found in path and returns an answer. An error is returned for invalid inputs, failure to communicate with the
 // LLM, etc. If the LLM can't find the identifier as it relates to path, it may say so in the answer, which doesn't produce an error.
-//   - sandboxAbsDir is used for tool construction and relative path resolution, not as a confinement mechanism.
-//   - authorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind).
+//   - sandboxAbsDir is the sandbox root used for tool construction and relative path resolution; path must resolve within this directory.
+//   - authorizer is optional. If present, it confines the SubAgent's tool access.
 //   - toolset toolsetinterface.Toolset are the tools available for use. Injected to cut dependencies. Should be ls/read_file.
-//   - path is absolute or relative to sandboxAbsDir. If absolute, it may be outside of sandboxAbsDir (for instance, when clarifying dep packages or stdlib packages).
+//   - path is absolute or relative to sandboxAbsDir, and must refer to a path within sandboxAbsDir.
 //   - identifier is language-specific and opaque. For Go, it looks like "MyVar", "*MyType.MyFunc", etc.
-//
-// When clarifying a dep package outside of the sandbox, and authorizer is not nil, it is recommended for UX reasons (but not required) to construct an authorizer
-// to allow reads. There are many ways to do this - one is to create a new authorizer with sandbox root of the dep; another is to add a 'grant' to the authorizer.
 //
 // Example question: "What does the first return parameter (a string) look like in the ClarifyAPI func?". Example answer that might be returned: "The ClarifyAPI
 // func returns a human- or LLM-readable answer to the specified question. It will be the empty string if an error occurred."
@@ -41,9 +38,13 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 	if agentCreator == nil {
 		return "", errors.New("agentCreator is required")
 	}
+	sandboxAbsDir = strings.TrimSpace(sandboxAbsDir)
 	path = strings.TrimSpace(path)
 	identifier = strings.TrimSpace(identifier)
 	question = strings.TrimSpace(question)
+	if sandboxAbsDir == "" {
+		return "", errors.New("sandboxAbsDir is required")
+	}
 	if path == "" {
 		return "", errors.New("path is required")
 	}
@@ -53,35 +54,52 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 	if question == "" {
 		return "", errors.New("question is required")
 	}
-
-	var absPath string
-	if filepath.IsAbs(path) {
+	if !filepath.IsAbs(sandboxAbsDir) {
 		var err error
-		absPath, err = filepath.Abs(path)
+		sandboxAbsDir, err = filepath.Abs(sandboxAbsDir)
 		if err != nil {
-			return "", fmt.Errorf("make path absolute: %w", err)
-		}
-	} else {
-		var err error
-		absPath, _, err = coretools.NormalizePath(path, sandboxAbsDir, coretools.WantPathTypeAny, true)
-		if err != nil {
-			return "", fmt.Errorf("normalize path: %w", err)
-		}
-		if absPath == "" {
-			return "", fmt.Errorf("path %q is outside of sandbox %q", path, sandboxAbsDir)
+			return "", fmt.Errorf("make sandboxAbsDir absolute: %w", err)
 		}
 	}
-
+	sandboxAbsDir = filepath.Clean(sandboxAbsDir)
+	sandboxInfo, err := os.Stat(sandboxAbsDir)
+	if err != nil {
+		return "", fmt.Errorf("stat sandboxAbsDir %q: %w", sandboxAbsDir, err)
+	}
+	if !sandboxInfo.IsDir() {
+		return "", fmt.Errorf("sandboxAbsDir %q is not a directory", sandboxAbsDir)
+	}
+	absPath, relPath, err := coretools.NormalizePath(path, sandboxAbsDir, coretools.WantPathTypeAny, true)
+	if err != nil {
+		return "", fmt.Errorf("normalize path: %w", err)
+	}
+	if relPath == "" {
+		return "", fmt.Errorf("path %q is outside of sandbox %q", path, sandboxAbsDir)
+	}
+	sandboxRealAbsDir, err := filepath.EvalSymlinks(sandboxAbsDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve sandboxAbsDir symlinks %q: %w", sandboxAbsDir, err)
+	}
+	absRealPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve path symlinks %q: %w", absPath, err)
+	}
+	sandboxRealAbsDir = filepath.Clean(sandboxRealAbsDir)
+	absRealPath = filepath.Clean(absRealPath)
+	if !isWithinDir(sandboxRealAbsDir, absRealPath) {
+		return "", fmt.Errorf("path %q is outside of sandbox %q", path, sandboxAbsDir)
+	}
 	stat, err := os.Stat(absPath)
 	if err != nil {
 		return "", fmt.Errorf("stat path %q: %w", absPath, err)
 	}
-
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-
 	lang, _ := detectlang.Detect(sandboxAbsDir, absPath) // Ignore error
+
+	// NOTE: absPath is guaranteed to resolve within sandboxAbsDir. The subagent may still need to use tools
+	// to read additional files while answering the question; the authorizer (if present) is applied to those reads.
 
 	var contextStr string
 	useGeneric := true
@@ -257,4 +275,25 @@ func runRipgrep(cwd, target, identifier string) string {
 	xml := result.ToXML("ripgrep")
 
 	return xml
+}
+func isWithinDir(rootAbsDir, targetAbsPath string) bool {
+	if rootAbsDir == "" || targetAbsPath == "" {
+		return false
+	}
+	rootAbsDir = filepath.Clean(rootAbsDir)
+	targetAbsPath = filepath.Clean(targetAbsPath)
+	if !filepath.IsAbs(rootAbsDir) || !filepath.IsAbs(targetAbsPath) {
+		return false
+	}
+	rel, err := filepath.Rel(rootAbsDir, targetAbsPath)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	if rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }

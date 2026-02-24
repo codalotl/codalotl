@@ -42,7 +42,7 @@ func (c *capturingAgentCreator) NewWithDefaultModel(systemPrompt string, tools [
 	return nil, errors.New("stop")
 }
 
-func TestClarifyAPI_AllowsAbsolutePathOutsideSandbox(t *testing.T) {
+func TestClarifyAPI_RejectsAbsolutePathOutsideSandbox(t *testing.T) {
 	sandboxAbsDir := t.TempDir()
 
 	outsideDir := t.TempDir()
@@ -50,11 +50,8 @@ func TestClarifyAPI_AllowsAbsolutePathOutsideSandbox(t *testing.T) {
 	err := os.WriteFile(outsidePath, []byte("hello"), 0644)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
 	_, err = clarifydocs.ClarifyAPI(
-		ctx,
+		context.Background(),
 		failingAgentCreator{},
 		sandboxAbsDir,
 		nil,
@@ -63,7 +60,31 @@ func TestClarifyAPI_AllowsAbsolutePathOutsideSandbox(t *testing.T) {
 		"SomeIdentifier",
 		"SomeQuestion",
 	)
-	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorContains(t, err, "outside of sandbox")
+}
+
+func TestClarifyAPI_RejectsRelativePathOutsideSandbox(t *testing.T) {
+	parentAbsDir := t.TempDir()
+	sandboxAbsDir := filepath.Join(parentAbsDir, "sandbox")
+	err := os.MkdirAll(sandboxAbsDir, 0755)
+	assert.NoError(t, err)
+
+	outsideAbsPath := filepath.Join(parentAbsDir, "outside.txt")
+	err = os.WriteFile(outsideAbsPath, []byte("hello"), 0644)
+	assert.NoError(t, err)
+
+	outsideRelPath := filepath.Join("..", "outside.txt")
+	_, err = clarifydocs.ClarifyAPI(
+		context.Background(),
+		failingAgentCreator{},
+		sandboxAbsDir,
+		nil,
+		func(opts toolsetinterface.Options) ([]llmstream.Tool, error) { return nil, nil },
+		outsideRelPath,
+		"SomeIdentifier",
+		"SomeQuestion",
+	)
+	assert.ErrorContains(t, err, "outside of sandbox")
 }
 
 func TestClarifyAPI_SystemPromptIncludesEnvBlock(t *testing.T) {
@@ -71,7 +92,7 @@ func TestClarifyAPI_SystemPromptIncludesEnvBlock(t *testing.T) {
 	assert.NoError(t, err)
 
 	targetPath := filepath.Join(wd, "clarifydocs.go")
-	sandboxAbsDir := t.TempDir()
+	sandboxAbsDir := wd
 
 	ac := &capturingAgentCreator{}
 	_, err = clarifydocs.ClarifyAPI(
