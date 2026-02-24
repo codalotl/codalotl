@@ -15,6 +15,9 @@ var (
 	// ErrAlreadyRunning is returned when an agent operation cannot proceed because a turn is currently being processed.
 	ErrAlreadyRunning = errors.New("agent: already running")
 
+	// ErrNotRunning is returned when an operation requires an active SendUserMessage loop, but the agent is idle (or is finishing and no longer accepting requests).
+	ErrNotRunning = errors.New("agent: not running")
+
 	errMissingCompletion  = errors.New("agent: llmstream completed without a final turn")
 	errNoToolCallsPresent = errors.New("agent: finish reason requested tool use but no tool calls were present")
 )
@@ -24,21 +27,24 @@ var newConversation = llmstream.NewConversation
 
 // Agent orchestrates the conversation loop between llmstream and tools.
 type Agent struct {
-	sessionID          string
-	agentID            string
-	model              llmmodel.ModelID
-	conv               llmstream.StreamingConversation
-	mu                 sync.Mutex
-	status             Status
-	turns              []llmstream.Turn
-	tokenUsage         llmstream.TokenUsage
-	contextUsageTokens int64
-	tools              map[string]llmstream.Tool
-	toolList           []llmstream.Tool
-	parent             *Agent
-	depth              int
-	parentOut          chan<- Event
-	currentOut         chan<- Event
+	sessionID           string
+	agentID             string
+	model               llmmodel.ModelID
+	conv                llmstream.StreamingConversation
+	mu                  sync.Mutex
+	status              Status
+	turns               []llmstream.Turn
+	tokenUsage          llmstream.TokenUsage
+	contextUsageTokens  int64
+	tools               map[string]llmstream.Tool
+	toolList            []llmstream.Tool
+	pendingUserMessages []string
+	pendingQueuedEvents []string
+	acceptingQueue      bool
+	parent              *Agent
+	depth               int
+	parentOut           chan<- Event
+	currentOut          chan<- Event
 }
 
 // NewAgent constructs a new Agent for the supplied model, system prompt, and tools.
@@ -112,11 +118,41 @@ func (a *Agent) AddUserTurn(text string) error {
 	return nil
 }
 
+// QueueUserMessage queues a user message to be appended to the conversation the next time the agent reaches a safe boundary (after tool results are appended, or
+// after an assistant end-of-turn completes).
+//
+// If the agent is currently executing a tool (including any subagents created by that tool), the message is queued and will not be appended until after the tool
+// returns; messages are never injected into subagent tool calls/responses.
+//
+// When QueueUserMessage is accepted, the agent emits EventTypeUserMessageQueued with Event.UserMessage set. When the queued message is appended to the conversation
+// (and will be included in the next provider send), the agent emits EventTypeQueuedUserMessageSent with Event.UserMessage set.
+//
+// Note: EventTypeUserMessageQueued is emitted asynchronously by the agent's run loop (it may not be emitted before QueueUserMessage returns). This avoids deadlocks
+// when QueueUserMessage is called by the same goroutine that is draining the event stream.
+//
+// QueueUserMessage does not start a new run loop and does not return an event stream; it extends the currently running SendUserMessage call.
+//
+// It returns ErrNotRunning when the agent is idle, or when a run is finishing and no longer accepting queued messages (to avoid races where the message would be
+// accepted but never delivered).
+func (a *Agent) QueueUserMessage(message string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.status != StatusRunning || !a.acceptingQueue {
+		return ErrNotRunning
+	}
+	a.pendingUserMessages = append(a.pendingUserMessages, message)
+	a.pendingQueuedEvents = append(a.pendingQueuedEvents, message)
+	return nil
+}
+
 // SendUserMessage appends message as a user turn and starts processing it asynchronously. It returns an event stream describing the agent's progress (assistant
 // output, tool calls, and terminal status).
 //
 // Concurrency: Only one turn may be processed at a time. It is safe to call SendUserMessage from multiple goroutines, but if a turn is already running the returned
 // channel will synchronously receive exactly one EventTypeError with ErrAlreadyRunning and then be closed. No background goroutine is started in that case.
+//
+// Note: QueueUserMessage may extend the lifetime of the returned channel by causing the agent to perform additional provider sends as it processes queued user turns.
+// The terminal event (EventTypeDoneSuccess / EventTypeCanceled / EventTypeError) is emitted only when the agent stops and there are no queued messages.
 //
 // Channel lifecycle: The returned channel is always non-nil and is always closed when processing ends. Callers may safely range over it until closed. The channel
 // is buffered (currently size 32); if the caller stops reading, the agent (and any subagents) may block while emitting events.
@@ -160,6 +196,8 @@ func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Even
 	a.turns = append(a.turns, newTextTurn(llmstream.RoleUser, message))
 	a.status = StatusRunning
 	a.currentOut = out
+	a.pendingUserMessages = nil
+	a.acceptingQueue = true
 	a.mu.Unlock()
 
 	go a.run(ctx, out)
@@ -173,32 +211,62 @@ func (a *Agent) run(ctx context.Context, out chan<- Event) {
 	}()
 
 	for {
+		a.flushQueuedUserMessageEvents(out)
 		turn, seenCalls, err := a.sendOnce(ctx, out)
 		if err != nil {
+			a.flushQueuedUserMessageEvents(out)
+			a.stopAcceptingQueue()
 			a.emitTerminalEvent(out, err)
 			return
 		}
+		a.flushQueuedUserMessageEvents(out)
 
 		switch turn.FinishReason {
 		case llmstream.FinishReasonEndTurn:
+			finish, err := a.injectOrStopAccepting(out)
+			if err != nil {
+				a.flushQueuedUserMessageEvents(out)
+				a.stopAcceptingQueue()
+				a.emitTerminalEvent(out, err)
+				return
+			}
+			if !finish {
+				continue
+			}
 			a.dispatchEvent(out, Event{Type: EventTypeDoneSuccess})
 			return
 		case llmstream.FinishReasonToolUse:
 			if err := a.handleToolUse(ctx, out, turn.ToolCalls(), seenCalls); err != nil {
+				a.flushQueuedUserMessageEvents(out)
+				a.stopAcceptingQueue()
+				a.emitTerminalEvent(out, err)
+				return
+			}
+			if err := a.injectAllPending(out); err != nil {
+				a.flushQueuedUserMessageEvents(out)
+				a.stopAcceptingQueue()
 				a.emitTerminalEvent(out, err)
 				return
 			}
 			continue
 		case llmstream.FinishReasonCanceled:
+			a.flushQueuedUserMessageEvents(out)
+			a.stopAcceptingQueue()
 			a.dispatchEvent(out, Event{Type: EventTypeCanceled, Error: errors.New("agent: turn canceled by provider")})
 			return
 		case llmstream.FinishReasonError, llmstream.FinishReasonPermissionDenied:
+			a.flushQueuedUserMessageEvents(out)
+			a.stopAcceptingQueue()
 			a.dispatchEvent(out, Event{Type: EventTypeError, Error: fmt.Errorf("agent: provider reported finish reason %s", turn.FinishReason)})
 			return
 		case llmstream.FinishReasonMaxTokens:
+			a.flushQueuedUserMessageEvents(out)
+			a.stopAcceptingQueue()
 			a.dispatchEvent(out, Event{Type: EventTypeError, Error: errors.New("agent: turn stopped after hitting token limit")})
 			return
 		default:
+			a.flushQueuedUserMessageEvents(out)
+			a.stopAcceptingQueue()
 			a.dispatchEvent(out, Event{Type: EventTypeError, Error: fmt.Errorf("agent: unsupported finish reason %s", turn.FinishReason)})
 			return
 		}
@@ -431,6 +499,9 @@ func (a *Agent) finishRun() {
 	a.mu.Lock()
 	a.status = StatusIdle
 	a.currentOut = nil
+	a.acceptingQueue = false
+	a.pendingUserMessages = nil
+	a.pendingQueuedEvents = nil
 	a.mu.Unlock()
 }
 
@@ -570,4 +641,73 @@ func generateSessionID() (string, error) {
 		return "", fmt.Errorf("agent: generate session id: %w", err)
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+func (a *Agent) stopAcceptingQueue() {
+	a.mu.Lock()
+	a.acceptingQueue = false
+	a.mu.Unlock()
+}
+
+// injectOrStopAccepting is called when the provider has produced an end-of-turn. If there are queued user messages, they are appended and the agent continues. Otherwise
+// the agent stops accepting queued messages and the run may finish.
+func (a *Agent) injectOrStopAccepting(out chan<- Event) (bool, error) {
+	a.flushQueuedUserMessageEvents(out)
+	a.mu.Lock()
+	if len(a.pendingUserMessages) == 0 {
+		a.acceptingQueue = false
+		a.mu.Unlock()
+		return true, nil
+	}
+	msgs := a.pendingUserMessages
+	a.pendingUserMessages = nil
+	a.mu.Unlock()
+	for _, msg := range msgs {
+		a.mu.Lock()
+		err := a.conv.AddUserTurn(msg)
+		if err == nil {
+			a.turns = append(a.turns, newTextTurn(llmstream.RoleUser, msg))
+		}
+		a.mu.Unlock()
+		if err != nil {
+			return false, err
+		}
+		a.dispatchEvent(out, Event{Type: EventTypeQueuedUserMessageSent, UserMessage: msg})
+	}
+	return false, nil
+}
+
+// injectAllPending appends all currently queued user messages (if any). This is used after tool results are appended, before the next provider send.
+func (a *Agent) injectAllPending(out chan<- Event) error {
+	a.flushQueuedUserMessageEvents(out)
+	a.mu.Lock()
+	msgs := a.pendingUserMessages
+	a.pendingUserMessages = nil
+	a.mu.Unlock()
+	if len(msgs) == 0 {
+		return nil
+	}
+	for _, msg := range msgs {
+		a.mu.Lock()
+		err := a.conv.AddUserTurn(msg)
+		if err == nil {
+			a.turns = append(a.turns, newTextTurn(llmstream.RoleUser, msg))
+		}
+		a.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		a.dispatchEvent(out, Event{Type: EventTypeQueuedUserMessageSent, UserMessage: msg})
+	}
+	return nil
+}
+
+func (a *Agent) flushQueuedUserMessageEvents(out chan<- Event) {
+	a.mu.Lock()
+	msgs := a.pendingQueuedEvents
+	a.pendingQueuedEvents = nil
+	a.mu.Unlock()
+	for _, msg := range msgs {
+		a.dispatchEvent(out, Event{Type: EventTypeUserMessageQueued, UserMessage: msg})
+	}
 }

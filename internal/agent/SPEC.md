@@ -36,6 +36,10 @@ for ev := range out {
     case agent.EventTypeAssistantTurnComplete:
         fmt.Println("turn: ", ev.Turn)
         fmt.Println("tokens used: ", ev.Turn.TokenUsage)
+    case agent.EventTypeUserMessageQueued:
+        fmt.Println("queued: ", ev.UserMessage)
+    case agent.EventTypeQueuedUserMessageSent:
+        fmt.Println("queued sent: ", ev.UserMessage)
     }
 }
 ```
@@ -112,6 +116,7 @@ type Event struct {
 - An agent may only run one active loop. A call to SendUserMessage when it's already running results in an error (on the channel of the 2nd call).
 - Things like sandbox dirs and permissioning are orthogonal; they can (in theory) be configured in tools.
 - AddUserTurn returns an error if the agent is running.
+- QueueUserMessage can be used to enqueue user messages while an agent is running (see its doc comment for semantics and event emission).
 
 ## Dependencies
 
@@ -134,4 +139,22 @@ func (a *Agent) TokenUsage() llmstream.TokenUsage
 
 // ContextUsagePercent estimates how much of the model's context window is consumed based on the latest assistant turn. Returns 0 when unknown.
 func (a *Agent) ContextUsagePercent() int
+
+// QueueUserMessage queues a user message to be appended to the conversation the next time the agent reaches a safe boundary (after tool results are appended, or
+// after an assistant end-of-turn completes).
+//
+// If the agent is currently executing a tool (including any subagents created by that tool), the message is queued and will not be appended until after the tool
+// returns; messages are never injected into subagent tool calls/responses.
+//
+// When QueueUserMessage is accepted, the agent emits EventTypeUserMessageQueued with Event.UserMessage set. When the queued message is appended to the conversation
+// (and will be included in the next provider send), the agent emits EventTypeQueuedUserMessageSent with Event.UserMessage set.
+//
+// Note: EventTypeUserMessageQueued is emitted asynchronously by the agent's run loop (it may not be emitted before QueueUserMessage returns). This avoids deadlocks
+// when QueueUserMessage is called by the same goroutine that is draining the event stream.
+//
+// QueueUserMessage does not start a new run loop and does not return an event stream; it extends the currently running SendUserMessage call.
+//
+// It returns ErrNotRunning when the agent is idle, or when a run is finishing and no longer accepting queued messages (to avoid races where the message would be
+// accepted but never delivered).
+func (a *Agent) QueueUserMessage(message string) error
 ```

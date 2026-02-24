@@ -10,6 +10,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSendUserMessageSimple(t *testing.T) {
@@ -340,6 +341,213 @@ func TestConcurrentSendRejected(t *testing.T) {
 	if status := a.Status(); status != StatusIdle {
 		t.Fatalf("status after cancellation = %v, want idle", status)
 	}
+}
+
+func TestQueueUserMessageAfterEndTurnContinuesConversation(t *testing.T) {
+	systemPrompt := "system"
+	injected := "follow up"
+	wait := make(chan struct{})
+
+	turn1Text := llmstream.TextContent{ProviderID: "a1", Content: "first"}
+	turn1 := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{turn1Text},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	turn2Text := llmstream.TextContent{ProviderID: "a2", Content: "second"}
+	turn2 := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{turn2Text},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			wait: wait,
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &turn1Text, Delta: turn1Text.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turn1},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &turn2Text, Delta: turn2Text.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turn2},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := a.SendUserMessage(ctx, "start")
+	require.Equal(t, StatusRunning, a.Status())
+	require.NoError(t, a.QueueUserMessage(injected))
+	close(wait)
+
+	var events []Event
+	for ev := range out {
+		events = append(events, ev)
+	}
+
+	var doneCount int
+	var turnCompleteCount int
+	var queuedCount int
+	var sentCount int
+	queuedIndex := -1
+	sentIndex := -1
+	for i, ev := range events {
+		switch ev.Type {
+		case EventTypeDoneSuccess:
+			doneCount++
+		case EventTypeUserMessageQueued:
+			queuedCount++
+			if queuedIndex == -1 {
+				queuedIndex = i
+			}
+			require.Equal(t, injected, ev.UserMessage)
+		case EventTypeQueuedUserMessageSent:
+			sentCount++
+			if sentIndex == -1 {
+				sentIndex = i
+			}
+			require.Equal(t, injected, ev.UserMessage)
+		case EventTypeAssistantTurnComplete:
+			turnCompleteCount++
+		}
+	}
+	require.Equal(t, 1, doneCount)
+	require.Equal(t, 2, turnCompleteCount)
+	require.Equal(t, 1, queuedCount)
+	require.Equal(t, 1, sentCount)
+	require.Less(t, queuedIndex, sentIndex)
+
+	turns := a.Turns()
+	require.Len(t, turns, 5) // system, user(start), assistant(first), user(injected), assistant(second)
+	require.Equal(t, llmstream.RoleUser, turns[3].Role)
+	require.Len(t, turns[3].Parts, 1)
+	userText, ok := turns[3].Parts[0].(llmstream.TextContent)
+	require.True(t, ok)
+	require.Equal(t, injected, userText.Content)
+	require.Equal(t, StatusIdle, a.Status())
+}
+
+func TestQueueUserMessageAfterToolResults(t *testing.T) {
+	systemPrompt := "system"
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_123",
+		Name:       "slow_tool",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	turnTool := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	finalText := llmstream.TextContent{ProviderID: "final", Content: "done"}
+	finalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnTool},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &finalText, Delta: finalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &finalTurn},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	tool := &funcTool{name: "slow_tool"}
+	tool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		close(toolStarted)
+		select {
+		case <-ctx.Done():
+			return llmstream.NewErrorToolResult(ctx.Err().Error(), call)
+		case <-releaseTool:
+		}
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "ok",
+		}
+	}
+
+	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, []llmstream.Tool{tool})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := a.SendUserMessage(ctx, "start tool flow")
+
+	select {
+	case <-toolStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for tool to start")
+	}
+	require.NoError(t, a.QueueUserMessage("after tool"))
+	close(releaseTool)
+
+	var events []Event
+	for ev := range out {
+		events = append(events, ev)
+	}
+
+	var doneCount int
+	var queuedCount int
+	var sentCount int
+	for _, ev := range events {
+		switch ev.Type {
+		case EventTypeDoneSuccess:
+			doneCount++
+		case EventTypeUserMessageQueued:
+			queuedCount++
+			require.Equal(t, "after tool", ev.UserMessage)
+		case EventTypeQueuedUserMessageSent:
+			sentCount++
+			require.Equal(t, "after tool", ev.UserMessage)
+		}
+	}
+	require.Equal(t, 1, doneCount)
+	require.Equal(t, 1, queuedCount)
+	require.Equal(t, 1, sentCount)
+
+	turns := a.Turns()
+	require.Len(t, turns, 6)
+	require.Equal(t, llmstream.RoleAssistant, turns[2].Role)
+	require.Equal(t, llmstream.FinishReasonToolUse, turns[2].FinishReason)
+
+	// Ensure the injected user message comes after the tool results turn.
+	require.Equal(t, llmstream.RoleUser, turns[3].Role)
+	require.Len(t, turns[3].Parts, 1)
+	_, ok := turns[3].Parts[0].(llmstream.ToolResult)
+	require.True(t, ok)
+
+	require.Equal(t, llmstream.RoleUser, turns[4].Role)
+	require.Len(t, turns[4].Parts, 1)
+	userText, ok := turns[4].Parts[0].(llmstream.TextContent)
+	require.True(t, ok)
+	require.Equal(t, "after tool", userText.Content)
+	require.Equal(t, StatusIdle, a.Status())
 }
 
 func TestTurnsReturnsCopy(t *testing.T) {
