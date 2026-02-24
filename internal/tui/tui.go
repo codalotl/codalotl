@@ -119,6 +119,17 @@ type specConformanceResultMsg struct {
 	conforms bool
 	errMsg   string
 }
+type queuedMessageDest int
+
+const (
+	queuedMessageDestLocal queuedMessageDest = iota
+	queuedMessageDestAgent
+)
+
+type queuedMessage struct {
+	text string
+	dest queuedMessageDest
+}
 
 // Run launches the TUI in an alternate screen buffer.
 func Run() error {
@@ -194,7 +205,7 @@ type model struct {
 	sessionConfig                sessionConfig
 	sessionFactory               func(sessionConfig) (*session, error)
 	agentFormatter               agentformatter.Formatter
-	messageQueue                 []string
+	queuedMessages               []queuedMessage // pending messages not yet sent (either queued into the agent or queued locally)
 	currentRun                   *agentRun
 	runStartedAt                 time.Time
 	nextAgentRunID               int
@@ -274,7 +285,7 @@ func newModel(
 		nextAgentRunID:       1,
 		messages:             make([]chatMessage, 0, 32),
 		messageHistory:       make([]string, 0, 32),
-		messageQueue:         make([]string, 0),
+		queuedMessages:       make([]queuedMessage, 0),
 		permissionQueue:      make([]*permissionPrompt, 0),
 		palette:              palette,
 		cycleIndex:           historyIndexNone,
@@ -568,9 +579,7 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 		// the app (keeping the bottom help text intact as-is).
 		if m.isAgentRunning() {
 			m.stopAgentRun()
-			if len(m.messageQueue) > 0 {
-				m.restoreQueuedMessagesToInput()
-			}
+			m.restoreQueuedMessagesToInput()
 			return true
 		}
 
@@ -655,14 +664,18 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 			return true
 		}
 		if m.isEditingHistory() {
-			m.reenterCyclingModeFromEditing()
+			// Spec: when editing a previous message (not cycling), ESC exits the edit state
+			// and clears the input (it does not re-enter cycling mode).
+			m.exitEditingState()
+			if m.textarea != nil {
+				m.textarea.SetContents("")
+				m.updateTextareaHeight()
+			}
 			return true
 		}
 		if m.isAgentRunning() {
 			m.stopAgentRun()
-			if len(m.messageQueue) > 0 {
-				m.restoreQueuedMessagesToInput()
-			}
+			m.restoreQueuedMessagesToInput()
 		}
 		return true
 	case qtui.ControlKeyEnter:
@@ -1055,7 +1068,7 @@ func (m *model) requestSessionResetWithPostMessage(cfg sessionConfig, message st
 		pending := cfg
 		m.pendingSessionConfig = &pending
 		m.pendingPostResetMessage = postResetMessage
-		m.messageQueue = nil
+		m.queuedMessages = nil
 		m.rejectOutstandingPermissions()
 		if message != "" {
 			m.appendSystemMessage(message)
@@ -1136,9 +1149,7 @@ func (m *model) handlePermissionKey(msg qtui.KeyEvent) bool {
 	case qtui.ControlKeyEsc:
 		m.resolvePermission(false)
 		m.stopAgentRun()
-		if len(m.messageQueue) > 0 {
-			m.restoreQueuedMessagesToInput()
-		}
+		m.restoreQueuedMessagesToInput()
 		return true
 	case qtui.ControlKeyNone:
 		if !msg.IsRunes() {
@@ -1255,20 +1266,6 @@ func (m *model) exitCyclingModeForEditing() {
 	m.cycleIndex = historyIndexNone
 }
 
-func (m *model) reenterCyclingModeFromEditing() {
-	if !m.isEditingHistory() || len(m.messageHistory) == 0 {
-		return
-	}
-	index := m.editingHistoryIndex
-	if index >= len(m.messageHistory) {
-		index = len(m.messageHistory) - 1
-	}
-	m.cyclingMode = true
-	m.editingHistoryIndex = historyIndexNone
-	m.cycleIndex = index
-	m.showHistoryEntry(index)
-}
-
 func (m *model) exitEditingState() {
 	m.cyclingMode = false
 	m.cycleIndex = historyIndexNone
@@ -1318,8 +1315,32 @@ func (m *model) persistEditedHistoryDraft() {
 }
 
 func (m *model) sendOrQueueMessage(value string) {
-	if m.isAgentRunning() || m.packageContextPending() {
-		m.messageQueue = append(m.messageQueue, value)
+	// Package context gathering can be in-flight during package-mode session start. In
+	// that window, queue locally and send only after the context has been applied.
+	if m.packageContextPending() {
+		m.queuedMessages = append(m.queuedMessages, queuedMessage{text: value, dest: queuedMessageDestLocal})
+		m.appendUserMessage(value, true)
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+		return
+	}
+	if m.isAgentRunning() {
+		// Spec: allow enqueuing messages mid-run so they can be injected at the agent's
+		// next safe boundary (ex: after a tool result is appended).
+		queuedToAgent := false
+		if m.session != nil {
+			if err := m.session.QueueUserMessage(value); err == nil {
+				m.queuedMessages = append(m.queuedMessages, queuedMessage{text: value, dest: queuedMessageDestAgent})
+				queuedToAgent = true
+			}
+		}
+		if !queuedToAgent {
+			// Fallback: if the agent is no longer accepting queued messages, queue
+			// locally and send it once the current run finishes.
+			m.queuedMessages = append(m.queuedMessages, queuedMessage{text: value, dest: queuedMessageDestLocal})
+		}
 		m.appendUserMessage(value, true)
 		m.refreshViewport(true)
 		if m.viewport != nil {
@@ -1457,12 +1478,12 @@ func (m *model) stopWorkingIndicatorTicker() {
 }
 
 func (m *model) startNextQueuedMessage() {
-	if len(m.messageQueue) == 0 || m.session == nil || m.packageContextPending() {
+	if len(m.queuedMessages) == 0 || m.session == nil || m.packageContextPending() {
 		return
 	}
 
-	next := m.messageQueue[0]
-	m.messageQueue = m.messageQueue[1:]
+	next := m.queuedMessages[0].text
+	m.queuedMessages = m.queuedMessages[1:]
 	m.appendUserMessage(next, false)
 	m.refreshViewport(true)
 	if m.viewport != nil {
@@ -1502,15 +1523,19 @@ func (m *model) stopUserRequestListener() {
 }
 
 func (m *model) restoreQueuedMessagesToInput() {
-	if len(m.messageQueue) == 0 {
+	if len(m.queuedMessages) == 0 {
 		return
 	}
 	m.exitEditingState()
 	if m.textarea != nil {
-		m.textarea.SetContents(strings.Join(m.messageQueue, "\n"))
+		pending := make([]string, 0, len(m.queuedMessages))
+		for _, msg := range m.queuedMessages {
+			pending = append(pending, msg.text)
+		}
+		m.textarea.SetContents(strings.Join(pending, "\n"))
 		m.textarea.MoveToEndOfText()
 	}
-	m.messageQueue = nil
+	m.queuedMessages = nil
 	m.updateTextareaHeight()
 }
 
@@ -1558,6 +1583,21 @@ func (m *model) updateContextStatusMessage(index int, status packageContextStatu
 
 func (m *model) handleAgentEvent(ev agent.Event) {
 	autoScroll := m.shouldAutoScrollOnUpdate()
+	switch ev.Type {
+	case agent.EventTypeUserMessageQueued:
+		// Queued messages are already reflected in the UI immediately when the user
+		// hits ENTER; do not print a separate agent event for them.
+		return
+	case agent.EventTypeQueuedUserMessageSent:
+		// Spec: queued user messages are re-reflected when the agent actually appends
+		// them into the conversation.
+		if ev.UserMessage != "" {
+			m.dropQueuedMessage(ev.UserMessage)
+			m.appendUserMessage(ev.UserMessage, false)
+			m.refreshViewport(autoScroll)
+		}
+		return
+	}
 
 	switch ev.Type {
 	case agent.EventTypeAssistantTurnComplete:
@@ -1576,6 +1616,18 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 
 	m.appendAgentEvent(ev)
 	m.refreshViewport(autoScroll)
+}
+func (m *model) dropQueuedMessage(message string) {
+	if len(m.queuedMessages) == 0 {
+		return
+	}
+	for i, pending := range m.queuedMessages {
+		if pending.text == message {
+			copy(m.queuedMessages[i:], m.queuedMessages[i+1:])
+			m.queuedMessages = m.queuedMessages[:len(m.queuedMessages)-1]
+			return
+		}
+	}
 }
 
 func (m *model) handlePackageContextResult(msg packageContextResultMsg) {
@@ -2384,7 +2436,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.requests = nextSession.UserRequests()
 	m.requestSource++
 	m.messages = []chatMessage{{kind: messageKindWelcome}}
-	m.messageQueue = nil
+	m.queuedMessages = nil
 	m.permissionQueue = nil
 	m.activePermission = nil
 	m.pendingSessionConfig = nil

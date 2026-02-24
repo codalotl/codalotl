@@ -354,7 +354,10 @@ func TestCtrlCStopsAgentWhenRunning(t *testing.T) {
 	}
 
 	// If there are queued messages, stopping the agent should restore them to the input.
-	m.messageQueue = []string{"one", "two"}
+	m.queuedMessages = []queuedMessage{
+		{text: "one", dest: queuedMessageDestLocal},
+		{text: "two", dest: queuedMessageDestLocal},
+	}
 	m.textarea.SetContents("")
 
 	requestCancelCalled := false
@@ -370,8 +373,77 @@ func TestCtrlCStopsAgentWhenRunning(t *testing.T) {
 	require.False(t, requestCancelCalled)
 	require.False(t, auth.closed)
 
-	require.Equal(t, "", strings.Join(m.messageQueue, ",")) // messageQueue cleared
+	require.Empty(t, m.queuedMessages) // queue cleared
 	require.Equal(t, "one\ntwo", m.textarea.Contents())
+}
+func TestSendOrQueueMessage_UsesAgentQueueWhenRunning(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	m.currentRun = &agentRun{id: 1}
+	m.session = &session{
+		queueUserMessage: func(message string) error {
+			require.Equal(t, "hello", message)
+			return nil
+		},
+	}
+	m.sendOrQueueMessage("hello")
+	require.Equal(t, []queuedMessage{{text: "hello", dest: queuedMessageDestAgent}}, m.queuedMessages)
+	require.Len(t, m.messages, 1)
+	require.Equal(t, messageKindQueuedUser, m.messages[0].kind)
+	require.Equal(t, "hello", m.messages[0].userMessage)
+}
+func TestSendOrQueueMessage_FallsBackToLocalQueueWhenAgentQueueFails(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	m.currentRun = &agentRun{id: 1}
+	m.session = &session{
+		queueUserMessage: func(message string) error {
+			return errors.New("boom")
+		},
+	}
+	m.sendOrQueueMessage("hello")
+	require.Equal(t, []queuedMessage{{text: "hello", dest: queuedMessageDestLocal}}, m.queuedMessages)
+	require.Len(t, m.messages, 1)
+	require.Equal(t, messageKindQueuedUser, m.messages[0].kind)
+}
+func TestHandleAgentEvent_QueuedUserMessageSentAppendsUserMessage(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	m.queuedMessages = []queuedMessage{{text: "hello", dest: queuedMessageDestAgent}}
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeQueuedUserMessageSent, UserMessage: "hello"})
+	require.Empty(t, m.queuedMessages)
+	require.Len(t, m.messages, 1)
+	require.Equal(t, messageKindUser, m.messages[0].kind)
+	require.Equal(t, "hello", m.messages[0].userMessage)
+}
+func TestRestoreQueuedMessagesToInput_IncludesQueuedMessagesInOrder(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	m.queuedMessages = []queuedMessage{
+		{text: "agent", dest: queuedMessageDestAgent},
+		{text: "local", dest: queuedMessageDestLocal},
+	}
+	m.restoreQueuedMessagesToInput()
+	require.Equal(t, "agent\nlocal", m.textarea.Contents())
+	require.Empty(t, m.queuedMessages)
+}
+func TestRestoreQueuedMessagesToInput_PreservesOrderAcrossAgentAndLocalQueueing(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	m.currentRun = &agentRun{id: 1}
+	call := 0
+	m.session = &session{
+		queueUserMessage: func(message string) error {
+			call++
+			switch call {
+			case 1, 3:
+				return nil
+			default:
+				return errors.New("boom")
+			}
+		},
+	}
+	m.sendOrQueueMessage("A")
+	m.sendOrQueueMessage("B")
+	m.sendOrQueueMessage("C")
+	m.restoreQueuedMessagesToInput()
+	require.Equal(t, "A\nB\nC", m.textarea.Contents())
+	require.Empty(t, m.queuedMessages)
 }
 
 func TestCtrlCQuitsWhenIdle(t *testing.T) {
@@ -436,6 +508,26 @@ func TestEscStopsAgentWhenTextAreaEmpty(t *testing.T) {
 	require.True(t, handled)
 	require.True(t, cancelCalled)
 }
+func TestEscExitsEditingHistoryEvenWhenInputEmpty(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
+	m.recordSubmittedMessage("first message")
+	m.recordSubmittedMessage("second message")
+	m.textarea.SetContents("")
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyUp})
+	require.True(t, m.cyclingMode)
+	// Typing exits cycling mode and enters edit-previous-message mode.
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyNone, Runes: []rune{'!'}})
+	require.False(t, m.cyclingMode)
+	require.True(t, m.isEditingHistory())
+	// Simulate deleting all text while still in edit mode.
+	m.textarea.SetContents("")
+	require.Equal(t, "", m.textarea.Contents())
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyEsc})
+	require.False(t, m.cyclingMode)
+	require.False(t, m.isEditingHistory())
+	require.Equal(t, "", m.textarea.Contents())
+}
 
 func TestToolResultReplacesCallByDefault(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
@@ -498,6 +590,21 @@ func TestModelCommandListsAvailableModels(t *testing.T) {
 		require.Truef(t, id.Valid(), "listed invalid model id: %q", id)
 		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
 	}
+}
+func TestNewSessionBlock_GenericMode_DoesNotMentionSessionCommand(t *testing.T) {
+	pal := colorPalette{
+		primaryBackground:  termformat.ANSIColor(0),
+		accentBackground:   termformat.ANSIColor(1),
+		primaryForeground:  termformat.ANSIColor(7),
+		accentForeground:   termformat.ANSIColor(7),
+		colorfulForeground: termformat.ANSIColor(6),
+	}
+	block := newSessionBlock(100, pal, sessionConfig{})
+	plain := stripAnsi(block)
+	require.Contains(t, plain, "/package")
+	require.Contains(t, plain, "/model")
+	require.Contains(t, plain, "/quit")
+	require.NotContains(t, plain, "/session")
 }
 
 func TestModelsCommandListsAvailableModels(t *testing.T) {
