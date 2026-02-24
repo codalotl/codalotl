@@ -4,20 +4,11 @@ The clarifydocs package is a SubAgent that will get clarification on documentati
 
 This package must be at least functional for all languages. Certain languages may have extra support that increases performance for that language (ex: Go might receive AST-aware helpers).
 
-## Dependencies
-
-- `codeai/tools/coretools`
-- `codeai/tools/authdomain`
-- `codeai/agent`
-- `codeai/initialcontext`
-- `codeai/detectlang`
-- `q/cmdrunner`
-
 ## Tools
 
 This SubAgent will have access to these tools:
-- `codeai/tools/coretools`: `ls`
-- `codeai/tools/coretools`: `read_file`
+- `internal/tools/coretools`: `ls`
+- `internal/tools/coretools`: `read_file`
 
 Notably, these tools are absent: `apply_patch` (obviously, since this is just a read-only agent), `shell`.
 
@@ -25,8 +16,8 @@ Notably, these tools are absent: `apply_patch` (obviously, since this is just a 
 
 - Prompt: the generic prompt our agents use (codeai/prompt package).
 - Initial context:
-    - Non-Go: the results of a recursive `rg` on `identifier` within the directory that contains path (or within path itself if path is a directory).
-    - Go: `codeai/initialcontext.Create`.
+    - Non-Go: the results of `rg` on `identifier` on path or the directory that contains path.
+    - Go: `internal/initialcontext.Create`.
 
 NOTE: in the future, we may want to give the LLM a `find` tool to execute more `rg` commands for languages without enhanced support.
 
