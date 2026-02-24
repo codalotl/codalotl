@@ -56,7 +56,7 @@ Basic controls:
 ## Working Indicator
 
 - If the agent is Running, it has a Working Indicator visible with the amount of time it's been working. Otherwise it doesn't.
-- If present, the Working Indicator is always the last item of the Messages Area.
+- If present, the Working Indicator is always the last non-blank item of the Messages Area.
 - By default it will say (for instance): "• Working (1m 34s • ESC to interrupt)"
 - The runtime is updated periodically while the agent is running; otherwise.
 
@@ -70,9 +70,8 @@ Up/Down cycle through previous/next messages that user previously sent. Messages
 - If in Cycling Mode, pressing Down shows the next message. If the Text Area was showing the most recent message, pressing Down exits Cycling Mode and the Text Area goes to its default state.
 - If in Cycling Mode, pressing Up shows the previous message. Pressing Up when Cycling Mode is showing the first message does nothing.
 - If in Cycling Mode, typing or moving the cursor exits Cycling Mode. The Text Area is now filled with the previous message and the user can edit it and send it.
-- If in Cycling Mode, pressing ESC exits Cycling Mode, as if the user pressed Down on the last message. (ESC does not stop the agent here).
-- If not in Cycling Mode, but editing a previous message, pressing ESC jumps the cursor to the start and re-enters Cycling Mode (ESC does not stop the agent here). If the message was edited before re-entering
-    Cycling Mode, the edited version will be remembered if the user goes back/forth.
+- If in Cycling Mode, pressing ESC clears the Text Area and exits Cycling Mode (ESC does not stop the agent here).
+- If not in Cycling Mode, but editing a previous message, pressing ESC clears the Text Area and exits the edit state (ESC does not stop the agent here). Edited drafts remain available if the user re-enters Cycling Mode and returns to that history index.
 - Upon sending a message, all edited-but-unsent messages will be forgotten. Cycling mode will again cycle through actually-sent messages.
 
 ## Granting Permission
