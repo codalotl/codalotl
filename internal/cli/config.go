@@ -22,14 +22,21 @@ import (
 type Config struct {
 	ProviderKeys          ProviderKeys       `json:"providerkeys"`
 	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
-	ReflowWidth           int                `json:"reflowwidth"` // ReflowWidth is the max width when reflowing documentation. Defaults to 120.
+	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Defaults to 120.
 	ReflowWidthProvidence cascade.Providence `json:"-"`
-	Lints                 lints.Lints        `json:"lints,omitempty"` // Lints configures the lint pipeline.
-	DisableTelemetry      bool               `json:"disabletelemetry,omitempty"`
-	DisableCrashReporting bool               `json:"disablecrashreporting,omitempty"`
-	Theme                 string             `json:"theme"`
-	PreferredProvider     string             `json:"preferredprovider"` // Optional. If set, use this provider if possible (lower precedence than PreferredModel, though).
-	PreferredModel        string             `json:"preferredmodel"`    // Optional. If set, use this model specifically.
+
+	// Lints configures the lint pipeline used by `codalotl context initial`. See internal/lints/SPEC.md for full details.
+	Lints lints.Lints `json:"lints,omitempty"`
+
+	DisableTelemetry      bool   `json:"disabletelemetry,omitempty"`
+	DisableCrashReporting bool   `json:"disablecrashreporting,omitempty"`
+	Theme                 string `json:"theme"` // Theme selects the TUI color palette. Allowed values: "", "dark", "light".
+
+	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
+	PreferredProvider string `json:"preferredprovider"`
+
+	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().
+	PreferredModel string `json:"preferredmodel"`
 
 	// PreferredModelProvidence indicates which source set PreferredModel, when any source actually did. This is used to decide which config file should be updated if
 	// the TUI asks to persist a newly selected model.

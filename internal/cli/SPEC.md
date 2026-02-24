@@ -190,17 +190,18 @@ The config file is loaded with this preference:
 
 Config:
 
-```go
-// Note to self about how cascade currently maps to fields: it does NOT use json. It's just fieldname lowercase.
+```go {api}
+// Config is codalotl's configuration loaded from a cascade of sources.
+//
+// NOTE: internal/q/cascade matches keys to struct field names case-insensitively; it does not use json tags. The json tags are for `codalotl config` output and
+// for compatibility with typical config.json naming.
 type Config struct {
 	ProviderKeys          ProviderKeys       `json:"providerkeys"`
 	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
-	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Default to 120
+	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Defaults to 120.
 	ReflowWidthProvidence cascade.Providence `json:"-"`
 
 	// Lints configures the lint pipeline used by `codalotl context initial`. See internal/lints/SPEC.md for full details.
-	//
-	// NOTE: for now, this is only used by the `context initial` command.
 	Lints lints.Lints `json:"lints,omitempty"`
 
 	DisableTelemetry      bool   `json:"disabletelemetry,omitempty"`
@@ -213,17 +214,19 @@ type Config struct {
 	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().
 	PreferredModel string `json:"preferredmodel"`
 
+	// PreferredModelProvidence indicates which source set PreferredModel, when any source actually did. This is used to decide which config file should be updated if
+	// the TUI asks to persist a newly selected model.
 	PreferredModelProvidence cascade.Providence `json:"-"`
 }
 
-// NOTE: separate struct so we can easily test zero value
+// ProviderKeys is kept separate so tests can easily validate its zero value.
 type ProviderKeys struct {
 	OpenAI string `json:"openai"`
 
 	// NOTE: in the future, we may add these:
-	// Anthropic   string `json:"anthropic"`
-	// XAI         string `json:"xai"`
-	// Gemini      string `json:"gemini"`
+	// Anthropic string `json:"anthropic"`
+	// XAI       string `json:"xai"`
+	// Gemini    string `json:"gemini"`
 }
 
 type CustomModel struct {
