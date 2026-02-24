@@ -184,9 +184,25 @@ type SigIntEvent struct {
 }
 
 // Model represents a user program.
+//   - Init is called first, after Raw mode is entered.
+//   - Update is called when events occur or when Send sends a user-defined message.
+//   - View returns a string representing the TUI.
 type Model interface {
+	// Init is called first, after raw mode is entered. Programs may call things like t.SendPeriodically(myEvent, time.Second).
 	Init(t *TUI)
+
+	// Update is called when events occur or when Send sends a user-defined message.
 	Update(t *TUI, m Message)
+
+	// View returns a string of the full screen TUI. View is called shortly after Update (multiple Update calls may occur [ex: due to batching] before a single View
+	// call).
+	//
+	// View may return ANY string, and no validation is done on it by this package.
+	//
+	// That being said, well-behaved TUI applications typically have the the mental model of a TUI that it is a rectangular block of rows separated by newlines. There
+	// should be at most ResizeEvent.Height lines. Each line should be at most Width wide in printable, non-ANSI characters. This may include various Unicode characters
+	// (uni.TextWidth can be used to determine width). The string may include ANSI control characters for colorizing the text or background. Again, these are just recommendations
+	// and not enforced by this package.
 	View() string
 }
 
@@ -199,10 +215,12 @@ type terminalFactory func(input io.Reader, output io.Writer) (terminalController
 
 // Options configure RunTUI.
 type Options struct {
-	Input             io.Reader
-	Output            io.Writer
-	EnableMouse       bool // EnableMouse enables mouse tracking and delivery of MouseEvent messages. Disabled by default.
-	Framerate         int  // If Framerate is between 60 and 120 inclusive, rendering is throttled to that refresh rate. Otherwise, a default of 60 FPS is used.
+	// Input overrides os.Stdin when non-nil. Primarily used for testing. A non-tty input will still cause tui to open the controlling TTY for real input.
+	Input io.Reader
+
+	Output            io.Writer // Output overrides os.Stdout when non-nil. Primarily used for testing.
+	Framerate         int       // If Framerate is between 60-120 inclusive, the terminal will be refreshed at this framerate (otherwise, it uses 60 FPS).
+	EnableMouse       bool      // EnableMouse enables mouse tracking and delivery of MouseEvent messages. Disabled by default.
 	skipTTYValidation bool
 	terminalFactory   terminalFactory
 	sizeProvider      func() (int, int, error)
@@ -214,8 +232,9 @@ var ErrNoTTY = errors.New("tui: no tty available")
 // ErrInterrupted is returned when the TUI is interrupted (ex: via Interrupt).
 var ErrInterrupted = errors.New("tui: interrupted")
 
-// RunTUI makes a new TUI and runs it.
-func RunTUI(m Model, opts Options) (err error) {
+// RunTUI makes a new TUI and runs it. Alt/raw mode is entered (non-TTYs return ErrNoTTY). RunTUI doesn't return until the TUI stops (Quit or Interrupt is called
+// without canceling their events).
+func RunTUI(m Model, opts Options) error {
 	if m == nil {
 		return errors.New("tui: model is nil")
 	}
@@ -275,9 +294,8 @@ type TUI struct {
 	termFactory  terminalFactory
 	sizeProvider func() (int, int, error)
 
-	input       io.Reader
-	output      io.Writer
-	inputCloser func()
+	input  io.Reader
+	output io.Writer
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -683,16 +701,27 @@ func (t *TUI) invalidateRenderCache(forceFull bool) {
 	t.renderMu.Unlock()
 }
 
-// Quit sends a SigTermEvent to the model. Unless canceled, RunTUI returns nil.
+// Calling Quit sends the SigTermEvent. Unless the event is canceled, it causes RunTUI to return with a nil error.
+//   - This can be called inside a Model's Update method, or elsewhere.
+//   - SIGTERM calls Quit().
 func (t *TUI) Quit() {
 	t.enqueueSignal(signalKindQuit)
 }
 
-// Interrupt sends a SigIntEvent to the model. Unless canceled, RunTUI returns ErrInterrupted.
+// Calling Interrupt sends the SigIntEvent. Unless the event is canceled, it causes RunTUI to return with an ErrInterrupted error.
+//   - This can be called inside a Model's Update method, or elsewhere.
+//   - To handle Ctrl-C, user programs need to detect Ctrl-C keystroke and call Interrupt.
+//   - SIGINT calls Interrupt().
 func (t *TUI) Interrupt() {
 	t.enqueueSignal(signalKindInterrupt)
 }
 
+// Calling Suspend causes the program to suspend.
+//   - This can be called inside a Model's Update method, or elsewhere.
+//   - To handle Ctrl-Z, user programs need to detect Ctrl-Z keystroke and call Suspend.
+//   - Any outstanding Update/View call will finish before we actually suspend the program, and won't be called any more until the program is resumed.
+//   - SIGTSTP calls Suspend().
+//   - When the program is resumed, a SigResumeEvent will be sent to Update.
 func (t *TUI) Suspend() {
 	if !suspendSupported() {
 		return
@@ -700,12 +729,13 @@ func (t *TUI) Suspend() {
 	t.enqueueSuspend()
 }
 
-// Send enqueues a message to the model's Update method.
+// Send enqueues m to be sent to the Model's Update function. Can be called from any goroutine.
 func (t *TUI) Send(m Message) {
 	t.enqueue(messageEnvelope{msg: m})
 }
 
-// SendPeriodically sends m every d duration until canceled or the TUI stops.
+// Periodically will cause m to be sent to the Model's Update function every d duration. The caller can stop this by calling the returned cancel function. The first
+// time m is sent must be <= d from now, but is otherwise undefined. Good for consistent animations (ex: blinking cursor).
 func (t *TUI) SendPeriodically(m Message, d time.Duration) CancelFunc {
 	if d <= 0 {
 		d = time.Millisecond
@@ -740,7 +770,7 @@ func (t *TUI) SendPeriodically(m Message, d time.Duration) CancelFunc {
 	return cancelFn
 }
 
-// SendOnceAfter sends m once after d duration.
+// SendOnceAfter will cause m to be sent to the Model's Update function after d time from now. It can be used to produce ad-hoc or variable-timing animations.
 func (t *TUI) SendOnceAfter(m Message, d time.Duration) {
 	if d < 0 {
 		d = 0
@@ -753,7 +783,9 @@ func (t *TUI) SendOnceAfter(m Message, d time.Duration) {
 	}
 }
 
-// Go runs f in a new goroutine. If f returns a non-nil message, it is sent via Send.
+// Go runs f in a new goroutine. ctx should be checked for cancellation. If f returns a non-nil value, it is enqueued for sending via Send.
+//
+// Go is a great place to do I/O like HTTP requests.
 func (t *TUI) Go(f func(ctx context.Context) Message) {
 	ctx, cancel := context.WithCancel(t.ctx)
 	if !t.registerStopCloser(cancel) {

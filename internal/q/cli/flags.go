@@ -16,6 +16,7 @@ const (
 	flagDuration
 )
 
+// FlagSet is a typed flag registry for a command.
 type FlagSet struct {
 	byLong  map[string]*flagDef
 	byShort map[rune]*flagDef

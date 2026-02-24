@@ -39,15 +39,16 @@ type Formatter interface {
 	FormatEvent(e agent.Event, terminalWidth int) string
 }
 
-// Config controls the terminal colorization options.
+// Config controls the terminal colorization options. We need to know the intended bg/fg, so we can create other colors that are consistent. For instance, if we
+// want to colorize backtick-wrapped paths/identifiers/code different, can modify ForegroundColor to be closer to BackgroundColor.
 type Config struct {
-	PlainText       bool
-	BackgroundColor termformat.Color
-	ForegroundColor termformat.Color
-	AccentColor     termformat.Color
-	ColorfulColor   termformat.Color
-	SuccessColor    termformat.Color
-	ErrorColor      termformat.Color
+	PlainText       bool             // true: disable colors and ANSI escape characters (bold, italics, etc).
+	BackgroundColor termformat.Color // the terminal's background color. If nil, uses termformat.DefaultFBBGColor.
+	ForegroundColor termformat.Color // the terminal's foreground color. If nil, uses termformat.DefaultFBBGColor.
+	AccentColor     termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	ColorfulColor   termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	SuccessColor    termformat.Color // If nil, uses a default green suitable for terminals, downsampled to the detected color profile.
+	ErrorColor      termformat.Color // If nil, uses a default red suitable for terminals, downsampled to the detected color profile.
 }
 
 type textTUIFormatter struct {
@@ -108,6 +109,10 @@ func indentLines(content string, indentWidth int) string {
 
 func (f *textTUIFormatter) formatCLI(e agent.Event) string {
 	switch e.Type {
+	case agent.EventTypeUserMessageQueued:
+		return f.cliUserMessage(e.UserMessage, true)
+	case agent.EventTypeQueuedUserMessageSent:
+		return f.cliUserMessage(e.UserMessage, false)
 	case agent.EventTypeAssistantText:
 		return f.cliAssistantText(e.TextContent.Content)
 	case agent.EventTypeAssistantReasoning:
@@ -135,6 +140,10 @@ func (f *textTUIFormatter) formatCLI(e agent.Event) string {
 
 func (f *textTUIFormatter) formatTUI(e agent.Event, terminalWidth int) string {
 	switch e.Type {
+	case agent.EventTypeUserMessageQueued:
+		return f.tuiUserMessage(e.UserMessage, terminalWidth, true)
+	case agent.EventTypeQueuedUserMessageSent:
+		return f.tuiUserMessage(e.UserMessage, terminalWidth, false)
 	case agent.EventTypeAssistantText:
 		return f.tuiAssistantText(e.TextContent.Content, terminalWidth)
 	case agent.EventTypeAssistantReasoning:
@@ -176,6 +185,43 @@ func (f *textTUIFormatter) tuiAssistantText(content string, width int) string {
 	}
 	runes := f.buildStyledRunes(content, runeStyle{color: colorNormal}, f.codeRanges(content))
 	return f.wrapStyledText(runes, width, f.bulletPrefix(colorAccent), "  ")
+}
+
+func (f *textTUIFormatter) cliUserMessage(message string, queued bool) string {
+	message = sanitizeText(message)
+	if strings.TrimSpace(message) == "" {
+		return ""
+	}
+	if queued {
+		message += " (queued)"
+	}
+	var builder strings.Builder
+	builder.WriteString(f.userPrefix())
+	f.appendStyled(&builder, f.buildStyledRunes(message, runeStyle{color: colorNormal}, nil))
+	return builder.String()
+}
+
+func (f *textTUIFormatter) tuiUserMessage(message string, width int, queued bool) string {
+	message = sanitizeText(message)
+	if strings.TrimSpace(message) == "" {
+		return ""
+	}
+	if queued {
+		message += " (queued)"
+	}
+	runes := f.buildStyledRunes(message, runeStyle{color: colorNormal}, nil)
+	return f.wrapStyledText(runes, width, f.userPrefix(), "   ")
+}
+
+func (f *textTUIFormatter) userPrefix() string {
+	var builder strings.Builder
+	builder.WriteString(" ")
+	f.appendStyled(&builder, []styledRune{{
+		r:     '›',
+		style: runeStyle{color: colorAccent},
+	}})
+	builder.WriteString(" ")
+	return builder.String()
 }
 
 var reasoningSummaryPattern = regexp.MustCompile(`(?s)^\s*\*\*(.+?)\*\*\s*(?:\n+(.*))?$`)

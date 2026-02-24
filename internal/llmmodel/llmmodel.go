@@ -58,7 +58,8 @@ func (pid ProviderID) DefaultModel() ModelID {
 	return providerDefaults[pid]
 }
 
-// The type of API a model/provider supports. Often smaller providers will just be "OpenAI" compatible, and we can use the OpenAI code paths with a different URL.
+// ProviderAPIType identifies one API "shape" a provider supports. Providers can expose multiple API types simultaneously (ex: OpenAI exposes both Responses and
+// Completions).
 type ProviderAPIType string
 
 // Known API families for chats/completions/responses.
@@ -319,8 +320,6 @@ func GetAPIKey(id ModelID) string {
 }
 
 // AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty effective API key (per GetAPIKey).
-//
-// This is useful for presenting an interactive model list that only includes models the user can actually call in the current environment/configuration.
 func AvailableModelIDsWithAPIKey() []ModelID {
 	ids := AvailableModelIDs()
 	out := make([]ModelID, 0, len(ids))

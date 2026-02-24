@@ -72,7 +72,7 @@ During this process, we'll need to determine the ModelID for each model. ModelID
 
 However, we can't simply throw away data from other providers and legacy models. These may be referred to when calling AddCustomModel.
 
-## Public Interface
+## Public API
 
 ```go
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model ID sent to API endpoints.

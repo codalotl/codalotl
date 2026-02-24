@@ -6,6 +6,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 )
@@ -23,6 +24,7 @@ type Config struct {
 	ModelID      llmmodel.ModelID        // ModelID selects the LLM model to use. If empty, the TUI uses llmmodel.DefaultModel.
 	LintSteps    []lints.Step            // LintSteps controls which lint steps the agent runs.
 	ReflowWidth  int                     // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
+	CASDB        *cas.DB                 // CASDB, when set, enables reading CAS-backed metadata for UI checks (ex: SPEC.md conformance).
 
 	// PersistModelID, when non-nil, is called by the TUI when the user changes the active model via UI commands (ex: the planned `/model` command).
 	//
@@ -181,7 +183,7 @@ func lightPalette() colorPalette {
 		name:               paletteLightName,
 		colorized:          true,
 		isLight:            true,
-		primaryBackground:  termformat.NewRGBColor(0xf8, 0xf9, 0xff),
+		primaryBackground:  termformat.NewRGBColor(0xff, 0xff, 0xff),
 		accentBackground:   termformat.NewRGBColor(0xe9, 0xed, 0xfa),
 		primaryForeground:  termformat.NewRGBColor(0x1c, 0x1f, 0x2b),
 		accentForeground:   termformat.NewRGBColor(0x4a, 0x51, 0x6c),
@@ -196,28 +198,20 @@ func lightPalette() colorPalette {
 
 func derivedPaletteFromTerminal() colorPalette {
 	fg, bg := termformat.DefaultFBBGColor()
-	// TODO: get profile. If profile = ColorProfileUncolored, then use plain
+	return autoPaletteFromTerminalDefaults(fg, bg)
+}
+
+func autoPaletteFromTerminalDefaults(fg, bg termformat.Color) colorPalette {
+	// In "auto" mode, we do not derive colors by blending. Instead, detect whether
+	// the terminal's default background is light or dark and pick the closest
+	// built-in palette.
 	if isNoColor(fg) || isNoColor(bg) {
 		return lightPalette()
 	}
-
-	accentBG := blendColors(fg, bg, 0.12)
-	accentFG := blendColors(fg, bg, 0.6)
-	p := colorPalette{
-		name:               paletteAutoName,
-		colorized:          true,
-		isLight:            colorIsLight(bg),
-		primaryBackground:  bg,
-		accentBackground:   accentBG,
-		borderColor:        blendColors(fg, bg, 0.2),
-		primaryForeground:  fg,
-		accentForeground:   accentFG,
-		redForeground:      termformat.NewRGBColor(0xdc, 0x52, 0x52),
-		greenForeground:    termformat.NewRGBColor(0x2e, 0x8b, 0x57),
-		colorfulForeground: colorfulFromBackground(bg),
+	if colorIsLight(bg) {
+		return lightPalette()
 	}
-	p.workingSeq = workingIndicatorSequences(p)
-	return p
+	return darkPalette()
 }
 
 func isNoColor(c termformat.Color) bool {
@@ -237,18 +231,6 @@ func colorIsLight(c termformat.Color) bool {
 	r, g, b := c.RGB8()
 	brightness := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
 	return brightness >= 160
-}
-
-func colorfulFromBackground(bg termformat.Color) termformat.Color {
-	if bg == nil {
-		return termformat.NewRGBColor(0x30, 0x90, 0xff)
-	}
-	r, g, b := bg.RGB8()
-	brightness := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
-	if brightness >= 180 {
-		return termformat.NewRGBColor(0x18, 0x88, 0xff)
-	}
-	return termformat.NewRGBColor(0x62, 0xc2, 0xff)
 }
 
 func blendColors(focus, base termformat.Color, weight float64) termformat.Color {

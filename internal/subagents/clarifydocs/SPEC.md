@@ -4,20 +4,11 @@ The clarifydocs package is a SubAgent that will get clarification on documentati
 
 This package must be at least functional for all languages. Certain languages may have extra support that increases performance for that language (ex: Go might receive AST-aware helpers).
 
-## Dependencies
-
-- `codeai/tools/coretools`
-- `codeai/tools/authdomain`
-- `codeai/agent`
-- `codeai/initialcontext`
-- `codeai/detectlang`
-- `q/cmdrunner`
-
 ## Tools
 
 This SubAgent will have access to these tools:
-- `codeai/tools/coretools`: `ls`
-- `codeai/tools/coretools`: `read_file`
+- `internal/tools/coretools`: `ls`
+- `internal/tools/coretools`: `read_file`
 
 Notably, these tools are absent: `apply_patch` (obviously, since this is just a read-only agent), `shell`.
 
@@ -25,8 +16,8 @@ Notably, these tools are absent: `apply_patch` (obviously, since this is just a 
 
 - Prompt: the generic prompt our agents use (codeai/prompt package).
 - Initial context:
-    - Non-Go: the results of a recursive `rg` on `identifier` within the directory that contains path (or within path itself if path is a directory).
-    - Go: `codeai/initialcontext.Create`.
+    - Non-Go: the results of `rg` on `identifier` on path or the directory that contains path.
+    - Go: `internal/initialcontext.Create`.
 
 NOTE: in the future, we may want to give the LLM a `find` tool to execute more `rg` commands for languages without enhanced support.
 
@@ -35,14 +26,11 @@ NOTE: in the future, we may want to give the LLM a `find` tool to execute more `
 ```go {api}
 // ClarifyAPI clarifies the API/docs for identifier found in path and returns an answer. An error is returned for invalid inputs, failure to communicate with the
 // LLM, etc. If the LLM can't find the identifier as it relates to path, it may say so in the answer, which doesn't produce an error.
-//   - sandboxAbsDir is used for tool construction and relative path resolution, not as a confinement mechanism.
-//   - authorizer is optional. If present, it confines the SubAgent in some way (usually to a sandbox dir of some kind).
+//   - sandboxAbsDir is the sandbox root used for tool construction and relative path resolution; path must resolve within this directory.
+//   - authorizer is optional. If present, it confines the SubAgent's tool access.
 //   - toolset toolsetinterface.Toolset are the tools available for use. Injected to cut dependencies. Should be ls/read_file.
-//   - path is absolute or relative to sandboxAbsDir. If absolute, it may be outside of sandboxAbsDir (for instance, when clarifying dep packages or stdlib packages).
+//   - path is absolute or relative to sandboxAbsDir, and must refer to a path within sandboxAbsDir.
 //   - identifier is language-specific and opaque. For Go, it looks like "MyVar", "*MyType.MyFunc", etc.
-//
-// When clarifying a dep package outside of the sandbox, and authorizer is not nil, it is recommended for UX reasons (but not required) to construct an authorizer
-// to allow reads. There are many ways to do this - one is to create a new authorizer with sandbox root of the dep; another is to add a 'grant' to the authorizer.
 //
 // Example question: "What does the first return parameter (a string) look like in the ClarifyAPI func?". Example answer that might be returned: "The ClarifyAPI
 // func returns a human- or LLM-readable answer to the specified question. It will be the empty string if an error occurred."

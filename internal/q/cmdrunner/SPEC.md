@@ -113,7 +113,7 @@ Found 2 issues:
 </lint-status>
 ```
 
-## Public Interface
+## Public API
 
 ```go {api}
 // InputType represents the type of value that a command expects for a given input key.

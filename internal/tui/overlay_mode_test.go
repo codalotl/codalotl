@@ -13,7 +13,7 @@ import (
 )
 
 func TestOverlayModeCtrlOToggles(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
 	require.False(t, m.overlayMode)
@@ -26,7 +26,7 @@ func TestOverlayModeCtrlOToggles(t *testing.T) {
 }
 
 func TestOverlayModeDoubleClickToggles(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
 	base := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
@@ -51,7 +51,7 @@ func TestOverlayModeCopyCopiesRenderedMessageAndShowsFeedback(t *testing.T) {
 		colorfulForeground: termformat.ANSIColor(6),
 	}
 
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
 	base := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
@@ -134,7 +134,7 @@ func TestOverlayModeDetailsOpensDialogForToolMessage(t *testing.T) {
 		borderColor:        termformat.ANSIColor(7),
 	}
 
-	m := newModel(palette, stubToolFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(palette, stubToolFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 30})
 
 	callID := "call-123"
@@ -189,7 +189,7 @@ func TestOverlayModeDetailsOpensDialogForContextStatusMessage(t *testing.T) {
 		borderColor:        termformat.ANSIColor(7),
 	}
 
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 30})
 
 	index := m.appendContextStatusMessage("Gathering context for some/pkg", packageContextStatusSuccess)
@@ -237,7 +237,7 @@ func TestDetailsDialogScrollKeepsForegroundColor(t *testing.T) {
 		borderColor:       termformat.ANSIColor(7),
 	}
 
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 100, Height: 35})
 
 	index := m.appendContextStatusMessage("Gathering context for some/pkg", packageContextStatusSuccess)

@@ -30,13 +30,14 @@ const (
 )
 
 type session struct {
-	agent           *agent.Agent
-	modelID         llmmodel.ModelID
-	sandboxDir      string
-	packagePath     string
-	packageAbsPath  string
-	availableSkills []skills.Skill
-	invalidSkills   []skills.Skill
+	agent            *agent.Agent
+	queueUserMessage func(string) error
+	modelID          llmmodel.ModelID
+	sandboxDir       string
+	packagePath      string
+	packageAbsPath   string
+	availableSkills  []skills.Skill
+	invalidSkills    []skills.Skill
 
 	// failedSkillLoads are errors returned by skills.LoadSkill when attempting to load a candidate skill dir (typically due to missing/invalid SKILL.md, IO errors,
 	// etc). skillsLoadErr is a fatal skills discovery error (rare); both are surfaced to the user via `/skills`.
@@ -203,6 +204,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 
 	return &session{
 		agent:            agentInstance,
+		queueUserMessage: agentInstance.QueueUserMessage,
 		modelID:          modelID,
 		sandboxDir:       sandboxDir,
 		packagePath:      cfg.packagePath,
@@ -294,6 +296,18 @@ func (s *session) SendMessage(ctx context.Context, message string) <-chan agent.
 		return nil
 	}
 	return s.agent.SendUserMessage(ctx, message)
+}
+func (s *session) QueueUserMessage(message string) error {
+	if s == nil {
+		return agent.ErrNotRunning
+	}
+	if s.queueUserMessage != nil {
+		return s.queueUserMessage(message)
+	}
+	if s.agent == nil {
+		return agent.ErrNotRunning
+	}
+	return s.agent.QueueUserMessage(message)
 }
 
 func (s *session) AddGrantsFromUserMessage(message string) error {

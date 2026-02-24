@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,12 +11,15 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/goclitools"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
+	qcas "github.com/codalotl/codalotl/internal/q/cas"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/specmd"
@@ -123,11 +127,23 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			if err != nil {
 				return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
 			}
+			var casDB *qcas.DB
+			if wd, err := os.Getwd(); err == nil {
+				// Best-effort: CAS is optional for TUI, but when available we want
+				// consistent root selection with `codalotl cas set`.
+				if mod, err := gocode.NewModule(wd); err == nil {
+					if db, err := casQDBForBaseDir(mod.AbsolutePath); err == nil {
+						casDB = db
+					}
+				}
+			}
 
 			return runTUIWithConfig(tui.Config{
+				Palette:     tui.PaletteName(cfg.Theme),
 				ModelID:     modelID,
 				LintSteps:   steps,
 				ReflowWidth: cfg.ReflowWidth,
+				CASDB:       casDB,
 				Monitor:     m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
 					return persistPreferredModelID(cfg, newModelID)
@@ -377,7 +393,88 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			return runSpecLsMismatch(c.Context, c.Out, c.Args[0])
 		}),
 	}
-	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd)
+	statusCmd := &qcli.Command{
+		Name:  "status",
+		Short: "Print per-package SPEC.md status (implies ./...).",
+		Args:  qcli.NoArgs,
+		Run: runWithConfig("spec_status", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			return runSpecStatus(c.Context, c.Out)
+		}),
+	}
+	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd, statusCmd)
+	casCmd := &qcli.Command{
+		Name:  "cas",
+		Short: "Content-addressable metadata storage (CAS).",
+	}
+	setCmd := &qcli.Command{
+		Name:  "set",
+		Short: "Set a JSON value for (package, namespace).",
+		Args:  qcli.ExactArgs(3),
+		Run: runWithConfig("cas_set", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			namespace := c.Args[0]
+			if err := validateCASNamespace(namespace); err != nil {
+				return qcli.UsageError{Message: err.Error()}
+			}
+			pkg, mod, err := loadPackageArg(c.Args[1])
+			if err != nil {
+				return err
+			}
+			var value any
+			if err := json.Unmarshal([]byte(c.Args[2]), &value); err != nil {
+				return qcli.UsageError{Message: fmt.Sprintf("invalid <value>: must be valid JSON (ex: %q or %q)", `"OK"`, `{"result":"ok"}`)}
+			}
+			db, err := casDBForBaseDir(mod.AbsolutePath)
+			if err != nil {
+				return err
+			}
+			return db.StoreOnPackage(pkg, gocas.Namespace(namespace), value)
+		}),
+	}
+	getCmd := &qcli.Command{
+		Name:  "get",
+		Short: "Get a JSON value for (package, namespace).",
+		Args:  qcli.ExactArgs(2),
+		Run: runWithConfig("cas_get", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			namespace := c.Args[0]
+			if err := validateCASNamespace(namespace); err != nil {
+				return qcli.UsageError{Message: err.Error()}
+			}
+			pkg, mod, err := loadPackageArg(c.Args[1])
+			if err != nil {
+				return err
+			}
+			db, err := casDBForBaseDir(mod.AbsolutePath)
+			if err != nil {
+				return err
+			}
+			var value any
+			ok, info, err := db.RetrieveOnPackage(pkg, gocas.Namespace(namespace), &value)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return qcli.ExitError{Code: 1, Err: errors.New("")}
+			}
+			out := casRetrieveOutput{
+				OK: ok,
+			}
+			out.Value = value
+			out.AdditionalInfo = info
+			enc := json.NewEncoder(c.Out)
+			enc.SetIndent("", "  ")
+			enc.SetEscapeHTML(false)
+			return enc.Encode(out)
+		}),
+	}
+	lsUnsetCmd := &qcli.Command{
+		Name:  "ls-unset",
+		Short: "List packages in the current module missing a CAS entry for a namespace.",
+		Args:  qcli.ExactArgs(1),
+		Run: runWithConfig("cas_ls_unset", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			return runCASLsUnset(c.Context, c.Out, c.Args[0])
+		}),
+	}
+	casCmd.AddCommand(setCmd, getCmd, lsUnsetCmd)
 
 	panicCmd := &qcli.Command{
 		Name:   "panic",
@@ -449,7 +546,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, panicCmd)
+	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, casCmd, panicCmd)
 	return root, runState
 }
 

@@ -9,6 +9,7 @@ The tui package is the primary package that implements the coding agent TUI, bri
 - `internal/llmstream` is the library to communicate with LLMs.
 - `internal/skills` is the library to implement skills.
 - `internal/q/termformat` should be used where possible for terminal formatting.
+- `internal/q/cas` may be used for optional, CAS-backed metadata checks in the UI.
 - `internal/q/tui` is the TUI runtime (raw mode, alt screen, input, resize, render loop).
 - `internal/q/tui/tuicontrols` provides common controls like a scrollable view and text area.
 
@@ -55,7 +56,7 @@ Basic controls:
 ## Working Indicator
 
 - If the agent is Running, it has a Working Indicator visible with the amount of time it's been working. Otherwise it doesn't.
-- If present, the Working Indicator is always the last item of the Messages Area.
+- If present, the Working Indicator is always the last non-blank item of the Messages Area.
 - By default it will say (for instance): "• Working (1m 34s • ESC to interrupt)"
 - The runtime is updated periodically while the agent is running; otherwise.
 
@@ -69,9 +70,8 @@ Up/Down cycle through previous/next messages that user previously sent. Messages
 - If in Cycling Mode, pressing Down shows the next message. If the Text Area was showing the most recent message, pressing Down exits Cycling Mode and the Text Area goes to its default state.
 - If in Cycling Mode, pressing Up shows the previous message. Pressing Up when Cycling Mode is showing the first message does nothing.
 - If in Cycling Mode, typing or moving the cursor exits Cycling Mode. The Text Area is now filled with the previous message and the user can edit it and send it.
-- If in Cycling Mode, pressing ESC exits Cycling Mode, as if the user pressed Down on the last message. (ESC does not stop the agent here).
-- If not in Cycling Mode, but editing a previous message, pressing ESC jumps the cursor to the start and re-enters Cycling Mode (ESC does not stop the agent here). If the message was edited before re-entering
-    Cycling Mode, the edited version will be remembered if the user goes back/forth.
+- If in Cycling Mode, pressing ESC clears the Text Area and exits Cycling Mode (ESC does not stop the agent here).
+- If not in Cycling Mode, but editing a previous message, pressing ESC clears the Text Area and exits the edit state (ESC does not stop the agent here). Edited drafts remain available if the user re-enters Cycling Mode and returns to that history index.
 - Upon sending a message, all edited-but-unsent messages will be forgotten. Cycling mode will again cycle through actually-sent messages.
 
 ## Granting Permission
@@ -99,7 +99,7 @@ When a new session is initiated (application startup; /new; /package; etc), the 
 - Both new session texts have ASCII art (ex: codalotl icon + codalotl word art).
 - The new session text will describe the currently active mode. For example: "Package mode is a Go-specific mode that..."
 - Non-package mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
-- Other than the mode, the new session text does not mention any configuration (ex: model, session ID, current package).
+- The new session text does not mention the current configuration (ex: active model, session ID, current package), but may give the guidance, including illustrative examples of commands.
 
 ## Package Mode
 
@@ -130,7 +130,7 @@ There exists a non-colorized mode. In this mode, no colors will be applied. Text
 In a colorized mode, there exists a palette. **All colors used must be defined in the palette** (see caveat on text animation). Callers of this package may specify a palette by name (they cannot indicate individual colors). By default, the palette will be based on the default terminal palette, as determined by `internal/q/termformat`.
 
 Supported palette names:
-- `auto` - derive colors from the terminal (default)
+- `auto` - choose light vs dark built-in palette based on terminal default background lightness (default)
 - `dark` - force the built-in dark palette
 - `light` - force the built-in light palette
 - `plain` - disable colors entirely
@@ -230,3 +230,8 @@ When not in package mode, the UI will say:
 Package: <none>
 Use `/package path/to/pkg` to select a package.
 ```
+
+Under package, lists bullets based on certain checks:
+
+- If `tui.Config.CASDB` is set, show `• SPEC.md conformance: <value>` where `<value>` is `-` or `✓`.
+    - `✓` is only shown if `internal/gocas/casconformance.Retrieve` returns true for conformance; otherwise `-`.

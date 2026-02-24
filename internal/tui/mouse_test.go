@@ -17,7 +17,7 @@ func TestMouseWheelScrollsMessagesArea(t *testing.T) {
 		primaryForeground: termformat.ANSIColor(7),
 		accentForeground:  termformat.ANSIColor(7),
 	}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
@@ -52,7 +52,7 @@ func TestMouseScrollDoesNotDisableManualScrollDuringAgentEvents(t *testing.T) {
 		primaryForeground: termformat.ANSIColor(7),
 		accentForeground:  termformat.ANSIColor(7),
 	}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
 	for i := 0; i < 80; i++ {
@@ -81,7 +81,7 @@ func TestAgentEventsKeepAutoScrollingWhenAtBottom(t *testing.T) {
 		primaryForeground: termformat.ANSIColor(7),
 		accentForeground:  termformat.ANSIColor(7),
 	}
-	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil)
+	m := newModel(palette, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 20})
 
 	for i := 0; i < 80; i++ {

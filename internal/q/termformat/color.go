@@ -203,23 +203,51 @@ func (ac ANSI256Color) RGBColor() RGBColor {
 	return RGBColor(ansiHex[int(ac)])
 }
 
+func closestANSI256Color(lab labColor) ANSI256Color {
+	// Prefer the fixed xterm palette (16-255) over system colors (0-15). System
+	// colors are user-theme-mapped in many terminals; fixed colors are stable.
+	//
+	// We only select a system color if it is strictly closer than the best fixed
+	// match; ties fall back to the fixed palette for determinism.
+	fixedMinDelta := math.MaxFloat64
+	fixedBest := 0
+	for i := 16; i < len(ansiLab); i++ {
+		d := deltaE(lab, ansiLab[i])
+		if d < fixedMinDelta {
+			fixedMinDelta = d
+			fixedBest = i
+		}
+	}
+
+	systemMinDelta := math.MaxFloat64
+	systemBest := 0
+	for i := 0; i < 16 && i < len(ansiLab); i++ {
+		d := deltaE(lab, ansiLab[i])
+		if d < systemMinDelta {
+			systemMinDelta = d
+			systemBest = i
+		}
+	}
+
+	// If we don't have any fixed palette entries for some reason, fall back to
+	// the best overall (effectively the system best).
+	if fixedMinDelta == math.MaxFloat64 {
+		return ANSI256Color(systemBest)
+	}
+
+	if systemMinDelta < fixedMinDelta {
+		return ANSI256Color(systemBest)
+	}
+	return ANSI256Color(fixedBest)
+}
+
 // ANSI256Color returns the closest color in the 256-color space using CIELAB ΔE. Invalid colors return 0.
 func (rc RGBColor) ANSI256Color() ANSI256Color {
 	lab, ok := rc.lab()
 	if !ok {
 		return 0
 	}
-
-	minDelta := math.MaxFloat64
-	best := 0
-	for i, candidate := range ansiLab {
-		d := deltaE(lab, candidate)
-		if d < minDelta {
-			minDelta = d
-			best = i
-		}
-	}
-	return ANSI256Color(best)
+	return closestANSI256Color(lab)
 }
 
 // ANSIColor returns the closest color in the 16-color space using CIELAB ΔE. Invalid colors return 0.

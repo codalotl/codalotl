@@ -84,6 +84,7 @@ Current Configuration:
     "openai": "sk-p..._LQA"
   },
   "reflowwidth": 160,
+  "theme": "",
   "preferredprovider": "",
   "preferredmodel": ""
 }
@@ -145,6 +146,40 @@ Accepts a Go-style package pattern (including `./...`). Prints one line per pack
 
 This may only produce a line for a dir if the dir has both a SPEC.md and a valid Go package.
 
+### codalotl spec status
+
+This prints out the per-package status of SPEC.md files. It takes no argument (implies `./...` based on cwd).
+
+Per line:
+- package (ex: `./path/to/pkg`)
+- has SPEC.md file (ex: `true`)
+- matching `Public API` - i.e., `codalotl spec diff` produces NO output (ex: `false`)
+- impl conforms to spec as per cas system, via `casconformance.Retrieve` (ex: `true`)
+
+Sort: 1. has_spec (true first) 2. api_match (true first) 3. conforms (true first) 4. package (a->z)
+
+### codalotl cas set <namespace> <path/to/pkg> <value>
+
+Uses `internal/gocas` to set `<value>` for (package, namespace).
+
+Notes:
+- `<namespace>` is a schema/version string and must be filesystem-safe (no path separators), since it is used as a directory name under the CAS root.
+- Storage key is content-addressed from the Go package's source file paths + contents (plus namespace). Changing package contents changes the key.
+- `<value>` must be JSON-encodable (ex: `"OK"`, or `'{"result": "ok"}'`).
+
+The BaseDir is the package's module dir. The database dir is, by priority:
+- CODALOTL_CAS_DB, if set
+- Let `$NEAREST_GIT_DIR` = nearest dir containing a `.git` entry (dir or file); `$NEAREST_GIT_DIR/.codalotl/cas` (if `$NEAREST_GIT_DIR` is not blank)
+- BaseDir
+
+### codalotl cas get <namespace> <path/to/pkg>
+
+Uses `internal/gocas` to get the stored value (and associated metadata) for (package, namespace), for the current package contents. Prints entire record (including additional information) if found. Otherwise prints nothing and exits 1.
+
+### codalotl cas ls-unset <namespace>
+
+Lists packages (one per line, of the form `./path/to/pkg`) that don't have a corresponding `cas get` entry set for the package. Considers packages in the module (based on cwd).
+
 ## Configuration
 
 This package is responsible for loading a configuation file and passing various configuration to other packages. The configuration is loaded with `internal/q/cascade`. The configuration is loaded and validated for all commands, except those that obviously don't need it, like `version` and `-h`. An invalid configuration prints out a helpful error message and returns with an non-zero exit code.
@@ -155,21 +190,23 @@ The config file is loaded with this preference:
 
 Config:
 
-```go
-// Note to self about how cascade currently maps to fields: it does NOT use json. It's just fieldname lowercase.
+```go {api}
+// Config is codalotl's configuration loaded from a cascade of sources.
+//
+// NOTE: internal/q/cascade matches keys to struct field names case-insensitively; it does not use json tags. The json tags are for `codalotl config` output and
+// for compatibility with typical config.json naming.
 type Config struct {
 	ProviderKeys          ProviderKeys       `json:"providerkeys"`
 	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
-	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Default to 120
+	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Defaults to 120.
 	ReflowWidthProvidence cascade.Providence `json:"-"`
 
 	// Lints configures the lint pipeline used by `codalotl context initial`. See internal/lints/SPEC.md for full details.
-	//
-	// NOTE: for now, this is only used by the `context initial` command.
 	Lints lints.Lints `json:"lints,omitempty"`
 
-	DisableTelemetry      bool `json:"disabletelemetry,omitempty"`
-	DisableCrashReporting bool `json:"disablecrashreporting,omitempty"`
+	DisableTelemetry      bool   `json:"disabletelemetry,omitempty"`
+	DisableCrashReporting bool   `json:"disablecrashreporting,omitempty"`
+	Theme                 string `json:"theme"` // Theme selects the TUI color palette. Allowed values: "", "dark", "light".
 
 	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
 	PreferredProvider string `json:"preferredprovider"`
@@ -177,17 +214,19 @@ type Config struct {
 	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().
 	PreferredModel string `json:"preferredmodel"`
 
+	// PreferredModelProvidence indicates which source set PreferredModel, when any source actually did. This is used to decide which config file should be updated if
+	// the TUI asks to persist a newly selected model.
 	PreferredModelProvidence cascade.Providence `json:"-"`
 }
 
-// NOTE: separate struct so we can easily test zero value
+// ProviderKeys is kept separate so tests can easily validate its zero value.
 type ProviderKeys struct {
 	OpenAI string `json:"openai"`
 
 	// NOTE: in the future, we may add these:
-	// Anthropic   string `json:"anthropic"`
-	// XAI         string `json:"xai"`
-	// Gemini      string `json:"gemini"`
+	// Anthropic string `json:"anthropic"`
+	// XAI       string `json:"xai"`
+	// Gemini    string `json:"gemini"`
 }
 
 type CustomModel struct {
@@ -206,6 +245,7 @@ type CustomModel struct {
 Notes:
 - If a provider's key is configured via the configuration file, call `llmmodel.ConfigureProviderKey` to use it.
 - Custom models are listed, they may be referred to by ID with `PreferredModel` (also, see `llmmodel.AddCustomModel`).
+- Theme is passed to the TUI as its palette selection. If unset, the TUI uses its default/auto palette behavior.
 
 ## Metrics/Crash Reporting and Version Notices
 

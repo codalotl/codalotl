@@ -74,3 +74,29 @@ func TestRGBToANSIConversion(t *testing.T) {
 	require.Equal(t, ANSIColor(0), RGBColor("bad").ANSIColor())
 	require.Equal(t, ANSI256Color(0), RGBColor("bad").ANSI256Color())
 }
+
+func TestRGBColorANSI256Color_PrefersFixedPaletteOverSystem(t *testing.T) {
+	tests := []struct {
+		name     string
+		rgb      RGBColor
+		wantIdx  ANSI256Color
+		wantName string
+	}{
+		{"white", NewRGBColor(0xff, 0xff, 0xff), ANSI256Color(231), "xterm white"},
+		{"black", NewRGBColor(0x00, 0x00, 0x00), ANSI256Color(16), "xterm black"},
+		{"red", NewRGBColor(0xff, 0x00, 0x00), ANSI256Color(196), "xterm cube red"},
+		{"green", NewRGBColor(0x00, 0xff, 0x00), ANSI256Color(46), "xterm cube green"},
+		{"blue", NewRGBColor(0x00, 0x00, 0xff), ANSI256Color(21), "xterm cube blue"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.wantIdx, tt.rgb.ANSI256Color(), tt.wantName)
+
+			converted := ColorProfileANSI256.Convert(tt.rgb)
+			as256, ok := converted.(ANSI256Color)
+			require.True(t, ok, "expected Convert to return ANSI256Color, got %T", converted)
+			require.Equal(t, tt.wantIdx, as256, tt.wantName)
+		})
+	}
+}

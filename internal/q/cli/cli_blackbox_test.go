@@ -22,6 +22,7 @@ type call struct {
 
 	ctxValue any
 }
+type testContextKey struct{}
 
 type recorder struct {
 	calls []call
@@ -39,10 +40,6 @@ func (r *recorder) run(cmd *cli.Command, key any) cli.RunFunc {
 		})
 		return nil
 	}
-}
-
-func (r *recorder) runErr(err error) cli.RunFunc {
-	return func(*cli.Context) error { return err }
 }
 
 func runCLI(t *testing.T, ctx context.Context, root *cli.Command, args ...string) (code int, out string, err string) {
@@ -116,7 +113,7 @@ func TestRun_CommandSelection_DeepestMatchAndAlias(t *testing.T) {
 		addLong  = "ADD_LONG_MARKER"
 	)
 
-	key := struct{}{}
+	key := testContextKey{}
 	ctx := context.WithValue(context.Background(), key, "v")
 
 	var r recorder
@@ -164,7 +161,7 @@ func TestRun_CommandSelection_DeepestMatchAndAlias(t *testing.T) {
 }
 
 func TestRun_CommandSelection_StopsAtFirstNonFlagNonChild(t *testing.T) {
-	key := struct{}{}
+	key := testContextKey{}
 	ctx := context.WithValue(context.Background(), key, "v")
 
 	var r recorder
@@ -192,7 +189,7 @@ func TestRun_CommandSelection_StopsAtFirstNonFlagNonChild(t *testing.T) {
 }
 
 func TestRun_DashDash_EndsSelectionAndFlagParsing(t *testing.T) {
-	key := struct{}{}
+	key := testContextKey{}
 	ctx := context.WithValue(context.Background(), key, "v")
 
 	var r recorder
@@ -278,7 +275,7 @@ func TestRun_Flags_PlacementRules(t *testing.T) {
 		addLong  = "ADD_USAGE_MARK"
 	)
 
-	key := struct{}{}
+	key := testContextKey{}
 	ctx := context.WithValue(context.Background(), key, "v")
 
 	var r recorder

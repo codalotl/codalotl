@@ -36,6 +36,13 @@ A SPEC.md should also be internally consistent. That being said, it's neither po
 
 This point often shows up when a general statement (which is often true) is in one part of the spec. But in a later, dedicated section, that general statement is broken down, each part qualified. Exceptions are made. The initial, imprecise general statement, combined with the dedicated section, must be evaluated together. The imprecise statement is NOT inconsistent.
 
+## Implicit vs Explicit
+
+Implicit requirements are first-class requirements. The refrain "make it explicit to reduce ambiguity" has no place here. (Explicit requirements are fine as well, but not everything needs to be explicitly spelled out.)
+
+Example:
+- In a `## Usage` section, a spec may refer to an identifier in this package. Even if the identifier is not in the `## Public API`, it is still a requirement that the package must expose this identifier.
+
 ## Terse
 
 - Use concise, terse language. When creating SPEC.md files, often skip using articles like 'the' and 'an' (but don't remove them if the user writes them).

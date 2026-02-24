@@ -19,7 +19,7 @@ const (
 	defaultReportEventPath   = "/v1/reports/events"
 	defaultReportErrorPath   = "/v1/reports/errors"
 	defaultReportPanicPath   = "/v1/reports/panics"
-	defaultVersionTimeout    = 150 * time.Millisecond
+	defaultVersionTimeout    = 250 * time.Millisecond
 	defaultNoticeWaitTimeout = 150 * time.Millisecond
 )
 

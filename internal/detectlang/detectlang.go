@@ -232,8 +232,5 @@ func withinRoot(root, target string) bool {
 		return false
 	}
 	prefix := ".." + string(os.PathSeparator)
-	if strings.HasPrefix(rel, prefix) {
-		return false
-	}
-	return true
+	return !strings.HasPrefix(rel, prefix)
 }

@@ -273,7 +273,9 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 }
 
 // ResolveSteps merges defaults and user config, applying disable rules. Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
-// error. It also normalizes any `codalotl docs reflow` step to include `--width=<reflowWidth>` when missing.
+// error. It normalizes width handling:
+//   - `reflow` steps include `--width=<reflowWidth>` when missing.
+//   - `spec-fmt` steps inherit `--width=<reflowWidth>` when reflow is enabled.
 func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
@@ -325,7 +327,7 @@ func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 		steps = filtered
 	}
 
-	return normalizeReflowWidth(steps, reflowWidth)
+	return normalizeStepWidths(steps, reflowWidth)
 }
 
 func appendStepsUnique(dst *[]Step, src []Step, reflowWidth int) error {
@@ -479,32 +481,66 @@ func stepEnabledInSituation(step Step, situation Situation) bool {
 	return false
 }
 
-func normalizeReflowWidth(steps []Step, reflowWidth int) ([]Step, error) {
+func normalizeStepWidths(steps []Step, reflowWidth int) ([]Step, error) {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
 	}
 
-	for i := range steps {
-		if steps[i].ID != "reflow" {
-			continue
-		}
-		if steps[i].Check != nil {
-			check, err := ensureWidthArg(steps[i].Check, reflowWidth)
-			if err != nil {
-				return nil, fmt.Errorf("lint step %q: check command: %w", steps[i].ID, err)
-			}
-			steps[i].Check = check
-		}
+	reflowEnabled := stepsEnableReflow(steps)
 
-		if steps[i].Fix != nil {
-			fix, err := ensureWidthArg(steps[i].Fix, reflowWidth)
-			if err != nil {
-				return nil, fmt.Errorf("lint step %q: fix command: %w", steps[i].ID, err)
+	for i := range steps {
+		switch steps[i].ID {
+		case "reflow":
+			if steps[i].Check != nil {
+				check, err := ensureWidthArg(steps[i].Check, reflowWidth)
+				if err != nil {
+					return nil, fmt.Errorf("lint step %q: check command: %w", steps[i].ID, err)
+				}
+				steps[i].Check = check
 			}
-			steps[i].Fix = fix
+			if steps[i].Fix != nil {
+				fix, err := ensureWidthArg(steps[i].Fix, reflowWidth)
+				if err != nil {
+					return nil, fmt.Errorf("lint step %q: fix command: %w", steps[i].ID, err)
+				}
+				steps[i].Fix = fix
+			}
+		case "spec-fmt":
+			if !reflowEnabled {
+				continue
+			}
+			if steps[i].Check != nil {
+				check, err := ensureWidthArg(steps[i].Check, reflowWidth)
+				if err != nil {
+					return nil, fmt.Errorf("lint step %q: check command: %w", steps[i].ID, err)
+				}
+				steps[i].Check = check
+			}
+			if steps[i].Fix != nil {
+				fix, err := ensureWidthArg(steps[i].Fix, reflowWidth)
+				if err != nil {
+					return nil, fmt.Errorf("lint step %q: fix command: %w", steps[i].ID, err)
+				}
+				steps[i].Fix = fix
+			}
 		}
 	}
 	return steps, nil
+}
+
+func stepsEnableReflow(steps []Step) bool {
+	for _, s := range steps {
+		if s.ID != "reflow" {
+			continue
+		}
+		// Reflow is always skipped for SituationInitial.
+		if stepEnabledInSituation(s, SituationTests) ||
+			stepEnabledInSituation(s, SituationPatch) ||
+			stepEnabledInSituation(s, SituationFix) {
+			return true
+		}
+	}
+	return false
 }
 
 func ensureWidthArg(c *cmdrunner.Command, reflowWidth int) (*cmdrunner.Command, error) {
@@ -638,7 +674,18 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 		if s.ID == "spec-fmt" {
 			// This lint is fix-only and is executed in-process so we can format SPEC.md
 			// via internal/specmd without spawning a subprocess.
-			cr := runSpecFmt(moduleDir, relativePackageDir, targetPkgAbsDir)
+			c, _, _, err := selectCommand(s, act)
+			if err != nil {
+				return "", err
+			}
+			reflowWidth, _, hasWidth, err := parseWidthFlag(c.Args)
+			if err != nil {
+				return "", fmt.Errorf("lint step %q: fix command: %w", s.ID, err)
+			}
+			if !hasWidth {
+				reflowWidth = 0
+			}
+			cr := runSpecFmt(moduleDir, relativePackageDir, targetPkgAbsDir, reflowWidth)
 			all.Results = append(all.Results, cr)
 			continue
 		}
@@ -894,14 +941,14 @@ func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.Co
 	}
 	return cr
 }
-func runSpecFmt(moduleDir string, relativePackageDir string, targetPkgAbsDir string) cmdrunner.CommandResult {
+func runSpecFmt(moduleDir string, relativePackageDir string, targetPkgAbsDir string, reflowWidth int) cmdrunner.CommandResult {
 	start := time.Now()
 	specPath := filepath.Join(targetPkgAbsDir, "SPEC.md")
 	s, readErr := specmd.Read(specPath)
 	modified := false
 	formatErr := error(nil)
 	if readErr == nil {
-		modified, formatErr = s.FormatGoCodeBlocks(0)
+		modified, formatErr = s.FormatGoCodeBlocks(reflowWidth)
 	}
 	outcome := cmdrunner.OutcomeSuccess
 	var execErr error

@@ -9,6 +9,8 @@ const (
 	EventTypeError                 EventType = "error"
 	EventTypeCanceled              EventType = "canceled"
 	EventTypeDoneSuccess           EventType = "done_success"
+	EventTypeUserMessageQueued     EventType = "user_message_queued"
+	EventTypeQueuedUserMessageSent EventType = "queued_user_message_sent"
 	EventTypeAssistantText         EventType = "assistant_text"
 	EventTypeAssistantReasoning    EventType = "assistant_reasoning"
 	EventTypeToolCall              EventType = "tool_call"
@@ -23,6 +25,7 @@ type Event struct {
 	Agent            AgentMeta
 	Type             EventType
 	Error            error
+	UserMessage      string
 	TextContent      llmstream.TextContent
 	ReasoningContent llmstream.ReasoningContent
 	Tool             string

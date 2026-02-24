@@ -12,7 +12,7 @@ Over time, if we need to add Unicode helpers, we can add them here.
 
 Currently, we use github.com/mattn/go-runewidth and github.com/clipperhouse/uax29. This package mostly wraps these packages. The goal with wrapping dependencies is to control the API, so you can protect against breaking changes, swap backends, or bring them in-house.
 
-## Public Interface
+## Public API
 
 ```go
 // TextWidth returns the text width of str for monospace fonts in terminals. If opts is nil, locale is assumed to be non-East Asian.

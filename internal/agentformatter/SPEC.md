@@ -18,7 +18,7 @@ agentformatter formats events from agents for insertion into a fixed-width TUI, 
 - Agent bullets (`•`) are typically Accent-colored; completed tools are Green vs Red. (NOTE: not to be confused with bullets WITHIN messages - aka markdown bullets - which are just normal `-`).
 - The tool response indicator `└` is Accent.
 - Text within AssistantText will convert backtick-wrapped text to colorized Accent text, dropping the backticks.
-- All coloring must be done with ANSI 256-color codes, not true color.
+- Coloring (ex: 256 color; true color) must be converted to the terminal's color profile (assuming !PlainText).
 
 ## SubAgent Events
 
@@ -33,6 +33,27 @@ when it's from a SubAgent of Depth=1:
 ```
 
 Notice how everything just has 2 spaces of leading indentation.
+
+## User Message Events
+
+The agent can emit events when a user message is queued while a turn is already running (see `agent.QueueUserMessage`).
+
+### EventTypeUserMessageQueued
+
+Render the queued user message as a user-authored line (not an agent bullet), prefixed with a leading space and a chevron:
+
+```
+ › this is a message (queued)
+```
+
+- ` (queued)` is appeneded to the text.
+- The chevron (`›`) is Accent-colored.
+- The message text is Normal-colored.
+- In TUI width mode, wrap lines to the available width. Continuation lines are indented to align with the message text (3 spaces: `   `).
+
+### EventTypeQueuedUserMessageSent
+
+- Prints the same as EventTypeUserMessageQueued, except with no `(queued)` suffix.
 
 ### EventTypeAssistantText
 
@@ -158,7 +179,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 ```
 
 - Bullet indicates status (Accent -> Red or Green). Green shows no output.
-- Read is Bold. some/file.go is normal.
+- Read is Bold, Colorful. some/file.go is normal.
 
 ### EventTypeToolCall and EventTypeToolComplete - update_plan
 
@@ -173,7 +194,8 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - Update Plan is Bold, Colorful.
 - The `└` and the message afterwards is always Accent.
 - If the message is blank, start printing the bullets right after the `└` (the └ shouldn't be on a line all by itself).
-- The FIRST uncompleted todo is Colorful and bold.
+- In progress items are bold.
+- The FIRST uncompleted todo is Colorful.
 - All other bulleted lines are Accent (all completed todos are always Accent; uncompleted todos are Accent unless they're the first uncompleted todo).
 
 ### EventTypeToolCall and EventTypeToolComplete - get_public_api
@@ -197,7 +219,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 The EventTypeToolCall looks like this:
 
 ```
-• Clarifying someIdentifier in /path/to/something
+• Clarifying API someIdentifier in /path/to/something
   └ What does someIdentifier return in its second parameter? Give an example.
 ```
 
@@ -209,7 +231,7 @@ The EventTypeToolCall looks like this:
 The EventTypeToolComplete looks like this:
 
 ```
-• Clarified someIdentifier in /path/to/something
+• Clarified API someIdentifier in /path/to/something
   └ The someIdentifier returns a description in the 2nd parameter. For example, ...
 ```
 
@@ -363,42 +385,13 @@ Example:
 
 ```
 • Edit some/file.go
-     18  	"axi/codeai/llmstream"
-     19 +	"axi/codeai/prompt"
-     20  	"axi/codeai/tools/coretools"
-        ⋮
-     23
-     24 +const agentName = "CodAgent"
-     25 +
-     26  func main() {
-        ⋮
-     47
-     45 -	systemPrompt, err := loadSystemPrompt(sandboxDir)
-     46 -	if err != nil {
-     47 -		return err
-     48 -	}
-     48 +	modelID := llmstream.ModelID("gpt-5")
-     49 +	systemPrompt := prompt.GetFullPrompt(agentName, modelID)
-     50
-     50 -	agentInstance, err := agent.NewAgent(llmstream.ModelID("gpt-5"), systemPrompt, buildTools(sandboxDir))
-     51 +	agentInstance, err := agent.NewAgent(modelID, systemPrompt, buildTools(sandboxDir))
-     52  	if err != nil {
-        ⋮
-    117  	return filepath.Clean(cwd), nil
-    117 -}
-    118 -
-    119 -func loadSystemPrompt(repoRoot string) (string, error) {
-    120 -	path := filepath.Join(repoRoot, "codeai", "agent-prototype", "generic-prompt.md")
-    121 -	data, err := os.ReadFile(path)
-    122 -	if err != nil {
-    123 -		return "", err
-    124 -	}
-    125 -	return string(data), nil
-    118  }
+     - old line
+     + new line
 ```
 
 - No hunks anchors are shown (eg, `@@ func SomeAnchor() {`).
-- Line numbers and `⋮` are accent-colored.
+- Line numbers are not shown.
+- `⋮` is accent-colored.
 - Context lines (` `) are normal; `+` lines are green; `-` lines are red.
 
 Delete example:
@@ -417,19 +410,16 @@ Rename example (no hunks are changed):
 Rename example (hunks are changed):
 ```
 • Edit some/file.go → some/other.go
-     18  	"axi/codeai/llmstream"
-     19 +	"axi/codeai/prompt"
-     20  	"axi/codeai/tools/coretools"
+     - old line
+     + new line
 ```
 
 If a line exceeds the tuiWidth in TUI width mode, it will be wrapped:
 
 ```
 • Edit some/file.go
-     24 +const description = "This line is very long. It will wrap eventua
-         lly."
-     25 +
-     26  func main() {
+     +This line is very long. It will wrap eventua
+       lly.
 ```
 
 If the underlying error `applypatch.IsInvalidPatch`, don't print out the whole invalid patch. Instead, for instance:
@@ -450,23 +440,27 @@ If a tool isn't especially handled, here's example output:
     }
 ```
 
-### EventTypeError, EventTypeWarning, EventTypeCanceled
+### EventTypeError, EventTypeWarning, EventTypeRetry, EventTypeCanceled
 
 Examples, relating to these style of events:
 
 ```
 • Error: some error has occurred.
 • Warning: some warning has occurred.
+• Retry: transient error.
 • Canceled: deadline exceeded.
 ```
 
-- In the above examples, the first word is bold (ex: `Error`).
-- The colon and onwards is nonbold.
-- All text is red.
+- Bullet indicates severity:
+    - Warning: Accent
+    - Retry: Colorful
+    - Canceled/Error: Red
 
 ### EventTypeAssistantTurnComplete
 
-- Not useful to print (returns "")
+Print a single line summarizing the turn usage:
+
+`• Turn complete: finish=<finishReason> input=<n> output=<n> reasoning=<n> cached_input=<n>`
 
 ## Dependencies
 
@@ -476,7 +470,7 @@ Examples, relating to these style of events:
 - Uses q/termformat for terminal formatting / ANSI codes.
 - Cell width calculation uses q/termformat and q/uni.
 
-## Public Interface
+## Public API
 
 ```go
 const MinTerminalWidth = 30
@@ -484,8 +478,8 @@ const MinTerminalWidth = 30
 type Formatter interface {
 	// FormatEvent returns the content to print in a chat window or stdout-based CLI.
 	//
-	// If terminalWidth > MinTerminalWidth (aka TUI formatting), newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines
-	// and the caller can wrap themselves or insert the text in a container that can deal with long strings.
+	// If terminalWidth > MinTerminalWidth, newlines will be inserted precisely so that nothing wraps. Otherwise, paragraphs will not contain newlines and the caller
+	// can wrap themselves or insert the text in a container that can deal with long strings.
 	FormatEvent(e agent.Event, terminalWidth int) string
 }
 
@@ -497,8 +491,12 @@ type Config struct {
 	ForegroundColor termformat.Color // the terminal's foreground color. If nil, uses termformat.DefaultFBBGColor.
 	AccentColor     termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
 	ColorfulColor   termformat.Color // If nil, derived from fg/bg and downsampled to the detected color profile.
+	SuccessColor    termformat.Color // If nil, uses a default green suitable for terminals, downsampled to the detected color profile.
+	ErrorColor      termformat.Color // If nil, uses a default red suitable for terminals, downsampled to the detected color profile.
 }
 
-// creates a new Formatter
+// NewTUIFormatter creates a new Formatter configured for chat/TUI rendering.
+//
+// If ForegroundColor/BackgroundColor in c aren't passed in, they're determined by sending OSC codes to the terminal. The terminal can't be in Alt mode at this time.
 func NewTUIFormatter(c Config) Formatter
 ```

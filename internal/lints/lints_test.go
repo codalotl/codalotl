@@ -225,6 +225,53 @@ func TestResolveSteps_ReflowWidthErrorsOnMultiple(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestResolveSteps_SpecFmtWidthPropagation(t *testing.T) {
+	getStepByID := func(t *testing.T, steps []Step, id string) Step {
+		t.Helper()
+		for _, s := range steps {
+			if s.ID == id {
+				return s
+			}
+		}
+		t.Fatalf("missing step %q", id)
+		return Step{}
+	}
+
+	t.Run("propagates when reflow is enabled", func(t *testing.T) {
+		cfg := &Lints{
+			Mode: ConfigModeExtend,
+			Steps: []Step{
+				{ID: "reflow"},
+			},
+		}
+		steps, err := ResolveSteps(cfg, 160)
+		require.NoError(t, err)
+		specFmt := getStepByID(t, steps, "spec-fmt")
+		require.NotNil(t, specFmt.Fix)
+		width, _, ok, err := parseWidthFlag(specFmt.Fix.Args)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, 160, width)
+	})
+
+	t.Run("does not propagate when reflow is disabled", func(t *testing.T) {
+		cfg := &Lints{
+			Mode:    ConfigModeExtend,
+			Disable: []string{"reflow"},
+			Steps: []Step{
+				{ID: "reflow"},
+			},
+		}
+		steps, err := ResolveSteps(cfg, 160)
+		require.NoError(t, err)
+		specFmt := getStepByID(t, steps, "spec-fmt")
+		require.NotNil(t, specFmt.Fix)
+		_, _, ok, err := parseWidthFlag(specFmt.Fix.Args)
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+}
+
 func TestLints_Reflows(t *testing.T) {
 	t.Run("default false", func(t *testing.T) {
 		require.False(t, (Lints{}).Reflows())
@@ -436,6 +483,40 @@ func TestRun_SpecFmtRunsInProcess_InFix(t *testing.T) {
 	require.NotContains(t, string(b), "func  Foo")
 }
 
+func TestRun_SpecFmtRunsInProcess_ReflowWidthFromConfig(t *testing.T) {
+	sandboxDir, target, relativePackageDir := writeTempModule(t)
+	spec := strings.Join([]string{
+		"# spec",
+		"",
+		"```go",
+		"// Foo does a bunch of things and this is a deliberately long sentence that should be wrapped when reflow is enabled.",
+		"func Foo() {}",
+		"```",
+		"",
+	}, "\n")
+	err := os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
+	require.NoError(t, err)
+
+	cfg := &Lints{
+		Mode: ConfigModeReplace,
+		Steps: []Step{
+			{ID: "spec-fmt"},
+			{ID: "reflow", Situations: []Situation{SituationTests}},
+		},
+	}
+	steps, err := ResolveSteps(cfg, 40)
+	require.NoError(t, err)
+
+	out, err := Run(context.Background(), sandboxDir, target, steps, SituationPatch)
+	require.NoError(t, err)
+	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
+	require.Contains(t, out, relativePackageDir+"/SPEC.md")
+
+	b, err := os.ReadFile(filepath.Join(target, "SPEC.md"))
+	require.NoError(t, err)
+	require.Greater(t, countCommentLinesAboveFunc(string(b), "func Foo"), 1)
+}
+
 func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
 	sandboxDir, target, relativePackageDir := writeTempModule(t)
 
@@ -493,6 +574,28 @@ func TestRun_SpecFmtReadErrorIsVisibleInOutput(t *testing.T) {
 	require.Contains(t, out, "Error: ")
 	require.Contains(t, out, relativePackageDir+"/SPEC.md")
 	require.NotContains(t, out, `message="no issues found"`)
+}
+
+func countCommentLinesAboveFunc(src string, funcPrefix string) int {
+	lines := strings.Split(src, "\n")
+	for i := 0; i < len(lines); i++ {
+		if !strings.HasPrefix(lines[i], funcPrefix) {
+			continue
+		}
+		n := 0
+		for j := i - 1; j >= 0; j-- {
+			if lines[j] == "" {
+				continue
+			}
+			if strings.HasPrefix(lines[j], "//") {
+				n++
+				continue
+			}
+			break
+		}
+		return n
+	}
+	return 0
 }
 
 func writeTempModule(t *testing.T) (sandboxDir string, targetPkgAbsDir string, relativePackageDir string) {
