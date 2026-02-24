@@ -2089,6 +2089,73 @@ func TestRunProjectTestsCompleteFailureShowsPackages(t *testing.T) {
 	})
 }
 
+func TestUserMessageQueuedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	event := agent.Event{
+		Type:        agent.EventTypeUserMessageQueued,
+		UserMessage: "this is a message",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 80)
+		require.NotEmpty(t, out)
+		require.Equal(t, " › this is a message (queued)", stripANSI(out))
+		assert.True(t, strings.HasPrefix(out, " "+ansiWrap("›", pal, colorAccent, false, false)+" "))
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		require.Equal(t, " › this is a message (queued)", stripANSI(out))
+	})
+}
+
+func TestUserMessageQueuedWrapIndent(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+	event := agent.Event{
+		Type:        agent.EventTypeUserMessageQueued,
+		UserMessage: "one two three four five six seven eight nine ten",
+	}
+	out := formatter.FormatEvent(event, MinTerminalWidth+1)
+	require.NotEmpty(t, out)
+
+	lines := strings.Split(stripANSI(out), "\n")
+	require.Greater(t, len(lines), 1)
+	require.True(t, strings.HasPrefix(lines[0], " › "))
+	for i := 1; i < len(lines); i++ {
+		assert.True(t, strings.HasPrefix(lines[i], "   "))
+	}
+}
+
+func TestQueuedUserMessageSentFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+	queuedEvent := agent.Event{
+		Type:        agent.EventTypeUserMessageQueued,
+		UserMessage: "this is a message",
+	}
+	sentEvent := agent.Event{
+		Type:        agent.EventTypeQueuedUserMessageSent,
+		UserMessage: "this is a message",
+	}
+	assert.Equal(t, " › this is a message (queued)", stripANSI(formatter.FormatEvent(queuedEvent, 80)))
+	assert.Equal(t, " › this is a message", stripANSI(formatter.FormatEvent(sentEvent, 80)))
+	assert.Equal(t, " › this is a message (queued)", stripANSI(formatter.FormatEvent(queuedEvent, MinTerminalWidth)))
+	assert.Equal(t, " › this is a message", stripANSI(formatter.FormatEvent(sentEvent, MinTerminalWidth)))
+}
+
 func TestSubAgentIndentationTUI(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),

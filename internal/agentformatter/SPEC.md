@@ -34,6 +34,27 @@ when it's from a SubAgent of Depth=1:
 
 Notice how everything just has 2 spaces of leading indentation.
 
+## User Message Events
+
+The agent can emit events when a user message is queued while a turn is already running (see `agent.QueueUserMessage`).
+
+### EventTypeUserMessageQueued
+
+Render the queued user message as a user-authored line (not an agent bullet), prefixed with a leading space and a chevron:
+
+```
+ › this is a message (queued)
+```
+
+- ` (queued)` is appeneded to the text.
+- The chevron (`›`) is Accent-colored.
+- The message text is Normal-colored.
+- In TUI width mode, wrap lines to the available width. Continuation lines are indented to align with the message text (3 spaces: `   `).
+
+### EventTypeQueuedUserMessageSent
+
+- Prints the same as EventTypeUserMessageQueued, except with no `(queued)` suffix.
+
 ### EventTypeAssistantText
 
 Example:
@@ -158,7 +179,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 ```
 
 - Bullet indicates status (Accent -> Red or Green). Green shows no output.
-- Read is Bold. some/file.go is normal.
+- Read is Bold, Colorful. some/file.go is normal.
 
 ### EventTypeToolCall and EventTypeToolComplete - update_plan
 
