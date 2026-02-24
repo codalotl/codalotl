@@ -99,7 +99,7 @@ When a new session is initiated (application startup; /new; /package; etc), the 
 - Both new session texts have ASCII art (ex: codalotl icon + codalotl word art).
 - The new session text will describe the currently active mode. For example: "Package mode is a Go-specific mode that..."
 - Non-package mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
-- Other than the mode, the new session text does not mention any configuration (ex: model, session ID, current package).
+- The new session text does not mention the current configuration (ex: active model, session ID, current package), but may give the guidance, including illustrative examples of commands.
 
 ## Package Mode
 
