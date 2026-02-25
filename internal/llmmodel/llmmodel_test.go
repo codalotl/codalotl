@@ -3,7 +3,6 @@ package llmmodel
 import (
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -69,15 +68,17 @@ func TestInspectingDefaultModels(t *testing.T) {
 func TestDefaultModelsLoaded(t *testing.T) {
 	// OpenAI is expected to always be usable in this repo (it's our default codepath),
 	// so keep stronger assertions for it.
-	gpt5 := ModelID("gpt-5.2")
+	gpt5 := DefaultModel
+	require.Equal(t, ModelID("gpt-5.2-high"), gpt5)
 	require.True(t, gpt5.Valid())
 
 	gptInfo := GetModelInfo(gpt5)
 	require.Equal(t, ProviderIDOpenAI, gptInfo.ProviderID)
+	require.Equal(t, "gpt-5.2", gptInfo.ProviderModelID)
 	require.Equal(t, "high", gptInfo.ReasoningEffort)
 	require.True(t, gptInfo.IsDefault)
 	require.Equal(t, gpt5, ProviderIDOpenAI.DefaultModel())
-	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses, ProviderTypeOpenAICompletions}, gptInfo.SupportedTypes)
+	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptInfo.SupportedTypes)
 
 	// Other providers can legitimately have models marked as legacy (and therefore not registered)
 	// until we have proper support. These checks validate internal consistency without requiring
@@ -104,16 +105,14 @@ func TestDefaultModelsLoaded(t *testing.T) {
 		}
 	}
 
-	// If these well-known model IDs exist (i.e. not marked legacy), validate their mapping,
-	// but don't require them to be present.
-	claude := ModelID("claude-sonnet-4-5")
-	if claude.Valid() {
-		claudeInfo := GetModelInfo(claude)
-		require.Equal(t, ProviderIDAnthropic, claudeInfo.ProviderID)
-		require.True(t, strings.HasPrefix(claudeInfo.ProviderModelID, "claude-sonnet-4-5"))
-		require.Equal(t, ProviderIDAnthropic, claude.ProviderID())
-		require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, claudeInfo.SupportedTypes)
-	}
+	require.False(t, ModelID("claude-sonnet-4-6").Valid())
+	anthropicSonnet := ModelID("sonnet-4-6")
+	require.True(t, anthropicSonnet.Valid())
+	anthropicSonnetInfo := GetModelInfo(anthropicSonnet)
+	require.Equal(t, ProviderIDAnthropic, anthropicSonnetInfo.ProviderID)
+	require.Equal(t, "claude-sonnet-4-6", anthropicSonnetInfo.ProviderModelID)
+	require.Equal(t, ProviderIDAnthropic, anthropicSonnet.ProviderID())
+	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, anthropicSonnetInfo.SupportedTypes)
 
 	gemini := ModelID("gemini-2.5-pro")
 	if gemini.Valid() {
@@ -129,20 +128,20 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	}
 
 	require.False(t, ModelID("gpt-5-codex").Valid())
+	require.False(t, ModelID("gpt-5.2").Valid())
+	require.False(t, ModelID("gpt-5.3-codex").Valid())
 	require.False(t, ModelID("gpt-5.1-codex").Valid())
-	codexMinimal := ModelID("gpt-5.1-codex-minimal")
-	codexHigh := ModelID("gpt-5.1-codex-high")
-	if codexMinimal.Valid() || codexHigh.Valid() {
-		require.True(t, codexMinimal.Valid())
-		codexMinimalInfo := GetModelInfo(codexMinimal)
-		require.Equal(t, ProviderIDOpenAI, codexMinimalInfo.ProviderID)
-		require.Equal(t, "gpt-5.1-codex", codexMinimalInfo.ProviderModelID)
-		require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, codexMinimalInfo.SupportedTypes)
-		require.Equal(t, "minimal", codexMinimalInfo.ReasoningEffort)
+	codexMinimal := ModelID("gpt-5.3-codex-minimal")
+	codexHigh := ModelID("gpt-5.3-codex-high")
+	require.True(t, codexMinimal.Valid())
+	codexMinimalInfo := GetModelInfo(codexMinimal)
+	require.Equal(t, ProviderIDOpenAI, codexMinimalInfo.ProviderID)
+	require.Equal(t, "gpt-5.3-codex", codexMinimalInfo.ProviderModelID)
+	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, codexMinimalInfo.SupportedTypes)
+	require.Equal(t, "minimal", codexMinimalInfo.ReasoningEffort)
 
-		require.True(t, codexHigh.Valid())
-		require.Equal(t, "high", GetModelInfo(codexHigh).ReasoningEffort)
-	}
+	require.True(t, codexHigh.Valid())
+	require.Equal(t, "high", GetModelInfo(codexHigh).ReasoningEffort)
 
 	gptMinimal := ModelID("gpt-5.2-minimal")
 	require.True(t, gptMinimal.Valid())
