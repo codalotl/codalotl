@@ -1,0 +1,1 @@
+{"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{"unix_timestamp":1772042340,"paths":["internal/q/sseclient/SPEC.md","internal/q/sseclient/sseclient.go","internal/q/sseclient/sseclient_test.go"],"git_clean":false,"git_commit":"68348a1705561e2f0bc454224e36ccc0cdfe137c","git_merge_base":"da6fffa0885bc55ab0ee20c0f5eab65758e2c497"}}
