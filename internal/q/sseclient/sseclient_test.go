@@ -198,3 +198,66 @@ func TestStream_RecvContextCancellationAndClose(t *testing.T) {
 	_, err = stream.RecvContext(ctx)
 	assert.ErrorIs(t, err, io.EOF)
 }
+
+func TestStream_DiscardPendingDataAtEOF(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: incomplete\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_StripsOnlyLeadingBOM(t *testing.T) {
+	t.Parallel()
+
+	body := "data: first\n\n" +
+		"\uFEFFdata: second\n\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "",
+		Type: "message",
+		Data: "first",
+	}, ev)
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestParseRetry_ASCIIDigitsOnly(t *testing.T) {
+	t.Parallel()
+
+	d, ok := parseRetry("1500")
+	require.True(t, ok)
+	assert.Equal(t, 1500*time.Millisecond, d)
+
+	d, ok = parseRetry("+1500")
+	assert.False(t, ok)
+	assert.Zero(t, d)
+}

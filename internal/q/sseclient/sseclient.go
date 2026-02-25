@@ -259,9 +259,8 @@ func (s *Stream) readLoop() {
 		line, err := reader.ReadLine()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				if ev, ok := s.dispatch(dataBuf.String(), eventType); ok {
-					s.results <- recvResult{event: ev}
-				}
+				// Per SSE processing model, pending data at EOF is discarded unless
+				// a blank line triggered dispatch before EOF.
 				s.results <- recvResult{err: io.EOF}
 				close(s.results)
 				return
@@ -341,10 +340,7 @@ func splitField(line string) (string, string) {
 	if idx < 0 {
 		return line, ""
 	}
-	value := line[idx+1:]
-	if strings.HasPrefix(value, " ") {
-		value = value[1:]
-	}
+	value := strings.TrimPrefix(line[idx+1:], " ")
 	return line[:idx], value
 }
 
@@ -352,8 +348,13 @@ func parseRetry(value string) (time.Duration, bool) {
 	if value == "" {
 		return 0, false
 	}
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return 0, false
+		}
+	}
 	ms, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || ms < 0 {
+	if err != nil {
 		return 0, false
 	}
 	if ms > int64((time.Duration(1<<63-1))/time.Millisecond) {
@@ -418,7 +419,7 @@ func (l *lineReader) finishLine(b []byte) string {
 	line := string(b)
 	if l.atStart {
 		l.atStart = false
+		line = strings.TrimPrefix(line, "\uFEFF")
 	}
-	line = strings.TrimPrefix(line, "\uFEFF")
 	return line
 }

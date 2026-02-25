@@ -8,6 +8,17 @@ Follows the SSE wire format parsing rules defined at https://html.spec.whatwg.or
 - Saved locally as: `./whatwg.org.sse_spec.html` (on 2026-02-25)
 - Converted to markdown as: `./whatwg.org.sse_spec.md`
 
+## Scope
+
+This package targets SSE wire-format parsing and HTTP stream consumption in Go.
+
+It does not target full browser-style `EventSource` end-to-end behavior. In particular:
+- automatic reconnect scheduling/backoff is caller-managed
+- `readyState` state machine and `open` / `error` event dispatch are not implemented
+- browser/DOM integration semantics are out of scope
+
+The intended contract is: parse SSE frames per spec, expose parsed events, and expose sticky reconnect hints (`LastEventID`, `Retry`) so callers can implement their own reconnect policy.
+
 ## Usage
 
 Basic read loop:
