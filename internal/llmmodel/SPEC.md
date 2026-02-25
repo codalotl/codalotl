@@ -12,15 +12,15 @@ llmmodel is a package that exposes data related to LLM models and providers. It 
 Further, llmmodel allows creation of "custom" models. These models might be like "gpt-5-codex but with high reasoning", or local inference with custom URLs.
 
 Other notes:
-- Env var strings can have an optional leading "$" (ex: "$ANTHROPIC_API_KEY"). Any access of the ENV always strips the leading "$".
+- Env var strings can have an optional leading "$" (ex: "$ANTHROPIC_API_KEY"). Any env lookup strips the leading "$".
 
 ## Usage
 
-By default, this package will have the set of top models/providers "loaded".
+By default, this package loads a set of top models/providers.
 
-Consumers can then configure those:
+Consumers can then configure these:
 - Call AvailableModelIDs() and GetModelInfo() to get default loaded state.
-- Call ConfigureProviderKey to configure API keys (if, for instance, they have a config file that end-users save their keys in).
+- Call ConfigureProviderKey to configure API keys (for instance, from an app config file).
 - Call AddCustomModel() to add more models. They might do this for reasons:
     - Add custom params on a per-model basis (ex: reasoning effort)
     - Create custom ModelID aliases
@@ -37,7 +37,7 @@ Once configured, params of type ModelID can be passed around to select a model. 
 
 ## Implementation details
 
-The config/ folder contains a per-provider .JSON file with relevant data. Use go:embed to embed each file into an unexported package-level var.
+The `config/` folder contains per-provider .json files with relevant data. Use go:embed to embed each file into an unexported package-level var.
 
 Each config file has this shape:
 
@@ -66,18 +66,42 @@ Each config file has this shape:
 }
 ```
 
-Upon init, each file will be parsed. But only the files from {openai, anthropic, gemini, xai} will be used in populating a package variable containing []ModelInfo -- the "database" of our active models. Only non is_legacy models will be added from these providers during init.
+Upon init, each file will be parsed. But only files from {openai, anthropic, gemini, xai} will be used to populate []ModelInfo, the "database" of active models. Only non is_legacy models will be added from these providers during init.
 
 During this process, we'll need to determine the ModelID for each model. ModelID must be unique across all models from all providers. We must ensure good, clean names for our primary providers' models. For instance, Anthropic's date-based suffixes must be stripped.
 
 However, we can't simply throw away data from other providers and legacy models. These may be referred to when calling AddCustomModel.
+
+## Model IDs and Initialization
+
+There are two model identifiers in this package:
+- `ProviderModelID`: the exact provider-side `model` value used in API requests (ex: `claude-sonnet-4-5-20250929`).
+    - Found on the `ModelInfo` struct.
+- `ModelID`: the user-facing ID used by package consumers (ex: `sonnet-4-5`).
+    - `ModelID` is what callers pass around in app code;
+    - `ModelID` must be globally unique across all providers.
+- `AddCustomModel` lets callers define custom `ModelID` aliases that point at any provider model ID.
+
+Initialization happens in two phases:
+1. Build `providerCatalog` from JSON files in `config/*`. These are all the possible underlying models.
+2. Register some of the models to `modelsByID`, the list of user-visible models available by default.
+   - Some models are aliased (adding with `ModelID` != `ProviderModelID`).
+   - Some models are cross-multiplied against reasoning variants (ex: `-minimal`, `-low`, `-medium`, `-high`).
+
+Construction of `modelsByID` during initialization:
+- OpenAI:
+	- Both `gpt-5.2` and `gpt-5.2-codex`: Add {`-minimal`, `-low`, `-medium`, `-high`} variants (and don't add non-reasoning-effort version).
+- Anthropic:
+	- Strip any timestamp (ex: `claude-sonnet-4-5-20250929` has `-20250929` suffix).
+	- Strip `claude-` prefix.
+	- Example: `claude-sonnet-4-5-20250929` -> `sonnet-4-5`.
 
 ## Public API
 
 ```go
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model ID sent to API endpoints.
 // Consumers can create/register their own ModelID with AddCustomModel, which bundles a provider model as well as a set of parameters. This also lets this package
-// and consumers alias long/awkward ids with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
+// and consumers alias long/awkward IDs with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
 type ModelID string
 
 // ProviderID returns id's provider.
@@ -131,7 +155,7 @@ const (
 	ProviderIDXAI       ProviderID = "xai"
 )
 
-// AllProviderIDs are all provider ids. They are sorted by my personal opinion of importance.
+// AllProviderIDs are all provider IDs. They are sorted by my personal opinion of importance.
 var AllProviderIDs = []ProviderID{
 	ProviderIDOpenAI,
 	ProviderIDXAI,
@@ -156,7 +180,7 @@ func AvailableModelIDs() []ModelID
 // ModelIDOrFallback returns id if it is valid. Otherwise it returns the default model for ProviderIDOpenAI (or the first available model, if ProviderIDOpenAI has
 // no models).
 //
-// This method can be used in cases where the consumer must talk to *some* valid model, but their current model id might be unset or invalid.
+// This method can be used in cases where the consumer must talk to *some* valid model, but their current model ID might be unset or invalid.
 func ModelIDOrFallback(id ModelID) ModelID
 
 type ModelInfo struct {
