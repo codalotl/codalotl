@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,6 +245,281 @@ func TestStream_StripsOnlyLeadingBOM(t *testing.T) {
 		ID:   "",
 		Type: "message",
 		Data: "first",
+	}, ev)
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_DataFieldWithoutColonDispatchesEmptyData(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "",
+		Type: "message",
+		Data: "",
+	}, ev)
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_DataFieldWithColonAndNoValueDispatchesEmptyData(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data:\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "",
+		Type: "message",
+		Data: "",
+	}, ev)
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_ParsesFieldsWithoutOptionalSpaceAfterColon(t *testing.T) {
+	t.Parallel()
+
+	body := "id:abc123\n" +
+		"event:update\n" +
+		"retry:2500\n" +
+		"data:payload\n" +
+		"\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "abc123",
+		Type: "update",
+		Data: "payload",
+	}, ev)
+	assert.Equal(t, State{
+		LastEventID: "abc123",
+		Retry:       2500 * time.Millisecond,
+	}, stream.State())
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_CommentOnlyBlockDoesNotDispatch(t *testing.T) {
+	t.Parallel()
+
+	body := ": keepalive\n\n" +
+		"data: payload\n\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "",
+		Type: "message",
+		Data: "payload",
+	}, ev)
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_LargeDataPayload(t *testing.T) {
+	t.Parallel()
+
+	payload := strings.Repeat("x", 256*1024)
+	body := "data: " + payload + "\n\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "",
+		Type: "message",
+		Data: payload,
+	}, ev)
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_FieldOrderingAndLastValueWins(t *testing.T) {
+	t.Parallel()
+
+	body := "data: payload\n" +
+		"id: first\n" +
+		"id: second\n" +
+		"retry: 1000\n" +
+		"retry: invalid\n" +
+		"retry: 2000\n" +
+		"event: update\n" +
+		"\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "second",
+		Type: "update",
+		Data: "payload",
+	}, ev)
+	assert.Equal(t, State{
+		LastEventID: "second",
+		Retry:       2 * time.Second,
+	}, stream.State())
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_NullInIDDoesNotOverwriteLastEventID(t *testing.T) {
+	t.Parallel()
+
+	body := "id: keep\n" +
+		"data: first\n" +
+		"\n" +
+		"id: bad\x00id\n" +
+		"data: second\n" +
+		"\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "keep",
+		Type: "message",
+		Data: "first",
+	}, ev)
+
+	ev, err = stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "keep",
+		Type: "message",
+		Data: "second",
+	}, ev)
+	assert.Equal(t, State{
+		LastEventID: "keep",
+	}, stream.State())
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_CarriageReturnOnlyLineEndings(t *testing.T) {
+	t.Parallel()
+
+	body := "data: line1\r" +
+		"data: line2\r" +
+		"\r"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "",
+		Type: "message",
+		Data: "line1\nline2",
 	}, ev)
 
 	_, err = stream.Recv()
