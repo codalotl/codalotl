@@ -66,11 +66,11 @@ Each config file has this shape:
 }
 ```
 
-Upon init, each file will be parsed. But only files from {openai, anthropic, gemini, xai} will be used to populate []ModelInfo, the "database" of active models. Only non is_legacy models will be added from these providers during init.
+Upon init, each file will be parsed. But only files from {openai, anthropic, gemini, xai} will be used to populate []ModelInfo, the "database" of active models. Only models with `is_legacy=false` will be added from these providers during init.
 
 During this process, we'll need to determine the ModelID for each model. ModelID must be unique across all models from all providers. We must ensure good, clean names for our primary providers' models. For instance, Anthropic's date-based suffixes must be stripped.
 
-However, we can't simply throw away data from other providers and legacy models. These may be referred to when calling AddCustomModel.
+However, we can't simply throw away data from other providers and legacy models. These may be referenced when calling AddCustomModel.
 
 ## Model IDs and Initialization
 
@@ -84,13 +84,13 @@ There are two model identifiers in this package:
 
 Initialization happens in two phases:
 1. Build `providerCatalog` from JSON files in `config/*`. These are all the possible underlying models.
-2. Register some of the models to `modelsByID`, the list of user-visible models available by default.
+2. Register some of the models to `modelsByID`, the set of user-visible models available by default.
    - Some models are aliased (adding with `ModelID` != `ProviderModelID`).
    - Some models are cross-multiplied against reasoning variants (ex: `-minimal`, `-low`, `-medium`, `-high`).
 
 Construction of `modelsByID` during initialization:
 - OpenAI:
-	- Both `gpt-5.2` and `gpt-5.2-codex`: Add {`-minimal`, `-low`, `-medium`, `-high`} variants (and don't add non-reasoning-effort version).
+	- Both `gpt-5.2` and `gpt-5.2-codex`: Add {`-minimal`, `-low`, `-medium`, `-high`} variants (and don't add the non-reasoning-effort version).
 - Anthropic:
 	- Strip any timestamp (ex: `claude-sonnet-4-5-20250929` has `-20250929` suffix).
 	- Strip `claude-` prefix.
