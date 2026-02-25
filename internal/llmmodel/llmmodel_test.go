@@ -168,7 +168,7 @@ func TestAddCustomModelCopiesProviderData(t *testing.T) {
 	customID := ModelID("custom-anthropic-claude-opus")
 	require.False(t, customID.Valid())
 
-	err := AddCustomModel(customID, ProviderIDAnthropic, "claude-opus-4-1-20250805", ModelOverrides{
+	err := AddCustomModel(customID, ProviderIDAnthropic, "claude-opus-4-6", ModelOverrides{
 		ReasoningEffort: "low",
 		ServiceTier:     "priority",
 	})
@@ -177,9 +177,9 @@ func TestAddCustomModelCopiesProviderData(t *testing.T) {
 
 	info := GetModelInfo(customID)
 	require.Equal(t, ProviderIDAnthropic, info.ProviderID)
-	require.Equal(t, "claude-opus-4-1-20250805", info.ProviderModelID)
-	require.InDelta(t, 15.0, info.CostPer1MIn, 0)
-	require.InDelta(t, 75.0, info.CostPer1MOut, 0)
+	require.Equal(t, "claude-opus-4-6", info.ProviderModelID)
+	require.InDelta(t, 5.0, info.CostPer1MIn, 0)
+	require.InDelta(t, 25.0, info.CostPer1MOut, 0)
 	require.False(t, info.IsDefault)
 	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, info.SupportedTypes)
 	require.Equal(t, "low", info.ReasoningEffort)
