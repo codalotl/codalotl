@@ -28,7 +28,7 @@ func newTextTurn(role Role, content string) Turn {
 }
 
 type SendOptions struct {
-	ReasoningEffort    string // ex: "minimal", "low", "medium", "high"
+	ReasoningEffort    string // ex: "minimal", "low", "medium", "high", "xhigh"
 	ReasoningSummary   string // ex: "auto", "concise", "detailed"
 	TemperaturePresent bool
 	Temperature        float64 // ex: 1.0
@@ -50,8 +50,6 @@ type StreamingConversation interface {
 	AddTools(tools []Tool) error
 	AddUserTurn(text string) error
 	AddToolResults(toolResults []ToolResult) error
-
-	// SendSync(ctx context.Context) (Turn, error)
 	SendAsync(ctx context.Context, options ...SendOptions) <-chan Event
 }
 
