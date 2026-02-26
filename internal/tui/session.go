@@ -145,6 +145,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 			SandboxDir:  sandboxDir,
 			Authorizer:  pkgAuthorizer,
 			GoPkgAbsDir: pkgAbsPath,
+			Model:       modelID,
 			LintSteps:   cfg.lintSteps,
 		})
 		if err != nil {
@@ -156,6 +157,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 		tools, err = toolsets.CoreAgentTools(toolsets.Options{
 			SandboxDir: sandboxDir,
 			Authorizer: sandboxAuthorizer,
+			Model:      modelID,
 			LintSteps:  cfg.lintSteps,
 		})
 		if err != nil {

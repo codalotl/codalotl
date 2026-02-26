@@ -265,6 +265,7 @@ func Exec(userPrompt string, opts Options) error {
 		PlainText: opts.NoFormatting,
 	})
 	terminalWidth := detectTerminalWidth(rawOut)
+	modelID := effectiveModelID(opts)
 
 	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
 	if err != nil {
@@ -279,12 +280,12 @@ func Exec(userPrompt string, opts Options) error {
 
 	go autoRespondToUserRequests(userRequests, out, opts.AutoYes)
 
-	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgAbsPath, authorizerForTools, opts.LintSteps)
+	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
 	if err != nil {
 		return err
 	}
 
-	agentInstance, err := agent.NewAgent(effectiveModelID(opts), strings.TrimSpace(systemPrompt), toolsForAgent)
+	agentInstance, err := agent.NewAgent(modelID, strings.TrimSpace(systemPrompt), toolsForAgent)
 	if err != nil {
 		return fmt.Errorf("construct agent: %w", err)
 	}
@@ -855,7 +856,7 @@ func detectShellToolName(tools []llmstream.Tool) (name string, ok bool) {
 	return "", false
 }
 
-func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, authorizer authdomain.Authorizer, lintSteps []lints.Step) ([]llmstream.Tool, string, error) {
+func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) ([]llmstream.Tool, string, error) {
 	skillSearchStartDir := sandboxDir
 	if pkgMode {
 		skillSearchStartDir = pkgAbsPath
@@ -877,6 +878,7 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 			SandboxDir:  sandboxDir,
 			Authorizer:  authorizer,
 			GoPkgAbsDir: pkgAbsPath,
+			Model:       modelID,
 			LintSteps:   lintSteps,
 		})
 		if err != nil {
@@ -897,6 +899,7 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 	tools, err := toolsets.CoreAgentTools(toolsets.Options{
 		SandboxDir: sandboxDir,
 		Authorizer: authorizer,
+		Model:      modelID,
 		LintSteps:  lintSteps,
 	})
 	if err != nil {

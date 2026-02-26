@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/lints"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -21,8 +22,9 @@ import (
 func TestCoreAgentTools(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	model := llmmodel.ProviderIDOpenAI.DefaultModel()
 
-	tools, err := CoreAgentTools(Options{SandboxDir: sandbox, Authorizer: auth})
+	tools, err := CoreAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, Model: model})
 	if err != nil {
 		t.Fatalf("CoreAgentTools returned error: %v", err)
 	}
@@ -35,16 +37,33 @@ func TestCoreAgentTools(t *testing.T) {
 		coretools.ToolNameUpdatePlan,
 	})
 }
+func TestCoreAgentTools_NonOpenAIUsesEditWriteDelete(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	model := llmmodel.ProviderIDAnthropic.DefaultModel()
+	tools, err := CoreAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, Model: model})
+	require.NoError(t, err)
+	assertToolNames(t, tools, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameEdit,
+		coretools.ToolNameWrite,
+		coretools.ToolNameDelete,
+		coretools.ToolNameShell,
+		coretools.ToolNameUpdatePlan,
+	})
+}
 
 func TestPackageAgentTools(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	model := llmmodel.ProviderIDOpenAI.DefaultModel()
 	goPkg := filepath.Join(sandbox, "pkg")
 	if err := os.MkdirAll(goPkg, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := PackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg})
+	tools, err := PackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg, Model: model})
 	if err != nil {
 		t.Fatalf("PackageAgentTools returned error: %v", err)
 	}
@@ -67,12 +86,41 @@ func TestPackageAgentTools(t *testing.T) {
 		pkgtools.ToolNameChangeAPI,
 	})
 }
+func TestPackageAgentTools_NonOpenAIUsesEditWriteDelete(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	model := llmmodel.ProviderIDAnthropic.DefaultModel()
+	goPkg := filepath.Join(sandbox, "pkg")
+	require.NoError(t, os.MkdirAll(goPkg, 0o755))
+	tools, err := PackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg, Model: model})
+	require.NoError(t, err)
+	assertToolNames(t, tools, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameEdit,
+		coretools.ToolNameWrite,
+		coretools.ToolNameDelete,
+		coretools.ToolNameSkillShell,
+		coretools.ToolNameUpdatePlan,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
+		exttools.ToolNameRunProjectTests,
+		pkgtools.ToolNameModuleInfo,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+		pkgtools.ToolNameGetUsage,
+		pkgtools.ToolNameUpdateUsage,
+		pkgtools.ToolNameChangeAPI,
+	})
+}
 
 func TestSimpleReadOnlyTools(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	model := llmmodel.ProviderIDOpenAI.DefaultModel()
 
-	tools, err := SimpleReadOnlyTools(Options{SandboxDir: sandbox, Authorizer: auth})
+	tools, err := SimpleReadOnlyTools(Options{SandboxDir: sandbox, Authorizer: auth, Model: model})
 	if err != nil {
 		t.Fatalf("SimpleReadOnlyTools returned error: %v", err)
 	}
@@ -86,12 +134,13 @@ func TestSimpleReadOnlyTools(t *testing.T) {
 func TestLimitedPackageAgentTools(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	model := llmmodel.ProviderIDOpenAI.DefaultModel()
 	goPkg := filepath.Join(sandbox, "pkg")
 	if err := os.MkdirAll(goPkg, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", goPkg, err)
 	}
 
-	tools, err := LimitedPackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg})
+	tools, err := LimitedPackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg, Model: model})
 	if err != nil {
 		t.Fatalf("LimitedPackageAgentTools returned error: %v", err)
 	}
@@ -100,6 +149,28 @@ func TestLimitedPackageAgentTools(t *testing.T) {
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
 		coretools.ToolNameApplyPatch,
+		coretools.ToolNameSkillShell,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+	})
+}
+func TestLimitedPackageAgentTools_NonOpenAIUsesEditWriteDelete(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	model := llmmodel.ProviderIDAnthropic.DefaultModel()
+	goPkg := filepath.Join(sandbox, "pkg")
+	require.NoError(t, os.MkdirAll(goPkg, 0o755))
+	tools, err := LimitedPackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: goPkg, Model: model})
+	require.NoError(t, err)
+	assertToolNames(t, tools, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameEdit,
+		coretools.ToolNameWrite,
+		coretools.ToolNameDelete,
 		coretools.ToolNameSkillShell,
 		exttools.ToolNameDiagnostics,
 		exttools.ToolNameFixLints,
@@ -128,7 +199,8 @@ func TestPackageAgentTools_ThreadsLintStepsToTools(t *testing.T) {
 	}
 
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
-	tools, err := PackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: pkgDir, LintSteps: steps})
+	model := llmmodel.ProviderIDOpenAI.DefaultModel()
+	tools, err := PackageAgentTools(Options{SandboxDir: sandbox, Authorizer: auth, GoPkgAbsDir: pkgDir, LintSteps: steps, Model: model})
 	require.NoError(t, err)
 
 	var fixTool llmstream.Tool

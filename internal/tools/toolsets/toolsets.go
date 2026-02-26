@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/codalotl/codalotl/internal/lints"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
@@ -20,7 +21,8 @@ import (
 //   - toolsets.* functions can be passed directly as toolsetinterface.Toolset values.
 type Options = toolsetinterface.Options
 
-// CoreAgentTools offers tools similar to a Codex-style agent: read_file, ls, apply_patch, shell, and update_plan.
+// CoreAgentTools offers tools similar to a Codex-style agent: read_file, ls, shell, and update_plan. For code edits, OpenAI models get apply_patch, while other
+// providers get edit+write+delete.
 //
 // sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's authorizer that actually implements the jail. The purpose of accepting
 // sandboxDir here is so that relative paths received by the LLM can be made absolute.
@@ -32,14 +34,15 @@ func CoreAgentTools(opts Options) ([]llmstream.Tool, error) {
 	}
 
 	authorizer := opts.Authorizer
-
 	tools := []llmstream.Tool{
 		coretools.NewReadFileTool(authorizer),
 		coretools.NewLsTool(authorizer),
-		coretools.NewApplyPatchTool(authorizer, true, nil),
+	}
+	tools = appendEditingTools(tools, opts, nil)
+	tools = append(tools,
 		coretools.NewShellTool(authorizer), // NOTE: currently no SkillShell; re-evaluate if we find Shell vs SkillShell are different (maybe authorization is different)
 		coretools.NewUpdatePlanTool(authorizer),
-	}
+	)
 	return tools, nil
 }
 
@@ -56,7 +59,7 @@ func normalizeSandboxDir(opts Options) (Options, error) {
 }
 
 // PackageAgentTools offers tools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch, skill_shell, update_plan
+//   - core tools: read_file, ls, (apply_patch OR edit+write+delete), skill_shell, update_plan
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests, run_project_tests
 //   - package tools: module_info, get_public_api, clarify_public_api, get_usage, update_usage, change_api
 //
@@ -81,11 +84,13 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 	}
 
 	lintSteps := lintStepsOrDefault(opts.LintSteps)
-
+	postChecks := packageApplyPatchPostChecks(lintSteps)
 	tools := []llmstream.Tool{
 		coretools.NewReadFileTool(authorizer),
 		coretools.NewLsTool(authorizer),
-		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks(lintSteps)),
+	}
+	tools = appendEditingTools(tools, opts, postChecks)
+	tools = append(tools,
 		coretools.NewSkillShellTool(authorizer),
 		coretools.NewUpdatePlanTool(authorizer),
 		exttools.NewDiagnosticsTool(authorizer),
@@ -96,9 +101,9 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 		pkgtools.NewGetPublicAPITool(authorizer),
 		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
 		pkgtools.NewGetUsageTool(authorizer),
-		pkgtools.NewUpdateUsageTool(opts.GoPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools, opts.LintSteps),
-		pkgtools.NewChangeAPITool(opts.GoPkgAbsDir, sandboxAuthorizer, PackageAgentTools, opts.LintSteps),
-	}
+		pkgtools.NewUpdateUsageTool(opts.GoPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools, opts.Model, opts.LintSteps),
+		pkgtools.NewChangeAPITool(opts.GoPkgAbsDir, sandboxAuthorizer, PackageAgentTools, opts.Model, opts.LintSteps),
+	)
 	return tools, nil
 }
 
@@ -123,7 +128,7 @@ func SimpleReadOnlyTools(opts Options) ([]llmstream.Tool, error) {
 }
 
 // LimitedPackageAgentTools offers more limited tools than PackageAgentTools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch, skill_shell (not included: update_plan)
+//   - core tools: read_file, ls, (apply_patch OR edit+write+delete), skill_shell (not included: update_plan)
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests (not included: run_project_tests)
 //   - package tools: get_public_api, clarify_public_api (not included: get_usage, update_usage)
 //
@@ -148,18 +153,20 @@ func LimitedPackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 	}
 
 	lintSteps := lintStepsOrDefault(opts.LintSteps)
-
+	postChecks := packageApplyPatchPostChecks(lintSteps)
 	tools := []llmstream.Tool{
 		coretools.NewReadFileTool(authorizer),
 		coretools.NewLsTool(authorizer),
-		coretools.NewApplyPatchTool(authorizer, true, packageApplyPatchPostChecks(lintSteps)),
+	}
+	tools = appendEditingTools(tools, opts, postChecks)
+	tools = append(tools,
 		coretools.NewSkillShellTool(authorizer),
 		exttools.NewDiagnosticsTool(authorizer),
 		exttools.NewFixLintsTool(authorizer, lintSteps),
 		exttools.NewRunTestsTool(authorizer, lintSteps),
 		pkgtools.NewGetPublicAPITool(authorizer),
 		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
-	}
+	)
 	return tools, nil
 }
 
@@ -181,4 +188,21 @@ func packageApplyPatchPostChecks(lintSteps []lints.Step) *coretools.ApplyPatchPo
 			return lints.Run(ctx, sandboxDir, targetDir, lintSteps, lints.SituationPatch)
 		},
 	}
+}
+func appendEditingTools(tools []llmstream.Tool, opts Options, postChecks *coretools.ApplyPatchPostChecks) []llmstream.Tool {
+	if opts.Model.ProviderID() == llmmodel.ProviderIDOpenAI {
+		return append(tools, coretools.NewApplyPatchTool(opts.Authorizer, true, postChecks))
+	}
+	if postChecks == nil {
+		return append(tools,
+			coretools.NewEditTool(opts.Authorizer),
+			coretools.NewWriteTool(opts.Authorizer),
+			coretools.NewDeleteTool(opts.Authorizer),
+		)
+	}
+	return append(tools,
+		coretools.NewEditTool(opts.Authorizer, postChecks),
+		coretools.NewWriteTool(opts.Authorizer, postChecks),
+		coretools.NewDeleteTool(opts.Authorizer),
+	)
 }
