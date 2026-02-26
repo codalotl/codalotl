@@ -5,12 +5,13 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
-	"strings"
 )
 
 //go:embed run_tests.md
@@ -28,6 +29,7 @@ type runTestsParams struct {
 	Path     string `json:"path"`
 	TestName string `json:"test_name"`
 	Verbose  bool   `json:"verbose"`
+	Env      string `json:"env"`
 }
 
 func NewRunTestsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) llmstream.Tool {
@@ -60,6 +62,10 @@ func (t *toolRunTests) Info() llmstream.ToolInfo {
 				"type":        "boolean",
 				"description": "Optional flag to run go test with -v",
 			},
+			"env": map[string]any{
+				"type":        "string",
+				"description": "Optional env vars for go test (ex: `MYVAR=1 OTHERVAR=2`)",
+			},
 		},
 		Required: []string{"path"},
 	}
@@ -86,7 +92,7 @@ func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 		}
 	}
 
-	output, err := RunTests(ctx, t.sandboxAbsDir, absPkgPath, params.TestName, params.Verbose)
+	output, err := RunTests(ctx, t.sandboxAbsDir, absPkgPath, params.TestName, params.Verbose, params.Env)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, fmt.Sprintf("failed to run go test: %v", err), err)
 	}
@@ -108,8 +114,8 @@ func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	}
 }
 
-// RunTests returns the output of the `go test` command, optionally verbose, optionally matched with namePattern. ctx controls command cancellation; if nil, context.Background
-// is used. The result is wrapped in a <test-status> XML tag:
+// RunTests returns the output of the `go test` command, optionally verbose, optionally matched with namePattern, and optionally with env var assignments in env.
+// ctx controls command cancellation; if nil, context.Background is used. The result is wrapped in a <test-status> XML tag:
 //
 //	<test-status ok="true">
 //	$ go test -run TestMyTest ./codeai/tools
@@ -117,12 +123,16 @@ func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 //	</test-status>
 //
 // An error is only returned if the inputs are invalid (ex: pkgDirPath can't be found).
-func RunTests(ctx context.Context, sandboxDir string, pkgDirPath string, namePattern string, verbose bool) (string, error) {
+func RunTests(ctx context.Context, sandboxDir string, pkgDirPath string, namePattern string, verbose bool, env string) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	envAssignments, err := parseEnvAssignments(env)
+	if err != nil {
+		return "", err
+	}
 
-	runner := newGoTestRunner()
+	runner := newGoTestRunner(envAssignments)
 	result, err := runner.Run(ctx, sandboxDir, map[string]any{
 		"path":        pkgDirPath,
 		"namePattern": namePattern,
@@ -136,7 +146,7 @@ func RunTests(ctx context.Context, sandboxDir string, pkgDirPath string, namePat
 	return result.ToXML("test-status"), nil
 }
 
-func newGoTestRunner() *cmdrunner.Runner {
+func newGoTestRunner(envAssignments []string) *cmdrunner.Runner {
 	inputSchema := map[string]cmdrunner.InputType{
 		"path":        cmdrunner.InputTypePathDir,
 		"namePattern": cmdrunner.InputTypeString,
@@ -144,16 +154,51 @@ func newGoTestRunner() *cmdrunner.Runner {
 		"Lang":        cmdrunner.InputTypeString,
 	}
 	runner := cmdrunner.NewRunner(inputSchema, []string{"path"})
+	testArgs := []string{
+		"{{ if .verbose }}-v{{ end }}",
+		"{{ if ne .namePattern \"\" }}-run{{ end }}",
+		"{{ if ne .namePattern \"\" }}{{ .namePattern }}{{ end }}",
+		"{{ if eq .path (manifestDir .path) }}.{{ else }}./{{ relativeTo .path (manifestDir .path) }}{{ end }}",
+	}
 	runner.AddCommand(cmdrunner.Command{
 		Command: "go",
-		Args: []string{
+		Args: append([]string{
 			"test",
-			"{{ if .verbose }}-v{{ end }}",
-			"{{ if ne .namePattern \"\" }}-run{{ end }}",
-			"{{ if ne .namePattern \"\" }}{{ .namePattern }}{{ end }}",
-			"{{ if eq .path (manifestDir .path) }}.{{ else }}./{{ relativeTo .path (manifestDir .path) }}{{ end }}",
-		},
+		}, testArgs...),
 		CWD: "{{ manifestDir .path }}",
+		Env: append([]string(nil), envAssignments...),
 	})
 	return runner
+}
+func parseEnvAssignments(env string) ([]string, error) {
+	if env == "" {
+		return nil, nil
+	}
+	assignments := strings.Fields(env)
+	for _, assignment := range assignments {
+		key, _, found := strings.Cut(assignment, "=")
+		if !found || key == "" {
+			return nil, fmt.Errorf("invalid env assignment %q: expected KEY=VALUE", assignment)
+		}
+		if !isValidEnvKey(key) {
+			return nil, fmt.Errorf("invalid env key %q", key)
+		}
+	}
+	return assignments, nil
+}
+func isValidEnvKey(key string) bool {
+	for i := 0; i < len(key); i++ {
+		ch := key[i]
+		if i == 0 {
+			if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+				continue
+			}
+			return false
+		}
+		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }

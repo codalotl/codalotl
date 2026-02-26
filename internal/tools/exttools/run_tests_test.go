@@ -74,3 +74,40 @@ func TestRunTests_Run_VerboseSingleTest(t *testing.T) {
 		assert.Less(t, strings.Index(res.Result, "</test-status>"), strings.Index(res.Result, "<lint-status"))
 	})
 }
+func TestRunTests_Run_WithEnv(t *testing.T) {
+	gocodetesting.WithMultiCode(t, map[string]string{
+		"main.go": gocodetesting.Dedent(`
+			package mypkg
+			import "os"
+			func envValue() string {
+				return os.Getenv("SPECIAL_VALUE")
+			}
+		`),
+		"main_test.go": gocodetesting.Dedent(`
+			package mypkg
+			import "testing"
+			func TestEnvValue(t *testing.T) {
+				if envValue() != "abc" {
+					t.Fatalf("want abc")
+				}
+			}
+		`),
+	}, func(pkg *gocode.Package) {
+		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
+		tool := NewRunTestsTool(auth, nil)
+		call := llmstream.ToolCall{
+			CallID: "call-env",
+			Name:   ToolNameRunTests,
+			Type:   "function_call",
+			Input:  `{"path":"mypkg","test_name":"TestEnvValue","verbose":true,"env":"SPECIAL_VALUE=abc"}`,
+		}
+		res := tool.Run(context.Background(), call)
+		assert.False(t, res.IsError)
+		assert.Nil(t, res.SourceErr)
+		assert.Contains(t, res.Result, `<test-status ok="true">`)
+		assert.Contains(t, res.Result, "$ SPECIAL_VALUE=abc go test -v -run TestEnvValue ./mypkg")
+		assert.Contains(t, res.Result, "=== RUN   TestEnvValue")
+		assert.Contains(t, res.Result, "PASS")
+		assert.Contains(t, res.Result, "</test-status>")
+	})
+}

@@ -397,6 +397,7 @@ func TestRunnerRunEnvTemplating(t *testing.T) {
 	require.Equal(t, ExecStatusCompleted, cr.ExecStatus)
 	require.Equal(t, 0, cr.ExitCode)
 	require.Equal(t, OutcomeSuccess, cr.Outcome)
+	require.Equal(t, []string{"GOPRIVATE=" + privateValue}, cr.Env)
 	require.Equal(t, privateValue, strings.TrimSpace(cr.Output))
 }
 func TestRunnerRunEnvValidation(t *testing.T) {

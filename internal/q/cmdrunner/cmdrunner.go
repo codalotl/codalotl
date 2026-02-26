@@ -169,6 +169,7 @@ func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any)
 			Command:           renderedCommand,
 			Args:              renderedArgs,
 			CWD:               renderedCWD,
+			Env:               append([]string(nil), renderedEnv...),
 			MessageIfNoOutput: cmd.MessageIfNoOutput,
 			ShowCWD:           cmd.ShowCWD,
 			Attrs:             append([]string(nil), cmd.Attrs...),
@@ -256,6 +257,7 @@ type CommandResult struct {
 	Command           string   // Command is the actual, rendered command run.
 	Args              []string // Args are the actual, rendered args used.
 	CWD               string   // CWD is the actual, rendered CWD used.
+	Env               []string // Env are the rendered KEY=VALUE entries configured on the Command.
 	Output            string   // The stdout + stderr of the command.
 	MessageIfNoOutput string   // If non-empty and Output is empty, will render a `message` attribute in `ToXML` set to this value.
 	ShowCWD           bool     // If ShowCWD, adds a `cwd` attribute to the opening tag in `ToXML`, showing the CWD from which the command was run.

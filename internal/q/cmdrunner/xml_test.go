@@ -278,3 +278,23 @@ $ echo world
 
 	require.Equal(t, want, got)
 }
+func TestResultToXMLIncludesEnvBeforeCommand(t *testing.T) {
+	t.Parallel()
+	result := Result{
+		Results: []CommandResult{
+			{
+				Command:    "go",
+				Args:       []string{"test", "./pkg"},
+				Env:        []string{"FOO=1", "BAR=2"},
+				ExecStatus: ExecStatusCompleted,
+				ExitCode:   0,
+				Outcome:    OutcomeSuccess,
+			},
+		},
+	}
+	got := result.ToXML("test-status")
+	want := `<test-status ok="true">
+$ FOO=1 BAR=2 go test ./pkg
+</test-status>`
+	require.Equal(t, want, got)
+}

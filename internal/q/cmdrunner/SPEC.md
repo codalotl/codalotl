@@ -94,6 +94,7 @@ ok      axi/q/cmdrunner 0.003s
 - We print the command after a $ as the first line in the body of the tag.
 - If the command has no output, the output is three lines (tag, $ command, end tag).
 - If `MessageIfNoOutput` is set non-empty on the command and there's no output, a `message` attribute will be set on the opening tag.
+- If `Command.Env` is set, the output prints the Env before the command (ex: `$ MYVAR=1 go test ./q/cmdrunner`).
 
 If the runner has multiple commands:
 - The outter tag (ex: `<test-status>` above) will only contain the `ok` attribute.
