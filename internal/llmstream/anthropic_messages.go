@@ -169,9 +169,17 @@ func anthropicBuildMessageParam(turn Turn) (anthropicapi.MessageParam, bool, err
 				IsError:   typed.IsError,
 			})
 		case ReasoningContent:
-			// Anthropic thinking blocks require a signature to be echoed back. We don't
-			// currently model signatures in ReasoningContent, so skip these on encode.
-			continue
+			if typed.Content == "" {
+				continue
+			}
+			if typed.ProviderState == "" {
+				return anthropicapi.MessageParam{}, false, fmt.Errorf("anthropic reasoning content missing provider_state (provider_id=%q)", typed.ProviderID)
+			}
+			blocks = append(blocks, anthropicapi.ContentBlockParam{
+				Type:      "thinking",
+				Thinking:  typed.Content,
+				Signature: typed.ProviderState,
+			})
 		default:
 			return anthropicapi.MessageParam{}, false, fmt.Errorf("unsupported content part type: %T", part)
 		}
@@ -304,6 +312,7 @@ type anthropicBlockState struct {
 	providerID        string
 	text              strings.Builder
 	thinking          strings.Builder
+	thinkingSignature strings.Builder
 	toolName          string
 	toolCallID        string
 	toolInputJSON     string
@@ -402,12 +411,16 @@ func (s *anthropicStreamState) onContentBlockStart(index int, block *anthropicap
 			return nil, false, nil
 		}
 		state.thinking.WriteString(block.Thinking)
+		if block.Signature != "" {
+			state.thinkingSignature.WriteString(block.Signature)
+		}
 		return &Event{
 			Type:  EventTypeReasoningDelta,
 			Delta: block.Thinking,
 			Reasoning: &ReasoningContent{
-				ProviderID: state.providerID,
-				Content:    state.thinking.String(),
+				ProviderID:    state.providerID,
+				Content:       state.thinking.String(),
+				ProviderState: state.thinkingSignature.String(),
 			},
 		}, false, nil
 	case "tool_use":
@@ -471,7 +484,10 @@ func (s *anthropicStreamState) onContentBlockDelta(index int, delta *anthropicap
 		state.toolInputJSON += delta.PartialJSON
 		return nil, false, nil
 	case "signature_delta":
-		// We don't currently expose signature details on ReasoningContent.
+		if delta.Signature == "" {
+			return nil, false, nil
+		}
+		state.thinkingSignature.WriteString(delta.Signature)
 		return nil, false, nil
 	default:
 		return nil, false, nil
@@ -496,8 +512,9 @@ func (s *anthropicStreamState) onContentBlockStop(index int) (*Event, bool, erro
 		return &Event{
 			Type: EventTypeReasoningDelta,
 			Reasoning: &ReasoningContent{
-				ProviderID: state.providerID,
-				Content:    state.thinking.String(),
+				ProviderID:    state.providerID,
+				Content:       state.thinking.String(),
+				ProviderState: state.thinkingSignature.String(),
 			},
 			Done: true,
 		}, false, nil
@@ -562,8 +579,9 @@ func (s *anthropicStreamState) buildTurn() (Turn, error) {
 			})
 		case "thinking":
 			parts = append(parts, ReasoningContent{
-				ProviderID: state.providerID,
-				Content:    state.thinking.String(),
+				ProviderID:    state.providerID,
+				Content:       state.thinking.String(),
+				ProviderState: state.thinkingSignature.String(),
 			})
 		case "tool_use":
 			input, err := normalizeToolCallInputJSON(state.toolInputJSON)

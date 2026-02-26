@@ -12,8 +12,14 @@ type ContentPart interface {
 //   - If providers have IDs for their reasoning objects, ID will be set.
 //   - If providers have multiple reasoning items per ID (ex: OpenAI Responses), there may be multiple ReasoningContents with the same ID.
 type ReasoningContent struct {
-	ProviderID string `json:"provider_id"` // ProviderID is provider-specific (if the provider IDs its reasoning text).
-	Content    string `json:"content"`
+	// ProviderID is provider-specific (if the provider IDs its reasoning text).
+	ProviderID string `json:"provider_id"`
+
+	Content string `json:"content"`
+
+	// ProviderState carries provider-specific opaque reasoning state needed to safely round-trip reasoning across turns. For Anthropic this stores the thinking signature;
+	// future providers may use other opaque formats.
+	ProviderState string `json:"provider_state,omitempty"`
 }
 
 func (c ReasoningContent) String() string {
