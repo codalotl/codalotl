@@ -61,6 +61,82 @@ func TestEdit_Run_ReplaceAll(t *testing.T) {
 	assert.Equal(t, "bar bar bar", string(b))
 }
 
+func TestEdit_Run_PostChecks(t *testing.T) {
+	sandbox := t.TempDir()
+	subDir := filepath.Join(sandbox, "sub")
+	require.NoError(t, os.Mkdir(subDir, 0o755))
+	path := filepath.Join(subDir, "note.txt")
+	require.NoError(t, os.WriteFile(path, []byte("before world\n"), 0o644))
+
+	const diagnosticsOutput = "<diagnostics-status ok=\"true\">diag</diagnostics-status>"
+	const lintOutput = "<lint-status ok=\"true\">lint</lint-status>"
+
+	postChecks := &EditPostChecks{
+		RunDiagnostics: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			assert.Equal(t, sandbox, sandboxDir)
+			assert.Equal(t, subDir, targetDir)
+			return diagnosticsOutput, nil
+		},
+		FixLints: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			assert.Equal(t, sandbox, sandboxDir)
+			assert.Equal(t, subDir, targetDir)
+			return lintOutput, nil
+		},
+	}
+
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewEditTool(auth, postChecks)
+	call := llmstream.ToolCall{
+		CallID: "call-post-checks",
+		Name:   ToolNameEdit,
+		Type:   "function_call",
+		Input:  `{"path":"sub/note.txt","old_text":"before","new_text":"after"}`,
+	}
+
+	res := tool.Run(context.Background(), call)
+	assert.False(t, res.IsError)
+	assert.Nil(t, res.SourceErr)
+	expected := fmt.Sprintf("Edited file: %s\n%s\n%s", filepath.Join("sub", "note.txt"), diagnosticsOutput, lintOutput)
+	assert.Equal(t, expected, res.Result)
+
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "after world\n", string(b))
+}
+
+func TestEdit_Run_PostChecksError(t *testing.T) {
+	sandbox := t.TempDir()
+	path := filepath.Join(sandbox, "note.txt")
+	require.NoError(t, os.WriteFile(path, []byte("before world\n"), 0o644))
+
+	postChecks := &EditPostChecks{
+		RunDiagnostics: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			assert.Equal(t, sandbox, sandboxDir)
+			assert.Equal(t, sandbox, targetDir)
+			return "", fmt.Errorf("diagnostics failed")
+		},
+	}
+
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewEditTool(auth, postChecks)
+	call := llmstream.ToolCall{
+		CallID: "call-post-checks-error",
+		Name:   ToolNameEdit,
+		Type:   "function_call",
+		Input:  `{"path":"note.txt","old_text":"before","new_text":"after"}`,
+	}
+
+	res := tool.Run(context.Background(), call)
+	assert.False(t, res.IsError)
+	assert.Nil(t, res.SourceErr)
+	assert.Contains(t, res.Result, "Edited file: note.txt")
+	assert.Contains(t, res.Result, "Post edit checks errored: diagnostics failed")
+
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "after world\n", string(b))
+}
+
 func TestEdit_Run_PathIsRequired(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)

@@ -21,11 +21,6 @@ var descriptionApplyPatchFunction string
 
 const ToolNameApplyPatch = "apply_patch"
 
-type ApplyPatchPostChecks struct {
-	RunDiagnostics func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
-	FixLints       func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
-}
-
 func NewApplyPatchTool(authorizer authdomain.Authorizer, useFreeformTool bool, postChecks *ApplyPatchPostChecks) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolApplyPatch{
@@ -125,7 +120,7 @@ type applyPatchFunctionParams struct {
 }
 
 func (t *toolApplyPatch) shouldRunPostChecks() bool {
-	return t.postChecks != nil && (t.postChecks.RunDiagnostics != nil || t.postChecks.FixLints != nil)
+	return shouldRunPostChecks(t.postChecks)
 }
 
 func (t *toolApplyPatch) extractPatch(call llmstream.ToolCall) (string, bool, error) {
@@ -222,78 +217,9 @@ func (t *toolApplyPatch) resolvePatchPath(raw string) (string, error) {
 }
 
 func (t *toolApplyPatch) runPostApplyChecks(ctx context.Context, changes []applypatch.FileChange) ([]string, error) {
-	if len(changes) == 0 || !t.shouldRunPostChecks() {
-		return nil, nil
-	}
-
-	dirSet := make(map[string]struct{})
+	changedPaths := make([]string, 0, len(changes))
 	for _, change := range changes {
-		abs := filepath.Join(t.sandboxAbsDir, filepath.FromSlash(change.Path))
-		if !t.isWithinSandbox(abs) {
-			continue
-		}
-		dir := filepath.Dir(abs)
-		if dir == "" || dir == "." {
-			dir = t.sandboxAbsDir
-		}
-		dir = filepath.Clean(dir)
-		if !t.isWithinSandbox(dir) {
-			continue
-		}
-		dirSet[dir] = struct{}{}
+		changedPaths = append(changedPaths, change.Path)
 	}
-
-	if len(dirSet) == 0 {
-		return nil, nil
-	}
-
-	if len(dirSet) > 1 {
-		// TODO: Support diagnostics and lint checks for patches that span multiple directories.
-		return nil, nil
-	}
-
-	var targetDir string
-	for dir := range dirSet {
-		targetDir = dir
-	}
-
-	var outputs []string
-	if t.postChecks.RunDiagnostics != nil {
-		diagnosticsOutput, err := t.postChecks.RunDiagnostics(ctx, t.sandboxAbsDir, targetDir)
-		if err != nil {
-			return nil, err
-		}
-		outputs = append(outputs, diagnosticsOutput)
-	}
-
-	if t.postChecks.FixLints != nil {
-		lintOutput, err := t.postChecks.FixLints(ctx, t.sandboxAbsDir, targetDir)
-		if err != nil {
-			return nil, err
-		}
-		outputs = append(outputs, lintOutput)
-	}
-
-	return outputs, nil
-}
-
-func (t *toolApplyPatch) isWithinSandbox(path string) bool {
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(t.sandboxAbsDir, path)
-	}
-	rel, err := filepath.Rel(t.sandboxAbsDir, path)
-	if err != nil {
-		return false
-	}
-	if rel == "." {
-		return true
-	}
-	if rel == ".." {
-		return false
-	}
-	prefix := ".." + string(filepath.Separator)
-	if strings.HasPrefix(rel, prefix) {
-		return false
-	}
-	return !strings.HasPrefix(rel, "..")
+	return runPostChecks(ctx, t.sandboxAbsDir, t.postChecks, changedPaths)
 }

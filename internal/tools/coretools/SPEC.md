@@ -15,6 +15,7 @@ Some LLMs are trained to use specific tools, and will do so better than other LL
 ### edit
 
 The `edit` tool edits files by find and replace. Applies it with `applypatch.Replace`.
+- Afterwards, runs diagnostics (checks for build errors) and configured lints.
 
 Params:
 - `path`: absolute or relative

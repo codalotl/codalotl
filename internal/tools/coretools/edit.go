@@ -19,6 +19,7 @@ const ToolNameEdit = "edit"
 type toolEdit struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
+	postChecks    *EditPostChecks
 }
 
 type ParamsEdit struct {
@@ -29,11 +30,16 @@ type ParamsEdit struct {
 	RequestPermission bool    `json:"request_permission"`
 }
 
-func NewEditTool(authorizer authdomain.Authorizer) llmstream.Tool {
+func NewEditTool(authorizer authdomain.Authorizer, postChecks ...*EditPostChecks) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
+	var configuredPostChecks *EditPostChecks
+	if len(postChecks) > 0 {
+		configuredPostChecks = postChecks[0]
+	}
 	return &toolEdit{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
+		postChecks:    configuredPostChecks,
 	}
 }
 
@@ -72,7 +78,6 @@ func (t *toolEdit) Info() llmstream.ToolInfo {
 }
 
 func (t *toolEdit) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
-	_ = ctx
 	var params ParamsEdit
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
 		return NewToolErrorResult(call, fmt.Sprintf("error parsing parameters: %s", err), err)
@@ -107,10 +112,19 @@ func (t *toolEdit) Run(ctx context.Context, call llmstream.ToolCall) llmstream.T
 	if displayPath == "" {
 		displayPath = absPath
 	}
+	result := fmt.Sprintf("Edited file: %s", displayPath)
+	if shouldRunPostChecks(t.postChecks) {
+		extraOutputs, err := runPostChecks(ctx, t.sandboxAbsDir, t.postChecks, []string{absPath})
+		if err != nil {
+			result = result + "\n\nPost edit checks errored: " + err.Error()
+		} else if len(extraOutputs) > 0 {
+			result = result + "\n" + strings.Join(extraOutputs, "\n")
+		}
+	}
 	return llmstream.ToolResult{
 		CallID: call.CallID,
 		Name:   call.Name,
 		Type:   call.Type,
-		Result: fmt.Sprintf("Edited file: %s", displayPath),
+		Result: result,
 	}
 }
