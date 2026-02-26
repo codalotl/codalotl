@@ -26,6 +26,7 @@ Params:
 ### write
 
 The `write` tool creates a new file with content, or replaces it with content if it already exists.
+- Afterwards, runs diagnostics (checks for build errors) and configured lints.
 
 Params:
 - `path`: absolute or relative

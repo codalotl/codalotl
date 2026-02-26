@@ -13,6 +13,7 @@ type ToolPostChecks struct {
 
 type ApplyPatchPostChecks = ToolPostChecks
 type EditPostChecks = ToolPostChecks
+type WritePostChecks = ToolPostChecks
 
 func shouldRunPostChecks(postChecks *ToolPostChecks) bool {
 	return postChecks != nil && (postChecks.RunDiagnostics != nil || postChecks.FixLints != nil)

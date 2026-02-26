@@ -99,6 +99,77 @@ func TestWrite_Run_CreatesParentDirectories(t *testing.T) {
 	assert.Equal(t, "abc", string(b))
 }
 
+func TestWrite_Run_PostChecks(t *testing.T) {
+	sandbox := t.TempDir()
+	subDir := filepath.Join(sandbox, "a", "b")
+
+	const diagnosticsOutput = "<diagnostics-status ok=\"true\">diag</diagnostics-status>"
+	const lintOutput = "<lint-status ok=\"true\">lint</lint-status>"
+
+	postChecks := &WritePostChecks{
+		RunDiagnostics: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			assert.Equal(t, sandbox, sandboxDir)
+			assert.Equal(t, subDir, targetDir)
+			return diagnosticsOutput, nil
+		},
+		FixLints: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			assert.Equal(t, sandbox, sandboxDir)
+			assert.Equal(t, subDir, targetDir)
+			return lintOutput, nil
+		},
+	}
+
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewWriteTool(auth, postChecks)
+	call := llmstream.ToolCall{
+		CallID: "call-post-checks",
+		Name:   ToolNameWrite,
+		Type:   "function_call",
+		Input:  `{"path":"a/b/note.txt","content":"hello\n"}`,
+	}
+
+	res := tool.Run(context.Background(), call)
+	assert.False(t, res.IsError)
+	assert.Nil(t, res.SourceErr)
+	expected := fmt.Sprintf("Wrote file: %s\n%s\n%s", filepath.Join("a", "b", "note.txt"), diagnosticsOutput, lintOutput)
+	assert.Equal(t, expected, res.Result)
+
+	b, err := os.ReadFile(filepath.Join(subDir, "note.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello\n", string(b))
+}
+
+func TestWrite_Run_PostChecksError(t *testing.T) {
+	sandbox := t.TempDir()
+
+	postChecks := &WritePostChecks{
+		RunDiagnostics: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			assert.Equal(t, sandbox, sandboxDir)
+			assert.Equal(t, sandbox, targetDir)
+			return "", fmt.Errorf("diagnostics failed")
+		},
+	}
+
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewWriteTool(auth, postChecks)
+	call := llmstream.ToolCall{
+		CallID: "call-post-checks-error",
+		Name:   ToolNameWrite,
+		Type:   "function_call",
+		Input:  `{"path":"note.txt","content":"hello\n"}`,
+	}
+
+	res := tool.Run(context.Background(), call)
+	assert.False(t, res.IsError)
+	assert.Nil(t, res.SourceErr)
+	assert.Contains(t, res.Result, "Wrote file: note.txt")
+	assert.Contains(t, res.Result, "Post write checks errored: diagnostics failed")
+
+	b, err := os.ReadFile(filepath.Join(sandbox, "note.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello\n", string(b))
+}
+
 func TestWrite_Run_PathIsDirectory(t *testing.T) {
 	sandbox := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(sandbox, "adir"), 0o755))

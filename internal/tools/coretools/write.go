@@ -20,6 +20,7 @@ const ToolNameWrite = "write"
 type toolWrite struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
+	postChecks    *WritePostChecks
 }
 type ParamsWrite struct {
 	Path              string  `json:"path"`
@@ -27,11 +28,16 @@ type ParamsWrite struct {
 	RequestPermission bool    `json:"request_permission"`
 }
 
-func NewWriteTool(authorizer authdomain.Authorizer) llmstream.Tool {
+func NewWriteTool(authorizer authdomain.Authorizer, postChecks ...*WritePostChecks) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
+	var configuredPostChecks *WritePostChecks
+	if len(postChecks) > 0 {
+		configuredPostChecks = postChecks[0]
+	}
 	return &toolWrite{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
+		postChecks:    configuredPostChecks,
 	}
 }
 func (t *toolWrite) Name() string {
@@ -59,7 +65,6 @@ func (t *toolWrite) Info() llmstream.ToolInfo {
 	}
 }
 func (t *toolWrite) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
-	_ = ctx
 	var params ParamsWrite
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
 		return NewToolErrorResult(call, fmt.Sprintf("error parsing parameters: %s", err), err)
@@ -90,10 +95,19 @@ func (t *toolWrite) Run(ctx context.Context, call llmstream.ToolCall) llmstream.
 	if displayPath == "" {
 		displayPath = absPath
 	}
+	result := fmt.Sprintf("Wrote file: %s", displayPath)
+	if shouldRunPostChecks(t.postChecks) {
+		extraOutputs, err := runPostChecks(ctx, t.sandboxAbsDir, t.postChecks, []string{absPath})
+		if err != nil {
+			result = result + "\n\nPost write checks errored: " + err.Error()
+		} else if len(extraOutputs) > 0 {
+			result = result + "\n" + strings.Join(extraOutputs, "\n")
+		}
+	}
 	return llmstream.ToolResult{
 		CallID: call.CallID,
 		Name:   call.Name,
 		Type:   call.Type,
-		Result: fmt.Sprintf("Wrote file: %s", displayPath),
+		Result: result,
 	}
 }
