@@ -112,14 +112,26 @@ func decodeEvent(sseEvent sseclient.Event) (Event, error) {
 
 	case EventTypeContentBlockDelta:
 		var payload struct {
-			Index int               `json:"index"`
-			Delta ContentBlockDelta `json:"delta"`
+			Index int `json:"index"`
+			Delta struct {
+				Type        string `json:"type"`
+				Text        string `json:"text"`
+				Thinking    string `json:"thinking"`
+				PartialJSON string `json:"partial_json"`
+				Signature   string `json:"signature"`
+			} `json:"delta"`
 		}
 		if err := json.Unmarshal(raw, &payload); err != nil {
 			return Event{}, fmt.Errorf("anthropic: decode content_block_delta: %w", err)
 		}
 		event.Index = payload.Index
-		event.Delta = &payload.Delta
+		event.Delta = &ContentBlockDelta{
+			Type:        payload.Delta.Type,
+			Text:        payload.Delta.Text,
+			Thinking:    payload.Delta.Thinking,
+			PartialJSON: payload.Delta.PartialJSON,
+			Signature:   payload.Delta.Signature,
+		}
 
 	case EventTypeContentBlockStop:
 		var payload struct {
