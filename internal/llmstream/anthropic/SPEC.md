@@ -72,6 +72,7 @@ type MessageRequest struct {
 	ServiceTier   string // "", "auto", or "standard_only"
 	StopSequences []string
 	Thinking      *ThinkingParam
+	OutputConfig  *OutputConfigParam
 	CacheControl  *CacheControlParam
 }
 
@@ -108,12 +109,20 @@ type ToolChoiceParam struct {
 }
 
 type ThinkingParam struct {
-	Type         string // "enabled" or "disabled"
+	Type         string // "adaptive", "enabled", or "disabled"
 	BudgetTokens int64  // required when Type == "enabled"
+}
+type OutputConfigParam struct {
+	Effort string
+	Format *OutputFormatParam
+}
+type OutputFormatParam struct {
+	Type   string
+	Schema json.RawMessage // JSON Schema object
 }
 type CacheControlParam struct {
 	Type string // "ephemeral"
-	TTL  string // "5m" or "1h"
+	TTL  string // "5m" or "1h" ("5m" is default)
 }
 
 // StreamMessages starts POST /v1/messages in streaming mode.

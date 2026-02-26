@@ -57,6 +57,13 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	stream, err := client.StreamMessages(context.Background(), MessageRequest{
 		Model:     "claude-test",
 		MaxTokens: 128,
+		OutputConfig: &OutputConfigParam{
+			Effort: "high",
+			Format: &OutputFormatParam{
+				Type:   "json_schema",
+				Schema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`),
+			},
+		},
 		CacheControl: &CacheControlParam{
 			Type: "ephemeral",
 			TTL:  "5m",
@@ -93,6 +100,19 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	var bodyPayload map[string]any
 	require.NoError(t, json.Unmarshal(seen.Body, &bodyPayload))
 	assert.Equal(t, true, bodyPayload["stream"])
+	outputConfig, ok := bodyPayload["output_config"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "high", outputConfig["effort"])
+	format, ok := outputConfig["format"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "json_schema", format["type"])
+	schema, ok := format["schema"].(map[string]any)
+	require.True(t, ok)
+	properties, ok := schema["properties"].(map[string]any)
+	require.True(t, ok)
+	city, ok := properties["city"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "string", city["type"])
 	assert.Contains(t, string(seen.Body), "\"tool_use_id\":\"tool_1\"")
 	assert.Contains(t, string(seen.Body), "\"content\":\"done\"")
 	assert.Contains(t, string(seen.Body), "\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"5m\"}")

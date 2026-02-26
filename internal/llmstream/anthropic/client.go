@@ -91,6 +91,7 @@ type streamMessageRequest struct {
 	ServiceTier   string             `json:"service_tier,omitempty"`
 	StopSequences []string           `json:"stop_sequences,omitempty"`
 	Thinking      *ThinkingParam     `json:"thinking,omitempty"`
+	OutputConfig  *OutputConfigParam `json:"output_config,omitempty"`
 	CacheControl  *CacheControlParam `json:"cache_control,omitempty"`
 	Stream        bool               `json:"stream"`
 }
@@ -113,6 +114,7 @@ func (c *Client) StreamMessages(ctx context.Context, req MessageRequest) (*Strea
 		ServiceTier:   req.ServiceTier,
 		StopSequences: req.StopSequences,
 		Thinking:      req.Thinking,
+		OutputConfig:  req.OutputConfig,
 		CacheControl:  req.CacheControl,
 		Stream:        true,
 	}

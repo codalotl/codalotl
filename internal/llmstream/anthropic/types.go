@@ -17,6 +17,7 @@ type MessageRequest struct {
 	ServiceTier   string // "", "auto", or "standard_only"
 	StopSequences []string
 	Thinking      *ThinkingParam
+	OutputConfig  *OutputConfigParam
 	CacheControl  *CacheControlParam
 }
 
@@ -53,12 +54,36 @@ type ToolChoiceParam struct {
 }
 
 type ThinkingParam struct {
-	Type         string // "enabled" or "disabled"
+	Type         string // "adaptive", "enabled", or "disabled"
 	BudgetTokens int64  // required when Type == "enabled"
 }
+type OutputConfigParam struct {
+	Effort string
+	Format *OutputFormatParam
+}
+type OutputFormatParam struct {
+	Type   string
+	Schema json.RawMessage // JSON Schema object
+}
+type outputConfigParamJSON struct {
+	Effort string             `json:"effort,omitempty"`
+	Format *OutputFormatParam `json:"format,omitempty"`
+}
+type outputFormatParamJSON struct {
+	Type   string          `json:"type"`
+	Schema json.RawMessage `json:"schema"`
+}
+
+func (o OutputConfigParam) MarshalJSON() ([]byte, error) {
+	return json.Marshal(outputConfigParamJSON(o))
+}
+func (o OutputFormatParam) MarshalJSON() ([]byte, error) {
+	return json.Marshal(outputFormatParamJSON(o))
+}
+
 type CacheControlParam struct {
 	Type string // "ephemeral"
-	TTL  string // "5m" or "1h"
+	TTL  string // "5m" or "1h" ("5m" is default)
 }
 
 type messageParamJSON struct {
@@ -67,10 +92,7 @@ type messageParamJSON struct {
 }
 
 func (m MessageParam) MarshalJSON() ([]byte, error) {
-	return json.Marshal(messageParamJSON{
-		Role:    m.Role,
-		Content: m.Content,
-	})
+	return json.Marshal(messageParamJSON(m))
 }
 
 type contentBlockParamJSON struct {
@@ -103,82 +125,38 @@ func (c ContentBlockParam) MarshalJSON() ([]byte, error) {
 	})
 }
 
+type toolParamJSON struct {
+	Name         string             `json:"name"`
+	Description  string             `json:"description,omitempty"`
+	InputSchema  json.RawMessage    `json:"input_schema"`
+	CacheControl *CacheControlParam `json:"cache_control,omitempty"`
+}
+type toolChoiceParamJSON struct {
+	Type string `json:"type"`
+	Name string `json:"name,omitempty"`
+}
+type thinkingParamJSON struct {
+	Type         string `json:"type"`
+	BudgetTokens int64  `json:"budget_tokens,omitempty"`
+}
+type cacheControlParamJSON struct {
+	Type string `json:"type"`
+	TTL  string `json:"ttl,omitempty"`
+}
+
 func (t ToolParam) MarshalJSON() ([]byte, error) {
-	type toolParamJSON struct {
-		Name         string             `json:"name"`
-		Description  string             `json:"description,omitempty"`
-		InputSchema  json.RawMessage    `json:"input_schema"`
-		CacheControl *CacheControlParam `json:"cache_control,omitempty"`
-	}
-	return json.Marshal(toolParamJSON{
-		Name:         t.Name,
-		Description:  t.Description,
-		InputSchema:  t.InputSchema,
-		CacheControl: t.CacheControl,
-	})
+	return json.Marshal(toolParamJSON(t))
 }
 
 func (t ToolChoiceParam) MarshalJSON() ([]byte, error) {
-	type toolChoiceParamJSON struct {
-		Type string `json:"type"`
-		Name string `json:"name,omitempty"`
-	}
-	return json.Marshal(toolChoiceParamJSON{
-		Type: t.Type,
-		Name: t.Name,
-	})
+	return json.Marshal(toolChoiceParamJSON(t))
 }
 
 func (t ThinkingParam) MarshalJSON() ([]byte, error) {
-	type thinkingParamJSON struct {
-		Type         string `json:"type"`
-		BudgetTokens int64  `json:"budget_tokens,omitempty"`
-	}
-	return json.Marshal(thinkingParamJSON{
-		Type:         t.Type,
-		BudgetTokens: t.BudgetTokens,
-	})
+	return json.Marshal(thinkingParamJSON(t))
 }
 func (c CacheControlParam) MarshalJSON() ([]byte, error) {
-	type cacheControlParamJSON struct {
-		Type string `json:"type"`
-		TTL  string `json:"ttl,omitempty"`
-	}
-	return json.Marshal(cacheControlParamJSON{
-		Type: c.Type,
-		TTL:  c.TTL,
-	})
-}
-
-type messageRequestJSON struct {
-	Model         string             `json:"model"`
-	MaxTokens     int64              `json:"max_tokens"`
-	System        string             `json:"system,omitempty"`
-	Messages      []MessageParam     `json:"messages"`
-	Tools         []ToolParam        `json:"tools,omitempty"`
-	ToolChoice    *ToolChoiceParam   `json:"tool_choice,omitempty"`
-	Temperature   *float64           `json:"temperature,omitempty"`
-	ServiceTier   string             `json:"service_tier,omitempty"`
-	StopSequences []string           `json:"stop_sequences,omitempty"`
-	Thinking      *ThinkingParam     `json:"thinking,omitempty"`
-	CacheControl  *CacheControlParam `json:"cache_control,omitempty"`
-}
-
-func (m MessageRequest) marshalRequestBody() ([]byte, error) {
-	req := messageRequestJSON{
-		Model:         m.Model,
-		MaxTokens:     m.MaxTokens,
-		System:        m.System,
-		Messages:      m.Messages,
-		Tools:         m.Tools,
-		ToolChoice:    m.ToolChoice,
-		Temperature:   m.Temperature,
-		ServiceTier:   m.ServiceTier,
-		StopSequences: m.StopSequences,
-		Thinking:      m.Thinking,
-		CacheControl:  m.CacheControl,
-	}
-	return json.Marshal(req)
+	return json.Marshal(cacheControlParamJSON(c))
 }
 
 type EventType string
