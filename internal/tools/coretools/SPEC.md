@@ -12,6 +12,16 @@ Some LLMs are trained to use specific tools, and will do so better than other LL
 
 (not all tools are reflected here yet)
 
+### edit
+
+The `edit` tool edits files by find and replace. Applies it with `applypatch.Replace`.
+
+Params:
+- `path`: absolute or relative
+- `old_text`: old text to find in the file
+- `new_text`: new text to replace it with
+- `replace_all`: bool (default: false) - replace all occurances of old_text with new_text.
+
 ### write
 
 The `write` tool creates a new file with content, or replaces it with content if it already exists.
