@@ -57,7 +57,7 @@ type ToolResult struct {
 	IsError bool   `json:"is_error"`
 
 	// If IsError, SourceError may optionally be set if the error was due to a Go-ism that returned an error. For instance, if os.Open fails to open a file and returns
-	// an error, we can store the error here. On th eother hand, if a `read_file` tool indicates a path that is a directory, we could detect it with IsDir and return
+	// an error, we can store the error here. On the other hand, if a `read_file` tool indicates a path that is a directory, we could detect it with IsDir and return
 	// an error result, but no SourceErr would exist.
 	SourceErr error `json:"-"`
 }
