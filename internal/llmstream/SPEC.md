@@ -69,29 +69,31 @@ type Turn struct {
 type ContentPart interface{ isPart() }
 
 type TextContent struct {
-	ProviderID string
-	Content    string
+	ProviderID string `json:"provider_id"`
+	Content    string `json:"content"`
 }
 
 type ReasoningContent struct {
-	ProviderID string
-	Content    string
+	ProviderID    string `json:"provider_id"`
+	Content       string `json:"content"`
+	ProviderState string `json:"provider_state,omitempty"`
 }
 
 type ToolCall struct {
-	ProviderID string
-	CallID     string
-	Name       string
-	Type       string
-	Input      string
+	ProviderID string `json:"provider_id"`
+	CallID     string `json:"call_id"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Input      string `json:"input"`
 }
 
 type ToolResult struct {
-	CallID  string
-	Name    string
-	Type    string
-	Result  string
-	IsError bool
+	CallID    string `json:"call_id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Result    string `json:"result"`
+	IsError   bool   `json:"is_error"`
+	SourceErr error  `json:"-"`
 }
 
 type Tool interface {
