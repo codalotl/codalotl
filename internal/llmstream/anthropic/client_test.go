@@ -37,9 +37,9 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("request-id", "req_123")
-		_, _ = io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"usage\":{\"input_tokens\":1,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0}}}\n\n")
+		_, _ = io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"usage\":{\"input_tokens\":1,\"cache_creation_input_tokens\":10,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":10}}}}\n\n")
 		_, _ = io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n")
-		_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":\"\"},\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":3}}\n\n")
+		_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":\"\"},\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":10,\"cache_read_input_tokens\":7,\"output_tokens\":3,\"cache_creation\":{\"ephemeral_5m_input_tokens\":10}}}\n\n")
 		_, _ = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 		_, _ = io.WriteString(w, "event: ping\ndata: {\"type\":\"ping\"}\n\n")
 	}))
@@ -57,11 +57,22 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	stream, err := client.StreamMessages(context.Background(), MessageRequest{
 		Model:     "claude-test",
 		MaxTokens: 128,
+		CacheControl: &CacheControlParam{
+			Type: "ephemeral",
+			TTL:  "5m",
+		},
 		Messages: []MessageParam{
 			{
 				Role: "user",
 				Content: []ContentBlockParam{
-					{Type: "text", Text: "hello"},
+					{
+						Type: "text",
+						Text: "hello",
+						CacheControl: &CacheControlParam{
+							Type: "ephemeral",
+							TTL:  "5m",
+						},
+					},
 					{Type: "tool_result", ToolUseID: "tool_1", Result: "done"},
 				},
 			},
@@ -84,6 +95,7 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	assert.Equal(t, true, bodyPayload["stream"])
 	assert.Contains(t, string(seen.Body), "\"tool_use_id\":\"tool_1\"")
 	assert.Contains(t, string(seen.Body), "\"content\":\"done\"")
+	assert.Contains(t, string(seen.Body), "\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"5m\"}")
 	assert.Equal(t, "req_123", stream.RequestID())
 
 	event, err := stream.Recv()
@@ -91,6 +103,8 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	assert.Equal(t, EventTypeMessageStart, event.Type)
 	require.NotNil(t, event.Message)
 	assert.Equal(t, "msg_1", event.Message.ID)
+	assert.Equal(t, int64(10), event.Message.Usage.CacheCreationInputTokens)
+	assert.Equal(t, int64(10), event.Message.Usage.CacheCreation.Ephemeral5mInputTokens)
 
 	event, err = stream.Recv()
 	require.NoError(t, err)
@@ -106,6 +120,7 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	require.NotNil(t, event.MessageDelta)
 	assert.Equal(t, "end_turn", event.MessageDelta.StopReason)
 	assert.Equal(t, int64(3), event.MessageDelta.Usage.OutputTokens)
+	assert.Equal(t, int64(7), event.MessageDelta.Usage.CacheReadInputTokens)
 
 	event, err = stream.Recv()
 	require.NoError(t, err)

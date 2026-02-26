@@ -81,17 +81,18 @@ func New(apiKey string, opts ...Option) *Client {
 }
 
 type streamMessageRequest struct {
-	Model         string           `json:"model"`
-	MaxTokens     int64            `json:"max_tokens"`
-	System        string           `json:"system,omitempty"`
-	Messages      []MessageParam   `json:"messages"`
-	Tools         []ToolParam      `json:"tools,omitempty"`
-	ToolChoice    *ToolChoiceParam `json:"tool_choice,omitempty"`
-	Temperature   *float64         `json:"temperature,omitempty"`
-	ServiceTier   string           `json:"service_tier,omitempty"`
-	StopSequences []string         `json:"stop_sequences,omitempty"`
-	Thinking      *ThinkingParam   `json:"thinking,omitempty"`
-	Stream        bool             `json:"stream"`
+	Model         string             `json:"model"`
+	MaxTokens     int64              `json:"max_tokens"`
+	System        string             `json:"system,omitempty"`
+	Messages      []MessageParam     `json:"messages"`
+	Tools         []ToolParam        `json:"tools,omitempty"`
+	ToolChoice    *ToolChoiceParam   `json:"tool_choice,omitempty"`
+	Temperature   *float64           `json:"temperature,omitempty"`
+	ServiceTier   string             `json:"service_tier,omitempty"`
+	StopSequences []string           `json:"stop_sequences,omitempty"`
+	Thinking      *ThinkingParam     `json:"thinking,omitempty"`
+	CacheControl  *CacheControlParam `json:"cache_control,omitempty"`
+	Stream        bool               `json:"stream"`
 }
 
 // StreamMessages starts POST /v1/messages in streaming mode.
@@ -112,6 +113,7 @@ func (c *Client) StreamMessages(ctx context.Context, req MessageRequest) (*Strea
 		ServiceTier:   req.ServiceTier,
 		StopSequences: req.StopSequences,
 		Thinking:      req.Thinking,
+		CacheControl:  req.CacheControl,
 		Stream:        true,
 	}
 

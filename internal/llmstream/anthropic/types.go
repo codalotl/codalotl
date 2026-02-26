@@ -17,6 +17,7 @@ type MessageRequest struct {
 	ServiceTier   string // "", "auto", or "standard_only"
 	StopSequences []string
 	Thinking      *ThinkingParam
+	CacheControl  *CacheControlParam
 }
 
 type MessageParam struct {
@@ -26,22 +27,24 @@ type MessageParam struct {
 
 // ContentBlockParam covers block types needed by llmstream conversation encoding.
 type ContentBlockParam struct {
-	Type      string // "text", "tool_use", "tool_result", "thinking", "redacted_thinking"
-	Text      string // text
-	ID        string // tool_use
-	Name      string
-	Input     json.RawMessage
-	ToolUseID string // tool_result
-	Result    string
-	IsError   bool
-	Thinking  string // thinking
-	Signature string
+	Type         string // "text", "tool_use", "tool_result", "thinking", "redacted_thinking"
+	Text         string // text
+	ID           string // tool_use
+	Name         string
+	Input        json.RawMessage
+	ToolUseID    string // tool_result
+	Result       string
+	IsError      bool
+	Thinking     string // thinking
+	Signature    string
+	CacheControl *CacheControlParam // CacheControl configures prompt caching for this content block.
 }
 
 type ToolParam struct {
-	Name        string
-	Description string
-	InputSchema json.RawMessage // JSON Schema object
+	Name         string
+	Description  string
+	InputSchema  json.RawMessage // JSON Schema object
+	CacheControl *CacheControlParam
 }
 
 type ToolChoiceParam struct {
@@ -52,6 +55,10 @@ type ToolChoiceParam struct {
 type ThinkingParam struct {
 	Type         string // "enabled" or "disabled"
 	BudgetTokens int64  // required when Type == "enabled"
+}
+type CacheControlParam struct {
+	Type string // "ephemeral"
+	TTL  string // "5m" or "1h"
 }
 
 type messageParamJSON struct {
@@ -67,43 +74,47 @@ func (m MessageParam) MarshalJSON() ([]byte, error) {
 }
 
 type contentBlockParamJSON struct {
-	Type      string          `json:"type"`
-	Text      string          `json:"text,omitempty"`
-	ID        string          `json:"id,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   string          `json:"content,omitempty"`
-	IsError   bool            `json:"is_error,omitempty"`
-	Thinking  string          `json:"thinking,omitempty"`
-	Signature string          `json:"signature,omitempty"`
+	Type         string             `json:"type"`
+	Text         string             `json:"text,omitempty"`
+	ID           string             `json:"id,omitempty"`
+	Name         string             `json:"name,omitempty"`
+	Input        json.RawMessage    `json:"input,omitempty"`
+	ToolUseID    string             `json:"tool_use_id,omitempty"`
+	Content      string             `json:"content,omitempty"`
+	IsError      bool               `json:"is_error,omitempty"`
+	Thinking     string             `json:"thinking,omitempty"`
+	Signature    string             `json:"signature,omitempty"`
+	CacheControl *CacheControlParam `json:"cache_control,omitempty"`
 }
 
 func (c ContentBlockParam) MarshalJSON() ([]byte, error) {
 	return json.Marshal(contentBlockParamJSON{
-		Type:      c.Type,
-		Text:      c.Text,
-		ID:        c.ID,
-		Name:      c.Name,
-		Input:     c.Input,
-		ToolUseID: c.ToolUseID,
-		Content:   c.Result,
-		IsError:   c.IsError,
-		Thinking:  c.Thinking,
-		Signature: c.Signature,
+		Type:         c.Type,
+		Text:         c.Text,
+		ID:           c.ID,
+		Name:         c.Name,
+		Input:        c.Input,
+		ToolUseID:    c.ToolUseID,
+		Content:      c.Result,
+		IsError:      c.IsError,
+		Thinking:     c.Thinking,
+		Signature:    c.Signature,
+		CacheControl: c.CacheControl,
 	})
 }
 
 func (t ToolParam) MarshalJSON() ([]byte, error) {
 	type toolParamJSON struct {
-		Name        string          `json:"name"`
-		Description string          `json:"description,omitempty"`
-		InputSchema json.RawMessage `json:"input_schema"`
+		Name         string             `json:"name"`
+		Description  string             `json:"description,omitempty"`
+		InputSchema  json.RawMessage    `json:"input_schema"`
+		CacheControl *CacheControlParam `json:"cache_control,omitempty"`
 	}
 	return json.Marshal(toolParamJSON{
-		Name:        t.Name,
-		Description: t.Description,
-		InputSchema: t.InputSchema,
+		Name:         t.Name,
+		Description:  t.Description,
+		InputSchema:  t.InputSchema,
+		CacheControl: t.CacheControl,
 	})
 }
 
@@ -128,18 +139,29 @@ func (t ThinkingParam) MarshalJSON() ([]byte, error) {
 		BudgetTokens: t.BudgetTokens,
 	})
 }
+func (c CacheControlParam) MarshalJSON() ([]byte, error) {
+	type cacheControlParamJSON struct {
+		Type string `json:"type"`
+		TTL  string `json:"ttl,omitempty"`
+	}
+	return json.Marshal(cacheControlParamJSON{
+		Type: c.Type,
+		TTL:  c.TTL,
+	})
+}
 
 type messageRequestJSON struct {
-	Model         string           `json:"model"`
-	MaxTokens     int64            `json:"max_tokens"`
-	System        string           `json:"system,omitempty"`
-	Messages      []MessageParam   `json:"messages"`
-	Tools         []ToolParam      `json:"tools,omitempty"`
-	ToolChoice    *ToolChoiceParam `json:"tool_choice,omitempty"`
-	Temperature   *float64         `json:"temperature,omitempty"`
-	ServiceTier   string           `json:"service_tier,omitempty"`
-	StopSequences []string         `json:"stop_sequences,omitempty"`
-	Thinking      *ThinkingParam   `json:"thinking,omitempty"`
+	Model         string             `json:"model"`
+	MaxTokens     int64              `json:"max_tokens"`
+	System        string             `json:"system,omitempty"`
+	Messages      []MessageParam     `json:"messages"`
+	Tools         []ToolParam        `json:"tools,omitempty"`
+	ToolChoice    *ToolChoiceParam   `json:"tool_choice,omitempty"`
+	Temperature   *float64           `json:"temperature,omitempty"`
+	ServiceTier   string             `json:"service_tier,omitempty"`
+	StopSequences []string           `json:"stop_sequences,omitempty"`
+	Thinking      *ThinkingParam     `json:"thinking,omitempty"`
+	CacheControl  *CacheControlParam `json:"cache_control,omitempty"`
 }
 
 func (m MessageRequest) marshalRequestBody() ([]byte, error) {
@@ -154,6 +176,7 @@ func (m MessageRequest) marshalRequestBody() ([]byte, error) {
 		ServiceTier:   m.ServiceTier,
 		StopSequences: m.StopSequences,
 		Thinking:      m.Thinking,
+		CacheControl:  m.CacheControl,
 	}
 	return json.Marshal(req)
 }
@@ -223,6 +246,11 @@ type Usage struct {
 	CacheCreationInputTokens int64
 	CacheReadInputTokens     int64
 	OutputTokens             int64
+	CacheCreation            CacheCreationUsage
+}
+type CacheCreationUsage struct {
+	Ephemeral5mInputTokens int64
+	Ephemeral1hInputTokens int64
 }
 
 // APIError is the "error" object from Anthropic error events/responses.
@@ -298,10 +326,15 @@ func (c *ContentBlock) UnmarshalJSON(data []byte) error {
 }
 
 type usageJSON struct {
-	InputTokens              int64 `json:"input_tokens"`
-	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
-	OutputTokens             int64 `json:"output_tokens"`
+	InputTokens              int64                  `json:"input_tokens"`
+	CacheCreationInputTokens int64                  `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int64                  `json:"cache_read_input_tokens"`
+	OutputTokens             int64                  `json:"output_tokens"`
+	CacheCreation            cacheCreationUsageJSON `json:"cache_creation"`
+}
+type cacheCreationUsageJSON struct {
+	Ephemeral5mInputTokens int64 `json:"ephemeral_5m_input_tokens"`
+	Ephemeral1hInputTokens int64 `json:"ephemeral_1h_input_tokens"`
 }
 
 func (u *Usage) UnmarshalJSON(data []byte) error {
@@ -313,5 +346,9 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 	u.CacheCreationInputTokens = payload.CacheCreationInputTokens
 	u.CacheReadInputTokens = payload.CacheReadInputTokens
 	u.OutputTokens = payload.OutputTokens
+	u.CacheCreation = CacheCreationUsage{
+		Ephemeral5mInputTokens: payload.CacheCreation.Ephemeral5mInputTokens,
+		Ephemeral1hInputTokens: payload.CacheCreation.Ephemeral1hInputTokens,
+	}
 	return nil
 }

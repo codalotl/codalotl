@@ -72,6 +72,7 @@ type MessageRequest struct {
 	ServiceTier   string // "", "auto", or "standard_only"
 	StopSequences []string
 	Thinking      *ThinkingParam
+	CacheControl  *CacheControlParam
 }
 
 type MessageParam struct {
@@ -81,22 +82,24 @@ type MessageParam struct {
 
 // ContentBlockParam covers block types needed by llmstream conversation encoding.
 type ContentBlockParam struct {
-	Type      string // "text", "tool_use", "tool_result", "thinking", "redacted_thinking"
-	Text      string // text
-	ID        string // tool_use
-	Name      string
-	Input     json.RawMessage
-	ToolUseID string // tool_result
-	Result    string
-	IsError   bool
-	Thinking  string // thinking
-	Signature string
+	Type         string // "text", "tool_use", "tool_result", "thinking", "redacted_thinking"
+	Text         string // text
+	ID           string // tool_use
+	Name         string
+	Input        json.RawMessage
+	ToolUseID    string // tool_result
+	Result       string
+	IsError      bool
+	Thinking     string // thinking
+	Signature    string
+	CacheControl *CacheControlParam
 }
 
 type ToolParam struct {
-	Name        string
-	Description string
-	InputSchema json.RawMessage // JSON Schema object
+	Name         string
+	Description  string
+	InputSchema  json.RawMessage // JSON Schema object
+	CacheControl *CacheControlParam
 }
 
 type ToolChoiceParam struct {
@@ -107,6 +110,10 @@ type ToolChoiceParam struct {
 type ThinkingParam struct {
 	Type         string // "enabled" or "disabled"
 	BudgetTokens int64  // required when Type == "enabled"
+}
+type CacheControlParam struct {
+	Type string // "ephemeral"
+	TTL  string // "5m" or "1h"
 }
 
 // StreamMessages starts POST /v1/messages in streaming mode.
@@ -197,6 +204,11 @@ type Usage struct {
 	CacheCreationInputTokens int64
 	CacheReadInputTokens     int64
 	OutputTokens             int64
+	CacheCreation            CacheCreationUsage
+}
+type CacheCreationUsage struct {
+	Ephemeral5mInputTokens int64
+	Ephemeral1hInputTokens int64
 }
 
 // APIError is the "error" object from Anthropic error events/responses.
