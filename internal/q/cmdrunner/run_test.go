@@ -370,6 +370,55 @@ func TestRunnerRunOutcomeFailIfAnyOutput(t *testing.T) {
 	require.Equal(t, OutcomeFailed, cr.Outcome)
 	require.NotEqual(t, "", strings.TrimSpace(cr.Output))
 }
+func TestRunnerRunEnvTemplating(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	runner := NewRunner(map[string]InputType{
+		"binary":  InputTypeString,
+		"private": InputTypeString,
+	}, []string{"binary", "private"})
+	runner.AddCommand(Command{
+		Command: "{{ .binary }}",
+		Args:    []string{"env", "GOPRIVATE"},
+		Env: []string{
+			"GOPRIVATE={{ .private }}",
+			"{{ if false }}IGNORED=1{{ end }}",
+			"   ",
+		},
+	})
+	privateValue := "example.com/private/*"
+	result, err := runner.Run(context.Background(), root, map[string]any{
+		"binary":  "go",
+		"private": privateValue,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Results, 1)
+	cr := result.Results[0]
+	require.Equal(t, ExecStatusCompleted, cr.ExecStatus)
+	require.Equal(t, 0, cr.ExitCode)
+	require.Equal(t, OutcomeSuccess, cr.Outcome)
+	require.Equal(t, privateValue, strings.TrimSpace(cr.Output))
+}
+func TestRunnerRunEnvValidation(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	runner := NewRunner(map[string]InputType{
+		"binary": InputTypeString,
+	}, []string{"binary"})
+	runner.AddCommand(Command{
+		Command: "{{ .binary }}",
+		Args:    []string{"env", "GOPRIVATE"},
+		Env: []string{
+			"MALFORMED",
+		},
+	})
+	result, err := runner.Run(context.Background(), root, map[string]any{
+		"binary": "go",
+	})
+	require.Error(t, err)
+	require.Empty(t, result.Results)
+	require.ErrorContains(t, err, `command[0] env[0] must be KEY=VALUE`)
+}
 
 func TestRunnerRunContextCanceled(t *testing.T) {
 	t.Parallel()

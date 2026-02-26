@@ -145,6 +145,25 @@ func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any)
 		if !filepath.IsAbs(renderedCWD) {
 			renderedCWD = filepath.Join(absRoot, renderedCWD)
 		}
+		renderedEnv := make([]string, 0, len(cmd.Env))
+		for envIdx, envTmpl := range cmd.Env {
+			value := envTmpl
+			if envTmpl != "" {
+				value, err = renderTemplate(fmt.Sprintf("command_%d_env_%d", i, envIdx), envTmpl, funcs, templateData)
+				if err != nil {
+					return Result{}, fmt.Errorf("cmdrunner: command[%d] env[%d] template: %w", i, envIdx, err)
+				}
+			}
+			trimmed := strings.TrimSpace(value)
+			if trimmed == "" {
+				continue
+			}
+			key, _, ok := strings.Cut(trimmed, "=")
+			if !ok || key == "" {
+				return Result{}, fmt.Errorf("cmdrunner: command[%d] env[%d] must be KEY=VALUE, got %q", i, envIdx, trimmed)
+			}
+			renderedEnv = append(renderedEnv, trimmed)
+		}
 
 		initial := CommandResult{
 			Command:           renderedCommand,
@@ -155,7 +174,7 @@ func (r *Runner) Run(ctx context.Context, rootDir string, inputs map[string]any)
 			Attrs:             append([]string(nil), cmd.Attrs...),
 		}
 
-		results[i] = executeCommand(ctx, cmd, initial)
+		results[i] = executeCommand(ctx, cmd, renderedEnv, initial)
 	}
 
 	return Result{Results: results}, nil
@@ -166,11 +185,12 @@ func (r *Runner) AddCommand(c Command) {
 	r.commands = append(r.commands, c)
 }
 
-// A Command is a templated command to run. The Command/Args/CWD fields support templates.
+// A Command is a templated command to run. The Command/Args/CWD/Env fields support templates.
 type Command struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
 	CWD     string   `json:"cwd"` // optional working directory for the command. Defaults to the root dir.
+	Env     []string `json:"env"` // optional environment variables in KEY=VALUE form, merged onto the current process env.
 
 	// If OutcomeFailIfAnyOutput, any output causes the command to have a failed outcome (ex: `gofmt -l` is blank when no-lint-issues and non-blank when lint-issues).
 	OutcomeFailIfAnyOutput bool `json:"outcomefailifanyoutput"`
@@ -371,7 +391,7 @@ func renderTemplate(name, tmpl string, funcs template.FuncMap, data map[string]a
 	return buf.String(), nil
 }
 
-func executeCommand(ctx context.Context, cmd Command, result CommandResult) CommandResult {
+func executeCommand(ctx context.Context, cmd Command, env []string, result CommandResult) CommandResult {
 	start := time.Now()
 	defer func() {
 		if result.Duration == 0 {
@@ -389,6 +409,9 @@ func executeCommand(ctx context.Context, cmd Command, result CommandResult) Comm
 
 	execCmd := exec.CommandContext(ctx, result.Command, result.Args...)
 	execCmd.Dir = result.CWD
+	if len(env) > 0 {
+		execCmd.Env = append(os.Environ(), env...)
+	}
 
 	var buf bytes.Buffer
 	var bufMu sync.Mutex
