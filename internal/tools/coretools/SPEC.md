@@ -19,3 +19,10 @@ The `write` tool creates a new file with content, or replaces it with content if
 Params:
 - `path`: absolute or relative
 - `content`: content to write
+
+### delete
+
+The `delete` tool deletes the file.
+
+Params:
+- `path`: absolute or relative
