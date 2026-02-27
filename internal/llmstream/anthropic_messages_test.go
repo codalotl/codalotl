@@ -1,6 +1,7 @@
 package llmstream
 
 import (
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	anthropicapi "github.com/codalotl/codalotl/internal/llmstream/anthropic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,4 +157,15 @@ func TestAnthropicConvertUsage_UsesTTLBreakdownWhenTopLevelCreationMissing(t *te
 	assert.EqualValues(t, 5, got.CacheCreationInputTokens)
 	assert.EqualValues(t, 0, got.ReasoningTokens)
 	assert.EqualValues(t, 9, got.TotalOutputTokens)
+}
+
+func TestBuildAnthropicMessageRequest_SetsTopLevelCacheControl(t *testing.T) {
+	sc := NewConversation(llmmodel.ModelIDUnknown, "system").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("hello"))
+
+	req, err := sc.buildAnthropicMessageRequest(llmmodel.ModelInfo{ProviderModelID: "claude-sonnet-4-6"}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, req.CacheControl)
+	assert.Equal(t, "ephemeral", req.CacheControl.Type)
+	assert.Equal(t, "", req.CacheControl.TTL)
 }

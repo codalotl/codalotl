@@ -18,7 +18,6 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/simplelogger"
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsets"
@@ -175,7 +174,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 		}
 		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, cfg.packageMode()))
 		systemPrompt = strings.TrimSpace(systemPrompt)
-		simplelogger.Log("Prompt:\n%s", systemPrompt)
+		// simplelogger.Log("Prompt:\n%s", systemPrompt)
 	}
 
 	agentInstance, err := agent.NewAgent(modelID, systemPrompt, tools)

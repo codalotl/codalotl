@@ -108,6 +108,9 @@ func (sc *streamingConversation) buildAnthropicMessageRequest(modelInfo llmmodel
 		MaxTokens: anthropicMaxTokens,
 		System:    system,
 		Messages:  messages,
+		CacheControl: &anthropicapi.CacheControlParam{
+			Type: "ephemeral",
+		},
 	}
 	if len(sc.tools) > 0 {
 		toolParams, err := buildAnthropicToolParams(sc.tools)
