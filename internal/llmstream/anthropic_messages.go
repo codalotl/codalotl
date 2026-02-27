@@ -636,10 +636,10 @@ func anthropicConvertUsage(usage anthropicapi.Usage) TokenUsage {
 	if cacheCreationTokens == 0 {
 		cacheCreationTokens = usage.CacheCreation.Ephemeral5mInputTokens + usage.CacheCreation.Ephemeral1hInputTokens
 	}
-	cachedTokens := usage.CacheReadInputTokens + cacheCreationTokens
+	cacheReadTokens := usage.CacheReadInputTokens
 	return TokenUsage{
-		TotalInputTokens:         usage.InputTokens + cachedTokens,
-		CachedInputTokens:        cachedTokens,
+		TotalInputTokens:         usage.InputTokens + cacheReadTokens + cacheCreationTokens,
+		CachedInputTokens:        cacheReadTokens,
 		CacheCreationInputTokens: cacheCreationTokens,
 		ReasoningTokens:          0,
 		TotalOutputTokens:        usage.OutputTokens,

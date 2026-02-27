@@ -120,3 +120,38 @@ func TestAnthropicStreamState_ThinkingProviderStateRoundTrip(t *testing.T) {
 	assert.Equal(t, "alpha beta", reasoning.Content)
 	assert.Equal(t, "sigAsigB", reasoning.ProviderState)
 }
+
+func TestAnthropicConvertUsage_SeparatesCacheReadAndCreation(t *testing.T) {
+	usage := anthropicapi.Usage{
+		InputTokens:              100,
+		CacheReadInputTokens:     50,
+		CacheCreationInputTokens: 30,
+		OutputTokens:             25,
+	}
+
+	got := anthropicConvertUsage(usage)
+
+	assert.EqualValues(t, 180, got.TotalInputTokens)
+	assert.EqualValues(t, 50, got.CachedInputTokens)
+	assert.EqualValues(t, 30, got.CacheCreationInputTokens)
+	assert.EqualValues(t, 25, got.TotalOutputTokens)
+}
+
+func TestAnthropicConvertUsage_UsesTTLBreakdownWhenTopLevelCreationMissing(t *testing.T) {
+	usage := anthropicapi.Usage{
+		InputTokens:          20,
+		CacheReadInputTokens: 7,
+		OutputTokens:         9,
+		CacheCreation: anthropicapi.CacheCreationUsage{
+			Ephemeral5mInputTokens: 3,
+			Ephemeral1hInputTokens: 2,
+		},
+	}
+
+	got := anthropicConvertUsage(usage)
+
+	assert.EqualValues(t, 32, got.TotalInputTokens)
+	assert.EqualValues(t, 7, got.CachedInputTokens)
+	assert.EqualValues(t, 5, got.CacheCreationInputTokens)
+	assert.EqualValues(t, 9, got.TotalOutputTokens)
+}

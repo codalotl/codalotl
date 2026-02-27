@@ -638,6 +638,7 @@ func idealCachingForProviderTurns(turns []llmstream.Turn) ([]llmstream.Turn, llm
 
 		session.TotalInputTokens += totalIn
 		session.CachedInputTokens += cached
+		session.CacheCreationInputTokens += t.Usage.CacheCreationInputTokens
 		session.ReasoningTokens += t.Usage.ReasoningTokens
 		session.TotalOutputTokens += t.Usage.TotalOutputTokens
 	}
@@ -683,6 +684,7 @@ func idealCachingForCompletedTurnsByAgent(completedAssistantTurnsByAgent map[str
 		_, u := idealCachingForProviderTurns(providerAssistantTurns(turns))
 		session.TotalInputTokens += u.TotalInputTokens
 		session.CachedInputTokens += u.CachedInputTokens
+		session.CacheCreationInputTokens += u.CacheCreationInputTokens
 		session.ReasoningTokens += u.ReasoningTokens
 		session.TotalOutputTokens += u.TotalOutputTokens
 	}
@@ -700,14 +702,8 @@ func formatAgentFinishedTurnLine(u llmstream.TokenUsage) string {
 }
 
 func formatSessionTokenUsage(u llmstream.TokenUsage) string {
-	// Provider semantics vary about whether TotalInputTokens already includes CachedInputTokens.
-	//
-	// For CLI display, we want:
-	// - input = non-cached input tokens
-	// - cached_input = cached/reused input tokens
-	//
-	// We treat TotalInputTokens as "possibly inclusive" and subtract cached input,
-	// clamping at 0 for safety.
+	// For CLI display, keep "input" as everything not counted as cache reads.
+	// This means cache creation writes are included in "input".
 	nonCachedInput := u.TotalInputTokens - u.CachedInputTokens
 	if nonCachedInput < 0 {
 		nonCachedInput = 0

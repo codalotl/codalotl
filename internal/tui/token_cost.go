@@ -31,7 +31,7 @@ func tokensCostLines(info llmmodel.ModelInfo, usage llmstream.TokenUsage, contex
 }
 
 func summarizeTokenCounts(usage llmstream.TokenUsage) (total, input, cached, output int64) {
-	input = nonCachedInputTokens(usage)
+	input = inputTokensForDisplay(usage)
 	cached = clamp64(usage.CachedInputTokens)
 	output = clamp64(usage.TotalOutputTokens + usage.ReasoningTokens)
 	total = input + cached + output
@@ -75,16 +75,17 @@ func estimateUsageCostUSD(usage llmstream.TokenUsage, info llmmodel.ModelInfo) (
 
 	const million = 1_000_000.0
 
-	nonCached := nonCachedInputTokens(usage)
+	uncached := uncachedInputTokens(usage)
+	cacheCreation := clamp64(usage.CacheCreationInputTokens)
 
 	var (
 		totalCost float64
 		missing   bool
 	)
 
-	if nonCached > 0 {
+	if uncached > 0 {
 		if info.CostPer1MIn > 0 {
-			totalCost += (float64(nonCached) / million) * info.CostPer1MIn
+			totalCost += (float64(uncached) / million) * info.CostPer1MIn
 		} else {
 			missing = true
 		}
@@ -97,6 +98,18 @@ func estimateUsageCostUSD(usage llmstream.TokenUsage, info llmmodel.ModelInfo) (
 		}
 		if rate > 0 {
 			totalCost += (float64(usage.CachedInputTokens) / million) * rate
+		} else {
+			missing = true
+		}
+	}
+
+	if cacheCreation > 0 {
+		rate := info.CostPer1MInSaveToCache
+		if rate <= 0 {
+			rate = info.CostPer1MIn
+		}
+		if rate > 0 {
+			totalCost += (float64(cacheCreation) / million) * rate
 		} else {
 			missing = true
 		}
@@ -155,10 +168,16 @@ func clamp64(v int64) int64 {
 	return v
 }
 
-func nonCachedInputTokens(usage llmstream.TokenUsage) int64 {
-	nonCached := usage.TotalInputTokens - usage.CachedInputTokens
-	if nonCached < 0 {
+func inputTokensForDisplay(usage llmstream.TokenUsage) int64 {
+	// "input" display includes everything not billed as a cache read:
+	// base input + cache creation writes.
+	return uncachedInputTokens(usage) + clamp64(usage.CacheCreationInputTokens)
+}
+
+func uncachedInputTokens(usage llmstream.TokenUsage) int64 {
+	uncached := usage.TotalInputTokens - usage.CachedInputTokens - usage.CacheCreationInputTokens
+	if uncached < 0 {
 		return clamp64(usage.TotalInputTokens)
 	}
-	return clamp64(nonCached)
+	return clamp64(uncached)
 }

@@ -49,3 +49,23 @@ func TestFormatTokenCount(t *testing.T) {
 	assert.Equal(t, "1.2M", formatTokenCount(1_200_000))
 	assert.Equal(t, "3B", formatTokenCount(3_000_000_000))
 }
+
+func TestEstimateUsageCostUSD_AccountsForCacheCreationWrites(t *testing.T) {
+	info := llmmodel.ModelInfo{
+		ID:                     llmmodel.ModelID("fake"),
+		CostPer1MIn:            10,
+		CostPer1MInCached:      2,
+		CostPer1MInSaveToCache: 20,
+		CostPer1MOut:           30,
+	}
+	usage := llmstream.TokenUsage{
+		TotalInputTokens:         1_000,
+		CachedInputTokens:        200,
+		CacheCreationInputTokens: 300,
+		TotalOutputTokens:        500,
+	}
+
+	cost, ok := estimateUsageCostUSD(usage, info)
+	require.True(t, ok)
+	assert.InDelta(t, 0.0264, cost, 0.0000001)
+}
