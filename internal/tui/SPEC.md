@@ -201,7 +201,7 @@ The top of the panel shows the current session ID, model, tokens, and cost:
 - Context window (ex: "100% context left", "82% context left", etc)
 - Cost
 - Total tokens (input + cached + output). This token count is rounded as necessary (ex: 313, 1.4k, 520k, 1.2M, etc).
-- Input tokens (non-cached)
+- Input tokens (non-cached + cache writes)
 - Cached input tokens
 - Output tokens (includes reasoning tokens)
 
