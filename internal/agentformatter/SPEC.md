@@ -5,7 +5,7 @@ agentformatter formats events from agents for insertion into a fixed-width TUI, 
 ## Notes
 
 - Tabs are converted to spaces (default 4 spaces per tab).
-- If an event contains the ESC byte or similar control codes, they must be escaped are escaped. Note that they may be escaped in JSON, but when the JSON is parsed, they become a control byte again.
+- If an event contains the ESC byte or similar control codes, they are escaped. Note that they may be escaped in JSON, but when the JSON is parsed, they become a control byte again.
 
 ## Format
 
@@ -46,7 +46,7 @@ Render the queued user message as a user-authored line (not an agent bullet), pr
  › this is a message (queued)
 ```
 
-- ` (queued)` is appeneded to the text.
+- ` (queued)` is appended to the text.
 - The chevron (`›`) is Accent-colored.
 - The message text is Normal-colored.
 - In TUI width mode, wrap lines to the available width. Continuation lines are indented to align with the message text (3 spaces: `   `).
@@ -253,7 +253,7 @@ The EventTypeToolCall looks like this:
 - Updating Usage is Bold, Colorful
 - "in" is Accent.
 - some/path (et al) is normal; (4 more) is Accent
-- If there'e more than 3 paths, add a parenthetical for how many more there are. Otherwise, don't show the parenthetical.
+- If there are more than 3 paths, add a parenthetical for how many more there are. Otherwise, don't show the parenthetical.
 - The instructions is Accent.
 
 The EventTypeToolComplete looks like this:
@@ -325,7 +325,7 @@ The EventTypeToolComplete looks like this (Call is the same, except with `Run`):
 ```
 
 - Run Diagnostics / Ran Diagnostics is Bold, Colorful; some/path is normal
-- There is no output line. Status indindicated by bullet color (Red or Green).
+- There is no output line. Status indicated by bullet color (Red or Green).
 
 ### EventTypeToolCall and EventTypeToolComplete - fix_lints
 
@@ -354,7 +354,7 @@ Complete:
   └ Tests: pass | Lints: pass
 ```
 
-- Ran Tests API is Bold, Colorful.
+- Ran Tests is Bold, Colorful.
 - some/pkg is normal
 - Bullet is Red or Green based on the overall outcome (tests AND lints).
 - If a section is missing, the status is `-`.
@@ -495,7 +495,7 @@ type Formatter interface {
 }
 
 // Config controls the terminal colorization options. We need to know the intended bg/fg, so we can create other colors that are consistent. For instance, if we
-// want to colorize backtick-wrapped paths/identifiers/code different, can modify ForegroundColor to be closer to BackgroundColor.
+// want to colorize backtick-wrapped paths/identifiers/code differently, can modify ForegroundColor to be closer to BackgroundColor.
 type Config struct {
 	PlainText       bool             // true: disable colors and ANSI escape characters (bold, italics, etc).
 	BackgroundColor termformat.Color // the terminal's background color. If nil, uses termformat.DefaultFBBGColor.
