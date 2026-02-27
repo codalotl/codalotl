@@ -429,6 +429,17 @@ If the underlying error `applypatch.IsInvalidPatch`, don't print out the whole i
   └ Failed: LLM supplied an invalid patch.
 ```
 
+### EventTypeToolCall and EventTypeToolComplete - edit, create, delete
+
+The `edit`/`create`/`delete` tools are a variant of `apply_patch` used by certain models. `edit` uses a find/replace methodology.
+
+An edit should be formatted very similarly to an equivalent `apply_patch`. Notes:
+- The formatted string must be derived from the tool call struct only, not from file contents on disk.
+- Because context lines are not present in the tool call, do not display context lines.
+- `replace_all` does not show multiple diffs in the same file. Instead, show one diff and a note in the first line (`• Edit some/file.go (replace all)`).
+- `delete` formatting is the same as with `apply_patch`.
+- `create` formatting is the same as with `apply_patch` (display as `• Add some/file.go`, along with the added lines).
+
 ### EventTypeToolCall and EventTypeToolComplete - other unhandled tools
 
 If a tool isn't especially handled, here's example output:
