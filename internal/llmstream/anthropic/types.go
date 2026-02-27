@@ -219,6 +219,9 @@ type ContentBlock struct {
 	Signature string
 }
 
+// https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+// total_input_tokens = cache_read_input_tokens + cache_creation_input_tokens + input_tokens
+// Also, cache_creation_input_tokens and input_tokens are disjoint.
 type Usage struct {
 	InputTokens              int64
 	CacheCreationInputTokens int64

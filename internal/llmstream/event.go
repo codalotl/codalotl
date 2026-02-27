@@ -70,10 +70,11 @@ func newErrorEvent(err error) Event {
 }
 
 type TokenUsage struct {
-	TotalInputTokens  int64 // Total input tokens for this turn (must include CachedInputTokens).
-	CachedInputTokens int64
-	ReasoningTokens   int64
-	TotalOutputTokens int64 // Total output tokens for this turn (may exclude ReasoningTokens depending on provider semantics).
+	TotalInputTokens         int64 // Total input tokens for this turn (must include CachedInputTokens).
+	CachedInputTokens        int64
+	CacheCreationInputTokens int64 // Tokens written to the prompt cache this turn (Anthropic-specific; 0 for OpenAI).
+	ReasoningTokens          int64
+	TotalOutputTokens        int64 // Total output tokens for this turn (may exclude ReasoningTokens depending on provider semantics).
 }
 
 type FinishReason string

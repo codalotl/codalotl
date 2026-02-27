@@ -638,10 +638,11 @@ func anthropicConvertUsage(usage anthropicapi.Usage) TokenUsage {
 	}
 	cachedTokens := usage.CacheReadInputTokens + cacheCreationTokens
 	return TokenUsage{
-		TotalInputTokens:  usage.InputTokens + cachedTokens,
-		CachedInputTokens: cachedTokens,
-		ReasoningTokens:   0,
-		TotalOutputTokens: usage.OutputTokens,
+		TotalInputTokens:         usage.InputTokens + cachedTokens,
+		CachedInputTokens:        cachedTokens,
+		CacheCreationInputTokens: cacheCreationTokens,
+		ReasoningTokens:          0,
+		TotalOutputTokens:        usage.OutputTokens,
 	}
 }
 func anthropicMapFinishReason(stopReason string, hasToolCalls bool) FinishReason {
