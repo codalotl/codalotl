@@ -70,6 +70,29 @@ func TestEstimateUsageCostUSD_AccountsForCacheCreationWrites(t *testing.T) {
 	assert.InDelta(t, 0.0264, cost, 0.0000001)
 }
 
+func TestTokensCostLines_InputIncludesCacheWrites(t *testing.T) {
+	info := llmmodel.ModelInfo{
+		ID:                     llmmodel.ModelID("fake"),
+		ContextWindow:          200_000,
+		CostPer1MIn:            10,
+		CostPer1MOut:           20,
+		CostPer1MInCached:      5,
+		CostPer1MInSaveToCache: 15,
+	}
+	usage := llmstream.TokenUsage{
+		TotalInputTokens:         100_000,
+		CachedInputTokens:        40_000,
+		CacheCreationInputTokens: 20_000,
+		TotalOutputTokens:        10_000,
+	}
+
+	lines := tokensCostLines(info, usage, 50)
+	require.Len(t, lines, 2)
+
+	// input = uncached (100k - 40k - 20k = 40k) + cache writes (20k) = 60k
+	assert.Equal(t, "Tokens: 110k (input: 60k, cached: 40k, output: 10k)", lines[1])
+}
+
 func TestTokensCostLines_OpenAIDoesNotDoubleCountReasoningTokens(t *testing.T) {
 	info := llmmodel.ModelInfo{
 		ID:                llmmodel.ModelID("fake-openai"),
