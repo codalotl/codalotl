@@ -69,3 +69,25 @@ func TestEstimateUsageCostUSD_AccountsForCacheCreationWrites(t *testing.T) {
 	require.True(t, ok)
 	assert.InDelta(t, 0.0264, cost, 0.0000001)
 }
+
+func TestTokensCostLines_OpenAIDoesNotDoubleCountReasoningTokens(t *testing.T) {
+	info := llmmodel.ModelInfo{
+		ID:                llmmodel.ModelID("fake-openai"),
+		ProviderID:        llmmodel.ProviderIDOpenAI,
+		ContextWindow:     200_000,
+		CostPer1MIn:       10,
+		CostPer1MOut:      20,
+		CostPer1MInCached: 5,
+	}
+	usage := llmstream.TokenUsage{
+		TotalInputTokens:  102_000,
+		CachedInputTokens: 60_000,
+		TotalOutputTokens: 21_000,
+		ReasoningTokens:   1_000,
+	}
+
+	lines := tokensCostLines(info, usage, 51)
+	require.Len(t, lines, 2)
+
+	assert.Equal(t, "Tokens: 123k (input: 42k, cached: 60k, output: 21k)", lines[1])
+}

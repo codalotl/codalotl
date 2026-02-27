@@ -134,6 +134,7 @@ func TestAnthropicConvertUsage_SeparatesCacheReadAndCreation(t *testing.T) {
 	assert.EqualValues(t, 180, got.TotalInputTokens)
 	assert.EqualValues(t, 50, got.CachedInputTokens)
 	assert.EqualValues(t, 30, got.CacheCreationInputTokens)
+	assert.EqualValues(t, 0, got.ReasoningTokens)
 	assert.EqualValues(t, 25, got.TotalOutputTokens)
 }
 
@@ -153,5 +154,6 @@ func TestAnthropicConvertUsage_UsesTTLBreakdownWhenTopLevelCreationMissing(t *te
 	assert.EqualValues(t, 32, got.TotalInputTokens)
 	assert.EqualValues(t, 7, got.CachedInputTokens)
 	assert.EqualValues(t, 5, got.CacheCreationInputTokens)
+	assert.EqualValues(t, 0, got.ReasoningTokens)
 	assert.EqualValues(t, 9, got.TotalOutputTokens)
 }

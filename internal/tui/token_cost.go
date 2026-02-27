@@ -11,7 +11,7 @@ import (
 )
 
 func tokensCostLines(info llmmodel.ModelInfo, usage llmstream.TokenUsage, contextPercentUsed int) []string {
-	totalTokens, inputTokens, cachedTokens, outputTokens := summarizeTokenCounts(usage)
+	totalTokens, inputTokens, cachedTokens, outputTokens := summarizeTokenCounts(info, usage)
 	contextTokensUsed := inputTokens + cachedTokens
 	contextText := formatContextUsage(contextPercentUsed, contextTokensUsed)
 	costText := formatCostLine(usage, info)
@@ -30,10 +30,10 @@ func tokensCostLines(info llmmodel.ModelInfo, usage llmstream.TokenUsage, contex
 	}
 }
 
-func summarizeTokenCounts(usage llmstream.TokenUsage) (total, input, cached, output int64) {
+func summarizeTokenCounts(info llmmodel.ModelInfo, usage llmstream.TokenUsage) (total, input, cached, output int64) {
 	input = inputTokensForDisplay(usage)
 	cached = clamp64(usage.CachedInputTokens)
-	output = clamp64(usage.TotalOutputTokens + usage.ReasoningTokens)
+	output = outputTokensForDisplay(info, usage)
 	total = input + cached + output
 	return
 }
@@ -172,6 +172,16 @@ func inputTokensForDisplay(usage llmstream.TokenUsage) int64 {
 	// "input" display includes everything not billed as a cache read:
 	// base input + cache creation writes.
 	return uncachedInputTokens(usage) + clamp64(usage.CacheCreationInputTokens)
+}
+
+func outputTokensForDisplay(info llmmodel.ModelInfo, usage llmstream.TokenUsage) int64 {
+	output := clamp64(usage.TotalOutputTokens)
+	// OpenAI's reasoning tokens are an output-token breakdown, so including them
+	// again would double-count displayed totals.
+	if info.ProviderID == llmmodel.ProviderIDOpenAI {
+		return output
+	}
+	return output + clamp64(usage.ReasoningTokens)
 }
 
 func uncachedInputTokens(usage llmstream.TokenUsage) int64 {

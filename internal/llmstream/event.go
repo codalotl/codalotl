@@ -87,11 +87,11 @@ type TokenUsage struct {
 	CacheCreationInputTokens int64
 
 	// ReasoningTokens is the provider-reported count of internal reasoning tokens (if the provider exposes it).
-	// Whether these are included in TotalOutputTokens is provider-dependent.
+	// If a provider does not expose this split, this is 0.
 	ReasoningTokens int64
 
 	// TotalOutputTokens is the provider's total output token count for this turn.
-	// Depending on provider semantics, this may include or exclude ReasoningTokens.
+	// This value always includes ReasoningTokens (when reported), so TotalOutputTokens >= ReasoningTokens.
 	TotalOutputTokens int64
 }
 
