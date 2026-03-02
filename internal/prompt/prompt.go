@@ -65,10 +65,7 @@ func getConfig() (agentName string, modelID llmmodel.ModelID) {
 // how they were RL'ed. This method returns a prompt well-suited for that model.
 func GetBasicPrompt() string {
 	agentName, modelID := getConfig()
-	data := map[string]any{
-		"AgentName": agentName,
-		"ModelName": modelDisplayName(modelID),
-	}
+	data := promptTemplateData(agentName, modelID)
 
 	// NOTE: in future could do stuff based on modelID.Provider(), eg, render anthropic-specific prompts.
 	return renderFragment(strings.TrimSpace(basicDefault), data)
@@ -87,12 +84,8 @@ const (
 // To make subagents with a subset of tools/capabilities, add a GoPackageModePromptKind with a custom explanation.
 func GetGoPackageModeModePrompt(kind GoPackageModePromptKind) string {
 	agentName, modelID := getConfig()
-	base := GetBasicPrompt()
-
-	data := map[string]any{
-		"AgentName": agentName,
-		"ModelName": modelDisplayName(modelID),
-	}
+	data := promptTemplateData(agentName, modelID)
+	base := renderFragment(strings.TrimSpace(basicDefault), data)
 
 	var snippet string
 
@@ -106,6 +99,16 @@ func GetGoPackageModeModePrompt(kind GoPackageModePromptKind) string {
 	}
 
 	return base + "\n\n" + renderFragment(strings.TrimSpace(snippet), data)
+}
+
+func promptTemplateData(agentName string, modelID llmmodel.ModelID) map[string]any {
+	tools := decideFileEditTools(modelID)
+	return map[string]any{
+		"AgentName":              agentName,
+		"ModelName":              modelDisplayName(modelID),
+		"EditFileToolsList":      tools.list,
+		"EditFileToolsAfterEach": tools.afterEach,
+	}
 }
 
 func renderFragment(fragment string, data any) string {
@@ -127,4 +130,22 @@ func modelDisplayName(modelID llmmodel.ModelID) string {
 		return "an unspecified model"
 	}
 	return name
+}
+
+type fileEditTools struct {
+	list      string
+	afterEach string
+}
+
+func decideFileEditTools(modelID llmmodel.ModelID) fileEditTools {
+	if modelID.ProviderID() == llmmodel.ProviderIDOpenAI {
+		return fileEditTools{
+			list:      "`apply_patch`",
+			afterEach: "`apply_patch`",
+		}
+	}
+	return fileEditTools{
+		list:      "`edit`, `write`, and `delete`",
+		afterEach: "file-edit tool call (`edit`, `write`, or `delete`)",
+	}
 }
