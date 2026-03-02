@@ -266,6 +266,7 @@ func Exec(userPrompt string, opts Options) error {
 	})
 	terminalWidth := detectTerminalWidth(rawOut)
 	modelID := effectiveModelID(opts)
+	prompt.SetModel(modelID)
 
 	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
 	if err != nil {
