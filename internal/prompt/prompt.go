@@ -97,8 +97,8 @@ func getConfig() (agentName string, modelID llmmodel.ModelID) {
 	return agentName, modelID
 }
 
-// GetBasicPrompt returns a prompt using the globally configured agent name and model. Different models have are best prompted in different ways, often based on how
-// they were RL'ed. This method returns a prompt well-suited for that model.
+// GetBasicPrompt returns a prompt using the globally configured agent name and model. Different models have are best prompted in different ways, often based on
+// how they were RL'ed. This method returns a prompt well-suited for that model.
 func GetBasicPrompt() string {
 	agentName, modelID := getConfig()
 	data := map[string]any{

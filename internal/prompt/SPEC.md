@@ -1,17 +1,17 @@
 # prompt
 
-The prompt package builds prompts for an LLM coding agent. The prompt returned can be a function of the model and provider, among other possible things.
+The prompt package builds prompts for an LLM coding agent. The prompt returned can be a function of model and provider, among other factors.
 
 ## Parameterization
 
 The returned prompts can vary based on:
 - Agent name
 - Model (and the model provider)
-- Agent Type (generic, package mode, update usage subagent in package mode)
+- Agent type (generic, package mode, update usage subagent in package mode)
 
 Requirements:
 - OpenAI models use the `apply_patch` tool to edit files (edit, create, delete, rename).
-- Non-OpenAI model use `edit`, `write`, and `delete` (no rename tool).
+- Non-OpenAI models use `edit`, `write`, and `delete` (no rename tool).
 
 ## Prompt Types
 
