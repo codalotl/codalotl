@@ -152,7 +152,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 			return nil, fmt.Errorf("build package toolset: %w", err)
 		}
 	} else {
-		systemPrompt = prompt.GetFullPrompt()
+		systemPrompt = prompt.GetBasicPrompt()
 		tools, err = toolsets.CoreAgentTools(toolsets.Options{
 			SandboxDir: sandboxDir,
 			Authorizer: sandboxAuthorizer,

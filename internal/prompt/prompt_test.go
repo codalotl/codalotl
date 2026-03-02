@@ -13,20 +13,20 @@ func TestGetPrompt(t *testing.T) {
 	SetAgentName("Codalotl")
 	SetModel(llmmodel.DefaultModel)
 
-	prompt := GetFullPrompt()
+	prompt := GetBasicPrompt()
 	assert.Contains(t, prompt, "Codalotl")
 	assert.Contains(t, prompt, "# Sandbox, Approvals, and Safety")
 	assert.Contains(t, prompt, "# Delivering your Final Message to the User")
 }
 
-func TestGetGoPackageModeModePrompt_ExtendsFullPrompt(t *testing.T) {
+func TestGetGoPackageModeModePrompt_ExtendsBasicPrompt(t *testing.T) {
 	agentName := "Codalotl"
 	modelID := llmmodel.DefaultModel
 
 	SetAgentName(agentName)
 	SetModel(modelID)
 
-	base := GetFullPrompt()
+	base := GetBasicPrompt()
 	got := GetGoPackageModeModePrompt(GoPackageModePromptKindFull)
 
 	data := map[string]any{

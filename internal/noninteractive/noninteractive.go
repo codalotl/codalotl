@@ -891,7 +891,7 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 		return tools, systemPrompt, nil
 	}
 
-	systemPrompt := prompt.GetFullPrompt()
+	systemPrompt := prompt.GetBasicPrompt()
 	tools, err := toolsets.CoreAgentTools(toolsets.Options{
 		SandboxDir: sandboxDir,
 		Authorizer: authorizer,
