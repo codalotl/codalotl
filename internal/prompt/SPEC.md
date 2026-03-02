@@ -18,8 +18,9 @@ The returned prompts can vary based on:
 - Agent type (generic, package mode, update usage subagent in package mode)
 
 Requirements:
-- OpenAI models use the `apply_patch` tool to edit files (edit, create, delete, rename).
-- Non-OpenAI models use `edit`, `write`, and `delete` (no rename tool).
+- The tools used to edit files must be able to be varied independently of the provider.
+    - Option 1: `apply_patch`
+    - Option 2: `edit`, `write`, and `delete`.
 
 ## Prompt Types
 

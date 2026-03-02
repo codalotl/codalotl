@@ -33,7 +33,7 @@ func TestGetGoPackageModeModePrompt_ExtendsBasicPrompt(t *testing.T) {
 		"AgentName": agentName,
 		"ModelName": modelDisplayName(modelID),
 	}
-	wantSuffix := renderFragment(strings.TrimSpace(goPackageModeSection), data)
+	wantSuffix := renderFragment(strings.TrimSpace(packageModeDefault), data)
 	want := base + "\n\n" + wantSuffix
 
 	assert.True(t, strings.HasPrefix(got, base))

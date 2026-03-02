@@ -11,44 +11,14 @@ import (
 )
 
 var (
-	// //go:embed fragments/header.md
-	// genericHeader string
+	//go:embed data/basic.default.md
+	basicDefault string
 
-	//go:embed fragments/header-codex.md
-	codexHeader string
+	//go:embed data/package_mode.default.md
+	packageModeDefault string
 
-	//go:embed fragments/sub-header.md
-	capabilitiesSection string
-
-	//go:embed fragments/personality.md
-	personalitySection string
-
-	//go:embed fragments/code-editing.md
-	codeEditingSection string
-
-	//go:embed fragments/sandbox-approvals-safety.md
-	sandboxApprovalsSafetySection string
-
-	//go:embed fragments/tools.md
-	toolsSection string
-
-	//go:embed fragments/planning.md
-	planningSection string
-
-	//go:embed fragments/git-and-version-control.md
-	gitAndVersionControlSection string
-
-	//go:embed fragments/final-message.md
-	finalMessageSection string
-
-	//go:embed fragments/message-formatting.md
-	messageFormattingSection string
-
-	//go:embed fragments/go-package-mode.md
-	goPackageModeSection string
-
-	//go:embed fragments/go-package-mode-update_usage.md
-	goPackageModeUpdateUsageSection string
+	//go:embed data/package_mode_update_usage.default.md
+	packageModeUpdateUsageDefault string
 )
 
 var (
@@ -101,26 +71,7 @@ func GetBasicPrompt() string {
 	}
 
 	// NOTE: in future could do stuff based on modelID.Provider(), eg, render anthropic-specific prompts.
-
-	sections := []string{
-		codexHeader,
-		capabilitiesSection,
-		personalitySection,
-		codeEditingSection,
-		sandboxApprovalsSafetySection,
-		toolsSection,
-		planningSection,
-		gitAndVersionControlSection,
-		finalMessageSection,
-		messageFormattingSection,
-	}
-	rendered := make([]string, 0, len(sections))
-	for _, fragment := range sections {
-		fragment = strings.TrimSpace(fragment)
-		rendered = append(rendered, renderFragment(fragment, data))
-	}
-
-	return strings.Join(rendered, "\n\n")
+	return renderFragment(strings.TrimSpace(basicDefault), data)
 }
 
 type GoPackageModePromptKind string
@@ -147,9 +98,9 @@ func GetGoPackageModeModePrompt(kind GoPackageModePromptKind) string {
 
 	switch kind {
 	case GoPackageModePromptKindFull:
-		snippet = goPackageModeSection
+		snippet = packageModeDefault
 	case GoPackageModePromptKindUpdateUsage:
-		snippet = goPackageModeUpdateUsageSection
+		snippet = packageModeUpdateUsageDefault
 	default:
 		panic("unhandled package mode kind")
 	}
