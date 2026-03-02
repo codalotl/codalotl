@@ -10,12 +10,6 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 )
 
-// Thought: i kinda want to make a database of atomic "ideas". Most a single short sentence. Then I can test full prompts against the ideas, or generate new prompts given a set of target ideas.
-// Example ideas:
-//   - "wrap file references in backticks"
-//   - "communicate concisely"
-//   - "don't stop until you've solved the user's request"
-
 var (
 	// //go:embed fragments/header.md
 	// genericHeader string
