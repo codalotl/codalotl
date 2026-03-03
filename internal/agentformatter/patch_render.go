@@ -31,10 +31,11 @@ const (
 )
 
 type patchChange struct {
-	kind   patchChangeKind
-	path   string
-	toPath string
-	lines  []patchLine
+	kind       patchChangeKind
+	path       string
+	toPath     string
+	replaceAll bool // replaceAll indicates that an edit tool call requested global replacement.
+	lines      []patchLine
 }
 
 type patchLine struct {
@@ -68,6 +69,54 @@ func (f *textTUIFormatter) cliApplyPatchToolCall(e agent.Event) string {
 		sections = append(sections, f.renderApplyPatchChangeCLI(colorAccent, change, nil))
 	}
 	return strings.Join(sections, "\n")
+}
+func (f *textTUIFormatter) tuiEditToolCall(e agent.Event, width int) string {
+	change, err := extractEditChange(e.ToolCall)
+	if err != nil {
+		return f.tuiGenericToolCall(e, width)
+	}
+	var builder strings.Builder
+	f.renderApplyPatchChangeTUI(&builder, width, colorAccent, change, nil)
+	return builder.String()
+}
+func (f *textTUIFormatter) cliEditToolCall(e agent.Event) string {
+	change, err := extractEditChange(e.ToolCall)
+	if err != nil {
+		return f.cliGenericToolCall(e)
+	}
+	return f.renderApplyPatchChangeCLI(colorAccent, change, nil)
+}
+func (f *textTUIFormatter) tuiCreateToolCall(e agent.Event, width int) string {
+	change, err := extractCreateChange(e.ToolCall)
+	if err != nil {
+		return f.tuiGenericToolCall(e, width)
+	}
+	var builder strings.Builder
+	f.renderApplyPatchChangeTUI(&builder, width, colorAccent, change, nil)
+	return builder.String()
+}
+func (f *textTUIFormatter) cliCreateToolCall(e agent.Event) string {
+	change, err := extractCreateChange(e.ToolCall)
+	if err != nil {
+		return f.cliGenericToolCall(e)
+	}
+	return f.renderApplyPatchChangeCLI(colorAccent, change, nil)
+}
+func (f *textTUIFormatter) tuiDeleteToolCall(e agent.Event, width int) string {
+	change, err := extractDeleteChange(e.ToolCall)
+	if err != nil {
+		return f.tuiGenericToolCall(e, width)
+	}
+	var builder strings.Builder
+	f.renderApplyPatchChangeTUI(&builder, width, colorAccent, change, nil)
+	return builder.String()
+}
+func (f *textTUIFormatter) cliDeleteToolCall(e agent.Event) string {
+	change, err := extractDeleteChange(e.ToolCall)
+	if err != nil {
+		return f.cliGenericToolCall(e)
+	}
+	return f.renderApplyPatchChangeCLI(colorAccent, change, nil)
 }
 
 func (f *textTUIFormatter) tuiApplyPatchToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
@@ -119,6 +168,102 @@ func (f *textTUIFormatter) cliApplyPatchToolComplete(e agent.Event, success bool
 		sections = append(sections, f.renderApplyPatchChangeCLI(bullet, change, tail))
 	}
 	return strings.Join(sections, "\n")
+}
+func (f *textTUIFormatter) tuiEditToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractEditChange(e.ToolCall)
+	if err != nil {
+		return f.tuiGenericToolComplete(e, width, success, "", output)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var tail []toolOutputLine
+	if !success {
+		tail = output
+	}
+	var builder strings.Builder
+	f.renderApplyPatchChangeTUI(&builder, width, bullet, change, tail)
+	return builder.String()
+}
+func (f *textTUIFormatter) cliEditToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractEditChange(e.ToolCall)
+	if err != nil {
+		return f.cliGenericToolComplete(e, success, "", output)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var tail []toolOutputLine
+	if !success {
+		tail = output
+	}
+	return f.renderApplyPatchChangeCLI(bullet, change, tail)
+}
+func (f *textTUIFormatter) tuiCreateToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractCreateChange(e.ToolCall)
+	if err != nil {
+		return f.tuiGenericToolComplete(e, width, success, "", output)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var tail []toolOutputLine
+	if !success {
+		tail = output
+	}
+	var builder strings.Builder
+	f.renderApplyPatchChangeTUI(&builder, width, bullet, change, tail)
+	return builder.String()
+}
+func (f *textTUIFormatter) cliCreateToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractCreateChange(e.ToolCall)
+	if err != nil {
+		return f.cliGenericToolComplete(e, success, "", output)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var tail []toolOutputLine
+	if !success {
+		tail = output
+	}
+	return f.renderApplyPatchChangeCLI(bullet, change, tail)
+}
+func (f *textTUIFormatter) tuiDeleteToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractDeleteChange(e.ToolCall)
+	if err != nil {
+		return f.tuiGenericToolComplete(e, width, success, "", output)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var tail []toolOutputLine
+	if !success {
+		tail = output
+	}
+	var builder strings.Builder
+	f.renderApplyPatchChangeTUI(&builder, width, bullet, change, tail)
+	return builder.String()
+}
+func (f *textTUIFormatter) cliDeleteToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractDeleteChange(e.ToolCall)
+	if err != nil {
+		return f.cliGenericToolComplete(e, success, "", output)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var tail []toolOutputLine
+	if !success {
+		tail = output
+	}
+	return f.renderApplyPatchChangeCLI(bullet, change, tail)
 }
 
 func (f *textTUIFormatter) tuiApplyPatchToolCompleteInvalidPatch(e agent.Event, width int) string {
@@ -239,6 +384,9 @@ func applyPatchHeaderSegments(change patchChange) []textSegment {
 		}
 		if change.toPath != "" {
 			segments = append(segments, textSegment{text: " → " + change.toPath, style: runeStyle{color: colorAccent}})
+		}
+		if change.replaceAll {
+			segments = append(segments, textSegment{text: " (replace all)", style: runeStyle{color: colorAccent}})
 		}
 		return segments
 	}
@@ -372,6 +520,112 @@ func bestEffortApplyPatchChanges(call *llmstream.ToolCall) []patchChange {
 	return changes
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+func splitToolTextLines(text string) []string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	lines := strings.Split(text, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+func extractEditChange(call *llmstream.ToolCall) (patchChange, error) {
+	if call == nil {
+		return patchChange{}, fmt.Errorf("missing tool call")
+	}
+	var payload struct {
+		Path       string `json:"path"`
+		FilePath   string `json:"file_path"`
+		OldString  string `json:"old_string"`
+		OldText    string `json:"old_text"`
+		Find       string `json:"find"`
+		NewString  string `json:"new_string"`
+		NewText    string `json:"new_text"`
+		Replace    string `json:"replace"`
+		ReplaceAll bool   `json:"replace_all"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
+		return patchChange{}, err
+	}
+	path := firstNonEmpty(payload.Path, payload.FilePath)
+	if path == "" {
+		return patchChange{}, fmt.Errorf("missing path")
+	}
+	oldText := firstNonEmpty(payload.OldString, payload.OldText, payload.Find)
+	newText := firstNonEmpty(payload.NewString, payload.NewText, payload.Replace)
+	lines := make([]patchLine, 0)
+	for _, line := range splitToolTextLines(oldText) {
+		lines = append(lines, patchLine{kind: patchLineRemove, prefix: "- ", text: line})
+	}
+	for _, line := range splitToolTextLines(newText) {
+		lines = append(lines, patchLine{kind: patchLineAdd, prefix: "+ ", text: line})
+	}
+	return patchChange{
+		kind:       patchChangeEdit,
+		path:       sanitizeText(path),
+		replaceAll: payload.ReplaceAll,
+		lines:      lines,
+	}, nil
+}
+func extractCreateChange(call *llmstream.ToolCall) (patchChange, error) {
+	if call == nil {
+		return patchChange{}, fmt.Errorf("missing tool call")
+	}
+	var payload struct {
+		Path     string `json:"path"`
+		FilePath string `json:"file_path"`
+		Content  string `json:"content"`
+		Contents string `json:"contents"`
+		Text     string `json:"text"`
+		FileText string `json:"file_text"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
+		return patchChange{}, err
+	}
+	path := firstNonEmpty(payload.Path, payload.FilePath)
+	if path == "" {
+		return patchChange{}, fmt.Errorf("missing path")
+	}
+	content := firstNonEmpty(payload.Content, payload.Contents, payload.Text, payload.FileText)
+	lines := make([]patchLine, 0)
+	for _, line := range splitToolTextLines(content) {
+		lines = append(lines, patchLine{kind: patchLineAdd, prefix: "+ ", text: line})
+	}
+	return patchChange{
+		kind:  patchChangeAdd,
+		path:  sanitizeText(path),
+		lines: lines,
+	}, nil
+}
+func extractDeleteChange(call *llmstream.ToolCall) (patchChange, error) {
+	if call == nil {
+		return patchChange{}, fmt.Errorf("missing tool call")
+	}
+	var payload struct {
+		Path     string `json:"path"`
+		FilePath string `json:"file_path"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
+		return patchChange{}, err
+	}
+	path := firstNonEmpty(payload.Path, payload.FilePath)
+	if path == "" {
+		return patchChange{}, fmt.Errorf("missing path")
+	}
+	return patchChange{
+		kind: patchChangeDelete,
+		path: sanitizeText(path),
+	}, nil
+}
 func parseApplyPatch(input string) ([]patchChange, error) {
 	normalized := strings.ReplaceAll(input, "\r\n", "\n")
 	lines := strings.Split(normalized, "\n")

@@ -102,10 +102,14 @@ func commandAttributes(res CommandResult) string {
 }
 
 func formatCommandLine(res CommandResult) string {
-	if len(res.Args) == 0 {
-		return res.Command
+	parts := make([]string, 0, len(res.Env)+1+len(res.Args))
+	parts = append(parts, res.Env...)
+	parts = append(parts, res.Command)
+	parts = append(parts, res.Args...)
+	if len(parts) == 0 {
+		return ""
 	}
-	return res.Command + " " + strings.Join(res.Args, " ")
+	return strings.Join(parts, " ")
 }
 
 func formatWarnDuration(d time.Duration) string {

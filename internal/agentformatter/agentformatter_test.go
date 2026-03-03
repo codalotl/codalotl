@@ -1048,6 +1048,107 @@ func TestApplyPatchLinesSanitized(t *testing.T) {
 	assert.NotContains(t, cliOut, "\t")
 	assert.NotContains(t, cliOut, ctrlC)
 }
+func TestEditToolCallFormattingReplaceAll(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "edit",
+		Input: `{"file_path":"foo/bar.go","old_string":"old line","new_string":"new line","replace_all":true}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "edit",
+		ToolCall: &call,
+	}
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, []string{
+		"• Edit foo/bar.go (replace all)",
+		"     - old line",
+		"     + new line",
+	}, strings.Split(stripANSI(out), "\n"))
+	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+	assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
+	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
+}
+func TestCreateToolCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "create",
+		Input: `{"path":"foo/new.txt","content":"first line\nsecond line"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "create",
+		ToolCall: &call,
+	}
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, []string{
+		"• Add foo/new.txt",
+		"     + first line",
+		"     + second line",
+	}, strings.Split(stripANSI(out), "\n"))
+	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
+}
+func TestDeleteToolCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "delete",
+		Input: `{"path":"foo/old.txt"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "delete",
+		ToolCall: &call,
+	}
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Delete foo/old.txt", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+}
+func TestEditToolCompleteErrorShowsMessage(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	call := llmstream.ToolCall{
+		Name:  "edit",
+		Input: `{"path":"foo/bar.go","old_string":"old line","new_string":"new line"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "replace failed",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "edit",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, []string{
+		"• Edit foo/bar.go",
+		"     - old line",
+		"     + new line",
+		"  └ Error: replace failed",
+	}, strings.Split(stripANSI(out), "\n"))
+	assert.Contains(t, out, ansiWrap("•", pal, colorRed, false, false))
+}
 
 func TestApplyPatchCompleteWithError(t *testing.T) {
 	cfg := Config{

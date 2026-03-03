@@ -7,6 +7,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/codalotl/codalotl/internal/lints"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/stretchr/testify/assert"
@@ -16,10 +17,12 @@ import (
 func TestNewUpdateUsageTool_StoresLintSteps(t *testing.T) {
 	sandbox := t.TempDir()
 	steps := []lints.Step{{ID: "custom"}}
+	model := llmmodel.DefaultModel
 
-	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), steps)
+	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), model, steps)
 	updateTool, ok := tool.(*toolUpdateUsage)
 	require.True(t, ok)
+	assert.Equal(t, model, updateTool.model)
 	assert.Equal(t, steps, updateTool.lintSteps)
 }
 
@@ -39,7 +42,7 @@ func TestUpdateUsage_Run_DownstreamPackagePath_ReachesSubagentCheck(t *testing.T
 		require.NoError(t, err)
 
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewUpdateUsageTool(pkg.AbsolutePath(), auth, dummyPackageToolset(), nil)
+		tool := NewUpdateUsageTool(pkg.AbsolutePath(), auth, dummyPackageToolset(), llmmodel.DefaultModel, nil)
 
 		res := tool.Run(context.Background(), llmstream.ToolCall{
 			CallID: "call-update-usage",
@@ -70,7 +73,7 @@ func TestUpdateUsage_Run_RejectsAbsolutePaths(t *testing.T) {
 		require.NoError(t, err)
 
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
-		tool := NewUpdateUsageTool(pkg.AbsolutePath(), auth, dummyPackageToolset(), nil)
+		tool := NewUpdateUsageTool(pkg.AbsolutePath(), auth, dummyPackageToolset(), llmmodel.DefaultModel, nil)
 
 		res := tool.Run(context.Background(), llmstream.ToolCall{
 			CallID: "call-update-usage-abs",

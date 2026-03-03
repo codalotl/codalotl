@@ -5,18 +5,19 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 )
 
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model ID sent to API endpoints.
 // Consumers can create/register their own ModelID with AddCustomModel, which bundles a provider model as well as a set of parameters. This also lets this package
-// and consumers alias long/awkward ids with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
+// and consumers alias long/awkward IDs with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
 type ModelID string
 
 // DefaultModel is a good default model. It can be used in tests or in production code.
 //
 // Applications probably want to define their own default model.
-const DefaultModel ModelID = "gpt-5.2"
+const DefaultModel ModelID = "gpt-5.2-high"
 
 // ProviderID returns id's provider.
 func (id ModelID) ProviderID() ProviderID {
@@ -91,7 +92,7 @@ const (
 	ProviderIDXAI       ProviderID = "xai"
 )
 
-// AllProviderIDs are all provider ids. They are sorted by my personal opinion of importance.
+// AllProviderIDs are all provider IDs. They are sorted by my personal opinion of importance.
 var AllProviderIDs = []ProviderID{
 	ProviderIDOpenAI,
 	ProviderIDXAI,
@@ -173,7 +174,7 @@ func AvailableModelIDs() []ModelID {
 // ModelIDOrFallback returns id if it is valid. Otherwise it returns the default model for ProviderIDOpenAI (or the first available model, if ProviderIDOpenAI has
 // no models).
 //
-// This method can be used in cases where the consumer must talk to *some* valid model, but their current model id might be unset or invalid.
+// This method can be used in cases where the consumer must talk to *some* valid model, but their current model ID might be unset or invalid.
 func ModelIDOrFallback(id ModelID) ModelID {
 	if id.Valid() {
 		return id
@@ -392,6 +393,7 @@ var (
 )
 
 var anthropicVersionSuffix = regexp.MustCompile(`-\d{6,}$`)
+var dashBetweenDigits = regexp.MustCompile(`(\d)-(\d)`)
 
 func init() {
 	if err := loadProviders(); err != nil {
@@ -464,13 +466,12 @@ func registerPrimaryModels() {
 		effort string
 	}
 	reasoningVariants := []reasoningVariant{
-		{suffix: "minimal", effort: "minimal"},
-		{suffix: "low", effort: "low"},
 		{suffix: "medium", effort: "medium"},
 		{suffix: "high", effort: "high"},
+		{suffix: "xhigh", effort: "xhigh"},
 	}
 
-	registerOpenAIReasoningVariants := func(provider providerData, m providerModelPayload, firstModel *ModelID, variantsCanBeDefault bool) {
+	registerOpenAIReasoningVariants := func(provider providerData, m providerModelPayload, firstModel *ModelID) {
 		for _, variant := range reasoningVariants {
 			candidate := ModelID(fmt.Sprintf("%s-%s", m.ID, variant.suffix))
 			unique := ensureUniqueModelIDLocked(provider.ID, candidate, m.ID)
@@ -483,7 +484,7 @@ func registerPrimaryModels() {
 				ProviderID:             provider.ID,
 				SupportedTypes:         []ProviderAPIType{ProviderTypeOpenAIResponses},
 				ProviderModelID:        m.ID,
-				IsDefault:              variantsCanBeDefault && m.ID == provider.DefaultProviderModel && variant.suffix == "high",
+				IsDefault:              m.ID == provider.DefaultProviderModel && variant.suffix == "high",
 				APIEndpointURL:         provider.APIEndpointURL,
 				CostPer1MIn:            m.CostPer1MIn,
 				CostPer1MOut:           m.CostPer1MOut,
@@ -524,8 +525,8 @@ func registerPrimaryModels() {
 				continue
 			}
 
-			if pid == ProviderIDOpenAI && m.ID == "gpt-5.1-codex" {
-				registerOpenAIReasoningVariants(provider, m, &firstModel, true)
+			if pid == ProviderIDOpenAI && (m.ID == "gpt-5.2" || m.ID == "gpt-5.3-codex") {
+				registerOpenAIReasoningVariants(provider, m, &firstModel)
 				continue // don't register the base id; force selection of a reasoning variant.
 			}
 
@@ -557,10 +558,6 @@ func registerPrimaryModels() {
 				SupportsImages:         m.SupportsImages,
 			}
 
-			if pid == ProviderIDOpenAI && m.ID == "gpt-5.2" {
-				info.ModelOverrides.ReasoningEffort = "high"
-			}
-
 			modelsByID[unique] = info
 			modelOrder = append(modelOrder, unique)
 
@@ -568,9 +565,6 @@ func registerPrimaryModels() {
 				providerDefaults[pid] = unique
 			}
 
-			if pid == ProviderIDOpenAI && m.ID == "gpt-5.2" {
-				registerOpenAIReasoningVariants(provider, m, &firstModel, false)
-			}
 		}
 
 		if providerDefaults[pid] == ModelIDUnknown {
@@ -596,7 +590,10 @@ func deriveModelID(pid ProviderID, providerModelID string) ModelID {
 
 	switch pid {
 	case ProviderIDAnthropic:
-		return ModelID(anthropicVersionSuffix.ReplaceAllString(providerModelID, ""))
+		withoutDateSuffix := anthropicVersionSuffix.ReplaceAllString(providerModelID, "")
+		withoutPrefix := strings.TrimPrefix(withoutDateSuffix, "claude-")
+		normalized := dashBetweenDigits.ReplaceAllString(withoutPrefix, "${1}.${2}")
+		return ModelID(normalized)
 	default:
 		return ModelID(providerModelID)
 	}

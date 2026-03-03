@@ -12,14 +12,15 @@ The toolsets package offers bundles of tool configurations that agents/subagents
 //   - toolsets.* functions can be passed directly as toolsetinterface.Toolset values.
 type Options = toolsetinterface.Options
 
-// CoreAgentTools offers tools similar to a Codex-style agent: read_file, ls, apply_patch, shell, and update_plan.
+// CoreAgentTools offers tools similar to a Codex-style agent: read_file, ls, shell, and update_plan. For code edits, OpenAI models get apply_patch, while other
+// providers get edit+write+delete.
 //
 // sandboxDir is an absolute path that represents the "jail" that the agent runs in. However, it's authorizer that actually implements the jail. The purpose of accepting
 // sandboxDir here is so that relative paths received by the LLM can be made absolute.
 func CoreAgentTools(opts Options) ([]llmstream.Tool, error)
 
 // PackageAgentTools offers tools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch, skill_shell, update_plan
+//   - core tools: read_file, ls, (apply_patch OR edit+write+delete), skill_shell, update_plan
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests, run_project_tests
 //   - package tools: module_info, get_public_api, clarify_public_api, get_usage, update_usage, change_api
 //
@@ -36,7 +37,7 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error)
 func SimpleReadOnlyTools(opts Options) ([]llmstream.Tool, error)
 
 // LimitedPackageAgentTools offers more limited tools than PackageAgentTools that jail an agent to one code unit (in Go, typically a package), located at goPkgAbsDir:
-//   - core tools: read_file, ls, apply_patch, skill_shell (not included: update_plan)
+//   - core tools: read_file, ls, (apply_patch OR edit+write+delete), skill_shell (not included: update_plan)
 //   - extended tools: diagnostics (i.e., typecheck errors/build errors), fix_lints, run_tests (not included: run_project_tests)
 //   - package tools: get_public_api, clarify_public_api (not included: get_usage, update_usage)
 //

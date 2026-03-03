@@ -10,51 +10,15 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 )
 
-// Thought: i kinda want to make a database of atomic "ideas". Most a single short sentence. Then I can test full prompts against the ideas, or generate new prompts given a set of target ideas.
-// Example ideas:
-//   - "wrap file references in backticks"
-//   - "communicate concisely"
-//   - "don't stop until you've solved the user's request"
-
 var (
-	// //go:embed fragments/header.md
-	// genericHeader string
+	//go:embed data/basic.default.md
+	basicDefault string
 
-	//go:embed fragments/header-codex.md
-	codexHeader string
+	//go:embed data/package_mode.default.md
+	packageModeDefault string
 
-	//go:embed fragments/sub-header.md
-	capabilitiesSection string
-
-	//go:embed fragments/personality.md
-	personalitySection string
-
-	//go:embed fragments/code-editing.md
-	codeEditingSection string
-
-	//go:embed fragments/sandbox-approvals-safety.md
-	sandboxApprovalsSafetySection string
-
-	//go:embed fragments/tools.md
-	toolsSection string
-
-	//go:embed fragments/planning.md
-	planningSection string
-
-	//go:embed fragments/git-and-version-control.md
-	gitAndVersionControlSection string
-
-	//go:embed fragments/final-message.md
-	finalMessageSection string
-
-	//go:embed fragments/message-formatting.md
-	messageFormattingSection string
-
-	//go:embed fragments/go-package-mode.md
-	goPackageModeSection string
-
-	//go:embed fragments/go-package-mode-update_usage.md
-	goPackageModeUpdateUsageSection string
+	//go:embed data/package_mode_update_usage.default.md
+	packageModeUpdateUsageDefault string
 )
 
 var (
@@ -97,36 +61,14 @@ func getConfig() (agentName string, modelID llmmodel.ModelID) {
 	return agentName, modelID
 }
 
-// GetFullPrompt returns a prompt using the globally configured agent name and model. Different models have are best prompted in different ways, often based on how
-// they were RL'ed. This method returns a prompt well-suited for that model.
-func GetFullPrompt() string {
+// GetBasicPrompt returns a prompt using the globally configured agent name and model. Different models have are best prompted in different ways, often based on
+// how they were RL'ed. This method returns a prompt well-suited for that model.
+func GetBasicPrompt() string {
 	agentName, modelID := getConfig()
-	data := map[string]any{
-		"AgentName": agentName,
-		"ModelName": modelDisplayName(modelID),
-	}
+	data := promptTemplateData(agentName, modelID)
 
 	// NOTE: in future could do stuff based on modelID.Provider(), eg, render anthropic-specific prompts.
-
-	sections := []string{
-		codexHeader,
-		capabilitiesSection,
-		personalitySection,
-		codeEditingSection,
-		sandboxApprovalsSafetySection,
-		toolsSection,
-		planningSection,
-		gitAndVersionControlSection,
-		finalMessageSection,
-		messageFormattingSection,
-	}
-	rendered := make([]string, 0, len(sections))
-	for _, fragment := range sections {
-		fragment = strings.TrimSpace(fragment)
-		rendered = append(rendered, renderFragment(fragment, data))
-	}
-
-	return strings.Join(rendered, "\n\n")
+	return renderFragment(strings.TrimSpace(basicDefault), data)
 }
 
 type GoPackageModePromptKind string
@@ -142,25 +84,31 @@ const (
 // To make subagents with a subset of tools/capabilities, add a GoPackageModePromptKind with a custom explanation.
 func GetGoPackageModeModePrompt(kind GoPackageModePromptKind) string {
 	agentName, modelID := getConfig()
-	base := GetFullPrompt()
-
-	data := map[string]any{
-		"AgentName": agentName,
-		"ModelName": modelDisplayName(modelID),
-	}
+	data := promptTemplateData(agentName, modelID)
+	base := renderFragment(strings.TrimSpace(basicDefault), data)
 
 	var snippet string
 
 	switch kind {
 	case GoPackageModePromptKindFull:
-		snippet = goPackageModeSection
+		snippet = packageModeDefault
 	case GoPackageModePromptKindUpdateUsage:
-		snippet = goPackageModeUpdateUsageSection
+		snippet = packageModeUpdateUsageDefault
 	default:
 		panic("unhandled package mode kind")
 	}
 
 	return base + "\n\n" + renderFragment(strings.TrimSpace(snippet), data)
+}
+
+func promptTemplateData(agentName string, modelID llmmodel.ModelID) map[string]any {
+	tools := decideFileEditTools(modelID)
+	return map[string]any{
+		"AgentName":              agentName,
+		"ModelName":              modelDisplayName(modelID),
+		"EditFileToolsList":      tools.list,
+		"EditFileToolsAfterEach": tools.afterEach,
+	}
 }
 
 func renderFragment(fragment string, data any) string {
@@ -182,4 +130,22 @@ func modelDisplayName(modelID llmmodel.ModelID) string {
 		return "an unspecified model"
 	}
 	return name
+}
+
+type fileEditTools struct {
+	list      string
+	afterEach string
+}
+
+func decideFileEditTools(modelID llmmodel.ModelID) fileEditTools {
+	if modelID.ProviderID() == llmmodel.ProviderIDOpenAI {
+		return fileEditTools{
+			list:      "`apply_patch`",
+			afterEach: "`apply_patch`",
+		}
+	}
+	return fileEditTools{
+		list:      "`edit`, `write`, and `delete`",
+		afterEach: "file-edit tool call (`edit`, `write`, or `delete`)",
+	}
 }

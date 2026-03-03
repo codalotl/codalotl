@@ -1,0 +1,1 @@
+{"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{"unix_timestamp":1772049900,"paths":["internal/llmmodel/SPEC.md","internal/llmmodel/config_embed.go","internal/llmmodel/llmmodel.go","internal/llmmodel/llmmodel_test.go"],"git_clean":true,"git_commit":"eb64eb04613a099c3544bc9304fb651d1140f97b","git_merge_base":"da6fffa0885bc55ab0ee20c0f5eab65758e2c497"}}

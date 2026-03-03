@@ -275,7 +275,7 @@ func runTestsWithRecursionGuard(ctx context.Context, pkg *gocode.Package, module
 		_ = os.Setenv(recursionEnvVar, prevValue)
 	}()
 
-	return exttools.RunTests(ctx, moduleAbsPath, pkgAbsPath, "", false)
+	return exttools.RunTests(ctx, moduleAbsPath, pkgAbsPath, "", false, "")
 }
 
 func recursionDetected(pkgImportPath string) bool {

@@ -1,0 +1,47 @@
+== DEBUG: HTTP REQUEST: create anthropic message(stream=true)
+{
+  "Model": "claude-opus-4-6",
+  "MaxTokens": 32000,
+  "System": "You are a precise assistant.\nIn your first response, call the tool named \"get_weather\" exactly once with {\"location\":\"San Francisco\"}.\nDo not add any plain text before or after the tool call.",
+  "Messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Use the tool now."
+        }
+      ]
+    }
+  ],
+  "Tools": [
+    {
+      "name": "get_weather",
+      "description": "Gets the current temperature for a given location.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "description": "The city and/or region to check.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location"
+        ],
+        "type": "object"
+      }
+    }
+  ],
+  "ToolChoice": null,
+  "Temperature": 0,
+  "ServiceTier": "",
+  "StopSequences": null,
+  "Thinking": {
+    "type": "adaptive"
+  },
+  "OutputConfig": {
+    "effort": "low"
+  },
+  "CacheControl": null
+}

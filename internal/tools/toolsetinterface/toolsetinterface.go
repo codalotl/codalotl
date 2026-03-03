@@ -10,6 +10,7 @@ package toolsetinterface
 
 import (
 	"github.com/codalotl/codalotl/internal/lints"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
@@ -24,6 +25,9 @@ type Options struct {
 
 	// GoPkgAbsDir is the absolute path of the Go package directory that package-scoped toolsets operate on. It is required only for package-scoped toolsets.
 	GoPkgAbsDir string
+
+	// Model is the selected model identifier for the current run. Toolset constructors can use it to choose model/provider-specific tool behavior.
+	Model llmmodel.ModelID
 
 	// LintSteps are the linting steps that can be used by tools that need to check/fix formatting or other repo conventions.
 	LintSteps []lints.Step

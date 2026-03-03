@@ -28,7 +28,7 @@ func newTextTurn(role Role, content string) Turn {
 }
 
 type SendOptions struct {
-	ReasoningEffort    string // ex: "minimal", "low", "medium", "high"
+	ReasoningEffort    string // ex: "minimal", "low", "medium", "high", "xhigh"
 	ReasoningSummary   string // ex: "auto", "concise", "detailed"
 	TemperaturePresent bool
 	Temperature        float64 // ex: 1.0
@@ -50,8 +50,6 @@ type StreamingConversation interface {
 	AddTools(tools []Tool) error
 	AddUserTurn(text string) error
 	AddToolResults(toolResults []ToolResult) error
-
-	// SendSync(ctx context.Context) (Turn, error)
 	SendAsync(ctx context.Context, options ...SendOptions) <-chan Event
 }
 
@@ -260,8 +258,14 @@ func (sc *streamingConversation) SendAsync(ctx context.Context, options ...SendO
 			out <- newErrorEvent(sc.LogNewErr("conversation.provider.unknown", "model_id", string(sc.modelID)))
 			return
 		}
-		if !modelSupportsAPIType(modelInfo, llmmodel.ProviderTypeOpenAIResponses) {
-			out <- newErrorEvent(sc.LogNewErr("conversation.model.unsupported_api", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID, "required_api", llmmodel.ProviderTypeOpenAIResponses))
+		var sendAsync func(context.Context, chan Event, *SendOptions, llmmodel.ModelInfo) (Turn, error)
+		switch {
+		case modelSupportsAPIType(modelInfo, llmmodel.ProviderTypeOpenAIResponses):
+			sendAsync = sc.sendAsyncOpenAIResponses
+		case modelSupportsAPIType(modelInfo, llmmodel.ProviderTypeAnthropic):
+			sendAsync = sc.sendAsyncAnthropic
+		default:
+			out <- newErrorEvent(sc.LogNewErr("conversation.model.unsupported_api", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID, "required_api", "openai_responses|anthropic"))
 			return
 		}
 
@@ -271,7 +275,7 @@ func (sc *streamingConversation) SendAsync(ctx context.Context, options ...SendO
 		const retryMaxAttempts = 3
 
 		for attempt := 1; attempt <= retryMaxAttempts; attempt++ {
-			newTurn, err = sc.sendAsyncOpenAIResponses(ctx, out, opt, modelInfo)
+			newTurn, err = sendAsync(ctx, out, opt, modelInfo)
 
 			if err == nil {
 				break

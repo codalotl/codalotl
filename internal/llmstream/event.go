@@ -69,11 +69,29 @@ func newErrorEvent(err error) Event {
 	return Event{Type: EventTypeError, Error: err}
 }
 
+// TokenUsage stores provider-reported token counts for a single provider turn (successful HTTP request).
+//
+// Relationship: TotalInputTokens = CachedInputTokens + CacheCreationInputTokens + [UncachedInputTokens]
+//   - Where [UncachedInputTokens] is not an actual field, but a conceptual value.
+//   - For OpenAI, CacheCreationInputTokens == 0, and [UncachedInputTokens] are billed at the "Input Token Price".
+//   - For Anthropic, CacheCreationInputTokens is billed at the "5m Cache Writes Price", and [UncachedInputTokens] at "Base Input Tokens".
 type TokenUsage struct {
-	TotalInputTokens  int64 // Total input tokens for this turn (must include CachedInputTokens).
+	// TotalInputTokens is the full input token count for this turn, including any cached-read tokens and cache-creation tokens. In other words, it is the total tokens
+	// input into the stateless LLM in this turn/http request.
+	TotalInputTokens int64
+
+	// CachedInputTokens is the portion of TotalInputTokens that came from prompt cache reads (subset of input).
 	CachedInputTokens int64
-	ReasoningTokens   int64
-	TotalOutputTokens int64 // Total output tokens for this turn (may exclude ReasoningTokens depending on provider semantics).
+
+	// CacheCreationInputTokens is the portion of TotalInputTokens that were newly saved to cache (not counting refreshes).
+	CacheCreationInputTokens int64
+
+	// ReasoningTokens is the provider-reported count of internal reasoning tokens (if the provider exposes it). If a provider does not expose this split, this is 0.
+	ReasoningTokens int64
+
+	// TotalOutputTokens is the provider's total output token count for this turn. This value always includes ReasoningTokens (when reported), so TotalOutputTokens >=
+	// ReasoningTokens.
+	TotalOutputTokens int64
 }
 
 type FinishReason string

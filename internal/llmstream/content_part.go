@@ -12,8 +12,14 @@ type ContentPart interface {
 //   - If providers have IDs for their reasoning objects, ID will be set.
 //   - If providers have multiple reasoning items per ID (ex: OpenAI Responses), there may be multiple ReasoningContents with the same ID.
 type ReasoningContent struct {
-	ProviderID string `json:"provider_id"` // ProviderID is provider-specific (if the provider IDs its reasoning text).
-	Content    string `json:"content"`
+	// ProviderID is provider-specific (if the provider IDs its reasoning text).
+	ProviderID string `json:"provider_id"`
+
+	Content string `json:"content"`
+
+	// ProviderState carries provider-specific opaque reasoning state needed to safely round-trip reasoning across turns. For Anthropic this stores the thinking signature;
+	// future providers may use other opaque formats.
+	ProviderState string `json:"provider_state,omitempty"`
 }
 
 func (c ReasoningContent) String() string {
@@ -57,7 +63,7 @@ type ToolResult struct {
 	IsError bool   `json:"is_error"`
 
 	// If IsError, SourceError may optionally be set if the error was due to a Go-ism that returned an error. For instance, if os.Open fails to open a file and returns
-	// an error, we can store the error here. On th eother hand, if a `read_file` tool indicates a path that is a directory, we could detect it with IsDir and return
+	// an error, we can store the error here. On the other hand, if a `read_file` tool indicates a path that is a directory, we could detect it with IsDir and return
 	// an error result, but no SourceErr would exist.
 	SourceErr error `json:"-"`
 }

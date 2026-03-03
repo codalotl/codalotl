@@ -51,6 +51,8 @@ if result.Success() {
 - Default inputs: `RootDir`, `DevNull`
 - All path input types are normalized to absolute paths automatically by the time they get to the templating stage.
 - If an arg in Args is "" after TrimSpace, it is discarded.
+- If an env entry in Env is "" after TrimSpace, it is discarded.
+- Env entries must render to `KEY=VALUE`.
 - `relativeTo` converts a path relative to another path.
 - `manifestDir` function exists - see the manifestDir section.
 - `repoDir` accepts a path (file or dir) and walks towards rootDir, returning the first dir that contains a `.git` directory, otherwise the root dir.
@@ -92,6 +94,7 @@ ok      axi/q/cmdrunner 0.003s
 - We print the command after a $ as the first line in the body of the tag.
 - If the command has no output, the output is three lines (tag, $ command, end tag).
 - If `MessageIfNoOutput` is set non-empty on the command and there's no output, a `message` attribute will be set on the opening tag.
+- If `Command.Env` is set, the output prints the Env before the command (ex: `$ MYVAR=1 go test ./q/cmdrunner`).
 
 If the runner has multiple commands:
 - The outter tag (ex: `<test-status>` above) will only contain the `ok` attribute.
@@ -152,11 +155,12 @@ func (r *Runner) AddCommand(c Command)
 ```
 
 ```go {api}
-// A Command is a templated command to run. The Command/Args/CWD fields support templates.
+// A Command is a templated command to run. The Command/Args/CWD/Env fields support templates.
 type Command struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
 	CWD     string   `json:"cwd"` // optional working directory for the command. Defaults to the root dir.
+	Env     []string `json:"env"` // optional environment variables in KEY=VALUE form, merged onto the current process env.
 
 	// If OutcomeFailIfAnyOutput, any output causes the command to have a failed outcome (ex: `gofmt -l` is blank when no-lint-issues and non-blank when lint-issues).
 	OutcomeFailIfAnyOutput bool `json:"outcomefailifanyoutput"`

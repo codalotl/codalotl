@@ -132,7 +132,7 @@ func ClarifyAPI(ctx context.Context, agentCreator agent.AgentCreator, sandboxAbs
 
 	// Provide the sandbox location in the system prompt so the model can reason about paths
 	// and what it can/can't read via tools.
-	systemPrompt := prompt.GetFullPrompt() + "\n\n<env>\nSandbox directory: " + sandboxAbsDir + "\n</env>\n"
+	systemPrompt := prompt.GetBasicPrompt() + "\n\n<env>\nSandbox directory: " + sandboxAbsDir + "\n</env>\n"
 
 	ag, err := agentCreator.NewWithDefaultModel(systemPrompt, tools)
 	if err != nil {

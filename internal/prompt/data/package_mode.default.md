@@ -23,14 +23,13 @@ This only applies when `@` is used. If `@` is missing, this does not apply.
 
 ## Automatic behaviors
 
-- After every `apply_patch`, the harness will automatically run `diagnostics` and `fix_lints`, and show you the results.
+- After every {{.EditFileToolsAfterEach}}, the harness will automatically run `diagnostics` and `fix_lints`, and show you the results.
 
 ## Working on your package
 
-- You may use `read_file` and `apply_patch` on your files.
+- You may use `read_file` and {{.EditFileToolsList}} on your files.
     - IMPORTANT: file paths are relative to the sandbox dir, not this package's dir.
 - You may run tests on your package with `run_tests`.
-- Note that every `apply_patch` will run `diagnostics` and `fix_lints` automatically, so you shouldn't have to manually run those.
 - There is no direct shell access! You must use the supplied tools.
 
 ## Upstream (imported) packages

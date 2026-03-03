@@ -107,7 +107,7 @@ func TestClarifyAPI_SystemPromptIncludesEnvBlock(t *testing.T) {
 	)
 	assert.Error(t, err)
 
-	base := prompt.GetFullPrompt()
+	base := prompt.GetBasicPrompt()
 	assert.True(t, strings.HasPrefix(ac.gotSystemPrompt, base))
 	assert.True(t, strings.HasSuffix(ac.gotSystemPrompt, "\n\n<env>\nSandbox directory: "+sandboxAbsDir+"\n</env>\n"))
 }

@@ -509,6 +509,7 @@ func (a *Agent) addUsage(usage llmstream.TokenUsage) {
 	if usage.TotalInputTokens == 0 &&
 		usage.TotalOutputTokens == 0 &&
 		usage.CachedInputTokens == 0 &&
+		usage.CacheCreationInputTokens == 0 &&
 		usage.ReasoningTokens == 0 {
 		return
 	}
@@ -517,6 +518,7 @@ func (a *Agent) addUsage(usage llmstream.TokenUsage) {
 	a.tokenUsage.TotalInputTokens += usage.TotalInputTokens
 	a.tokenUsage.TotalOutputTokens += usage.TotalOutputTokens
 	a.tokenUsage.CachedInputTokens += usage.CachedInputTokens
+	a.tokenUsage.CacheCreationInputTokens += usage.CacheCreationInputTokens
 	a.tokenUsage.ReasoningTokens += usage.ReasoningTokens
 	a.mu.Unlock()
 

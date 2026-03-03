@@ -18,7 +18,6 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/simplelogger"
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsets"
@@ -86,6 +85,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	if modelID != "" && !modelID.Valid() {
 		return nil, fmt.Errorf("unknown model %q", modelID)
 	}
+	prompt.SetModel(modelID)
 
 	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
 	if err != nil {
@@ -145,6 +145,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 			SandboxDir:  sandboxDir,
 			Authorizer:  pkgAuthorizer,
 			GoPkgAbsDir: pkgAbsPath,
+			Model:       modelID,
 			LintSteps:   cfg.lintSteps,
 		})
 		if err != nil {
@@ -152,10 +153,11 @@ func newSession(cfg sessionConfig) (*session, error) {
 			return nil, fmt.Errorf("build package toolset: %w", err)
 		}
 	} else {
-		systemPrompt = prompt.GetFullPrompt()
+		systemPrompt = prompt.GetBasicPrompt()
 		tools, err = toolsets.CoreAgentTools(toolsets.Options{
 			SandboxDir: sandboxDir,
 			Authorizer: sandboxAuthorizer,
+			Model:      modelID,
 			LintSteps:  cfg.lintSteps,
 		})
 		if err != nil {
@@ -173,7 +175,6 @@ func newSession(cfg sessionConfig) (*session, error) {
 		}
 		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, cfg.packageMode()))
 		systemPrompt = strings.TrimSpace(systemPrompt)
-		simplelogger.Log("Prompt:\n%s", systemPrompt)
 	}
 
 	agentInstance, err := agent.NewAgent(modelID, systemPrompt, tools)
