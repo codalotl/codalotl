@@ -393,6 +393,7 @@ var (
 )
 
 var anthropicVersionSuffix = regexp.MustCompile(`-\d{6,}$`)
+var dashBetweenDigits = regexp.MustCompile(`(\d)-(\d)`)
 
 func init() {
 	if err := loadProviders(); err != nil {
@@ -465,10 +466,9 @@ func registerPrimaryModels() {
 		effort string
 	}
 	reasoningVariants := []reasoningVariant{
-		{suffix: "minimal", effort: "minimal"},
-		{suffix: "low", effort: "low"},
 		{suffix: "medium", effort: "medium"},
 		{suffix: "high", effort: "high"},
+		{suffix: "xhigh", effort: "xhigh"},
 	}
 
 	registerOpenAIReasoningVariants := func(provider providerData, m providerModelPayload, firstModel *ModelID) {
@@ -591,7 +591,9 @@ func deriveModelID(pid ProviderID, providerModelID string) ModelID {
 	switch pid {
 	case ProviderIDAnthropic:
 		withoutDateSuffix := anthropicVersionSuffix.ReplaceAllString(providerModelID, "")
-		return ModelID(strings.TrimPrefix(withoutDateSuffix, "claude-"))
+		withoutPrefix := strings.TrimPrefix(withoutDateSuffix, "claude-")
+		normalized := dashBetweenDigits.ReplaceAllString(withoutPrefix, "${1}.${2}")
+		return ModelID(normalized)
 	default:
 		return ModelID(providerModelID)
 	}

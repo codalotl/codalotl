@@ -116,7 +116,7 @@ func TestTokensCostLines_OpenAIDoesNotDoubleCountReasoningTokens(t *testing.T) {
 }
 
 func TestTokensCostLines_AnthropicPricingUsesCacheReadAndWriteRates(t *testing.T) {
-	info := llmmodel.GetModelInfo(llmmodel.ModelID("sonnet-4-6"))
+	info := llmmodel.GetModelInfo(llmmodel.ModelID("sonnet-4.6"))
 	require.Equal(t, llmmodel.ProviderIDAnthropic, info.ProviderID)
 
 	usage := llmstream.TokenUsage{
@@ -129,7 +129,7 @@ func TestTokensCostLines_AnthropicPricingUsesCacheReadAndWriteRates(t *testing.T
 	lines := tokensCostLines(info, usage, 50)
 	require.Len(t, lines, 2)
 
-	// Cost math for sonnet-4-6:
+	// Cost math for sonnet-4.6:
 	// uncached input (70k) @ $3/M + cached read (20k) @ $0.3/M +
 	// cache writes (10k) @ $3.75/M + output (5k) @ $15/M = $0.3285 -> $0.33.
 	assert.Equal(t, "Context: 50% left   |   Cost: $0.33", lines[0])
