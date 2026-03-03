@@ -2,14 +2,6 @@
 
 The prompt package builds prompts for an LLM coding agent. The prompt returned can be a function of model and provider, among other factors.
 
-## Variants
-
-Different LLMs sometimes do better with significantly different "styles" of prompts. For instance, Anthropic LLMs tend to need more prompting and more examples. On the other hand, OpenAI LLMs do fine with precise and concise instructions. Based on the model, the prompt package may return a different variant of the prompt.
-
-Variants:
-- There's a default variant, which is optimized for all OpenAI models.
-- Anthropic models have their own variant.
-
 ## Parameterization
 
 The returned prompts can vary based on:
@@ -17,10 +9,8 @@ The returned prompts can vary based on:
 - Model (and the model provider)
 - Agent type (generic, package mode, update usage subagent in package mode)
 
-Requirements:
-- The tools used to edit files must be able to be varied independently of the provider.
-    - Option 1: `apply_patch`
-    - Option 2: `edit`, `write`, and `delete`.
+Depending on the agent configuration, we can swap the set of tools used:
+- Editing files either uses `apply_patch` or {`edit`, `write`, and `delete`}.
 
 ## Prompt Types
 
