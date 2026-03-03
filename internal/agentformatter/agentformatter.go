@@ -40,7 +40,7 @@ type Formatter interface {
 }
 
 // Config controls the terminal colorization options. We need to know the intended bg/fg, so we can create other colors that are consistent. For instance, if we
-// want to colorize backtick-wrapped paths/identifiers/code different, can modify ForegroundColor to be closer to BackgroundColor.
+// want to colorize backtick-wrapped paths/identifiers/code differently, can modify ForegroundColor to be closer to BackgroundColor.
 type Config struct {
 	PlainText       bool             // true: disable colors and ANSI escape characters (bold, italics, etc).
 	BackgroundColor termformat.Color // the terminal's background color. If nil, uses termformat.DefaultFBBGColor.
