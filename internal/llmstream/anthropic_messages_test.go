@@ -169,3 +169,24 @@ func TestBuildAnthropicMessageRequest_SetsTopLevelCacheControl(t *testing.T) {
 	assert.Equal(t, "ephemeral", req.CacheControl.Type)
 	assert.Equal(t, "", req.CacheControl.TTL)
 }
+
+func TestBuildAnthropicMessageRequest_UsesModelMaxOutput(t *testing.T) {
+	sc := NewConversation(llmmodel.ModelIDUnknown, "system").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("hello"))
+
+	req, err := sc.buildAnthropicMessageRequest(llmmodel.ModelInfo{
+		ProviderModelID: "claude-sonnet-4-6",
+		MaxOutput:       64000,
+	}, nil)
+	require.NoError(t, err)
+	assert.EqualValues(t, 64000, req.MaxTokens)
+}
+
+func TestBuildAnthropicMessageRequest_FallsBackToDefaultMaxOutput(t *testing.T) {
+	sc := NewConversation(llmmodel.ModelIDUnknown, "system").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("hello"))
+
+	req, err := sc.buildAnthropicMessageRequest(llmmodel.ModelInfo{ProviderModelID: "claude-sonnet-4-6"}, nil)
+	require.NoError(t, err)
+	assert.EqualValues(t, defaultAnthropicMaxTokens, req.MaxTokens)
+}

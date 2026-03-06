@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const anthropicMaxTokens int64 = 32000
+const defaultAnthropicMaxTokens int64 = 32000
 
 func (sc *streamingConversation) sendAsyncAnthropic(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, error) {
 	if err := ctx.Err(); err != nil {
@@ -105,7 +105,7 @@ func (sc *streamingConversation) buildAnthropicMessageRequest(modelInfo llmmodel
 	}
 	req := anthropicapi.MessageRequest{
 		Model:     modelID,
-		MaxTokens: anthropicMaxTokens,
+		MaxTokens: anthropicRequestMaxTokens(modelInfo),
 		System:    system,
 		Messages:  messages,
 		CacheControl: &anthropicapi.CacheControlParam{
@@ -123,6 +123,12 @@ func (sc *streamingConversation) buildAnthropicMessageRequest(modelInfo llmmodel
 		return anthropicapi.MessageRequest{}, err
 	}
 	return req, nil
+}
+func anthropicRequestMaxTokens(modelInfo llmmodel.ModelInfo) int64 {
+	if modelInfo.MaxOutput > 0 {
+		return modelInfo.MaxOutput
+	}
+	return defaultAnthropicMaxTokens
 }
 func anthropicBuildMessageParam(turn Turn) (anthropicapi.MessageParam, bool, error) {
 	role, ok := anthropicMapTurnRole(turn.Role)
