@@ -11,7 +11,7 @@ We use the `internal/q/cli` CLI framework to implement it.
 When codalotl starts, we load and validate configuration and required tools (exception: `version` and `-h` do not load/validate and always succeed).
 - If there's an error parsing the config file, or a config option is invalid, an error message is displayed and codalotl exits.
 - If there is no LLM configured (no LLM provider keys, including in ENV), an error message is displayed and codalotl exits.
-	- Note: a key must exist for **usable** models. The `llmmodel` package has more providers than we actually support right now.
+	- Note: a key must exist for **usable** models. The `llmmodel` package supports more providers than the CLI config schema currently exposes.
 - Required tools are checked:
 	- `go`
 	- `gopls`
@@ -81,7 +81,8 @@ Example Output:
 Current Configuration:
 {
   "providerkeys": {
-    "openai": "sk-p..._LQA"
+    "openai": "sk-p..._LQA",
+    "anthropic": ""
   },
   "reflowwidth": 160,
   "theme": "",
@@ -95,6 +96,7 @@ Effective Model: gpt-5.2
 
 To set LLM provider API keys, set one of these ENV variables:
 - OPENAI_API_KEY
+- ANTHROPIC_API_KEY
 
 Global configuration can be stored in /home/someuser/.codalotl/config.json
 Project-specific configuration can be stored in .codalotl/config.json
@@ -221,10 +223,10 @@ type Config struct {
 
 // ProviderKeys is kept separate so tests can easily validate its zero value.
 type ProviderKeys struct {
-	OpenAI string `json:"openai"`
+	OpenAI    string `json:"openai"`
+	Anthropic string `json:"anthropic"`
 
 	// NOTE: in the future, we may add these:
-	// Anthropic string `json:"anthropic"`
 	// XAI       string `json:"xai"`
 	// Gemini    string `json:"gemini"`
 }

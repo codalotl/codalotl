@@ -74,9 +74,8 @@ func (e startupValidationError) Error() string {
 		// Keep this snippet aligned with the current ProviderKeys schema.
 		if len(relevant) > 0 {
 			b.WriteString("\nExample config.json:\n")
-			// Use the first relevant env var as the example provider key.
-			exampleProvider := "openai"
-			if len(relevant) == 1 && strings.Contains(strings.ToLower(relevant[0]), "openai") {
+			exampleProvider := exampleProviderKeyID(relevant)
+			if exampleProvider == "" {
 				exampleProvider = "openai"
 			}
 			b.WriteString(fmt.Sprintf(`{
@@ -87,6 +86,32 @@ func (e startupValidationError) Error() string {
 	}
 
 	return strings.TrimRight(b.String(), "\n")
+}
+
+func exampleProviderKeyID(relevantEnvVars []string) string {
+	if len(relevantEnvVars) == 0 {
+		return ""
+	}
+	relevant := make(map[string]bool, len(relevantEnvVars))
+	for _, ev := range relevantEnvVars {
+		ev = strings.TrimSpace(ev)
+		if ev == "" {
+			continue
+		}
+		relevant[ev] = true
+	}
+	envVars := llmmodel.ProviderKeyEnvVars()
+	for _, pid := range providerIDsExposedByProviderKeys() {
+		if !isKnownProviderID(pid) {
+			continue
+		}
+		ev := strings.TrimSpace(envVars[pid])
+		if ev == "" || !relevant[ev] {
+			continue
+		}
+		return string(pid)
+	}
+	return ""
 }
 
 func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) error {
