@@ -95,7 +95,7 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	assert.Equal(t, "test-key", seen.Headers.Get("x-api-key"))
 	assert.Equal(t, DefaultVersion, seen.Headers.Get("anthropic-version"))
 	assert.Equal(t, "application/json", seen.Headers.Get("content-type"))
-	assert.Equal(t, []string{"beta-1", "beta-2"}, seen.Headers.Values("anthropic-beta"))
+	assert.Equal(t, []string{requiredBetaContext1M + ",beta-1,beta-2"}, seen.Headers.Values("anthropic-beta"))
 
 	var bodyPayload map[string]any
 	require.NoError(t, json.Unmarshal(seen.Body, &bodyPayload))
@@ -149,6 +149,25 @@ func TestClientStreamMessages_BasicStubbedFlow(t *testing.T) {
 	event, err = stream.Recv()
 	assert.ErrorIs(t, err, io.EOF)
 	assert.Equal(t, Event{}, event)
+}
+func TestClientStreamMessages_AlwaysIncludesRequiredBeta(t *testing.T) {
+	t.Parallel()
+	seenCh := make(chan http.Header, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenCh <- r.Header.Clone()
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer srv.Close()
+	client := New("test-key", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	stream, err := client.StreamMessages(context.Background(), MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 8,
+		Messages:  []MessageParam{{Role: "user", Content: []ContentBlockParam{{Type: "text", Text: "hi"}}}},
+	})
+	require.NoError(t, err)
+	defer stream.Close()
+	assert.Equal(t, []string{requiredBetaContext1M}, (<-seenCh).Values("anthropic-beta"))
 }
 
 func TestClientStreamMessages_StreamErrorEvent(t *testing.T) {

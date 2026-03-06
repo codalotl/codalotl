@@ -97,6 +97,11 @@ Construction of `modelsByID` during initialization:
 	- Replace `-` with `.` between numbes.
 	- Example: `claude-sonnet-4-5-20250929` -> `sonnet-4.5`.
 
+## Provider-Specific Notes
+
+- For Anthropic models, assume that the long context window is enabled. (As of 2026-03-06, we will enable context-1m-2025-08-07 for 1M context window.)
+	- Applies to Opus/Sonnet 4.6 only (not Haiku).
+
 ## Public API
 
 ```go

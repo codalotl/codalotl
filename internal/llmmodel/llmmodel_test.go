@@ -107,6 +107,9 @@ func TestDefaultModelsLoaded(t *testing.T) {
 
 	require.False(t, ModelID("claude-sonnet-4-6").Valid())
 	require.False(t, ModelID("sonnet-4-6").Valid())
+	anthropicOpus := ModelID("opus-4.6")
+	require.True(t, anthropicOpus.Valid())
+	require.Equal(t, int64(1000000), GetModelInfo(anthropicOpus).ContextWindow)
 	anthropicSonnet := ModelID("sonnet-4.6")
 	require.True(t, anthropicSonnet.Valid())
 	anthropicSonnetInfo := GetModelInfo(anthropicSonnet)
@@ -114,6 +117,10 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, "claude-sonnet-4-6", anthropicSonnetInfo.ProviderModelID)
 	require.Equal(t, ProviderIDAnthropic, anthropicSonnet.ProviderID())
 	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, anthropicSonnetInfo.SupportedTypes)
+	require.Equal(t, int64(1000000), anthropicSonnetInfo.ContextWindow)
+	anthropicHaiku := ModelID("haiku-4.5")
+	require.True(t, anthropicHaiku.Valid())
+	require.Equal(t, int64(200000), GetModelInfo(anthropicHaiku).ContextWindow)
 
 	gemini := ModelID("gemini-2.5-pro")
 	if gemini.Valid() {
