@@ -17,7 +17,7 @@ type ModelID string
 // DefaultModel is a good default model. It can be used in tests or in production code.
 //
 // Applications probably want to define their own default model.
-const DefaultModel ModelID = "gpt-5.2-high"
+const DefaultModel ModelID = "gpt-5.4-high"
 
 // ProviderID returns id's provider.
 func (id ModelID) ProviderID() ProviderID {
@@ -201,6 +201,7 @@ type ModelInfo struct {
 
 	// Note on pricing: uniformly modeling pricing across all providers is fraught. These numbers serve as rough guidelines. Some providers might be modeled very poorly.
 	// As of 2025/10/23:
+	//   - OpenAI GPT-5.4 has higher full-session rates for prompts above 272k input tokens, which this flat schema cannot represent.
 	//   - Gemini has tiered CostPer1MInCached rates by token count (cost increases for tokens past 200k)
 	//   - Anthropic has a cost to write to cache, based on cache TTL. They also require developers specifically insert cache commands into API requests to use it.
 
@@ -525,7 +526,7 @@ func registerPrimaryModels() {
 				continue
 			}
 
-			if pid == ProviderIDOpenAI && (m.ID == "gpt-5.2" || m.ID == "gpt-5.3-codex") {
+			if pid == ProviderIDOpenAI && (m.ID == "gpt-5.4" || m.ID == "gpt-5.3-codex") {
 				registerOpenAIReasoningVariants(provider, m, &firstModel)
 				continue // don't register the base id; force selection of a reasoning variant.
 			}
