@@ -86,8 +86,8 @@ func (f *textTUIFormatter) cliEditToolCall(e agent.Event) string {
 	}
 	return f.renderApplyPatchChangeCLI(colorAccent, change, nil)
 }
-func (f *textTUIFormatter) tuiCreateToolCall(e agent.Event, width int) string {
-	change, err := extractCreateChange(e.ToolCall)
+func (f *textTUIFormatter) tuiWriteToolCall(e agent.Event, width int) string {
+	change, err := extractWriteChange(e.ToolCall)
 	if err != nil {
 		return f.tuiGenericToolCall(e, width)
 	}
@@ -95,8 +95,8 @@ func (f *textTUIFormatter) tuiCreateToolCall(e agent.Event, width int) string {
 	f.renderApplyPatchChangeTUI(&builder, width, colorAccent, change, nil)
 	return builder.String()
 }
-func (f *textTUIFormatter) cliCreateToolCall(e agent.Event) string {
-	change, err := extractCreateChange(e.ToolCall)
+func (f *textTUIFormatter) cliWriteToolCall(e agent.Event) string {
+	change, err := extractWriteChange(e.ToolCall)
 	if err != nil {
 		return f.cliGenericToolCall(e)
 	}
@@ -201,8 +201,8 @@ func (f *textTUIFormatter) cliEditToolComplete(e agent.Event, success bool, _ st
 	}
 	return f.renderApplyPatchChangeCLI(bullet, change, tail)
 }
-func (f *textTUIFormatter) tuiCreateToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
-	change, err := extractCreateChange(e.ToolCall)
+func (f *textTUIFormatter) tuiWriteToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractWriteChange(e.ToolCall)
 	if err != nil {
 		return f.tuiGenericToolComplete(e, width, success, "", output)
 	}
@@ -218,8 +218,8 @@ func (f *textTUIFormatter) tuiCreateToolComplete(e agent.Event, width int, succe
 	f.renderApplyPatchChangeTUI(&builder, width, bullet, change, tail)
 	return builder.String()
 }
-func (f *textTUIFormatter) cliCreateToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
-	change, err := extractCreateChange(e.ToolCall)
+func (f *textTUIFormatter) cliWriteToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
+	change, err := extractWriteChange(e.ToolCall)
 	if err != nil {
 		return f.cliGenericToolComplete(e, success, "", output)
 	}
@@ -576,7 +576,7 @@ func extractEditChange(call *llmstream.ToolCall) (patchChange, error) {
 		lines:      lines,
 	}, nil
 }
-func extractCreateChange(call *llmstream.ToolCall) (patchChange, error) {
+func extractWriteChange(call *llmstream.ToolCall) (patchChange, error) {
 	if call == nil {
 		return patchChange{}, fmt.Errorf("missing tool call")
 	}

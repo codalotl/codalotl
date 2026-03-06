@@ -90,12 +90,17 @@ Initialization happens in two phases:
 
 Construction of `modelsByID` during initialization:
 - OpenAI:
-	- Both `gpt-5.2` and `gpt-5.3-codex`: Add {`-medium`, `-high`, `-xhigh`} variants (and don't add the non-reasoning-effort version).
+	- Both `gpt-5.4` and `gpt-5.3-codex`: Add {`-medium`, `-high`, `-xhigh`} variants (and don't add the non-reasoning-effort version).
 - Anthropic:
 	- Strip any timestamp (ex: `claude-sonnet-4-5-20250929` has `-20250929` suffix).
 	- Strip `claude-` prefix.
 	- Replace `-` with `.` between numbes.
 	- Example: `claude-sonnet-4-5-20250929` -> `sonnet-4.5`.
+
+## Provider-Specific Notes
+
+- For Anthropic models, assume that the long context window is enabled. (As of 2026-03-06, we will enable context-1m-2025-08-07 for 1M context window.)
+	- Applies to Opus/Sonnet 4.6 only (not Haiku).
 
 ## Public API
 

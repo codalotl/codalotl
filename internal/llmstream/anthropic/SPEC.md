@@ -29,6 +29,10 @@ API documentation from Anthropic can be found on disk (saved 2026-02-25):
 - https://platform.claude.com/docs/en/api/overview - `docs/api_overview.md`
 - https://platform.claude.com/docs/en/api/messages - `docs/create_message.md`
 
+## Other Notes
+
+- Always enable the beta feature `context-1m-2025-08-07` (which grants long context windows of 1M).
+
 ## Public API
 
 ```go
@@ -49,7 +53,7 @@ func WithBaseURL(baseURL string) Option
 // WithVersion overrides anthropic-version header value.
 func WithVersion(version string) Option
 
-// WithBeta appends an anthropic-beta header value for all requests.
+// WithBeta appends an anthropic-beta feature for all requests.
 func WithBeta(beta string) Option
 
 // Client sends streaming requests to Anthropic Messages API.

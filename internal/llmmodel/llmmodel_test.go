@@ -69,12 +69,12 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	// OpenAI is expected to always be usable in this repo (it's our default codepath),
 	// so keep stronger assertions for it.
 	gpt5 := DefaultModel
-	require.Equal(t, ModelID("gpt-5.2-high"), gpt5)
+	require.Equal(t, ModelID("gpt-5.4-high"), gpt5)
 	require.True(t, gpt5.Valid())
 
 	gptInfo := GetModelInfo(gpt5)
 	require.Equal(t, ProviderIDOpenAI, gptInfo.ProviderID)
-	require.Equal(t, "gpt-5.2", gptInfo.ProviderModelID)
+	require.Equal(t, "gpt-5.4", gptInfo.ProviderModelID)
 	require.Equal(t, "high", gptInfo.ReasoningEffort)
 	require.True(t, gptInfo.IsDefault)
 	require.Equal(t, gpt5, ProviderIDOpenAI.DefaultModel())
@@ -107,6 +107,9 @@ func TestDefaultModelsLoaded(t *testing.T) {
 
 	require.False(t, ModelID("claude-sonnet-4-6").Valid())
 	require.False(t, ModelID("sonnet-4-6").Valid())
+	anthropicOpus := ModelID("opus-4.6")
+	require.True(t, anthropicOpus.Valid())
+	require.Equal(t, int64(1000000), GetModelInfo(anthropicOpus).ContextWindow)
 	anthropicSonnet := ModelID("sonnet-4.6")
 	require.True(t, anthropicSonnet.Valid())
 	anthropicSonnetInfo := GetModelInfo(anthropicSonnet)
@@ -114,6 +117,10 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, "claude-sonnet-4-6", anthropicSonnetInfo.ProviderModelID)
 	require.Equal(t, ProviderIDAnthropic, anthropicSonnet.ProviderID())
 	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, anthropicSonnetInfo.SupportedTypes)
+	require.Equal(t, int64(1000000), anthropicSonnetInfo.ContextWindow)
+	anthropicHaiku := ModelID("haiku-4.5")
+	require.True(t, anthropicHaiku.Valid())
+	require.Equal(t, int64(200000), GetModelInfo(anthropicHaiku).ContextWindow)
 
 	gemini := ModelID("gemini-2.5-pro")
 	if gemini.Valid() {
@@ -129,11 +136,11 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	}
 
 	require.False(t, ModelID("gpt-5-codex").Valid())
-	require.False(t, ModelID("gpt-5.2").Valid())
+	require.False(t, ModelID("gpt-5.4").Valid())
 	require.False(t, ModelID("gpt-5.3-codex").Valid())
 	require.False(t, ModelID("gpt-5.1-codex").Valid())
 	require.False(t, ModelID("gpt-5.3-codex-minimal").Valid())
-	require.False(t, ModelID("gpt-5.2-minimal").Valid())
+	require.False(t, ModelID("gpt-5.4-minimal").Valid())
 
 	codexXhigh := ModelID("gpt-5.3-codex-xhigh")
 	codexHigh := ModelID("gpt-5.3-codex-high")
@@ -147,11 +154,11 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.True(t, codexHigh.Valid())
 	require.Equal(t, "high", GetModelInfo(codexHigh).ReasoningEffort)
 
-	gptXhigh := ModelID("gpt-5.2-xhigh")
+	gptXhigh := ModelID("gpt-5.4-xhigh")
 	require.True(t, gptXhigh.Valid())
 	gptXhighInfo := GetModelInfo(gptXhigh)
 	require.Equal(t, ProviderIDOpenAI, gptXhighInfo.ProviderID)
-	require.Equal(t, "gpt-5.2", gptXhighInfo.ProviderModelID)
+	require.Equal(t, "gpt-5.4", gptXhighInfo.ProviderModelID)
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptXhighInfo.SupportedTypes)
 	require.Equal(t, "xhigh", gptXhighInfo.ReasoningEffort)
 
@@ -213,13 +220,13 @@ func TestGetAPIKeyPrecedence(t *testing.T) {
 
 	customEnvID := ModelID("custom-openai-env")
 	t.Setenv("ALT_OPENAI_KEY", "")
-	err := AddCustomModel(customEnvID, ProviderIDOpenAI, "gpt-5.2", ModelOverrides{APIEnvKey: "$ALT_OPENAI_KEY"})
+	err := AddCustomModel(customEnvID, ProviderIDOpenAI, "gpt-5.4", ModelOverrides{APIEnvKey: "$ALT_OPENAI_KEY"})
 	require.NoError(t, err)
 	t.Setenv("ALT_OPENAI_KEY", "alt")
 	require.Equal(t, "alt", GetAPIKey(customEnvID))
 
 	customActualID := ModelID("custom-openai-actual")
-	err = AddCustomModel(customActualID, ProviderIDOpenAI, "gpt-5.2", ModelOverrides{APIActualKey: "literal"})
+	err = AddCustomModel(customActualID, ProviderIDOpenAI, "gpt-5.4", ModelOverrides{APIActualKey: "literal"})
 	require.NoError(t, err)
 	ConfigureProviderKey(ProviderIDOpenAI, "configured2")
 	t.Setenv("ALT_OPENAI_KEY", "alt2")

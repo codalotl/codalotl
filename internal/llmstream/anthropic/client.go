@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/codalotl/codalotl/internal/q/sseclient"
 )
@@ -16,6 +17,7 @@ const DefaultBaseURL = "https://api.anthropic.com"
 
 // DefaultVersion is sent in anthropic-version when no override is configured.
 const DefaultVersion = "2023-06-01"
+const requiredBetaContext1M = "context-1m-2025-08-07"
 
 // Option configures a Client.
 type Option func(*Client)
@@ -41,7 +43,7 @@ func WithVersion(version string) Option {
 	}
 }
 
-// WithBeta appends an anthropic-beta header value for all requests.
+// WithBeta appends an anthropic-beta feature for all requests.
 func WithBeta(beta string) Option {
 	return func(c *Client) {
 		c.betas = append(c.betas, beta)
@@ -63,6 +65,7 @@ func New(apiKey string, opts ...Option) *Client {
 		apiKey:     apiKey,
 		httpClient: http.DefaultClient,
 		baseURL:    DefaultBaseURL,
+		betas:      []string{requiredBetaContext1M},
 		version:    DefaultVersion,
 	}
 	for _, opt := range opts {
@@ -131,8 +134,8 @@ func (c *Client) StreamMessages(ctx context.Context, req MessageRequest) (*Strea
 	httpReq.Header.Set("content-type", "application/json")
 	httpReq.Header.Set("x-api-key", c.apiKey)
 	httpReq.Header.Set("anthropic-version", c.version)
-	for _, beta := range c.betas {
-		httpReq.Header.Add("anthropic-beta", beta)
+	if len(c.betas) > 0 {
+		httpReq.Header.Set("anthropic-beta", strings.Join(c.betas, ","))
 	}
 
 	sc := sseclient.New(sseclient.WithHTTPClient(c.httpClient))

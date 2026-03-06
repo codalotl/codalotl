@@ -49,10 +49,10 @@ type Config struct {
 
 // ProviderKeys is kept separate so tests can easily validate its zero value.
 type ProviderKeys struct {
-	OpenAI string `json:"openai"`
+	OpenAI    string `json:"openai"`
+	Anthropic string `json:"anthropic"`
 
 	// NOTE: in the future, we may add these:
-	// Anthropic string `json:"anthropic"`
 	// XAI       string `json:"xai"`
 	// Gemini    string `json:"gemini"`
 }

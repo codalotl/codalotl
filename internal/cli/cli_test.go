@@ -532,6 +532,9 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	if !strings.Contains(errOut.String(), "OPENAI_API_KEY") {
 		t.Fatalf("expected error to mention OPENAI_API_KEY, got stderr:\n%s", errOut.String())
 	}
+	if !strings.Contains(errOut.String(), "ANTHROPIC_API_KEY") {
+		t.Fatalf("expected error to mention ANTHROPIC_API_KEY, got stderr:\n%s", errOut.String())
+	}
 }
 
 func TestRun_Config_MissingTools_IsExitCode1(t *testing.T) {
@@ -619,7 +622,7 @@ func TestRun_Config_EnvVarsList_OnlyExposedProviders(t *testing.T) {
 	}
 }
 
-func TestRun_Config_IgnoresUnknownProviderKeys(t *testing.T) {
+func TestRun_Config_IgnoresUnexposedProviderKeys(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
@@ -627,7 +630,7 @@ func TestRun_Config_IgnoresUnknownProviderKeys(t *testing.T) {
 		t.Fatalf("mkdir .codalotl: %v", err)
 	}
 	cfg := `{
-  "providerkeys": { "anthropic": "nope" }
+  "providerkeys": { "xai": "nope" }
 }`
 	if err := os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(cfg), 0644); err != nil {
 		t.Fatalf("write config.json: %v", err)
@@ -642,7 +645,7 @@ func TestRun_Config_IgnoresUnknownProviderKeys(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(origWD) })
 
-	// Unknown provider key fields should not cause the CLI to fail (they are
+	// Unexposed provider key fields should not cause the CLI to fail (they are
 	// simply ignored by the current config schema).
 	{
 		var out bytes.Buffer
@@ -656,7 +659,7 @@ func TestRun_Config_IgnoresUnknownProviderKeys(t *testing.T) {
 		}
 
 		cfgJSON := extractConfigJSON(t, out.String())
-		if strings.Contains(strings.ToLower(cfgJSON), "anthropic") {
+		if strings.Contains(strings.ToLower(cfgJSON), "xai") {
 			t.Fatalf("expected config JSON to omit unknown providerkeys fields, got:\n%s", cfgJSON)
 		}
 	}
@@ -691,7 +694,7 @@ func TestRun_Config_IgnoresUnknownProviderKeys(t *testing.T) {
 	}
 }
 
-func TestRun_ContextPackages_InvalidProvider_IsExitCode1(t *testing.T) {
+func TestRun_ContextPackages_UnexposedProviderKey_StillSucceeds(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
@@ -708,13 +711,13 @@ func TestRun_ContextPackages_InvalidProvider_IsExitCode1(t *testing.T) {
 		t.Fatalf("write p.go: %v", err)
 	}
 
-	// Write a config with an unknown provider key field; this should not break
+	// Write a config with an unexposed provider key field; this should not break
 	// the CLI.
 	if err := os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755); err != nil {
 		t.Fatalf("mkdir .codalotl: %v", err)
 	}
 	cfg := `{
-  "providerkeys": { "anthropic": "nope" }
+  "providerkeys": { "xai": "nope" }
 }`
 	if err := os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(cfg), 0644); err != nil {
 		t.Fatalf("write config.json: %v", err)
