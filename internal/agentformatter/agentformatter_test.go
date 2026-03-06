@@ -1074,19 +1074,19 @@ func TestEditToolCallFormattingReplaceAll(t *testing.T) {
 	assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
 	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
 }
-func TestCreateToolCallFormatting(t *testing.T) {
+func TestWriteToolCallFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
 	call := llmstream.ToolCall{
-		Name:  "create",
+		Name:  "write",
 		Input: `{"path":"foo/new.txt","content":"first line\nsecond line"}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "create",
+		Tool:     "write",
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)

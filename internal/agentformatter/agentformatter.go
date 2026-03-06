@@ -331,8 +331,8 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiApplyPatchToolCall(e, width)
 	case "edit":
 		return f.tuiEditToolCall(e, width)
-	case "create":
-		return f.tuiCreateToolCall(e, width)
+	case "write":
+		return f.tuiWriteToolCall(e, width)
 	case "delete":
 		return f.tuiDeleteToolCall(e, width)
 	case "update_plan":
@@ -374,8 +374,8 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliApplyPatchToolCall(e)
 	case "edit":
 		return f.cliEditToolCall(e)
-	case "create":
-		return f.cliCreateToolCall(e)
+	case "write":
+		return f.cliWriteToolCall(e)
 	case "delete":
 		return f.cliDeleteToolCall(e)
 	case "update_plan":
@@ -521,8 +521,8 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiApplyPatchToolComplete(e, width, success, cmd, outputLines)
 	case "edit":
 		return f.tuiEditToolComplete(e, width, success, cmd, outputLines)
-	case "create":
-		return f.tuiCreateToolComplete(e, width, success, cmd, outputLines)
+	case "write":
+		return f.tuiWriteToolComplete(e, width, success, cmd, outputLines)
 	case "delete":
 		return f.tuiDeleteToolComplete(e, width, success, cmd, outputLines)
 	case "shell":
@@ -568,8 +568,8 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliApplyPatchToolComplete(e, success, cmd, outputLines)
 	case "edit":
 		return f.cliEditToolComplete(e, success, cmd, outputLines)
-	case "create":
-		return f.cliCreateToolComplete(e, success, cmd, outputLines)
+	case "write":
+		return f.cliWriteToolComplete(e, success, cmd, outputLines)
 	case "delete":
 		return f.cliDeleteToolComplete(e, success, cmd, outputLines)
 	case "shell":
