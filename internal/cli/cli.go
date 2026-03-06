@@ -14,7 +14,7 @@ import (
 // Version is the codalotl version. It is a var (not a const) so build tooling can override it (for example via `-ldflags "-X .../internal/cli.Version=1.2.3"`).
 //
 // NOTE: our current build system does not do this - we just bump versions with ./bump_release.sh, which edits this source file.
-var Version = "0.12.0"
+var Version = "0.12.1"
 
 // In/Out/Err override standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
