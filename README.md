@@ -32,11 +32,11 @@ go install github.com/codalotl/codalotl@latest
 
 ### Configure LLM Provider Keys
 
-Codalotl requires OpenAI API keys. The best way to do that is to set the ENV variable `OPENAI_API_KEY`.
+Codalotl requires an LLM provider API key. The best way to do that is to set either `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
 
-Currently, only OpenAI models are supported - I recommend `gpt-5.2` on `high` thinking:
-- Other models, notably Opus, exhibit significantly poorer performance in my tests.
-- Given that, I haven't prioritized other providers.
+OpenAI and Anthropic models are supported. I recommend starting with `gpt-5.4-high`:
+- OpenAI reasoning models have performed best for me on the benchmark scenarios above.
+- Anthropic models are available if they fit your workflow or provider constraints better.
 
 ### Running it
 
@@ -59,7 +59,7 @@ Codalotl is **usable** and **effective** as-is: I have replaced most of my other
 - Not extensively tested on various repos/codebases/versions of Go. Untested in multi-module/go.work projects.
 - Has a number of UX issues (example: poor copy/paste support; onboarding; error messages).
 - Some common agent features are unimplemented (session resumption; mcp; skills; custom commands).
-- Only OpenAI models are supported at the moment; you must bring your own key.
+- OpenAI and Anthropic models are supported; you must bring your own key.
 
 All of these will be addressed over time.
 
