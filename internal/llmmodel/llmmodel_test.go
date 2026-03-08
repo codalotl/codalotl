@@ -77,6 +77,7 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, "gpt-5.4", gptInfo.ProviderModelID)
 	require.Equal(t, "high", gptInfo.ReasoningEffort)
 	require.True(t, gptInfo.IsDefault)
+	require.True(t, gptInfo.SupportsAutocompaction)
 	require.Equal(t, gpt5, ProviderIDOpenAI.DefaultModel())
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptInfo.SupportedTypes)
 
@@ -167,6 +168,7 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, "gpt-5.4", gptXhighInfo.ProviderModelID)
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptXhighInfo.SupportedTypes)
 	require.Equal(t, "xhigh", gptXhighInfo.ReasoningEffort)
+	require.True(t, gptXhighInfo.SupportsAutocompaction)
 
 	require.Equal(t, gpt5, ModelIDOrFallback(ModelIDUnknown))
 	require.Equal(t, gpt5, ModelIDOrFallback(ModelID("unknown-model")))
@@ -200,6 +202,7 @@ func TestAddCustomModelCopiesProviderData(t *testing.T) {
 	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, info.SupportedTypes)
 	require.Equal(t, "low", info.ReasoningEffort)
 	require.Equal(t, "priority", info.ServiceTier)
+	require.False(t, info.SupportsAutocompaction)
 	require.Contains(t, AvailableModelIDs(), customID)
 }
 
@@ -237,6 +240,7 @@ func TestGetAPIKeyPrecedence(t *testing.T) {
 	ConfigureProviderKey(ProviderIDOpenAI, "configured2")
 	t.Setenv("ALT_OPENAI_KEY", "alt2")
 	require.Equal(t, "literal", GetAPIKey(customActualID))
+	require.True(t, GetModelInfo(customActualID).SupportsAutocompaction)
 }
 
 func TestAvailableModelIDsWithAPIKeyAndProviderHasConfiguredKey(t *testing.T) {
