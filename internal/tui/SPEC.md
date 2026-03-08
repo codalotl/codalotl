@@ -209,7 +209,7 @@ Display format:
 
 ```
 Session: 123-abc
-Model: gpt-5.2-high
+Model: gpt-5.4-high
 Context: 32% left   |   Cost: $3.24
 Tokens: 123k (input: 42k, cached: 60k, output: 21k)
 ```
