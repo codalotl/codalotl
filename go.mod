@@ -23,7 +23,7 @@ require (
 // Dependencies we're on the fence about:
 // (these deps often have good value, but come with too many transitive deps)
 require (
-	github.com/openai/openai-go/v3 v3.7.0 // MANY transitive deps :(
+	github.com/openai/openai-go/v3 v3.26.0 // MANY transitive deps :(
 	github.com/sergi/go-diff v1.4.0 // only deps are testify->many things
 	github.com/stretchr/testify v1.11.1 // MANY transitive deps :(
 )
@@ -34,7 +34,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
