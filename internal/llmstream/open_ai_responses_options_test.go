@@ -5,6 +5,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
 
+	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,5 +80,27 @@ func TestOpenAIResponsesApplySendOptions_ServiceTier(t *testing.T) {
 		err := openAIResponsesApplySendOptions(&params, llmmodel.ModelInfo{ModelOverrides: llmmodel.ModelOverrides{ServiceTier: "enterprise"}}, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid service tier")
+	})
+}
+func TestOpenAIResponsesApplySendOptions_ContextManagement(t *testing.T) {
+	t.Run("autocompaction models enable compaction at 10 percent of context window", func(t *testing.T) {
+		var params responses.ResponseNewParams
+		err := openAIResponsesApplySendOptions(&params, llmmodel.ModelInfo{
+			ContextWindow:          200_000,
+			SupportsAutocompaction: true,
+		}, nil)
+		require.NoError(t, err)
+		require.Len(t, params.ContextManagement, 1)
+		assert.Equal(t, "compaction", params.ContextManagement[0].Type)
+		assert.Equal(t, param.NewOpt(int64(20_000)), params.ContextManagement[0].CompactThreshold)
+	})
+	t.Run("models without autocompaction leave context management unset", func(t *testing.T) {
+		var params responses.ResponseNewParams
+		err := openAIResponsesApplySendOptions(&params, llmmodel.ModelInfo{
+			ContextWindow:          200_000,
+			SupportsAutocompaction: false,
+		}, nil)
+		require.NoError(t, err)
+		assert.Nil(t, params.ContextManagement)
 	})
 }

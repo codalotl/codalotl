@@ -183,6 +183,14 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	if eff := strings.TrimSpace(modelInfo.ReasoningEffort); eff != "" {
 		params.Reasoning.Effort = shared.ReasoningEffort(eff)
 	}
+	if compactThreshold, ok := openAIResponsesCompactionThreshold(modelInfo); ok {
+		params.ContextManagement = []responses.ResponseNewParamsContextManagement{
+			{
+				Type:             "compaction",
+				CompactThreshold: param.NewOpt(compactThreshold),
+			},
+		}
+	}
 
 	// Apply service tier from the model registry as a default. This is important
 	// because most callers don't set SendOptions at all, and custom models are
@@ -232,6 +240,16 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	}
 
 	return nil
+}
+func openAIResponsesCompactionThreshold(modelInfo llmmodel.ModelInfo) (int64, bool) {
+	if !modelInfo.SupportsAutocompaction || modelInfo.ContextWindow <= 0 {
+		return 0, false
+	}
+	threshold := modelInfo.ContextWindow / 10
+	if threshold < 1 {
+		threshold = 1
+	}
+	return threshold, true
 }
 
 type openAIResponsesContentBuilders struct {

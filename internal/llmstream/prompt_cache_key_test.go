@@ -15,7 +15,7 @@ import (
 )
 
 func TestPromptCacheKey_ComputedAndStoredOnConversation(t *testing.T) {
-	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system prompt").(*streamingConversation)
+	sc := NewConversation(llmmodel.ModelID("gpt-5-mini"), "system prompt").(*streamingConversation)
 
 	require.NotEmpty(t, sc.promptCacheKey)
 
@@ -39,10 +39,10 @@ func TestPromptCacheKeyFromReader_Deterministic(t *testing.T) {
 }
 
 func TestOpenAIResponsesParams_IncludePromptCacheKey(t *testing.T) {
-	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system prompt").(*streamingConversation)
+	sc := NewConversation(llmmodel.ModelID("gpt-5-mini"), "system prompt").(*streamingConversation)
 	require.NoError(t, sc.AddUserTurn("hello"))
 
-	req, err := sc.buildOpenAIResponsesParams(llmmodel.ModelInfo{ProviderModelID: "gpt-4o-mini"})
+	req, err := sc.buildOpenAIResponsesParams(llmmodel.ModelInfo{ProviderModelID: "gpt-5-mini"})
 	require.NoError(t, err)
 
 	b, err := json.Marshal(req)

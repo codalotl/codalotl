@@ -38,11 +38,7 @@ func TestOpenAIResponsesProvider_400Error(t *testing.T) {
 		return
 	}
 
-	mini4o := llmmodel.ModelID("gpt-4o-mini")
-	err := llmmodel.AddCustomModel(mini4o, llmmodel.ProviderIDOpenAI, string(mini4o), llmmodel.ModelOverrides{})
-	require.NoError(t, err)
-
-	conv := NewConversation(mini4o, "You are a precise assistant. Follow the user's instructions exactly.")
+	conv := NewConversation(llmmodel.ModelID("gpt-5-mini"), "You are a precise assistant. Follow the user's instructions exactly.")
 	require.NoError(t, conv.AddUserTurn("Reply with only the numeral 4. Do not add words or punctuation."))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -65,7 +61,7 @@ func TestOpenAIResponsesProvider_SimpleResponse(t *testing.T) {
 		return
 	}
 
-	conv := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "You are a precise assistant. Follow the user's instructions exactly.")
+	conv := NewConversation(llmmodel.ModelID("gpt-5-mini"), "You are a precise assistant. Follow the user's instructions exactly.")
 	require.NoError(t, conv.AddUserTurn("Reply with only the numeral 4. Do not add words or punctuation."))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -737,7 +733,7 @@ In your FIRST response, call the tool 'two_param_tool' exactly once with this JS
 {"first":"hello"}  // do NOT include "second".
 Do not include any assistant text outside of the tool call.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-5.3-codex-high"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{twoParamTool{name: toolName}}))
 
@@ -804,7 +800,7 @@ func TestOpenAIResponsesProvider_ToolWithNoParams(t *testing.T) {
 In your FIRST response, invoke the tool 'noop_tool' exactly once with no arguments.
 Do not include any assistant text outside of the tool call.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-5.3-codex-high"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{noParamTool{name: toolName}}))
 
