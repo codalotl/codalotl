@@ -147,6 +147,8 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.False(t, ModelID("gpt-5.1-codex").Valid())
 	require.False(t, ModelID("gpt-5.3-codex-minimal").Valid())
 	require.False(t, ModelID("gpt-5.4-minimal").Valid())
+	require.True(t, ModelID("gpt-5-mini").Valid())
+	require.True(t, ModelID("gpt-5-nano").Valid())
 
 	codexXhigh := ModelID("gpt-5.3-codex-xhigh")
 	codexHigh := ModelID("gpt-5.3-codex-high")
