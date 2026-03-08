@@ -58,6 +58,7 @@ Each config file has this shape:
       "max_output": 128000,
       "can_reason": true,
       "has_reasoning_effort": true,
+      "supports_autocompaction": true,
       "supports_images": true,
       "is_legacy": false
     },
@@ -210,6 +211,7 @@ type ModelInfo struct {
 	MaxOutput              int64   // MaxOutput is the max number of output tokens the model can generate per request.
 	CanReason              bool    // CanReason reports whether the model supports reasoning modes/capabilities.
 	HasReasoningEffort     bool    // HasReasoningEffort reports whether the API accepts a "reasoning_effort" parameter (or similar).
+	SupportsAutocompaction bool    // SupportsAutocompaction reports whether the model supports provider-side context autocompaction.
 	SupportsImages         bool    // SupportsImages reports whether the model accepts image inputs.
 	ModelOverrides
 }
