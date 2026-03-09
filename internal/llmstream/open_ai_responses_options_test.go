@@ -1,6 +1,7 @@
 package llmstream
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -79,5 +80,44 @@ func TestOpenAIResponsesApplySendOptions_ServiceTier(t *testing.T) {
 		err := openAIResponsesApplySendOptions(&params, llmmodel.ModelInfo{ModelOverrides: llmmodel.ModelOverrides{ServiceTier: "enterprise"}}, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid service tier")
+	})
+}
+
+func TestOpenAIResponsesApplySendOptions_ContextManagement(t *testing.T) {
+	t.Run("openai autocompaction model enables compaction threshold", func(t *testing.T) {
+		var params responses.ResponseNewParams
+		err := openAIResponsesApplySendOptions(&params, llmmodel.ModelInfo{
+			ProviderID:             llmmodel.ProviderIDOpenAI,
+			ContextWindow:          200000,
+			SupportsAutocompaction: true,
+		}, nil)
+		require.NoError(t, err)
+
+		b, err := json.Marshal(params)
+		require.NoError(t, err)
+
+		assert.JSONEq(t, `{"context_management":[{"type":"compaction","compact_threshold":20000}],"reasoning":{"summary":"auto"},"store":true}`, string(b))
+	})
+
+	t.Run("non-openai provider does not enable compaction", func(t *testing.T) {
+		var params responses.ResponseNewParams
+		err := openAIResponsesApplySendOptions(&params, llmmodel.ModelInfo{
+			ProviderID:             llmmodel.ProviderIDXAI,
+			ContextWindow:          200000,
+			SupportsAutocompaction: true,
+		}, nil)
+		require.NoError(t, err)
+		assert.Empty(t, params.ContextManagement)
+	})
+
+	t.Run("unsupported model does not enable compaction", func(t *testing.T) {
+		var params responses.ResponseNewParams
+		err := openAIResponsesApplySendOptions(&params, llmmodel.ModelInfo{
+			ProviderID:             llmmodel.ProviderIDOpenAI,
+			ContextWindow:          200000,
+			SupportsAutocompaction: false,
+		}, nil)
+		require.NoError(t, err)
+		assert.Empty(t, params.ContextManagement)
 	})
 }

@@ -183,6 +183,12 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	if eff := strings.TrimSpace(modelInfo.ReasoningEffort); eff != "" {
 		params.Reasoning.Effort = shared.ReasoningEffort(eff)
 	}
+	if modelInfo.ProviderID == llmmodel.ProviderIDOpenAI && modelInfo.SupportsAutocompaction && modelInfo.ContextWindow > 0 {
+		params.ContextManagement = []responses.ResponseNewParamsContextManagement{{
+			Type:             "compaction",
+			CompactThreshold: param.NewOpt(modelInfo.ContextWindow / 10),
+		}}
+	}
 
 	// Apply service tier from the model registry as a default. This is important
 	// because most callers don't set SendOptions at all, and custom models are
