@@ -152,6 +152,7 @@ func AddCustomModel(id ModelID, providerID ProviderID, providerModelID string, o
 		info.MaxOutput = base.MaxOutput
 		info.CanReason = base.CanReason
 		info.HasReasoningEffort = base.HasReasoningEffort
+		info.SupportsAutocompaction = base.SupportsAutocompaction
 		info.SupportsImages = base.SupportsImages
 	}
 
@@ -213,6 +214,7 @@ type ModelInfo struct {
 	MaxOutput              int64   // MaxOutput is the max number of output tokens the model can generate per request.
 	CanReason              bool    // CanReason reports whether the model supports reasoning modes/capabilities.
 	HasReasoningEffort     bool    // HasReasoningEffort reports whether the API accepts a "reasoning_effort" parameter (or similar).
+	SupportsAutocompaction bool    // SupportsAutocompaction reports whether the model supports provider-side context autocompaction.
 	SupportsImages         bool    // SupportsImages reports whether the model accepts image inputs.
 	ModelOverrides
 }
@@ -369,6 +371,7 @@ type providerModelPayload struct {
 	MaxOutput              int64   `json:"max_output"`
 	CanReason              bool    `json:"can_reason"`
 	HasReasoningEffort     bool    `json:"has_reasoning_effort"`
+	SupportsAutocompaction bool    `json:"supports_autocompaction"`
 	SupportsImages         bool    `json:"supports_images"`
 	IsLegacy               bool    `json:"is_legacy"`
 }
@@ -495,6 +498,7 @@ func registerPrimaryModels() {
 				MaxOutput:              m.MaxOutput,
 				CanReason:              m.CanReason,
 				HasReasoningEffort:     m.HasReasoningEffort,
+				SupportsAutocompaction: m.SupportsAutocompaction,
 				SupportsImages:         m.SupportsImages,
 				ModelOverrides: ModelOverrides{
 					ReasoningEffort: variant.effort,
@@ -556,6 +560,7 @@ func registerPrimaryModels() {
 				MaxOutput:              m.MaxOutput,
 				CanReason:              m.CanReason,
 				HasReasoningEffort:     m.HasReasoningEffort,
+				SupportsAutocompaction: m.SupportsAutocompaction,
 				SupportsImages:         m.SupportsImages,
 			}
 

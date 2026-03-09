@@ -281,14 +281,14 @@ To set your model via the config file:
 
 ```json
 {
-  "preferredmodel": "gpt-5.2-medium"
+  "preferredmodel": "gpt-5.4-high"
 }
 ```
 
 To set your model for an `exec` run:
 
 ```bash
-codalotl exec --model gpt-5.2-medium "your prompt"
+codalotl exec --model gpt-5.4-high "your prompt"
 ```
 
 #### API Key Config

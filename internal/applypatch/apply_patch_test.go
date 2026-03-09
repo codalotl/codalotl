@@ -66,13 +66,13 @@ func TestApplyPatch_TargetedScenarios(t *testing.T) {
 			want: map[string]string{"greetings.txt": "hello\nworld\n"},
 		},
 		{
-			name: "delete ignores missing file",
+			name: "delete missing file returns error",
 			patch: `
 *** Begin Patch
 *** Delete File: missing.txt
 *** End Patch
 `,
-			want: map[string]string{},
+			wantErr: "missing.txt",
 		},
 		{
 			name:   "delete existing file",

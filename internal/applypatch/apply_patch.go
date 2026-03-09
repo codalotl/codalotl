@@ -20,13 +20,14 @@ delete_hunk: "*** Delete File: " filename LF
 update_hunk: "*** Update File: " filename LF change_move? change?
 
 filename: /(.+)/
-add_line: "+" /(.+)/ LF -> line
+add_line: "+" /(.*)/ LF -> line
 
 change_move: "*** Move to: " filename LF
 change: (change_context | change_line)+ eof_line?
 change_context: ("@@" | "@@ " /(.+)/) LF
-change_line: ("+" | "-" | " ") /(.+)/ LF
+change_line: ("+" | "-" | " ") /(.*)/ LF
 eof_line: "*** End of File" LF
+
 %import common.LF`
 
 var errInvalidPatch = errors.New("invalid patch")
@@ -253,8 +254,74 @@ type parser struct {
 }
 
 func newParser(input string) *parser {
-	normalized := strings.ReplaceAll(input, "\r\n", "\n")
+	normalized := normalizePatchInput(input)
 	return &parser{lines: strings.Split(normalized, "\n")}
+}
+
+func normalizePatchInput(input string) string {
+	normalized := strings.ReplaceAll(input, "\r\n", "\n")
+	return unwrapHeredocWrapper(normalized)
+}
+
+func unwrapHeredocWrapper(input string) string {
+	lines := strings.Split(input, "\n")
+	first := firstNonBlankLine(lines)
+	last := lastNonBlankLine(lines)
+	if first < 0 || last <= first {
+		return input
+	}
+
+	delimiter, ok := parseHeredocDelimiter(lines[first])
+	if !ok {
+		return input
+	}
+	if strings.TrimSpace(lines[last]) != delimiter {
+		return input
+	}
+
+	return strings.Join(lines[first+1:last], "\n")
+}
+
+func parseHeredocDelimiter(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case strings.HasPrefix(trimmed, "<<-"):
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "<<-"))
+	case strings.HasPrefix(trimmed, "<<"):
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "<<"))
+	default:
+		return "", false
+	}
+	if trimmed == "" {
+		return "", false
+	}
+	if len(trimmed) >= 2 {
+		if (trimmed[0] == '\'' && trimmed[len(trimmed)-1] == '\'') || (trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"') {
+			trimmed = trimmed[1 : len(trimmed)-1]
+		}
+	}
+	if trimmed == "" {
+		return "", false
+	}
+	return trimmed, true
+}
+
+func firstNonBlankLine(lines []string) int {
+	for i, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			return i
+		}
+	}
+	return -1
+}
+
+func lastNonBlankLine(lines []string) int {
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			return i
+		}
+	}
+	return -1
 }
 
 func (p *parser) eof() bool { return p.idx >= len(p.lines) }
@@ -281,6 +348,13 @@ func (p *parser) mark() int { return p.idx }
 
 func parsePatch(input string) (*patchFile, error) {
 	p := newParser(input)
+	for {
+		line, ok := p.peek()
+		if !ok || strings.TrimSpace(line) != "" {
+			break
+		}
+		p.next()
+	}
 	first, ok := p.next()
 	if !ok || strings.TrimSpace(first) != "*** Begin Patch" {
 		return nil, errors.New(`patch must start with "*** Begin Patch"`)
@@ -302,6 +376,9 @@ func parsePatch(input string) (*patchFile, error) {
 			return nil, err
 		}
 		pf.Hunks = append(pf.Hunks, h)
+	}
+	if len(pf.Hunks) == 0 {
+		return nil, errors.New("patch must contain at least one hunk")
 	}
 
 	for !p.eof() {
@@ -368,6 +445,9 @@ func parseFileHunk(p *parser) (fileHunk, error) {
 		if err != nil {
 			return fileHunk{}, err
 		}
+		if len(sets) == 0 {
+			return fileHunk{}, fmt.Errorf("update for %s must contain at least one change hunk", path)
+		}
 		h.ChangeSets = sets
 		h.rawLineSpan = [2]int{start, p.mark()}
 		return h, nil
@@ -424,6 +504,19 @@ func parseChangeSets(p *parser, path string) ([]changeSet, error) {
 			p.next()
 			continue
 		}
+		if next == "" {
+			if blankLineSeparatesChangeSets(p) {
+				p.next()
+				continue
+			}
+			if !started {
+				cur = changeSet{}
+				started = true
+			}
+			cur.Lines = append(cur.Lines, changeLine{Op: ' ', Text: ""})
+			p.next()
+			continue
+		}
 		if strings.HasPrefix(next, "@@") {
 			header, _ := p.next()
 			anchor := parseAnchorHeader(header)
@@ -458,6 +551,20 @@ func parseChangeSets(p *parser, path string) ([]changeSet, error) {
 	return sets, nil
 }
 
+func blankLineSeparatesChangeSets(p *parser) bool {
+	for i := p.idx + 1; i < len(p.lines); i++ {
+		line := p.lines[i]
+		if line == "" {
+			continue
+		}
+		if isFileBoundary(line) || strings.TrimSpace(line) == "*** End of File" || strings.HasPrefix(line, "@@") {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
 func parseAnchorHeader(line string) string {
 	rest := strings.TrimPrefix(line, "@@")
 	if len(rest) > 0 && rest[0] == ' ' {
@@ -490,7 +597,20 @@ func applyAdd(root string, h fileHunk) error {
 
 func applyDelete(root string, h fileHunk) error {
 	osPath := filepath.Join(root, filepath.FromSlash(h.Path))
-	if err := os.Remove(osPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	info, err := os.Lstat(osPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return invalidPatchError(fmt.Errorf("delete %s: %w", h.Path, err))
+		}
+		return err
+	}
+	if info.IsDir() {
+		return invalidPatchError(fmt.Errorf("delete %s: path is a directory", h.Path))
+	}
+	if err := os.Remove(osPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return invalidPatchError(fmt.Errorf("delete %s: %w", h.Path, err))
+		}
 		return err
 	}
 	return nil

@@ -77,6 +77,7 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, "gpt-5.4", gptInfo.ProviderModelID)
 	require.Equal(t, "high", gptInfo.ReasoningEffort)
 	require.True(t, gptInfo.IsDefault)
+	require.True(t, gptInfo.SupportsAutocompaction)
 	require.Equal(t, gpt5, ProviderIDOpenAI.DefaultModel())
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptInfo.SupportedTypes)
 
@@ -127,12 +128,18 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, int64(200000), anthropicHaikuInfo.ContextWindow)
 	require.Equal(t, int64(64000), anthropicHaikuInfo.MaxOutput)
 
-	gemini := ModelID("gemini-2.5-pro")
-	if gemini.Valid() {
-		geminiInfo := GetModelInfo(gemini)
-		require.Equal(t, ProviderIDGemini, geminiInfo.ProviderID)
-		require.Equal(t, []ProviderAPIType{ProviderTypeGemini}, geminiInfo.SupportedTypes)
-	}
+	require.Equal(t, []ModelID{ModelID("gemini-3.1-pro-preview")}, modelIDsByProvider(ProviderIDGemini))
+	gemini := ModelID("gemini-3.1-pro-preview")
+	require.True(t, gemini.Valid())
+	geminiInfo := GetModelInfo(gemini)
+	require.Equal(t, ProviderIDGemini, geminiInfo.ProviderID)
+	require.Equal(t, gemini, ProviderIDGemini.DefaultModel())
+	require.Equal(t, []ProviderAPIType{ProviderTypeGemini}, geminiInfo.SupportedTypes)
+	require.Equal(t, "gemini-3.1-pro-preview", geminiInfo.ProviderModelID)
+	require.Equal(t, int64(1048576), geminiInfo.ContextWindow)
+	require.Equal(t, int64(65536), geminiInfo.MaxOutput)
+	require.True(t, geminiInfo.CanReason)
+	require.True(t, geminiInfo.SupportsImages)
 
 	grok := ModelID("grok-4")
 	if grok.Valid() {
@@ -146,6 +153,8 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.False(t, ModelID("gpt-5.1-codex").Valid())
 	require.False(t, ModelID("gpt-5.3-codex-minimal").Valid())
 	require.False(t, ModelID("gpt-5.4-minimal").Valid())
+	require.True(t, ModelID("gpt-5-mini").Valid())
+	require.True(t, ModelID("gpt-5-nano").Valid())
 
 	codexXhigh := ModelID("gpt-5.3-codex-xhigh")
 	codexHigh := ModelID("gpt-5.3-codex-high")
@@ -166,6 +175,7 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, "gpt-5.4", gptXhighInfo.ProviderModelID)
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptXhighInfo.SupportedTypes)
 	require.Equal(t, "xhigh", gptXhighInfo.ReasoningEffort)
+	require.True(t, gptXhighInfo.SupportsAutocompaction)
 
 	require.Equal(t, gpt5, ModelIDOrFallback(ModelIDUnknown))
 	require.Equal(t, gpt5, ModelIDOrFallback(ModelID("unknown-model")))
@@ -199,6 +209,7 @@ func TestAddCustomModelCopiesProviderData(t *testing.T) {
 	require.Equal(t, []ProviderAPIType{ProviderTypeAnthropic}, info.SupportedTypes)
 	require.Equal(t, "low", info.ReasoningEffort)
 	require.Equal(t, "priority", info.ServiceTier)
+	require.False(t, info.SupportsAutocompaction)
 	require.Contains(t, AvailableModelIDs(), customID)
 }
 
@@ -236,6 +247,7 @@ func TestGetAPIKeyPrecedence(t *testing.T) {
 	ConfigureProviderKey(ProviderIDOpenAI, "configured2")
 	t.Setenv("ALT_OPENAI_KEY", "alt2")
 	require.Equal(t, "literal", GetAPIKey(customActualID))
+	require.True(t, GetModelInfo(customActualID).SupportsAutocompaction)
 }
 
 func TestAvailableModelIDsWithAPIKeyAndProviderHasConfiguredKey(t *testing.T) {
