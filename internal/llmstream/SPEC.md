@@ -15,6 +15,13 @@ llmstream is an abstraction over LLM providers, offering a unified interface. St
 - Uses "adaptive" thinking type (budget omitted).
 - `Options.ReasoningEffort` maps appropriately to `output_config { effort }`.
 
+### Gemini
+
+- Uses Gemini SDK `GenerateContentStream`.
+- Keeps exact SDK `Content` history in parallel with `Turn`s for resend/retry, including thought signatures.
+- Resends prior model turns in Gemini SDK-native shape, including function calls and thinking parts.
+- If Gemini returns `STOP` with no text, reasoning, or tool calls, retries same conversation state up to 3 times. If still empty, returns error.
+
 ## Public API
 
 ```go
