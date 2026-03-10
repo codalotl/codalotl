@@ -141,6 +141,9 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, int64(65536), geminiInfo.MaxOutput)
 	require.True(t, geminiInfo.CanReason)
 	require.True(t, geminiInfo.SupportsImages)
+	require.InDelta(t, 2.0, geminiInfo.CostPer1MIn, 0)
+	require.InDelta(t, 12.0, geminiInfo.CostPer1MOut, 0)
+	require.InDelta(t, 0.2, geminiInfo.CostPer1MInCached, 0)
 
 	grok := ModelID("grok-4")
 	if grok.Valid() {
