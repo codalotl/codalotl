@@ -5,10 +5,10 @@
   ],
   "api_endpoint_url": "https://generativelanguage.googleapis.com",
   "api_key": "$GEMINI_API_KEY",
-  "default_model_id": "gemini-3.1-pro-preview",
+  "default_model_id": "gemini-3.1-pro-preview-customtools",
   "models": [
     {
-      "id": "gemini-3.1-pro-preview",
+      "id": "gemini-3.1-pro-preview-customtools",
       "cost_per_1m_in": 0,
       "cost_per_1m_out": 0,
       "cost_per_1m_in_cached": 0,
