@@ -19,6 +19,8 @@ var (
 	ErrUnexpectedContentType error // ErrUnexpectedContentType indicates non text/event-stream response.
 )
 
+const maxOpenErrorBodyBytes = 8 * 1024
+
 func init() {
 	ErrUnexpectedStatus = errors.New("unexpected status code")
 	ErrUnexpectedContentType = errors.New("unexpected content type")
@@ -68,19 +70,33 @@ func WithHeader(key, value string) Option {
 
 // OpenError wraps failures from OpenRequest and OpenURL. Use errors.Is(err, ErrUnexpectedStatus/ErrUnexpectedContentType).
 type OpenError struct {
-	Request  *http.Request
-	Response *http.Response // nil for transport/setup failures
-	Err      error
+	Request      *http.Request
+	Response     *http.Response // nil for transport/setup failures
+	ResponseBody []byte
+	Err          error
 }
 
 func (e *OpenError) Error() string {
 	if e == nil {
 		return "<nil>"
 	}
-	if e.Request == nil {
-		return fmt.Sprintf("open sse stream: %v", e.Err)
+	errText := "<nil>"
+	if e.Err != nil {
+		errText = e.Err.Error()
 	}
-	return fmt.Sprintf("open sse stream %s %s: %v", e.Request.Method, e.Request.URL.String(), e.Err)
+	if errors.Is(e.Err, ErrUnexpectedStatus) && e.Response != nil {
+		errText = fmt.Sprintf("%s: %s", errText, e.Response.Status)
+	}
+	if errors.Is(e.Err, ErrUnexpectedContentType) && e.Response != nil {
+		contentType := e.Response.Header.Get("Content-Type")
+		if contentType != "" {
+			errText = fmt.Sprintf("%s: %s", errText, contentType)
+		}
+	}
+	if e.Request == nil {
+		return fmt.Sprintf("open sse stream: %s", errText)
+	}
+	return fmt.Sprintf("open sse stream %s %s: %s", e.Request.Method, e.Request.URL.String(), errText)
 }
 
 func (e *OpenError) Unwrap() error {
@@ -143,19 +159,29 @@ func (c *Client) OpenRequest(req *http.Request) (*Stream, error) {
 		}
 	}
 	if resp.StatusCode != http.StatusOK {
+		body, closeErr := readOpenErrorBody(resp)
+		if closeErr != nil {
+			body = nil
+		}
 		_ = resp.Body.Close()
 		return nil, &OpenError{
-			Request:  usedReq,
-			Response: resp,
-			Err:      ErrUnexpectedStatus,
+			Request:      usedReq,
+			Response:     resp,
+			ResponseBody: body,
+			Err:          ErrUnexpectedStatus,
 		}
 	}
 	if !isEventStreamContentType(resp.Header.Get("Content-Type")) {
+		body, closeErr := readOpenErrorBody(resp)
+		if closeErr != nil {
+			body = nil
+		}
 		_ = resp.Body.Close()
 		return nil, &OpenError{
-			Request:  usedReq,
-			Response: resp,
-			Err:      ErrUnexpectedContentType,
+			Request:      usedReq,
+			Response:     resp,
+			ResponseBody: body,
+			Err:          ErrUnexpectedContentType,
 		}
 	}
 
@@ -376,6 +402,13 @@ func isEventStreamContentType(contentType string) bool {
 		mediaType = strings.TrimSpace(mediaType)
 	}
 	return strings.EqualFold(mediaType, "text/event-stream")
+}
+
+func readOpenErrorBody(resp *http.Response) ([]byte, error) {
+	if resp == nil || resp.Body == nil {
+		return nil, nil
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, maxOpenErrorBodyBytes))
 }
 
 type lineReader struct {

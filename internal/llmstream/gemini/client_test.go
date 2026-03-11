@@ -277,6 +277,60 @@ func TestModelsGenerateContentStream_RequestHeadersOverrideClientHeaders(t *test
 	assert.Equal(t, "request-only", headers.Get("X-Request-Only"))
 }
 
+func TestModelsGenerateContentStream_RateLimitErrorIncludesProviderDetails(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{
+				"code":    429,
+				"message": "Quota exceeded for generate content.",
+				"status":  "RESOURCE_EXHAUSTED",
+				"details": []map[string]any{
+					{
+						"@type":    "type.googleapis.com/google.rpc.ErrorInfo",
+						"reason":   "RATE_LIMIT_EXCEEDED",
+						"domain":   "googleapis.com",
+						"metadata": map[string]any{"service": "generativelanguage.googleapis.com"},
+					},
+					{
+						"@type":      "type.googleapis.com/google.rpc.RetryInfo",
+						"retryDelay": "32s",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		APIKey:     "test-key",
+		HTTPClient: srv.Client(),
+		HTTPOptions: HTTPOptions{
+			BaseURL: srv.URL,
+		},
+	})
+	require.NoError(t, err)
+
+	var streamErr error
+	for _, err := range client.Models.GenerateContentStream(context.Background(), "gemini-test", nil, nil) {
+		streamErr = err
+	}
+
+	require.Error(t, streamErr)
+	var apiErr *APIError
+	require.True(t, errors.As(streamErr, &apiErr))
+	assert.Equal(t, http.StatusTooManyRequests, apiErr.StatusCode)
+	assert.Equal(t, "RESOURCE_EXHAUSTED", apiErr.Status)
+	assert.Equal(t, "RATE_LIMIT_EXCEEDED", apiErr.Reason)
+	assert.Equal(t, "32s", apiErr.RetryAfter)
+	assert.Contains(t, streamErr.Error(), "gemini rate limit exceeded")
+	assert.Contains(t, streamErr.Error(), "429 RESOURCE_EXHAUSTED")
+	assert.Contains(t, streamErr.Error(), "retry after 32s")
+}
+
 func TestClient_streamGenerateContentURL_ComposesBaseURLAndVersion(t *testing.T) {
 	t.Parallel()
 
@@ -364,12 +418,11 @@ func TestModelsGenerateContentStream_Non200YieldsNilErrAndStops(t *testing.T) {
 	assert.Nil(t, responses[0])
 	iterErr := iterErrs[0]
 	require.Error(t, iterErr)
-	assert.ErrorIs(t, iterErr, sseclient.ErrUnexpectedStatus)
-
-	var openErr *sseclient.OpenError
-	require.ErrorAs(t, iterErr, &openErr)
-	require.NotNil(t, openErr.Response)
-	assert.Equal(t, http.StatusBadRequest, openErr.Response.StatusCode)
+	var apiErr *APIError
+	require.ErrorAs(t, iterErr, &apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+	assert.Equal(t, "INVALID_ARGUMENT", apiErr.Status)
+	assert.Equal(t, "bad request", apiErr.Message)
 }
 
 func TestModelsGenerateContentStream_ReadFailureYieldsNilErrAndStops(t *testing.T) {

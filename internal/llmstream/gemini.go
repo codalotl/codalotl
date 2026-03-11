@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -117,7 +119,11 @@ func (sc *streamingConversation) sendAsyncGeminiOnce(ctx context.Context, out ch
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return Turn{}, nil, sc.LogWrappedErr("gemini_send_async.context", ctxErr)
 			}
-			return Turn{}, nil, makeRetryable(sc.LogWrappedErr("gemini_send_async.stream", streamErr))
+			wrapped := sc.LogWrappedErr("gemini_send_async.stream", streamErr)
+			if geminiIsRetryableStreamError(streamErr) {
+				return Turn{}, nil, makeRetryable(wrapped)
+			}
+			return Turn{}, nil, wrapped
 		}
 		if resp == nil {
 			continue
@@ -162,6 +168,24 @@ func (sc *streamingConversation) sendAsyncGeminiOnce(ctx context.Context, out ch
 
 func geminiIsEmptyStopTurn(turn Turn) bool {
 	return turn.FinishReason == FinishReasonEndTurn && len(turn.Parts) == 0
+}
+
+func geminiIsRetryableStreamError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var apiErr *geminiapi.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Retryable()
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+
+	return errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func (sc *streamingConversation) geminiContentsForRequest() ([]*geminiapi.Content, error) {

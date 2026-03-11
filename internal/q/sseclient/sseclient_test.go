@@ -63,6 +63,7 @@ func TestOpenRequest_UnexpectedStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"error":"backend unavailable"}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -76,6 +77,8 @@ func TestOpenRequest_UnexpectedStatus(t *testing.T) {
 	require.True(t, errors.As(err, &openErr))
 	assert.NotNil(t, openErr.Response)
 	assert.Equal(t, http.StatusBadGateway, openErr.Response.StatusCode)
+	assert.Equal(t, `{"error":"backend unavailable"}`, string(openErr.ResponseBody))
+	assert.Contains(t, err.Error(), "502 Bad Gateway")
 }
 
 func TestOpenRequest_UnexpectedContentType(t *testing.T) {

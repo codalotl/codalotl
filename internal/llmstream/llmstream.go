@@ -620,8 +620,39 @@ func debounceEvents(ctx context.Context, in <-chan Event, out chan<- Event) {
 // ErrRetryable marks an error as retryable by the caller.
 var ErrRetryable = errors.New("retryable")
 
-func makeRetryable(err error) error { return fmt.Errorf("%w: %w", ErrRetryable, err) }
-func isRetryable(err error) bool    { return errors.Is(err, ErrRetryable) }
+type retryableError struct {
+	err error
+}
+
+func (e *retryableError) Error() string {
+	if e == nil || e.err == nil {
+		return ErrRetryable.Error()
+	}
+	return e.err.Error()
+}
+
+func (e *retryableError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func (e *retryableError) Is(target error) bool {
+	return target == ErrRetryable
+}
+
+func makeRetryable(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrRetryable) {
+		return err
+	}
+	return &retryableError{err: err}
+}
+
+func isRetryable(err error) bool { return errors.Is(err, ErrRetryable) }
 
 // retrySleepDurations' i'th index is the sleep duration for the i'th retry. Any retry after that would use the last value.
 //

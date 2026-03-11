@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/q/sseclient"
 )
@@ -48,6 +50,67 @@ type Client struct {
 // Models exposes model-scoped operations.
 type Models struct {
 	client *Client
+}
+
+// APIError is a Gemini API error parsed from an HTTP failure response.
+type APIError struct {
+	StatusCode int
+	Status     string
+	Message    string
+	Reason     string
+	RetryAfter string
+}
+
+func (e *APIError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+
+	label := "API error"
+	if e.IsRateLimit() {
+		label = "rate limit exceeded"
+	}
+
+	statusParts := make([]string, 0, 2)
+	if e.StatusCode > 0 {
+		statusParts = append(statusParts, strconv.Itoa(e.StatusCode))
+	}
+	if e.Status != "" {
+		statusParts = append(statusParts, e.Status)
+	}
+
+	var b strings.Builder
+	b.WriteString("gemini ")
+	b.WriteString(label)
+	if len(statusParts) > 0 {
+		b.WriteString(" (")
+		b.WriteString(strings.Join(statusParts, " "))
+		b.WriteString(")")
+	}
+	if e.Message != "" {
+		b.WriteString(": ")
+		b.WriteString(e.Message)
+	}
+	if e.RetryAfter != "" {
+		b.WriteString(" (retry after ")
+		b.WriteString(e.RetryAfter)
+		b.WriteString(")")
+	}
+	return b.String()
+}
+
+func (e *APIError) Retryable() bool {
+	if e == nil {
+		return false
+	}
+	return e.StatusCode == http.StatusTooManyRequests || (e.StatusCode >= 500 && e.StatusCode <= 599)
+}
+
+func (e *APIError) IsRateLimit() bool {
+	if e == nil {
+		return false
+	}
+	return e.StatusCode == http.StatusTooManyRequests || strings.EqualFold(e.Status, "RESOURCE_EXHAUSTED") || strings.EqualFold(e.Reason, "RATE_LIMIT_EXCEEDED")
 }
 
 // NewClient constructs a Client.
@@ -140,7 +203,7 @@ func (m Models) GenerateContentStream(ctx context.Context, model string, content
 		streamClient := sseclient.New(sseclient.WithHTTPClient(client.httpClient))
 		stream, err := streamClient.OpenRequest(httpReq)
 		if err != nil {
-			yield(nil, err)
+			yield(nil, normalizeOpenStreamError(err))
 			return
 		}
 		defer stream.Close()
@@ -256,6 +319,84 @@ func apiKeyFromEnv(env map[string]string) string {
 		return env["GOOGLE_API_KEY"]
 	}
 	return env["GEMINI_API_KEY"]
+}
+
+type apiErrorEnvelope struct {
+	Error apiErrorPayload `json:"error"`
+}
+
+type apiErrorPayload struct {
+	Code    int              `json:"code"`
+	Message string           `json:"message"`
+	Status  string           `json:"status"`
+	Details []apiErrorDetail `json:"details"`
+}
+
+type apiErrorDetail struct {
+	Type       string `json:"@type"`
+	Reason     string `json:"reason"`
+	RetryDelay string `json:"retryDelay"`
+}
+
+func normalizeOpenStreamError(err error) error {
+	var openErr *sseclient.OpenError
+	if !errors.As(err, &openErr) || !errors.Is(err, sseclient.ErrUnexpectedStatus) {
+		return err
+	}
+
+	apiErr := &APIError{}
+	if openErr.Response != nil {
+		apiErr.StatusCode = openErr.Response.StatusCode
+		apiErr.Status = http.StatusText(openErr.Response.StatusCode)
+		apiErr.RetryAfter = formatRetryAfter(openErr.Response.Header.Get("Retry-After"))
+	}
+
+	body := openErr.ResponseBody
+	if len(body) > 0 {
+		var envelope apiErrorEnvelope
+		if json.Unmarshal(body, &envelope) == nil && (envelope.Error.Message != "" || envelope.Error.Status != "" || envelope.Error.Code != 0) {
+			if envelope.Error.Code != 0 {
+				apiErr.StatusCode = envelope.Error.Code
+			}
+			if envelope.Error.Status != "" {
+				apiErr.Status = envelope.Error.Status
+			}
+			apiErr.Message = envelope.Error.Message
+			for _, detail := range envelope.Error.Details {
+				if apiErr.Reason == "" && detail.Reason != "" {
+					apiErr.Reason = detail.Reason
+				}
+				if apiErr.RetryAfter == "" && detail.RetryDelay != "" {
+					apiErr.RetryAfter = detail.RetryDelay
+				}
+			}
+		} else {
+			apiErr.Message = strings.TrimSpace(string(body))
+		}
+	}
+
+	if apiErr.Message == "" && openErr.Response != nil {
+		apiErr.Message = openErr.Response.Status
+	}
+
+	return apiErr
+}
+
+func formatRetryAfter(value string) string {
+	if value == "" {
+		return ""
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		return (time.Duration(seconds) * time.Second).String()
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		delay := time.Until(when).Round(time.Second)
+		if delay > 0 {
+			return delay.String()
+		}
+		return ""
+	}
+	return value
 }
 
 func defaultEnvVarProvider() map[string]string {

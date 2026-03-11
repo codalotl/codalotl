@@ -3,6 +3,10 @@ package llmstream
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"io"
+	"net"
+	"net/url"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -180,6 +184,47 @@ func TestSendAsyncGeminiWithAttempt_ExhaustsEmptyStopRetries(t *testing.T) {
 		assert.Equal(t, EventTypeRetry, event.Type)
 	}
 }
+
+func TestGeminiIsRetryableStreamError(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, geminiIsRetryableStreamError(&geminiapi.APIError{
+		StatusCode: 429,
+		Status:     "RESOURCE_EXHAUSTED",
+		Message:    "Quota exceeded.",
+	}))
+	assert.True(t, geminiIsRetryableStreamError(&net.DNSError{IsTimeout: true}))
+	assert.True(t, geminiIsRetryableStreamError(temporaryNetError{}))
+	assert.True(t, geminiIsRetryableStreamError(&url.Error{
+		Op:  "Post",
+		URL: "https://example.com",
+		Err: timeoutNetError{},
+	}))
+	assert.True(t, geminiIsRetryableStreamError(io.ErrUnexpectedEOF))
+	assert.False(t, geminiIsRetryableStreamError(&geminiapi.APIError{
+		StatusCode: 400,
+		Status:     "INVALID_ARGUMENT",
+		Message:    "Bad request.",
+	}))
+	assert.False(t, geminiIsRetryableStreamError(&url.Error{
+		Op:  "Post",
+		URL: "https://example.com",
+		Err: errors.New("unsupported protocol scheme"),
+	}))
+	assert.False(t, geminiIsRetryableStreamError(errors.New("decode failure")))
+}
+
+type timeoutNetError struct{}
+
+func (timeoutNetError) Error() string   { return "timeout" }
+func (timeoutNetError) Timeout() bool   { return true }
+func (timeoutNetError) Temporary() bool { return false }
+
+type temporaryNetError struct{}
+
+func (temporaryNetError) Error() string   { return "temporary" }
+func (temporaryNetError) Timeout() bool   { return false }
+func (temporaryNetError) Temporary() bool { return true }
 
 func drainEvents(ch <-chan Event) []Event {
 	var events []Event

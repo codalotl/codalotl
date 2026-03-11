@@ -2,6 +2,7 @@ package llmstream
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -157,4 +158,15 @@ func TestSendAsyncUnsupportedModel(t *testing.T) {
 
 	_, ok = <-events
 	assert.False(t, ok, "channel should be closed")
+}
+
+func TestMakeRetryable_DoesNotChangeErrorText(t *testing.T) {
+	t.Parallel()
+
+	err := errors.New("provider rate limit exceeded")
+	retryErr := makeRetryable(err)
+
+	require.Error(t, retryErr)
+	assert.Equal(t, "provider rate limit exceeded", retryErr.Error())
+	assert.True(t, isRetryable(retryErr))
 }
