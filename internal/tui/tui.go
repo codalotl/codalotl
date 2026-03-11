@@ -899,13 +899,32 @@ func (m *model) handleModelCommand(arg string) {
 	}
 
 	modelID := llmmodel.ModelID(strings.TrimSpace(fields[0]))
-	if modelID == "" || !modelID.Valid() {
-		m.appendSystemMessage(fmt.Sprintf("Unknown model %q. Use `/model` to list available models.", fields[0]))
+	if modelID == "" {
+		m.appendSystemMessage("Usage: `/model <id>` (or `/model` to list available models).")
 		m.refreshViewport(true)
 		if m.viewport != nil {
 			m.viewport.ScrollToBottom()
 		}
 		return
+	}
+
+	if !modelID.Valid() {
+		var matches []llmmodel.ModelID
+		for _, id := range llmmodel.AvailableModelIDs() {
+			if strings.Contains(string(id), string(modelID)) {
+				matches = append(matches, id)
+			}
+		}
+		if len(matches) == 1 {
+			modelID = matches[0]
+		} else {
+			m.appendSystemMessage(fmt.Sprintf("Unknown model %q. Use `/model` to list available models.", fields[0]))
+			m.refreshViewport(true)
+			if m.viewport != nil {
+				m.viewport.ScrollToBottom()
+			}
+			return
+		}
 	}
 
 	current := defaultModelID

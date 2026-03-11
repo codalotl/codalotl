@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	geminiapi "github.com/codalotl/codalotl/internal/llmstream/gemini"
 	"github.com/codalotl/codalotl/internal/q/health"
 )
 
@@ -70,6 +71,10 @@ type streamingConversation struct {
 
 	// promptCacheKey is a stable identifier used by providers (ex: OpenAI Responses) to reuse cached prompt prefixes across requests.
 	promptCacheKey string
+
+	// geminiContents stores the exact Gemini conversation contents we resend on subsequent turns. We keep these in parallel with turns because Gemini requires prior
+	// model responses, including thought signatures, to be resent in Gemini-native shape.
+	geminiContents []*geminiapi.Content
 }
 
 func NewConversation(modelID llmmodel.ModelID, systemMessage string) StreamingConversation {
@@ -123,7 +128,17 @@ func (sc *streamingConversation) AddUserTurn(text string) error {
 	if len(lastTurn.ToolCalls()) > 0 {
 		return errors.New("previous message had tool calls - cannot add new user message. Use AddToolResults first")
 	}
-	sc.turns = append(sc.turns, newTextTurn(RoleUser, text))
+	turn := newTextTurn(RoleUser, text)
+	sc.turns = append(sc.turns, turn)
+	if sc.usesGeminiAPI() {
+		content, include, err := geminiBuildContentFromTurn(turn)
+		if err != nil {
+			return err
+		}
+		if include {
+			sc.geminiContents = append(sc.geminiContents, content)
+		}
+	}
 	return nil
 }
 
@@ -204,7 +219,17 @@ func (sc *streamingConversation) AddToolResults(toolResults []ToolResult) error 
 	}
 
 	// Append a new message carrying the tool results
-	sc.turns = append(sc.turns, Turn{Role: RoleUser, Parts: parts})
+	turn := Turn{Role: RoleUser, Parts: parts}
+	sc.turns = append(sc.turns, turn)
+	if sc.usesGeminiAPI() {
+		content, include, err := geminiBuildContentFromTurn(turn)
+		if err != nil {
+			return err
+		}
+		if include {
+			sc.geminiContents = append(sc.geminiContents, content)
+		}
+	}
 	return nil
 }
 
@@ -264,8 +289,10 @@ func (sc *streamingConversation) SendAsync(ctx context.Context, options ...SendO
 			sendAsync = sc.sendAsyncOpenAIResponses
 		case modelSupportsAPIType(modelInfo, llmmodel.ProviderTypeAnthropic):
 			sendAsync = sc.sendAsyncAnthropic
+		case modelSupportsAPIType(modelInfo, llmmodel.ProviderTypeGemini):
+			sendAsync = sc.sendAsyncGemini
 		default:
-			out <- newErrorEvent(sc.LogNewErr("conversation.model.unsupported_api", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID, "required_api", "openai_responses|anthropic"))
+			out <- newErrorEvent(sc.LogNewErr("conversation.model.unsupported_api", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID, "required_api", "openai_responses|anthropic|gemini"))
 			return
 		}
 
@@ -352,6 +379,10 @@ func trySendEvent(ctx context.Context, out chan<- Event, ev Event) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+func (sc *streamingConversation) usesGeminiAPI() bool {
+	return modelSupportsAPIType(llmmodel.GetModelInfo(sc.modelID), llmmodel.ProviderTypeGemini)
 }
 
 // debounceDeltaInterval controls the minimum time between successive non-done delta events (by kind and ID) that get forwarded to the output channel. Keep modest

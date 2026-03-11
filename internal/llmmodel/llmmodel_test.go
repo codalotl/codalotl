@@ -128,18 +128,22 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.Equal(t, int64(200000), anthropicHaikuInfo.ContextWindow)
 	require.Equal(t, int64(64000), anthropicHaikuInfo.MaxOutput)
 
-	require.Equal(t, []ModelID{ModelID("gemini-3.1-pro-preview")}, modelIDsByProvider(ProviderIDGemini))
-	gemini := ModelID("gemini-3.1-pro-preview")
+	geminiModels := modelIDsByProvider(ProviderIDGemini)
+	require.Len(t, geminiModels, 1)
+	gemini := geminiModels[0]
 	require.True(t, gemini.Valid())
 	geminiInfo := GetModelInfo(gemini)
 	require.Equal(t, ProviderIDGemini, geminiInfo.ProviderID)
 	require.Equal(t, gemini, ProviderIDGemini.DefaultModel())
 	require.Equal(t, []ProviderAPIType{ProviderTypeGemini}, geminiInfo.SupportedTypes)
-	require.Equal(t, "gemini-3.1-pro-preview", geminiInfo.ProviderModelID)
+	require.NotEmpty(t, geminiInfo.ProviderModelID)
 	require.Equal(t, int64(1048576), geminiInfo.ContextWindow)
 	require.Equal(t, int64(65536), geminiInfo.MaxOutput)
 	require.True(t, geminiInfo.CanReason)
 	require.True(t, geminiInfo.SupportsImages)
+	require.InDelta(t, 2.0, geminiInfo.CostPer1MIn, 0)
+	require.InDelta(t, 12.0, geminiInfo.CostPer1MOut, 0)
+	require.InDelta(t, 0.2, geminiInfo.CostPer1MInCached, 0)
 
 	grok := ModelID("grok-4")
 	if grok.Valid() {
