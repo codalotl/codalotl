@@ -707,6 +707,76 @@ func TestModelCommandSwitchesAndPersistsWhenConfigured(t *testing.T) {
 	assert.Contains(t, m.messages[1].userMessage, string(target))
 }
 
+func TestModelCommandPartialMatchUnique(t *testing.T) {
+	ids := llmmodel.AvailableModelIDs()
+	if len(ids) == 0 {
+		t.Skip("need at least one available model to test partial match")
+	}
+
+	target := ids[0]
+	var uniqueSubstring string
+	for i := 1; i <= len(string(target)); i++ {
+		sub := string(target)[:i]
+		count := 0
+		for _, id := range ids {
+			if strings.Contains(string(id), sub) {
+				count++
+			}
+		}
+		if count == 1 {
+			uniqueSubstring = sub
+			break
+		}
+	}
+	if uniqueSubstring == "" {
+		t.Skip("could not find unique substring for testing")
+	}
+
+	var factoryCfg sessionConfig
+	factory := func(cfg sessionConfig) (*session, error) {
+		factoryCfg = cfg
+		return &session{config: cfg, modelID: cfg.modelID}, nil
+	}
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, factory, nil, nil, nil)
+
+	handled := m.handleSlashCommand("/model " + uniqueSubstring)
+	require.True(t, handled)
+	require.Equal(t, target, factoryCfg.modelID)
+}
+
+func TestModelCommandPartialMatchNotUnique(t *testing.T) {
+	ids := llmmodel.AvailableModelIDs()
+	if len(ids) < 2 {
+		t.Skip("need at least two available models")
+	}
+
+	var commonSubstring string
+	for _, letter := range []string{"-", "a", "e", "i", "o", "u", "1", "2", "3"} {
+		count := 0
+		for _, id := range ids {
+			if strings.Contains(string(id), letter) {
+				count++
+			}
+		}
+		if count > 1 {
+			commonSubstring = letter
+			break
+		}
+	}
+	if commonSubstring == "" {
+		t.Skip("could not find common substring for testing")
+	}
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{modelID: llmmodel.DefaultModel}, nil, nil, nil, nil)
+
+	handled := m.handleSlashCommand("/model " + commonSubstring)
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 1)
+	assert.Contains(t, m.messages[0].userMessage, "Unknown model")
+}
+
 func listedModelIDs(modelListText string) []llmmodel.ModelID {
 	var ids []llmmodel.ModelID
 	for _, line := range strings.Split(modelListText, "\n") {
