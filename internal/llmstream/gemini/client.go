@@ -267,9 +267,7 @@ func cloneHeaders(in http.Header) http.Header {
 
 func mergeHeaders(dst, src http.Header) {
 	for key, values := range src {
-		if len(dst.Values(key)) > 0 {
-			continue
-		}
+		dst.Del(key)
 		for _, value := range values {
 			dst.Add(key, value)
 		}

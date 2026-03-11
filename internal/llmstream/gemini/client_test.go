@@ -193,6 +193,48 @@ func TestModelsGenerateContentStream_PreservesModelPrefix(t *testing.T) {
 	assert.Equal(t, "/v1beta/models/gemini-test:streamGenerateContent", <-seenCh)
 }
 
+func TestModelsGenerateContentStream_RequestHeadersOverrideClientHeaders(t *testing.T) {
+	t.Parallel()
+
+	seenCh := make(chan http.Header, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenCh <- r.Header.Clone()
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"responseId\":\"resp_1\"}\n\n")
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		APIKey:     "test-key",
+		HTTPClient: srv.Client(),
+		HTTPOptions: HTTPOptions{
+			BaseURL: srv.URL,
+			Headers: http.Header{
+				"X-Shared-Header": []string{"client-value"},
+				"X-Client-Only":   []string{"client-only"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	stream := client.Models.GenerateContentStream(context.Background(), "gemini-test", nil, &GenerateContentConfig{
+		HTTPOptions: &HTTPOptions{
+			Headers: http.Header{
+				"X-Shared-Header": []string{"request-value-1", "request-value-2"},
+				"X-Request-Only":  []string{"request-only"},
+			},
+		},
+	})
+	for _, err := range stream {
+		require.NoError(t, err)
+	}
+
+	headers := <-seenCh
+	assert.Equal(t, []string{"request-value-1", "request-value-2"}, headers.Values("X-Shared-Header"))
+	assert.Equal(t, "client-only", headers.Get("X-Client-Only"))
+	assert.Equal(t, "request-only", headers.Get("X-Request-Only"))
+}
+
 func TestModelsGenerateContentStream_Non200ReturnsOpenError(t *testing.T) {
 	t.Parallel()
 
