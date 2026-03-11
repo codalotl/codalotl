@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
-	"google.golang.org/genai"
+	geminiapi "github.com/codalotl/codalotl/internal/llmstream/gemini"
 )
 
 const geminiEmptyStopMaxRetries = 3
 
-type geminiAttemptFunc func(context.Context, chan Event, *SendOptions, llmmodel.ModelInfo) (Turn, *genai.Content, error)
+type geminiAttemptFunc func(context.Context, chan Event, *SendOptions, llmmodel.ModelInfo) (Turn, *geminiapi.Content, error)
 
 func (sc *streamingConversation) sendAsyncGemini(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, error) {
 	return sc.sendAsyncGeminiWithAttempt(ctx, out, opt, modelInfo, sc.sendAsyncGeminiOnce)
@@ -53,7 +53,7 @@ func (sc *streamingConversation) sendAsyncGeminiWithAttempt(ctx context.Context,
 	return Turn{}, sc.LogNewErr("gemini_send_async.unreachable")
 }
 
-func (sc *streamingConversation) sendAsyncGeminiOnce(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, *genai.Content, error) {
+func (sc *streamingConversation) sendAsyncGeminiOnce(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, *geminiapi.Content, error) {
 	if err := ctx.Err(); err != nil {
 		return Turn{}, nil, sc.LogWrappedErr("gemini_send_async.context", err)
 	}
@@ -78,15 +78,15 @@ func (sc *streamingConversation) sendAsyncGeminiOnce(ctx context.Context, out ch
 		return Turn{}, nil, sc.LogWrappedErr("gemini_send_async.build_config", err)
 	}
 
-	clientConfig := &genai.ClientConfig{
+	clientConfig := &geminiapi.ClientConfig{
 		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
+		Backend: geminiapi.BackendGeminiAPI,
 	}
 	if baseURL := llmmodel.GetAPIEndpointURL(sc.modelID); baseURL != "" {
 		clientConfig.HTTPOptions.BaseURL = baseURL
 	}
 
-	client, err := genai.NewClient(ctx, clientConfig)
+	client, err := geminiapi.NewClient(ctx, clientConfig)
 	if err != nil {
 		return Turn{}, nil, sc.LogWrappedErr("gemini_send_async.client", err)
 	}
@@ -164,7 +164,7 @@ func geminiIsEmptyStopTurn(turn Turn) bool {
 	return turn.FinishReason == FinishReasonEndTurn && len(turn.Parts) == 0
 }
 
-func (sc *streamingConversation) geminiContentsForRequest() ([]*genai.Content, error) {
+func (sc *streamingConversation) geminiContentsForRequest() ([]*geminiapi.Content, error) {
 	if len(sc.geminiContents) == len(sc.turns)-1 {
 		return cloneGeminiContents(sc.geminiContents), nil
 	}
@@ -172,7 +172,7 @@ func (sc *streamingConversation) geminiContentsForRequest() ([]*genai.Content, e
 		sc.Log("gemini.contents.desync", "gemini_contents", len(sc.geminiContents), "turns_without_system", len(sc.turns)-1)
 	}
 
-	contents := make([]*genai.Content, 0, len(sc.turns)-1)
+	contents := make([]*geminiapi.Content, 0, len(sc.turns)-1)
 	for _, turn := range sc.turns[1:] {
 		content, include, err := geminiBuildContentFromTurn(turn)
 		if err != nil {
@@ -185,15 +185,15 @@ func (sc *streamingConversation) geminiContentsForRequest() ([]*genai.Content, e
 	return contents, nil
 }
 
-func (sc *streamingConversation) buildGeminiGenerateContentConfig(modelInfo llmmodel.ModelInfo, opt *SendOptions) (*genai.GenerateContentConfig, error) {
-	config := &genai.GenerateContentConfig{
+func (sc *streamingConversation) buildGeminiGenerateContentConfig(modelInfo llmmodel.ModelInfo, opt *SendOptions) (*geminiapi.GenerateContentConfig, error) {
+	config := &geminiapi.GenerateContentConfig{
 		CandidateCount: 1,
 	}
 
 	systemInstruction := sc.turns[0].TextContent()
 	if systemInstruction != "" {
-		config.SystemInstruction = &genai.Content{
-			Parts: []*genai.Part{{Text: systemInstruction}},
+		config.SystemInstruction = &geminiapi.Content{
+			Parts: []*geminiapi.Part{{Text: systemInstruction}},
 		}
 	}
 	if modelInfo.MaxOutput > 0 && modelInfo.MaxOutput <= math.MaxInt32 {
@@ -220,7 +220,7 @@ func (sc *streamingConversation) buildGeminiGenerateContentConfig(modelInfo llmm
 	return config, nil
 }
 
-func geminiBuildThinkingConfig(modelInfo llmmodel.ModelInfo, opt *SendOptions) *genai.ThinkingConfig {
+func geminiBuildThinkingConfig(modelInfo llmmodel.ModelInfo, opt *SendOptions) *geminiapi.ThinkingConfig {
 	effort := strings.TrimSpace(modelInfo.ReasoningEffort)
 	if opt != nil && strings.TrimSpace(opt.ReasoningEffort) != "" {
 		effort = strings.TrimSpace(opt.ReasoningEffort)
@@ -229,7 +229,7 @@ func geminiBuildThinkingConfig(modelInfo llmmodel.ModelInfo, opt *SendOptions) *
 		return nil
 	}
 
-	config := &genai.ThinkingConfig{
+	config := &geminiapi.ThinkingConfig{
 		IncludeThoughts: true,
 	}
 	if level := geminiMapThinkingLevel(effort); level != "" {
@@ -238,29 +238,29 @@ func geminiBuildThinkingConfig(modelInfo llmmodel.ModelInfo, opt *SendOptions) *
 	return config
 }
 
-func geminiMapThinkingLevel(effort string) genai.ThinkingLevel {
+func geminiMapThinkingLevel(effort string) geminiapi.ThinkingLevel {
 	switch strings.ToLower(strings.TrimSpace(effort)) {
 	case "":
 		return ""
 	case "minimal":
-		return genai.ThinkingLevelMinimal
+		return geminiapi.ThinkingLevelMinimal
 	case "low":
-		return genai.ThinkingLevelLow
+		return geminiapi.ThinkingLevelLow
 	case "medium":
-		return genai.ThinkingLevelMedium
+		return geminiapi.ThinkingLevelMedium
 	case "high", "xhigh":
-		return genai.ThinkingLevelHigh
+		return geminiapi.ThinkingLevelHigh
 	default:
-		return genai.ThinkingLevel(strings.ToUpper(strings.TrimSpace(effort)))
+		return geminiapi.ThinkingLevel(strings.ToUpper(strings.TrimSpace(effort)))
 	}
 }
 
-func buildGeminiToolParams(tools []Tool) ([]*genai.Tool, error) {
+func buildGeminiToolParams(tools []Tool) ([]*geminiapi.Tool, error) {
 	if len(tools) == 0 {
 		return nil, nil
 	}
 
-	declarations := make([]*genai.FunctionDeclaration, 0, len(tools))
+	declarations := make([]*geminiapi.FunctionDeclaration, 0, len(tools))
 	for _, tool := range tools {
 		info := tool.Info()
 		if info.Name == "" {
@@ -297,7 +297,7 @@ func buildGeminiToolParams(tools []Tool) ([]*genai.Tool, error) {
 			schema["required"] = required
 		}
 
-		declaration := &genai.FunctionDeclaration{
+		declaration := &geminiapi.FunctionDeclaration{
 			Name:                 info.Name,
 			Description:          info.Description,
 			ParametersJsonSchema: schema,
@@ -305,23 +305,23 @@ func buildGeminiToolParams(tools []Tool) ([]*genai.Tool, error) {
 		declarations = append(declarations, declaration)
 	}
 
-	return []*genai.Tool{{FunctionDeclarations: declarations}}, nil
+	return []*geminiapi.Tool{{FunctionDeclarations: declarations}}, nil
 }
 
-func geminiBuildContentFromTurn(turn Turn) (*genai.Content, bool, error) {
+func geminiBuildContentFromTurn(turn Turn) (*geminiapi.Content, bool, error) {
 	role, ok := geminiMapTurnRole(turn.Role)
 	if !ok {
 		return nil, false, fmt.Errorf("unsupported turn role for gemini: %v", turn.Role)
 	}
 
-	parts := make([]*genai.Part, 0, len(turn.Parts))
+	parts := make([]*geminiapi.Part, 0, len(turn.Parts))
 	for _, part := range turn.Parts {
 		switch typed := part.(type) {
 		case TextContent:
 			if typed.Content == "" {
 				continue
 			}
-			parts = append(parts, &genai.Part{Text: typed.Content})
+			parts = append(parts, &geminiapi.Part{Text: typed.Content})
 		case ReasoningContent:
 			if typed.Content == "" && typed.ProviderState == "" {
 				continue
@@ -330,7 +330,7 @@ func geminiBuildContentFromTurn(turn Turn) (*genai.Content, bool, error) {
 			if err != nil {
 				return nil, false, fmt.Errorf("reasoning provider_state: %w", err)
 			}
-			parts = append(parts, &genai.Part{
+			parts = append(parts, &geminiapi.Part{
 				Text:             typed.Content,
 				Thought:          true,
 				ThoughtSignature: signature,
@@ -355,24 +355,24 @@ func geminiBuildContentFromTurn(turn Turn) (*genai.Content, bool, error) {
 		return nil, false, nil
 	}
 
-	return &genai.Content{
+	return &geminiapi.Content{
 		Role:  string(role),
 		Parts: parts,
 	}, true, nil
 }
 
-func geminiMapTurnRole(role Role) (genai.Role, bool) {
+func geminiMapTurnRole(role Role) (geminiapi.Role, bool) {
 	switch role {
 	case RoleUser:
-		return genai.RoleUser, true
+		return geminiapi.RoleUser, true
 	case RoleAssistant:
-		return genai.RoleModel, true
+		return geminiapi.RoleModel, true
 	default:
 		return "", false
 	}
 }
 
-func geminiToolCallPart(call ToolCall) (*genai.Part, error) {
+func geminiToolCallPart(call ToolCall) (*geminiapi.Part, error) {
 	if call.Name == "" {
 		return nil, errors.New("tool call name is required")
 	}
@@ -381,7 +381,7 @@ func geminiToolCallPart(call ToolCall) (*genai.Part, error) {
 		return nil, fmt.Errorf("tool call %q has invalid input json: %w", call.Name, err)
 	}
 
-	functionCall := &genai.FunctionCall{
+	functionCall := &geminiapi.FunctionCall{
 		Name: call.Name,
 		Args: args,
 	}
@@ -390,10 +390,10 @@ func geminiToolCallPart(call ToolCall) (*genai.Part, error) {
 	} else if call.ProviderID != "" {
 		functionCall.ID = call.ProviderID
 	}
-	return &genai.Part{FunctionCall: functionCall}, nil
+	return &geminiapi.Part{FunctionCall: functionCall}, nil
 }
 
-func geminiToolResultPart(result ToolResult) (*genai.Part, error) {
+func geminiToolResultPart(result ToolResult) (*geminiapi.Part, error) {
 	if result.CallID == "" {
 		return nil, errors.New("tool result missing call_id")
 	}
@@ -405,12 +405,12 @@ func geminiToolResultPart(result ToolResult) (*genai.Part, error) {
 	if result.IsError {
 		key = "error"
 	}
-	functionResponse := &genai.FunctionResponse{
+	functionResponse := &geminiapi.FunctionResponse{
 		ID:       result.CallID,
 		Name:     result.Name,
 		Response: map[string]any{key: geminiParseJSONValueOrString(result.Result)},
 	}
-	return &genai.Part{FunctionResponse: functionResponse}, nil
+	return &geminiapi.Part{FunctionResponse: functionResponse}, nil
 }
 
 func geminiParseJSONObject(raw string) (map[string]any, error) {
@@ -461,7 +461,7 @@ func geminiDecodeThoughtSignature(encoded string) ([]byte, error) {
 	return decoded, nil
 }
 
-func geminiConvertUsage(usage *genai.GenerateContentResponseUsageMetadata) TokenUsage {
+func geminiConvertUsage(usage *geminiapi.GenerateContentResponseUsageMetadata) TokenUsage {
 	if usage == nil {
 		return TokenUsage{}
 	}
@@ -474,18 +474,18 @@ func geminiConvertUsage(usage *genai.GenerateContentResponseUsageMetadata) Token
 	}
 }
 
-func geminiMapFinishReason(reason genai.FinishReason, hasToolCalls bool) FinishReason {
+func geminiMapFinishReason(reason geminiapi.FinishReason, hasToolCalls bool) FinishReason {
 	switch reason {
-	case genai.FinishReasonStop:
+	case geminiapi.FinishReasonStop:
 		if hasToolCalls {
 			return FinishReasonToolUse
 		}
 		return FinishReasonEndTurn
-	case genai.FinishReasonMaxTokens:
+	case geminiapi.FinishReasonMaxTokens:
 		return FinishReasonMaxTokens
-	case genai.FinishReasonSafety, genai.FinishReasonBlocklist, genai.FinishReasonProhibitedContent, genai.FinishReasonSPII, genai.FinishReasonImageSafety, genai.FinishReasonImageProhibitedContent:
+	case geminiapi.FinishReasonSafety, geminiapi.FinishReasonBlocklist, geminiapi.FinishReasonProhibitedContent, geminiapi.FinishReasonSPII, geminiapi.FinishReasonImageSafety, geminiapi.FinishReasonImageProhibitedContent:
 		return FinishReasonPermissionDenied
-	case genai.FinishReasonMalformedFunctionCall, genai.FinishReasonUnexpectedToolCall:
+	case geminiapi.FinishReasonMalformedFunctionCall, geminiapi.FinishReasonUnexpectedToolCall:
 		return FinishReasonError
 	case "":
 		if hasToolCalls {
@@ -511,11 +511,11 @@ type geminiReasoningAccumulator struct {
 type geminiStreamState struct {
 	createdSent   bool
 	responseID    string
-	usage         *genai.GenerateContentResponseUsageMetadata
-	finishReason  genai.FinishReason
+	usage         *geminiapi.GenerateContentResponseUsageMetadata
+	finishReason  geminiapi.FinishReason
 	finishMessage string
 	promptBlocked string
-	exactContent  *genai.Content
+	exactContent  *geminiapi.Content
 	publicParts   []ContentPart
 	nextPartIndex int
 	openText      *geminiTextAccumulator
@@ -526,7 +526,7 @@ func newGeminiStreamState() *geminiStreamState {
 	return &geminiStreamState{}
 }
 
-func (s *geminiStreamState) processResponse(resp *genai.GenerateContentResponse) ([]Event, error) {
+func (s *geminiStreamState) processResponse(resp *geminiapi.GenerateContentResponse) ([]Event, error) {
 	if resp == nil {
 		return nil, nil
 	}
@@ -572,7 +572,7 @@ func (s *geminiStreamState) processResponse(resp *genai.GenerateContentResponse)
 	}
 
 	if s.exactContent == nil {
-		s.exactContent = &genai.Content{Role: string(genai.RoleModel)}
+		s.exactContent = &geminiapi.Content{Role: string(geminiapi.RoleModel)}
 	}
 	if candidate.Content.Role != "" {
 		s.exactContent.Role = candidate.Content.Role
@@ -594,7 +594,7 @@ func (s *geminiStreamState) processResponse(resp *genai.GenerateContentResponse)
 	return events, nil
 }
 
-func (s *geminiStreamState) processPart(part *genai.Part) ([]Event, error) {
+func (s *geminiStreamState) processPart(part *geminiapi.Part) ([]Event, error) {
 	switch {
 	case part.FunctionCall != nil:
 		events := s.closeOpenParts()
@@ -642,7 +642,7 @@ func (s *geminiStreamState) processPart(part *genai.Part) ([]Event, error) {
 	}
 }
 
-func (s *geminiStreamState) toolCallFromPart(call *genai.FunctionCall) (ToolCall, error) {
+func (s *geminiStreamState) toolCallFromPart(call *geminiapi.FunctionCall) (ToolCall, error) {
 	if call == nil {
 		return ToolCall{}, errors.New("missing function call")
 	}
@@ -673,9 +673,9 @@ func (s *geminiStreamState) toolCallFromPart(call *genai.FunctionCall) (ToolCall
 	}, nil
 }
 
-func (s *geminiStreamState) appendExactPart(part *genai.Part) {
+func (s *geminiStreamState) appendExactPart(part *geminiapi.Part) {
 	if s.exactContent == nil {
-		s.exactContent = &genai.Content{Role: string(genai.RoleModel)}
+		s.exactContent = &geminiapi.Content{Role: string(geminiapi.RoleModel)}
 	}
 
 	switch {
@@ -709,19 +709,19 @@ func (s *geminiStreamState) appendExactPart(part *genai.Part) {
 	}
 }
 
-func (s *geminiStreamState) lastExactPart() *genai.Part {
+func (s *geminiStreamState) lastExactPart() *geminiapi.Part {
 	if s.exactContent == nil || len(s.exactContent.Parts) == 0 {
 		return nil
 	}
 	return s.exactContent.Parts[len(s.exactContent.Parts)-1]
 }
 
-func (s *geminiStreamState) finalize() ([]Event, Turn, *genai.Content, error) {
+func (s *geminiStreamState) finalize() ([]Event, Turn, *geminiapi.Content, error) {
 	events := s.closeOpenParts()
 	if s.promptBlocked != "" {
 		return nil, Turn{}, nil, fmt.Errorf("gemini prompt blocked: %s", s.promptBlocked)
 	}
-	if s.finishReason == genai.FinishReasonMalformedFunctionCall || s.finishReason == genai.FinishReasonUnexpectedToolCall {
+	if s.finishReason == geminiapi.FinishReasonMalformedFunctionCall || s.finishReason == geminiapi.FinishReasonUnexpectedToolCall {
 		msg := s.finishMessage
 		if msg == "" {
 			msg = string(s.finishReason)
@@ -734,10 +734,10 @@ func (s *geminiStreamState) finalize() ([]Event, Turn, *genai.Content, error) {
 
 	exactContent := cloneGeminiContent(s.exactContent)
 	if exactContent == nil {
-		exactContent = &genai.Content{Role: string(genai.RoleModel)}
+		exactContent = &geminiapi.Content{Role: string(geminiapi.RoleModel)}
 	}
 	if exactContent.Role == "" {
-		exactContent.Role = string(genai.RoleModel)
+		exactContent.Role = string(geminiapi.RoleModel)
 	}
 
 	turn := Turn{
@@ -813,24 +813,24 @@ func geminiHasToolCalls(parts []ContentPart) bool {
 	return false
 }
 
-func cloneGeminiContents(contents []*genai.Content) []*genai.Content {
+func cloneGeminiContents(contents []*geminiapi.Content) []*geminiapi.Content {
 	if len(contents) == 0 {
 		return nil
 	}
-	cloned := make([]*genai.Content, 0, len(contents))
+	cloned := make([]*geminiapi.Content, 0, len(contents))
 	for _, content := range contents {
 		cloned = append(cloned, cloneGeminiContent(content))
 	}
 	return cloned
 }
 
-func cloneGeminiContent(content *genai.Content) *genai.Content {
+func cloneGeminiContent(content *geminiapi.Content) *geminiapi.Content {
 	if content == nil {
 		return nil
 	}
-	cloned := &genai.Content{
+	cloned := &geminiapi.Content{
 		Role:  content.Role,
-		Parts: make([]*genai.Part, 0, len(content.Parts)),
+		Parts: make([]*geminiapi.Part, 0, len(content.Parts)),
 	}
 	for _, part := range content.Parts {
 		cloned.Parts = append(cloned.Parts, cloneGeminiPart(part))
@@ -838,11 +838,11 @@ func cloneGeminiContent(content *genai.Content) *genai.Content {
 	return cloned
 }
 
-func cloneGeminiPart(part *genai.Part) *genai.Part {
+func cloneGeminiPart(part *geminiapi.Part) *geminiapi.Part {
 	if part == nil {
 		return nil
 	}
-	cloned := &genai.Part{
+	cloned := &geminiapi.Part{
 		Text:    part.Text,
 		Thought: part.Thought,
 	}
@@ -850,7 +850,7 @@ func cloneGeminiPart(part *genai.Part) *genai.Part {
 		cloned.ThoughtSignature = append([]byte(nil), part.ThoughtSignature...)
 	}
 	if part.FunctionCall != nil {
-		cloned.FunctionCall = &genai.FunctionCall{
+		cloned.FunctionCall = &geminiapi.FunctionCall{
 			ID:   part.FunctionCall.ID,
 			Name: part.FunctionCall.Name,
 		}
@@ -859,14 +859,9 @@ func cloneGeminiPart(part *genai.Part) *genai.Part {
 		}
 	}
 	if part.FunctionResponse != nil {
-		cloned.FunctionResponse = &genai.FunctionResponse{
-			ID:         part.FunctionResponse.ID,
-			Name:       part.FunctionResponse.Name,
-			Scheduling: part.FunctionResponse.Scheduling,
-		}
-		if part.FunctionResponse.WillContinue != nil {
-			willContinue := *part.FunctionResponse.WillContinue
-			cloned.FunctionResponse.WillContinue = &willContinue
+		cloned.FunctionResponse = &geminiapi.FunctionResponse{
+			ID:   part.FunctionResponse.ID,
+			Name: part.FunctionResponse.Name,
 		}
 		if len(part.FunctionResponse.Response) > 0 {
 			cloned.FunctionResponse.Response = cloneMapAny(part.FunctionResponse.Response)

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
-	"google.golang.org/genai"
+	geminiapi "github.com/codalotl/codalotl/internal/llmstream/gemini"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,17 +44,17 @@ func TestGeminiBuildContentFromTurn_PreservesThoughtSignature(t *testing.T) {
 func TestGeminiStreamState_AccumulatesThoughtTextAndToolCalls(t *testing.T) {
 	state := newGeminiStreamState()
 
-	events, err := state.processResponse(&genai.GenerateContentResponse{
+	events, err := state.processResponse(&geminiapi.GenerateContentResponse{
 		ResponseID: "resp_1",
-		UsageMetadata: &genai.GenerateContentResponseUsageMetadata{
+		UsageMetadata: &geminiapi.GenerateContentResponseUsageMetadata{
 			PromptTokenCount:     10,
 			CandidatesTokenCount: 4,
 			ThoughtsTokenCount:   2,
 		},
-		Candidates: []*genai.Candidate{{
-			Content: &genai.Content{
-				Role: string(genai.RoleModel),
-				Parts: []*genai.Part{
+		Candidates: []*geminiapi.Candidate{{
+			Content: &geminiapi.Content{
+				Role: string(geminiapi.RoleModel),
+				Parts: []*geminiapi.Part{
 					{Thought: true, Text: "alpha", ThoughtSignature: []byte("sigA")},
 				},
 			},
@@ -67,21 +67,21 @@ func TestGeminiStreamState_AccumulatesThoughtTextAndToolCalls(t *testing.T) {
 	require.NotNil(t, events[1].Reasoning)
 	assert.Equal(t, "alpha", events[1].Reasoning.Content)
 
-	events, err = state.processResponse(&genai.GenerateContentResponse{
-		Candidates: []*genai.Candidate{{
-			Content: &genai.Content{
-				Role: string(genai.RoleModel),
-				Parts: []*genai.Part{
+	events, err = state.processResponse(&geminiapi.GenerateContentResponse{
+		Candidates: []*geminiapi.Candidate{{
+			Content: &geminiapi.Content{
+				Role: string(geminiapi.RoleModel),
+				Parts: []*geminiapi.Part{
 					{Thought: true, Text: " beta", ThoughtSignature: []byte("sigB")},
 					{Text: "hello"},
-					{FunctionCall: &genai.FunctionCall{
+					{FunctionCall: &geminiapi.FunctionCall{
 						ID:   "call_1",
 						Name: "get_weather",
 						Args: map[string]any{"location": "San Francisco"},
 					}},
 				},
 			},
-			FinishReason: genai.FinishReasonStop,
+			FinishReason: geminiapi.FinishReasonStop,
 		}},
 	})
 	require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestGeminiStreamState_AccumulatesThoughtTextAndToolCalls(t *testing.T) {
 
 	require.NotNil(t, exactContent)
 	require.Len(t, exactContent.Parts, 3)
-	assert.Equal(t, string(genai.RoleModel), exactContent.Role)
+	assert.Equal(t, string(geminiapi.RoleModel), exactContent.Role)
 }
 
 func TestSendAsyncGeminiWithAttempt_RetriesEmptyStopThreeTimes(t *testing.T) {
@@ -127,10 +127,10 @@ func TestSendAsyncGeminiWithAttempt_RetriesEmptyStopThreeTimes(t *testing.T) {
 	out := make(chan Event, 16)
 	attempts := 0
 
-	turn, err := sc.sendAsyncGeminiWithAttempt(context.Background(), out, nil, llmmodel.ModelInfo{}, func(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, *genai.Content, error) {
+	turn, err := sc.sendAsyncGeminiWithAttempt(context.Background(), out, nil, llmmodel.ModelInfo{}, func(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, *geminiapi.Content, error) {
 		attempts++
 		if attempts <= geminiEmptyStopMaxRetries {
-			return Turn{Role: RoleAssistant, FinishReason: FinishReasonEndTurn}, &genai.Content{Role: string(genai.RoleModel)}, nil
+			return Turn{Role: RoleAssistant, FinishReason: FinishReasonEndTurn}, &geminiapi.Content{Role: string(geminiapi.RoleModel)}, nil
 		}
 		return Turn{
 				Role:         RoleAssistant,
@@ -139,9 +139,9 @@ func TestSendAsyncGeminiWithAttempt_RetriesEmptyStopThreeTimes(t *testing.T) {
 					TextContent{ProviderID: "text_1", Content: "done"},
 				},
 			},
-			&genai.Content{
-				Role:  string(genai.RoleModel),
-				Parts: []*genai.Part{{Text: "done"}},
+			&geminiapi.Content{
+				Role:  string(geminiapi.RoleModel),
+				Parts: []*geminiapi.Part{{Text: "done"}},
 			},
 			nil
 	})
@@ -165,9 +165,9 @@ func TestSendAsyncGeminiWithAttempt_ExhaustsEmptyStopRetries(t *testing.T) {
 	out := make(chan Event, 16)
 	attempts := 0
 
-	_, err := sc.sendAsyncGeminiWithAttempt(context.Background(), out, nil, llmmodel.ModelInfo{}, func(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, *genai.Content, error) {
+	_, err := sc.sendAsyncGeminiWithAttempt(context.Background(), out, nil, llmmodel.ModelInfo{}, func(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, *geminiapi.Content, error) {
 		attempts++
-		return Turn{Role: RoleAssistant, FinishReason: FinishReasonEndTurn}, &genai.Content{Role: string(genai.RoleModel)}, nil
+		return Turn{Role: RoleAssistant, FinishReason: FinishReasonEndTurn}, &geminiapi.Content{Role: string(geminiapi.RoleModel)}, nil
 	})
 
 	require.Error(t, err)

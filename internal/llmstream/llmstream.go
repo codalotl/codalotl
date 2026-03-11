@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	geminiapi "github.com/codalotl/codalotl/internal/llmstream/gemini"
 	"github.com/codalotl/codalotl/internal/q/health"
-	"google.golang.org/genai"
 )
 
 type Role int
@@ -72,9 +72,9 @@ type streamingConversation struct {
 	// promptCacheKey is a stable identifier used by providers (ex: OpenAI Responses) to reuse cached prompt prefixes across requests.
 	promptCacheKey string
 
-	// geminiContents stores the exact Gemini SDK conversation contents we resend on subsequent turns. We keep these in parallel with turns because Gemini requires prior
-	// model responses, including thought signatures, to be resent in their SDK-native shape.
-	geminiContents []*genai.Content
+	// geminiContents stores the exact Gemini conversation contents we resend on subsequent turns. We keep these in parallel with turns because Gemini requires prior
+	// model responses, including thought signatures, to be resent in Gemini-native shape.
+	geminiContents []*geminiapi.Content
 }
 
 func NewConversation(modelID llmmodel.ModelID, systemMessage string) StreamingConversation {
