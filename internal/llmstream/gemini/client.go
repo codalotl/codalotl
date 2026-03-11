@@ -16,34 +16,44 @@ import (
 	"github.com/codalotl/codalotl/internal/q/sseclient"
 )
 
-const (
-	DefaultBaseURL    = "https://generativelanguage.googleapis.com"
-	DefaultAPIVersion = "v1beta"
-)
+// DefaultBaseURL is the default unversioned Gemini API root.
+const DefaultBaseURL = "https://generativelanguage.googleapis.com"
 
+// DefaultAPIVersion is the fixed REST API version appended by this client.
+const DefaultAPIVersion = "v1beta"
+
+// ClientConfig configures a Client.
 type ClientConfig struct {
-	APIKey      string
-	Backend     Backend
-	HTTPClient  *http.Client
+	APIKey     string       // APIKey is the Gemini API key. If empty, NewClient reads GOOGLE_API_KEY first, then GEMINI_API_KEY.
+	Backend    Backend      // Backend selects the backend implementation. Only BackendGeminiAPI is supported.
+	HTTPClient *http.Client // HTTPClient is used for outgoing HTTP requests. Nil uses http.DefaultClient.
+
+	// HTTPOptions supplies client-wide HTTP defaults. BaseURL must be an unversioned API root such as https://host or https://host/custom-prefix, not a versioned root
+	// such as https://host/v1beta. This package appends /v1beta/... itself.
 	HTTPOptions HTTPOptions
 
 	envVarProvider func() map[string]string
 }
 
+// Client is a Gemini streaming client.
 type Client struct {
 	apiKey      string
 	httpClient  *http.Client
 	baseURL     string
 	apiVersion  string
 	baseHeaders http.Header
-
-	Models Models
+	Models      Models
 }
 
+// Models exposes model-scoped operations.
 type Models struct {
 	client *Client
 }
 
+// NewClient constructs a Client.
+//
+// If cfg.HTTPOptions.BaseURL is empty, NewClient uses GOOGLE_GEMINI_BASE_URL when set, otherwise DefaultBaseURL. The client always appends /v1beta/... itself when
+// constructing Gemini API URLs.
 func NewClient(_ context.Context, cfg *ClientConfig) (*Client, error) {
 	if cfg == nil {
 		cfg = &ClientConfig{}
@@ -90,6 +100,13 @@ func NewClient(_ context.Context, cfg *ClientConfig) (*Client, error) {
 	return client, nil
 }
 
+// GenerateContentStream sends streamGenerateContent?alt=sse and yields one GenerateContentResponse per decoded SSE data event.
+//
+// The client does not accumulate prior chunks. If callers want a response-so-far view, they must accumulate text, tool, and thought state themselves across yielded
+// events.
+//
+// Open errors, non-2xx responses, mid-stream read failures, and JSON decode failures are yielded as (nil, err). After yielding an error, iteration stops. A clean
+// end-of-stream returns without yielding an error.
 func (m Models) GenerateContentStream(ctx context.Context, model string, contents []*Content, config *GenerateContentConfig) iter.Seq2[*GenerateContentResponse, error] {
 	return func(yield func(*GenerateContentResponse, error) bool) {
 		client := m.client

@@ -2,6 +2,7 @@ package gemini
 
 import "net/http"
 
+// Backend identifies a Gemini backend.
 type Backend string
 
 const (
@@ -9,11 +10,17 @@ const (
 	BackendGeminiAPI   Backend = "gemini-api"
 )
 
+// HTTPOptions configures Gemini request URL composition and headers.
 type HTTPOptions struct {
+	// BaseURL is the unversioned API root used to build Gemini REST endpoints. Pass values such as https://host or https://host/custom-prefix, not https://host/v1beta.
+	// This package appends /v1beta/... itself.
 	BaseURL string
+
+	// Headers are merged into outgoing requests. Per-request headers override client-level headers with the same key.
 	Headers http.Header
 }
 
+// GenerateContentConfig configures GenerateContentStream requests.
 type GenerateContentConfig struct {
 	HTTPOptions       *HTTPOptions
 	SystemInstruction *Content
@@ -52,6 +59,10 @@ type FunctionCall struct {
 	Args map[string]any `json:"args,omitempty"`
 }
 
+// FunctionResponse is the supported subset of Gemini function responses.
+//
+// Only ID, Name, and Response are preserved. Fields exposed by google.golang.org/genai such as Scheduling, WillContinue, Parts, and other unsupported fields are
+// discarded during unmarshal.
 type FunctionResponse struct {
 	ID       string         `json:"id,omitempty"`
 	Name     string         `json:"name,omitempty"`
@@ -85,6 +96,10 @@ const (
 	FunctionCallingConfigModeNone FunctionCallingConfigMode = "NONE"
 )
 
+// ThinkingConfig is passed through to generationConfig.thinkingConfig.
+//
+// ThinkingLevel is serialized as-is. IncludeThoughts only requests thoughts; this client surfaces Thought and ThoughtSignature only when the API returns them. The
+// client does not aggregate or reconstruct thought text or thought signatures across stream events.
 type ThinkingConfig struct {
 	IncludeThoughts bool          `json:"includeThoughts,omitempty"`
 	ThinkingBudget  *int32        `json:"thinkingBudget,omitempty"`
