@@ -337,7 +337,7 @@ func Exec(userPrompt string, opts Options) error {
 			// cumulative session token usage.
 			continue
 		case agent.EventTypeDoneSuccess:
-			report := buildDoneSuccessReport(agentInstance.Turns(), completedAssistantTurnsByAgent, agentInstance.TokenUsage(), reportIdealCachingEnabled())
+			report := buildDoneSuccessReport(modelID, agentInstance.Turns(), completedAssistantTurnsByAgent, agentInstance.TokenUsage(), reportIdealCachingEnabled())
 
 			if strings.TrimSpace(report.UsageAndCaching) != "" {
 				s := report.UsageAndCaching
@@ -652,7 +652,7 @@ type doneSuccessReport struct {
 	Lines           []string // lines are returned without trailing newlines
 }
 
-func buildDoneSuccessReport(actualTurns []llmstream.Turn, completedAssistantTurnsByAgent map[string][]llmstream.Turn, actualUsage llmstream.TokenUsage, reportIdealCaching bool) doneSuccessReport {
+func buildDoneSuccessReport(modelID llmmodel.ModelID, actualTurns []llmstream.Turn, completedAssistantTurnsByAgent map[string][]llmstream.Turn, actualUsage llmstream.TokenUsage, reportIdealCaching bool) doneSuccessReport {
 	// `UsageAndCaching` is a debug/trace output over the actual conversation and should not
 	// change based on any "ideal caching" visualization.
 	usageAndCaching := llmstream.UsageAndCaching(&turnSnapshotConversation{turns: actualTurns})
@@ -660,7 +660,7 @@ func buildDoneSuccessReport(actualTurns []llmstream.Turn, completedAssistantTurn
 	if !reportIdealCaching {
 		return doneSuccessReport{
 			UsageAndCaching: usageAndCaching,
-			Lines:           []string{formatAgentFinishedTurnLine(actualUsage)},
+			Lines:           []string{formatAgentFinishedTurnLine(modelID, actualUsage)},
 		}
 	}
 
@@ -668,8 +668,8 @@ func buildDoneSuccessReport(actualTurns []llmstream.Turn, completedAssistantTurn
 	return doneSuccessReport{
 		UsageAndCaching: usageAndCaching,
 		Lines: []string{
-			formatActualTokenUsageLine(actualUsage),
-			formatAgentFinishedTurnLine(idealUsage),
+			formatActualTokenUsageLine(modelID, actualUsage),
+			formatAgentFinishedTurnLine(modelID, idealUsage),
 		},
 	}
 }
@@ -692,17 +692,17 @@ func idealCachingForCompletedTurnsByAgent(completedAssistantTurnsByAgent map[str
 	return session
 }
 
-func formatActualTokenUsageLine(u llmstream.TokenUsage) string {
+func formatActualTokenUsageLine(modelID llmmodel.ModelID, u llmstream.TokenUsage) string {
 	// Keep the phrasing stable; callers/tests rely on this being a single line.
-	return fmt.Sprintf("• actual token usage: %s", formatSessionTokenUsage(u))
+	return fmt.Sprintf("• actual token usage: %s", formatSessionTokenUsage(modelID, u))
 }
 
-func formatAgentFinishedTurnLine(u llmstream.TokenUsage) string {
+func formatAgentFinishedTurnLine(modelID llmmodel.ModelID, u llmstream.TokenUsage) string {
 	// Keep the phrasing stable; callers/tests rely on this being a single line.
-	return fmt.Sprintf("• Agent finished the turn. Tokens: %s", formatSessionTokenUsage(u))
+	return fmt.Sprintf("• Agent finished the turn. Tokens: %s", formatSessionTokenUsage(modelID, u))
 }
 
-func formatSessionTokenUsage(u llmstream.TokenUsage) string {
+func formatSessionTokenUsage(modelID llmmodel.ModelID, u llmstream.TokenUsage) string {
 	// For CLI display, keep "input" as everything not counted as cache reads.
 	// This means cache creation writes are included in "input".
 	nonCachedInput := u.TotalInputTokens - u.CachedInputTokens
@@ -710,7 +710,24 @@ func formatSessionTokenUsage(u llmstream.TokenUsage) string {
 		nonCachedInput = 0
 	}
 	total := nonCachedInput + u.CachedInputTokens + u.TotalOutputTokens
-	return fmt.Sprintf("input=%d cached_input=%d output=%d total=%d", nonCachedInput, u.CachedInputTokens, u.TotalOutputTokens, total)
+	if !modelReportsCacheWrites(modelID) {
+		return fmt.Sprintf("input=%d cached_input=%d output=%d total=%d", nonCachedInput, u.CachedInputTokens, u.TotalOutputTokens, total)
+	}
+	return fmt.Sprintf("input=%d cached_input=%d cache_writes=%d output=%d total=%d", nonCachedInput, u.CachedInputTokens, u.CacheCreationInputTokens, u.TotalOutputTokens, total)
+}
+
+func modelReportsCacheWrites(modelID llmmodel.ModelID) bool {
+	if modelID == "" {
+		return false
+	}
+	info := llmmodel.GetModelInfo(modelID)
+	if info.ProviderID == llmmodel.ProviderIDUnknown {
+		return strings.Contains(strings.ToLower(string(modelID)), "opus")
+	}
+	if info.ProviderID != llmmodel.ProviderIDAnthropic {
+		return false
+	}
+	return strings.Contains(strings.ToLower(info.ProviderModelID), "opus") || strings.Contains(strings.ToLower(string(modelID)), "opus")
 }
 
 func autoRespondToUserRequests(requests <-chan authdomain.UserRequest, out io.Writer, autoYes bool) {

@@ -91,7 +91,7 @@ func TestShouldSuppressFormattedOutput(t *testing.T) {
 func TestFormatAgentFinishedTurnLineIncludesTokens(t *testing.T) {
 	t.Parallel()
 
-	line := formatAgentFinishedTurnLine(llmstream.TokenUsage{
+	line := formatAgentFinishedTurnLine(llmmodel.ModelID("gpt-5.4-high"), llmstream.TokenUsage{
 		TotalInputTokens:  10,
 		CachedInputTokens: 3,
 		TotalOutputTokens: 7,
@@ -101,6 +101,20 @@ func TestFormatAgentFinishedTurnLineIncludesTokens(t *testing.T) {
 	if line != want {
 		t.Fatalf("got %q, want %q", line, want)
 	}
+}
+
+func TestFormatAgentFinishedTurnLineIncludesCacheWritesForOpus(t *testing.T) {
+	t.Parallel()
+
+	line := formatAgentFinishedTurnLine(llmmodel.ModelID("opus-4.6"), llmstream.TokenUsage{
+		TotalInputTokens:         10,
+		CachedInputTokens:        3,
+		CacheCreationInputTokens: 2,
+		TotalOutputTokens:        7,
+	})
+
+	want := "• Agent finished the turn. Tokens: input=7 cached_input=3 cache_writes=2 output=7 total=17"
+	require.Equal(t, want, line)
 }
 
 func TestTurnSnapshotConversation_UsageAndCachingIncludesProviderID(t *testing.T) {
@@ -170,8 +184,8 @@ func TestBuildDoneSuccessReport_IdealCachingPrintsActualAndIdealAndDoesNotAffect
 		TotalOutputTokens: 7,
 	}
 
-	withoutIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurnsByAgent, actualUsage, false)
-	withIdeal := buildDoneSuccessReport(actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
+	withoutIdeal := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.4-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, false)
+	withIdeal := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.4-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
 
 	require.Contains(t, withoutIdeal.UsageAndCaching, "resp_actual")
 	require.Equal(t, withoutIdeal.UsageAndCaching, withIdeal.UsageAndCaching)
@@ -247,11 +261,34 @@ func TestBuildDoneSuccessReport_IdealCachingResetsAcrossAgents(t *testing.T) {
 		TotalOutputTokens: 15,
 	}
 
-	report := buildDoneSuccessReport(actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
+	report := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.4-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
 	require.Contains(t, report.UsageAndCaching, "resp_actual")
 	require.Len(t, report.Lines, 2)
 	require.Equal(t, "• actual token usage: input=214 cached_input=0 output=15 total=229", report.Lines[0])
 	require.Equal(t, "• Agent finished the turn. Tokens: input=113 cached_input=101 output=15 total=229", report.Lines[1])
+}
+
+func TestBuildDoneSuccessReport_IncludesCacheWritesForOpus(t *testing.T) {
+	t.Parallel()
+
+	actualUsage := llmstream.TokenUsage{
+		TotalInputTokens:         100,
+		CachedInputTokens:        40,
+		CacheCreationInputTokens: 9,
+		TotalOutputTokens:        7,
+	}
+
+	report := buildDoneSuccessReport(llmmodel.ModelID("opus-4.6"), nil, nil, actualUsage, false)
+	require.Len(t, report.Lines, 1)
+	require.Equal(t, "• Agent finished the turn. Tokens: input=60 cached_input=40 cache_writes=9 output=7 total=107", report.Lines[0])
+}
+
+func TestModelReportsCacheWrites(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, modelReportsCacheWrites(llmmodel.ModelID("opus-4.6")))
+	require.False(t, modelReportsCacheWrites(llmmodel.ModelID("sonnet-4.6")))
+	require.False(t, modelReportsCacheWrites(llmmodel.ModelID("gpt-5.4-high")))
 }
 
 func TestEffectiveModelID(t *testing.T) {
