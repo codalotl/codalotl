@@ -16,7 +16,7 @@ go install github.com/codalotl/codalotl@latest
 codalotl version
 ```
 
-3. Configure a provider key. The primary built-in provider key is OpenAI:
+3. Configure a provider key. OpenAI, Anthropic, and Gemini models are supported. A simple starting point is OpenAI:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -243,7 +243,8 @@ Schema:
 ```json
 {
   "providerkeys": {
-    "openai": "sk-..."
+    "openai": "sk-...",
+    "anthropic": "sk-ant-..."
   },
   "reflowwidth": 120,
   "lints": {
@@ -253,15 +254,17 @@ Schema:
   },
   "disabletelemetry": false,
   "disablecrashreporting": false,
+  "theme": "",
   "preferredprovider": "",
   "preferredmodel": ""
 }
 ```
 
 Key fields:
-- `providerkeys.openai`: OpenAI API key (ENV is also supported and preferred).
+- `providerkeys.openai`, `providerkeys.anthropic`, `providerkeys.gemini`: Provider API keys (ENV is also supported and preferred).
 - `reflowwidth`: default doc reflow width (default 120).
 - `lints`: lint pipeline config (see Lints below).
+- `theme`: TUI palette selection (`""`, `"dark"`, or `"light"`).
 - `preferredprovider`, `preferredmodel`: default model selection hints.
 - `disabletelemetry`, `disablecrashreporting`: opt out of event/error and panic reporting.
 
@@ -269,7 +272,7 @@ To see your config, run `codalotl config`.
 
 ### Models
 
-Currently, only OpenAI models are supported. More providers will be added over time.
+OpenAI, Anthropic, and Gemini models are supported.
 
 #### Choosing a Model
 
@@ -293,7 +296,12 @@ codalotl exec --model gpt-5.4-high "your prompt"
 
 #### API Key Config
 
-Set your API key, we recommend setting an ENV variable.
+Set an API key. ENV is the recommended path.
+
+Supported ENV variables:
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
 
 For example, you may add the following to something like your `.bashrc`:
 
@@ -301,7 +309,7 @@ For example, you may add the following to something like your `.bashrc`:
 export OPENAI_API_KEY="sk-..."
 ```
 
-Alternatively, you can set it in `.codalotl/config.json`:
+Alternatively, you can set providers in `.codalotl/config.json`:
 
 ```json
 {

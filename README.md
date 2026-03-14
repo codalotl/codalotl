@@ -6,18 +6,16 @@ Codalotl is a coding agent for Go (TUI + CLI). By focusing exclusively on Go, th
 
 ## Results
 
-Top agents and LLMs have been benchmarked for Go-specific tasks. Codalotl with gpt-5.2-high has a similar success rate to codex, but is **42% cheaper** and **54% faster** with the same underlying LLM. I think that's pretty cool.
+Top agents and LLMs have been benchmarked for Go-specific tasks. Codalotl with gpt-5.4-high has a similar success rate to codex, but is **40% cheaper** and **185.0% faster** with the same underlying LLM. I think that's pretty cool.
 
 | Agent | Model | Success | Avg Cost | Avg Time |
 | --- | --- | --- | --- | --- |
-| codalotl | gpt-5.2-high | 83% | $0.38 | 7m 7s |
-| codex | gpt-5.2-high | 75% | $0.65 | 15m 33s |
-| cursor-agent | composer-1 | 57% | $0.27 | 1m 6s |
-| claude | claude-opus-4.5-thinking | 50% | $1.62 | 4m 18s |
-| crush | grok-code-fast-1 | 43% | $0.94 | 4m 57s |
-| claude | claude-sonnet-4.5-thinking | 33% | $0.73 | 3m 29s |
+| codalotl | gpt-5.4-high | 79% | $0.40 | 4m 31s |
+| codex | gpt-5.4-high | 79% | $0.66 | 12m 52s |
+| codalotl | claude-opus-4-6 | 78% | $1.71 | 7m 46s |
+| codalotl | gemini-3.1 | 71% | $0.35 | 3m 21s |
 
-Results as of 2026-01-17. See [github.com/codalotl/goagentbench](https://github.com/codalotl/goagentbench).
+Results as of 2026-03-13. See [result_summaries/summary_2026-03-13_16-00-24](result_summaries/summary_2026-03-13_16-00-24).
 
 Important Note:
 It is important to look at the benchmark test scenarios to see if they align with how you use coding agents. These focus on making specific changes to a package, often with updates to other related packages. They are NOT high-level prompts to vibe code entire applications; nor are they prompts to make extensive changes to **many** packages at once; nor are they "fix this ambiguous issue reported on GitHub".
@@ -32,11 +30,15 @@ go install github.com/codalotl/codalotl@latest
 
 ### Configure LLM Provider Keys
 
-Codalotl requires an LLM provider API key. The best way to do that is to set either `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
+Codalotl requires an LLM provider API key. The best way to do that is to set one of:
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
 
-OpenAI and Anthropic models are supported. I recommend starting with `gpt-5.4-high`:
-- OpenAI reasoning models have performed best for me on the benchmark scenarios above.
-- Anthropic models are available if they fit your workflow or provider constraints better.
+OpenAI, Anthropic, and Gemini models are supported. I recommend starting with `gpt-5.4-high`. As of 2026/03/13:
+- OpenAI reasoning models have performed best for me on the benchmark above.
+- But Gemini 3.1 has reasonable intelligence, and is faster and cheaper.
+- Anthropic has good intelligence but is slow and expensive.
 
 ### Running it
 
@@ -58,8 +60,8 @@ Codalotl is **usable** and **effective** as-is: I have replaced most of my other
 - Not extensively tested on various platforms/OSes. Works on OSX and Linux.
 - Not extensively tested on various repos/codebases/versions of Go. Untested in multi-module/go.work projects.
 - Has a number of UX issues (example: poor copy/paste support; onboarding; error messages).
-- Some common agent features are unimplemented (session resumption; mcp; skills; custom commands).
-- OpenAI and Anthropic models are supported; you must bring your own key.
+- Some common agent features are unimplemented (session resumption; mcp).
+- Only OpenAI, Anthropic, and Gemini models are supported; you must bring your own key.
 
 All of these will be addressed over time.
 
