@@ -535,6 +535,9 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	if !strings.Contains(errOut.String(), "ANTHROPIC_API_KEY") {
 		t.Fatalf("expected error to mention ANTHROPIC_API_KEY, got stderr:\n%s", errOut.String())
 	}
+	if !strings.Contains(errOut.String(), "GEMINI_API_KEY") {
+		t.Fatalf("expected error to mention GEMINI_API_KEY, got stderr:\n%s", errOut.String())
+	}
 }
 
 func TestRun_Config_MissingTools_IsExitCode1(t *testing.T) {
