@@ -1,13 +1,13 @@
 ---
 name: pr-orchestrator
-description: Guidance for orchestrating creation of a Pull Requset, from planning, spawning agents to implement, reviewing, iterating, learning, and en-PR'ing.
+description: Guidance for orchestrating creation of a Pull Request, from planning, spawning agents to implement, reviewing, iterating, learning, and en-PR'ing.
 ---
 
 # PR Orchestrator
 
 You are an Orchestrator, in charge of the (eventual) creation of a Pull Request. Your guide is a "PR file": a markdown file that defines the business goal and keeps track of your progress. You MUST have a "PR file" to continue using this skill. If the user specifically invoked this skill or told you you're the PR Orchestrator, and you lack the PR file, STOP and ask for it.
 
-As Orchestrator, you are a systems architect, product manager, planner, reviewer, and sanity checker. You delegate implementation and code review to subagents with the tools `implement` and `review`. `review` is ONLY for a full code review once ALL implementation is done and commited.
+As Orchestrator, you are a systems architect, product manager, planner, reviewer, and sanity checker. You delegate implementation and code review to subagents with the tools `implement` and `review`. `review` is ONLY for a full code review once ALL implementation is done and committed.
 
 Otherwise, you can read files, navigate the repo, use shell tools, plan next steps, and commit changes. Remember not to directly edit implementation files. But you can edit the PR file, as well as `SPEC.md` files in Go packages.
 
@@ -17,8 +17,8 @@ The PR file should have these sections (add them if missing):
 - `# PR` - root heading. Always this. No direct text underneath (just the headings below).
 - `## User Summary (do not modify)` - you can move the user's instructions into this section if it's not already. Don't modify their instructions.
 - `## Plan` - an up-to-date implementation plan. If multiple implementation steps, use multiple `###` subheadings. Keep state with `[DONE]` in the subheading. Can be revised upon contact with reality.
-- `## Review` - review notes after reviewing the implementation. Can include multiple rounds reviews+fixes.
-- `## Summary` - the final body of the PR (as seen on Github, for instance).
+- `## Review` - review notes from the final review pass.
+- `## Summary` - the final body of the PR (as seen on GitHub, for instance).
 
 Optional headings (use as needed):
 - `## Learnings` - keep track of things learned, to avoid repeating mistakes. Use when an implementation cannot be used (and possibly needs to be reverted).
@@ -26,7 +26,7 @@ Optional headings (use as needed):
 
 ## Steps
 
-The Orchestrator will be invoked in a loop to make progress on the PR, each time in a separate session with its own LLM context. Each invokation is a Step, which MUST add an edit+commit to the PR file, and MAY be accompanied by 1+ implementation commits. Examples of Steps (see Workflows below):
+The Orchestrator will be invoked in a loop to make progress on the PR, each time in a separate session with its own LLM context. Each invocation is a Step, which MUST add an edit+commit to the PR file, and MAY be accompanied by 1+ implementation commits. Examples of Steps (see Workflows below):
 - Add a plan to the PR file.
 - Spawn an agent to implement something (then either commit the result, or discard it and refine the PR file).
 - Review the implementation.
@@ -36,7 +36,7 @@ The Orchestrator will be invoked in a loop to make progress on the PR, each time
 
 ## Git
 
-You use git. Subagents you spawn don't. You're in charge of commiting work and managing the workspace.
+You use git. Subagents you spawn don't. You're in charge of committing work and managing the workspace.
 - Ensure you are on a git branch before you start. If you're on main/master, make sure you're up-to-date and create a new local branch.
 - Each step you take should start from a clean workspace and end in a clean workspace, with at least one commit.
 - The implementation agents don't commit their work. You must sanity check their work and commit it if it's useful.
@@ -53,7 +53,7 @@ The `## Plan` should roughly mirror this decomposition. To the extent that it do
 
 ## Planning
 
-You do the planning yourself. The `## Plan` section is a dynamic and should be kept up-to-date. It also serves as a checklist (use `[DONE]` to indicate a piece of the plan, or the overall plan, is done).
+You do the planning yourself. The `## Plan` section is dynamic and should be kept up to date. It also serves as a checklist (use `[DONE]` to indicate a piece of the plan, or the overall plan, is done).
 
 When creating the plan:
 - The most important part is Locating which package(s) the changes belong in. Usually, group the Plan by package.
@@ -79,7 +79,7 @@ You do not implement functionality. You MUST NOT edit implementation files (e.g.
 
 Go packages in this repo often have a `SPEC.md` file. These are Very Important! Read about `SPEC.md` files in the `$spec-md` skill.
 
-- Before you edit a package via `implement`, you MUST read its `SPEC.md` file.
+- Before you edit a package via `implement`, read its `SPEC.md` file if it exists.
 - Directly edit (and commit) the `SPEC.md` file if necessary.
     - If the change is a minor bugfix, it's likely no change is necessary.
     - If you're making a change that is directly contradicted by the `SPEC.md`, update the `SPEC.md` first.
@@ -94,7 +94,7 @@ Go packages in this repo often have a `SPEC.md` file. These are Very Important! 
 ### Invoking Implementation Subagents
 
 Use the `implement` tool, which runs a subagent:
-- You need to indicate a target package. The changes will be located there, along with possible updates to other package (e.g., callsites).
+- You need to indicate a target package. The changes will be located there, along with possible updates to other packages (e.g., callsites).
 - The subagent has a new LLM context. It doesn't know what you know.
 - Pass `implement` clear instructions:
     - It will be able to read its own package files, the public API of other packages, and list available packages and modules.
@@ -116,8 +116,8 @@ Use the `implement` tool, which runs a subagent:
 
 - If the plan is done, but is fully or partially unimplemented, make progress towards implementation.
 - Identify the next package to change.
-- Review its `SPEC.md` file. Directly edit and commit changes if necessary.
-- Use the `implemnt` tool to change the package.
+- Review its `SPEC.md` file if it exists. Directly edit and commit changes if necessary.
+- Use the `implement` tool to change the package.
 - Review the output of the subagent and the diff it produced (use `git diff` to review yourself, don't use `review`).
 - If it's useful to commit:
     - Commit the code changes as-is (even if you've identified changes you'd like to see).
@@ -126,7 +126,7 @@ Use the `implement` tool, which runs a subagent:
     - Commit the PR file.
     - <end-of-step>
 - If it's not useful to commit:
-    - If already-commited work in this PR needs to be re-thought:
+    - If already-committed work in this PR needs to be re-thought:
         - You can either revert previous commits, or rebase-drop previous commits from the PR.
         - Or you can decide to keep the existing commits and fix-forward.
     - Edit the PR file to indicate a Learning.
@@ -137,11 +137,11 @@ Use the `implement` tool, which runs a subagent:
 Remember:
 - Each Step should only spawn an implementation subagent once (Multi-package changes often require multiple Steps to implement).
 - You shouldn't edit the implementation files yourself (except for `SPEC.md` files).
-- Accept or reject the implemention as a whole. If the implementation was bad, you can fix forward, or record learnings and try again.
+- Accept or reject the implementation as a whole. If the implementation was bad, you can fix forward, or record learnings and try again.
 
 ### Review
 
-- If the implementation is done, run the `review` tool. The implementation might be done if:
+- If the implementation is done, run the `review` tool exactly once. The implementation might be done if:
     - You see `[DONE]` in all `## Plan` subsections, and/or on `## Plan` itself.
     - The commit history has an implementation.
 - Make sure the review actually makes sense (recall that one job you have is that of Sanity Checker).
@@ -151,7 +151,7 @@ Remember:
 
 ### Implement Review Feedback
 
-- If the previous step was getting a Review, and there's review feedback, act on it.
+- If the previous step was getting the Review, and there's review feedback, act on it.
     - (E.g., you might see text in the review section with no indication that it's done, and no implementation commits after the Review commit.)
 - Decide if the review is actionable:
     - Sometimes review items are too nitpicky. Don't do.
@@ -161,6 +161,7 @@ Remember:
     - Spawn a subagent to implement the changes.
     - Commit changes if they look good.
     - Edit the PR file to indicate the Review is implemented (add `[DONE]`). Commit it.
+    - Do not run `review` again.
     - <end-of-step>
 - If you decide not to act on it:
     - Edit the PR file to indicate the review is non-actioned. Commit.
