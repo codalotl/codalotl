@@ -29,7 +29,7 @@ type Registry struct {}
 func NewRegistry() *Registry
 
 // Lookup returns the named Definition if it exists.
-func (r *Registry) Lookup(name string) (Definition, bool)
+func (r *Registry) Lookup(agentTame string) (Definition, bool)
 
 // List returns all registered Definitions.
 func (r *Registry) List() []Definition
@@ -45,7 +45,8 @@ func (r *Registry) RegisterTool(toolName string, toolset toolsetinterface.Toolse
 // Register checks that all agents' references to tools are valid.
 func (r *Registry) ValidateTools() error
 
-func (r *Registry) Invoke(name string, message string) (<-chan agent.Event, error)
+// Invoke beings executing the named agent, and returns a channel from which to read events.
+func (r *Registry) Invoke(ctx context.Context, agentName string, run RunRequest) (<-chan agent.Event, error)
 
 
 type PromptBuilderOptions struct {
@@ -67,10 +68,14 @@ type Definition struct {
     // List of tools. Refers to tools added to a Registry.
     ToolNames []string
 
+    // SystemPrompt to use if SystemPromptBuilder is nil.
     SystemPrompt string
 
     // SystemPromptBuilder sets and overwrites SystemPrompt if non-nil.
     SystemPromptBuilder PromptBuilder
+
+    // RequiresPackage indicates that this agent runs in a specific package.
+    RequiresPackage bool
    
 }
 
@@ -83,11 +88,13 @@ func (d Definition) Validate() error
 
 // RunRequest is the data needed to invoke an agent.
 type RunRequest struct {
+    // ToolOptions supplies information needed to construct tools, such as Authorizer, SanboxDir, Model.
+    //
+    // Any field supplied here is not duplicated elsewhere in RunRequest (ex: Model).
+    ToolOptions toolsetinterface.Options
+
     // AgentCreator creates the agent (either a root or child agent).
     AgentCreator agent.AgentCreator
-
-    // Model selects the model.
-    Model llmmodel.ModelID
 
     // CallerAuthorizer is the current authorizer of the calling agent.
     CallerAuthorizer authdomain.Authorizer
@@ -96,6 +103,9 @@ type RunRequest struct {
     // This is typically CallerAuthorizer.SandboxDir(), but is kept explicit so
     // callers do not need to reconstruct it if authorizer is nil in tests.
     CallerSandboxDir string
+
+    // Message is the initial message to the LLM (after the prompt).
+    Message string
 
     // Input is the decoded JSON object for this invocation.
     // TODO: needed?
