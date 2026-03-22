@@ -19,6 +19,12 @@ Allowed deps:
 - `internal/tools/authdomain`
 - `internal/tools/toolsetinterface`
 
+## Supporting Agent -> Tool -> Agent
+
+Agents need to be able to invoke other agents. However, they do so through tools. These tools may have custom functionality code/functionality to create custom contexts, custom Authorizors, and so on. That being said, this package should encapsulate common patterns: make it easy to create package mode agents and tools.
+
+This package must offer affordances to allow the easy creation of tools based on agents. It must be possible to create simple agents (invokable as tools) with custom prompts and tool lists without writing custom code (it's acceptable if another package implements the glue code of config file -> agent+tool creation).
+
 ## Public API
 
 ```go
@@ -29,7 +35,7 @@ type Registry struct {}
 func NewRegistry() *Registry
 
 // Lookup returns the named Definition if it exists.
-func (r *Registry) Lookup(agentTame string) (Definition, bool)
+func (r *Registry) Lookup(agentName string) (Definition, bool)
 
 // List returns all registered Definitions.
 func (r *Registry) List() []Definition
@@ -42,11 +48,11 @@ func (r *Registry) RegisterAgent(def Definition) error
 // TODO: in future, maybe define toolsetinterface.Tool that maps Options -> one func
 func (r *Registry) RegisterTool(toolName string, toolset toolsetinterface.Toolset) error
 
-// Register checks that all agents' references to tools are valid.
+// ValidateTools checks that all agents' references to tools are valid.
 func (r *Registry) ValidateTools() error
 
-// Invoke beings executing the named agent, and returns a channel from which to read events.
-func (r *Registry) Invoke(ctx context.Context, agentName string, run RunRequest) (<-chan agent.Event, error)
+// Invoke begins executing the named agent, and returns a channel from which to read events.
+func (r *Registry) Invoke(ctx context.Context, agentName string, req InvokeRequest) (<-chan agent.Event, error)
 
 
 type PromptBuilderOptions struct {
@@ -56,6 +62,14 @@ type PromptBuilderOptions struct {
 
 // PromptBuilder builds a prompt lazily based on options.
 type PromptBuilder func(options PromptBuilderOptions) string
+
+type AuthPackagePolicy string
+
+const (
+    AuthPackagePolicyDefault AuthPackagePolicy = ""
+    AuthPackagePolicyPackage AuthPackagePolicy = "package"
+    AuthPackagePolicyMoveSandbox AuthPackagePolicy = "move_sandbox"
+)
 
 // Definition is an agent definition.
 type Definition struct {
@@ -74,8 +88,8 @@ type Definition struct {
     // SystemPromptBuilder sets and overwrites SystemPrompt if non-nil.
     SystemPromptBuilder PromptBuilder
 
-    // RequiresPackage indicates that this agent runs in a specific package.
-    RequiresPackage bool
+    // AuthPackagePolicy indicates the policy used for auth AND packages.
+    AuthPackagePolicy AuthPackagePolicy
    
 }
 
@@ -86,11 +100,11 @@ type Definition struct {
 func (d Definition) Validate() error
 
 
-// RunRequest is the data needed to invoke an agent.
-type RunRequest struct {
-    // ToolOptions supplies information needed to construct tools, such as Authorizer, SanboxDir, Model.
+// InvokeRequest is the data needed to invoke an agent.
+type InvokeRequest struct {
+    // ToolOptions supplies information needed to construct tools, such as GoPkgAbsDir, Authorizer, SandboxDir, Model.
     //
-    // Any field supplied here is not duplicated elsewhere in RunRequest (ex: Model).
+    // Any field supplied here is not duplicated elsewhere in InvokeRequest (ex: Model).
     ToolOptions toolsetinterface.Options
 
     // AgentCreator creates the agent (either a root or child agent).
