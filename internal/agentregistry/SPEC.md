@@ -66,6 +66,9 @@ type BuildOptions struct {
 	Request     toolsetinterface.InvokeRequest // Request is the original invocation request.
 }
 
+// ToolsBuilder returns tool names based on opts. It can be used to dynamically switch toolsets based on things like model.
+type ToolsBuilder func(opts toolsetinterface.Options) ([]string, error)
+
 // PromptBuilder builds a prompt lazily based on options.
 type PromptBuilder func(options BuildOptions) (string, error)
 
@@ -87,6 +90,7 @@ type Definition struct {
 	Name                string        // Name is the stable agent identifier.
 	Description         string        // Description is surfaced in llmstream.ToolInfo.
 	ToolNames           []string      // List of tools. Refers to tools added to a Registry.
+	ToolsBuilder        ToolsBuilder  // Additional tools to use (dynamically appended to ToolNames) based on invokation options (ex: model).
 	SystemPrompt        string        // SystemPrompt to use if SystemPromptBuilder is nil.
 	SystemPromptBuilder PromptBuilder // SystemPromptBuilder sets and overwrites SystemPrompt if non-nil.
 

@@ -355,4 +355,54 @@ func TestRegistry_Invoke(t *testing.T) {
 
 		assert.Equal(t, "Dynamic builder-agent", mockCreator.lastSystemPrompt)
 	})
+
+	t.Run("tools builder appends dynamic tools", func(t *testing.T) {
+		var constructed []string
+		require.NoError(t, r.RegisterTool("tools-builder-static-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+			constructed = append(constructed, "tools-builder-static-tool")
+			return nil, nil
+		}))
+		require.NoError(t, r.RegisterTool("tools-builder-dynamic-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+			constructed = append(constructed, "tools-builder-dynamic-tool")
+			return nil, nil
+		}))
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name:      "tools-builder-agent",
+			ToolNames: []string{"tools-builder-static-tool"},
+			ToolsBuilder: func(opts toolsetinterface.Options) ([]string, error) {
+				assert.Equal(t, llmmodel.ModelID("dynamic-model"), opts.Model)
+				return []string{"tools-builder-dynamic-tool"}, nil
+			},
+		}))
+
+		mockCreator := &mockAgentCreator{err: errors.New("mock stop")}
+
+		_, err := r.Invoke(context.Background(), "tools-builder-agent", toolsetinterface.InvokeRequest{
+			AgentCreator: mockCreator,
+			ToolOptions: toolsetinterface.Options{
+				Model: "dynamic-model",
+			},
+		})
+		assert.ErrorContains(t, err, "mock stop")
+		assert.Equal(t, []string{"tools-builder-static-tool", "tools-builder-dynamic-tool"}, constructed)
+		assert.Len(t, mockCreator.lastTools, 2)
+	})
+
+	t.Run("tools builder error stops invoke", func(t *testing.T) {
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name: "tools-builder-error-agent",
+			ToolsBuilder: func(opts toolsetinterface.Options) ([]string, error) {
+				return nil, errors.New("builder boom")
+			},
+		}))
+
+		mockCreator := &mockAgentCreator{}
+
+		_, err := r.Invoke(context.Background(), "tools-builder-error-agent", toolsetinterface.InvokeRequest{
+			AgentCreator: mockCreator,
+		})
+		assert.ErrorContains(t, err, "failed to build tool names: builder boom")
+		assert.Zero(t, mockCreator.newCalls)
+		assert.Zero(t, mockCreator.newWithDefaultCalls)
+	})
 }
