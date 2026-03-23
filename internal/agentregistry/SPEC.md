@@ -19,11 +19,19 @@ Allowed deps:
 - `internal/tools/authdomain`
 - `internal/tools/toolsetinterface`
 
+Package-specific context gathering should be injected via builders in a higher-level package. For instance, a package-mode agent may use `initialcontext`, `agentsmd`, env info, and skill loading, but those deps should not be added here.
+
 ## Supporting Agent -> Tool -> Agent
 
-Agents need to be able to invoke other agents. However, they do so through tools. These tools may have custom functionality code/functionality to create custom contexts, custom Authorizors, and so on. That being said, this package should encapsulate common patterns: make it easy to create package mode agents and tools.
+Agents need to be able to invoke other agents. However, they do so through tools. These tools may have custom code/functionality to create custom contexts, custom Authorizors, and so on. That being said, this package should encapsulate common patterns: make it easy to create package mode agents and tools.
+- Example: consider something like `change_api`, which is a tool to make a change in a different package. This implementation can be split between a ChangeAPI tool and a `change_api` named agent. Part of the code can go in one, and part in another. Not all code need be in the `change_api` agent itself.
 
 This package must offer affordances to allow the easy creation of tools based on agents. It must be possible to create simple agents (invokable as tools) with custom prompts and tool lists without writing custom code (it's acceptable if another package implements the glue code of config file -> agent+tool creation).
+
+This package should also support named agents that prepare their own initial turns before the first message is sent. This is intended as injection point for context gathering such as package initial context, env info, AGENTS.md, etc.
+
+Because of this, the `toolsetinterface` package contains `AgentInvoker` and `InvokeRequest` - types that conceptually belong here.
+- TODO: should we merge toolsetinterface into this package?
 
 ## Public API
 
@@ -43,32 +51,39 @@ func (r *Registry) List() []Definition
 // RegisterAgent adds or replaces a Definition by name.
 func (r *Registry) RegisterAgent(def Definition) error
 
-// Register adds or replaces a tool by toolName. toolset must return exactly one tool.
-//
-// TODO: in future, maybe define toolsetinterface.Tool that maps Options -> one func
-func (r *Registry) RegisterTool(toolName string, toolset toolsetinterface.Toolset) error
+// Register adds or replaces a tool by toolName.
+func (r *Registry) RegisterTool(toolName string, tool toolsetinterface.Tool) error
 
 // ValidateTools checks that all agents' references to tools are valid.
 func (r *Registry) ValidateTools() error
 
 // Invoke begins executing the named agent, and returns a channel from which to read events.
-func (r *Registry) Invoke(ctx context.Context, agentName string, req InvokeRequest) (<-chan agent.Event, error)
+func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
 
-
-type PromptBuilderOptions struct {
+type BuildOptions struct {
     AgentName string
-    toolsetinterface.Options
+    
+    // ToolOptions are the effective options used to construct tools after auth/package policy and overrides are applied.
+    ToolOptions toolsetinterface.Options
+
+    // Request is the original invocation request.
+    Request toolsetinterface.InvokeRequest
 }
 
 // PromptBuilder builds a prompt lazily based on options.
-type PromptBuilder func(options PromptBuilderOptions) string
+type PromptBuilder func(options BuildOptions) (string, error)
+
+// InitialTurnsBuilder builds user turns that are added before Request.Message is sent.
+type InitialTurnsBuilder func(ctx context.Context, options BuildOptions) ([]string, error)
 
 type AuthPackagePolicy string
 
 const (
-    AuthPackagePolicyDefault AuthPackagePolicy = ""
+    // AuthPackagePolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
+    AuthPackagePolicyDefault AuthPackagePolicy = "" 
+
+    // AuthPackagePolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir. An error occurs if an override is set.
     AuthPackagePolicyPackage AuthPackagePolicy = "package"
-    AuthPackagePolicyMoveSandbox AuthPackagePolicy = "move_sandbox"
 )
 
 // Definition is an agent definition.
@@ -88,6 +103,11 @@ type Definition struct {
     // SystemPromptBuilder sets and overwrites SystemPrompt if non-nil.
     SystemPromptBuilder PromptBuilder
 
+    // InitialTurnsBuilder builds additional user turns before InvokeRequest.Message is sent.
+    //
+    // This can gather context lazily based on invocation details. Example: package-mode agents may add AGENTS.md, env info, or initial package context.
+    InitialTurnsBuilder InitialTurnsBuilder
+
     // AuthPackagePolicy indicates the policy used for auth AND packages.
     AuthPackagePolicy AuthPackagePolicy
    
@@ -98,33 +118,6 @@ type Definition struct {
 // Validate only checks static definition shape. It does not resolve targets,
 // render prompts, or construct tools.
 func (d Definition) Validate() error
-
-
-// InvokeRequest is the data needed to invoke an agent.
-type InvokeRequest struct {
-    // ToolOptions supplies information needed to construct tools, such as GoPkgAbsDir, Authorizer, SandboxDir, Model.
-    //
-    // Any field supplied here is not duplicated elsewhere in InvokeRequest (ex: Model).
-    ToolOptions toolsetinterface.Options
-
-    // AgentCreator creates the agent (either a root or child agent).
-    AgentCreator agent.AgentCreator
-
-    // CallerAuthorizer is the current authorizer of the calling agent.
-    CallerAuthorizer authdomain.Authorizer
-
-    // CallerSandboxDir is the current sandbox root of the calling agent.
-    // This is typically CallerAuthorizer.SandboxDir(), but is kept explicit so
-    // callers do not need to reconstruct it if authorizer is nil in tests.
-    CallerSandboxDir string
-
-    // Message is the initial message to the LLM (after the prompt).
-    Message string
-
-    // Input is the decoded JSON object for this invocation.
-    // TODO: needed?
-    Input map[string]any
-}
 
 
 ```

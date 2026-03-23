@@ -9,11 +9,20 @@
 package toolsetinterface
 
 import (
+	"context"
+
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
+
+// AgentInvoker is an interface that can invoke subagents by name.
+type AgentInvoker interface {
+	// Invoke invokes a named agent with req, and returns a channel from which to read events.
+	Invoke(ctx context.Context, agentName string, req InvokeRequest) (<-chan agent.Event, error)
+}
 
 // Options configures a Toolset.
 type Options struct {
@@ -31,7 +40,39 @@ type Options struct {
 
 	// LintSteps are the linting steps that can be used by tools that need to check/fix formatting or other repo conventions.
 	LintSteps []lints.Step
+
+	// AgentInvoker allows a tool to invoke other agents.
+	AgentInvoker AgentInvoker
 }
 
 // Toolset returns tools configured by opts.
 type Toolset func(opts Options) ([]llmstream.Tool, error)
+
+// Tool returns a single tool configured by opts.
+type Tool func(opts Options) (llmstream.Tool, error)
+
+// InvokeRequest is the data needed to invoke an agent.
+type InvokeRequest struct {
+	// ToolOptions supplies information needed to construct tools, such as GoPkgAbsDir, Authorizer, SandboxDir, Model.
+	//
+	// Any field supplied here is not duplicated elsewhere in InvokeRequest (ex: Model).
+	ToolOptions Options
+
+	// AgentCreator creates the agent (either a root or child agent).
+	AgentCreator agent.AgentCreator
+
+	// CallerAuthorizer is the current authorizer of the calling agent.
+	CallerAuthorizer authdomain.Authorizer
+
+	// CallerSandboxDir is the current sandbox root of the calling agent.
+	CallerSandboxDir string
+
+	// If not nil, use this authorizer for the new agent.
+	OverrideAuthorizer authdomain.Authorizer
+
+	// If not "", use this sandbox dir for the new agent.
+	OverrideSandboxDir string
+
+	// Message is the initial message to the LLM (after the prompt).
+	Message string
+}
