@@ -37,7 +37,7 @@ Because of this, the `toolsetinterface` package contains `AgentInvoker` and `Inv
 
 ```go
 // Registry holds agent and tool definitions.
-type Registry struct {}
+type Registry struct{}
 
 // NewRegistry returns a new registry.
 func NewRegistry() *Registry
@@ -51,7 +51,7 @@ func (r *Registry) List() []Definition
 // RegisterAgent adds or replaces a Definition by name.
 func (r *Registry) RegisterAgent(def Definition) error
 
-// Register adds or replaces a tool by toolName.
+// RegisterTool adds or replaces a tool by toolName.
 func (r *Registry) RegisterTool(toolName string, tool toolsetinterface.Tool) error
 
 // ValidateTools checks that all agents' references to tools are valid.
@@ -61,13 +61,9 @@ func (r *Registry) ValidateTools() error
 func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
 
 type BuildOptions struct {
-    AgentName string
-    
-    // ToolOptions are the effective options used to construct tools after auth/package policy and overrides are applied.
-    ToolOptions toolsetinterface.Options
-
-    // Request is the original invocation request.
-    Request toolsetinterface.InvokeRequest
+	AgentName   string
+	ToolOptions toolsetinterface.Options       // ToolOptions are the effective options used to construct tools after auth/package policy and overrides are applied.
+	Request     toolsetinterface.InvokeRequest // Request is the original invocation request.
 }
 
 // PromptBuilder builds a prompt lazily based on options.
@@ -79,45 +75,32 @@ type InitialTurnsBuilder func(ctx context.Context, options BuildOptions) ([]stri
 type AuthPackagePolicy string
 
 const (
-    // AuthPackagePolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
-    AuthPackagePolicyDefault AuthPackagePolicy = "" 
+	// AuthPackagePolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
+	AuthPackagePolicyDefault AuthPackagePolicy = ""
 
-    // AuthPackagePolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir. An error occurs if an override is set.
-    AuthPackagePolicyPackage AuthPackagePolicy = "package"
+	// AuthPackagePolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir. An error occurs if an override is set.
+	AuthPackagePolicyPackage AuthPackagePolicy = "package"
 )
 
 // Definition is an agent definition.
 type Definition struct {
-    // Name is the stable agent identifier.
-    Name string
+	Name                string        // Name is the stable agent identifier.
+	Description         string        // Description is surfaced in llmstream.ToolInfo.
+	ToolNames           []string      // List of tools. Refers to tools added to a Registry.
+	SystemPrompt        string        // SystemPrompt to use if SystemPromptBuilder is nil.
+	SystemPromptBuilder PromptBuilder // SystemPromptBuilder sets and overwrites SystemPrompt if non-nil.
 
-    // Description is surfaced in llmstream.ToolInfo.
-    Description string
+	// InitialTurnsBuilder builds additional user turns before InvokeRequest.Message is sent.
+	//
+	// This can gather context lazily based on invocation details. Example: package-mode agents may add AGENTS.md, env info, or initial package context.
+	InitialTurnsBuilder InitialTurnsBuilder
 
-    // List of tools. Refers to tools added to a Registry.
-    ToolNames []string
-
-    // SystemPrompt to use if SystemPromptBuilder is nil.
-    SystemPrompt string
-
-    // SystemPromptBuilder sets and overwrites SystemPrompt if non-nil.
-    SystemPromptBuilder PromptBuilder
-
-    // InitialTurnsBuilder builds additional user turns before InvokeRequest.Message is sent.
-    //
-    // This can gather context lazily based on invocation details. Example: package-mode agents may add AGENTS.md, env info, or initial package context.
-    InitialTurnsBuilder InitialTurnsBuilder
-
-    // AuthPackagePolicy indicates the policy used for auth AND packages.
-    AuthPackagePolicy AuthPackagePolicy
-   
+	// AuthPackagePolicy indicates the policy used for auth AND packages.
+	AuthPackagePolicy AuthPackagePolicy
 }
 
 // Validate checks that a Definition is internally consistent.
 //
-// Validate only checks static definition shape. It does not resolve targets,
-// render prompts, or construct tools.
+// Validate only checks static definition shape. It does not resolve targets, render prompts, or construct tools.
 func (d Definition) Validate() error
-
-
 ```
