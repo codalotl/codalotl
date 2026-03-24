@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/agentbuilder"
 	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
@@ -26,7 +27,7 @@ import (
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
-	"github.com/codalotl/codalotl/internal/tools/toolsets"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"golang.org/x/term"
 )
 
@@ -285,32 +286,9 @@ func Exec(userPrompt string, opts Options) error {
 
 	go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
 
-	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
+	agentInstance, err := buildAgent(pkgMode, sandboxDir, pkgRelPath, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
 	if err != nil {
 		return err
-	}
-
-	agentInstance, err := agent.NewAgent(modelID, strings.TrimSpace(systemPrompt), toolsForAgent)
-	if err != nil {
-		return fmt.Errorf("construct agent: %w", err)
-	}
-
-	envMsg := buildEnvironmentInfo(sandboxDir)
-	if pkgMode {
-		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, opts.LintSteps)
-	}
-	if err := agentInstance.AddUserTurn(envMsg); err != nil {
-		return fmt.Errorf("add environment info: %w", err)
-	}
-
-	// In generic mode we don't gather package initialcontext, so include AGENTS.md
-	// context up front if present.
-	if !pkgMode {
-		if agentsMsg := readAgentsMDContextBestEffort(sandboxDir, sandboxDir); agentsMsg != "" {
-			if err := agentInstance.AddUserTurn(agentsMsg); err != nil {
-				return fmt.Errorf("add AGENTS.md context: %w", err)
-			}
-		}
 	}
 
 	if opts.OutputJSON {
@@ -904,12 +882,12 @@ func detectTerminalWidth(out io.Writer) int {
 	return 0
 }
 
-func detectShellToolName(tools []llmstream.Tool) (name string, ok bool) {
+func detectShellToolName(toolNames []string) (name string, ok bool) {
 	// We want skills.Prompt to reference the actual shell tool name exposed to the LLM.
 	// "skill_shell" is the harness-level default, but some toolsets may export it as "shell".
 	for _, candidate := range []string{"skill_shell", "shell"} {
-		for _, t := range tools {
-			if t != nil && t.Name() == candidate {
+		for _, toolName := range toolNames {
+			if toolName == candidate {
 				return candidate, true
 			}
 		}
@@ -917,13 +895,13 @@ func detectShellToolName(tools []llmstream.Tool) (name string, ok bool) {
 	return "", false
 }
 
-func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) ([]llmstream.Tool, string, error) {
+func buildAgent(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) (*agent.Agent, error) {
 	skillSearchStartDir := sandboxDir
 	if pkgMode {
 		skillSearchStartDir = pkgAbsPath
 	}
 	if err := skills.InstallDefault(); err != nil {
-		return nil, "", fmt.Errorf("install default skills: %w", err)
+		return nil, fmt.Errorf("install default skills: %w", err)
 	}
 	searchDirs := skills.SearchPaths(skillSearchStartDir)
 	validSkills, _, _, skillsErr := skills.LoadSkills(searchDirs)
@@ -933,48 +911,59 @@ func buildToolsetAndSystemPrompt(pkgMode bool, sandboxDir string, pkgAbsPath str
 		validSkills = nil
 	}
 
-	if pkgMode {
-		systemPrompt := prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull)
-		tools, err := toolsets.PackageAgentTools(toolsets.Options{
-			SandboxDir:  sandboxDir,
-			Authorizer:  authorizer,
-			GoPkgAbsDir: pkgAbsPath,
-			Model:       modelID,
-			LintSteps:   lintSteps,
-		})
-		if err != nil {
-			return nil, "", fmt.Errorf("build package toolset: %w", err)
-		}
-		systemPrompt = strings.TrimSpace(systemPrompt)
-		if shellToolName, ok := detectShellToolName(tools); ok {
-			if err := skills.Authorize(validSkills, authorizer); err != nil {
-				return nil, "", fmt.Errorf("authorize skills: %w", err)
-			}
-			systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, true))
-			systemPrompt = strings.TrimSpace(systemPrompt)
-		}
-		return tools, systemPrompt, nil
-	}
-
-	systemPrompt := prompt.GetBasicPrompt()
-	tools, err := toolsets.CoreAgentTools(toolsets.Options{
+	toolOptions := toolsetinterface.Options{
 		SandboxDir: sandboxDir,
 		Authorizer: authorizer,
 		Model:      modelID,
 		LintSteps:  lintSteps,
+	}
+	agentName := agentbuilder.AgentGeneric
+	if pkgMode {
+		toolOptions.GoPkgAbsDir = pkgAbsPath
+		agentName = agentbuilder.AgentPackageMode
+	}
+
+	registry, err := agentbuilder.BuildRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("build agent registry: %w", err)
+	}
+
+	prepared, err := registry.Prepare(context.Background(), agentName, toolsetinterface.InvokeRequest{
+		ToolOptions: toolOptions,
 	})
 	if err != nil {
-		return nil, "", fmt.Errorf("build toolset: %w", err)
+		return nil, fmt.Errorf("prepare agent: %w", err)
 	}
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	if shellToolName, ok := detectShellToolName(tools); ok {
+
+	systemPrompt := strings.TrimSpace(prepared.SystemPrompt)
+	if shellToolName, ok := detectShellToolName(prepared.ToolNames); ok {
 		if err := skills.Authorize(validSkills, authorizer); err != nil {
-			return nil, "", fmt.Errorf("authorize skills: %w", err)
+			return nil, fmt.Errorf("authorize skills: %w", err)
 		}
-		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, false))
+		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, pkgMode))
 		systemPrompt = strings.TrimSpace(systemPrompt)
 	}
-	return tools, systemPrompt, nil
+	prepared.SystemPrompt = systemPrompt
+
+	envMsg := buildEnvironmentInfo(sandboxDir)
+	if pkgMode {
+		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
+	}
+	prepared.InitialTurns = append(prepared.InitialTurns, envMsg)
+
+	// In generic mode we don't gather package initialcontext, so include AGENTS.md
+	// context up front if present.
+	if !pkgMode {
+		if agentsMsg := readAgentsMDContextBestEffort(sandboxDir, sandboxDir); agentsMsg != "" {
+			prepared.InitialTurns = append(prepared.InitialTurns, agentsMsg)
+		}
+	}
+
+	agentInstance, err := prepared.Create(agent.NewAgentCreator())
+	if err != nil {
+		return nil, fmt.Errorf("construct agent: %w", err)
+	}
+	return agentInstance, nil
 }
 
 func buildEnvironmentInfo(sandboxDir string) string {
