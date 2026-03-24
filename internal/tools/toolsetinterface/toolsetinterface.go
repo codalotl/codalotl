@@ -58,21 +58,10 @@ type InvokeRequest struct {
 	// Any field supplied here is not duplicated elsewhere in InvokeRequest (ex: Model).
 	ToolOptions Options
 
-	// AgentCreator creates the agent (either a root or child agent).
-	AgentCreator agent.AgentCreator
-
-	// CallerAuthorizer is the current authorizer of the calling agent.
-	CallerAuthorizer authdomain.Authorizer
-
-	// CallerSandboxDir is the current sandbox root of the calling agent.
-	CallerSandboxDir string
-
-	// If not nil, use this authorizer for the new agent.
-	OverrideAuthorizer authdomain.Authorizer
-
-	// If not "", use this sandbox dir for the new agent.
-	OverrideSandboxDir string
-
-	// Message is the initial message to the LLM (after the prompt).
-	Message string
+	AgentCreator       agent.AgentCreator    // AgentCreator creates the agent (either a root or child agent).
+	CallerAuthorizer   authdomain.Authorizer // CallerAuthorizer is the current authorizer of the calling agent.
+	CallerSandboxDir   string                // CallerSandboxDir is the current sandbox root of the calling agent.
+	OverrideAuthorizer authdomain.Authorizer // If not nil, use this authorizer for the new agent.
+	OverrideSandboxDir string                // If not "", use this sandbox dir for the new agent.
+	Messages           []string              // Messages are the initial user messages to the LLM (after the prompt).
 }

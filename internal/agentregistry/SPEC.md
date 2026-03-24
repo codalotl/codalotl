@@ -72,7 +72,7 @@ type ToolsBuilder func(opts toolsetinterface.Options) ([]string, error)
 // PromptBuilder builds a prompt lazily based on options.
 type PromptBuilder func(options BuildOptions) (string, error)
 
-// InitialTurnsBuilder builds user turns that are added before Request.Message is sent.
+// InitialTurnsBuilder builds user turns that are added before Request.Messages are sent.
 type InitialTurnsBuilder func(ctx context.Context, options BuildOptions) ([]string, error)
 
 type AuthPackagePolicy string
@@ -94,7 +94,7 @@ type Definition struct {
 	SystemPrompt        string        // SystemPrompt to use if SystemPromptBuilder is nil.
 	SystemPromptBuilder PromptBuilder // SystemPromptBuilder sets and overwrites SystemPrompt if non-nil.
 
-	// InitialTurnsBuilder builds additional user turns before InvokeRequest.Message is sent.
+	// InitialTurnsBuilder builds additional user turns before InvokeRequest.Messages are sent.
 	//
 	// This can gather context lazily based on invocation details. Example: package-mode agents may add AGENTS.md, env info, or initial package context.
 	InitialTurnsBuilder InitialTurnsBuilder

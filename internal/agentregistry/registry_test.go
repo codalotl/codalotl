@@ -147,6 +147,41 @@ func (m *mockAgentCreator) NewWithDefaultModel(systemPrompt string, tools []llms
 	return nil, m.err
 }
 
+type recordingAgentCreator struct {
+	base      agent.AgentCreator
+	lastAgent *agent.Agent
+}
+
+func newRecordingAgentCreator() *recordingAgentCreator {
+	return &recordingAgentCreator{base: agent.NewAgentCreator()}
+}
+
+func (r *recordingAgentCreator) New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
+	a, err := r.base.New(model, systemPrompt, tools)
+	if err == nil {
+		r.lastAgent = a
+	}
+	return a, err
+}
+
+func (r *recordingAgentCreator) NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
+	a, err := r.base.NewWithDefaultModel(systemPrompt, tools)
+	if err == nil {
+		r.lastAgent = a
+	}
+	return a, err
+}
+
+func userTurnTexts(turns []llmstream.Turn) []string {
+	var texts []string
+	for _, turn := range turns {
+		if turn.Role == llmstream.RoleUser {
+			texts = append(texts, turn.TextContent())
+		}
+	}
+	return texts
+}
+
 func TestRegistry_Invoke(t *testing.T) {
 	r := NewRegistry()
 
@@ -404,5 +439,65 @@ func TestRegistry_Invoke(t *testing.T) {
 		assert.ErrorContains(t, err, "failed to build tool names: builder boom")
 		assert.Zero(t, mockCreator.newCalls)
 		assert.Zero(t, mockCreator.newWithDefaultCalls)
+	})
+
+	t.Run("request messages are forwarded in order after initial turns", func(t *testing.T) {
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name:         "ordered-messages-agent",
+			SystemPrompt: "System Prompt",
+			InitialTurnsBuilder: func(ctx context.Context, opts BuildOptions) ([]string, error) {
+				return []string{"initial-1", "initial-2"}, nil
+			},
+		}))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		creator := newRecordingAgentCreator()
+		events, err := r.Invoke(ctx, "ordered-messages-agent", toolsetinterface.InvokeRequest{
+			AgentCreator: creator,
+			ToolOptions: toolsetinterface.Options{
+				Model: "test-model",
+			},
+			Messages: []string{"message-1", "message-2", "message-3"},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, creator.lastAgent)
+
+		for range events {
+		}
+
+		assert.Equal(t, []string{
+			"initial-1",
+			"initial-2",
+			"message-1",
+			"message-2",
+			"message-3",
+		}, userTurnTexts(creator.lastAgent.Turns()))
+	})
+
+	t.Run("empty request messages preserve empty single-message behavior", func(t *testing.T) {
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name:         "empty-messages-agent",
+			SystemPrompt: "System Prompt",
+		}))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		creator := newRecordingAgentCreator()
+		events, err := r.Invoke(ctx, "empty-messages-agent", toolsetinterface.InvokeRequest{
+			AgentCreator: creator,
+			ToolOptions: toolsetinterface.Options{
+				Model: "test-model",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, creator.lastAgent)
+
+		for range events {
+		}
+
+		assert.Equal(t, []string{""}, userTurnTexts(creator.lastAgent.Turns()))
 	})
 }
