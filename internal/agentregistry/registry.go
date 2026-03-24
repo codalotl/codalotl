@@ -83,6 +83,18 @@ type BuildOptions struct {
 	Request     toolsetinterface.InvokeRequest // Request is the original invocation request.
 }
 
+// PreparedAgent contains a fully prepared agent configuration.
+//
+// It includes resolved tool options, system prompt, tool names, and initial turns, but it does not start a run or send any request messages.
+type PreparedAgent struct {
+	BuildOptions BuildOptions
+	SystemPrompt string
+	ToolNames    []string
+	InitialTurns []string
+	tools        []llmstream.Tool
+	created      bool
+}
+
 // ToolsBuilder returns tool names based on opts. It can be used to dynamically switch toolsets based on things like model.
 type ToolsBuilder func(opts toolsetinterface.Options) ([]string, error)
 
@@ -139,12 +151,47 @@ func (d Definition) Validate() error {
 	return nil
 }
 
-// Invoke begins executing the named agent, and returns a channel from which to read events.
-func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
-	if req.AgentCreator == nil {
+// Create constructs an idle agent from the prepared configuration.
+//
+// InitialTurns are applied before the agent is returned. No request messages are sent.
+func (p *PreparedAgent) Create(agentCreator agent.AgentCreator) (*agent.Agent, error) {
+	if p == nil {
+		return nil, errors.New("agentregistry: prepared agent is required")
+	}
+	if agentCreator == nil {
 		return nil, errors.New("agentregistry: AgentCreator is required")
 	}
+	if p.created {
+		return nil, errors.New("agentregistry: prepared agent already created")
+	}
 
+	tools := append([]llmstream.Tool(nil), p.tools...)
+
+	var (
+		a   *agent.Agent
+		err error
+	)
+	if p.BuildOptions.ToolOptions.Model != "" {
+		a, err = agentCreator.New(p.BuildOptions.ToolOptions.Model, p.SystemPrompt, tools)
+	} else {
+		a, err = agentCreator.NewWithDefaultModel(p.SystemPrompt, tools)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("agentregistry: failed to create agent: %w", err)
+	}
+
+	for _, turn := range p.InitialTurns {
+		if err := a.AddUserTurn(turn); err != nil {
+			return nil, fmt.Errorf("agentregistry: failed to add initial turn: %w", err)
+		}
+	}
+
+	p.created = true
+	return a, nil
+}
+
+// Prepare resolves the named agent into a fully prepared configuration without constructing or starting an agent.
+func (r *Registry) Prepare(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*PreparedAgent, error) {
 	def, ok := r.Lookup(agentName)
 	if !ok {
 		return nil, fmt.Errorf("agentregistry: unknown agent %q", agentName)
@@ -237,31 +284,46 @@ func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinte
 		tools = append(tools, builtTool)
 	}
 
-	// 4. Create the agent
-	var a *agent.Agent
-	if effectiveOpts.Model != "" {
-		a, err = req.AgentCreator.New(effectiveOpts.Model, systemPrompt, tools)
-	} else {
-		a, err = req.AgentCreator.NewWithDefaultModel(systemPrompt, tools)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("agentregistry: failed to create agent: %w", err)
-	}
-
-	// 5. Add initial turns
+	// 4. Build initial turns
+	var initialTurns []string
 	if def.InitialTurnsBuilder != nil {
-		initialTurns, err := def.InitialTurnsBuilder(ctx, buildOpts)
+		initialTurns, err = def.InitialTurnsBuilder(ctx, buildOpts)
 		if err != nil {
 			return nil, fmt.Errorf("agentregistry: failed to build initial turns: %w", err)
 		}
-		for _, turn := range initialTurns {
-			if err := a.AddUserTurn(turn); err != nil {
-				return nil, fmt.Errorf("agentregistry: failed to add initial turn: %w", err)
-			}
-		}
+		initialTurns = append([]string(nil), initialTurns...)
 	}
 
-	// 6. Invoke
+	return &PreparedAgent{
+		BuildOptions: buildOpts,
+		SystemPrompt: systemPrompt,
+		ToolNames:    toolNames,
+		InitialTurns: initialTurns,
+		tools:        tools,
+	}, nil
+}
+
+// Create constructs the named agent without starting a run.
+//
+// The returned agent is idle and already has InitialTurnsBuilder turns applied.
+func (r *Registry) Create(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
+	prepared, err := r.Prepare(ctx, agentName, req)
+	if err != nil {
+		return nil, err
+	}
+	return prepared.Create(req.AgentCreator)
+}
+
+// Invoke begins executing the named agent, and returns a channel from which to read events.
+//
+// It preserves invocation-oriented behavior such as sending one empty user message when InvokeRequest.Messages is empty.
+func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+	a, err := r.Create(ctx, agentName, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Preserve legacy Invoke behavior: an empty Messages slice still sends one empty user message.
 	messages := req.Messages
 	if len(messages) == 0 {
 		messages = []string{""}

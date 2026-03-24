@@ -182,6 +182,140 @@ func userTurnTexts(turns []llmstream.Turn) []string {
 	return texts
 }
 
+type stubTool struct {
+	name string
+}
+
+func (t stubTool) Info() llmstream.ToolInfo {
+	return llmstream.ToolInfo{Name: t.name}
+}
+
+func (t stubTool) Name() string {
+	return t.name
+}
+
+func (t stubTool) Run(ctx context.Context, params llmstream.ToolCall) llmstream.ToolResult {
+	return llmstream.ToolResult{
+		CallID: params.CallID,
+		Name:   t.name,
+		Type:   params.Type,
+	}
+}
+
+func TestPreparedAgent_Create(t *testing.T) {
+	t.Run("requires prepared agent", func(t *testing.T) {
+		var prepared *PreparedAgent
+		_, err := prepared.Create(agent.NewAgentCreator())
+		assert.ErrorContains(t, err, "prepared agent is required")
+	})
+
+	t.Run("requires agent creator", func(t *testing.T) {
+		prepared := &PreparedAgent{}
+		_, err := prepared.Create(nil)
+		assert.ErrorContains(t, err, "AgentCreator is required")
+	})
+
+	t.Run("creates idle agent with initial turns and single use", func(t *testing.T) {
+		prepared := &PreparedAgent{
+			BuildOptions: BuildOptions{
+				ToolOptions: toolsetinterface.Options{
+					Model: "test-model",
+				},
+			},
+			SystemPrompt: "System Prompt",
+			ToolNames:    []string{"tool-a"},
+			InitialTurns: []string{"initial-1", "initial-2"},
+		}
+
+		creator := newRecordingAgentCreator()
+		a, err := prepared.Create(creator)
+		require.NoError(t, err)
+		require.NotNil(t, a)
+		assert.Same(t, a, creator.lastAgent)
+		assert.NotEmpty(t, a.SessionID())
+		assert.Equal(t, []string{"initial-1", "initial-2"}, userTurnTexts(a.Turns()))
+		assert.ErrorIs(t, a.QueueUserMessage("later"), agent.ErrNotRunning)
+
+		_, err = prepared.Create(creator)
+		assert.ErrorContains(t, err, "prepared agent already created")
+	})
+}
+
+func TestRegistry_PrepareAndCreate(t *testing.T) {
+	r := NewRegistry()
+
+	require.NoError(t, r.RegisterTool("prepare-static-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+		assert.Equal(t, llmmodel.ModelID("prepared-model"), opts.Model)
+		return stubTool{name: "prepare-static-tool"}, nil
+	}))
+	require.NoError(t, r.RegisterTool("prepare-dynamic-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+		assert.Equal(t, "/caller-sandbox", opts.SandboxDir)
+		require.NotNil(t, opts.Authorizer)
+		assert.Equal(t, "/override-sandbox", opts.Authorizer.SandboxDir())
+		return stubTool{name: "prepare-dynamic-tool"}, nil
+	}))
+	require.NoError(t, r.RegisterAgent(Definition{
+		Name:         "prepared-agent",
+		SystemPrompt: "base prompt",
+		ToolNames:    []string{"prepare-static-tool"},
+		ToolsBuilder: func(opts toolsetinterface.Options) ([]string, error) {
+			assert.Equal(t, llmmodel.ModelID("prepared-model"), opts.Model)
+			return []string{"prepare-dynamic-tool"}, nil
+		},
+		SystemPromptBuilder: func(opts BuildOptions) (string, error) {
+			assert.Equal(t, "prepared-agent", opts.AgentName)
+			assert.Equal(t, []string{"real message"}, opts.Request.Messages)
+			return "dynamic prompt", nil
+		},
+		InitialTurnsBuilder: func(ctx context.Context, opts BuildOptions) ([]string, error) {
+			assert.Equal(t, []string{"real message"}, opts.Request.Messages)
+			return []string{"initial-context"}, nil
+		},
+	}))
+
+	req := toolsetinterface.InvokeRequest{
+		CallerAuthorizer:   authdomain.NewAutoApproveAuthorizer("/caller-sandbox"),
+		CallerSandboxDir:   "/caller-sandbox",
+		OverrideAuthorizer: authdomain.NewAutoApproveAuthorizer("/override-sandbox"),
+		ToolOptions: toolsetinterface.Options{
+			Model:      "prepared-model",
+			Authorizer: authdomain.NewAutoApproveAuthorizer("/base-sandbox"),
+			SandboxDir: "/base-sandbox",
+		},
+		Messages: []string{"real message"},
+	}
+
+	t.Run("prepare resolves definition without agent creator", func(t *testing.T) {
+		prepared, err := r.Prepare(context.Background(), "prepared-agent", req)
+		require.NoError(t, err)
+		require.NotNil(t, prepared)
+
+		assert.Equal(t, "dynamic prompt", prepared.SystemPrompt)
+		assert.Equal(t, []string{"prepare-static-tool", "prepare-dynamic-tool"}, prepared.ToolNames)
+		assert.Equal(t, []string{"initial-context"}, prepared.InitialTurns)
+		assert.Equal(t, llmmodel.ModelID("prepared-model"), prepared.BuildOptions.ToolOptions.Model)
+		assert.Equal(t, "/caller-sandbox", prepared.BuildOptions.ToolOptions.SandboxDir)
+		assert.True(t, prepared.BuildOptions.ToolOptions.Authorizer == req.OverrideAuthorizer)
+		invoker, ok := prepared.BuildOptions.ToolOptions.AgentInvoker.(*Registry)
+		require.True(t, ok)
+		assert.Same(t, r, invoker)
+		assert.Equal(t, []string{"real message"}, prepared.BuildOptions.Request.Messages)
+	})
+
+	t.Run("create returns idle agent and does not apply request messages", func(t *testing.T) {
+		creator := newRecordingAgentCreator()
+		createReq := req
+		createReq.AgentCreator = creator
+
+		a, err := r.Create(context.Background(), "prepared-agent", createReq)
+		require.NoError(t, err)
+		require.NotNil(t, a)
+		assert.Same(t, a, creator.lastAgent)
+		assert.Equal(t, []string{"initial-context"}, userTurnTexts(a.Turns()))
+		assert.ErrorIs(t, a.QueueUserMessage("later"), agent.ErrNotRunning)
+	})
+}
+
 func TestRegistry_Invoke(t *testing.T) {
 	r := NewRegistry()
 

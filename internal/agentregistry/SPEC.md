@@ -7,7 +7,9 @@ agentregistry allows the definition and registration of named agents:
 - optional package
 - authdomain configuration
 
-These agents can then be easily invoked, including as subagents from tools.
+These agents can then be used in two styles:
+- immediate invoke, including as subagents from tools
+- prepare/create root agents for session-style callers that need an idle reusable `*agent.Agent`
 
 ## Dependencies
 
@@ -29,6 +31,14 @@ Agents need to be able to invoke other agents. However, they do so through tools
 This package must offer affordances to allow the easy creation of tools based on agents. It must be possible to create simple agents (invokable as tools) with custom prompts and tool lists without writing custom code (it's acceptable if another package implements the glue code of config file -> agent+tool creation).
 
 This package should also support named agents that prepare their own initial turns before the first message is sent. This is intended as injection point for context gathering such as package initial context, env info, AGENTS.md, etc.
+
+Session-style callers should be able to resolve the same definition/auth/tool/prompt logic as `Invoke`, but stop before the first send. They should be able to:
+- build real idle root agent
+- inspect session state on returned `*agent.Agent`
+- add their own user turns or call `QueueUserMessage`
+- let registry-provided initial turns/context exist before first real user message
+
+`Invoke` remains convenience API for immediate execution. It may preserve legacy behavior that is specific to invocation flow.
 
 Because of this, the `toolsetinterface` package contains `AgentInvoker` and `InvokeRequest` - types that conceptually belong here.
 - TODO: should we merge toolsetinterface into this package?
@@ -57,13 +67,33 @@ func (r *Registry) RegisterTool(toolName string, tool toolsetinterface.Tool) err
 // ValidateTools checks that all agents' references to tools are valid.
 func (r *Registry) ValidateTools() error
 
+// Prepare resolves the named agent into a fully prepared configuration without constructing or starting an agent.
+func (r *Registry) Prepare(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*PreparedAgent, error)
+
+// Create constructs the named agent without starting a run.
+//
+// The returned agent is idle and already has InitialTurnsBuilder turns applied.
+func (r *Registry) Create(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error)
+
 // Invoke begins executing the named agent, and returns a channel from which to read events.
+//
+// It preserves invocation-oriented behavior such as sending one empty user message when InvokeRequest.Messages is empty.
 func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
 
 type BuildOptions struct {
 	AgentName   string
 	ToolOptions toolsetinterface.Options       // ToolOptions are the effective options used to construct tools after auth/package policy and overrides are applied.
 	Request     toolsetinterface.InvokeRequest // Request is the original invocation request.
+}
+
+// PreparedAgent contains a fully prepared agent configuration.
+//
+// It includes resolved tool options, system prompt, tool names, and initial turns, but it does not start a run or send any request messages.
+type PreparedAgent struct {
+	BuildOptions BuildOptions
+	SystemPrompt string
+	ToolNames    []string
+	InitialTurns []string
 }
 
 // ToolsBuilder returns tool names based on opts. It can be used to dynamically switch toolsets based on things like model.
@@ -108,4 +138,9 @@ type Definition struct {
 //
 // Validate only checks static definition shape. It does not resolve targets, render prompts, or construct tools.
 func (d Definition) Validate() error
+
+// Create constructs an idle agent from the prepared configuration.
+//
+// InitialTurns are applied before the agent is returned. No request messages are sent.
+func (p *PreparedAgent) Create(agentCreator agent.AgentCreator) (*agent.Agent, error)
 ```
