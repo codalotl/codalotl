@@ -35,7 +35,7 @@ func TestBuildRegistry_RegistersGenericAndPackageModeAgents(t *testing.T) {
 	packageModeDef, ok := registry.Lookup(AgentPackageMode)
 	assert.True(t, ok)
 	assert.Equal(t, AgentPackageMode, packageModeDef.Name)
-	assert.Equal(t, agentregistry.AuthPackagePolicyPackage, packageModeDef.AuthPackagePolicy)
+	assert.Equal(t, agentregistry.AuthPolicyPackage, packageModeDef.AuthPolicy)
 	assert.Nil(t, packageModeDef.InitialTurnsBuilder)
 }
 

@@ -53,7 +53,7 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
 			return prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull), nil
 		},
-		AuthPackagePolicy: agentregistry.AuthPackagePolicyPackage,
+		AuthPolicy: agentregistry.AuthPolicyPackage,
 	}); err != nil {
 		return nil, err
 	}
