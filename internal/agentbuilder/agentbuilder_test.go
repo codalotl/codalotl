@@ -6,35 +6,41 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/agentregistry"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
+	"github.com/codalotl/codalotl/internal/tools/exttools"
+	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildRegistry_RegistersGenericAgent(t *testing.T) {
+func TestBuildRegistry_RegistersGenericAndPackageModeAgents(t *testing.T) {
 	registry, err := BuildRegistry()
 	require.NoError(t, err)
 
 	require.NoError(t, registry.ValidateTools())
 
 	defs := registry.List()
-	require.Len(t, defs, 1)
-	assert.Equal(t, AgentGeneric, defs[0].Name)
+	require.Len(t, defs, 2)
 
-	_, ok := registry.Lookup(AgentGeneric)
+	genericDef, ok := registry.Lookup(AgentGeneric)
 	assert.True(t, ok)
+	assert.Equal(t, AgentGeneric, genericDef.Name)
 
-	_, ok = registry.Lookup(AgentPackageMode)
-	assert.False(t, ok)
+	packageModeDef, ok := registry.Lookup(AgentPackageMode)
+	assert.True(t, ok)
+	assert.Equal(t, AgentPackageMode, packageModeDef.Name)
+	assert.Equal(t, agentregistry.AuthPackagePolicyPackage, packageModeDef.AuthPackagePolicy)
+	assert.Nil(t, packageModeDef.InitialTurnsBuilder)
 }
 
 func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
-	gotPrompt, gotTools := invokeGenericForModel(t, llmmodel.ProviderIDOpenAI.DefaultModel())
+	gotPrompt, gotTools := invokeAgentForModel(t, AgentGeneric, llmmodel.ProviderIDOpenAI.DefaultModel())
 
 	assert.Equal(t, prompt.GetBasicPrompt(), gotPrompt)
 	assert.Equal(t, []string{
@@ -47,7 +53,7 @@ func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
 }
 
 func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) {
-	_, gotTools := invokeGenericForModel(t, llmmodel.ProviderIDAnthropic.DefaultModel())
+	_, gotTools := invokeAgentForModel(t, AgentGeneric, llmmodel.ProviderIDAnthropic.DefaultModel())
 
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
@@ -60,7 +66,54 @@ func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) 
 	}, gotTools)
 }
 
-func invokeGenericForModel(t *testing.T, model llmmodel.ModelID) (string, []string) {
+func TestBuildRegistry_InvokePackageMode_OpenAIUsesPackagePromptAndTools(t *testing.T) {
+	gotPrompt, gotTools := invokeAgentForModel(t, AgentPackageMode, llmmodel.ProviderIDOpenAI.DefaultModel())
+
+	assert.Equal(t, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull), gotPrompt)
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameApplyPatch,
+		coretools.ToolNameSkillShell,
+		coretools.ToolNameUpdatePlan,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
+		exttools.ToolNameRunProjectTests,
+		pkgtools.ToolNameModuleInfo,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+		pkgtools.ToolNameGetUsage,
+		pkgtools.ToolNameUpdateUsage,
+		pkgtools.ToolNameChangeAPI,
+	}, gotTools)
+}
+
+func TestBuildRegistry_InvokePackageMode_NonOpenAIUsesEditWriteDelete(t *testing.T) {
+	_, gotTools := invokeAgentForModel(t, AgentPackageMode, llmmodel.ProviderIDAnthropic.DefaultModel())
+
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameEdit,
+		coretools.ToolNameWrite,
+		coretools.ToolNameDelete,
+		coretools.ToolNameSkillShell,
+		coretools.ToolNameUpdatePlan,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
+		exttools.ToolNameRunProjectTests,
+		pkgtools.ToolNameModuleInfo,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+		pkgtools.ToolNameGetUsage,
+		pkgtools.ToolNameUpdateUsage,
+		pkgtools.ToolNameChangeAPI,
+	}, gotTools)
+}
+
+func invokeAgentForModel(t *testing.T, agentName string, model llmmodel.ModelID) (string, []string) {
 	t.Helper()
 
 	registry, err := BuildRegistry()
@@ -69,12 +122,13 @@ func invokeGenericForModel(t *testing.T, model llmmodel.ModelID) (string, []stri
 	sandbox := t.TempDir()
 	creator := &captureAgentCreator{err: errors.New("stop")}
 
-	_, err = registry.Invoke(context.Background(), AgentGeneric, toolsetinterface.InvokeRequest{
+	_, err = registry.Invoke(context.Background(), agentName, toolsetinterface.InvokeRequest{
 		AgentCreator: creator,
 		ToolOptions: toolsetinterface.Options{
-			Model:      model,
-			Authorizer: authdomain.NewAutoApproveAuthorizer(sandbox),
-			SandboxDir: sandbox,
+			Model:       model,
+			Authorizer:  authdomain.NewAutoApproveAuthorizer(sandbox),
+			SandboxDir:  sandbox,
+			GoPkgAbsDir: sandbox,
 		},
 	})
 	require.ErrorContains(t, err, "stop")

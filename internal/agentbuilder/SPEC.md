@@ -6,6 +6,7 @@
 
 - generic: core_agent toolset
 - package_mode: package_agent toolset
+    - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
 - (other agents: will build later)
 
 ## Toolsets
@@ -18,29 +19,26 @@ Toolsets are just a device used in this SPEC.md file to factor this file (and ma
 - simple_read_only:
     - `ls`, `read_file`
 - core_agent:
-    - `read_file`, `ls`
+    - `read_file`, `ls`, `shell`, `update_plan`
     - the edit_files set
-    - `shell`, `update_plan`
 - package_agent:
-    - `read_file`, `ls`
+    - `read_file`, `ls`, `skill_shell`, `update_plan`
     - the edit_files set
-    - `skill_shell`, `update_plan`
     - `diagnostics`, `fix_lints`, `run_tests`, `run_project_tests`
     - `module_info`, `get_public_api`, `clarify_public_api`, `get_usage`, `update_usage`, `change_api`
 - limited_package_agent:
-    - `read_file`, `ls`
+    - `read_file`, `ls`, `skill_shell`
     - the edit_files set
-    - `skill_shell`
     - `diagnostics`, `fix_lints`, `run_tests`
     - `get_public_api`, `clarify_public_api`
+    - (NOTE: no way to spawn mutative subagents, like `update_usage` and `change_api`)
 
 ## Public API
 
 ```go
-
 const (
-    AgentGeneric string = "generic"
-    AgentPackageMode string = "package_mode"
+	AgentGeneric     string = "generic"
+	AgentPackageMode string = "package_mode"
 )
 
 // BuildRegistry builds the registry.
