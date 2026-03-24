@@ -7,6 +7,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentregistry"
+	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
@@ -121,12 +122,19 @@ func invokeAgentForModel(t *testing.T, agentName string, model llmmodel.ModelID)
 
 	sandbox := t.TempDir()
 	creator := &captureAgentCreator{err: errors.New("stop")}
+	authorizer := authdomain.NewAutoApproveAuthorizer(sandbox)
+
+	if agentName == AgentPackageMode {
+		unit, err := codeunit.NewCodeUnit("package .", sandbox)
+		require.NoError(t, err)
+		authorizer = authdomain.NewCodeUnitAuthorizer(unit, authorizer)
+	}
 
 	_, err = registry.Invoke(context.Background(), agentName, toolsetinterface.InvokeRequest{
 		AgentCreator: creator,
 		ToolOptions: toolsetinterface.Options{
 			Model:       model,
-			Authorizer:  authdomain.NewAutoApproveAuthorizer(sandbox),
+			Authorizer:  authorizer,
 			SandboxDir:  sandbox,
 			GoPkgAbsDir: sandbox,
 		},
