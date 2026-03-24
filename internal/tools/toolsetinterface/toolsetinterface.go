@@ -26,6 +26,12 @@ type AgentInvoker interface {
 
 // Options configures a Toolset.
 type Options struct {
+	// AgentName is the name of the agent currently being constructed.
+	//
+	// Tool constructors can use this to preserve agent-specific behavior when the
+	// same tool name is shared across multiple registered agents.
+	AgentName string
+
 	// SandboxDir is the sandbox root used to resolve relative paths provided by the LLM into absolute paths. The authorizer implements the actual access constraints
 	// ("jail").
 	SandboxDir string

@@ -68,10 +68,14 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 func genericTools() map[string]toolsetinterface.Tool {
 	return map[string]toolsetinterface.Tool{
 		coretools.ToolNameApplyPatch: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			return coretools.NewApplyPatchTool(opts.Authorizer, true, nil), nil
+			return coretools.NewApplyPatchTool(opts.Authorizer, true, packageModePostChecks(opts)), nil
 		},
 		coretools.ToolNameEdit: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			return coretools.NewEditTool(opts.Authorizer), nil
+			postChecks := packageModePostChecks(opts)
+			if postChecks == nil {
+				return coretools.NewEditTool(opts.Authorizer), nil
+			}
+			return coretools.NewEditTool(opts.Authorizer, postChecks), nil
 		},
 		coretools.ToolNameDelete: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			return coretools.NewDeleteTool(opts.Authorizer), nil
@@ -83,7 +87,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 			return pkgtools.NewChangeAPITool(
 				opts.GoPkgAbsDir,
 				opts.Authorizer.WithoutCodeUnit(),
-				toolsets.LimitedPackageAgentTools,
+				changeAPIToolset(opts),
 				opts.Model,
 				opts.LintSteps,
 			), nil
@@ -134,9 +138,27 @@ func genericTools() map[string]toolsetinterface.Tool {
 			), nil
 		},
 		coretools.ToolNameWrite: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			return coretools.NewWriteTool(opts.Authorizer), nil
+			postChecks := packageModePostChecks(opts)
+			if postChecks == nil {
+				return coretools.NewWriteTool(opts.Authorizer), nil
+			}
+			return coretools.NewWriteTool(opts.Authorizer, postChecks), nil
 		},
 	}
+}
+
+func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchPostChecks {
+	if opts.AgentName != AgentPackageMode {
+		return nil
+	}
+	return toolsets.PackagePostChecks(opts.LintSteps)
+}
+
+func changeAPIToolset(opts toolsetinterface.Options) toolsetinterface.Toolset {
+	if opts.AgentName == AgentPackageMode {
+		return toolsets.PackageAgentTools
+	}
+	return toolsets.LimitedPackageAgentTools
 }
 
 func buildGenericToolNames(opts toolsetinterface.Options) ([]string, error) {

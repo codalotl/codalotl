@@ -84,7 +84,7 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 	}
 
 	lintSteps := lintStepsOrDefault(opts.LintSteps)
-	postChecks := packageApplyPatchPostChecks(lintSteps)
+	postChecks := PackagePostChecks(lintSteps)
 	tools := []llmstream.Tool{
 		coretools.NewReadFileTool(authorizer),
 		coretools.NewLsTool(authorizer),
@@ -153,7 +153,7 @@ func LimitedPackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 	}
 
 	lintSteps := lintStepsOrDefault(opts.LintSteps)
-	postChecks := packageApplyPatchPostChecks(lintSteps)
+	postChecks := PackagePostChecks(lintSteps)
 	tools := []llmstream.Tool{
 		coretools.NewReadFileTool(authorizer),
 		coretools.NewLsTool(authorizer),
@@ -177,7 +177,8 @@ func lintStepsOrDefault(steps []lints.Step) []lints.Step {
 	return steps
 }
 
-func packageApplyPatchPostChecks(lintSteps []lints.Step) *coretools.ApplyPatchPostChecks {
+// PackagePostChecks returns the post-edit diagnostics and lint-fix hooks used by package-mode editing tools.
+func PackagePostChecks(lintSteps []lints.Step) *coretools.ApplyPatchPostChecks {
 	return &coretools.ApplyPatchPostChecks{
 		RunDiagnostics: exttools.RunDiagnostics,
 		FixLints: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {

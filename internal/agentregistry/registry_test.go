@@ -249,10 +249,12 @@ func TestRegistry_PrepareAndCreate(t *testing.T) {
 	r := NewRegistry()
 
 	require.NoError(t, r.RegisterTool("prepare-static-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+		assert.Equal(t, "prepared-agent", opts.AgentName)
 		assert.Equal(t, llmmodel.ModelID("prepared-model"), opts.Model)
 		return stubTool{name: "prepare-static-tool"}, nil
 	}))
 	require.NoError(t, r.RegisterTool("prepare-dynamic-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+		assert.Equal(t, "prepared-agent", opts.AgentName)
 		assert.Equal(t, "/caller-sandbox", opts.SandboxDir)
 		require.NotNil(t, opts.Authorizer)
 		assert.Equal(t, "/override-sandbox", opts.Authorizer.SandboxDir())
@@ -263,6 +265,7 @@ func TestRegistry_PrepareAndCreate(t *testing.T) {
 		SystemPrompt: "base prompt",
 		ToolNames:    []string{"prepare-static-tool"},
 		ToolsBuilder: func(opts toolsetinterface.Options) ([]string, error) {
+			assert.Equal(t, "prepared-agent", opts.AgentName)
 			assert.Equal(t, llmmodel.ModelID("prepared-model"), opts.Model)
 			return []string{"prepare-dynamic-tool"}, nil
 		},
@@ -297,6 +300,7 @@ func TestRegistry_PrepareAndCreate(t *testing.T) {
 		assert.Equal(t, "dynamic prompt", prepared.SystemPrompt)
 		assert.Equal(t, []string{"prepare-static-tool", "prepare-dynamic-tool"}, prepared.ToolNames)
 		assert.Equal(t, []string{"initial-context"}, prepared.InitialTurns)
+		assert.Equal(t, "prepared-agent", prepared.BuildOptions.ToolOptions.AgentName)
 		assert.Equal(t, llmmodel.ModelID("prepared-model"), prepared.BuildOptions.ToolOptions.Model)
 		assert.Equal(t, "/caller-sandbox", prepared.BuildOptions.ToolOptions.SandboxDir)
 		assert.True(t, prepared.BuildOptions.ToolOptions.Authorizer == req.OverrideAuthorizer)

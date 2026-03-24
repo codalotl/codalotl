@@ -260,6 +260,7 @@ func (r *Registry) Prepare(ctx context.Context, agentName string, req toolsetint
 	}
 
 	effectiveOpts.AgentInvoker = r
+	effectiveOpts.AgentName = agentName
 
 	buildOpts := BuildOptions{
 		AgentName:   agentName,
