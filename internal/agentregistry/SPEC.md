@@ -111,8 +111,8 @@ const (
 	// AuthPolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
 	AuthPolicyDefault AuthPolicy = ""
 
-	// AuthPolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir while preserving the incoming SandboxDir. An error occurs if
-	// an override is set.
+	// AuthPolicyPackage requires a package-scoped authorizer whose code-unit dir matches ToolOptions.GoPkgAbsDir, while preserving the incoming SandboxDir used for
+	// relative path resolution. An error occurs if an override is set.
 	AuthPolicyPackage AuthPolicy = "package"
 )
 

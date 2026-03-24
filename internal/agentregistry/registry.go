@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 
 	"github.com/codalotl/codalotl/internal/agent"
@@ -110,8 +111,8 @@ const (
 	// AuthPolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
 	AuthPolicyDefault AuthPolicy = ""
 
-	// AuthPolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir while preserving the incoming SandboxDir. An error occurs if
-	// an override is set.
+	// AuthPolicyPackage requires a package-scoped authorizer whose code-unit dir matches ToolOptions.GoPkgAbsDir, while preserving the incoming SandboxDir used for
+	// relative path resolution. An error occurs if an override is set.
 	AuthPolicyPackage AuthPolicy = "package"
 )
 
@@ -234,9 +235,24 @@ func (r *Registry) Prepare(ctx context.Context, agentName string, req toolsetint
 		if baseAuthorizer == nil {
 			return nil, errors.New("agentregistry: authorizer is required for AuthPolicyPackage")
 		}
-		effectiveOpts.Authorizer, err = authdomain.WithUpdatedSandbox(baseAuthorizer, req.ToolOptions.GoPkgAbsDir)
-		if err != nil {
-			return nil, fmt.Errorf("agentregistry: failed to update authorizer sandbox: %w", err)
+
+		if !baseAuthorizer.IsCodeUnitDomain() {
+			return nil, errors.New("agentregistry: code-unit authorizer is required for AuthPolicyPackage")
+		}
+		if filepath.Clean(baseAuthorizer.CodeUnitDir()) != filepath.Clean(req.ToolOptions.GoPkgAbsDir) {
+			return nil, fmt.Errorf("agentregistry: authorizer code-unit dir %q must equal GoPkgAbsDir %q", baseAuthorizer.CodeUnitDir(), req.ToolOptions.GoPkgAbsDir)
+		}
+
+		if effectiveOpts.SandboxDir == "" {
+			effectiveOpts.SandboxDir = baseAuthorizer.SandboxDir()
+		}
+
+		effectiveOpts.Authorizer = baseAuthorizer
+		if effectiveOpts.SandboxDir != "" && filepath.Clean(baseAuthorizer.SandboxDir()) != filepath.Clean(effectiveOpts.SandboxDir) {
+			effectiveOpts.Authorizer, err = authdomain.WithUpdatedSandbox(baseAuthorizer, effectiveOpts.SandboxDir)
+			if err != nil {
+				return nil, fmt.Errorf("agentregistry: failed to update authorizer sandbox: %w", err)
+			}
 		}
 
 	default:

@@ -3,12 +3,16 @@ package agentregistry
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -442,7 +446,7 @@ func TestRegistry_Invoke(t *testing.T) {
 		assert.ErrorContains(t, err, "authorizer is required for AuthPolicyPackage")
 	})
 
-	t.Run("package auth policy preserves caller sandbox and updates authorizer jail", func(t *testing.T) {
+	t.Run("package auth policy requires code unit authorizer", func(t *testing.T) {
 		pkgDef := Definition{
 			Name:       "pkg-agent-ok",
 			AuthPolicy: AuthPolicyPackage,
@@ -452,9 +456,7 @@ func TestRegistry_Invoke(t *testing.T) {
 		mockCreator := &mockAgentCreator{err: errors.New("mock stop")}
 		authorizer := authdomain.NewAutoApproveAuthorizer("/base/sandbox")
 
-		var capturedOpts toolsetinterface.Options
 		require.NoError(t, r.RegisterTool("capture-opts-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			capturedOpts = opts
 			return nil, nil
 		}))
 
@@ -473,18 +475,86 @@ func TestRegistry_Invoke(t *testing.T) {
 		}
 
 		_, err := r.Invoke(context.Background(), "pkg-agent-ok-tool", req)
+		assert.ErrorContains(t, err, "code-unit authorizer is required for AuthPolicyPackage")
+	})
+
+	t.Run("package auth policy preserves caller sandbox and code unit authorizer", func(t *testing.T) {
+		sandbox := t.TempDir()
+		pkgDir := filepath.Join(sandbox, "internal", "agentregistry")
+		require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+
+		unit, err := codeunit.NewCodeUnit("package internal/agentregistry", pkgDir)
+		require.NoError(t, err)
+		authorizer := authdomain.NewCodeUnitAuthorizer(unit, authdomain.NewAutoApproveAuthorizer(sandbox))
+
+		var capturedOpts toolsetinterface.Options
+		require.NoError(t, r.RegisterTool("package-codeunit-capture-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+			capturedOpts = opts
+			return nil, nil
+		}))
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name:       "pkg-agent-codeunit-authorizer",
+			AuthPolicy: AuthPolicyPackage,
+			ToolNames:  []string{"package-codeunit-capture-tool"},
+		}))
+
+		_, err = r.Invoke(context.Background(), "pkg-agent-codeunit-authorizer", toolsetinterface.InvokeRequest{
+			AgentCreator: &mockAgentCreator{err: errors.New("mock stop")},
+			ToolOptions: toolsetinterface.Options{
+				SandboxDir:  sandbox,
+				Authorizer:  authorizer,
+				GoPkgAbsDir: pkgDir,
+			},
+		})
 		assert.ErrorContains(t, err, "mock stop")
 
-		assert.Equal(t, "/base/sandbox", capturedOpts.SandboxDir)
+		assert.Equal(t, sandbox, capturedOpts.SandboxDir)
 		assert.NotNil(t, capturedOpts.Authorizer)
-		assert.Equal(t, "/base/sandbox/my-pkg", capturedOpts.Authorizer.SandboxDir())
+		assert.Equal(t, sandbox, capturedOpts.Authorizer.SandboxDir())
+		assert.True(t, capturedOpts.Authorizer.IsCodeUnitDomain())
+		assert.Equal(t, pkgDir, capturedOpts.Authorizer.CodeUnitDir())
+	})
+
+	t.Run("package auth policy requires matching code unit dir", func(t *testing.T) {
+		sandbox := t.TempDir()
+		pkgDir := filepath.Join(sandbox, "pkg")
+		otherPkgDir := filepath.Join(sandbox, "otherpkg")
+		require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+		require.NoError(t, os.MkdirAll(otherPkgDir, 0o755))
+
+		unit, err := codeunit.NewCodeUnit("package otherpkg", otherPkgDir)
+		require.NoError(t, err)
+
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name:       "pkg-agent-mismatched-codeunit",
+			AuthPolicy: AuthPolicyPackage,
+		}))
+
+		_, err = r.Invoke(context.Background(), "pkg-agent-mismatched-codeunit", toolsetinterface.InvokeRequest{
+			AgentCreator: &mockAgentCreator{},
+			ToolOptions: toolsetinterface.Options{
+				SandboxDir:  sandbox,
+				Authorizer:  authdomain.NewCodeUnitAuthorizer(unit, authdomain.NewAutoApproveAuthorizer(sandbox)),
+				GoPkgAbsDir: pkgDir,
+			},
+		})
+		assert.ErrorContains(t, err, "authorizer code-unit dir")
 	})
 
 	t.Run("package auth policy uses tool option authorizer and preserves tool sandbox when caller is absent", func(t *testing.T) {
+		sandbox := t.TempDir()
+		pkgDir := filepath.Join(sandbox, "toolopt-pkg")
+		require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+
+		unit, err := codeunit.NewCodeUnit("package toolopt-pkg", pkgDir)
+		require.NoError(t, err)
+		authorizer := authdomain.NewCodeUnitAuthorizer(unit, authdomain.NewAutoApproveAuthorizer(sandbox))
+
 		require.NoError(t, r.RegisterTool("package-toolopt-capture-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			assert.Equal(t, "/base/sandbox", opts.SandboxDir)
+			assert.Equal(t, sandbox, opts.SandboxDir)
 			require.NotNil(t, opts.Authorizer)
-			assert.Equal(t, "/base/sandbox/toolopt-pkg", opts.Authorizer.SandboxDir())
+			assert.Equal(t, sandbox, opts.Authorizer.SandboxDir())
+			assert.Equal(t, pkgDir, opts.Authorizer.CodeUnitDir())
 			return nil, nil
 		}))
 		require.NoError(t, r.RegisterAgent(Definition{
@@ -496,14 +566,50 @@ func TestRegistry_Invoke(t *testing.T) {
 		req := toolsetinterface.InvokeRequest{
 			AgentCreator: &mockAgentCreator{err: errors.New("mock stop")},
 			ToolOptions: toolsetinterface.Options{
-				SandboxDir:  "/base/sandbox",
-				Authorizer:  authdomain.NewAutoApproveAuthorizer("/base/sandbox"),
-				GoPkgAbsDir: "/base/sandbox/toolopt-pkg",
+				SandboxDir:  sandbox,
+				Authorizer:  authorizer,
+				GoPkgAbsDir: pkgDir,
 			},
 		}
 
-		_, err := r.Invoke(context.Background(), "pkg-agent-toolopt-authorizer", req)
+		_, err = r.Invoke(context.Background(), "pkg-agent-toolopt-authorizer", req)
 		assert.ErrorContains(t, err, "mock stop")
+	})
+
+	t.Run("package auth policy keeps sandbox-relative reads working for nested package paths", func(t *testing.T) {
+		sandbox := t.TempDir()
+		pkgRelDir := filepath.Join("internal", "agentregistry")
+		pkgDir := filepath.Join(sandbox, pkgRelDir)
+		require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "SPEC.md"), []byte("# spec\n"), 0o644))
+
+		unit, err := codeunit.NewCodeUnit("package internal/agentregistry", pkgDir)
+		require.NoError(t, err)
+		authorizer := authdomain.NewCodeUnitAuthorizer(unit, authdomain.NewAutoApproveAuthorizer(sandbox))
+
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name:       "pkg-agent-read-regression",
+			AuthPolicy: AuthPolicyPackage,
+		}))
+
+		prepared, err := r.Prepare(context.Background(), "pkg-agent-read-regression", toolsetinterface.InvokeRequest{
+			ToolOptions: toolsetinterface.Options{
+				SandboxDir:  sandbox,
+				Authorizer:  authorizer,
+				GoPkgAbsDir: pkgDir,
+			},
+		})
+		require.NoError(t, err)
+
+		tool := coretools.NewReadFileTool(prepared.BuildOptions.ToolOptions.Authorizer)
+		res := tool.Run(context.Background(), llmstream.ToolCall{
+			CallID: "read-regression",
+			Name:   coretools.ToolNameReadFile,
+			Type:   "function_call",
+			Input:  `{"path":"internal/agentregistry/SPEC.md"}`,
+		})
+		assert.False(t, res.IsError)
+		assert.Contains(t, res.Result, "# spec")
 	})
 
 	t.Run("system prompt builder overrides", func(t *testing.T) {
