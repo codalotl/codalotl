@@ -92,14 +92,15 @@ type PromptBuilder func(options BuildOptions) (string, error)
 // InitialTurnsBuilder builds user turns that are added before Request.Messages are sent.
 type InitialTurnsBuilder func(ctx context.Context, options BuildOptions) ([]string, error)
 
-type AuthPackagePolicy string
+type AuthPolicy string
 
 const (
-	// AuthPackagePolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
-	AuthPackagePolicyDefault AuthPackagePolicy = ""
+	// AuthPolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
+	AuthPolicyDefault AuthPolicy = ""
 
-	// AuthPackagePolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir. An error occurs if an override is set.
-	AuthPackagePolicyPackage AuthPackagePolicy = "package"
+	// AuthPolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir while preserving the incoming SandboxDir. An error occurs if
+	// an override is set.
+	AuthPolicyPackage AuthPolicy = "package"
 )
 
 // Definition is an agent definition.
@@ -116,8 +117,8 @@ type Definition struct {
 	// This can gather context lazily based on invocation details. Example: package-mode agents may add AGENTS.md, env info, or initial package context.
 	InitialTurnsBuilder InitialTurnsBuilder
 
-	// AuthPackagePolicy indicates the policy used for auth AND packages.
-	AuthPackagePolicy AuthPackagePolicy
+	// AuthPolicy indicates how auth and package scoping are derived.
+	AuthPolicy AuthPolicy
 }
 
 func cloneDefinition(def Definition) Definition {
@@ -132,8 +133,8 @@ func (d Definition) Validate() error {
 	if d.Name == "" {
 		return errors.New("definition name is required")
 	}
-	if d.AuthPackagePolicy != AuthPackagePolicyDefault && d.AuthPackagePolicy != AuthPackagePolicyPackage {
-		return fmt.Errorf("unknown auth package policy %q", d.AuthPackagePolicy)
+	if d.AuthPolicy != AuthPolicyDefault && d.AuthPolicy != AuthPolicyPackage {
+		return fmt.Errorf("unknown auth policy %q", d.AuthPolicy)
 	}
 	return nil
 }
@@ -153,8 +154,8 @@ func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinte
 	effectiveOpts := req.ToolOptions
 	var err error
 
-	switch def.AuthPackagePolicy {
-	case AuthPackagePolicyDefault:
+	switch def.AuthPolicy {
+	case AuthPolicyDefault:
 		if req.CallerAuthorizer != nil {
 			effectiveOpts.Authorizer = req.CallerAuthorizer
 		}
@@ -168,29 +169,31 @@ func (r *Registry) Invoke(ctx context.Context, agentName string, req toolsetinte
 			effectiveOpts.SandboxDir = req.OverrideSandboxDir
 		}
 
-	case AuthPackagePolicyPackage:
+	case AuthPolicyPackage:
 		if req.OverrideAuthorizer != nil || req.OverrideSandboxDir != "" {
-			return nil, errors.New("agentregistry: override authorizer/sandbox dir not allowed with AuthPackagePolicyPackage")
+			return nil, errors.New("agentregistry: override authorizer/sandbox dir not allowed with AuthPolicyPackage")
 		}
 		if req.ToolOptions.GoPkgAbsDir == "" {
-			return nil, errors.New("agentregistry: GoPkgAbsDir is required for AuthPackagePolicyPackage")
+			return nil, errors.New("agentregistry: GoPkgAbsDir is required for AuthPolicyPackage")
 		}
 
-		effectiveOpts.SandboxDir = req.ToolOptions.GoPkgAbsDir
+		if req.CallerSandboxDir != "" {
+			effectiveOpts.SandboxDir = req.CallerSandboxDir
+		}
 		baseAuthorizer := req.CallerAuthorizer
 		if baseAuthorizer == nil {
 			baseAuthorizer = req.ToolOptions.Authorizer
 		}
 		if baseAuthorizer == nil {
-			return nil, errors.New("agentregistry: authorizer is required for AuthPackagePolicyPackage")
+			return nil, errors.New("agentregistry: authorizer is required for AuthPolicyPackage")
 		}
-		effectiveOpts.Authorizer, err = authdomain.WithUpdatedSandbox(baseAuthorizer, effectiveOpts.SandboxDir)
+		effectiveOpts.Authorizer, err = authdomain.WithUpdatedSandbox(baseAuthorizer, req.ToolOptions.GoPkgAbsDir)
 		if err != nil {
 			return nil, fmt.Errorf("agentregistry: failed to update authorizer sandbox: %w", err)
 		}
 
 	default:
-		return nil, fmt.Errorf("agentregistry: unknown auth package policy %q", def.AuthPackagePolicy)
+		return nil, fmt.Errorf("agentregistry: unknown auth policy %q", def.AuthPolicy)
 	}
 
 	effectiveOpts.AgentInvoker = r

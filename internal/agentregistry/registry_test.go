@@ -100,24 +100,24 @@ func TestDefinition_Validate(t *testing.T) {
 
 	t.Run("valid default policy", func(t *testing.T) {
 		def := Definition{
-			Name:              "test",
-			AuthPackagePolicy: AuthPackagePolicyDefault,
+			Name:       "test",
+			AuthPolicy: AuthPolicyDefault,
 		}
 		assert.NoError(t, def.Validate())
 	})
 
 	t.Run("valid package policy", func(t *testing.T) {
 		def := Definition{
-			Name:              "test",
-			AuthPackagePolicy: AuthPackagePolicyPackage,
+			Name:       "test",
+			AuthPolicy: AuthPolicyPackage,
 		}
 		assert.NoError(t, def.Validate())
 	})
 
 	t.Run("invalid policy", func(t *testing.T) {
 		def := Definition{
-			Name:              "test",
-			AuthPackagePolicy: AuthPackagePolicy("invalid"),
+			Name:       "test",
+			AuthPolicy: AuthPolicy("invalid"),
 		}
 		assert.Error(t, def.Validate())
 	})
@@ -273,8 +273,8 @@ func TestRegistry_Invoke(t *testing.T) {
 
 	t.Run("package auth policy requires pkg dir", func(t *testing.T) {
 		pkgDef := Definition{
-			Name:              "pkg-agent",
-			AuthPackagePolicy: AuthPackagePolicyPackage,
+			Name:       "pkg-agent",
+			AuthPolicy: AuthPolicyPackage,
 		}
 		require.NoError(t, r.RegisterAgent(pkgDef))
 
@@ -288,13 +288,13 @@ func TestRegistry_Invoke(t *testing.T) {
 		}
 
 		_, err := r.Invoke(context.Background(), "pkg-agent", req)
-		assert.ErrorContains(t, err, "GoPkgAbsDir is required for AuthPackagePolicyPackage")
+		assert.ErrorContains(t, err, "GoPkgAbsDir is required for AuthPolicyPackage")
 	})
 
 	t.Run("package auth policy requires authorizer", func(t *testing.T) {
 		require.NoError(t, r.RegisterAgent(Definition{
-			Name:              "pkg-agent-needs-authorizer",
-			AuthPackagePolicy: AuthPackagePolicyPackage,
+			Name:       "pkg-agent-needs-authorizer",
+			AuthPolicy: AuthPolicyPackage,
 		}))
 
 		req := toolsetinterface.InvokeRequest{
@@ -305,13 +305,13 @@ func TestRegistry_Invoke(t *testing.T) {
 		}
 
 		_, err := r.Invoke(context.Background(), "pkg-agent-needs-authorizer", req)
-		assert.ErrorContains(t, err, "authorizer is required for AuthPackagePolicyPackage")
+		assert.ErrorContains(t, err, "authorizer is required for AuthPolicyPackage")
 	})
 
-	t.Run("package auth policy success updates sandbox", func(t *testing.T) {
+	t.Run("package auth policy preserves caller sandbox and updates authorizer jail", func(t *testing.T) {
 		pkgDef := Definition{
-			Name:              "pkg-agent-ok",
-			AuthPackagePolicy: AuthPackagePolicyPackage,
+			Name:       "pkg-agent-ok",
+			AuthPolicy: AuthPolicyPackage,
 		}
 		require.NoError(t, r.RegisterAgent(pkgDef))
 
@@ -332,6 +332,7 @@ func TestRegistry_Invoke(t *testing.T) {
 		req := toolsetinterface.InvokeRequest{
 			AgentCreator:     mockCreator,
 			CallerAuthorizer: authorizer,
+			CallerSandboxDir: "/base/sandbox",
 			ToolOptions: toolsetinterface.Options{
 				GoPkgAbsDir: "/base/sandbox/my-pkg",
 			},
@@ -340,27 +341,28 @@ func TestRegistry_Invoke(t *testing.T) {
 		_, err := r.Invoke(context.Background(), "pkg-agent-ok-tool", req)
 		assert.ErrorContains(t, err, "mock stop")
 
-		assert.Equal(t, "/base/sandbox/my-pkg", capturedOpts.SandboxDir)
+		assert.Equal(t, "/base/sandbox", capturedOpts.SandboxDir)
 		assert.NotNil(t, capturedOpts.Authorizer)
 		assert.Equal(t, "/base/sandbox/my-pkg", capturedOpts.Authorizer.SandboxDir())
 	})
 
-	t.Run("package auth policy uses tool option authorizer when caller is absent", func(t *testing.T) {
+	t.Run("package auth policy uses tool option authorizer and preserves tool sandbox when caller is absent", func(t *testing.T) {
 		require.NoError(t, r.RegisterTool("package-toolopt-capture-tool", func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			assert.Equal(t, "/base/sandbox/toolopt-pkg", opts.SandboxDir)
+			assert.Equal(t, "/base/sandbox", opts.SandboxDir)
 			require.NotNil(t, opts.Authorizer)
 			assert.Equal(t, "/base/sandbox/toolopt-pkg", opts.Authorizer.SandboxDir())
 			return nil, nil
 		}))
 		require.NoError(t, r.RegisterAgent(Definition{
-			Name:              "pkg-agent-toolopt-authorizer",
-			AuthPackagePolicy: AuthPackagePolicyPackage,
-			ToolNames:         []string{"package-toolopt-capture-tool"},
+			Name:       "pkg-agent-toolopt-authorizer",
+			AuthPolicy: AuthPolicyPackage,
+			ToolNames:  []string{"package-toolopt-capture-tool"},
 		}))
 
 		req := toolsetinterface.InvokeRequest{
 			AgentCreator: &mockAgentCreator{err: errors.New("mock stop")},
 			ToolOptions: toolsetinterface.Options{
+				SandboxDir:  "/base/sandbox",
 				Authorizer:  authdomain.NewAutoApproveAuthorizer("/base/sandbox"),
 				GoPkgAbsDir: "/base/sandbox/toolopt-pkg",
 			},

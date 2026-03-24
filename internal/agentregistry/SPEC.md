@@ -75,14 +75,15 @@ type PromptBuilder func(options BuildOptions) (string, error)
 // InitialTurnsBuilder builds user turns that are added before Request.Messages are sent.
 type InitialTurnsBuilder func(ctx context.Context, options BuildOptions) ([]string, error)
 
-type AuthPackagePolicy string
+type AuthPolicy string
 
 const (
-	// AuthPackagePolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
-	AuthPackagePolicyDefault AuthPackagePolicy = ""
+	// AuthPolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
+	AuthPolicyDefault AuthPolicy = ""
 
-	// AuthPackagePolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir. An error occurs if an override is set.
-	AuthPackagePolicyPackage AuthPackagePolicy = "package"
+	// AuthPolicyPackage creates a new Authorizer based on the InvokeRequest's ToolOptions's GoPkgAbsDir while preserving the incoming SandboxDir. An error occurs if
+	// an override is set.
+	AuthPolicyPackage AuthPolicy = "package"
 )
 
 // Definition is an agent definition.
@@ -99,8 +100,8 @@ type Definition struct {
 	// This can gather context lazily based on invocation details. Example: package-mode agents may add AGENTS.md, env info, or initial package context.
 	InitialTurnsBuilder InitialTurnsBuilder
 
-	// AuthPackagePolicy indicates the policy used for auth AND packages.
-	AuthPackagePolicy AuthPackagePolicy
+	// AuthPolicy indicates how auth and package scoping are derived.
+	AuthPolicy AuthPolicy
 }
 
 // Validate checks that a Definition is internally consistent.
