@@ -367,10 +367,11 @@ func writeSSE(w http.ResponseWriter, response any) error {
 		return nil
 	}
 
+	createdResponse := createdResponseEventPayload(response)
 	if err := send(map[string]any{
 		"type":            "response.created",
 		"sequence_number": sequenceNumber,
-		"response":        response,
+		"response":        createdResponse,
 	}); err != nil {
 		return err
 	}
@@ -562,6 +563,19 @@ func streamOutputItemDone(send func(any) error, outputIndex int, item map[string
 	*sequenceNumber++
 
 	return nil
+}
+
+func createdResponseEventPayload(response any) any {
+	responseObject, ok := response.(map[string]any)
+	if !ok {
+		return response
+	}
+
+	created := cloneObject(responseObject)
+	created["status"] = "in_progress"
+	created["output"] = []any{}
+	created["usage"] = nil
+	return created
 }
 
 func completedResponseEventPayload(response any) any {

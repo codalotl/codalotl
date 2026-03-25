@@ -312,6 +312,72 @@ func TestHandler_ResponseCompletedDefaultsStatusToCompleted(t *testing.T) {
 	assert.Equal(t, "completed", response["status"])
 }
 
+func TestHandler_ResponseCreatedIsInProgressAndEmpty(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": "Hello",
+				},
+				"response": {
+					"id": "resp_created",
+					"object": "response",
+					"status": "completed",
+					"usage": {
+						"input_tokens": 12,
+						"output_tokens": 7
+					},
+					"output": [
+						{
+							"id": "msg_created",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "hello from the mock"},
+							],
+						},
+						{
+							"id": "fc_created",
+							"type": "function_call",
+							"call_id": "call_created",
+							"name": "lookup_weather",
+							"arguments": "{\"city\":\"San Francisco\"}",
+						}
+					],
+				},
+			},
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{"model":"gpt-5.4","input":"Hello"}`)
+	events := parseSSEEvents(t, body)
+
+	created := firstEventOfType(t, events, "response.created")
+	response, ok := created["response"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "in_progress", response["status"])
+	assert.Nil(t, response["usage"])
+
+	output, ok := response["output"].([]any)
+	require.True(t, ok)
+	assert.Empty(t, output)
+
+	completed := firstEventOfType(t, events, "response.completed")
+	completedResponse, ok := completed["response"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "completed", completedResponse["status"])
+
+	completedOutput, ok := completedResponse["output"].([]any)
+	require.True(t, ok)
+	require.Len(t, completedOutput, 2)
+}
+
 func TestHandler_StreamsToolOutputItemDoneEvents(t *testing.T) {
 	handler, err := NewHandler([]byte(`{
 		"responses": [
