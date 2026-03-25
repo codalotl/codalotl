@@ -50,7 +50,7 @@ func TestNewHandler_StreamResponseFromJSONC(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/responses", bytes.NewBufferString(`{"model":"gpt-5.4","input":"Tell me a story about a unicorn."}`))
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/responses", bytes.NewBufferString(`{"model":"gpt-5.4","input":"Tell me a story about a unicorn."}`))
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer test-token")
 
@@ -443,9 +443,13 @@ func TestHandler_StreamsToolOutputItemDoneEvents(t *testing.T) {
 }
 
 func doResponsesRequest(t *testing.T, baseURL string, headers map[string]string, body string) string {
+	return doResponsesRequestToPath(t, baseURL, pathV1Responses, headers, body)
+}
+
+func doResponsesRequestToPath(t *testing.T, baseURL string, path string, headers map[string]string, body string) string {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPost, baseURL+"/v1/responses", bytes.NewBufferString(body))
+	req, err := http.NewRequest(http.MethodPost, baseURL+path, bytes.NewBufferString(body))
 	require.NoError(t, err)
 	for name, value := range headers {
 		req.Header.Set(name, value)

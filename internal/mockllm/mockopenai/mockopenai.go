@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	pathResponses = "/v1/responses"
-	matchExact    = "exact"
-	matchPartial  = "partial"
-	chunkRunes    = 24
+	pathResponses   = "/responses"
+	pathV1Responses = "/v1/responses"
+	matchExact      = "exact"
+	matchPartial    = "partial"
+	chunkRunes      = 24
 )
 
 type rawConfig struct {
@@ -201,7 +202,7 @@ func parseValueMatcher(data json.RawMessage) (valueMatcher, error) {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != pathResponses {
+	if r.URL.Path != pathResponses && r.URL.Path != pathV1Responses {
 		http.NotFound(w, r)
 		return
 	}
