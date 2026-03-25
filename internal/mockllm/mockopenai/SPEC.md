@@ -1,8 +1,8 @@
 # mockopenai
 
-The `mockopenai` package implements a mock HTTP server for a subset of the OpenAI API, for the purpose of testing.
+The `mockopenai` package implements a mock HTTP server for a subset of the OpenAI API, for testing.
 
-Inputs/outputs are given via a JSON file. The response is streamed using SSE.
+Input and output are provided via a JSON file. The response is streamed using SSE.
 
 ## Example Usage
 
@@ -15,7 +15,7 @@ Given a JSON or JSON-with-comments file:
             // name is optional metadata only
             "name": "initial request",
 
-            // if true, if this request is used, it cannot be matched again.
+            // if true, once this request is used, it cannot be matched again.
             "consume": false,
 
             // Request fields to /responses
@@ -26,8 +26,8 @@ Given a JSON or JSON-with-comments file:
 
             // headers: optional request headers
             "headers": [
-                { "name": "X-Tenant-ID", "value": "tenant-a", "match_type": "exact" },
-                { "name": "Authorization", "value": "Bearer", "match_type": "contains" }
+                { "name": "X-Tenant-ID", "value": "tenant-a" },
+                { "name": "Authorization", "value": {"match": "partial", "text": "Bearer"} }
             ],
 
             "response": {
@@ -42,27 +42,27 @@ Given a JSON or JSON-with-comments file:
 }
 ```
 
-TODO: put in example usage in Go of how we set up server and actually use this library.
+TODO: add Go example usage showing how to set up the server and use this library.
 
 ## Dependencies
 
-This package must not depend on any OpenAI SDK. Only depend on stdlib packages, testify, and other packages implemented in this repo.
+This package must not depend on any OpenAI SDK. Depend only on stdlib packages, testify, and other packages implemented in this repo.
 
 Server must be `net/http` compatible.
 
 ## Scope and Limitations
 
 - Only Responses API. Only response creation. Only streaming.
-- No latency simulation
-- Does not mock hosted tools (e.g. OpenAI file search, code execution) calls, reasoning, and MCP calls
+- No latency simulation.
+- Does not mock hosted tool calls (e.g. OpenAI file search, code execution), reasoning, or MCP calls.
 
 ## Matching
 
 - Scan top-to-bottom.
 - Optional consume-on-use.
-- Partial and exact matching must be supported
+- Partial and exact matching must be supported.
 
-Fields in the request can either be a string (exact matching) or an object. Example:
+Request fields and header values can either be a string (exact matching) or an object. Example:
 
 ```jsonc
 {
