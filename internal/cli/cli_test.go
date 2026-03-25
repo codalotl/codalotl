@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/noninteractive"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
+	"github.com/stretchr/testify/require"
 )
 
 func isolateUserConfig(t *testing.T) {
@@ -144,6 +146,39 @@ func TestRun_Exec_AcceptsModelFlag(t *testing.T) {
 	if strings.Contains(strings.ToLower(errOut.String()), "unknown flag") {
 		t.Fatalf("expected --model to be accepted, got stderr: %q", errOut.String())
 	}
+}
+
+func TestRun_Exec_JSONFlagSetsOutputJSON(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origRunNoninteractiveExec := runNoninteractiveExec
+	t.Cleanup(func() { runNoninteractiveExec = origRunNoninteractiveExec })
+
+	var gotPrompt string
+	var gotOpts noninteractive.Options
+	runNoninteractiveExec = func(userPrompt string, opts noninteractive.Options) error {
+		gotPrompt = userPrompt
+		gotOpts = opts
+		_, err := opts.Out.Write([]byte("{\"event\":\"done\"}\n"))
+		require.NoError(t, err)
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "exec", "--json", "hello world"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "hello world", gotPrompt)
+	require.True(t, gotOpts.OutputJSON)
+	require.Equal(t, "{\"event\":\"done\"}\n", out.String())
 }
 
 func TestRun_Version_PrintsVersion(t *testing.T) {
