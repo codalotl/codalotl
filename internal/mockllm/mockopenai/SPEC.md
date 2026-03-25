@@ -18,7 +18,7 @@ Given a JSON or JSON-with-comments file:
             // if true, once this request is used, it cannot be matched again.
             "consume": false,
 
-            // Request fields to /responses
+            // Request fields to /v1/responses
             "request": {
                 "model": "gpt-5.4",
                 "input": "Tell me a three sentence bedtime story about a unicorn."
@@ -54,7 +54,7 @@ srv := httptest.NewServer(handler)
 defer srv.Close()
 
 reqBody := `{"model":"gpt-5.4","input":"Tell me a three sentence bedtime story about a unicorn."}`
-req, err := http.NewRequest(http.MethodPost, srv.URL+"/responses", strings.NewReader(reqBody))
+req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/responses", strings.NewReader(reqBody))
 if err != nil {
     return err
 }
