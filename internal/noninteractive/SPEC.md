@@ -19,26 +19,87 @@ Upon finishing a session, print a line like this:
 
 ## JSON mode
 
-If `Options.OutputJSON` is true, output is JSON.
+If `Options.OutputJSON` is true, output is newline-delimited JSON: one object per line, no surrounding array.
 
-- Tool calls do not have any delay. We print a call and result as they happen.
-- `## Finishing a session` becomes a JSON event with type `"done"`.
-- Each event emits an associated JSON object.
-- Each JSON object has a `"type"` field.
-- There is a `{"type": "start"}` event. Fields:
-	- cwd
-	- package_path
-	- model_id
+JSON mode is a structured log, not a 1:1 dump of every internal `agent.Event`. It emits a small stable event set for external consumers.
+
+- Tool calls do not have any delay. Emit call and result as they happen.
+- Every object has a `"type"` field.
+- `start` is first event.
+- `done`, `error`, or `canceled` is terminal event.
+- Validation errors before session start still return an error and print nothing.
+- `user_message` is only the end-user prompt passed to `Exec`. Internal setup messages are not emitted as JSON `user_message` events.
+
+### Shared objects
+
+- `agent`
+	- `id` string
+	- `depth` int
+- `tool`
+	- `call_id` string
+	- `name` string
+	- `type` string
+	- `input` string. Present on `tool_call`. Usually JSON-serialized params for function tools.
+- `result`
+	- `output` string. Raw tool result string.
+	- `is_error` bool
+- `token_usage`
+	- `input` int
+	- `cached_input` int
+	- `cache_writes` int
+	- `output` int
+	- `total` int
+
+### Event types
+
+- `start`
+	- `cwd` string
+	- `package_path` string. `""` when not in package mode.
+	- `model_id` string
+- `user_message`
+	- `text` string
+- `assistant_text`
+	- `agent`
+	- `content` string
+- `assistant_reasoning`
+	- `agent`
+	- `content` string
+- `tool_call`
+	- `agent`
+	- `tool`
+- `tool_complete`
+	- `agent`
+	- `tool`
+	- `result`
+- `permission`
+	- `prompt` string
+	- `decision` string. `"allow"` or `"disallow"`.
+	- `automatic` bool
+- `warning`
+	- `agent`
+	- `message` string
+- `retry`
+	- `agent`
+	- `message` string
+- `error`
+	- `agent`
+	- `message` string
+- `canceled`
+	- `agent`
+	- `message` string
+- `done`
+	- `token_usage`
+	- `ideal_token_usage` optional `token_usage`. Only when ideal-caching reporting is enabled.
 
 Example Output:
 
 ```json
 {"type": "start", "cwd": "/some/path", "package_path": "internal/somepkg", "model_id": "gpt-5.4-high"}
 {"type": "user_message", "text": "fix failing test"}
-{"type":"tool_call","agent":{"id":"root","depth":0},"tool":{"call_id":"call_1","name":"read_file","tool_type":"function_call","input_raw":"{\"path\":\"foo.go\"}"}}
-{"type":"tool_complete","agent":{"id":"root","depth":0},"tool":{"call_id":"call_1","name":"read_file"},"result":{"is_error":false,"content":"package foo\n..."}}
-{"type":"assistant_text","agent":{"id":"root","depth":0},"content":"I found the issue..."}
-{"type":"done","token_usage":{"input":123,"cached_input":45,"output":67,"total":190}}
+{"type": "tool_call", "agent": {"id": "root", "depth": 0}, "tool": {"call_id": "call_1", "name": "read_file", "type": "function_call", "input": "{\"path\":\"foo.go\"}"}}
+{"type": "tool_complete", "agent": {"id": "root", "depth": 0}, "tool": {"call_id": "call_1", "name": "read_file", "type": "function_call"}, "result": {"output": "package foo\n...", "is_error": false}}
+{"type": "assistant_text", "agent": {"id": "root", "depth": 0}, "content": "I found the issue..."}
+{"type": "done", "token_usage": {"input": 123, "cached_input": 45, "cache_writes": 0, "output": 67, "total": 235}}
 ```
 
 ## Public API
@@ -64,7 +125,7 @@ type Options struct {
 	// of the terminal and print colorized/formatted text.
 	NoFormatting bool
 
-	// OutputJSON outputs JSON instead of human-readable text (one JSON object per line). If set, NoFormatting is ignored.
+	// OutputJSON outputs newline-delimited JSON instead of human-readable text. If set, NoFormatting is ignored.
 	OutputJSON bool
 
 	// If Out != nil, any prints we do will use Out; otherwise will use Stdout. If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file),
