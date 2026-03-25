@@ -2,6 +2,7 @@ package agentbuilder
 
 import (
 	"github.com/codalotl/codalotl/internal/agentregistry"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
@@ -151,7 +152,11 @@ func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchP
 	if opts.AgentName != AgentPackageMode {
 		return nil
 	}
-	return toolsets.PackagePostChecks(opts.LintSteps)
+	lintSteps := opts.LintSteps
+	if lintSteps == nil {
+		lintSteps = lints.DefaultSteps()
+	}
+	return toolsets.PackagePostChecks(lintSteps)
 }
 
 func changeAPIToolset(opts toolsetinterface.Options) toolsetinterface.Toolset {

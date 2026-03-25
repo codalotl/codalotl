@@ -217,6 +217,93 @@ func TestBuildRegistry_PackageModeNonOpenAIEditAndWriteRunPostChecks(t *testing.
 	require.Contains(t, writeResult.Result, "custom-fix")
 }
 
+func TestBuildRegistry_PackageModeOpenAIApplyPatchUsesDefaultLintStepsWhenUnset(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.22\n"), 0o644))
+
+	pkgDir := filepath.Join(sandbox, "pkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n\nfunc F() {}\n"), 0o644))
+
+	tools := invokeAgentTools(t, AgentPackageMode, llmmodel.ProviderIDOpenAI.DefaultModel(), sandbox, pkgDir, nil)
+	applyTool := requireTool(t, tools, coretools.ToolNameApplyPatch)
+
+	patch := `*** Begin Patch
+*** Update File: pkg/pkg.go
+@@
+-package pkg
+-
+-func F() {}
++package pkg
++
++func F( ){
++}
+*** End Patch`
+
+	result := applyTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "apply-default-post-checks",
+		Name:   coretools.ToolNameApplyPatch,
+		Type:   "custom_tool_call",
+		Input:  patch,
+	})
+
+	require.False(t, result.IsError)
+	require.Contains(t, result.Result, "<lint-status")
+	require.NotContains(t, result.Result, `message="no linters"`)
+
+	content, err := os.ReadFile(filepath.Join(pkgDir, "pkg.go"))
+	require.NoError(t, err)
+	assert.Equal(t, "package pkg\n\nfunc F() {\n}\n", string(content))
+}
+
+func TestBuildRegistry_PackageModeNonOpenAIEditAndWriteUseDefaultLintStepsWhenUnset(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.22\n"), 0o644))
+
+	pkgDir := filepath.Join(sandbox, "pkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n\nfunc F() {}\n"), 0o644))
+
+	tools := invokeAgentTools(t, AgentPackageMode, llmmodel.ProviderIDAnthropic.DefaultModel(), sandbox, pkgDir, nil)
+	editTool := requireTool(t, tools, coretools.ToolNameEdit)
+	writeTool := requireTool(t, tools, coretools.ToolNameWrite)
+
+	editResult := editTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "edit-default-post-checks",
+		Name:   coretools.ToolNameEdit,
+		Type:   "function_call",
+		Input:  `{"path":"pkg/pkg.go","old_text":"func F() {}","new_text":"func F( ) {\n}"}`,
+	})
+	require.False(t, editResult.IsError)
+	require.Contains(t, editResult.Result, "<lint-status")
+	require.NotContains(t, editResult.Result, `message="no linters"`)
+
+	content, err := os.ReadFile(filepath.Join(pkgDir, "pkg.go"))
+	require.NoError(t, err)
+	assert.Equal(t, "package pkg\n\nfunc F() {\n}\n", string(content))
+
+	writeContent := "package pkg\n\nfunc G( ) {\n}\n"
+	writeInput, err := json.Marshal(map[string]string{
+		"path":    "pkg/extra.go",
+		"content": writeContent,
+	})
+	require.NoError(t, err)
+
+	writeResult := writeTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "write-default-post-checks",
+		Name:   coretools.ToolNameWrite,
+		Type:   "function_call",
+		Input:  string(writeInput),
+	})
+	require.False(t, writeResult.IsError)
+	require.Contains(t, writeResult.Result, "<lint-status")
+	require.NotContains(t, writeResult.Result, `message="no linters"`)
+
+	content, err = os.ReadFile(filepath.Join(pkgDir, "extra.go"))
+	require.NoError(t, err)
+	assert.Equal(t, "package pkg\n\nfunc G() {\n}\n", string(content))
+}
+
 func TestBuildRegistry_PackageModeChangeAPIUsesFullPackageToolset(t *testing.T) {
 	tools := invokeAgentTools(t, AgentPackageMode, llmmodel.ProviderIDOpenAI.DefaultModel(), "", "", nil)
 	changeAPITool := requireTool(t, tools, pkgtools.ToolNameChangeAPI)
