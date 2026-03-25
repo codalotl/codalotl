@@ -85,6 +85,7 @@ func runCase(t *testing.T, caseName string) {
 	assertNoTerminalFailure(t, actualEvents)
 	assertEventSubsequence(t, cfg.Expected, actualEvents)
 	assertExpectedRepo(t, filepath.Join(caseDir, "expected_repo"), workDir)
+	require.NoError(t, mockopenai.AssertAllConsumed(handler))
 }
 
 func readConfig(t *testing.T, path string) testCaseConfig {

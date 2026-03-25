@@ -38,14 +38,7 @@
       "content": "hello.txt says: Hello integration world."
     },
     {
-      "type": "done",
-      "token_usage": {
-        "input": 27,
-        "cached_input": 0,
-        "cache_writes": 0,
-        "output": 11,
-        "total": 38
-      }
+      "type": "done"
     }
   ]
 }

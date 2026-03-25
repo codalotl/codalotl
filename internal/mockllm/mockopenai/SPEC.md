@@ -84,6 +84,7 @@ Server must be `net/http` compatible.
 
 - Scan top-to-bottom.
 - Optional consume-on-use.
+- Tests that use `consume: true` should call `AssertAllConsumed(handler)` after execution.
 - Partial and exact matching must be supported.
 
 Request fields and header values can either be a string (exact matching) or an object. Example:
@@ -106,4 +107,7 @@ func NewHandlerFromFile(path string) (http.Handler, error)
 
 // NewHandler creates an http.Handler that serves mock OpenAI Responses API requests using response definitions loaded from JSON or JSON-with-comments bytes.
 func NewHandler(data []byte) (http.Handler, error)
+
+// AssertAllConsumed verifies that every configured response with consume=true was matched.
+func AssertAllConsumed(h http.Handler) error
 ```

@@ -82,14 +82,7 @@
       "content": "Greeter.Hello returns the greeting string \"hello, <name>\"."
     },
     {
-      "type": "done",
-      "token_usage": {
-        "input": 55,
-        "cached_input": 0,
-        "cache_writes": 0,
-        "output": 21,
-        "total": 76
-      }
+      "type": "done"
     }
   ]
 }

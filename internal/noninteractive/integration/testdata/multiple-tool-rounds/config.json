@@ -62,14 +62,7 @@
       "content": "docs/note.txt says: Multi-step integration success."
     },
     {
-      "type": "done",
-      "token_usage": {
-        "input": 33,
-        "cached_input": 0,
-        "cache_writes": 0,
-        "output": 13,
-        "total": 46
-      }
+      "type": "done"
     }
   ]
 }

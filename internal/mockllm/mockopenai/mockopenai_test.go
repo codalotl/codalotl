@@ -486,6 +486,68 @@ func TestHandler_PartialMatcherSupportsStructuredStringsWithAngleBrackets(t *tes
 	assert.Contains(t, body, `matched`)
 }
 
+func TestAssertAllConsumed(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"name": "used",
+				"consume": true,
+				"request": {
+					"model": "gpt-5.4",
+					"input": "Hello"
+				},
+				"response": {
+					"id": "resp_used",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_used",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "used"}
+							]
+						}
+					]
+				}
+			},
+			{
+				"name": "unused",
+				"consume": true,
+				"request": {
+					"model": "gpt-5.4",
+					"input": "Never sent"
+				},
+				"response": {
+					"id": "resp_unused",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_unused",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "unused"}
+							]
+						}
+					]
+				}
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{"model":"gpt-5.4","input":"Hello"}`)
+	assert.Contains(t, body, `used`)
+
+	err = AssertAllConsumed(handler)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unused")
+}
+
 func doResponsesRequest(t *testing.T, baseURL string, headers map[string]string, body string) string {
 	return doResponsesRequestToPath(t, baseURL, pathV1Responses, headers, body)
 }

@@ -83,6 +83,42 @@ func NewHandler(data []byte) (http.Handler, error) {
 	return &handler{responses: responses}, nil
 }
 
+// AssertAllConsumed verifies that every configured response with consume=true was matched.
+func AssertAllConsumed(h http.Handler) error {
+	mockHandler, ok := h.(*handler)
+	if !ok {
+		return fmt.Errorf("handler is not a mockopenai handler")
+	}
+	return mockHandler.assertAllConsumed()
+}
+
+func (h *handler) assertAllConsumed() error {
+	if h == nil {
+		return nil
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var unused []string
+	for i, response := range h.responses {
+		if !response.consume || response.consumed {
+			continue
+		}
+
+		name := strings.TrimSpace(response.name)
+		if name == "" {
+			name = fmt.Sprintf("response[%d]", i)
+		}
+		unused = append(unused, name)
+	}
+
+	if len(unused) == 0 {
+		return nil
+	}
+	return fmt.Errorf("unused consumed mock responses: %s", strings.Join(unused, ", "))
+}
+
 func parseConfig(data []byte) ([]compiledResponse, error) {
 	cleaned := stripTrailingCommas(stripComments(data))
 

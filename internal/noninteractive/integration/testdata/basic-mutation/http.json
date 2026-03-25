@@ -1,0 +1,69 @@
+{
+  "responses": [
+    {
+      "name": "mutation-initial",
+      "consume": true,
+      "request": {
+        "model": "mock-model-basic-mutation",
+        "input": {
+          "match": "partial",
+          "text": "Update @note.txt so it says \"After mutation.\" instead of \"Before mutation.\"."
+        },
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"apply_patch\""
+        }
+      },
+      "response": {
+        "id": "resp_mutation_1",
+        "object": "response",
+        "usage": {
+          "input_tokens": 18,
+          "output_tokens": 4
+        },
+        "output": [
+          {
+            "id": "ct_mutation_1",
+            "type": "custom_tool_call",
+            "call_id": "call_apply_patch_note",
+            "name": "apply_patch",
+            "input": "*** Begin Patch\n*** Update File: note.txt\n@@\n-Before mutation.\n+After mutation.\n*** End Patch\n"
+          }
+        ]
+      }
+    },
+    {
+      "name": "mutation-followup",
+      "consume": true,
+      "request": {
+        "model": "mock-model-basic-mutation",
+        "previous_response_id": "resp_mutation_1",
+        "input": {
+          "match": "partial",
+          "text": "<apply-patch ok=\"true\">"
+        }
+      },
+      "response": {
+        "id": "resp_mutation_2",
+        "object": "response",
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 7
+        },
+        "output": [
+          {
+            "id": "msg_mutation_2",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Updated note.txt to say After mutation."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
