@@ -2,9 +2,7 @@
 
 The `noninteractive` package implements a noninteractive agent. It's the analogue of `tui`, except non-interactive and via standard CLI prints, instead of an alt screen.
 
-## Details
-
-### Tool Calls
+## Tool Calls
 
 The agent issues events for tool calls and tool call results. Usually running the tool is fast, so the Call -> Result takes just milliseconds (for instance, reading a file).
 
@@ -13,11 +11,35 @@ To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, firs
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
 - If the three seconds elapses without getting the result, print the tool call. When the result comes in, print that as well.
 
-### Finishing a session
+## Finishing a session
 
 Upon finishing a session, print a line like this:
 
 `• Agent finished the turn. Tokens: input=10042 cached_input=32000 output=1043 total=43085`
+
+## JSON mode
+
+If `Options.OutputJSON`, we do JSON output.
+
+- Tool calls do not have any delay. We print a call and result as they happen.
+- `## Finishing a session` is updated to be JSON-ified (event type: "done").
+- Each event emits an associated JSON object.
+- Each JSON object has a `"type"` field.
+- There is a `{"type": "start"} event`. Fields:
+	- cwd
+	- package_path
+	- model_id
+
+Example Output:
+
+```json
+{"type": "start", "cwd": "/some/path", "package_path": "internal/somepkg", "model_id": "gpt-5.4-high"}
+{"type": "user_message", "text": "fix failing test"}
+{"type":"tool_call","agent":{"id":"root","depth":0},"tool":{"call_id":"call_1","name":"read_file","tool_type":"function_call","input_raw":"{\"path\":\"foo.go\"}"}}
+{"type":"tool_complete","agent":{"id":"root","depth":0},"tool":{"call_id":"call_1","name":"read_file"},"result":{"is_error":false,"content":"package foo\n..."}}
+{"type":"assistant_text","agent":{"id":"root","depth":0},"content":"I found the issue..."}
+{"type":"done","token_usage":{"input":123,"cached_input":45,"output":67,"total":190}}
+```
 
 ## Public API
 
@@ -41,6 +63,9 @@ type Options struct {
 	// NoFormatting=true means any prints do NOT use colors or other ANSI control codes to format. Only outputs plain text. Otherwise, we default to the color scheme
 	// of the terminal and print colorized/formatted text.
 	NoFormatting bool
+
+	// OutputJSON outputs JSON instead of human-readable text (one JSON object per line). If set, NoFormatting is ignored.
+	OutputJSON bool
 
 	// If Out != nil, any prints we do will use Out; otherwise will use Stdout. If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file),
 	// we'd still just print to Out (instead of something like Stderr).
