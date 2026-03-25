@@ -19,13 +19,13 @@ Upon finishing a session, print a line like this:
 
 ## JSON mode
 
-If `Options.OutputJSON`, we do JSON output.
+If `Options.OutputJSON` is true, output is JSON.
 
 - Tool calls do not have any delay. We print a call and result as they happen.
-- `## Finishing a session` is updated to be JSON-ified (event type: "done").
+- `## Finishing a session` becomes a JSON event with type `"done"`.
 - Each event emits an associated JSON object.
 - Each JSON object has a `"type"` field.
-- There is a `{"type": "start"} event`. Fields:
+- There is a `{"type": "start"}` event. Fields:
 	- cwd
 	- package_path
 	- model_id
