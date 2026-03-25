@@ -316,10 +316,30 @@ func (m valueMatcher) matches(actual any) bool {
 	case matchExact:
 		return actualText == m.text
 	case matchPartial:
-		return strings.Contains(actualText, m.text)
+		return strings.Contains(actualText, m.text) || structuredValueContainsText(actual, m.text)
 	default:
 		return false
 	}
+}
+
+func structuredValueContainsText(actual any, needle string) bool {
+	switch value := actual.(type) {
+	case string:
+		return strings.Contains(value, needle)
+	case []any:
+		for _, item := range value {
+			if structuredValueContainsText(item, needle) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range value {
+			if structuredValueContainsText(item, needle) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func actualMatchText(actual any) (string, bool) {
@@ -327,12 +347,22 @@ func actualMatchText(actual any) (string, bool) {
 		return text, true
 	}
 
-	encoded, err := json.Marshal(actual)
+	encoded, err := marshalJSONNoEscape(actual)
 	if err != nil {
 		return "", false
 	}
 
 	return string(encoded), true
+}
+
+func marshalJSONNoEscape(value any) ([]byte, error) {
+	var buf strings.Builder
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		return nil, err
+	}
+	return []byte(strings.TrimSuffix(buf.String(), "\n")), nil
 }
 
 func canonicalJSON(value any) (string, error) {

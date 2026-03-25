@@ -1,0 +1,36 @@
+{
+  "responses": [
+    {
+      "name": "hello-world",
+      "consume": true,
+      "request": {
+        "model": "mock-model-hello-world",
+        "input": {
+          "match": "partial",
+          "text": "Reply with exactly: Hello from the integration test."
+        }
+      },
+      "response": {
+        "id": "resp_hello_world",
+        "object": "response",
+        "usage": {
+          "input_tokens": 11,
+          "output_tokens": 4
+        },
+        "output": [
+          {
+            "id": "msg_hello_world",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Hello from the integration test."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

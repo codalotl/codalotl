@@ -1,0 +1,98 @@
+{
+  "responses": [
+    {
+      "name": "multi-round-initial",
+      "consume": true,
+      "request": {
+        "model": "mock-model-multiple-tool-rounds",
+        "input": {
+          "match": "partial",
+          "text": "Use the available tools if needed to answer what is in @docs/ and @docs/note.txt."
+        },
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"ls\""
+        }
+      },
+      "response": {
+        "id": "resp_multi_1",
+        "object": "response",
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 2
+        },
+        "output": [
+          {
+            "id": "fc_multi_1",
+            "type": "function_call",
+            "call_id": "call_ls_docs",
+            "name": "ls",
+            "arguments": "{\"path\":\"docs\"}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "multi-round-second",
+      "consume": true,
+      "request": {
+        "model": "mock-model-multiple-tool-rounds",
+        "previous_response_id": "resp_multi_1",
+        "input": {
+          "match": "partial",
+          "text": "note.txt"
+        }
+      },
+      "response": {
+        "id": "resp_multi_2",
+        "object": "response",
+        "usage": {
+          "input_tokens": 14,
+          "output_tokens": 3
+        },
+        "output": [
+          {
+            "id": "fc_multi_2",
+            "type": "function_call",
+            "call_id": "call_read_note",
+            "name": "read_file",
+            "arguments": "{\"path\":\"docs/note.txt\"}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "multi-round-final",
+      "consume": true,
+      "request": {
+        "model": "mock-model-multiple-tool-rounds",
+        "previous_response_id": "resp_multi_2",
+        "input": {
+          "match": "partial",
+          "text": "<file name=\"docs/note.txt\""
+        }
+      },
+      "response": {
+        "id": "resp_multi_3",
+        "object": "response",
+        "usage": {
+          "input_tokens": 9,
+          "output_tokens": 8
+        },
+        "output": [
+          {
+            "id": "msg_multi_3",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "docs/note.txt says: Multi-step integration success."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

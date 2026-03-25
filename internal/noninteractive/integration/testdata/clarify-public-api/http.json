@@ -1,0 +1,134 @@
+{
+  "responses": [
+    {
+      "name": "clarify-root-initial",
+      "consume": true,
+      "request": {
+        "model": "mock-model-clarify-public-api",
+        "input": {
+          "match": "partial",
+          "text": "What does Greeter.Hello return?"
+        },
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"clarify_public_api\""
+        }
+      },
+      "response": {
+        "id": "resp_clarify_root_1",
+        "object": "response",
+        "usage": {
+          "input_tokens": 16,
+          "output_tokens": 3
+        },
+        "output": [
+          {
+            "id": "fc_clarify_root_1",
+            "type": "function_call",
+            "call_id": "call_clarify_root",
+            "name": "clarify_public_api",
+            "arguments": "{\"path\":\".\",\"identifier\":\"Greeter.Hello\",\"question\":\"What does Greeter.Hello return?\"}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "clarify-subagent-initial",
+      "consume": true,
+      "request": {
+        "model": "mock-model-clarify-public-api",
+        "input": {
+          "match": "partial",
+          "text": "Identifier: Greeter.Hello"
+        },
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"read_file\""
+        }
+      },
+      "response": {
+        "id": "resp_clarify_sub_1",
+        "object": "response",
+        "usage": {
+          "input_tokens": 13,
+          "output_tokens": 2
+        },
+        "output": [
+          {
+            "id": "fc_clarify_sub_1",
+            "type": "function_call",
+            "call_id": "call_clarify_read",
+            "name": "read_file",
+            "arguments": "{\"path\":\"greeter.go\"}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "clarify-subagent-followup",
+      "consume": true,
+      "request": {
+        "model": "mock-model-clarify-public-api",
+        "previous_response_id": "resp_clarify_sub_1",
+        "input": {
+          "match": "partial",
+          "text": "<file name=\"greeter.go\""
+        }
+      },
+      "response": {
+        "id": "resp_clarify_sub_2",
+        "object": "response",
+        "usage": {
+          "input_tokens": 14,
+          "output_tokens": 7
+        },
+        "output": [
+          {
+            "id": "msg_clarify_sub_2",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Greeter.Hello returns the greeting string \"hello, <name>\"."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "clarify-root-followup",
+      "consume": true,
+      "request": {
+        "model": "mock-model-clarify-public-api",
+        "previous_response_id": "resp_clarify_root_1",
+        "input": {
+          "match": "partial",
+          "text": "Greeter.Hello returns the greeting string \\\"hello, <name>\\\"."
+        }
+      },
+      "response": {
+        "id": "resp_clarify_root_2",
+        "object": "response",
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 9
+        },
+        "output": [
+          {
+            "id": "msg_clarify_root_2",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Greeter.Hello returns the greeting string \"hello, <name>\"."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

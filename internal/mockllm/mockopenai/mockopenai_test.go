@@ -442,6 +442,50 @@ func TestHandler_StreamsToolOutputItemDoneEvents(t *testing.T) {
 	assert.Equal(t, "*** Begin Patch\n*** End Patch\n", customItem["input"])
 }
 
+func TestHandler_PartialMatcherSupportsStructuredStringsWithAngleBrackets(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": {"match": "partial", "text": "<file name=\"hello.txt\""}
+				},
+				"response": {
+					"id": "resp_structured_match",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_structured_match",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "matched"}
+							]
+						}
+					]
+				}
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{
+		"model":"gpt-5.4",
+		"input":[
+			{
+				"type":"function_call_output",
+				"call_id":"call_123",
+				"output":"<file name=\"hello.txt\">hi</file>"
+			}
+		]
+	}`)
+
+	assert.Contains(t, body, `matched`)
+}
+
 func doResponsesRequest(t *testing.T, baseURL string, headers map[string]string, body string) string {
 	return doResponsesRequestToPath(t, baseURL, pathV1Responses, headers, body)
 }

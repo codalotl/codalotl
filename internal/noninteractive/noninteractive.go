@@ -353,6 +353,9 @@ func Exec(userPrompt string, opts Options) error {
 			// cumulative session token usage.
 			continue
 		case agent.EventTypeDoneSuccess:
+			if ev.Agent.Depth > 0 {
+				continue
+			}
 			if opts.OutputJSON {
 				var idealUsage *llmstream.TokenUsage
 				if reportIdealCachingEnabled() {
