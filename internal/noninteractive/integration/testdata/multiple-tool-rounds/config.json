@@ -1,68 +1,13 @@
 {
   "prompt": "Use the available tools if needed to answer what is in @docs/ and @docs/note.txt.",
   "expected": [
-    {
-      "type": "start",
-      "package_path": ""
-    },
-    {
-      "type": "user_message",
-      "text": "Use the available tools if needed to answer what is in @docs/ and @docs/note.txt."
-    },
-    {
-      "type": "tool_call",
-      "tool": {
-        "call_id": "call_ls_docs",
-        "name": "ls",
-        "type": "function_call",
-        "input": "{\"path\":\"docs\"}"
-      }
-    },
-    {
-      "type": "tool_complete",
-      "tool": {
-        "call_id": "call_ls_docs",
-        "name": "ls",
-        "type": "function_call"
-      },
-      "result": {
-        "is_error": false,
-        "output": {
-          "match": "partial",
-          "text": "note.txt"
-        }
-      }
-    },
-    {
-      "type": "tool_call",
-      "tool": {
-        "call_id": "call_read_note",
-        "name": "read_file",
-        "type": "function_call",
-        "input": "{\"path\":\"docs/note.txt\"}"
-      }
-    },
-    {
-      "type": "tool_complete",
-      "tool": {
-        "call_id": "call_read_note",
-        "name": "read_file",
-        "type": "function_call"
-      },
-      "result": {
-        "is_error": false,
-        "output": {
-          "match": "partial",
-          "text": "<file name=\"docs/note.txt\""
-        }
-      }
-    },
-    {
-      "type": "assistant_text",
-      "content": "docs/note.txt says: Multi-step integration success."
-    },
-    {
-      "type": "done"
-    }
+    {"type": "start", "package_path": ""},
+    {"type": "user_message", "text": "Use the available tools if needed to answer what is in @docs/ and @docs/note.txt."},
+    {"type": "tool_call", "tool": {"call_id": "call_ls_docs", "name": "ls", "type": "function_call", "input": "{\"path\":\"docs\"}"}},
+    {"type": "tool_complete", "tool": {"call_id": "call_ls_docs", "name": "ls", "type": "function_call"}, "result": {"is_error": false, "output": {"match": "partial", "text": "note.txt"}}},
+    {"type": "tool_call", "tool": {"call_id": "call_read_note", "name": "read_file", "type": "function_call", "input": "{\"path\":\"docs/note.txt\"}"}},
+    {"type": "tool_complete", "tool": {"call_id": "call_read_note", "name": "read_file", "type": "function_call"}, "result": {"is_error": false, "output": {"match": "partial", "text": "<file name=\"docs/note.txt\""}}},
+    {"type": "assistant_text", "content": "docs/note.txt says: Multi-step integration success."},
+    {"type": "done"}
   ]
 }

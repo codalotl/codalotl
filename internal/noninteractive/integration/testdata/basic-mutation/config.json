@@ -1,44 +1,11 @@
 {
   "prompt": "Update @note.txt so it says \"After mutation.\" instead of \"Before mutation.\".",
   "expected": [
-    {
-      "type": "start",
-      "package_path": ""
-    },
-    {
-      "type": "user_message",
-      "text": "Update @note.txt so it says \"After mutation.\" instead of \"Before mutation.\"."
-    },
-    {
-      "type": "tool_call",
-      "tool": {
-        "call_id": "call_apply_patch_note",
-        "name": "apply_patch",
-        "type": "custom_tool_call",
-        "input": "*** Begin Patch\n*** Update File: note.txt\n@@\n-Before mutation.\n+After mutation.\n*** End Patch\n"
-      }
-    },
-    {
-      "type": "tool_complete",
-      "tool": {
-        "call_id": "call_apply_patch_note",
-        "name": "apply_patch",
-        "type": "custom_tool_call"
-      },
-      "result": {
-        "is_error": false,
-        "output": {
-          "match": "partial",
-          "text": "<apply-patch ok=\"true\">"
-        }
-      }
-    },
-    {
-      "type": "assistant_text",
-      "content": "Updated note.txt to say After mutation."
-    },
-    {
-      "type": "done"
-    }
+    {"type": "start", "package_path": ""},
+    {"type": "user_message", "text": "Update @note.txt so it says \"After mutation.\" instead of \"Before mutation.\"."},
+    {"type": "tool_call", "tool": {"call_id": "call_apply_patch_note", "name": "apply_patch", "type": "custom_tool_call", "input": "*** Begin Patch\n*** Update File: note.txt\n@@\n-Before mutation.\n+After mutation.\n*** End Patch\n"}},
+    {"type": "tool_complete", "tool": {"call_id": "call_apply_patch_note", "name": "apply_patch", "type": "custom_tool_call"}, "result": {"is_error": false, "output": {"match": "partial", "text": "<apply-patch ok=\"true\">"}}},
+    {"type": "assistant_text", "content": "Updated note.txt to say After mutation."},
+    {"type": "done"}
   ]
 }

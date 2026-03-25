@@ -1,44 +1,11 @@
 {
   "prompt": "Use the available tools if needed to answer what is in @hello.txt.",
   "expected": [
-    {
-      "type": "start",
-      "package_path": ""
-    },
-    {
-      "type": "user_message",
-      "text": "Use the available tools if needed to answer what is in @hello.txt."
-    },
-    {
-      "type": "tool_call",
-      "tool": {
-        "call_id": "call_read_hello",
-        "name": "read_file",
-        "type": "function_call",
-        "input": "{\"path\":\"hello.txt\"}"
-      }
-    },
-    {
-      "type": "tool_complete",
-      "tool": {
-        "call_id": "call_read_hello",
-        "name": "read_file",
-        "type": "function_call"
-      },
-      "result": {
-        "is_error": false,
-        "output": {
-          "match": "partial",
-          "text": "<file name=\"hello.txt\""
-        }
-      }
-    },
-    {
-      "type": "assistant_text",
-      "content": "hello.txt says: Hello integration world."
-    },
-    {
-      "type": "done"
-    }
+    {"type": "start", "package_path": ""},
+    {"type": "user_message", "text": "Use the available tools if needed to answer what is in @hello.txt."},
+    {"type": "tool_call", "tool": {"call_id": "call_read_hello", "name": "read_file", "type": "function_call", "input": "{\"path\":\"hello.txt\"}"}},
+    {"type": "tool_complete", "tool": {"call_id": "call_read_hello", "name": "read_file", "type": "function_call"}, "result": {"is_error": false, "output": {"match": "partial", "text": "<file name=\"hello.txt\""}}},
+    {"type": "assistant_text", "content": "hello.txt says: Hello integration world."},
+    {"type": "done"}
   ]
 }
