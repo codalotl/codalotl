@@ -2,11 +2,13 @@ package mockopenai
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -271,6 +273,109 @@ func TestNewHandlerFromFileAndRequestErrors(t *testing.T) {
 	})
 }
 
+func TestHandler_ResponseCompletedDefaultsStatusToCompleted(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": "Hello",
+				},
+				"response": {
+					"id": "resp_status",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_status",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "done"},
+							],
+						},
+					],
+				},
+			},
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{"model":"gpt-5.4","input":"Hello"}`)
+	events := parseSSEEvents(t, body)
+
+	completed := firstEventOfType(t, events, "response.completed")
+	response, ok := completed["response"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "completed", response["status"])
+}
+
+func TestHandler_StreamsToolOutputItemDoneEvents(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": "Run tools",
+				},
+				"response": {
+					"id": "resp_tools",
+					"object": "response",
+					"output": [
+						{
+							"id": "fc_123",
+							"type": "function_call",
+							"call_id": "call_fc_123",
+							"name": "lookup_weather",
+							"arguments": "{\"city\":\"San Francisco\"}",
+						},
+						{
+							"id": "ct_456",
+							"type": "custom_tool_call",
+							"call_id": "call_ct_456",
+							"name": "apply_patch",
+							"input": "*** Begin Patch\n*** End Patch\n",
+						},
+					],
+				},
+			},
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{"model":"gpt-5.4","input":"Run tools"}`)
+	events := parseSSEEvents(t, body)
+
+	assert.NotEmpty(t, eventsOfType(events, "response.function_call_arguments.delta"))
+	functionDone := firstEventOfType(t, events, "response.function_call_arguments.done")
+	assert.Equal(t, "lookup_weather", functionDone["name"])
+	assert.Equal(t, `{"city":"San Francisco"}`, functionDone["arguments"])
+
+	assert.NotEmpty(t, eventsOfType(events, "response.custom_tool_call_input.delta"))
+	customDone := firstEventOfType(t, events, "response.custom_tool_call_input.done")
+	assert.Equal(t, "*** Begin Patch\n*** End Patch\n", customDone["input"])
+
+	outputItemDoneEvents := eventsOfType(events, "response.output_item.done")
+	require.Len(t, outputItemDoneEvents, 2)
+
+	functionItem, ok := outputItemDoneEvents[0]["item"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "function_call", functionItem["type"])
+	assert.Equal(t, "call_fc_123", functionItem["call_id"])
+	assert.Equal(t, "completed", functionItem["status"])
+
+	customItem, ok := outputItemDoneEvents[1]["item"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "custom_tool_call", customItem["type"])
+	assert.Equal(t, "call_ct_456", customItem["call_id"])
+	assert.Equal(t, "*** Begin Patch\n*** End Patch\n", customItem["input"])
+}
+
 func doResponsesRequest(t *testing.T, baseURL string, headers map[string]string, body string) string {
 	t.Helper()
 
@@ -289,4 +394,41 @@ func doResponsesRequest(t *testing.T, baseURL string, headers map[string]string,
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	return string(responseBody)
+}
+
+func parseSSEEvents(t *testing.T, body string) []map[string]any {
+	t.Helper()
+
+	lines := strings.Split(body, "\n")
+	events := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		payload, ok := strings.CutPrefix(line, "data: ")
+		if !ok || payload == "[DONE]" || payload == "" {
+			continue
+		}
+
+		var event map[string]any
+		require.NoError(t, json.Unmarshal([]byte(payload), &event))
+		events = append(events, event)
+	}
+
+	return events
+}
+
+func eventsOfType(events []map[string]any, eventType string) []map[string]any {
+	filtered := make([]map[string]any, 0)
+	for _, event := range events {
+		if event["type"] == eventType {
+			filtered = append(filtered, event)
+		}
+	}
+	return filtered
+}
+
+func firstEventOfType(t *testing.T, events []map[string]any, eventType string) map[string]any {
+	t.Helper()
+
+	filtered := eventsOfType(events, eventType)
+	require.NotEmpty(t, filtered)
+	return filtered[0]
 }

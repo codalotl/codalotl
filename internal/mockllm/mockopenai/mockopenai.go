@@ -380,10 +380,11 @@ func writeSSE(w http.ResponseWriter, response any) error {
 		return err
 	}
 
+	completedResponse := completedResponseEventPayload(response)
 	if err := send(map[string]any{
 		"type":            "response.completed",
 		"sequence_number": sequenceNumber,
-		"response":        response,
+		"response":        completedResponse,
 	}); err != nil {
 		return err
 	}
@@ -423,6 +424,10 @@ func streamResponseOutput(send func(any) error, response any, sequenceNumber *in
 			}
 		case "function_call":
 			if err := streamFunctionCall(send, itemID, outputIndex, item, sequenceNumber); err != nil {
+				return err
+			}
+		case "custom_tool_call":
+			if err := streamCustomToolCall(send, itemID, outputIndex, item, sequenceNumber); err != nil {
 				return err
 			}
 		}
@@ -496,23 +501,107 @@ func streamFunctionCall(send func(any) error, itemID string, outputIndex int, it
 		*sequenceNumber++
 	}
 
-	if arguments == "" && name == "" {
-		return nil
+	if arguments != "" || name != "" {
+		if err := send(map[string]any{
+			"type":            "response.function_call_arguments.done",
+			"sequence_number": *sequenceNumber,
+			"item_id":         itemID,
+			"output_index":    outputIndex,
+			"name":            name,
+			"arguments":       arguments,
+		}); err != nil {
+			return err
+		}
+		*sequenceNumber++
 	}
 
+	return streamOutputItemDone(send, outputIndex, completedOutputItem(item), sequenceNumber)
+}
+
+func streamCustomToolCall(send func(any) error, itemID string, outputIndex int, item map[string]any, sequenceNumber *int64) error {
+	input, _ := item["input"].(string)
+
+	for _, chunk := range splitText(input) {
+		if err := send(map[string]any{
+			"type":            "response.custom_tool_call_input.delta",
+			"sequence_number": *sequenceNumber,
+			"item_id":         itemID,
+			"output_index":    outputIndex,
+			"delta":           chunk,
+		}); err != nil {
+			return err
+		}
+		*sequenceNumber++
+	}
+
+	if input != "" {
+		if err := send(map[string]any{
+			"type":            "response.custom_tool_call_input.done",
+			"sequence_number": *sequenceNumber,
+			"item_id":         itemID,
+			"output_index":    outputIndex,
+			"input":           input,
+		}); err != nil {
+			return err
+		}
+		*sequenceNumber++
+	}
+
+	return streamOutputItemDone(send, outputIndex, completedOutputItem(item), sequenceNumber)
+}
+
+func streamOutputItemDone(send func(any) error, outputIndex int, item map[string]any, sequenceNumber *int64) error {
 	if err := send(map[string]any{
-		"type":            "response.function_call_arguments.done",
+		"type":            "response.output_item.done",
 		"sequence_number": *sequenceNumber,
-		"item_id":         itemID,
 		"output_index":    outputIndex,
-		"name":            name,
-		"arguments":       arguments,
+		"item":            item,
 	}); err != nil {
 		return err
 	}
 	*sequenceNumber++
 
 	return nil
+}
+
+func completedResponseEventPayload(response any) any {
+	responseObject, ok := response.(map[string]any)
+	if !ok {
+		return response
+	}
+
+	status, _ := responseObject["status"].(string)
+	if status != "" {
+		return response
+	}
+
+	completed := cloneObject(responseObject)
+	completed["status"] = "completed"
+	return completed
+}
+
+func completedOutputItem(item map[string]any) map[string]any {
+	itemType, _ := item["type"].(string)
+	if itemType != "function_call" {
+		return item
+	}
+
+	status, _ := item["status"].(string)
+	if status != "" {
+		return item
+	}
+
+	completed := cloneObject(item)
+	completed["status"] = "completed"
+	return completed
+}
+
+func cloneObject(source map[string]any) map[string]any {
+	cloned := make(map[string]any, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func splitText(text string) []string {
