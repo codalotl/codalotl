@@ -3,7 +3,6 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"net/http/httptest"
 	"os"
@@ -18,6 +17,11 @@ import (
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	casesRoot       = "testdata/cases"
+	fixtureRepoRoot = "testdata/repo"
 )
 
 type testCaseConfig struct {
@@ -38,7 +42,7 @@ func TestIntegrationCases(t *testing.T) {
 func listCaseNames(t *testing.T) []string {
 	t.Helper()
 
-	entries, err := os.ReadDir("testdata")
+	entries, err := os.ReadDir(casesRoot)
 	require.NoError(t, err)
 
 	caseNames := make([]string, 0, len(entries))
@@ -55,7 +59,7 @@ func listCaseNames(t *testing.T) []string {
 func runCase(t *testing.T, caseName string) {
 	t.Helper()
 
-	caseDir := filepath.Join("testdata", caseName)
+	caseDir := filepath.Join(casesRoot, caseName)
 	cfg := readConfig(t, filepath.Join(caseDir, "config.json"))
 
 	handler, err := mockopenai.NewHandlerFromFile(filepath.Join(caseDir, "http.json"))
@@ -65,7 +69,8 @@ func runCase(t *testing.T, caseName string) {
 	defer server.Close()
 
 	workDir := t.TempDir()
-	copyTreeIfPresent(t, filepath.Join(caseDir, "repo"), workDir)
+	sourceRepoDir := repoDirForCase(t, caseDir)
+	copyTree(t, sourceRepoDir, workDir)
 
 	modelID := registerMockModel(t, caseName, server.URL)
 
@@ -84,8 +89,20 @@ func runCase(t *testing.T, caseName string) {
 	require.NotEmpty(t, actualEvents)
 	assertNoTerminalFailure(t, actualEvents)
 	assertEventSubsequence(t, cfg.Expected, actualEvents)
-	assertExpectedRepo(t, filepath.Join(caseDir, "expected_repo"), workDir)
+	assertExpectedRepo(t, filepath.Join(caseDir, "expected_repo"), sourceRepoDir, workDir)
 	require.NoError(t, mockopenai.AssertAllConsumed(handler))
+}
+
+func repoDirForCase(t *testing.T, caseDir string) string {
+	t.Helper()
+
+	caseRepoDir := filepath.Join(caseDir, "repo")
+	if _, err := os.Stat(caseRepoDir); err == nil {
+		return caseRepoDir
+	} else if !os.IsNotExist(err) {
+		require.NoError(t, err)
+	}
+	return fixtureRepoRoot
 }
 
 func readConfig(t *testing.T, path string) testCaseConfig {
@@ -319,14 +336,11 @@ func structuredValueContainsText(actual any, needle string) bool {
 	return false
 }
 
-func copyTreeIfPresent(t *testing.T, src string, dst string) {
+func copyTree(t *testing.T, src string, dst string) {
 	t.Helper()
 
 	info, err := os.Stat(src)
-	if err != nil {
-		require.True(t, os.IsNotExist(err))
-		return
-	}
+	require.NoError(t, err)
 	require.True(t, info.IsDir())
 
 	err = filepath.WalkDir(src, func(path string, d fs.DirEntry, walkErr error) error {
@@ -359,17 +373,43 @@ func copyTreeIfPresent(t *testing.T, src string, dst string) {
 	require.NoError(t, err)
 }
 
-func assertExpectedRepo(t *testing.T, expectedRoot string, actualRoot string) {
+func assertExpectedRepo(t *testing.T, expectedRoot string, originalRoot string, actualRoot string) {
 	t.Helper()
 
-	info, err := os.Stat(expectedRoot)
+	expectedFiles := listFilesIfPresent(t, expectedRoot)
+	if len(expectedFiles) == 0 {
+		return
+	}
+
+	sort.Strings(expectedFiles)
+
+	actualChangedFiles := changedOrCreatedFiles(t, originalRoot, actualRoot)
+	sort.Strings(actualChangedFiles)
+	assert.Equal(t, expectedFiles, actualChangedFiles)
+
+	for _, rel := range expectedFiles {
+		expectedData, err := os.ReadFile(filepath.Join(expectedRoot, rel))
+		require.NoError(t, err)
+
+		actualData, err := os.ReadFile(filepath.Join(actualRoot, rel))
+		require.NoError(t, err, "read actual file %q", rel)
+
+		assert.Equal(t, string(expectedData), string(actualData))
+	}
+}
+
+func listFilesIfPresent(t *testing.T, root string) []string {
+	t.Helper()
+
+	info, err := os.Stat(root)
 	if err != nil {
 		require.True(t, os.IsNotExist(err))
-		return
+		return nil
 	}
 	require.True(t, info.IsDir())
 
-	err = filepath.WalkDir(expectedRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	files := make([]string, 0)
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -377,21 +417,40 @@ func assertExpectedRepo(t *testing.T, expectedRoot string, actualRoot string) {
 			return nil
 		}
 
-		rel, err := filepath.Rel(expectedRoot, path)
+		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
-
-		expectedData, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		actualData, err := os.ReadFile(filepath.Join(actualRoot, rel))
-		if err != nil {
-			return fmt.Errorf("read actual file %q: %w", rel, err)
-		}
-		assert.Equal(t, string(expectedData), string(actualData))
+		files = append(files, rel)
 		return nil
 	})
 	require.NoError(t, err)
+	return files
+}
+
+func changedOrCreatedFiles(t *testing.T, originalRoot string, actualRoot string) []string {
+	t.Helper()
+
+	actualFiles := listFilesIfPresent(t, actualRoot)
+	changedFiles := make([]string, 0)
+	for _, rel := range actualFiles {
+		actualPath := filepath.Join(actualRoot, rel)
+		actualData, err := os.ReadFile(actualPath)
+		require.NoError(t, err)
+
+		originalPath := filepath.Join(originalRoot, rel)
+		originalData, err := os.ReadFile(originalPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				changedFiles = append(changedFiles, rel)
+				continue
+			}
+			require.NoError(t, err)
+		}
+
+		if !bytes.Equal(originalData, actualData) {
+			changedFiles = append(changedFiles, rel)
+		}
+	}
+	return changedFiles
 }
