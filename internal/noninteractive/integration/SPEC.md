@@ -69,12 +69,24 @@ Args:
 - `--package`: optional; relative dir to `path/to/repo` (or "" for no package).
 - `--model`: required; which model to use.
 - `--prompt`: required
-- `--output`: required; where to write files (`config.json`, `http.json`, etc).
+- `--output`: required; where to write files (`config.json`, `http.json`, etc). The dir must not exist yet, or must exist and be empty.
 - `--include-token-usage`: optional (default false); if "true", includes token usage in `done` event.
 
 Details:
 - Copies the repo to a tmp dir, and runs noninteractive on it.
+- The CLI prints human-readable progress to stderr while the real agent's NDJSON stream is written to stdout.
 - Saves request/responses with `llmstream.AddDiagnosticHook`.
 - Diff pre/post workdir snapshots to record filesystem changes.
+- Copies the input repo into `output/repo`, so generated cases are self-contained.
 - Run the generated case through the existing integration harness immediately to verify replay works.
-- Requests/Responses need to be sanitized vs recorded verbatim.
+- `config.json` is normalized rather than recorded verbatim:
+  - `start` keeps `type` and `package_path`, but omits `cwd` and `model_id`
+  - `agent.id` is omitted; only `agent.depth` is kept
+  - `assistant_reasoning` events are omitted, because the mock transport does not replay reasoning deltas
+  - `tool_complete.result.output` and `permission.prompt` are recorded as partial matchers
+  - `done.token_usage` is included only when `--include-token-usage=true`
+- `http.json` is normalized rather than recorded verbatim:
+  - request `model` is rewritten to the generated mock model id (`mock-model-<case-name>`)
+  - request `input` is matched via a stable partial-text snippet rather than exact full JSON
+  - response ids and output item ids are rewritten to deterministic fixture ids
+- The generator intentionally aims for replay stability, not perfect redaction. If a recorded tool result or assistant response contains sensitive content, edit the generated files before committing them.
