@@ -115,13 +115,20 @@ For partial matching with `texts`:
 ## Public API
 
 ```go
-// NewHandlerFromFile creates an http.Handler that serves mock OpenAI Responses API requests using response definitions loaded from a JSON or JSON-with-comments
-// file.
+// NewHandlerFromFile creates a mock OpenAI Responses API handler from a JSON or JSON-with-comments file.
+//
+// The file may include line comments, block comments, and trailing commas. The returned handler accepts POST requests to /responses and /v1/responses.
 func NewHandlerFromFile(path string) (http.Handler, error)
 
-// NewHandler creates an http.Handler that serves mock OpenAI Responses API requests using response definitions loaded from JSON or JSON-with-comments bytes.
+// NewHandler creates a mock OpenAI Responses API handler from JSON or JSON-with-comments bytes.
+//
+// Configured responses are checked in order, and the first matching response is streamed back as SSE. Matching can include request body fields, request headers,
+// and consume-on-use behavior; see the package documentation for the configuration format.
 func NewHandler(data []byte) (http.Handler, error)
 
-// AssertAllConsumed verifies that every configured response with consume=true was matched.
+// AssertAllConsumed reports whether every configured response with `consume: true` was matched.
+//
+// It returns an error listing any configured responses that were never used. If h was not created by NewHandler or NewHandlerFromFile, AssertAllConsumed returns
+// an error.
 func AssertAllConsumed(h http.Handler) error
 ```
