@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/build"
 	"io"
 	"os"
 	"path/filepath"
@@ -341,54 +342,22 @@ func buildExpectedEvents(actualEvents []map[string]any, includeTokenUsage bool, 
 				delete(cloned, "agent")
 			}
 		}
-
-		if eventType == "tool_complete" {
-			result, ok := cloned["result"].(map[string]any)
-			if ok {
-				if output, ok := result["output"]; ok {
-					text, ok := actualMatchText(output)
-					if !ok {
-						return nil, fmt.Errorf("marshal tool_complete result output")
-					}
-					result["output"] = buildPartialMatcher(stablePartials(text, roots))
-				}
-			}
-		}
-
-		if eventType == "permission" {
-			if prompt, ok := cloned["prompt"].(string); ok && prompt != "" {
-				cloned["prompt"] = map[string]any{
-					"match": "partial",
-					"text":  stableSnippet(prompt, roots),
-				}
-			}
-		}
-
-		expected = append(expected, cloned)
+		expected = append(expected, normalizeJSONObjectAbsolutePaths(cloned, roots))
 	}
 	return expected, nil
 }
 
 func buildHTTPFixture(caseName string, turns []recordedTurn, roots []string) (httpFixtureConfig, error) {
-	responseIDs := make(map[string]string, len(turns))
 	caseSuffix := sanitizeIdentifier(caseName)
-	for i, turn := range turns {
-		originalID, _ := turn.Response["id"].(string)
-		if strings.TrimSpace(originalID) == "" {
-			return httpFixtureConfig{}, fmt.Errorf("diagnostic turn %d is missing response.id", i)
-		}
-		responseIDs[originalID] = fmt.Sprintf("resp_%s_%d", caseSuffix, i+1)
-	}
-
 	cfg := httpFixtureConfig{
 		Responses: make([]httpFixtureResponse, 0, len(turns)),
 	}
 	for i, turn := range turns {
-		request, err := buildHTTPFixtureRequest(caseSuffix, turn, responseIDs, roots)
+		request, err := buildHTTPFixtureRequest(caseSuffix, turn, roots)
 		if err != nil {
 			return httpFixtureConfig{}, err
 		}
-		response, err := buildHTTPFixtureResponse(caseSuffix, i, turn.Response, responseIDs[turn.Response["id"].(string)])
+		response, err := buildHTTPFixtureResponse(caseSuffix, i, turn.Response)
 		if err != nil {
 			return httpFixtureConfig{}, err
 		}
@@ -402,17 +371,13 @@ func buildHTTPFixture(caseName string, turns []recordedTurn, roots []string) (ht
 	return cfg, nil
 }
 
-func buildHTTPFixtureRequest(caseSuffix string, turn recordedTurn, responseIDs map[string]string, roots []string) (map[string]any, error) {
+func buildHTTPFixtureRequest(caseSuffix string, turn recordedTurn, roots []string) (map[string]any, error) {
 	request := map[string]any{
 		"model": "mock-model-" + caseSuffix,
 	}
 
 	if prevID, ok := turn.Request["previous_response_id"].(string); ok && prevID != "" {
-		mappedPrevID, ok := responseIDs[prevID]
-		if !ok {
-			return nil, fmt.Errorf("missing normalized previous_response_id for %q", prevID)
-		}
-		request["previous_response_id"] = mappedPrevID
+		request["previous_response_id"] = prevID
 	}
 
 	inputMatcher, ok := chooseRequestMatcher(turn.Request["input"], roots)
@@ -431,7 +396,11 @@ func buildHTTPFixtureRequest(caseSuffix string, turn recordedTurn, responseIDs m
 	return request, nil
 }
 
-func buildHTTPFixtureResponse(caseSuffix string, turnIndex int, response map[string]any, responseID string) (map[string]any, error) {
+func buildHTTPFixtureResponse(caseSuffix string, turnIndex int, response map[string]any) (map[string]any, error) {
+	responseID, _ := response["id"].(string)
+	if strings.TrimSpace(responseID) == "" {
+		return nil, fmt.Errorf("response.id is required")
+	}
 	fixtureResponse := map[string]any{
 		"id":     responseID,
 		"object": "response",
@@ -708,14 +677,6 @@ func collectStringLeaves(value any) []string {
 	}
 }
 
-func stableSnippet(text string, roots []string) string {
-	partials := stablePartials(text, roots)
-	if len(partials) == 0 {
-		return ""
-	}
-	return partials[0]
-}
-
 func stablePartials(text string, roots []string) []string {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
@@ -757,6 +718,12 @@ func stableSinglePartial(text string, roots []string) string {
 			return candidate
 		}
 	}
+	if elided := elideAbsoluteRoots(text, roots); elided != text {
+		if len(elided) > 400 {
+			return elided[:400]
+		}
+		return elided
+	}
 	if len(text) > 400 {
 		return text[:400]
 	}
@@ -773,10 +740,31 @@ func stableLinePartial(line string, roots []string) string {
 			return candidate
 		}
 	}
+	if elided := elideAbsoluteRoots(trimmed, roots); elided != trimmed {
+		if len(elided) > 200 {
+			return elided[:200]
+		}
+		return elided
+	}
 	if len(trimmed) > 200 {
 		return trimmed[:200]
 	}
 	return trimmed
+}
+
+func elideAbsoluteRoots(text string, roots []string) string {
+	elided := text
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		elided = strings.ReplaceAll(elided, root, "")
+		slashRoot := filepath.ToSlash(root)
+		if slashRoot != root {
+			elided = strings.ReplaceAll(elided, slashRoot, "")
+		}
+	}
+	return strings.TrimSpace(elided)
 }
 
 func buildPartialMatcher(partials []string) map[string]any {
@@ -795,6 +783,181 @@ func buildPartialMatcher(partials []string) map[string]any {
 	return map[string]any{
 		"match": "partial",
 		"texts": partials,
+	}
+}
+
+func normalizeJSONObjectAbsolutePaths(value map[string]any, roots []string) map[string]any {
+	return cloneJSONObjectFromValue(normalizeJSONAbsolutePaths(value, roots))
+}
+
+func cloneJSONObjectFromValue(value any) map[string]any {
+	cloned, _ := value.(map[string]any)
+	return cloned
+}
+
+func normalizeJSONAbsolutePaths(value any, roots []string) any {
+	switch v := value.(type) {
+	case string:
+		return normalizeAbsolutePathText(v, roots)
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, normalizeJSONAbsolutePaths(item, roots))
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			out[key] = normalizeJSONAbsolutePaths(item, roots)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+type pathReplacement struct {
+	prefix      string
+	replacement string
+}
+
+func normalizeAbsolutePathText(text string, roots []string) string {
+	replacements := absolutePathReplacements(roots)
+	if len(replacements) == 0 {
+		return text
+	}
+
+	normalized := text
+	for _, replacement := range replacements {
+		normalized = replaceAbsolutePathPrefix(normalized, replacement.prefix, replacement.replacement)
+	}
+	return normalized
+}
+
+func absolutePathReplacements(roots []string) []pathReplacement {
+	replacements := make([]pathReplacement, 0, len(roots)+2)
+	seen := make(map[string]struct{}, len(roots)+2)
+	add := func(prefix string, replacement string) {
+		if prefix == "" {
+			return
+		}
+		cleanPrefix := filepath.Clean(prefix)
+		if _, ok := seen[cleanPrefix]; ok {
+			return
+		}
+		seen[cleanPrefix] = struct{}{}
+		replacements = append(replacements, pathReplacement{
+			prefix:      cleanPrefix,
+			replacement: replacement,
+		})
+	}
+
+	for _, root := range roots {
+		add(root, "")
+	}
+
+	if goroot := build.Default.GOROOT; goroot != "" {
+		add(filepath.Join(goroot, "src"), "stdlib")
+	}
+	if modcache := goModCachePath(); modcache != "" {
+		add(modcache, "modcache")
+	}
+
+	sort.Slice(replacements, func(i int, j int) bool {
+		return len(replacements[i].prefix) > len(replacements[j].prefix)
+	})
+	return replacements
+}
+
+func goModCachePath() string {
+	if env := os.Getenv("GOMODCACHE"); env != "" {
+		return env
+	}
+	if gopath := os.Getenv("GOPATH"); gopath != "" {
+		return filepath.Join(gopath, "pkg", "mod")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, "go", "pkg", "mod")
+	}
+	return ""
+}
+
+func replaceAbsolutePathPrefix(text string, prefix string, replacement string) string {
+	if text == "" || prefix == "" {
+		return text
+	}
+
+	var out strings.Builder
+	searchFrom := 0
+	lastWritten := 0
+	for searchFrom < len(text) {
+		idx := strings.Index(text[searchFrom:], prefix)
+		if idx < 0 {
+			break
+		}
+		idx += searchFrom
+		end := idx + len(prefix)
+		if !pathPrefixHasBoundary(text, idx, end) {
+			searchFrom = end
+			continue
+		}
+
+		out.WriteString(text[lastWritten:idx])
+		switch {
+		case end == len(text):
+			if replacement == "" {
+				out.WriteString(".")
+			} else {
+				out.WriteString(replacement)
+			}
+			lastWritten = end
+		case text[end] == '/' || text[end] == '\\':
+			if replacement != "" {
+				out.WriteString(replacement)
+				out.WriteByte('/')
+			}
+			lastWritten = end + 1
+		default:
+			if replacement == "" {
+				out.WriteString(".")
+			} else {
+				out.WriteString(replacement)
+			}
+			lastWritten = end
+		}
+		searchFrom = lastWritten
+	}
+	if lastWritten == 0 {
+		return text
+	}
+	out.WriteString(text[lastWritten:])
+	return out.String()
+}
+
+func pathPrefixHasBoundary(text string, start int, end int) bool {
+	if start > 0 && isPathTokenByte(text[start-1]) {
+		return false
+	}
+	if end < len(text) && isPathTokenByte(text[end]) && text[end] != '/' && text[end] != '\\' {
+		return false
+	}
+	return true
+}
+
+func isPathTokenByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z':
+		return true
+	case b >= 'A' && b <= 'Z':
+		return true
+	case b >= '0' && b <= '9':
+		return true
+	}
+	switch b {
+	case '.', '_', '-', '/', '\\', '~':
+		return true
+	default:
+		return false
 	}
 }
 

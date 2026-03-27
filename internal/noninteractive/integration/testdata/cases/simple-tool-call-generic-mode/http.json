@@ -1,0 +1,182 @@
+{
+  "responses": [
+    {
+      "name": "turn-01",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "text": "Read catalog/query.go, then make the smallest possible change so ProductsWithTag returns nil immediately when tag is empty. Do not run tests or read any other files."
+        },
+        "model": "mock-model-simple-tool-call-generic-mode",
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"read_file\""
+        }
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_02fbe5f4b30396cd0069c6b572d5cc819499fffd96768a3f9b",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_simple-tool-call-generic-mode_1_1",
+            "summary": [
+              {
+                "text": "**Reviewing coding task**\n\nI need to follow the user's request closely. The task involves editing `catalog/query.go` to ensure that `ProductsWithTag` returns nil when the tag is empty. It's a small change, maybe around 25% of the effort, so I can skip detailed planning. I'll use `read_file` to check the content and then apply the patch. I won't run tests or check other files; I'll focus just on this one!",
+                "type": "summary_text"
+              }
+            ],
+            "type": "reasoning"
+          },
+          {
+            "arguments": "{\"line_numbers\":false,\"path\":\"catalog/query.go\",\"request_permission\":false}",
+            "call_id": "call_y0ZMkuTsJi4ZNGd5SyqWz8qi",
+            "id": "fc_simple-tool-call-generic-mode_1_2",
+            "name": "read_file",
+            "status": "completed",
+            "type": "function_call"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 3060,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 103,
+          "output_tokens_details": {
+            "reasoning_tokens": 71
+          },
+          "total_tokens": 3163
+        }
+      }
+    },
+    {
+      "name": "turn-02",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "texts": [
+            "<file name=\"catalog/query.go\" line-count=\"26\" byte-count=\"620\" any-line-truncated=\"false\" file-truncated=\"false\">",
+            "package catalog",
+            "// ProductsWithTag returns all products with tag, sorted by SKU.",
+            "func (c *Catalog) ProductsWithTag(tag string) []Product {",
+            "products := c.All()",
+            "filtered := make([]Product, 0, len(products))",
+            "for _, product := range products {",
+            "if product.HasTag(tag) {",
+            "filtered = append(filtered, product)",
+            "}",
+            "return filtered",
+            "// TotalWeight sums the weights of the provided SKUs and ignores unknown products.",
+            "func (c *Catalog) TotalWeight(skus []string) int {",
+            "total := 0",
+            "for _, sku := range skus {",
+            "product, ok := c.Lookup(sku)",
+            "if !ok {",
+            "continue",
+            "total += product.WeightGrams",
+            "return total",
+            "</file>"
+          ]
+        },
+        "model": "mock-model-simple-tool-call-generic-mode",
+        "previous_response_id": "resp_02fbe5f4b30396cd0069c6b572d5cc819499fffd96768a3f9b",
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"apply_patch\""
+        }
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_02fbe5f4b30396cd0069c6b576cc748194953bb7598628bb68",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_simple-tool-call-generic-mode_2_1",
+            "summary": [],
+            "type": "reasoning"
+          },
+          {
+            "call_id": "call_ms2M04cfxKCCbJYl43d543AL",
+            "id": "ct_simple-tool-call-generic-mode_2_2",
+            "input": "*** Begin Patch\n*** Update File: catalog/query.go\n@@\n // ProductsWithTag returns all products with tag, sorted by SKU.\n func (c *Catalog) ProductsWithTag(tag string) []Product {\n+\tif tag == \"\" {\n+\t\treturn nil\n+\t}\n \tproducts := c.All()\n \tfiltered := make([]Product, 0, len(products))\n \tfor _, product := range products {\n \t\tif product.HasTag(tag) {\n \t\t\tfiltered = append(filtered, product)\n*** End Patch\n",
+            "name": "apply_patch",
+            "status": "completed",
+            "type": "custom_tool_call"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 3370,
+          "input_tokens_details": {
+            "cached_tokens": 3072
+          },
+          "output_tokens": 146,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 3516
+        }
+      }
+    },
+    {
+      "name": "turn-03",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "texts": [
+            "<apply-patch ok=\"true\">",
+            "Updated the following files:",
+            "M catalog/query.go",
+            "</apply-patch>"
+          ]
+        },
+        "model": "mock-model-simple-tool-call-generic-mode",
+        "previous_response_id": "resp_02fbe5f4b30396cd0069c6b576cc748194953bb7598628bb68"
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_02fbe5f4b30396cd0069c6b57926308194a5ac7402d2372fab",
+        "object": "response",
+        "output": [
+          {
+            "content": [
+              {
+                "text": "Made the minimal change in `catalog/query.go`: `ProductsWithTag` now returns `nil` immediately when `tag == \"\"`.\n\nI did not run tests or read any other files, per your request.",
+                "type": "output_text"
+              }
+            ],
+            "id": "msg_simple-tool-call-generic-mode_3_1",
+            "role": "assistant",
+            "type": "message"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 3550,
+          "input_tokens_details": {
+            "cached_tokens": 3328
+          },
+          "output_tokens": 46,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 3596
+        }
+      }
+    }
+  ]
+}

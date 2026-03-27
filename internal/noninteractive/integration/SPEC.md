@@ -71,7 +71,7 @@ Example:
         {"type": "start", "package_path": ""},
         {"type": "user_message", "text": "Use the tools if needed to answer what is in @hello.txt."},
         {"type": "tool_call", "tool": {"call_id": "call_read", "name": "read_file", "type": "function_call", "input": "{\"path\":\"hello.txt\"}"}},
-        {"type": "tool_complete", "result": {"output": {"match": "partial", "text": "<file name=\"hello.txt\""}}},
+        {"type": "tool_complete", "result": {"output": "<file name=\"hello.txt\" line-count=\"1\" byte-count=\"5\" any-line-truncated=\"false\" file-truncated=\"false\">\nhello\n</file>\n"}},
         {"type": "assistant_text", "content": "hello.txt says hello"},
         {"type": "done"}
     ]
@@ -85,7 +85,7 @@ Rules for matching expected JSON lines:
 - If a field is absent from the expected event but present in the actual event, it is ignored.
 - Nested objects are matched recursively as subsets.
 - If a field in an expected event has the shape `{"match": "partial", "text": "unicorn"}`, the actual field must be present and contain `unicorn`.
-- If a field has the shape `{"match": "partial", "texts": ["alpha", "beta"]}`, the actual field must contain every listed fragment.
+- If a field has the shape `{"match": "partial", "texts": ["alpha", "beta"]}`, the actual field must contain every listed fragment in that order.
 - Partial matchers work for both strings and structured JSON values; non-strings are marshaled to JSON before matching.
 
 ## Creating test cases
@@ -121,13 +121,16 @@ Details:
     - `start` keeps `type` and `package_path`, but omits `cwd` and `model_id`
     - `agent.id` is omitted; only `agent.depth` is kept
     - `assistant_reasoning` events are omitted, because the mock transport does not replay reasoning deltas
-    - `tool_complete.result.output` and `permission.prompt` are recorded as partial matchers
+    - other event payloads are kept concrete, with only absolute paths normalized
     - `done.token_usage` is included only when `--include-token-usage=true`
 - `http.json` is normalized rather than recorded verbatim:
     - request `model` is rewritten to the generated mock model id (`mock-model-<case-name>`)
-- Both `config.json` and `http.json`:
-    - Normalize absolute paths:
-        - repo-relative if inside repo
-        - Inside GOROOT/src: `stdlib/...`
-        - Inside GOMODCACHE: `modcache/<module>@<version>/...`
-        - Unknown: don't normalize. We can add more cases here if necessary.
+    - response ids and request `previous_response_id` are preserved as recorded
+    - request `input` is still recorded as a partial matcher, because the mock server only supports exact top-level JSON equality or partial-text matching for requests
+    - request `tools` remains a partial matcher on tool name so cases do not churn on unrelated tool-schema text
+- Absolute-path normalization:
+    - repo paths become repo-relative
+    - inside GOROOT/src: `stdlib/...`
+    - inside GOMODCACHE: `modcache/<module>@<version>/...`
+    - unknown absolute paths are left alone
+    - `http.json` responses are not path-normalized in tool-call arguments, because replay needs runnable paths

@@ -102,7 +102,7 @@ func RunCaseDir(caseDir string) error {
 	if err := assertNoTerminalFailure(actualEvents); err != nil {
 		return err
 	}
-	if err := assertEventSubsequence(cfg.Expected, actualEvents); err != nil {
+	if err := assertEventSubsequence(cfg.Expected, actualEvents, []string{workDir}); err != nil {
 		return err
 	}
 	if err := assertExpectedRepo(filepath.Join(caseDir, "expected_repo"), sourceRepoDir, workDir); err != nil {
@@ -248,12 +248,12 @@ func assertNoTerminalFailure(actual []map[string]any) error {
 	return nil
 }
 
-func assertEventSubsequence(expected []map[string]any, actual []map[string]any) error {
+func assertEventSubsequence(expected []map[string]any, actual []map[string]any, roots []string) error {
 	actualIdx := 0
 	for expectedIdx, want := range expected {
 		found := false
 		for actualIdx < len(actual) {
-			if matchesValue(want, actual[actualIdx]) {
+			if matchesValue(want, actual[actualIdx], roots) {
 				found = true
 				actualIdx++
 				break
@@ -282,9 +282,9 @@ func assertEventSubsequence(expected []map[string]any, actual []map[string]any) 
 	return nil
 }
 
-func matchesValue(expected any, actual any) bool {
+func matchesValue(expected any, actual any, roots []string) bool {
 	if matcher, ok := expected.(map[string]any); ok && isTextMatcher(matcher) {
-		return matchesTextMatcher(matcher, actual)
+		return matchesTextMatcher(matcher, actual, roots)
 	}
 
 	switch want := expected.(type) {
@@ -298,7 +298,7 @@ func matchesValue(expected any, actual any) bool {
 			if !ok {
 				return false
 			}
-			if !matchesValue(value, actualValue) {
+			if !matchesValue(value, actualValue, roots) {
 				return false
 			}
 		}
@@ -312,11 +312,17 @@ func matchesValue(expected any, actual any) bool {
 			return false
 		}
 		for i := range want {
-			if !matchesValue(want[i], got[i]) {
+			if !matchesValue(want[i], got[i], roots) {
 				return false
 			}
 		}
 		return true
+	case string:
+		got, ok := actual.(string)
+		if !ok {
+			return false
+		}
+		return normalizeAbsolutePathText(want, roots) == normalizeAbsolutePathText(got, roots)
 	default:
 		return reflect.DeepEqual(expected, actual)
 	}
@@ -353,7 +359,7 @@ func isTextMatcher(v map[string]any) bool {
 	return false
 }
 
-func matchesTextMatcher(matcher map[string]any, actual any) bool {
+func matchesTextMatcher(matcher map[string]any, actual any, roots []string) bool {
 	matchType := "exact"
 	if rawMatchType, ok := matcher["match"]; ok {
 		text, ok := rawMatchType.(string)
@@ -367,6 +373,8 @@ func matchesTextMatcher(matcher map[string]any, actual any) bool {
 	if !ok {
 		return false
 	}
+	normalizedActual := normalizeJSONAbsolutePaths(actual, roots)
+	actualText = normalizeAbsolutePathText(actualText, roots)
 
 	if rawTexts, ok := matcher["texts"]; ok {
 		var texts []string
@@ -388,27 +396,45 @@ func matchesTextMatcher(matcher map[string]any, actual any) bool {
 		if matchType != "partial" {
 			return false
 		}
+		normalizedTexts := make([]string, 0, len(texts))
 		for _, text := range texts {
-			if !strings.Contains(actualText, text) && !structuredValueContainsText(actual, text) {
-				return false
-			}
+			normalizedTexts = append(normalizedTexts, normalizeAbsolutePathText(text, roots))
 		}
-		return true
+		if containsTextsInOrder(actualText, normalizedTexts) {
+			return true
+		}
+		if len(normalizedTexts) == 1 {
+			return structuredValueContainsText(normalizedActual, normalizedTexts[0])
+		}
+		return false
 	}
 
 	rawText, ok := matcher["text"].(string)
 	if !ok {
 		return false
 	}
+	rawText = normalizeAbsolutePathText(rawText, roots)
 
 	switch matchType {
 	case "exact":
 		return actualText == rawText
 	case "partial":
-		return strings.Contains(actualText, rawText) || structuredValueContainsText(actual, rawText)
+		return strings.Contains(actualText, rawText) || structuredValueContainsText(normalizedActual, rawText)
 	default:
 		return false
 	}
+}
+
+func containsTextsInOrder(actualText string, texts []string) bool {
+	searchFrom := 0
+	for _, text := range texts {
+		idx := strings.Index(actualText[searchFrom:], text)
+		if idx < 0 {
+			return false
+		}
+		searchFrom += idx + len(text)
+	}
+	return true
 }
 
 func actualMatchText(actual any) (string, bool) {

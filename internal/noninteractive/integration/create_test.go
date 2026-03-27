@@ -62,6 +62,40 @@ func TestBuildExpectedEventsOmitsUnstableFields(t *testing.T) {
 	}, got[2])
 }
 
+func TestBuildExpectedEventsNormalizesPathsAndKeepsExactStrings(t *testing.T) {
+	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	actualEvents := []map[string]any{
+		{
+			"type":   "permission",
+			"prompt": "Approve reading " + filepath.Join(repoRoot, "catalog", "query.go") + "?",
+		},
+		{
+			"type": "tool_complete",
+			"result": map[string]any{
+				"is_error": false,
+				"output":   "<file name=\"" + filepath.Join(repoRoot, "catalog", "query.go") + "\">",
+			},
+		},
+	}
+
+	got, err := buildExpectedEvents(actualEvents, false, []string{repoRoot})
+	require.NoError(t, err)
+
+	assert.Equal(t, []map[string]any{
+		{
+			"type":   "permission",
+			"prompt": "Approve reading catalog/query.go?",
+		},
+		{
+			"type": "tool_complete",
+			"result": map[string]any{
+				"is_error": false,
+				"output":   "<file name=\"catalog/query.go\">",
+			},
+		},
+	}, got)
+}
+
 func TestChooseRequestMatcherSkipsStructuralLeaves(t *testing.T) {
 	input := mustJSONObject(t, `{
 		"type": "message",
@@ -101,14 +135,72 @@ func TestNormalizeResponseOutputItemExtractsMinimalFunctionCallShape(t *testing.
 	}, got)
 }
 
-func TestStablePartialsKeepMeaningfulMultilineToolOutput(t *testing.T) {
-	got := stablePartials("<test-status ok=\"true\">\n$ go test ./mathutil\nok  \texample.com/clarifyintegration/mathutil\t0.166s\n</test-status>", nil)
-	assert.Equal(t, []string{
-		"<test-status ok=\"true\">",
-		"$ go test ./mathutil",
-		"ok  \texample.com/clarifyintegration/mathutil\t0.166s",
-		"</test-status>",
-	}, got)
+func TestNormalizeAbsolutePathTextMakesRepoPathsRelative(t *testing.T) {
+	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	input := "read " + filepath.Join(repoRoot, "catalog", "query.go") + ":12"
+
+	assert.Equal(t, "read catalog/query.go:12", normalizeAbsolutePathText(input, []string{repoRoot}))
+}
+
+func TestBuildHTTPFixtureRequestUsesSinglePartialForPathFreeInput(t *testing.T) {
+	turn := recordedTurn{
+		Request: mustJSONObject(t, `{
+			"input": [
+				{
+					"type": "message",
+					"role": "user",
+					"content": [
+						{"type": "input_text", "text": "Reply with exactly hello."}
+					]
+				}
+			]
+		}`),
+		Response: mustJSONObject(t, `{
+			"id": "resp_real_1",
+			"output": []
+		}`),
+	}
+
+	got, err := buildHTTPFixtureRequest("hello-world", turn, nil)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"match": "partial",
+		"text":  "Reply with exactly hello.",
+	}, got["input"])
+}
+
+func TestBuildHTTPFixtureRequestFallsBackToPartialForPathfulInput(t *testing.T) {
+	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	turn := recordedTurn{
+		Request: map[string]any{
+			"input": []any{
+				map[string]any{
+					"type": "message",
+					"role": "system",
+					"content": []any{
+						map[string]any{
+							"type": "input_text",
+							"text": "Current working directory: " + repoRoot + "\nRead " + filepath.Join(repoRoot, "catalog", "query.go"),
+						},
+					},
+				},
+			},
+		},
+		Response: mustJSONObject(t, `{
+			"id": "resp_real_1",
+			"output": []
+		}`),
+	}
+
+	got, err := buildHTTPFixtureRequest("pathful", turn, []string{repoRoot})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"match": "partial",
+		"texts": []string{
+			"Current working directory:",
+			"catalog/query.go",
+		},
+	}, got["input"])
 }
 
 func TestChooseRequestMatcherKeepsMultipleToolOutputFragments(t *testing.T) {
@@ -133,37 +225,6 @@ func TestChooseRequestMatcherKeepsMultipleToolOutputFragments(t *testing.T) {
 			"</apply-patch>",
 		},
 	}, got)
-}
-
-func TestBuildExpectedEventsUsesMultiFragmentMatcherForToolOutput(t *testing.T) {
-	actualEvents := []map[string]any{
-		{
-			"type": "tool_complete",
-			"result": map[string]any{
-				"is_error": false,
-				"output":   "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>",
-			},
-		},
-	}
-
-	got, err := buildExpectedEvents(actualEvents, false, nil)
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, map[string]any{
-		"type": "tool_complete",
-		"result": map[string]any{
-			"is_error": false,
-			"output": map[string]any{
-				"match": "partial",
-				"texts": []string{
-					"<apply-patch ok=\"true\">",
-					"$ golangci-lint run ./...",
-					"$ go test ./...",
-					"</apply-patch>",
-				},
-			},
-		},
-	}, got[0])
 }
 
 func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
@@ -211,7 +272,7 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 			},
 			"result": map[string]any{
 				"is_error": false,
-				"output":   "<apply-patch ok=\"true\">",
+				"output":   "<apply-patch ok=\"true\">\nUpdated the following files:\nM note.txt\n</apply-patch>",
 			},
 		},
 		{
@@ -312,7 +373,9 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 	}, expectedRepoFiles)
 	require.Len(t, httpCfg.Responses, 2)
 	assert.Equal(t, "mock-model-generated-basic-mutation", httpCfg.Responses[0].Request["model"])
-	assert.Equal(t, "resp_generated-basic-mutation_1", httpCfg.Responses[1].Request["previous_response_id"])
+	assert.Equal(t, "resp_real_1", httpCfg.Responses[1].Request["previous_response_id"])
+	assert.Equal(t, "resp_real_1", httpCfg.Responses[0].Response["id"])
+	assert.Equal(t, "resp_real_2", httpCfg.Responses[1].Response["id"])
 
 	caseDir := filepath.Join(t.TempDir(), "generated-basic-mutation")
 	require.NoError(t, os.MkdirAll(caseDir, 0o755))

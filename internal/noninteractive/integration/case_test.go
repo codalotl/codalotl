@@ -34,7 +34,7 @@ func TestIsFixtureRepoPath(t *testing.T) {
 	assert.False(t, got)
 }
 
-func TestMatchesTextMatcherRequiresAllTexts(t *testing.T) {
+func TestMatchesTextMatcherRequiresOrderedTexts(t *testing.T) {
 	assert.True(t, matchesTextMatcher(map[string]any{
 		"match": "partial",
 		"texts": []any{
@@ -42,7 +42,7 @@ func TestMatchesTextMatcherRequiresAllTexts(t *testing.T) {
 			"$ golangci-lint run ./...",
 			"$ go test ./...",
 		},
-	}, "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>"))
+	}, "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>", nil))
 
 	assert.False(t, matchesTextMatcher(map[string]any{
 		"match": "partial",
@@ -51,5 +51,31 @@ func TestMatchesTextMatcherRequiresAllTexts(t *testing.T) {
 			"$ golangci-lint run ./...",
 			"$ go test ./...",
 		},
-	}, "<apply-patch ok=\"true\">\n$ go test ./...\n</apply-patch>"))
+	}, "<apply-patch ok=\"true\">\n$ go test ./...\n</apply-patch>", nil))
+
+	assert.False(t, matchesTextMatcher(map[string]any{
+		"match": "partial",
+		"texts": []any{
+			"$ golangci-lint run ./...",
+			"<apply-patch ok=\"true\">",
+		},
+	}, "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>", nil))
+}
+
+func TestAssertEventSubsequenceNormalizesRuntimePaths(t *testing.T) {
+	workDir := filepath.Join(string(filepath.Separator), "tmp", "case-root")
+
+	err := assertEventSubsequence([]map[string]any{
+		{
+			"type":    "assistant_text",
+			"content": "Updated catalog/query.go successfully.",
+		},
+	}, []map[string]any{
+		{
+			"type":    "assistant_text",
+			"content": "Updated " + filepath.Join(workDir, "catalog", "query.go") + " successfully.",
+		},
+	}, []string{workDir})
+
+	require.NoError(t, err)
 }
