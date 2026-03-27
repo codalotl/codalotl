@@ -324,6 +324,23 @@ func matchesValue(expected any, actual any) bool {
 
 func isTextMatcher(v map[string]any) bool {
 	if _, ok := v["text"]; !ok {
+		if _, ok := v["texts"]; !ok {
+			return false
+		}
+	}
+	if _, ok := v["text"]; ok {
+		if _, ok := v["texts"]; ok {
+			return false
+		}
+	}
+	if _, ok := v["texts"]; ok {
+		if len(v) == 1 {
+			return true
+		}
+		if len(v) == 2 {
+			_, ok := v["match"]
+			return ok
+		}
 		return false
 	}
 	if len(v) == 1 {
@@ -337,11 +354,6 @@ func isTextMatcher(v map[string]any) bool {
 }
 
 func matchesTextMatcher(matcher map[string]any, actual any) bool {
-	rawText, ok := matcher["text"].(string)
-	if !ok {
-		return false
-	}
-
 	matchType := "exact"
 	if rawMatchType, ok := matcher["match"]; ok {
 		text, ok := rawMatchType.(string)
@@ -352,6 +364,39 @@ func matchesTextMatcher(matcher map[string]any, actual any) bool {
 	}
 
 	actualText, ok := actualMatchText(actual)
+	if !ok {
+		return false
+	}
+
+	if rawTexts, ok := matcher["texts"]; ok {
+		var texts []string
+		switch v := rawTexts.(type) {
+		case []any:
+			texts = make([]string, 0, len(v))
+			for _, rawText := range v {
+				text, ok := rawText.(string)
+				if !ok {
+					return false
+				}
+				texts = append(texts, text)
+			}
+		case []string:
+			texts = v
+		default:
+			return false
+		}
+		if matchType != "partial" {
+			return false
+		}
+		for _, text := range texts {
+			if !strings.Contains(actualText, text) && !structuredValueContainsText(actual, text) {
+				return false
+			}
+		}
+		return true
+	}
+
+	rawText, ok := matcher["text"].(string)
 	if !ok {
 		return false
 	}

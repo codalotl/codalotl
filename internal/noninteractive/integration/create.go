@@ -350,10 +350,7 @@ func buildExpectedEvents(actualEvents []map[string]any, includeTokenUsage bool, 
 					if !ok {
 						return nil, fmt.Errorf("marshal tool_complete result output")
 					}
-					result["output"] = map[string]any{
-						"match": "partial",
-						"text":  stableSnippet(text, roots),
-					}
+					result["output"] = buildPartialMatcher(stablePartials(text, roots))
 				}
 			}
 		}
@@ -418,14 +415,11 @@ func buildHTTPFixtureRequest(caseSuffix string, turn recordedTurn, responseIDs m
 		request["previous_response_id"] = mappedPrevID
 	}
 
-	snippet, ok := chooseRequestSnippet(turn.Request["input"], roots)
+	inputMatcher, ok := chooseRequestMatcher(turn.Request["input"], roots)
 	if !ok {
 		return nil, fmt.Errorf("unable to derive stable request input matcher")
 	}
-	request["input"] = map[string]any{
-		"match": "partial",
-		"text":  snippet,
-	}
+	request["input"] = inputMatcher
 
 	if toolName := firstToolName(turn.Response); toolName != "" {
 		request["tools"] = map[string]any{
@@ -638,31 +632,43 @@ func firstToolName(response map[string]any) string {
 	return ""
 }
 
-func chooseRequestSnippet(input any, roots []string) (string, bool) {
+func chooseRequestMatcher(input any, roots []string) (map[string]any, bool) {
 	leaves := collectStringLeaves(input)
-	var fallback string
+	var fallback []string
 	for i := len(leaves) - 1; i >= 0; i-- {
-		snippet := stableSnippet(leaves[i], roots)
-		if strings.TrimSpace(snippet) == "" {
+		partials := stablePartials(leaves[i], roots)
+		if len(partials) == 0 {
 			continue
 		}
-		if isLikelySnippetCandidate(snippet) {
-			return snippet, true
+		if isLikelyMatcherCandidate(partials) {
+			return buildPartialMatcher(partials), true
 		}
-		if fallback == "" {
-			fallback = snippet
+		if len(fallback) == 0 {
+			fallback = partials
 		}
 	}
-	if fallback != "" {
-		return fallback, true
+	if len(fallback) > 0 {
+		return buildPartialMatcher(fallback), true
 	}
 
 	text, ok := actualMatchText(input)
 	if !ok {
-		return "", false
+		return nil, false
 	}
-	snippet := stableSnippet(text, roots)
-	return snippet, strings.TrimSpace(snippet) != ""
+	partials := stablePartials(text, roots)
+	if len(partials) == 0 {
+		return nil, false
+	}
+	return buildPartialMatcher(partials), true
+}
+
+func isLikelyMatcherCandidate(partials []string) bool {
+	for _, partial := range partials {
+		if isLikelySnippetCandidate(partial) {
+			return true
+		}
+	}
+	return false
 }
 
 func isLikelySnippetCandidate(snippet string) bool {
@@ -703,46 +709,93 @@ func collectStringLeaves(value any) []string {
 }
 
 func stableSnippet(text string, roots []string) string {
+	partials := stablePartials(text, roots)
+	if len(partials) == 0 {
+		return ""
+	}
+	return partials[0]
+}
+
+func stablePartials(text string, roots []string) []string {
 	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return nil
+	}
+
+	addUnique := func(out []string, candidate string) []string {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			return out
+		}
+		for _, existing := range out {
+			if existing == candidate {
+				return out
+			}
+		}
+		return append(out, candidate)
+	}
+
+	if !strings.Contains(trimmed, "\n") {
+		single := stableSinglePartial(trimmed, roots)
+		if single == "" {
+			return nil
+		}
+		return []string{single}
+	}
+
+	lines := strings.Split(strings.ReplaceAll(trimmed, "\r\n", "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = addUnique(out, stableLinePartial(line, roots))
+	}
+	return out
+}
+
+func stableSinglePartial(text string, roots []string) string {
+	for _, root := range roots {
+		if candidate := rootRelativeSnippet(text, root); candidate != "" {
+			return candidate
+		}
+	}
+	if len(text) > 400 {
+		return text[:400]
+	}
+	return text
+}
+
+func stableLinePartial(line string, roots []string) string {
+	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		return ""
 	}
-
 	for _, root := range roots {
 		if candidate := rootRelativeSnippet(trimmed, root); candidate != "" {
 			return candidate
 		}
 	}
-
-	if candidate := linePrefixSnippet(trimmed); candidate != "" {
-		return candidate
-	}
-
-	if len(trimmed) > 400 {
-		return trimmed[:400]
+	if len(trimmed) > 200 {
+		return trimmed[:200]
 	}
 	return trimmed
 }
 
-func linePrefixSnippet(text string) string {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
+func buildPartialMatcher(partials []string) map[string]any {
+	if len(partials) == 0 {
+		return map[string]any{
+			"match": "exact",
+			"text":  "",
 		}
-		if strings.HasPrefix(trimmed, "<") {
-			return trimmed
-		}
-		if len(trimmed) > 200 {
-			return trimmed[:200]
-		}
-		if strings.Contains(text, "\n") {
-			return trimmed
-		}
-		break
 	}
-	return ""
+	if len(partials) == 1 {
+		return map[string]any{
+			"match": "partial",
+			"text":  partials[0],
+		}
+	}
+	return map[string]any{
+		"match": "partial",
+		"texts": partials,
+	}
 }
 
 func rootRelativeSnippet(text string, root string) string {

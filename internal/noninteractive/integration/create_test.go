@@ -62,7 +62,7 @@ func TestBuildExpectedEventsOmitsUnstableFields(t *testing.T) {
 	}, got[2])
 }
 
-func TestChooseRequestSnippetSkipsStructuralLeaves(t *testing.T) {
+func TestChooseRequestMatcherSkipsStructuralLeaves(t *testing.T) {
 	input := mustJSONObject(t, `{
 		"type": "message",
 		"role": "user",
@@ -71,9 +71,12 @@ func TestChooseRequestSnippetSkipsStructuralLeaves(t *testing.T) {
 		]
 	}`)
 
-	got, ok := chooseRequestSnippet(input, nil)
+	got, ok := chooseRequestMatcher(input, nil)
 	require.True(t, ok)
-	assert.Equal(t, "add func Product", got)
+	assert.Equal(t, map[string]any{
+		"match": "partial",
+		"text":  "add func Product",
+	}, got)
 }
 
 func TestNormalizeResponseOutputItemExtractsMinimalFunctionCallShape(t *testing.T) {
@@ -98,9 +101,69 @@ func TestNormalizeResponseOutputItemExtractsMinimalFunctionCallShape(t *testing.
 	}, got)
 }
 
-func TestStableSnippetUsesStableTagPrefixForMultilineToolOutput(t *testing.T) {
-	got := stableSnippet("<test-status ok=\"true\">\n$ go test ./mathutil\nok  \texample.com/clarifyintegration/mathutil\t0.166s\n</test-status>", nil)
-	assert.Equal(t, "<test-status ok=\"true\">", got)
+func TestStablePartialsKeepMeaningfulMultilineToolOutput(t *testing.T) {
+	got := stablePartials("<test-status ok=\"true\">\n$ go test ./mathutil\nok  \texample.com/clarifyintegration/mathutil\t0.166s\n</test-status>", nil)
+	assert.Equal(t, []string{
+		"<test-status ok=\"true\">",
+		"$ go test ./mathutil",
+		"ok  \texample.com/clarifyintegration/mathutil\t0.166s",
+		"</test-status>",
+	}, got)
+}
+
+func TestChooseRequestMatcherKeepsMultipleToolOutputFragments(t *testing.T) {
+	input := mustJSONObject(t, `{
+		"input": [
+			{
+				"type": "custom_tool_call_output",
+				"call_id": "call_apply_patch_note",
+				"output": "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>"
+			}
+		]
+	}`)
+
+	got, ok := chooseRequestMatcher(input["input"], nil)
+	require.True(t, ok)
+	assert.Equal(t, map[string]any{
+		"match": "partial",
+		"texts": []string{
+			"<apply-patch ok=\"true\">",
+			"$ golangci-lint run ./...",
+			"$ go test ./...",
+			"</apply-patch>",
+		},
+	}, got)
+}
+
+func TestBuildExpectedEventsUsesMultiFragmentMatcherForToolOutput(t *testing.T) {
+	actualEvents := []map[string]any{
+		{
+			"type": "tool_complete",
+			"result": map[string]any{
+				"is_error": false,
+				"output":   "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>",
+			},
+		},
+	}
+
+	got, err := buildExpectedEvents(actualEvents, false, nil)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, map[string]any{
+		"type": "tool_complete",
+		"result": map[string]any{
+			"is_error": false,
+			"output": map[string]any{
+				"match": "partial",
+				"texts": []string{
+					"<apply-patch ok=\"true\">",
+					"$ golangci-lint run ./...",
+					"$ go test ./...",
+					"</apply-patch>",
+				},
+			},
+		},
+	}, got[0])
 }
 
 func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {

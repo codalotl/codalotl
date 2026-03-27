@@ -33,3 +33,23 @@ func TestIsFixtureRepoPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, got)
 }
+
+func TestMatchesTextMatcherRequiresAllTexts(t *testing.T) {
+	assert.True(t, matchesTextMatcher(map[string]any{
+		"match": "partial",
+		"texts": []any{
+			"<apply-patch ok=\"true\">",
+			"$ golangci-lint run ./...",
+			"$ go test ./...",
+		},
+	}, "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>"))
+
+	assert.False(t, matchesTextMatcher(map[string]any{
+		"match": "partial",
+		"texts": []any{
+			"<apply-patch ok=\"true\">",
+			"$ golangci-lint run ./...",
+			"$ go test ./...",
+		},
+	}, "<apply-patch ok=\"true\">\n$ go test ./...\n</apply-patch>"))
+}

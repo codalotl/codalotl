@@ -85,6 +85,7 @@ Rules for matching expected JSON lines:
 - If a field is absent from the expected event but present in the actual event, it is ignored.
 - Nested objects are matched recursively as subsets.
 - If a field in an expected event has the shape `{"match": "partial", "text": "unicorn"}`, the actual field must be present and contain `unicorn`.
+- If a field has the shape `{"match": "partial", "texts": ["alpha", "beta"]}`, the actual field must contain every listed fragment.
 - Partial matchers work for both strings and structured JSON values; non-strings are marshaled to JSON before matching.
 
 ## Creating test cases
@@ -124,6 +125,6 @@ Details:
   - `done.token_usage` is included only when `--include-token-usage=true`
 - `http.json` is normalized rather than recorded verbatim:
   - request `model` is rewritten to the generated mock model id (`mock-model-<case-name>`)
-  - request `input` is matched via a stable partial-text snippet rather than exact full JSON
+  - request `input` is matched via one or more stable partial-text fragments rather than exact full JSON
   - response ids and output item ids are rewritten to deterministic fixture ids
 - The generator intentionally aims for replay stability, not perfect redaction. If a recorded tool result or assistant response contains sensitive content, edit the generated files before committing them.
