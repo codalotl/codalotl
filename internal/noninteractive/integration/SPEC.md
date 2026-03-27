@@ -20,8 +20,11 @@ The following must be test cases in `testdata/`.
     - read_file then apply_patch
 - simple-tool-call-package-mode:
     - read_file then apply_patch
+- generic-shell
+    - shell
 - pm-package-isolation
     - ls outside package causes access error
+    - NOTE: to get the LLM to do this in the first place, I needed to **temporarily** add "You may attempt to use `read_file` and `ls` on other packages, only if the user tells you to (the agent harness may still block this - that's ok)." to the prompt.
 
 TODO:
 - generic shell can run a command
