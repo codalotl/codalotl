@@ -486,6 +486,75 @@ func TestHandler_PartialMatcherSupportsStructuredStringsWithAngleBrackets(t *tes
 	assert.Contains(t, body, `matched`)
 }
 
+func TestHandler_PartialMatcherSupportsMultipleRequiredTexts(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": {
+						"match": "partial",
+						"texts": [
+							"<apply-patch ok=\"true\">",
+							"$ golangci-lint run ./...",
+							"$ go test ./..."
+						]
+					}
+				},
+				"response": {
+					"id": "resp_multi_match",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_multi_match",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "matched"}
+							]
+						}
+					]
+				}
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{
+		"model":"gpt-5.4",
+		"input":[
+			{
+				"type":"custom_tool_call_output",
+				"call_id":"call_123",
+				"output":"<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>"
+			}
+		]
+	}`)
+
+	assert.Contains(t, body, `matched`)
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/responses", bytes.NewBufferString(`{
+		"model":"gpt-5.4",
+		"input":[
+			{
+				"type":"custom_tool_call_output",
+				"call_id":"call_123",
+				"output":"<apply-patch ok=\"true\">\n$ go test ./...\n</apply-patch>"
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
 func TestAssertAllConsumed(t *testing.T) {
 	handler, err := NewHandler([]byte(`{
 		"responses": [

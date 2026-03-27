@@ -53,6 +53,7 @@ type headerMatcher struct {
 type valueMatcher struct {
 	matchType  string
 	text       string
+	texts      []string
 	hasLiteral bool
 	literal    string
 }
@@ -193,10 +194,12 @@ func parseValueMatcher(data json.RawMessage) (valueMatcher, error) {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(data, &object); err == nil && len(object) > 0 {
 		if rawText, ok := object["text"]; ok {
+			if _, hasTexts := object["texts"]; hasTexts {
+				return valueMatcher{}, fmt.Errorf("text matcher cannot include both %q and %q", "text", "texts")
+			}
 			if len(object) > 2 {
 				return valueMatcher{}, fmt.Errorf("text matcher supports only %q and %q fields", "match", "text")
 			}
-
 			if err := json.Unmarshal(rawText, &text); err != nil {
 				return valueMatcher{}, fmt.Errorf("parse text matcher text: %w", err)
 			}
@@ -217,6 +220,34 @@ func parseValueMatcher(data json.RawMessage) (valueMatcher, error) {
 			default:
 				return valueMatcher{}, fmt.Errorf("unsupported match type %q", matchType)
 			}
+		}
+		if rawTexts, ok := object["texts"]; ok {
+			if len(object) > 2 {
+				return valueMatcher{}, fmt.Errorf("text matcher supports only %q and %q fields", "match", "texts")
+			}
+
+			var texts []string
+			if err := json.Unmarshal(rawTexts, &texts); err != nil {
+				return valueMatcher{}, fmt.Errorf("parse text matcher texts: %w", err)
+			}
+			if len(texts) == 0 {
+				return valueMatcher{}, fmt.Errorf("parse text matcher texts: must not be empty")
+			}
+
+			matchType := matchPartial
+			if rawMatchType, ok := object["match"]; ok {
+				if err := json.Unmarshal(rawMatchType, &matchType); err != nil {
+					return valueMatcher{}, fmt.Errorf("parse text matcher match type: %w", err)
+				}
+			}
+			if matchType != matchPartial {
+				return valueMatcher{}, fmt.Errorf("unsupported match type %q", matchType)
+			}
+
+			return valueMatcher{
+				matchType: matchType,
+				texts:     texts,
+			}, nil
 		}
 	}
 
@@ -346,6 +377,18 @@ func (m valueMatcher) matches(actual any) bool {
 	actualText, ok := actualMatchText(actual)
 	if !ok {
 		return false
+	}
+
+	if len(m.texts) > 0 {
+		if m.matchType != matchPartial {
+			return false
+		}
+		for _, text := range m.texts {
+			if !strings.Contains(actualText, text) && !structuredValueContainsText(actual, text) {
+				return false
+			}
+		}
+		return true
 	}
 
 	switch m.matchType {

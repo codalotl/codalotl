@@ -98,6 +98,16 @@ Request fields and header values can either be a string (exact matching) or an o
 }
 ```
 
+You can also require multiple fragments:
+
+```jsonc
+{
+    "request": {
+        "input": {"match": "partial", "texts": ["alpha", "beta"]}
+    }
+}
+```
+
 ## Public API
 
 ```go
