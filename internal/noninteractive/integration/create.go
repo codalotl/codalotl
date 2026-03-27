@@ -53,6 +53,10 @@ func CreateCase(opts CreateOptions) error {
 	if err != nil {
 		return err
 	}
+	isFixtureRepo, err := isFixtureRepoPath(repoPath)
+	if err != nil {
+		return fmt.Errorf("check fixture repo path: %w", err)
+	}
 	reportProgress(opts.ProgressOut, "Preparing integration case output in %s", outputDir)
 	reportProgress(opts.ProgressOut, "Copying source repo from %s", repoPath)
 
@@ -118,9 +122,13 @@ func CreateCase(opts CreateOptions) error {
 		return err
 	}
 
-	repoOutputDir := filepath.Join(outputDir, "repo")
-	if err := copyTree(repoPath, repoOutputDir); err != nil {
-		return fmt.Errorf("write repo snapshot: %w", err)
+	if isFixtureRepo {
+		reportProgress(opts.ProgressOut, "Skipping repo snapshot because source repo is the shared fixture repo")
+	} else {
+		repoOutputDir := filepath.Join(outputDir, "repo")
+		if err := copyTree(repoPath, repoOutputDir); err != nil {
+			return fmt.Errorf("write repo snapshot: %w", err)
+		}
 	}
 	if err := writeExpectedRepoFiles(filepath.Join(outputDir, "expected_repo"), expectedRepoFiles); err != nil {
 		return err

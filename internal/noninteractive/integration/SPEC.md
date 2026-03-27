@@ -77,7 +77,7 @@ Details:
 - The CLI prints human-readable progress to stderr while the real agent's NDJSON stream is written to stdout.
 - Saves request/responses with `llmstream.AddDiagnosticHook`.
 - Diff pre/post workdir snapshots to record filesystem changes.
-- Copies the input repo into `output/repo`, so generated cases are self-contained.
+- Copies the input repo into `output/repo`, UNLESS the input repo is specifically the `testdata/repo` fixture.
 - Run the generated case through the existing integration harness immediately to verify replay works.
 - `config.json` is normalized rather than recorded verbatim:
   - `start` keeps `type` and `package_path`, but omits `cwd` and `model_id`

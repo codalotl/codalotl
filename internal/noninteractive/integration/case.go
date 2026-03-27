@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -120,7 +121,49 @@ func repoDirForCase(caseDir string) (string, error) {
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("stat case repo dir: %w", err)
 	}
-	return fixtureRepoRoot, nil
+	fixturePath, err := fixtureRepoPath()
+	if err != nil {
+		return "", err
+	}
+	return fixturePath, nil
+}
+
+func fixtureRepoPath() (string, error) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("resolve integration package path")
+	}
+	return filepath.Join(filepath.Dir(filename), fixtureRepoRoot), nil
+}
+
+func isFixtureRepoPath(repoPath string) (bool, error) {
+	fixturePath, err := fixtureRepoPath()
+	if err != nil {
+		return false, err
+	}
+
+	normalizedRepoPath, err := normalizeExistingPath(repoPath)
+	if err != nil {
+		return false, fmt.Errorf("normalize repo path: %w", err)
+	}
+	normalizedFixturePath, err := normalizeExistingPath(fixturePath)
+	if err != nil {
+		return false, fmt.Errorf("normalize fixture repo path: %w", err)
+	}
+	return normalizedRepoPath == normalizedFixturePath, nil
+}
+
+func normalizeExistingPath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute path: %w", err)
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("evaluate symlinks: %w", err)
+	}
+	return resolvedPath, nil
 }
 
 func readConfig(path string) (testCaseConfig, error) {
