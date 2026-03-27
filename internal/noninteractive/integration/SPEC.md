@@ -118,13 +118,16 @@ Details:
 - Copies the input repo into `output/repo`, UNLESS the input repo is specifically the `testdata/repo` fixture.
 - Run the generated case through the existing integration harness immediately to verify replay works.
 - `config.json` is normalized rather than recorded verbatim:
-  - `start` keeps `type` and `package_path`, but omits `cwd` and `model_id`
-  - `agent.id` is omitted; only `agent.depth` is kept
-  - `assistant_reasoning` events are omitted, because the mock transport does not replay reasoning deltas
-  - `tool_complete.result.output` and `permission.prompt` are recorded as partial matchers
-  - `done.token_usage` is included only when `--include-token-usage=true`
+    - `start` keeps `type` and `package_path`, but omits `cwd` and `model_id`
+    - `agent.id` is omitted; only `agent.depth` is kept
+    - `assistant_reasoning` events are omitted, because the mock transport does not replay reasoning deltas
+    - `tool_complete.result.output` and `permission.prompt` are recorded as partial matchers
+    - `done.token_usage` is included only when `--include-token-usage=true`
 - `http.json` is normalized rather than recorded verbatim:
-  - request `model` is rewritten to the generated mock model id (`mock-model-<case-name>`)
-  - request `input` is matched via one or more stable partial-text fragments rather than exact full JSON
-  - response ids and output item ids are rewritten to deterministic fixture ids
-- The generator intentionally aims for replay stability, not perfect redaction. If a recorded tool result or assistant response contains sensitive content, edit the generated files before committing them.
+    - request `model` is rewritten to the generated mock model id (`mock-model-<case-name>`)
+- Both `config.json` and `http.json`:
+    - Normalize absolute paths:
+        - repo-relative if inside repo
+        - Inside GOROOT/src: `stdlib/...`
+        - Inside GOMODCACHE: `modcache/<module>@<version>/...`
+        - Unknown: don't normalize. We can add more cases here if necessary.
