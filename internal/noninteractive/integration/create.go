@@ -115,7 +115,7 @@ func CreateCase(opts CreateOptions) error {
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create output dir: %w", err)
 	}
-	if err := writeJSONFile(filepath.Join(outputDir, "config.json"), cfg); err != nil {
+	if err := writeConfigJSONFile(filepath.Join(outputDir, "config.json"), cfg); err != nil {
 		return err
 	}
 	if err := writeJSONFile(filepath.Join(outputDir, "http.json"), httpCfg); err != nil {
@@ -837,6 +837,21 @@ func writeJSONFile(path string, value any) error {
 	return nil
 }
 
+func writeConfigJSONFile(path string, cfg testCaseConfig) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create json parent dir: %w", err)
+	}
+
+	data, err := marshalConfigJSON(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal %q: %w", path, err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write %q: %w", path, err)
+	}
+	return nil
+}
+
 func marshalPrettyJSON(value any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -845,6 +860,51 @@ func marshalPrettyJSON(value any) ([]byte, error) {
 	if err := enc.Encode(value); err != nil {
 		return nil, err
 	}
+	return buf.Bytes(), nil
+}
+
+func marshalCompactJSON(value any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
+
+func marshalConfigJSON(cfg testCaseConfig) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteString("{\n")
+
+	prompt, err := marshalCompactJSON(cfg.Prompt)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(&buf, "  \"prompt\": %s", prompt)
+
+	if cfg.PackagePath != "" {
+		packagePath, err := marshalCompactJSON(cfg.PackagePath)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(&buf, ",\n  \"package_path\": %s", packagePath)
+	}
+
+	buf.WriteString(",\n  \"expected\": [\n")
+	for i, event := range cfg.Expected {
+		eventJSON, err := marshalCompactJSON(event)
+		if err != nil {
+			return nil, err
+		}
+		buf.WriteString("    ")
+		buf.Write(eventJSON)
+		if i < len(cfg.Expected)-1 {
+			buf.WriteString(",")
+		}
+		buf.WriteString("\n")
+	}
+	buf.WriteString("  ]\n}\n")
 	return buf.Bytes(), nil
 }
 

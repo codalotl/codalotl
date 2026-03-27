@@ -253,12 +253,43 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 
 	caseDir := filepath.Join(t.TempDir(), "generated-basic-mutation")
 	require.NoError(t, os.MkdirAll(caseDir, 0o755))
-	require.NoError(t, writeJSONFile(filepath.Join(caseDir, "config.json"), cfg))
+	require.NoError(t, writeConfigJSONFile(filepath.Join(caseDir, "config.json"), cfg))
 	require.NoError(t, writeJSONFile(filepath.Join(caseDir, "http.json"), httpCfg))
 	require.NoError(t, copyTree(repoDir, filepath.Join(caseDir, "repo")))
 	require.NoError(t, writeExpectedRepoFiles(filepath.Join(caseDir, "expected_repo"), expectedRepoFiles))
 
 	require.NoError(t, RunCaseDir(caseDir))
+}
+
+func TestMarshalConfigJSONUsesSingleLineExpectedItems(t *testing.T) {
+	cfg := testCaseConfig{
+		Prompt:      "fix bug",
+		PackagePath: "catalog",
+		Expected: []map[string]any{
+			{
+				"type":         "start",
+				"package_path": "catalog",
+			},
+			{
+				"type": "tool_call",
+				"tool": map[string]any{
+					"name":  "read_file",
+					"input": "{\"path\":\"catalog/query.go\"}",
+				},
+			},
+		},
+	}
+
+	data, err := marshalConfigJSON(cfg)
+	require.NoError(t, err)
+
+	assert.Contains(t, string(data), "  \"expected\": [\n")
+	assert.Contains(t, string(data), "    {\"package_path\":\"catalog\",\"type\":\"start\"},\n")
+	assert.Contains(t, string(data), "    {\"tool\":{\"input\":\"{\\\"path\\\":\\\"catalog/query.go\\\"}\",\"name\":\"read_file\"},\"type\":\"tool_call\"}\n")
+
+	var roundTrip testCaseConfig
+	require.NoError(t, json.Unmarshal(data, &roundTrip))
+	assert.Equal(t, cfg, roundTrip)
 }
 
 func mustJSONObject(t *testing.T, raw string) map[string]any {
