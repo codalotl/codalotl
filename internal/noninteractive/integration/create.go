@@ -697,11 +697,15 @@ func stablePartials(text string, roots []string) []string {
 	}
 
 	if !strings.Contains(trimmed, "\n") {
-		single := stableSinglePartial(trimmed, roots)
-		if single == "" {
+		singles := stableSinglePartials(trimmed, roots)
+		if len(singles) == 0 {
 			return nil
 		}
-		return []string{single}
+		out := make([]string, 0, len(singles))
+		for _, single := range singles {
+			out = addUnique(out, single)
+		}
+		return out
 	}
 
 	lines := strings.Split(strings.ReplaceAll(trimmed, "\r\n", "\n"), "\n")
@@ -712,22 +716,25 @@ func stablePartials(text string, roots []string) []string {
 	return out
 }
 
-func stableSinglePartial(text string, roots []string) string {
+func stableSinglePartials(text string, roots []string) []string {
 	for _, root := range roots {
 		if candidate := rootRelativeSnippet(text, root); candidate != "" {
-			return candidate
+			return []string{candidate}
 		}
+	}
+	if fragments := splitAbsoluteRootFragments(text, roots); len(fragments) > 0 {
+		return fragments
 	}
 	if elided := elideAbsoluteRoots(text, roots); elided != text {
 		if len(elided) > 400 {
-			return elided[:400]
+			return []string{elided[:400]}
 		}
-		return elided
+		return []string{elided}
 	}
 	if len(text) > 400 {
-		return text[:400]
+		return []string{text[:400]}
 	}
-	return text
+	return []string{text}
 }
 
 func stableLinePartial(line string, roots []string) string {
@@ -750,6 +757,52 @@ func stableLinePartial(line string, roots []string) string {
 		return trimmed[:200]
 	}
 	return trimmed
+}
+
+func splitAbsoluteRootFragments(text string, roots []string) []string {
+	fragments := []string{text}
+	changed := false
+
+	splitOn := func(needle string) {
+		if needle == "" {
+			return
+		}
+
+		next := make([]string, 0, len(fragments))
+		for _, fragment := range fragments {
+			parts := strings.Split(fragment, needle)
+			if len(parts) > 1 {
+				changed = true
+			}
+			next = append(next, parts...)
+		}
+		fragments = next
+	}
+
+	for _, root := range roots {
+		splitOn(root)
+		slashRoot := filepath.ToSlash(root)
+		if slashRoot != root {
+			splitOn(slashRoot)
+		}
+	}
+
+	if !changed {
+		return nil
+	}
+
+	out := make([]string, 0, len(fragments))
+	for _, fragment := range fragments {
+		fragment = strings.TrimSpace(fragment)
+		if fragment == "" {
+			continue
+		}
+		if len(fragment) > 400 {
+			fragment = fragment[:400]
+		}
+		out = append(out, fragment)
+	}
+	return out
 }
 
 func elideAbsoluteRoots(text string, roots []string) string {

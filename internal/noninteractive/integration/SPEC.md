@@ -20,6 +20,14 @@ The following must be test cases in `testdata/`.
     - read_file then apply_patch
 - simple-tool-call-package-mode:
     - read_file then apply_patch
+- pm-package-isolation
+    - ls outside package causes access error
+
+TODO:
+- all tools covered:
+    - read_file
+    - ls
+    - apply_patch
 
 ### Steps To Create an Actual Test
 

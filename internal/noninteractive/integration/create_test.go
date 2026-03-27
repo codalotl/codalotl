@@ -203,6 +203,37 @@ func TestBuildHTTPFixtureRequestFallsBackToPartialForPathfulInput(t *testing.T) 
 	}, got["input"])
 }
 
+func TestBuildHTTPFixtureRequestNormalizesSingleLineSandboxError(t *testing.T) {
+	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	turn := recordedTurn{
+		Request: map[string]any{
+			"previous_response_id": "resp_real_1",
+			"input": []any{
+				map[string]any{
+					"type":    "function_call_output",
+					"call_id": "call_ls_catalog",
+					"output":  "path \"" + filepath.Join(repoRoot, "catalog") + "\" is outside \"package .\" rooted at \"" + repoRoot + "\". Consider using other tools (ex: get_public_api; clarify_public_api; get_usage; update_usage; change_api)",
+				},
+			},
+		},
+		Response: mustJSONObject(t, `{
+			"id": "resp_real_2",
+			"output": []
+		}`),
+	}
+
+	got, err := buildHTTPFixtureRequest("pm-sandbox", turn, []string{repoRoot})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"match": "partial",
+		"texts": []string{
+			"path \"",
+			"/catalog\" is outside \"package .\" rooted at \"",
+			"\". Consider using other tools (ex: get_public_api; clarify_public_api; get_usage; update_usage; change_api)",
+		},
+	}, got["input"])
+}
+
 func TestChooseRequestMatcherKeepsMultipleToolOutputFragments(t *testing.T) {
 	input := mustJSONObject(t, `{
 		"input": [
