@@ -1,0 +1,225 @@
+{
+  "responses": [
+    {
+      "name": "turn-01",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "text": "Read query.go, then make the smallest possible change so ProductsWithTag returns nil immediately when tag is empty. Do not run tests or read any other files."
+        },
+        "model": "mock-model-simple-tool-call-package-mode",
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"read_file\""
+        }
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_00d6ffc114e1982a0069c6c3eec928819088dd772b556a979f",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_simple-tool-call-package-mode_1_1",
+            "summary": [
+              {
+                "text": "**Reading query.go**\n\nI need to comply with the instructions by focusing solely on reading query.go, making the smallest possible changes. I wonder if I should use update_plan, but the task seems straightforward, so maybe I can skip that step. It's important not to run tests or read other files. My plan is to apply the patch after reviewing query.go. I guess I should mention that automatic checks may run due to the harness. Now, let's go ahead and read query.go!",
+                "type": "summary_text"
+              }
+            ],
+            "type": "reasoning"
+          },
+          {
+            "content": [
+              {
+                "text": "I’ll inspect `catalog/query.go` and make the minimal change there only.",
+                "type": "output_text"
+              }
+            ],
+            "id": "msg_simple-tool-call-package-mode_1_2",
+            "role": "assistant",
+            "type": "message"
+          },
+          {
+            "arguments": "{\"line_numbers\":false,\"path\":\"catalog/query.go\",\"request_permission\":false}",
+            "call_id": "call_sI4uhO0xUt2kbjSE8Z5zYNr6",
+            "id": "fc_simple-tool-call-package-mode_1_3",
+            "name": "read_file",
+            "status": "completed",
+            "type": "function_call"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 6324,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 140,
+          "output_tokens_details": {
+            "reasoning_tokens": 85
+          },
+          "total_tokens": 6464
+        }
+      }
+    },
+    {
+      "name": "turn-02",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "texts": [
+            "<file name=\"catalog/query.go\" line-count=\"26\" byte-count=\"620\" any-line-truncated=\"false\" file-truncated=\"false\">",
+            "package catalog",
+            "// ProductsWithTag returns all products with tag, sorted by SKU.",
+            "func (c *Catalog) ProductsWithTag(tag string) []Product {",
+            "products := c.All()",
+            "filtered := make([]Product, 0, len(products))",
+            "for _, product := range products {",
+            "if product.HasTag(tag) {",
+            "filtered = append(filtered, product)",
+            "}",
+            "return filtered",
+            "// TotalWeight sums the weights of the provided SKUs and ignores unknown products.",
+            "func (c *Catalog) TotalWeight(skus []string) int {",
+            "total := 0",
+            "for _, sku := range skus {",
+            "product, ok := c.Lookup(sku)",
+            "if !ok {",
+            "continue",
+            "total += product.WeightGrams",
+            "return total",
+            "</file>"
+          ]
+        },
+        "model": "mock-model-simple-tool-call-package-mode",
+        "previous_response_id": "resp_00d6ffc114e1982a0069c6c3eec928819088dd772b556a979f",
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"apply_patch\""
+        }
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_00d6ffc114e1982a0069c6c3f348508190a81837c5b3e42f08",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_simple-tool-call-package-mode_2_1",
+            "summary": [
+              {
+                "text": "**Implementing a quick fix**\n\nI see that I need to make a minimal change. If the tag is empty, I should return nil immediately. That way, the function can skip any unnecessary processing. It seems straightforward, but it’ll ensure that the patch works as intended without any additional steps that aren't needed. Okay, let’s apply this patch and keep everything efficient!",
+                "type": "summary_text"
+              }
+            ],
+            "type": "reasoning"
+          },
+          {
+            "content": [
+              {
+                "text": "Applying the smallest change in `catalog/query.go` to short-circuit on an empty tag.",
+                "type": "output_text"
+              }
+            ],
+            "id": "msg_simple-tool-call-package-mode_2_2",
+            "role": "assistant",
+            "type": "message"
+          },
+          {
+            "call_id": "call_M6IJX8IaKRu2lfGi5Be13aHI",
+            "id": "ct_simple-tool-call-package-mode_2_3",
+            "input": "*** Begin Patch\n*** Update File: catalog/query.go\n@@\n // ProductsWithTag returns all products with tag, sorted by SKU.\n func (c *Catalog) ProductsWithTag(tag string) []Product {\n+\tif tag == \"\" {\n+\t\treturn nil\n+\t}\n \tproducts := c.All()\n \tfiltered := make([]Product, 0, len(products))\n \tfor _, product := range products {\n*** End Patch\n",
+            "name": "apply_patch",
+            "status": "completed",
+            "type": "custom_tool_call"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 6671,
+          "input_tokens_details": {
+            "cached_tokens": 6272
+          },
+          "output_tokens": 148,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 6819
+        }
+      }
+    },
+    {
+      "name": "turn-03",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "texts": [
+            "<apply-patch ok=\"true\">",
+            "Updated the following files:",
+            "M catalog/query.go",
+            "</apply-patch>",
+            "<diagnostics-status ok=\"true\" message=\"build succeeded\">",
+            "$ go build -o /dev/null ./catalog",
+            "</diagnostics-status>",
+            "<lint-status ok=\"true\" message=\"no issues found\" mode=\"fix\">",
+            "$ gofmt -l -w catalog",
+            "</lint-status>"
+          ]
+        },
+        "model": "mock-model-simple-tool-call-package-mode",
+        "previous_response_id": "resp_00d6ffc114e1982a0069c6c3f348508190a81837c5b3e42f08"
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_00d6ffc114e1982a0069c6c3f735fc8190b2d6c6a193c87b17",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_simple-tool-call-package-mode_3_1",
+            "summary": [
+              {
+                "text": "**Summarizing test information**\n\nI need to create a final and concise response. I realize I didn't run the tests as the user requested. Maybe I should mention that the auto build and lint happened after the patch. The user specifically said to avoid running tests or reading other files. I could clarify that only the modified query.go file was involved, and no tests were executed. I’ll also note that automated build and gofmt by harness might not be necessary unless relevant.",
+                "type": "summary_text"
+              }
+            ],
+            "type": "reasoning"
+          },
+          {
+            "content": [
+              {
+                "text": "Made the minimal change in `catalog/query.go`: `ProductsWithTag` now returns `nil` immediately when `tag == \"\"`.\n\nI did not run tests or read any other files. The harness automatically performed its usual post-edit build/format checks, and those passed.",
+                "type": "output_text"
+              }
+            ],
+            "id": "msg_simple-tool-call-package-mode_3_2",
+            "role": "assistant",
+            "type": "message"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 6912,
+          "input_tokens_details": {
+            "cached_tokens": 6656
+          },
+          "output_tokens": 122,
+          "output_tokens_details": {
+            "reasoning_tokens": 61
+          },
+          "total_tokens": 7034
+        }
+      }
+    }
+  ]
+}
