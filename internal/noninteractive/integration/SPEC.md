@@ -5,6 +5,43 @@ This is a test-only package for integration tests of noninteractive in JSON mode
 This package is meant to give confidence that the overall agent, JSON mode, tool execution, and mock OpenAI transport are working together. It is not meant for
 thousands of narrow unit tests. Use normal `go test` in the appropriate package for that.
 
+## Actual Test Cases
+
+The following must be test cases in `testdata/`.
+
+- hello-world: self-contained test (non-shared-repo) that non-package mode works with a hi prompt and simple answer without tool calls.
+- simple-tool-call-generic-mode:
+    - read_file then apply_patch
+- simple-tool-call-package-mode:
+    - read_file then apply_patch
+
+### Steps To Create an Actual Test
+
+Best practice:
+- Prefer generating the case with `go run ./internal/noninteractive/integration/cmd/create` instead of hand-authoring `config.json` or `http.json`.
+    - Set `--output` to directly write the test case to `testdata/cases/X`.
+- Prefer using the shared fixture repo at `testdata/repo` unless the scenario truly requires a custom per-case repo.
+- For generic-mode cases, pass `--package=''`. For package-mode cases, pass the specific package path inside the repo.
+- Let the generator verify replay immediately. If generation does not replay cleanly, fix the prompt or scenario first instead of checking in a flaky case.
+- After generation, read `config.json`, `http.json`, and every file in `expected_repo/` and confirm they make sense:
+  - the tool sequence should match the intended scenario
+  - `expected_repo/` should contain exactly the changed or created files
+  - there should be no surprising extra reads, writes, or assistant output
+- Run `go test ./internal/noninteractive/integration/...` before committing.
+
+Recommended workflow:
+
+```sh
+go run ./internal/noninteractive/integration/cmd/create \
+  --repo=./internal/noninteractive/integration/testdata/repo \
+  --model=gpt-5.4-high \
+  --package='' \
+  --prompt='Read catalog/query.go, then make the smallest possible change so ProductsWithTag returns nil immediately when tag is empty. Do not run tests or read any other files.' \
+  --output=./internal/noninteractive/integration/testdata/cases/simple-tool-call-generic-mode
+
+go test ./internal/noninteractive/integration/...
+```
+
 ## Fixture repo
 
 A re-usable fixture can be found in `testdata/repo`, which contains multiple Go packages that we can operate on.

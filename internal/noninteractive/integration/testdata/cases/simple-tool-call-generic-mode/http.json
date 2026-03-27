@@ -1,0 +1,160 @@
+{
+  "responses": [
+    {
+      "name": "turn-01",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "text": "Read catalog/query.go, then make the smallest possible change so ProductsWithTag returns nil immediately when tag is empty. Do not run tests or read any other files."
+        },
+        "model": "mock-model-simple-tool-call-generic-mode",
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"read_file\""
+        }
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_simple-tool-call-generic-mode_1",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_simple-tool-call-generic-mode_1_1",
+            "summary": [
+              {
+                "text": "**Focusing on code changes**\n\nI see that I need to make sure we're complying with whatever requirements are in place. The plan involves looking at the `catalog/query.go` file and making the smallest possible change without adding tests or dealing with other files. It seems like I might use `update_plan`, but maybe it's better to skip that and just read the file via `read_file`. Then, I can limit my edits by just applying a patch to that single file. Let's get started on reading the file!",
+                "type": "summary_text"
+              }
+            ],
+            "type": "reasoning"
+          },
+          {
+            "arguments": "{\"line_numbers\":false,\"path\":\"catalog/query.go\",\"request_permission\":false}",
+            "call_id": "call_40gMbK1F3jAC85Vx0fJO9efk",
+            "id": "fc_simple-tool-call-generic-mode_1_2",
+            "name": "read_file",
+            "status": "completed",
+            "type": "function_call"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 3030,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 98,
+          "output_tokens_details": {
+            "reasoning_tokens": 66
+          },
+          "total_tokens": 3128
+        }
+      }
+    },
+    {
+      "name": "turn-02",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "text": "<file name=\"catalog/query.go\" line-count=\"26\" byte-count=\"620\" any-line-truncated=\"false\" file-truncated=\"false\">"
+        },
+        "model": "mock-model-simple-tool-call-generic-mode",
+        "previous_response_id": "resp_simple-tool-call-generic-mode_1",
+        "tools": {
+          "match": "partial",
+          "text": "\"name\":\"apply_patch\""
+        }
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_simple-tool-call-generic-mode_2",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_simple-tool-call-generic-mode_2_1",
+            "summary": [
+              {
+                "text": "**Making a small code change**\n\nI need to apply the smallest change to the patch. It's clear I should add a condition that checks if the tag is an empty string. If it is, I want to return nil right at the start. This seems straightforward, but I want to make sure it integrates smoothly with the rest of the code. I could double-check that this logic makes sense overall before finalizing it.",
+                "type": "summary_text"
+              }
+            ],
+            "type": "reasoning"
+          },
+          {
+            "call_id": "call_orHBj0K4yrJxzd8Ta97FKvEp",
+            "id": "ct_simple-tool-call-generic-mode_2_2",
+            "input": "*** Begin Patch\n*** Update File: catalog/query.go\n@@\n // ProductsWithTag returns all products with tag, sorted by SKU.\n func (c *Catalog) ProductsWithTag(tag string) []Product {\n+\tif tag == \"\" {\n+\t\treturn nil\n+\t}\n \tproducts := c.All()\n \tfiltered := make([]Product, 0, len(products))\n \tfor _, product := range products {\n*** End Patch\n",
+            "name": "apply_patch",
+            "status": "completed",
+            "type": "custom_tool_call"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 3335,
+          "input_tokens_details": {
+            "cached_tokens": 2944
+          },
+          "output_tokens": 123,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 3458
+        }
+      }
+    },
+    {
+      "name": "turn-03",
+      "consume": true,
+      "request": {
+        "input": {
+          "match": "partial",
+          "text": "<apply-patch ok=\"true\">"
+        },
+        "model": "mock-model-simple-tool-call-generic-mode",
+        "previous_response_id": "resp_simple-tool-call-generic-mode_2"
+      },
+      "response": {
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_simple-tool-call-generic-mode_3",
+        "object": "response",
+        "output": [
+          {
+            "content": [
+              {
+                "text": "Made the smallest change in `catalog/query.go`: `ProductsWithTag` now returns `nil` immediately when `tag == \"\"`.\n\nI did not run tests or read any other files, per your instructions.",
+                "type": "output_text"
+              }
+            ],
+            "id": "msg_simple-tool-call-generic-mode_3_1",
+            "role": "assistant",
+            "type": "message"
+          }
+        ],
+        "status": "completed",
+        "usage": {
+          "input_tokens": 3492,
+          "input_tokens_details": {
+            "cached_tokens": 3328
+          },
+          "output_tokens": 46,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 3538
+        }
+      }
+    }
+  ]
+}
