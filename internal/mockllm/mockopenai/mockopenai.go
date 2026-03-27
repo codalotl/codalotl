@@ -61,8 +61,15 @@ type valueMatcher struct {
 }
 
 type handler struct {
-	mu        sync.Mutex
-	responses []compiledResponse
+	mu                   sync.Mutex
+	responses            []compiledResponse
+	lastUnmatchedRequest map[string]any
+}
+
+// DebugState describes recent matching state for a mock handler.
+type DebugState struct {
+	LastUnmatchedRequest        map[string]any
+	NextUnconsumedConsumedIndex int
 }
 
 // NewHandlerFromFile creates a mock OpenAI Responses API handler from a JSON or JSON-with-comments file.
@@ -100,6 +107,15 @@ func AssertAllConsumed(h http.Handler) error {
 		return fmt.Errorf("handler is not a mockopenai handler")
 	}
 	return mockHandler.assertAllConsumed()
+}
+
+// DebugInfo returns the last unmatched request and the next unconsumed response index.
+func DebugInfo(h http.Handler) (DebugState, error) {
+	mockHandler, ok := h.(*handler)
+	if !ok {
+		return DebugState{}, fmt.Errorf("handler is not a mockopenai handler")
+	}
+	return mockHandler.debugState(), nil
 }
 
 func (h *handler) assertAllConsumed() error {
@@ -383,11 +399,36 @@ func (h *handler) matchResponse(request map[string]any, headers http.Header) (an
 		if response.consume {
 			response.consumed = true
 		}
+		h.lastUnmatchedRequest = nil
 
 		return response.response, true
 	}
 
+	h.lastUnmatchedRequest = cloneJSONObject(request)
 	return nil, false
+}
+
+func (h *handler) debugState() DebugState {
+	if h == nil {
+		return DebugState{NextUnconsumedConsumedIndex: -1}
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	state := DebugState{
+		NextUnconsumedConsumedIndex: -1,
+	}
+	if h.lastUnmatchedRequest != nil {
+		state.LastUnmatchedRequest = cloneJSONObject(h.lastUnmatchedRequest)
+	}
+	for i, response := range h.responses {
+		if response.consume && !response.consumed {
+			state.NextUnconsumedConsumedIndex = i
+			break
+		}
+	}
+	return state
 }
 
 func matchesRequest(matchers map[string]valueMatcher, request map[string]any) bool {
@@ -849,6 +890,24 @@ func cloneObject(source map[string]any) map[string]any {
 	cloned := make(map[string]any, len(source))
 	for key, value := range source {
 		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneJSONObject(value map[string]any) map[string]any {
+	cloned, _ := cloneJSONValue(value).(map[string]any)
+	return cloned
+}
+
+func cloneJSONValue(value any) any {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+
+	var cloned any
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		return value
 	}
 	return cloned
 }

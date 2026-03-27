@@ -378,16 +378,42 @@ func buildHTTPFixture(caseName string, turns []recordedTurn, roots []string) (ht
 }
 
 func buildHTTPFixtureRequest(caseSuffix string, firstTurn bool, turn recordedTurn, roots []string) (map[string]any, error) {
-	request := normalizeHTTPJSONObjectAbsolutePaths(cloneJSONObject(turn.Request), roots)
-	if request == nil {
+	request, err := buildPrunedHTTPFixtureRequest(turn.Request, roots, firstTurn)
+	if err != nil {
+		return nil, err
+	}
+	request["model"] = "mock-model-" + caseSuffix
+	return request, nil
+}
+
+func buildReplayDebugHTTPFixtureRequest(request map[string]any, roots []string) (map[string]any, error) {
+	return buildPrunedHTTPFixtureRequest(request, roots, isFirstHTTPFixtureTurnRequest(request))
+}
+
+func buildPrunedHTTPFixtureRequest(request map[string]any, roots []string, firstTurn bool) (map[string]any, error) {
+	pruned := normalizeHTTPJSONObjectAbsolutePaths(cloneJSONObject(request), roots)
+	if pruned == nil {
 		return nil, fmt.Errorf("request must be a JSON object")
 	}
+	pruneHTTPFixtureRequest(pruned, firstTurn)
+	return pruned, nil
+}
+
+func isFirstHTTPFixtureTurnRequest(request map[string]any) bool {
+	previousResponseID, ok := request["previous_response_id"]
+	if !ok {
+		return true
+	}
+
+	responseID, ok := previousResponseID.(string)
+	return !ok || responseID == ""
+}
+
+func pruneHTTPFixtureRequest(request map[string]any, firstTurn bool) {
 	if firstTurn {
 		pruneFirstTurnHTTPFixtureInput(request)
 	}
 	pruneHTTPFixtureRequestFields(request)
-	request["model"] = "mock-model-" + caseSuffix
-	return request, nil
 }
 
 func pruneFirstTurnHTTPFixtureInput(request map[string]any) {

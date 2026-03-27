@@ -286,6 +286,81 @@ func TestBuildHTTPFixtureRequestDoesNotPruneLaterTurnInput(t *testing.T) {
 	assert.Len(t, got["input"], 3)
 }
 
+func TestBuildReplayDebugHTTPFixtureRequestPrunesFirstTurn(t *testing.T) {
+	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	request := map[string]any{
+		"model": "mock-model-case-name",
+		"input": []any{
+			map[string]any{
+				"type": "message",
+				"content": []any{
+					map[string]any{
+						"type": "input_text",
+						"text": "system prompt",
+					},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"content": []any{
+					map[string]any{
+						"type": "input_text",
+						"text": "env block",
+					},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"content": []any{
+					map[string]any{
+						"type": "input_text",
+						"text": "read " + filepath.Join(repoRoot, "catalog", "query.go"),
+					},
+				},
+			},
+		},
+		"tools": []any{
+			map[string]any{"name": "read_file"},
+		},
+		"stream": true,
+	}
+
+	got, err := buildReplayDebugHTTPFixtureRequest(request, []string{repoRoot})
+	require.NoError(t, err)
+
+	assert.Equal(t, []any{
+		map[string]any{
+			"type": "message",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": "read " + httpFixtureRepoRootPlaceholder + "/catalog/query.go",
+				},
+			},
+		},
+	}, got["input"])
+	_, ok := got["tools"]
+	assert.False(t, ok)
+	_, ok = got["stream"]
+	assert.False(t, ok)
+}
+
 func TestBuildHTTPFixtureResponsePreservesRecordedShape(t *testing.T) {
 	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
 	response := map[string]any{

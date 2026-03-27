@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -66,7 +67,13 @@ func RunCaseDir(caseDir string) error {
 		return fmt.Errorf("copy case repo: %w", err)
 	}
 
-	httpFixtureData, err := loadHTTPFixtureData(filepath.Join(caseDir, "http.json"), []string{workDir})
+	httpFixturePath := filepath.Join(caseDir, "http.json")
+	httpFixtureCfg, err := readHTTPFixtureConfig(httpFixturePath)
+	if err != nil {
+		return err
+	}
+
+	httpFixtureData, err := marshalHTTPFixtureData(httpFixtureCfg, []string{workDir})
 	if err != nil {
 		return err
 	}
@@ -94,6 +101,7 @@ func RunCaseDir(caseDir string) error {
 		Out:         &out,
 	})
 	if err != nil {
+		err = augmentReplayMockOpenAIError(err, handler, httpFixtureCfg, []string{workDir})
 		return fmt.Errorf("run noninteractive exec: %w", err)
 	}
 
@@ -190,17 +198,28 @@ func readConfig(path string) (testCaseConfig, error) {
 	return cfg, nil
 }
 
-func loadHTTPFixtureData(path string, roots []string) ([]byte, error) {
+func readHTTPFixtureConfig(path string) (httpFixtureConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read integration http fixture: %w", err)
+		return httpFixtureConfig{}, fmt.Errorf("read integration http fixture: %w", err)
 	}
 
 	var cfg httpFixtureConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse integration http fixture: %w", err)
+		return httpFixtureConfig{}, fmt.Errorf("parse integration http fixture: %w", err)
 	}
+	return cfg, nil
+}
 
+func loadHTTPFixtureData(path string, roots []string) ([]byte, error) {
+	cfg, err := readHTTPFixtureConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	return marshalHTTPFixtureData(cfg, roots)
+}
+
+func marshalHTTPFixtureData(cfg httpFixtureConfig, roots []string) ([]byte, error) {
 	denormalized := httpFixtureConfig{
 		Responses: make([]httpFixtureResponse, 0, len(cfg.Responses)),
 	}
@@ -218,6 +237,38 @@ func loadHTTPFixtureData(path string, roots []string) ([]byte, error) {
 		return nil, fmt.Errorf("marshal integration http fixture: %w", err)
 	}
 	return normalizedData, nil
+}
+
+func augmentReplayMockOpenAIError(runErr error, handler http.Handler, fixture httpFixtureConfig, roots []string) error {
+	debugInfo, err := mockopenai.DebugInfo(handler)
+	if err != nil || debugInfo.LastUnmatchedRequest == nil {
+		return runErr
+	}
+
+	requestSent, err := buildReplayDebugHTTPFixtureRequest(debugInfo.LastUnmatchedRequest, roots)
+	if err != nil {
+		return runErr
+	}
+
+	requestSentJSON, err := marshalPrettyJSON(requestSent)
+	if err != nil {
+		return runErr
+	}
+
+	extra := "\n\npruned request sent to mockopenai:\n" + string(requestSentJSON)
+
+	if debugInfo.NextUnconsumedConsumedIndex >= 0 && debugInfo.NextUnconsumedConsumedIndex < len(fixture.Responses) {
+		nextRequestJSON, err := marshalPrettyJSON(fixture.Responses[debugInfo.NextUnconsumedConsumedIndex].Request)
+		if err == nil {
+			label := "next non-consumed request in http.json"
+			if name := fixture.Responses[debugInfo.NextUnconsumedConsumedIndex].Name; name != "" {
+				label += " (" + name + ")"
+			}
+			extra += "\n" + label + ":\n" + string(nextRequestJSON)
+		}
+	}
+
+	return fmt.Errorf("%w%s", runErr, extra)
 }
 
 func registerMockModel(caseName string, baseURL string) (llmmodel.ModelID, error) {

@@ -442,6 +442,66 @@ func TestHandler_StreamsToolOutputItemDoneEvents(t *testing.T) {
 	assert.Equal(t, "*** Begin Patch\n*** End Patch\n", customItem["input"])
 }
 
+func TestDebugInfoTracksLastUnmatchedRequestAndNextConsumedResponse(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"name": "turn-01",
+				"consume": true,
+				"request": {
+					"model": "gpt-5.4",
+					"input": "first"
+				},
+				"response": {
+					"id": "resp_first",
+					"object": "response",
+					"output": []
+				}
+			},
+			{
+				"name": "turn-02",
+				"consume": true,
+				"request": {
+					"model": "gpt-5.4",
+					"input": "second"
+				},
+				"response": {
+					"id": "resp_second",
+					"object": "response",
+					"output": []
+				}
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/responses", bytes.NewBufferString(`{"model":"gpt-5.4","input":"unexpected"}`))
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	debugState, err := DebugInfo(handler)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"model": "gpt-5.4",
+		"input": "unexpected",
+	}, debugState.LastUnmatchedRequest)
+	assert.Equal(t, 0, debugState.NextUnconsumedConsumedIndex)
+
+	doResponsesRequest(t, server.URL, nil, `{"model":"gpt-5.4","input":"first"}`)
+
+	debugState, err = DebugInfo(handler)
+	require.NoError(t, err)
+	assert.Nil(t, debugState.LastUnmatchedRequest)
+	assert.Equal(t, 1, debugState.NextUnconsumedConsumedIndex)
+}
+
 func TestHandler_PartialMatcherSupportsStructuredStringsWithAngleBrackets(t *testing.T) {
 	handler, err := NewHandler([]byte(`{
 		"responses": [

@@ -34,7 +34,7 @@
             "type": "message"
           }
         ],
-        "model": "mock-model-pm-sandbox"
+        "model": "mock-model-pm-package-isolation"
       },
       "response": {
         "background": false,
@@ -2255,7 +2255,7 @@
             "type": "function_call_output"
           }
         ],
-        "model": "mock-model-pm-sandbox",
+        "model": "mock-model-pm-package-isolation",
         "previous_response_id": "resp_070da5a2b306f1360069c6e6ef2260819cae553ea09b3417c8"
       },
       "response": {

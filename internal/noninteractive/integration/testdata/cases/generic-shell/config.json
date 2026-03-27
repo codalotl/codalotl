@@ -1,0 +1,11 @@
+{
+  "prompt": "Use the shell command to echo \"hello world\"",
+  "expected": [
+    {"package_path":"","type":"start"},
+    {"text":"Use the shell command to echo \"hello world\"","type":"user_message"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_9elLQYpfNUAroeBP7GwcvLxo","input":"{\"command\":[\"echo\",\"hello world\"],\"cwd\":\".\",\"request_permission\":false,\"timeout_ms\":120000}","name":"shell","type":"function_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":{"match":"partial","texts":["\"content\":\"Command: echo hello world","Process State: exit status 0","Timeout: false","Output:\\nhello world\\n\",\"success\":true}"]}},"tool":{"call_id":"call_9elLQYpfNUAroeBP7GwcvLxo","name":"shell","type":"function_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"content":"Ran `echo \"hello world\"`.\n\nOutput:\n`hello world`","type":"assistant_text"},
+    {"type":"done"}
+  ]
+}
