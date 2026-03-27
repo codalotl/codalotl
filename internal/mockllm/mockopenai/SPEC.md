@@ -108,6 +108,10 @@ You can also require multiple fragments:
 }
 ```
 
+For partial matching with `texts`:
+- Match fragments in listed order.
+- Matches do not overlap.
+
 ## Public API
 
 ```go

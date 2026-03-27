@@ -486,7 +486,7 @@ func TestHandler_PartialMatcherSupportsStructuredStringsWithAngleBrackets(t *tes
 	assert.Contains(t, body, `matched`)
 }
 
-func TestHandler_PartialMatcherSupportsMultipleRequiredTexts(t *testing.T) {
+func TestHandler_PartialMatcherSupportsOrderedRequiredTexts(t *testing.T) {
 	handler, err := NewHandler([]byte(`{
 		"responses": [
 			{
@@ -542,7 +542,7 @@ func TestHandler_PartialMatcherSupportsMultipleRequiredTexts(t *testing.T) {
 			{
 				"type":"custom_tool_call_output",
 				"call_id":"call_123",
-				"output":"<apply-patch ok=\"true\">\n$ go test ./...\n</apply-patch>"
+				"output":"<apply-patch ok=\"true\">\n$ go test ./...\n$ golangci-lint run ./...\n</apply-patch>"
 			}
 		]
 	}`))
@@ -553,6 +553,17 @@ func TestHandler_PartialMatcherSupportsMultipleRequiredTexts(t *testing.T) {
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestValueMatcher_MultipleTextsDoNotOverlap(t *testing.T) {
+	matcher := valueMatcher{
+		matchType: matchPartial,
+		texts:     []string{"aba", "bab"},
+	}
+
+	assert.True(t, matcher.matches("aba---bab"))
+	assert.False(t, matcher.matches("bab---aba"))
+	assert.False(t, matcher.matches("ababa"))
 }
 
 func TestAssertAllConsumed(t *testing.T) {

@@ -383,12 +383,7 @@ func (m valueMatcher) matches(actual any) bool {
 		if m.matchType != matchPartial {
 			return false
 		}
-		for _, text := range m.texts {
-			if !strings.Contains(actualText, text) && !structuredValueContainsText(actual, text) {
-				return false
-			}
-		}
-		return true
+		return containsTextsInOrder(actualText, m.texts) || structuredValueContainsTextsInOrder(actual, m.texts)
 	}
 
 	switch m.matchType {
@@ -419,6 +414,40 @@ func structuredValueContainsText(actual any, needle string) bool {
 		}
 	}
 	return false
+}
+
+func structuredValueContainsTextsInOrder(actual any, needles []string) bool {
+	switch value := actual.(type) {
+	case string:
+		return containsTextsInOrder(value, needles)
+	case []any:
+		for _, item := range value {
+			if structuredValueContainsTextsInOrder(item, needles) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range value {
+			if structuredValueContainsTextsInOrder(item, needles) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsTextsInOrder(actualText string, texts []string) bool {
+	searchStart := 0
+
+	for _, text := range texts {
+		matchIndex := strings.Index(actualText[searchStart:], text)
+		if matchIndex < 0 {
+			return false
+		}
+		searchStart += matchIndex + len(text)
+	}
+
+	return true
 }
 
 func actualMatchText(actual any) (string, bool) {
