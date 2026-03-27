@@ -5,6 +5,12 @@ This is a test-only package for integration tests of noninteractive in JSON mode
 This package is meant to give confidence that the overall agent, JSON mode, tool execution, and mock OpenAI transport are working together. It is not meant for
 thousands of narrow unit tests. Use normal `go test` in the appropriate package for that.
 
+Running these tests are meant to catch actual regressions. All choices should be aligned around: provide real value to catching regressions. Examples:
+- Be careful with using `partial` matchers. If we partial match too aggressively, what can we miss?
+- Does authdomain allow/block paths appropriately?
+- Are paths working?
+- Are lints run when configured to run, in the apply_patch tool? Are they run in the correct order?
+
 ## Actual Test Cases
 
 The following must be test cases in `testdata/`.
@@ -17,9 +23,10 @@ The following must be test cases in `testdata/`.
 
 ### Steps To Create an Actual Test
 
-Best practice:
-- Prefer generating the case with `go run ./internal/noninteractive/integration/cmd/create` instead of hand-authoring `config.json` or `http.json`.
-    - Set `--output` to directly write the test case to `testdata/cases/X`.
+If you're an LLM reading this file and told to make a test case: run the script below. Do NOT use your edit file tool **at all**. If you think you need to, STOP and explain.
+
+- Run `go run ./internal/noninteractive/integration/cmd/create` instead of hand-authoring `config.json` or `http.json`.
+    - Set `--output` to directly write the test case to `testdata/cases/X` (not to a tmp dir).
 - Prefer using the shared fixture repo at `testdata/repo` unless the scenario truly requires a custom per-case repo.
 - For generic-mode cases, pass `--package=''`. For package-mode cases, pass the specific package path inside the repo.
 - Let the generator verify replay immediately. If generation does not replay cleanly, fix the prompt or scenario first instead of checking in a flaky case.
