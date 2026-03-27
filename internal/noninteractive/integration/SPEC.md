@@ -24,10 +24,31 @@ The following must be test cases in `testdata/`.
     - ls outside package causes access error
 
 TODO:
-- all tools covered:
-    - read_file
+- generic shell can run a command
+
+- pm ls+readfile works for testdata and data dirs
+- pm @ works inside repo for individual file and dirs
+- pm @ works outside repo
+
+- package skill_shell can run a command
+
+- All tools covered:
+    - [DONE] read_file
     - ls
-    - apply_patch
+    - [DONE] apply_patch
+    - shell
+    - skill_shell
+    - update_plan
+    - diagnostics
+    - fix_lints
+    - run_tests
+    - run_project_tests
+    - module_info
+    - get_public_api
+    - clarify_public_api
+    - get_usage
+    - update_usage
+    - change_api
 
 ### Steps To Create an Actual Test
 
