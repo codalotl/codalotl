@@ -68,6 +68,7 @@ Each test case is found in its own folder in `testdata/cases`. Example: `testdat
 Structure of a test case folder:
 - `config.json` - prompt, package mode settings, and the ordered subsequence of expected JSON events.
 - `http.json` - mock OpenAI request/response definitions consumed by `internal/mockllm/mockopenai`.
+    - Prefer exact structured JSON. Avoid partial matchers unless there is no good alternative.
 - `repo/*` - files copied into a temp dir before running `noninteractive.Exec`. If `repo` is not present, we use the shared fixture repo.
 - `expected_repo/*` - optional file snapshots to compare against the temp repo after the run.
     - If `expected_repo/` has any files at all, it should contain ALL modified and created files of tmp dir vs the original repo.
@@ -138,14 +139,21 @@ Details:
     - `assistant_reasoning` events are omitted, because the mock transport does not replay reasoning deltas
     - other event payloads are kept concrete, with only absolute paths normalized
     - `done.token_usage` is included only when `--include-token-usage=true`
-- `http.json` is normalized rather than recorded verbatim:
-    - request `model` is rewritten to the generated mock model id (`mock-model-<case-name>`)
+- `http.json` is kept close to recorded provider traffic:
+    - request body is recorded as exact structured JSON, with minimal partial matchers.
+    - first turn request keeps the first two `input` messages, but omits nested `text` fields inside them so prompt/env text is not matched
+    - response body is recorded with minimal adaptation needed for mock replay
+    - request `model` is rewritten to generated mock model id (`mock-model-<case-name>`)
     - response ids and request `previous_response_id` are preserved as recorded
-    - request `input` is still recorded as a partial matcher, because the mock server only supports exact top-level JSON equality or partial-text matching for requests
-    - request `tools` remains a partial matcher on tool name so cases do not churn on unrelated tool-schema text
+    - Use partial matchers in `http.json` only with extreme care and a concrete replay need
+    - request body does drop certain fields in `http.json`:
+        - tools array
+        - prompt_cache_key
+        - reasoning, parallel_tool_calls, store, stream, context_management
 - Absolute-path normalization:
-    - repo paths become repo-relative
-    - inside GOROOT/src: `stdlib/...`
-    - inside GOMODCACHE: `modcache/<module>@<version>/...`
+    - in `http.json`, repo-root paths become `__REPO_ROOT__/...`
+    - in `http.json`, paths inside GOROOT/src become `__GOROOT_SRC__/...`
+    - in `http.json`, paths inside GOMODCACHE become `__GOMODCACHE__/...`
+    - replay expands those placeholders back to actual runtime paths before serving fixture
+    - in `config.json` event expectations, repo paths still normalize to repo-relative paths, stdlib paths to `stdlib/...`, modcache paths to `modcache/...`
     - unknown absolute paths are left alone
-    - `http.json` responses are not path-normalized in tool-call arguments, because replay needs runnable paths

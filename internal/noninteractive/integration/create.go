@@ -49,6 +49,12 @@ type httpFixtureResponse struct {
 	Response map[string]any `json:"response"`
 }
 
+const (
+	httpFixtureRepoRootPlaceholder   = "__REPO_ROOT__"
+	httpFixtureGoRootSrcPlaceholder  = "__GOROOT_SRC__"
+	httpFixtureGoModCachePlaceholder = "__GOMODCACHE__"
+)
+
 func CreateCase(opts CreateOptions) error {
 	repoPath, outputDir, err := validateCreateOptions(opts)
 	if err != nil {
@@ -353,11 +359,11 @@ func buildHTTPFixture(caseName string, turns []recordedTurn, roots []string) (ht
 		Responses: make([]httpFixtureResponse, 0, len(turns)),
 	}
 	for i, turn := range turns {
-		request, err := buildHTTPFixtureRequest(caseSuffix, turn, roots)
+		request, err := buildHTTPFixtureRequest(caseSuffix, i == 0, turn, roots)
 		if err != nil {
 			return httpFixtureConfig{}, err
 		}
-		response, err := buildHTTPFixtureResponse(caseSuffix, i, turn.Response)
+		response, err := buildHTTPFixtureResponse(turn.Response, roots)
 		if err != nil {
 			return httpFixtureConfig{}, err
 		}
@@ -371,170 +377,104 @@ func buildHTTPFixture(caseName string, turns []recordedTurn, roots []string) (ht
 	return cfg, nil
 }
 
-func buildHTTPFixtureRequest(caseSuffix string, turn recordedTurn, roots []string) (map[string]any, error) {
-	request := map[string]any{
-		"model": "mock-model-" + caseSuffix,
+func buildHTTPFixtureRequest(caseSuffix string, firstTurn bool, turn recordedTurn, roots []string) (map[string]any, error) {
+	request := normalizeHTTPJSONObjectAbsolutePaths(cloneJSONObject(turn.Request), roots)
+	if request == nil {
+		return nil, fmt.Errorf("request must be a JSON object")
 	}
-
-	if prevID, ok := turn.Request["previous_response_id"].(string); ok && prevID != "" {
-		request["previous_response_id"] = prevID
+	if firstTurn {
+		pruneFirstTurnHTTPFixtureInput(request)
 	}
-
-	inputMatcher, ok := chooseRequestMatcher(turn.Request["input"], roots)
-	if !ok {
-		return nil, fmt.Errorf("unable to derive stable request input matcher")
-	}
-	request["input"] = inputMatcher
-
-	if toolName := firstToolName(turn.Response); toolName != "" {
-		request["tools"] = map[string]any{
-			"match": "partial",
-			"text":  fmt.Sprintf("\"name\":\"%s\"", toolName),
-		}
-	}
-
+	pruneHTTPFixtureRequestFields(request)
+	request["model"] = "mock-model-" + caseSuffix
 	return request, nil
 }
 
-func buildHTTPFixtureResponse(caseSuffix string, turnIndex int, response map[string]any) (map[string]any, error) {
+func pruneFirstTurnHTTPFixtureInput(request map[string]any) {
+	input, ok := request["input"].([]any)
+	if !ok || len(input) == 0 {
+		return
+	}
+	pruned := append([]any(nil), input...)
+	limit := min(2, len(pruned))
+	for i := 0; i < limit; i++ {
+		pruned[i] = omitTextKeys(pruned[i])
+	}
+	request["input"] = pruned
+}
+
+func pruneHTTPFixtureRequestFields(request map[string]any) {
+	delete(request, "tools")
+	delete(request, "prompt_cache_key")
+	delete(request, "reasoning")
+	delete(request, "parallel_tool_calls")
+	delete(request, "store")
+	delete(request, "stream")
+	delete(request, "context_management")
+}
+
+func omitTextKeys(value any) any {
+	switch v := value.(type) {
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, omitTextKeys(item))
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			if key == "text" {
+				continue
+			}
+			out[key] = omitTextKeys(item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func buildHTTPFixtureResponse(response map[string]any, roots []string) (map[string]any, error) {
 	responseID, _ := response["id"].(string)
 	if strings.TrimSpace(responseID) == "" {
 		return nil, fmt.Errorf("response.id is required")
 	}
-	fixtureResponse := map[string]any{
-		"id":     responseID,
-		"object": "response",
-	}
-
-	if objectType, ok := response["object"].(string); ok && objectType != "" {
-		fixtureResponse["object"] = objectType
-	}
-	if status, ok := response["status"].(string); ok && status != "" {
-		fixtureResponse["status"] = status
-	}
-	if usage, ok := response["usage"]; ok && usage != nil {
-		fixtureResponse["usage"] = cloneJSONValue(usage)
-	}
-	if errorValue, ok := response["error"]; ok && errorValue != nil {
-		fixtureResponse["error"] = cloneJSONValue(errorValue)
-	}
-
-	rawOutput, ok := response["output"]
-	if !ok {
-		fixtureResponse["output"] = []any{}
-		return fixtureResponse, nil
-	}
-	outputItems, ok := rawOutput.([]any)
-	if !ok {
-		return nil, fmt.Errorf("response.output is not an array")
-	}
-
-	normalizedOutput := make([]any, 0, len(outputItems))
-	for outputIndex, rawItem := range outputItems {
-		item, ok := rawItem.(map[string]any)
-		if !ok {
-			normalizedOutput = append(normalizedOutput, cloneJSONValue(rawItem))
-			continue
-		}
-		normalizedOutput = append(normalizedOutput, normalizeResponseOutputItem(caseSuffix, turnIndex, outputIndex, item))
-	}
-	fixtureResponse["output"] = normalizedOutput
+	fixtureResponse := normalizeHTTPResponseForFixture(cloneJSONObject(response), roots)
 	return fixtureResponse, nil
 }
 
-func normalizeResponseOutputItem(caseSuffix string, turnIndex int, outputIndex int, item map[string]any) map[string]any {
-	itemType, _ := item["type"].(string)
-	itemID := fmt.Sprintf("%s_%s_%d_%d", outputItemPrefix(itemType), caseSuffix, turnIndex+1, outputIndex+1)
+func normalizeHTTPResponseForFixture(response map[string]any, roots []string) map[string]any {
+	normalized := normalizeHTTPJSONObjectAbsolutePaths(response, roots)
 
-	switch itemType {
-	case "message":
-		content, _ := item["content"].([]any)
-		normalizedContent := make([]any, 0, len(content))
-		for _, rawPart := range content {
-			part, ok := rawPart.(map[string]any)
-			if !ok {
-				continue
-			}
-			partType, _ := part["type"].(string)
-			text, _ := part["text"].(string)
-			if partType == "" && text == "" {
-				continue
-			}
-			normalizedContent = append(normalizedContent, map[string]any{
-				"type": partType,
-				"text": text,
-			})
-		}
-		role, _ := item["role"].(string)
-		if role == "" {
-			role = "assistant"
-		}
-		return map[string]any{
-			"id":      itemID,
-			"type":    "message",
-			"role":    role,
-			"content": normalizedContent,
-		}
-	case "function_call":
-		normalized := map[string]any{
-			"id":        itemID,
-			"type":      "function_call",
-			"call_id":   stringField(item["call_id"]),
-			"name":      stringField(item["name"]),
-			"arguments": extractStringValue(item["arguments"]),
-		}
-		if status := stringField(item["status"]); status != "" {
-			normalized["status"] = status
-		}
+	outputItems, ok := normalized["output"].([]any)
+	if !ok {
 		return normalized
-	case "custom_tool_call":
-		normalized := map[string]any{
-			"id":      itemID,
-			"type":    "custom_tool_call",
-			"call_id": stringField(item["call_id"]),
-			"name":    stringField(item["name"]),
-			"input":   extractStringValue(item["input"]),
-		}
-		if status := stringField(item["status"]); status != "" {
-			normalized["status"] = status
-		}
-		return normalized
-	case "reasoning":
-		summary, _ := item["summary"].([]any)
-		normalizedSummary := make([]any, 0, len(summary))
-		for _, rawPart := range summary {
-			part, ok := rawPart.(map[string]any)
-			if !ok {
-				continue
-			}
-			text, _ := part["text"].(string)
-			partType, _ := part["type"].(string)
-			if text == "" && partType == "" {
-				continue
-			}
-			entry := map[string]any{
-				"text": text,
-			}
-			if partType != "" {
-				entry["type"] = partType
-			}
-			normalizedSummary = append(normalizedSummary, entry)
-		}
-		return map[string]any{
-			"id":      itemID,
-			"type":    "reasoning",
-			"summary": normalizedSummary,
-		}
-	default:
-		cloned := cloneJSONObject(item)
-		cloned["id"] = itemID
-		return cloned
 	}
+
+	for i, rawItem := range outputItems {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			continue
+		}
+		outputItems[i] = normalizeHTTPResponseOutputItem(item)
+	}
+	normalized["output"] = outputItems
+	return normalized
 }
 
-func stringField(value any) string {
-	text, _ := value.(string)
-	return text
+func normalizeHTTPResponseOutputItem(item map[string]any) map[string]any {
+	normalized := cloneJSONObject(item)
+	if normalized == nil {
+		return nil
+	}
+	if _, ok := normalized["arguments"]; ok {
+		normalized["arguments"] = extractStringValue(normalized["arguments"])
+	}
+	if _, ok := normalized["input"]; ok {
+		normalized["input"] = extractStringValue(normalized["input"])
+	}
+	return normalized
 }
 
 func extractStringValue(value any) string {
@@ -566,281 +506,12 @@ func extractStringValue(value any) string {
 	return ""
 }
 
-func outputItemPrefix(itemType string) string {
-	switch itemType {
-	case "message":
-		return "msg"
-	case "function_call":
-		return "fc"
-	case "custom_tool_call":
-		return "ct"
-	case "reasoning":
-		return "rs"
-	default:
-		return "item"
-	}
-}
-
-func firstToolName(response map[string]any) string {
-	outputItems, ok := response["output"].([]any)
-	if !ok {
-		return ""
-	}
-	for _, rawItem := range outputItems {
-		item, ok := rawItem.(map[string]any)
-		if !ok {
-			continue
-		}
-		itemType, _ := item["type"].(string)
-		if itemType != "function_call" && itemType != "custom_tool_call" {
-			continue
-		}
-		name, _ := item["name"].(string)
-		return name
-	}
-	return ""
-}
-
-func chooseRequestMatcher(input any, roots []string) (map[string]any, bool) {
-	leaves := collectStringLeaves(input)
-	var fallback []string
-	for i := len(leaves) - 1; i >= 0; i-- {
-		partials := stablePartials(leaves[i], roots)
-		if len(partials) == 0 {
-			continue
-		}
-		if isLikelyMatcherCandidate(partials) {
-			return buildPartialMatcher(partials), true
-		}
-		if len(fallback) == 0 {
-			fallback = partials
-		}
-	}
-	if len(fallback) > 0 {
-		return buildPartialMatcher(fallback), true
-	}
-
-	text, ok := actualMatchText(input)
-	if !ok {
-		return nil, false
-	}
-	partials := stablePartials(text, roots)
-	if len(partials) == 0 {
-		return nil, false
-	}
-	return buildPartialMatcher(partials), true
-}
-
-func isLikelyMatcherCandidate(partials []string) bool {
-	for _, partial := range partials {
-		if isLikelySnippetCandidate(partial) {
-			return true
-		}
-	}
-	return false
-}
-
-func isLikelySnippetCandidate(snippet string) bool {
-	if len(snippet) < 8 {
-		return false
-	}
-	return strings.ContainsAny(snippet, " \n\t/<>{}\"`:.")
-}
-
-func collectStringLeaves(value any) []string {
-	switch v := value.(type) {
-	case string:
-		if strings.TrimSpace(v) == "" {
-			return nil
-		}
-		return []string{v}
-	case []any:
-		out := make([]string, 0)
-		for _, item := range v {
-			out = append(out, collectStringLeaves(item)...)
-		}
-		return out
-	case map[string]any:
-		keys := make([]string, 0, len(v))
-		for key := range v {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-
-		out := make([]string, 0)
-		for _, key := range keys {
-			out = append(out, collectStringLeaves(v[key])...)
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-func stablePartials(text string, roots []string) []string {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return nil
-	}
-
-	addUnique := func(out []string, candidate string) []string {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			return out
-		}
-		for _, existing := range out {
-			if existing == candidate {
-				return out
-			}
-		}
-		return append(out, candidate)
-	}
-
-	if !strings.Contains(trimmed, "\n") {
-		singles := stableSinglePartials(trimmed, roots)
-		if len(singles) == 0 {
-			return nil
-		}
-		out := make([]string, 0, len(singles))
-		for _, single := range singles {
-			out = addUnique(out, single)
-		}
-		return out
-	}
-
-	lines := strings.Split(strings.ReplaceAll(trimmed, "\r\n", "\n"), "\n")
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		out = addUnique(out, stableLinePartial(line, roots))
-	}
-	return out
-}
-
-func stableSinglePartials(text string, roots []string) []string {
-	for _, root := range roots {
-		if candidate := rootRelativeSnippet(text, root); candidate != "" {
-			return []string{candidate}
-		}
-	}
-	if fragments := splitAbsoluteRootFragments(text, roots); len(fragments) > 0 {
-		return fragments
-	}
-	if elided := elideAbsoluteRoots(text, roots); elided != text {
-		if len(elided) > 400 {
-			return []string{elided[:400]}
-		}
-		return []string{elided}
-	}
-	if len(text) > 400 {
-		return []string{text[:400]}
-	}
-	return []string{text}
-}
-
-func stableLinePartial(line string, roots []string) string {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return ""
-	}
-	for _, root := range roots {
-		if candidate := rootRelativeSnippet(trimmed, root); candidate != "" {
-			return candidate
-		}
-	}
-	if elided := elideAbsoluteRoots(trimmed, roots); elided != trimmed {
-		if len(elided) > 200 {
-			return elided[:200]
-		}
-		return elided
-	}
-	if len(trimmed) > 200 {
-		return trimmed[:200]
-	}
-	return trimmed
-}
-
-func splitAbsoluteRootFragments(text string, roots []string) []string {
-	fragments := []string{text}
-	changed := false
-
-	splitOn := func(needle string) {
-		if needle == "" {
-			return
-		}
-
-		next := make([]string, 0, len(fragments))
-		for _, fragment := range fragments {
-			parts := strings.Split(fragment, needle)
-			if len(parts) > 1 {
-				changed = true
-			}
-			next = append(next, parts...)
-		}
-		fragments = next
-	}
-
-	for _, root := range roots {
-		splitOn(root)
-		slashRoot := filepath.ToSlash(root)
-		if slashRoot != root {
-			splitOn(slashRoot)
-		}
-	}
-
-	if !changed {
-		return nil
-	}
-
-	out := make([]string, 0, len(fragments))
-	for _, fragment := range fragments {
-		fragment = strings.TrimSpace(fragment)
-		if fragment == "" {
-			continue
-		}
-		if len(fragment) > 400 {
-			fragment = fragment[:400]
-		}
-		out = append(out, fragment)
-	}
-	return out
-}
-
-func elideAbsoluteRoots(text string, roots []string) string {
-	elided := text
-	for _, root := range roots {
-		if root == "" {
-			continue
-		}
-		elided = strings.ReplaceAll(elided, root, "")
-		slashRoot := filepath.ToSlash(root)
-		if slashRoot != root {
-			elided = strings.ReplaceAll(elided, slashRoot, "")
-		}
-	}
-	return strings.TrimSpace(elided)
-}
-
-func buildPartialMatcher(partials []string) map[string]any {
-	if len(partials) == 0 {
-		return map[string]any{
-			"match": "exact",
-			"text":  "",
-		}
-	}
-	if len(partials) == 1 {
-		return map[string]any{
-			"match": "partial",
-			"text":  partials[0],
-		}
-	}
-	return map[string]any{
-		"match": "partial",
-		"texts": partials,
-	}
-}
-
 func normalizeJSONObjectAbsolutePaths(value map[string]any, roots []string) map[string]any {
 	return cloneJSONObjectFromValue(normalizeJSONAbsolutePaths(value, roots))
+}
+
+func normalizeHTTPJSONObjectAbsolutePaths(value map[string]any, roots []string) map[string]any {
+	return cloneJSONObjectFromValue(normalizeHTTPJSONAbsolutePaths(value, roots))
 }
 
 func cloneJSONObjectFromValue(value any) map[string]any {
@@ -869,6 +540,48 @@ func normalizeJSONAbsolutePaths(value any, roots []string) any {
 	}
 }
 
+func normalizeHTTPJSONAbsolutePaths(value any, roots []string) any {
+	switch v := value.(type) {
+	case string:
+		return normalizeHTTPAbsolutePathText(v, roots)
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, normalizeHTTPJSONAbsolutePaths(item, roots))
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			out[key] = normalizeHTTPJSONAbsolutePaths(item, roots)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func denormalizeHTTPJSONAbsolutePaths(value any, roots []string) any {
+	switch v := value.(type) {
+	case string:
+		return denormalizeHTTPAbsolutePathText(v, roots)
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, denormalizeHTTPJSONAbsolutePaths(item, roots))
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			out[key] = denormalizeHTTPJSONAbsolutePaths(item, roots)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
 type pathReplacement struct {
 	prefix      string
 	replacement string
@@ -887,39 +600,104 @@ func normalizeAbsolutePathText(text string, roots []string) string {
 	return normalized
 }
 
-func absolutePathReplacements(roots []string) []pathReplacement {
-	replacements := make([]pathReplacement, 0, len(roots)+2)
-	seen := make(map[string]struct{}, len(roots)+2)
-	add := func(prefix string, replacement string) {
-		if prefix == "" {
-			return
-		}
-		cleanPrefix := filepath.Clean(prefix)
-		if _, ok := seen[cleanPrefix]; ok {
-			return
-		}
-		seen[cleanPrefix] = struct{}{}
-		replacements = append(replacements, pathReplacement{
-			prefix:      cleanPrefix,
-			replacement: replacement,
-		})
+func normalizeHTTPAbsolutePathText(text string, roots []string) string {
+	return replacePathPrefixes(text, httpFixturePathReplacements(roots))
+}
+
+func denormalizeHTTPAbsolutePathText(text string, roots []string) string {
+	return replacePathPrefixes(text, httpFixturePlaceholderReplacements(roots))
+}
+
+func replacePathPrefixes(text string, replacements []pathReplacement) string {
+	if len(replacements) == 0 {
+		return text
 	}
 
+	normalized := text
+	for _, replacement := range replacements {
+		normalized = replaceAbsolutePathPrefix(normalized, replacement.prefix, replacement.replacement)
+	}
+	return normalized
+}
+
+func absolutePathReplacements(roots []string) []pathReplacement {
+	replacements := newPathReplacementBuilder(len(roots) + 2)
 	for _, root := range roots {
-		add(root, "")
+		replacements.add(root, "")
 	}
 
 	if goroot := build.Default.GOROOT; goroot != "" {
-		add(filepath.Join(goroot, "src"), "stdlib")
+		replacements.add(filepath.Join(goroot, "src"), "stdlib")
 	}
 	if modcache := goModCachePath(); modcache != "" {
-		add(modcache, "modcache")
+		replacements.add(modcache, "modcache")
+	}
+	return replacements.build()
+}
+
+func httpFixturePathReplacements(roots []string) []pathReplacement {
+	replacements := newPathReplacementBuilder(len(roots) + 2)
+	for _, root := range roots {
+		replacements.add(root, httpFixtureRepoRootPlaceholder)
 	}
 
-	sort.Slice(replacements, func(i int, j int) bool {
-		return len(replacements[i].prefix) > len(replacements[j].prefix)
+	if goroot := build.Default.GOROOT; goroot != "" {
+		replacements.add(filepath.Join(goroot, "src"), httpFixtureGoRootSrcPlaceholder)
+	}
+	if modcache := goModCachePath(); modcache != "" {
+		replacements.add(modcache, httpFixtureGoModCachePlaceholder)
+	}
+	return replacements.build()
+}
+
+func httpFixturePlaceholderReplacements(roots []string) []pathReplacement {
+	replacements := newPathReplacementBuilder(len(roots) + 2)
+	for _, root := range roots {
+		replacements.add(httpFixtureRepoRootPlaceholder, filepath.Clean(root))
+	}
+
+	if goroot := build.Default.GOROOT; goroot != "" {
+		replacements.add(httpFixtureGoRootSrcPlaceholder, filepath.Join(goroot, "src"))
+	}
+	if modcache := goModCachePath(); modcache != "" {
+		replacements.add(httpFixtureGoModCachePlaceholder, modcache)
+	}
+	return replacements.build()
+}
+
+type pathReplacementBuilder struct {
+	replacements []pathReplacement
+	seen         map[string]struct{}
+}
+
+func newPathReplacementBuilder(capacity int) pathReplacementBuilder {
+	return pathReplacementBuilder{
+		replacements: make([]pathReplacement, 0, capacity),
+		seen:         make(map[string]struct{}, capacity),
+	}
+}
+
+func (b *pathReplacementBuilder) add(prefix string, replacement string) {
+	if prefix == "" {
+		return
+	}
+
+	cleanPrefix := filepath.Clean(prefix)
+	if _, ok := b.seen[cleanPrefix]; ok {
+		return
+	}
+	b.seen[cleanPrefix] = struct{}{}
+	b.replacements = append(b.replacements, pathReplacement{
+		prefix:      cleanPrefix,
+		replacement: replacement,
 	})
-	return replacements
+}
+
+func (b pathReplacementBuilder) build() []pathReplacement {
+	sort.Slice(b.replacements, func(i int, j int) bool {
+		return len(b.replacements[i].prefix) > len(b.replacements[j].prefix)
+	})
+	return b.replacements
 }
 
 func goModCachePath() string {
@@ -1012,43 +790,6 @@ func isPathTokenByte(b byte) bool {
 	default:
 		return false
 	}
-}
-
-func rootRelativeSnippet(text string, root string) string {
-	if root == "" {
-		return ""
-	}
-
-	idx := strings.Index(text, root)
-	for idx >= 0 {
-		tail := text[idx+len(root):]
-		tail = strings.TrimLeft(tail, `/\`)
-		if candidate := leadingPathToken(tail); candidate != "" {
-			return candidate
-		}
-		next := strings.Index(text[idx+len(root):], root)
-		if next < 0 {
-			break
-		}
-		idx += len(root) + next
-	}
-	return ""
-}
-
-func leadingPathToken(text string) string {
-	var b strings.Builder
-	for _, r := range text {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' || r == '/' {
-			b.WriteRune(r)
-			continue
-		}
-		break
-	}
-	token := strings.Trim(b.String(), "/")
-	if strings.Count(token, "/") == 0 && !strings.Contains(token, ".") {
-		return ""
-	}
-	return token
 }
 
 func snapshotExpectedRepoFiles(originalRoot string, actualRoot string) (map[string]string, error) {

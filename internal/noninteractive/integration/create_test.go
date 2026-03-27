@@ -96,42 +96,254 @@ func TestBuildExpectedEventsNormalizesPathsAndKeepsExactStrings(t *testing.T) {
 	}, got)
 }
 
-func TestChooseRequestMatcherSkipsStructuralLeaves(t *testing.T) {
-	input := mustJSONObject(t, `{
-		"type": "message",
-		"role": "user",
-		"content": [
-			{"type": "input_text", "text": "add func Product"}
-		]
-	}`)
+func TestBuildHTTPFixtureRequestPreservesStructuredRequestAndNormalizesPaths(t *testing.T) {
+	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	turn := recordedTurn{
+		Request: map[string]any{
+			"model":               "gpt-5.4-high",
+			"temperature":         float64(0),
+			"prompt_cache_key":    "cache-key",
+			"reasoning":           map[string]any{"effort": "medium"},
+			"parallel_tool_calls": true,
+			"store":               true,
+			"stream":              true,
+			"context_management":  map[string]any{"type": "auto"},
+			"input": []any{
+				map[string]any{
+					"type": "message",
+					"role": "system",
+					"content": []any{
+						map[string]any{
+							"type": "input_text",
+							"text": "system prompt",
+						},
+					},
+				},
+				map[string]any{
+					"type": "message",
+					"role": "system",
+					"content": []any{
+						map[string]any{
+							"type": "input_text",
+							"text": "environment block",
+						},
+					},
+				},
+				map[string]any{
+					"type": "message",
+					"role": "user",
+					"content": []any{
+						map[string]any{
+							"type": "input_text",
+							"text": "cwd: " + repoRoot + "\nread " + filepath.Join(repoRoot, "catalog", "query.go"),
+						},
+					},
+				},
+			},
+			"tools": []any{
+				map[string]any{
+					"type":        "function",
+					"name":        "read_file",
+					"description": "Read files exactly.",
+				},
+			},
+		},
+	}
 
-	got, ok := chooseRequestMatcher(input, nil)
-	require.True(t, ok)
-	assert.Equal(t, map[string]any{
-		"match": "partial",
-		"text":  "add func Product",
-	}, got)
+	got, err := buildHTTPFixtureRequest("case-name", true, turn, []string{repoRoot})
+	require.NoError(t, err)
+
+	assert.Equal(t, "mock-model-case-name", got["model"])
+	assert.Equal(t, float64(0), got["temperature"])
+	assert.Equal(t, []any{
+		map[string]any{
+			"type": "message",
+			"role": "system",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"role": "system",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": "cwd: " + httpFixtureRepoRootPlaceholder + "\nread " + httpFixtureRepoRootPlaceholder + "/catalog/query.go",
+				},
+			},
+		},
+	}, got["input"])
+	_, ok := got["tools"]
+	assert.False(t, ok)
+	_, ok = got["prompt_cache_key"]
+	assert.False(t, ok)
+	_, ok = got["reasoning"]
+	assert.False(t, ok)
+	_, ok = got["parallel_tool_calls"]
+	assert.False(t, ok)
+	_, ok = got["store"]
+	assert.False(t, ok)
+	_, ok = got["stream"]
+	assert.False(t, ok)
+	_, ok = got["context_management"]
+	assert.False(t, ok)
 }
 
-func TestNormalizeResponseOutputItemExtractsMinimalFunctionCallShape(t *testing.T) {
-	item := mustJSONObject(t, `{
-		"type": "function_call",
-		"call_id": "call_123",
-		"name": "read_file",
-		"arguments": {
-			"OfResponseToolSearchCallArguments": "{\"path\":\"mathutil/sum.go\"}",
-			"OfString": "{\"path\":\"mathutil/sum.go\"}"
-		}
-	}`)
+func TestBuildHTTPFixtureRequestOmitTextKeysFromFirstTwoMessagesOnly(t *testing.T) {
+	turn := recordedTurn{
+		Request: map[string]any{
+			"model": "gpt-5.4-high",
+			"input": []any{
+				map[string]any{
+					"type": "message",
+					"content": []any{
+						map[string]any{
+							"type": "input_text",
+							"text": "first",
+						},
+					},
+				},
+				map[string]any{
+					"type": "message",
+					"content": []any{
+						map[string]any{
+							"type": "input_text",
+							"text": "second",
+						},
+					},
+				},
+				map[string]any{
+					"type": "message",
+					"content": []any{
+						map[string]any{
+							"type": "input_text",
+							"text": "third",
+						},
+					},
+				},
+			},
+		},
+	}
 
-	got := normalizeResponseOutputItem("case", 0, 0, item)
+	got, err := buildHTTPFixtureRequest("case-name", true, turn, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, []any{
+		map[string]any{
+			"type": "message",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": "third",
+				},
+			},
+		},
+	}, got["input"])
+}
+
+func TestBuildHTTPFixtureRequestDoesNotPruneLaterTurnInput(t *testing.T) {
+	turn := recordedTurn{
+		Request: map[string]any{
+			"model": "gpt-5.4-high",
+			"input": []any{
+				map[string]any{"type": "message", "role": "system"},
+				map[string]any{"type": "message", "role": "system"},
+				map[string]any{"type": "message", "role": "user"},
+			},
+		},
+	}
+
+	got, err := buildHTTPFixtureRequest("case-name", false, turn, nil)
+	require.NoError(t, err)
+	assert.Len(t, got["input"], 3)
+}
+
+func TestBuildHTTPFixtureResponsePreservesRecordedShape(t *testing.T) {
+	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	response := map[string]any{
+		"id":     "resp_real_1",
+		"object": "response",
+		"status": "completed",
+		"output": []any{
+			map[string]any{
+				"id":      "fc_real_1",
+				"type":    "function_call",
+				"call_id": "call_123",
+				"name":    "read_file",
+				"arguments": map[string]any{
+					"OfResponseToolSearchCallArguments": `{"path":"` + filepath.Join(repoRoot, "catalog", "query.go") + `"}`,
+					"OfString":                          `{"path":"` + filepath.Join(repoRoot, "catalog", "query.go") + `"}`,
+				},
+			},
+			map[string]any{
+				"id":   "msg_real_2",
+				"type": "message",
+				"role": "assistant",
+				"content": []any{
+					map[string]any{
+						"type": "output_text",
+						"text": "updated " + filepath.Join(repoRoot, "catalog", "query.go"),
+					},
+				},
+			},
+		},
+	}
+
+	got, err := buildHTTPFixtureResponse(response, []string{repoRoot})
+	require.NoError(t, err)
 
 	assert.Equal(t, map[string]any{
-		"id":        "fc_case_1_1",
-		"type":      "function_call",
-		"call_id":   "call_123",
-		"name":      "read_file",
-		"arguments": "{\"path\":\"mathutil/sum.go\"}",
+		"id":     "resp_real_1",
+		"object": "response",
+		"status": "completed",
+		"output": []any{
+			map[string]any{
+				"id":        "fc_real_1",
+				"type":      "function_call",
+				"call_id":   "call_123",
+				"name":      "read_file",
+				"arguments": `{"path":"` + httpFixtureRepoRootPlaceholder + `/catalog/query.go"}`,
+			},
+			map[string]any{
+				"id":   "msg_real_2",
+				"type": "message",
+				"role": "assistant",
+				"content": []any{
+					map[string]any{
+						"type": "output_text",
+						"text": "updated " + httpFixtureRepoRootPlaceholder + "/catalog/query.go",
+					},
+				},
+			},
+		},
 	}, got)
 }
 
@@ -142,120 +354,50 @@ func TestNormalizeAbsolutePathTextMakesRepoPathsRelative(t *testing.T) {
 	assert.Equal(t, "read catalog/query.go:12", normalizeAbsolutePathText(input, []string{repoRoot}))
 }
 
-func TestBuildHTTPFixtureRequestUsesSinglePartialForPathFreeInput(t *testing.T) {
-	turn := recordedTurn{
-		Request: mustJSONObject(t, `{
-			"input": [
-				{
-					"type": "message",
-					"role": "user",
-					"content": [
-						{"type": "input_text", "text": "Reply with exactly hello."}
-					]
-				}
-			]
-		}`),
-		Response: mustJSONObject(t, `{
-			"id": "resp_real_1",
-			"output": []
-		}`),
-	}
-
-	got, err := buildHTTPFixtureRequest("hello-world", turn, nil)
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"match": "partial",
-		"text":  "Reply with exactly hello.",
-	}, got["input"])
-}
-
-func TestBuildHTTPFixtureRequestFallsBackToPartialForPathfulInput(t *testing.T) {
+func TestLoadHTTPFixtureDataDenormalizesPaths(t *testing.T) {
 	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
-	turn := recordedTurn{
-		Request: map[string]any{
-			"input": []any{
-				map[string]any{
-					"type": "message",
-					"role": "system",
-					"content": []any{
+	caseDir := t.TempDir()
+	fixture := httpFixtureConfig{
+		Responses: []httpFixtureResponse{
+			{
+				Name:    "turn-01",
+				Consume: true,
+				Request: map[string]any{
+					"model": "mock-model-case-name",
+					"input": []any{
 						map[string]any{
-							"type": "input_text",
-							"text": "Current working directory: " + repoRoot + "\nRead " + filepath.Join(repoRoot, "catalog", "query.go"),
+							"type": "message",
+							"content": []any{
+								map[string]any{
+									"type": "input_text",
+									"text": "cwd: " + httpFixtureRepoRootPlaceholder,
+								},
+							},
+						},
+					},
+				},
+				Response: map[string]any{
+					"id": "resp_real_1",
+					"output": []any{
+						map[string]any{
+							"id":        "fc_real_1",
+							"type":      "function_call",
+							"arguments": `{"path":"` + httpFixtureRepoRootPlaceholder + `/catalog/query.go"}`,
 						},
 					},
 				},
 			},
 		},
-		Response: mustJSONObject(t, `{
-			"id": "resp_real_1",
-			"output": []
-		}`),
 	}
+	require.NoError(t, writeJSONFile(filepath.Join(caseDir, "http.json"), fixture))
 
-	got, err := buildHTTPFixtureRequest("pathful", turn, []string{repoRoot})
+	data, err := loadHTTPFixtureData(filepath.Join(caseDir, "http.json"), []string{repoRoot})
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"match": "partial",
-		"texts": []string{
-			"Current working directory:",
-			"catalog/query.go",
-		},
-	}, got["input"])
-}
 
-func TestBuildHTTPFixtureRequestNormalizesSingleLineSandboxError(t *testing.T) {
-	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
-	turn := recordedTurn{
-		Request: map[string]any{
-			"previous_response_id": "resp_real_1",
-			"input": []any{
-				map[string]any{
-					"type":    "function_call_output",
-					"call_id": "call_ls_catalog",
-					"output":  "path \"" + filepath.Join(repoRoot, "catalog") + "\" is outside \"package .\" rooted at \"" + repoRoot + "\". Consider using other tools (ex: get_public_api; clarify_public_api; get_usage; update_usage; change_api)",
-				},
-			},
-		},
-		Response: mustJSONObject(t, `{
-			"id": "resp_real_2",
-			"output": []
-		}`),
-	}
-
-	got, err := buildHTTPFixtureRequest("pm-sandbox", turn, []string{repoRoot})
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"match": "partial",
-		"texts": []string{
-			"path \"",
-			"/catalog\" is outside \"package .\" rooted at \"",
-			"\". Consider using other tools (ex: get_public_api; clarify_public_api; get_usage; update_usage; change_api)",
-		},
-	}, got["input"])
-}
-
-func TestChooseRequestMatcherKeepsMultipleToolOutputFragments(t *testing.T) {
-	input := mustJSONObject(t, `{
-		"input": [
-			{
-				"type": "custom_tool_call_output",
-				"call_id": "call_apply_patch_note",
-				"output": "<apply-patch ok=\"true\">\n$ golangci-lint run ./...\n$ go test ./...\n</apply-patch>"
-			}
-		]
-	}`)
-
-	got, ok := chooseRequestMatcher(input["input"], nil)
-	require.True(t, ok)
-	assert.Equal(t, map[string]any{
-		"match": "partial",
-		"texts": []string{
-			"<apply-patch ok=\"true\">",
-			"$ golangci-lint run ./...",
-			"$ go test ./...",
-			"</apply-patch>",
-		},
-	}, got)
+	var got httpFixtureConfig
+	require.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, "cwd: "+repoRoot, got.Responses[0].Request["input"].([]any)[0].(map[string]any)["content"].([]any)[0].(map[string]any)["text"])
+	assert.Equal(t, `{"path":"`+filepath.Join(repoRoot, "catalog", "query.go")+`"}`, got.Responses[0].Response["output"].([]any)[0].(map[string]any)["arguments"])
 }
 
 func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
@@ -336,6 +478,11 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 					},
 					{
 						"type": "message",
+						"role": "system",
+						"content": [{"type": "input_text", "text": "Environment block"}]
+					},
+					{
+						"type": "message",
 						"role": "user",
 						"content": [{"type": "input_text", "text": "Update @note.txt so it says \"After mutation.\" instead of \"Before mutation.\"."}]
 					}
@@ -407,15 +554,47 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 	assert.Equal(t, "resp_real_1", httpCfg.Responses[1].Request["previous_response_id"])
 	assert.Equal(t, "resp_real_1", httpCfg.Responses[0].Response["id"])
 	assert.Equal(t, "resp_real_2", httpCfg.Responses[1].Response["id"])
-
-	caseDir := filepath.Join(t.TempDir(), "generated-basic-mutation")
-	require.NoError(t, os.MkdirAll(caseDir, 0o755))
-	require.NoError(t, writeConfigJSONFile(filepath.Join(caseDir, "config.json"), cfg))
-	require.NoError(t, writeJSONFile(filepath.Join(caseDir, "http.json"), httpCfg))
-	require.NoError(t, copyTree(repoDir, filepath.Join(caseDir, "repo")))
-	require.NoError(t, writeExpectedRepoFiles(filepath.Join(caseDir, "expected_repo"), expectedRepoFiles))
-
-	require.NoError(t, RunCaseDir(caseDir))
+	_, ok := httpCfg.Responses[0].Request["tools"]
+	assert.False(t, ok)
+	assert.Equal(t, []any{
+		map[string]any{
+			"type": "message",
+			"role": "system",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"role": "system",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": "Update @note.txt so it says \"After mutation.\" instead of \"Before mutation.\".",
+				},
+			},
+		},
+	}, httpCfg.Responses[0].Request["input"])
+	assert.Equal(t, []any{
+		map[string]any{
+			"id":      "ct_real_1",
+			"type":    "custom_tool_call",
+			"call_id": "call_apply_patch_note",
+			"name":    "apply_patch",
+			"input":   "*** Begin Patch\n*** Update File: note.txt\n@@\n-Before mutation.\n+After mutation.\n*** End Patch\n",
+		},
+	}, httpCfg.Responses[0].Response["output"])
 }
 
 func TestMarshalConfigJSONUsesSingleLineExpectedItems(t *testing.T) {

@@ -56,6 +56,8 @@ type valueMatcher struct {
 	texts      []string
 	hasLiteral bool
 	literal    string
+	object     map[string]valueMatcher
+	array      []valueMatcher
 }
 
 type handler struct {
@@ -190,74 +192,126 @@ func compileResponse(raw rawResponse) (compiledResponse, error) {
 }
 
 func parseValueMatcher(data json.RawMessage) (valueMatcher, error) {
-	var text string
-	if err := json.Unmarshal(data, &text); err == nil {
-		return valueMatcher{
-			matchType: matchExact,
-			text:      text,
-		}, nil
+	matcher, _, err := parseValueMatcherInternal(data)
+	return matcher, err
+}
+
+func parseValueMatcherInternal(data json.RawMessage) (valueMatcher, bool, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(data, &object); err == nil {
+		if matcher, ok, err := parseDirectTextMatcher(object); ok || err != nil {
+			return matcher, true, err
+		}
+
+		fields := make(map[string]valueMatcher, len(object))
+		for key, rawValue := range object {
+			matcher, _, err := parseValueMatcherInternal(rawValue)
+			if err != nil {
+				return valueMatcher{}, false, fmt.Errorf("field %q: %w", key, err)
+			}
+			fields[key] = matcher
+		}
+
+		return valueMatcher{object: fields}, true, nil
 	}
 
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(data, &object); err == nil && len(object) > 0 {
-		if rawText, ok := object["text"]; ok {
-			if _, hasTexts := object["texts"]; hasTexts {
-				return valueMatcher{}, fmt.Errorf("text matcher cannot include both %q and %q", "text", "texts")
+	var array []json.RawMessage
+	if err := json.Unmarshal(data, &array); err == nil {
+		items := make([]valueMatcher, 0, len(array))
+		for index, rawValue := range array {
+			matcher, _, err := parseValueMatcherInternal(rawValue)
+			if err != nil {
+				return valueMatcher{}, false, fmt.Errorf("index %d: %w", index, err)
 			}
-			if len(object) > 2 {
-				return valueMatcher{}, fmt.Errorf("text matcher supports only %q and %q fields", "match", "text")
-			}
-			if err := json.Unmarshal(rawText, &text); err != nil {
-				return valueMatcher{}, fmt.Errorf("parse text matcher text: %w", err)
-			}
+			items = append(items, matcher)
+		}
 
-			matchType := matchExact
-			if rawMatchType, ok := object["match"]; ok {
-				if err := json.Unmarshal(rawMatchType, &matchType); err != nil {
-					return valueMatcher{}, fmt.Errorf("parse text matcher match type: %w", err)
-				}
-			}
+		return valueMatcher{array: items}, true, nil
+	}
 
-			switch matchType {
-			case matchExact, matchPartial:
-				return valueMatcher{
-					matchType: matchType,
-					text:      text,
-				}, nil
-			default:
-				return valueMatcher{}, fmt.Errorf("unsupported match type %q", matchType)
+	matcher, err := parseLiteralMatcher(data)
+	return matcher, false, err
+}
+
+func parseDirectTextMatcher(object map[string]json.RawMessage) (valueMatcher, bool, error) {
+	if len(object) == 0 {
+		return valueMatcher{}, false, nil
+	}
+
+	if !hasOnlyKeys(object, "match", "text") && !hasOnlyKeys(object, "match", "texts") && !hasOnlyKeys(object, "text") && !hasOnlyKeys(object, "texts") {
+		return valueMatcher{}, false, nil
+	}
+
+	if rawText, ok := object["text"]; ok {
+		if _, hasTexts := object["texts"]; hasTexts {
+			return valueMatcher{}, true, fmt.Errorf("text matcher cannot include both %q and %q", "text", "texts")
+		}
+
+		var text string
+		if err := json.Unmarshal(rawText, &text); err != nil {
+			return valueMatcher{}, true, fmt.Errorf("parse text matcher text: %w", err)
+		}
+
+		matchType := matchExact
+		if rawMatchType, ok := object["match"]; ok {
+			if err := json.Unmarshal(rawMatchType, &matchType); err != nil {
+				return valueMatcher{}, true, fmt.Errorf("parse text matcher match type: %w", err)
 			}
 		}
-		if rawTexts, ok := object["texts"]; ok {
-			if len(object) > 2 {
-				return valueMatcher{}, fmt.Errorf("text matcher supports only %q and %q fields", "match", "texts")
-			}
 
-			var texts []string
-			if err := json.Unmarshal(rawTexts, &texts); err != nil {
-				return valueMatcher{}, fmt.Errorf("parse text matcher texts: %w", err)
-			}
-			if len(texts) == 0 {
-				return valueMatcher{}, fmt.Errorf("parse text matcher texts: must not be empty")
-			}
-
-			matchType := matchPartial
-			if rawMatchType, ok := object["match"]; ok {
-				if err := json.Unmarshal(rawMatchType, &matchType); err != nil {
-					return valueMatcher{}, fmt.Errorf("parse text matcher match type: %w", err)
-				}
-			}
-			if matchType != matchPartial {
-				return valueMatcher{}, fmt.Errorf("unsupported match type %q", matchType)
-			}
-
+		switch matchType {
+		case matchExact, matchPartial:
 			return valueMatcher{
 				matchType: matchType,
-				texts:     texts,
-			}, nil
+				text:      text,
+			}, true, nil
+		default:
+			return valueMatcher{}, true, fmt.Errorf("unsupported match type %q", matchType)
 		}
 	}
 
+	rawTexts, ok := object["texts"]
+	if !ok {
+		return valueMatcher{}, false, nil
+	}
+
+	var texts []string
+	if err := json.Unmarshal(rawTexts, &texts); err != nil {
+		return valueMatcher{}, true, fmt.Errorf("parse text matcher texts: %w", err)
+	}
+	if len(texts) == 0 {
+		return valueMatcher{}, true, fmt.Errorf("parse text matcher texts: must not be empty")
+	}
+
+	matchType := matchPartial
+	if rawMatchType, ok := object["match"]; ok {
+		if err := json.Unmarshal(rawMatchType, &matchType); err != nil {
+			return valueMatcher{}, true, fmt.Errorf("parse text matcher match type: %w", err)
+		}
+	}
+	if matchType != matchPartial {
+		return valueMatcher{}, true, fmt.Errorf("unsupported match type %q", matchType)
+	}
+
+	return valueMatcher{
+		matchType: matchType,
+		texts:     texts,
+	}, true, nil
+}
+
+func hasOnlyKeys(object map[string]json.RawMessage, keys ...string) bool {
+	if len(object) != len(keys) {
+		return false
+	}
+	for _, key := range keys {
+		if _, ok := object[key]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func parseLiteralMatcher(data json.RawMessage) (valueMatcher, error) {
 	var literal any
 	if err := json.Unmarshal(data, &literal); err != nil {
 		return valueMatcher{}, fmt.Errorf("parse matcher: %w", err)
@@ -373,6 +427,41 @@ func matchesHeaders(matchers []headerMatcher, headers http.Header) bool {
 }
 
 func (m valueMatcher) matches(actual any) bool {
+	if m.object != nil {
+		actualObject, ok := actual.(map[string]any)
+		if !ok {
+			return false
+		}
+
+		for key, matcher := range m.object {
+			actualValue, ok := actualObject[key]
+			if !ok {
+				return false
+			}
+			if !matcher.matches(actualValue) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	if m.array != nil {
+		actualArray, ok := actual.([]any)
+		if !ok {
+			return false
+		}
+		if len(actualArray) != len(m.array) {
+			return false
+		}
+		for index, matcher := range m.array {
+			if !matcher.matches(actualArray[index]) {
+				return false
+			}
+		}
+		return true
+	}
+
 	if m.hasLiteral {
 		canonical, err := canonicalJSON(actual)
 		if err != nil {

@@ -555,6 +555,177 @@ func TestHandler_PartialMatcherSupportsOrderedRequiredTexts(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
+func TestHandler_StructuredMatcherSupportsNestedPartialMatchers(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": [
+						{
+							"type": "x",
+							"text": {"match": "partial", "text": "hel"}
+						}
+					]
+				},
+				"response": {
+					"id": "resp_nested_partial",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_nested_partial",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "matched"}
+							]
+						}
+					]
+				}
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{
+		"model":"gpt-5.4",
+		"input":[
+			{
+				"type":"x",
+				"text":"hello there",
+				"extra":"ignored"
+			}
+		]
+	}`)
+
+	assert.Contains(t, body, `matched`)
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/responses", bytes.NewBufferString(`{
+		"model":"gpt-5.4",
+		"input":[
+			{
+				"type":"x",
+				"text":"hello there"
+			},
+			{
+				"type":"x",
+				"text":"second item"
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestHandler_LiteralStructuredValuesUseRecursiveSubsetMatching(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": [
+						{
+							"type": "x",
+							"text": "hello"
+						}
+					]
+				},
+				"response": {
+					"id": "resp_literal_exact",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_literal_exact",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "matched"}
+							]
+						}
+					]
+				}
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	body := doResponsesRequest(t, server.URL, nil, `{
+		"model":"gpt-5.4",
+		"input":[
+			{
+				"type":"x",
+				"text":"hello",
+				"extra":"ignored"
+			}
+		]
+	}`)
+
+	assert.Contains(t, body, `matched`)
+}
+
+func TestHandler_LiteralStructuredValuesStillRequireListedKeys(t *testing.T) {
+	handler, err := NewHandler([]byte(`{
+		"responses": [
+			{
+				"request": {
+					"model": "gpt-5.4",
+					"input": [
+						{
+							"type": "x",
+							"text": "hello"
+						}
+					]
+				},
+				"response": {
+					"id": "resp_literal_exact",
+					"object": "response",
+					"output": [
+						{
+							"id": "msg_literal_exact",
+							"type": "message",
+							"role": "assistant",
+							"content": [
+								{"type": "output_text", "text": "matched"}
+							]
+						}
+					]
+				}
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/responses", bytes.NewBufferString(`{
+		"model":"gpt-5.4",
+		"input":[
+			{
+				"type":"x"
+			}
+		]
+	}`))
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
 func TestValueMatcher_MultipleTextsDoNotOverlap(t *testing.T) {
 	matcher := valueMatcher{
 		matchType: matchPartial,

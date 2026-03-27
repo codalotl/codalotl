@@ -31,6 +31,7 @@ This only applies when `@` is used. If `@` is missing, this does not apply.
     - IMPORTANT: file paths are relative to the sandbox dir, not this package's dir.
 - You may run tests on your package with `run_tests`.
 - There is no direct shell access! You must use the supplied tools.
+- You may attempt to use `read_file` and `ls` on other packages, only if the user tells you to (the agent harness may still block this - that's ok).
 
 ## Upstream (imported) packages
 

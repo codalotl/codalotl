@@ -52,14 +52,6 @@ func RunCaseDir(caseDir string) error {
 		return err
 	}
 
-	handler, err := mockopenai.NewHandlerFromFile(filepath.Join(caseDir, "http.json"))
-	if err != nil {
-		return fmt.Errorf("load mock OpenAI handler: %w", err)
-	}
-
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
 	workDir, err := os.MkdirTemp("", "codalotl-integration-case-")
 	if err != nil {
 		return fmt.Errorf("create temp work dir: %w", err)
@@ -73,6 +65,19 @@ func RunCaseDir(caseDir string) error {
 	if err := copyTree(sourceRepoDir, workDir); err != nil {
 		return fmt.Errorf("copy case repo: %w", err)
 	}
+
+	httpFixtureData, err := loadHTTPFixtureData(filepath.Join(caseDir, "http.json"), []string{workDir})
+	if err != nil {
+		return err
+	}
+
+	handler, err := mockopenai.NewHandler(httpFixtureData)
+	if err != nil {
+		return fmt.Errorf("load mock OpenAI handler: %w", err)
+	}
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
 
 	modelID, err := registerMockModel(filepath.Base(caseDir), server.URL)
 	if err != nil {
@@ -183,6 +188,36 @@ func readConfig(path string) (testCaseConfig, error) {
 		return testCaseConfig{}, fmt.Errorf("integration config expected must not be empty")
 	}
 	return cfg, nil
+}
+
+func loadHTTPFixtureData(path string, roots []string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read integration http fixture: %w", err)
+	}
+
+	var cfg httpFixtureConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse integration http fixture: %w", err)
+	}
+
+	denormalized := httpFixtureConfig{
+		Responses: make([]httpFixtureResponse, 0, len(cfg.Responses)),
+	}
+	for _, response := range cfg.Responses {
+		denormalized.Responses = append(denormalized.Responses, httpFixtureResponse{
+			Name:     response.Name,
+			Consume:  response.Consume,
+			Request:  cloneJSONObjectFromValue(denormalizeHTTPJSONAbsolutePaths(response.Request, roots)),
+			Response: cloneJSONObjectFromValue(denormalizeHTTPJSONAbsolutePaths(response.Response, roots)),
+		})
+	}
+
+	normalizedData, err := marshalPrettyJSON(denormalized)
+	if err != nil {
+		return nil, fmt.Errorf("marshal integration http fixture: %w", err)
+	}
+	return normalizedData, nil
 }
 
 func registerMockModel(caseName string, baseURL string) (llmmodel.ModelID, error) {

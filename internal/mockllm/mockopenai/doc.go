@@ -33,7 +33,11 @@
 //   - {"match":"partial","text":"..."} to match a substring
 //   - {"match":"partial","texts":["alpha","beta"]} to require multiple substrings in order without overlap
 //
-// Non-string matcher values are compared by JSON structure, so objects and arrays can be matched exactly as JSON values.
+// These matcher objects can also be nested inside arrays and objects. Object matchers are recursive subset matches: they require the listed keys to match, allow
+// extra keys in the actual request value, and apply that same rule again for nested objects, including object elements inside arrays. Array matchers compare elements
+// by position and require the same array length.
+//
+// Primitive non-string matcher values are compared exactly as JSON values. For example, numbers, booleans, and null must match exactly wherever they appear.
 //
 // Responses with `consume: true` can be used only once. Tests that expect all such responses to be exercised should call AssertAllConsumed after the code under
 // test finishes.

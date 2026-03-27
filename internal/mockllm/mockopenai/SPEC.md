@@ -112,6 +112,16 @@ For partial matching with `texts`:
 - Match fragments in listed order.
 - Matches do not overlap.
 
+Matcher objects can also be nested inside arrays and objects.
+- Structured object matchers:
+  - Require listed keys to match.
+  - Allow extra keys in actual request value.
+  - Apply recursively to nested objects, including object elements inside arrays.
+- Structured array matchers:
+  - Match elements by position.
+  - Require same array length.
+- Primitive values inside structured matchers still compare exactly.
+
 ## Public API
 
 ```go
