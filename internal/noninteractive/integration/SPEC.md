@@ -27,7 +27,6 @@ The following must be test cases in `testdata/`.
     - NOTE: to get the LLM to do this in the first place, I needed to **temporarily** add "You may attempt to use `read_file` and `ls` on other packages, only if the user tells you to (the agent harness may still block this - that's ok)." to the prompt.
 
 TODO:
-- generic shell can run a command
 
 - pm ls+readfile works for testdata and data dirs
 - pm @ works inside repo for individual file and dirs
@@ -39,7 +38,7 @@ TODO:
     - [DONE] read_file
     - ls
     - [DONE] apply_patch
-    - shell
+    - [DONE] shell
     - skill_shell
     - update_plan
     - diagnostics
@@ -55,17 +54,14 @@ TODO:
 
 ### Steps To Create an Actual Test
 
-If you're an LLM reading this file and told to make a test case: run the script below. Do NOT use your edit file tool **at all**. If you think you need to, STOP and explain.
-
-- Run `go run ./internal/noninteractive/integration/cmd/create` instead of hand-authoring `config.json` or `http.json`.
-    - Set `--output` to directly write the test case to `testdata/cases/X` (not to a tmp dir).
-- Prefer using the shared fixture repo at `testdata/repo` unless the scenario truly requires a custom per-case repo.
+If you're an LLM reading this file and told to make a test case:
+- Run `go run ./internal/noninteractive/integration/cmd/create` with `--output` **directly** `testdata/cases/X` (not to a tmp dir).
+- Use the shared fixture repo at `testdata/repo` unless the scenario truly requires a custom per-case repo
 - For generic-mode cases, pass `--package=''`. For package-mode cases, pass the specific package path inside the repo.
-- Let the generator verify replay immediately. If generation does not replay cleanly, fix the prompt or scenario first instead of checking in a flaky case.
-- After generation, read `config.json`, `http.json`, and every file in `expected_repo/` and confirm they make sense:
-  - the tool sequence should match the intended scenario
-  - `expected_repo/` should contain exactly the changed or created files
-  - there should be no surprising extra reads, writes, or assistant output
+- Let the generator verify replay immediately.
+    - Tools that contain things like dynamic timings will need to be edited so it partially matches.
+        - Patch both `config.json` and `http.json`.
+        - Replace a string like `"Result took 2.1 seconds"` with `{"match": "partial", "texts": ["Result took ", " seconds"]}`
 - Run `go test ./internal/noninteractive/integration/...` before committing.
 
 Recommended workflow:
