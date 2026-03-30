@@ -1,0 +1,19 @@
+{
+  "prompt": "Use ls on widget/data and widget/testdata. Then read widget/data/info.txt and widget/testdata/fixture.txt and tell me exactly what each file says. Do not inspect any other directories or files, and do not run tests.",
+  "package_path": "widget",
+  "expected": [
+    {"package_path":"widget","type":"start"},
+    {"text":"Use ls on widget/data and widget/testdata. Then read widget/data/info.txt and widget/testdata/fixture.txt and tell me exactly what each file says. Do not inspect any other directories or files, and do not run tests.","type":"user_message"},
+    {"agent":{"depth":0},"content":"I’ll list those two directories and read only the two requested files.","type":"assistant_text"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_XVbHM8n3ywP1Ake4VLKhXiEv","input":"{\"path\":\"widget/data\",\"request_permission\":false}","name":"ls","type":"function_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_YakND1xhvecG3AipNSBVDe2Z","input":"{\"path\":\"widget/testdata\",\"request_permission\":false}","name":"ls","type":"function_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":"<ls ok=\"true\" cwd=\"widget/data\">\n$ ls -1p\ninfo.txt\n</ls>"},"tool":{"call_id":"call_XVbHM8n3ywP1Ake4VLKhXiEv","name":"ls","type":"function_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":"<ls ok=\"true\" cwd=\"widget/testdata\">\n$ ls -1p\nfixture.go\nfixture.txt\n</ls>"},"tool":{"call_id":"call_YakND1xhvecG3AipNSBVDe2Z","name":"ls","type":"function_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_BLTFlCqBSHotFW4NUYm0I326","input":"{\"line_numbers\":false,\"path\":\"widget/data/info.txt\",\"request_permission\":false}","name":"read_file","type":"function_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_v6Y1OH8EOCtjPoOtmSR0s8aI","input":"{\"line_numbers\":false,\"path\":\"widget/testdata/fixture.txt\",\"request_permission\":false}","name":"read_file","type":"function_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":"<file name=\"widget/data/info.txt\" line-count=\"1\" byte-count=\"21\" any-line-truncated=\"false\" file-truncated=\"false\">\ndata file says alpha\n</file>\n"},"tool":{"call_id":"call_BLTFlCqBSHotFW4NUYm0I326","name":"read_file","type":"function_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":"<file name=\"widget/testdata/fixture.txt\" line-count=\"1\" byte-count=\"24\" any-line-truncated=\"false\" file-truncated=\"false\">\ntestdata file says beta\n</file>\n"},"tool":{"call_id":"call_v6Y1OH8EOCtjPoOtmSR0s8aI","name":"read_file","type":"function_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"content":"I inspected only `widget/data`, `widget/testdata`, `widget/data/info.txt`, and `widget/testdata/fixture.txt`.\n\nExact contents:\n- `widget/data/info.txt`: `data file says alpha`\n- `widget/testdata/fixture.txt`: `testdata file says beta`","type":"assistant_text"},
+    {"type":"done"}
+  ]
+}

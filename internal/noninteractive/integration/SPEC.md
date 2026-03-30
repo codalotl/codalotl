@@ -25,6 +25,8 @@ The following must be test cases in `testdata/`.
 - pm-package-isolation
     - ls outside package causes access error
     - NOTE: to get the LLM to do this in the first place, I needed to **temporarily** add "You may attempt to use `read_file` and `ls` on other packages, only if the user tells you to (the agent harness may still block this - that's ok)." to the prompt.
+- pm-package-isolation-testdata-data
+    - ls and readfile works without restriction for testdata and data dirs
 
 TODO:
 
