@@ -302,7 +302,7 @@ func buildGeneratedCase(caseName string, originalRepoRoot string, actualRepoRoot
 	}
 
 	return testCaseConfig{
-		Prompt:      opts.Prompt,
+		Prompt:      normalizeConfigPromptText(opts.Prompt, []string{actualRepoRoot}),
 		PackagePath: opts.PackagePath,
 		Expected:    expected,
 	}, httpCfg, expectedRepoFiles, nil
@@ -606,6 +606,14 @@ func denormalizeHTTPJSONAbsolutePaths(value any, roots []string) any {
 	default:
 		return value
 	}
+}
+
+func normalizeConfigPromptText(text string, roots []string) string {
+	return normalizeHTTPAbsolutePathText(text, roots)
+}
+
+func denormalizeConfigPromptText(text string, roots []string) string {
+	return denormalizeHTTPAbsolutePathText(text, roots)
 }
 
 type pathReplacement struct {

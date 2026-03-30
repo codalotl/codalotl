@@ -92,7 +92,7 @@ func RunCaseDir(caseDir string) error {
 	}
 
 	var out bytes.Buffer
-	err = noninteractive.Exec(cfg.Prompt, noninteractive.Options{
+	err = noninteractive.Exec(denormalizeConfigPromptText(cfg.Prompt, []string{workDir}), noninteractive.Options{
 		CWD:         workDir,
 		PackagePath: cfg.PackagePath,
 		ModelID:     modelID,

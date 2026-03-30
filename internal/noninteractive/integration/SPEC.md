@@ -27,18 +27,18 @@ The following must be test cases in `testdata/`.
     - NOTE: to get the LLM to do this in the first place, I needed to **temporarily** add "You may attempt to use `read_file` and `ls` on other packages, only if the user tells you to (the agent harness may still block this - that's ok)." to the prompt.
 - pm-package-isolation-testdata-data
     - ls and readfile works without restriction for testdata and data dirs
+- pm-mention-file-dir
+    - @ can mention individual files and dirs (read_file and ls access).
+- pm-mention-outside-repo
+    - @ can mention files outside the repo.
 
 TODO:
-
-- pm ls+readfile works for testdata and data dirs
-- pm @ works inside repo for individual file and dirs
-- pm @ works outside repo
 
 - package skill_shell can run a command
 
 - All tools covered:
     - [DONE] read_file
-    - ls
+    - [DONE] ls
     - [DONE] apply_patch
     - [DONE] shell
     - skill_shell

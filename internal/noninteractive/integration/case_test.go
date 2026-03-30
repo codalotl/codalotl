@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/build"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -84,6 +85,20 @@ func TestAssertEventSubsequenceNormalizesRuntimePaths(t *testing.T) {
 	}, []string{workDir})
 
 	require.NoError(t, err)
+}
+
+func TestDenormalizeConfigPromptTextRestoresRuntimePaths(t *testing.T) {
+	workDir := filepath.Join(string(filepath.Separator), "tmp", "case-root")
+
+	got := denormalizeConfigPromptText(
+		"Inspect @"+httpFixtureRepoRootPlaceholder+"/catalog/query.go and @"+httpFixtureGoRootSrcPlaceholder+"/errors/errors.go",
+		[]string{workDir},
+	)
+
+	assert.Equal(t,
+		"Inspect @"+filepath.Join(workDir, "catalog", "query.go")+" and @"+filepath.Join(build.Default.GOROOT, "src", "errors", "errors.go"),
+		got,
+	)
 }
 
 func TestAugmentReplayMockOpenAIErrorIncludesPrunedActualAndExpectedRequests(t *testing.T) {

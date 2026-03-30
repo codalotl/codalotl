@@ -1,0 +1,12 @@
+{
+  "prompt": "Use only the mentioned outside-repo path: @__GOROOT_SRC__/errors. List the files in that directory, then tell me whether errors.go exists there. Do not inspect any other paths, and do not run tests.",
+  "package_path": "inventory",
+  "expected": [
+    {"package_path":"inventory","type":"start"},
+    {"text":"Use only the mentioned outside-repo path: @stdlib/errors. List the files in that directory, then tell me whether errors.go exists there. Do not inspect any other paths, and do not run tests.","type":"user_message"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_vSR7wkwpzPD84noTfLNonayH","input":"{\"path\":\"stdlib/errors\",\"request_permission\":null}","name":"ls","type":"function_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":{"match":"partial","texts":["<ls ok=\"true\" cwd=\"stdlib/errors\">","errors.go","</ls>"]}},"tool":{"call_id":"call_vSR7wkwpzPD84noTfLNonayH","name":"ls","type":"function_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"content":"Files in `@stdlib/errors`:\n- `errors.go`\n- `errors_test.go`\n- `example_test.go`\n- `join.go`\n- `join_test.go`\n- `wrap.go`\n- `wrap_test.go`\n\nYes, `errors.go` exists there.","type":"assistant_text"},
+    {"type":"done"}
+  ]
+}

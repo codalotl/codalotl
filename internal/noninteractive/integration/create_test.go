@@ -2,6 +2,7 @@ package integration
 
 import (
 	"encoding/json"
+	"go/build"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,6 +95,61 @@ func TestBuildExpectedEventsNormalizesPathsAndKeepsExactStrings(t *testing.T) {
 			},
 		},
 	}, got)
+}
+
+func TestBuildGeneratedCaseNormalizesPromptAbsolutePaths(t *testing.T) {
+	repoDir := t.TempDir()
+	workDir := t.TempDir()
+
+	stdlibPath := filepath.Join(build.Default.GOROOT, "src", "errors", "errors.go")
+	opts := CreateOptions{
+		Prompt:      "Read @" + filepath.Join(workDir, "note.txt") + " and @" + stdlibPath,
+		OutputDir:   filepath.Join(t.TempDir(), "generated-case"),
+		PackagePath: "catalog",
+	}
+
+	turns := []recordedTurn{
+		{
+			Request: map[string]any{
+				"model": "gpt-5.4-high",
+				"input": []any{
+					map[string]any{
+						"type": "message",
+						"content": []any{
+							map[string]any{"type": "input_text", "text": "system"},
+						},
+					},
+					map[string]any{
+						"type": "message",
+						"content": []any{
+							map[string]any{"type": "input_text", "text": "env"},
+						},
+					},
+					map[string]any{
+						"type": "message",
+						"content": []any{
+							map[string]any{"type": "input_text", "text": opts.Prompt},
+						},
+					},
+				},
+			},
+			Response: map[string]any{
+				"id":     "resp_1",
+				"object": "response",
+				"output": []any{},
+			},
+		},
+	}
+	actualEvents := []map[string]any{
+		{"type": "start", "package_path": "catalog"},
+		{"type": "user_message", "text": opts.Prompt},
+		{"type": "done"},
+	}
+
+	cfg, _, _, err := buildGeneratedCase("generated-case", repoDir, workDir, actualEvents, turns, opts)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Read @"+httpFixtureRepoRootPlaceholder+"/note.txt and @"+httpFixtureGoRootSrcPlaceholder+"/errors/errors.go", cfg.Prompt)
 }
 
 func TestBuildHTTPFixtureRequestPreservesStructuredRequestAndNormalizesPaths(t *testing.T) {
