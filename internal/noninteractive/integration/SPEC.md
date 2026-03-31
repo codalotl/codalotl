@@ -101,6 +101,13 @@ Example:
 {
     "prompt": "Use the tools if needed to answer what is in @hello.txt.",
     "package_path": "",
+    "reflowwidth": 120,
+    "lints": {
+        "mode": "extend",
+        "steps": [
+            {"id": "reflow"}
+        ]
+    },
     "expected": [
         {"type": "start", "package_path": ""},
         {"type": "user_message", "text": "Use the tools if needed to answer what is in @hello.txt."},
@@ -111,6 +118,10 @@ Example:
     ]
 }
 ```
+
+Optional `config.json` fields:
+- `reflowwidth`: passed into lint resolution for preconfigured width-sensitive steps.
+- `lints`: lint pipeline config using the same schema as normal app config. Resolved steps are passed to `noninteractive.Exec`, so cases can enable preconfigured or custom lint commands.
 
 Rules for matching expected JSON lines:
 - The runner parses `noninteractive.Exec(..., OutputJSON=true)` output as NDJSON.

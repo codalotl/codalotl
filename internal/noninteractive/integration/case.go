@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/mockllm/mockopenai"
 	"github.com/codalotl/codalotl/internal/noninteractive"
@@ -27,8 +28,12 @@ const (
 type testCaseConfig struct {
 	Prompt      string           `json:"prompt"`
 	PackagePath string           `json:"package_path,omitempty"`
+	ReflowWidth int              `json:"reflowwidth,omitempty"`
+	Lints       lints.Lints      `json:"lints,omitempty"`
 	Expected    []map[string]any `json:"expected"`
 }
+
+var runNoninteractiveExec = noninteractive.Exec
 
 func ListCaseNames(root string) ([]string, error) {
 	entries, err := os.ReadDir(root)
@@ -91,11 +96,18 @@ func RunCaseDir(caseDir string) error {
 		return fmt.Errorf("register mock model: %w", err)
 	}
 
+	lintSteps, err := lints.ResolveSteps(&cfg.Lints, cfg.ReflowWidth)
+	if err != nil {
+		return fmt.Errorf("resolve integration lint steps: %w", err)
+	}
+
 	var out bytes.Buffer
-	err = noninteractive.Exec(denormalizeConfigPromptText(cfg.Prompt, []string{workDir}), noninteractive.Options{
+	err = runNoninteractiveExec(denormalizeConfigPromptText(cfg.Prompt, []string{workDir}), noninteractive.Options{
 		CWD:         workDir,
 		PackagePath: cfg.PackagePath,
 		ModelID:     modelID,
+		LintSteps:   lintSteps,
+		ReflowWidth: cfg.ReflowWidth,
 		OutputJSON:  true,
 		AutoYes:     true,
 		Out:         &out,
