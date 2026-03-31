@@ -34,7 +34,7 @@
             "type": "message"
           }
         ],
-        "model": "mock-model-pm-custom-lint-echo"
+        "model": "mock-model-pm-custom-lint"
       },
       "response": {
         "background": false,
@@ -2255,7 +2255,7 @@
             "type": "function_call_output"
           }
         ],
-        "model": "mock-model-pm-custom-lint-echo",
+        "model": "mock-model-pm-custom-lint",
         "previous_response_id": "resp_00f4b6b8ce15b1230069cc0986130081a19e67c19b6d2488bf"
       },
       "response": {
@@ -4472,7 +4472,7 @@
             "type": "custom_tool_call_output"
           }
         ],
-        "model": "mock-model-pm-custom-lint-echo",
+        "model": "mock-model-pm-custom-lint",
         "previous_response_id": "resp_00f4b6b8ce15b1230069cc0989f3a881a1ae5327381c9ceb05"
       },
       "response": {
