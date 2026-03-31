@@ -57,6 +57,7 @@ const (
 	httpFixtureRepoRootPlaceholder   = "__REPO_ROOT__"
 	httpFixtureGoRootSrcPlaceholder  = "__GOROOT_SRC__"
 	httpFixtureGoModCachePlaceholder = "__GOMODCACHE__"
+	httpFixtureSystemSkillsPlaceholder = "__SYSTEM_SKILLS__"
 )
 
 func CreateCase(opts CreateOptions) error {
@@ -634,16 +635,8 @@ type pathReplacement struct {
 }
 
 func normalizeAbsolutePathText(text string, roots []string) string {
-	replacements := absolutePathReplacements(roots)
-	if len(replacements) == 0 {
-		return text
-	}
-
-	normalized := text
-	for _, replacement := range replacements {
-		normalized = replaceAbsolutePathPrefix(normalized, replacement.prefix, replacement.replacement)
-	}
-	return normalized
+	normalized := replacePathPrefixes(text, absolutePathReplacements(roots))
+	return replacePathPrefixes(normalized, absolutePathPlaceholderReplacements())
 }
 
 func normalizeHTTPAbsolutePathText(text string, roots []string) string {
@@ -667,7 +660,7 @@ func replacePathPrefixes(text string, replacements []pathReplacement) string {
 }
 
 func absolutePathReplacements(roots []string) []pathReplacement {
-	replacements := newPathReplacementBuilder(len(roots) + 2)
+	replacements := newPathReplacementBuilder(len(roots) + 3)
 	for _, root := range roots {
 		replacements.add(root, "")
 	}
@@ -678,11 +671,14 @@ func absolutePathReplacements(roots []string) []pathReplacement {
 	if modcache := goModCachePath(); modcache != "" {
 		replacements.add(modcache, "modcache")
 	}
+	if systemSkillsDir := defaultSystemSkillsPath(); systemSkillsDir != "" {
+		replacements.add(systemSkillsDir, "")
+	}
 	return replacements.build()
 }
 
 func httpFixturePathReplacements(roots []string) []pathReplacement {
-	replacements := newPathReplacementBuilder(len(roots) + 2)
+	replacements := newPathReplacementBuilder(len(roots) + 3)
 	for _, root := range roots {
 		replacements.add(root, httpFixtureRepoRootPlaceholder)
 	}
@@ -693,11 +689,14 @@ func httpFixturePathReplacements(roots []string) []pathReplacement {
 	if modcache := goModCachePath(); modcache != "" {
 		replacements.add(modcache, httpFixtureGoModCachePlaceholder)
 	}
+	if systemSkillsDir := defaultSystemSkillsPath(); systemSkillsDir != "" {
+		replacements.add(systemSkillsDir, httpFixtureSystemSkillsPlaceholder)
+	}
 	return replacements.build()
 }
 
 func httpFixturePlaceholderReplacements(roots []string) []pathReplacement {
-	replacements := newPathReplacementBuilder(len(roots) + 2)
+	replacements := newPathReplacementBuilder(len(roots) + 3)
 	for _, root := range roots {
 		replacements.add(httpFixtureRepoRootPlaceholder, filepath.Clean(root))
 	}
@@ -708,6 +707,18 @@ func httpFixturePlaceholderReplacements(roots []string) []pathReplacement {
 	if modcache := goModCachePath(); modcache != "" {
 		replacements.add(httpFixtureGoModCachePlaceholder, modcache)
 	}
+	if systemSkillsDir := defaultSystemSkillsPath(); systemSkillsDir != "" {
+		replacements.add(httpFixtureSystemSkillsPlaceholder, systemSkillsDir)
+	}
+	return replacements.build()
+}
+
+func absolutePathPlaceholderReplacements() []pathReplacement {
+	replacements := newPathReplacementBuilder(4)
+	replacements.add(httpFixtureRepoRootPlaceholder, "")
+	replacements.add(httpFixtureGoRootSrcPlaceholder, "stdlib")
+	replacements.add(httpFixtureGoModCachePlaceholder, "modcache")
+	replacements.add(httpFixtureSystemSkillsPlaceholder, "")
 	return replacements.build()
 }
 
@@ -757,6 +768,14 @@ func goModCachePath() string {
 		return filepath.Join(home, "go", "pkg", "mod")
 	}
 	return ""
+}
+
+func defaultSystemSkillsPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".codalotl", "skills", ".system")
 }
 
 func replaceAbsolutePathPrefix(text string, prefix string, replacement string) string {

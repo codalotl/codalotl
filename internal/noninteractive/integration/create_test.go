@@ -647,8 +647,21 @@ func TestNormalizeAbsolutePathTextMakesRepoPathsRelative(t *testing.T) {
 	assert.Equal(t, "read catalog/query.go:12", normalizeAbsolutePathText(input, []string{repoRoot}))
 }
 
+func TestNormalizeAbsolutePathTextMakesSystemSkillPathsPortable(t *testing.T) {
+	systemSkillsDir := defaultSystemSkillsPath()
+	require.NotEmpty(t, systemSkillsDir)
+
+	input := "read " + filepath.Join(systemSkillsDir, "spec-md", "SKILL.md")
+
+	assert.Equal(t, "read spec-md/SKILL.md", normalizeAbsolutePathText(input, nil))
+	assert.Equal(t, "read spec-md/SKILL.md", normalizeAbsolutePathText("read "+httpFixtureSystemSkillsPlaceholder+"/spec-md/SKILL.md", nil))
+	assert.Equal(t, "read "+httpFixtureSystemSkillsPlaceholder+"/spec-md/SKILL.md", normalizeHTTPAbsolutePathText(input, nil))
+}
+
 func TestLoadHTTPFixtureDataDenormalizesPaths(t *testing.T) {
 	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
+	systemSkillsDir := defaultSystemSkillsPath()
+	require.NotEmpty(t, systemSkillsDir)
 	caseDir := t.TempDir()
 	fixture := httpFixtureConfig{
 		Responses: []httpFixtureResponse{
@@ -677,6 +690,11 @@ func TestLoadHTTPFixtureDataDenormalizesPaths(t *testing.T) {
 							"type":      "function_call",
 							"arguments": `{"path":"` + httpFixtureRepoRootPlaceholder + `/catalog/query.go"}`,
 						},
+						map[string]any{
+							"id":        "fc_real_2",
+							"type":      "function_call",
+							"arguments": `{"path":"` + httpFixtureSystemSkillsPlaceholder + `/spec-md/SKILL.md"}`,
+						},
 					},
 				},
 			},
@@ -691,6 +709,7 @@ func TestLoadHTTPFixtureDataDenormalizesPaths(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &got))
 	assert.Equal(t, "cwd: "+repoRoot, got.Responses[0].Request["input"].([]any)[0].(map[string]any)["content"].([]any)[0].(map[string]any)["text"])
 	assert.Equal(t, `{"path":"`+filepath.Join(repoRoot, "catalog", "query.go")+`"}`, got.Responses[0].Response["output"].([]any)[0].(map[string]any)["arguments"])
+	assert.Equal(t, `{"path":"`+filepath.Join(systemSkillsDir, "spec-md", "SKILL.md")+`"}`, got.Responses[0].Response["output"].([]any)[1].(map[string]any)["arguments"])
 }
 
 func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
