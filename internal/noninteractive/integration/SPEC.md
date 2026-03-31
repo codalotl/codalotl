@@ -37,26 +37,14 @@ The following must be test cases in `testdata/`.
     - uses `get_public_api` on another package, then `clarify_public_api` on a specific identifier and answers without editing files.
 - pm-update_usage
     - uses `get_usage` on a package identifier, then renames that API in-package and uses `update_usage` to update downstream callsites.
-
-TODO:
-
-- All tools covered:
-    - [DONE] read_file
-    - [DONE] ls
-    - [DONE] apply_patch
-    - [DONE] shell
-    - skill_shell
-    - [DONE] update_plan
-    - [DONE] diagnostics
-    - [DONE] fix_lints
-    - [DONE] run_tests
-    - [DONE] run_project_tests
-    - module_info
-    - [DONE] get_public_api
-    - [DONE] clarify_public_api
-    - [DONE] get_usage
-    - [DONE] update_usage
-    - change_api
+- pm-change_api
+    - uses `change_api` on an upstream package to make a small package-scoped behavior change, then verifies the result.
+- pm-dependency
+    - uses module_info to get dep modules. Uses get_public_api on it, and clarify.
+- pm-clarify-stdlib
+    - uses `get_public_api` on a stdlib package like fmt, then `clarify_public_api` to answer questions about it.
+- pm-skill_shell
+    - mentions $spec-md and instruct to use git to find changes, which causes `skill_shell` to be used (the result of git is irrelevant).
 
 ### Steps To Create an Actual Test
 

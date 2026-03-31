@@ -1,0 +1,127 @@
+{
+  "responses": [
+    {
+      "name": "turn-01",
+      "consume": true,
+      "request": {
+        "model": "mock-model-pm-clarify-stdlib",
+        "input": {
+          "match": "partial",
+          "text": "Use get_public_api on the fmt package, then use clarify_public_api on fmt.Errorf"
+        }
+      },
+      "response": {
+        "id": "resp_pm_clarify_stdlib_1",
+        "object": "response",
+        "output": [
+          {
+            "id": "fc_pm_clarify_stdlib_get_public_api",
+            "type": "function_call",
+            "call_id": "call_get_public_api",
+            "name": "get_public_api",
+            "arguments": "{\"identifiers\":[\"Errorf\"],\"path\":\"fmt\"}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "turn-02",
+      "consume": true,
+      "request": {
+        "model": "mock-model-pm-clarify-stdlib",
+        "previous_response_id": "resp_pm_clarify_stdlib_1"
+      },
+      "response": {
+        "id": "resp_pm_clarify_stdlib_2",
+        "object": "response",
+        "output": [
+          {
+            "id": "fc_pm_clarify_stdlib_clarify",
+            "type": "function_call",
+            "call_id": "call_clarify_public_api",
+            "name": "clarify_public_api",
+            "arguments": "{\"identifier\":\"Errorf\",\"path\":\"fmt\",\"question\":\"Exactly what happens when the format string contains more than one %w verb? Cover the unwrap behavior, ordering, and whether repeating the same wrapped argument produces duplicates.\"}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "turn-03",
+      "consume": true,
+      "request": {
+        "model": "mock-model-pm-clarify-stdlib",
+        "input": {
+          "match": "partial",
+          "texts": [
+            "Identifier: Errorf",
+            "Path: __GOROOT_SRC__/fmt",
+            "more than one %w verb"
+          ]
+        }
+      },
+      "response": {
+        "id": "resp_pm_clarify_stdlib_sub_1",
+        "object": "response",
+        "output": [
+          {
+            "id": "fc_pm_clarify_stdlib_read_errors",
+            "type": "function_call",
+            "call_id": "call_read_errors_go",
+            "name": "read_file",
+            "arguments": "{\"line_numbers\":false,\"path\":\"fmt/errors.go\",\"request_permission\":false}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "turn-04",
+      "consume": true,
+      "request": {
+        "model": "mock-model-pm-clarify-stdlib",
+        "previous_response_id": "resp_pm_clarify_stdlib_sub_1"
+      },
+      "response": {
+        "id": "resp_pm_clarify_stdlib_sub_2",
+        "object": "response",
+        "output": [
+          {
+            "id": "msg_pm_clarify_stdlib_sub_answer",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "With more than one `%w`, `fmt.Errorf` returns an error whose `Unwrap() []error` returns multiple wrapped errors rather than a single `Unwrap() error`.\n\nA few source-level details from `fmt/errors.go`:\n- if the same argument is wrapped more than once, it only appears once in the returned `[]error`\n- with positional formatting, the wrapped errors are ordered by argument index before duplicates are removed\n- the rendered error message still includes every formatted `%w` occurrence in the normal output text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "turn-05",
+      "consume": true,
+      "request": {
+        "model": "mock-model-pm-clarify-stdlib",
+        "previous_response_id": "resp_pm_clarify_stdlib_2"
+      },
+      "response": {
+        "id": "resp_pm_clarify_stdlib_3",
+        "object": "response",
+        "output": [
+          {
+            "id": "msg_pm_clarify_stdlib_root_answer",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "With multiple `%w` verbs, `fmt.Errorf` returns an error with `Unwrap() []error`, not just a single wrapped error.\n\nBriefly:\n- every `%w` still contributes to the formatted message text\n- the returned unwrap slice contains the wrapped error operands\n- if the same argument is wrapped multiple times, that same argument is only included once\n- with positional formatting, the slice is ordered by argument index"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
