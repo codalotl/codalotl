@@ -77,6 +77,9 @@ type Options struct {
 	// of the terminal and print colorized/formatted text.
 	NoFormatting bool
 
+	// OutputJSON outputs newline-delimited JSON instead of human-readable text. If set, NoFormatting is ignored.
+	OutputJSON bool
+
 	// If Out != nil, any prints we do will use Out; otherwise will use Stdout. If Exec encounters errors during its run (eg: cannot talk to LLM; cannot write file),
 	// we'd still just print to Out (instead of something like Stderr).
 	Out io.Writer
@@ -249,6 +252,7 @@ func Exec(userPrompt string, opts Options) error {
 	}
 	rawOut := out
 	out = &lockedWriter{w: out}
+	jsonWriter := newJSONEventWriter(out)
 
 	sandboxDir, err := normalizeSandboxDir(opts.CWD)
 	if err != nil {
@@ -279,7 +283,7 @@ func Exec(userPrompt string, opts Options) error {
 	}
 	defer authorizerForTools.Close()
 
-	go autoRespondToUserRequests(userRequests, out, opts.AutoYes)
+	go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
 
 	toolsForAgent, systemPrompt, err := buildToolsetAndSystemPrompt(pkgMode, sandboxDir, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
 	if err != nil {
@@ -309,15 +313,27 @@ func Exec(userPrompt string, opts Options) error {
 		}
 	}
 
-	if err := printUserPrompt(out, userPrompt); err != nil {
-		return err
+	if opts.OutputJSON {
+		if err := jsonWriter.WriteStart(sandboxDir, pkgRelPath, modelID); err != nil {
+			return err
+		}
+		if err := jsonWriter.WriteUserMessage(userPrompt); err != nil {
+			return err
+		}
+	} else {
+		if err := printUserPrompt(out, userPrompt); err != nil {
+			return err
+		}
 	}
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	toolCallPrinter := newDelayedToolCallPrinter(out, toolCallPrintDelay)
-	defer toolCallPrinter.Close()
+	var toolCallPrinter *delayedToolCallPrinter
+	if !opts.OutputJSON {
+		toolCallPrinter = newDelayedToolCallPrinter(out, toolCallPrintDelay)
+		defer toolCallPrinter.Close()
+	}
 
 	var terminalErr error
 	completedAssistantTurnsByAgent := make(map[string][]llmstream.Turn)
@@ -337,6 +353,21 @@ func Exec(userPrompt string, opts Options) error {
 			// cumulative session token usage.
 			continue
 		case agent.EventTypeDoneSuccess:
+			if ev.Agent.Depth > 0 {
+				continue
+			}
+			if opts.OutputJSON {
+				var idealUsage *llmstream.TokenUsage
+				if reportIdealCachingEnabled() {
+					ideal := idealCachingForCompletedTurnsByAgent(completedAssistantTurnsByAgent, agentInstance.Turns())
+					idealUsage = &ideal
+				}
+				if err := jsonWriter.WriteDone(agentInstance.TokenUsage(), idealUsage); err != nil {
+					return err
+				}
+				continue
+			}
+
 			report := buildDoneSuccessReport(modelID, agentInstance.Turns(), completedAssistantTurnsByAgent, agentInstance.TokenUsage(), reportIdealCachingEnabled())
 
 			if strings.TrimSpace(report.UsageAndCaching) != "" {
@@ -361,6 +392,18 @@ func Exec(userPrompt string, opts Options) error {
 				}
 			}
 			continue
+		}
+		if opts.OutputJSON {
+			if err := jsonWriter.WriteAgentEvent(ev); err != nil {
+				return err
+			}
+			if ev.Type == agent.EventTypeError || ev.Type == agent.EventTypeCanceled {
+				terminalErr = ev.Error
+			}
+			continue
+		}
+
+		switch ev.Type {
 		case agent.EventTypeToolCall:
 			formatted := formatter.FormatEvent(ev, terminalWidth)
 			if shouldSuppressFormattedOutput(formatted) {
@@ -730,14 +773,18 @@ func modelReportsCacheWrites(modelID llmmodel.ModelID) bool {
 	return strings.Contains(strings.ToLower(info.ProviderModelID), "opus") || strings.Contains(strings.ToLower(string(modelID)), "opus")
 }
 
-func autoRespondToUserRequests(requests <-chan authdomain.UserRequest, out io.Writer, autoYes bool) {
+func autoRespondToUserRequests(requests <-chan authdomain.UserRequest, out io.Writer, autoYes bool, jsonWriter *jsonEventWriter, outputJSON bool) {
 	for req := range requests {
-		if out != nil && strings.TrimSpace(req.Prompt) != "" {
-			decision := "NO"
-			if autoYes {
-				decision = "YES"
+		if strings.TrimSpace(req.Prompt) != "" {
+			if outputJSON {
+				_ = jsonWriter.WritePermission(req.Prompt, autoYes)
+			} else if out != nil {
+				decision := "NO"
+				if autoYes {
+					decision = "YES"
+				}
+				_, _ = fmt.Fprintf(out, "Permission: %s\nAuto decision: %s\n", req.Prompt, decision)
 			}
-			_, _ = fmt.Fprintf(out, "Permission: %s\nAuto decision: %s\n", req.Prompt, decision)
 		}
 		if autoYes {
 			req.Allow()

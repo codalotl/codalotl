@@ -62,6 +62,11 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 
 	debugPrint(debugHTTPRequests, "HTTP REQUEST: create response(streaming=true)", params)
 
+	var diagnosticRequest map[string]any
+	if hasDiagnosticHooks() {
+		diagnosticRequest = bestEffortJSONObject(params)
+	}
+
 	startTime := time.Now()
 
 	stream := client.Responses.NewStreaming(ctx, params)
@@ -121,6 +126,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		if evt.Type == "response.output_item.added" {
 			debugPrint(debugEvents, "response.output_item.added", debugDescribeOutputItemAdded(evt.AsResponseOutputItemAdded()))
 		}
+		maybeEmitOpenAIDiagnosticTurn(diagnosticRequest, evt)
 
 		// Detect broken state in OpenAI (observed on 2025/10/28)
 		if evt.Type == "response.function_call_arguments.delta" {
@@ -238,6 +244,36 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	}
 
 	return nil
+}
+
+func maybeEmitOpenAIDiagnosticTurn(request map[string]any, evt responses.ResponseStreamEventUnion) {
+	if request == nil {
+		return
+	}
+
+	switch evt.Type {
+	case "response.completed":
+		emitDiagnosticTurn(request, bestEffortJSONObject(evt.AsResponseCompleted().Response))
+	case "response.failed":
+		emitDiagnosticTurn(request, bestEffortJSONObject(evt.AsResponseFailed().Response))
+	case "response.incomplete":
+		emitDiagnosticTurn(request, bestEffortJSONObject(evt.AsResponseIncomplete().Response))
+	case "error":
+		emitDiagnosticTurn(request, bestEffortJSONObject(evt.AsError()))
+	}
+}
+
+func bestEffortJSONObject(value any) map[string]any {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil {
+		return nil
+	}
+	return object
 }
 
 type openAIResponsesContentBuilders struct {

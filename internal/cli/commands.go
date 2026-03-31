@@ -28,6 +28,7 @@ import (
 )
 
 var runTUIWithConfig = tui.RunWithConfig
+var runNoninteractiveExec = noninteractive.Exec
 
 type configState struct {
 	once sync.Once
@@ -161,6 +162,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode, rooted at this package path (must be within cwd).")
 	execYes := execFlags.Bool("yes", 'y', false, "Auto-approve any permission checks (noninteractive).")
 	execNoColor := execFlags.Bool("no-color", 0, false, "Disable ANSI colors and formatting.")
+	execJSON := execFlags.Bool("json", 0, false, "Output newline-delimited JSON.")
 	execModel := execFlags.String("model", 0, "", "LLM model ID to use (overrides config preferredmodel; empty = default).")
 	execCmd.Run = runWithConfig("exec", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 		userPrompt := strings.TrimSpace(strings.Join(c.Args, " "))
@@ -178,13 +180,14 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
 		}
 
-		err = noninteractive.Exec(userPrompt, noninteractive.Options{
+		err = runNoninteractiveExec(userPrompt, noninteractive.Options{
 			PackagePath:  *execPackage,
 			ModelID:      modelID,
 			LintSteps:    steps,
 			ReflowWidth:  cfg.ReflowWidth,
 			AutoYes:      *execYes,
 			NoFormatting: *execNoColor,
+			OutputJSON:   *execJSON,
 			Out:          c.Out,
 		})
 		if err == nil {

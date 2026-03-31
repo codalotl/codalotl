@@ -1,0 +1,9 @@
+{
+  "prompt": "Reply with exactly: Hello from the integration test.",
+  "expected": [
+    {"package_path":"","type":"start"},
+    {"text":"Reply with exactly: Hello from the integration test.","type":"user_message"},
+    {"content":"Hello from the integration test.","type":"assistant_text"},
+    {"token_usage":{"cache_writes":0,"cached_input":0,"input":11,"output":4,"total":15},"type":"done"}
+  ]
+}

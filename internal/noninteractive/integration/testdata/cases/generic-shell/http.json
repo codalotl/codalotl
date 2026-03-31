@@ -1,0 +1,1810 @@
+{
+  "responses": [
+    {
+      "name": "turn-01",
+      "consume": true,
+      "request": {
+        "input": [
+          {
+            "content": [
+              {
+                "type": "input_text"
+              }
+            ],
+            "role": "system",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "text": "Use the shell command to echo \"hello world\"",
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          }
+        ],
+        "model": "mock-model-generic-shell"
+      },
+      "response": {
+        "background": false,
+        "completed_at": 1774651057,
+        "conversation": {
+          "id": ""
+        },
+        "created_at": 1774651053,
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_0e02d310ea4b653e0069c706adf7608194ab9e45b8fa685758",
+        "incomplete_details": {
+          "reason": ""
+        },
+        "instructions": {
+          "OfInputItemList": null,
+          "OfString": ""
+        },
+        "max_output_tokens": 0,
+        "max_tool_calls": 0,
+        "metadata": {},
+        "model": "gpt-5.4-2026-03-05",
+        "object": "response",
+        "output": [
+          {
+            "action": {
+              "button": "",
+              "command": null,
+              "commands": null,
+              "env": null,
+              "keys": null,
+              "max_output_length": 0,
+              "path": null,
+              "pattern": "",
+              "queries": null,
+              "query": "",
+              "scroll_x": 0,
+              "scroll_y": 0,
+              "sources": null,
+              "text": "",
+              "timeout_ms": 0,
+              "type": "",
+              "url": "",
+              "user": "",
+              "working_directory": "",
+              "x": 0,
+              "y": 0
+            },
+            "actions": null,
+            "approval_request_id": "",
+            "arguments": "",
+            "call_id": "",
+            "code": "",
+            "container_id": "",
+            "content": null,
+            "created_by": "",
+            "encrypted_content": "",
+            "environment": {
+              "container_id": "",
+              "type": ""
+            },
+            "error": "",
+            "execution": "",
+            "id": "rs_0e02d310ea4b653e0069c706aeb0fc8194af00bfa6405da0e8",
+            "input": "",
+            "max_output_length": 0,
+            "name": "",
+            "namespace": "",
+            "operation": {
+              "diff": "",
+              "path": "",
+              "type": ""
+            },
+            "output": {
+              "OfResponseFunctionShellToolCallOutputOutputArray": null,
+              "OfString": ""
+            },
+            "outputs": null,
+            "pending_safety_checks": null,
+            "phase": "",
+            "queries": null,
+            "result": "",
+            "results": null,
+            "role": "assistant",
+            "server_label": "",
+            "status": "",
+            "summary": [
+              {
+                "text": "**Running shell command**\n\nI want to respond using a shell command since it’s straightforward. This task seems simple, so I don't think I need a detailed plan. I should use the shell tool for commentary and run `echo \"hello world\"` to produce the output. Once I have that, I’ll share the result in my final answer. Let's get to it and see how it goes!",
+                "type": "summary_text"
+              }
+            ],
+            "tools": {
+              "OfResponseOutputItemMcpListToolsTools": null,
+              "OfToolArray": null
+            },
+            "type": "reasoning"
+          },
+          {
+            "action": {
+              "button": "",
+              "command": null,
+              "commands": null,
+              "env": null,
+              "keys": null,
+              "max_output_length": 0,
+              "path": null,
+              "pattern": "",
+              "queries": null,
+              "query": "",
+              "scroll_x": 0,
+              "scroll_y": 0,
+              "sources": null,
+              "text": "",
+              "timeout_ms": 0,
+              "type": "",
+              "url": "",
+              "user": "",
+              "working_directory": "",
+              "x": 0,
+              "y": 0
+            },
+            "actions": null,
+            "approval_request_id": "",
+            "arguments": "{\"command\":[\"echo\",\"hello world\"],\"cwd\":\".\",\"request_permission\":false,\"timeout_ms\":120000}",
+            "call_id": "call_9elLQYpfNUAroeBP7GwcvLxo",
+            "code": "",
+            "container_id": "",
+            "content": null,
+            "created_by": "",
+            "encrypted_content": "",
+            "environment": {
+              "container_id": "",
+              "type": ""
+            },
+            "error": "",
+            "execution": "",
+            "id": "fc_0e02d310ea4b653e0069c706b184248194a0ffe7be08bed9c4",
+            "input": "",
+            "max_output_length": 0,
+            "name": "shell",
+            "namespace": "",
+            "operation": {
+              "diff": "",
+              "path": "",
+              "type": ""
+            },
+            "output": {
+              "OfResponseFunctionShellToolCallOutputOutputArray": null,
+              "OfString": ""
+            },
+            "outputs": null,
+            "pending_safety_checks": null,
+            "phase": "",
+            "queries": null,
+            "result": "",
+            "results": null,
+            "role": "assistant",
+            "server_label": "",
+            "status": "completed",
+            "summary": null,
+            "tools": {
+              "OfResponseOutputItemMcpListToolsTools": null,
+              "OfToolArray": null
+            },
+            "type": "function_call"
+          }
+        ],
+        "parallel_tool_calls": true,
+        "previous_response_id": "",
+        "prompt": {
+          "id": "",
+          "variables": null,
+          "version": ""
+        },
+        "prompt_cache_key": "6a1d08bd064facd8f8ec1899ba4f1e7f907caf7077d9fa0debb0f3b9c62aee3d",
+        "prompt_cache_retention": "",
+        "reasoning": {
+          "effort": "high",
+          "generate_summary": "",
+          "summary": "detailed"
+        },
+        "safety_identifier": "",
+        "service_tier": "default",
+        "status": "completed",
+        "temperature": 1,
+        "text": {
+          "format": {
+            "description": "",
+            "name": "",
+            "schema": null,
+            "strict": false,
+            "type": "text"
+          },
+          "verbosity": "medium"
+        },
+        "tool_choice": {
+          "OfToolChoiceMode": "auto",
+          "mode": "",
+          "name": "",
+          "server_label": "",
+          "tools": null,
+          "type": ""
+        },
+        "tools": [
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "File reading tool that reads and displays the contents of a file, optionally with line numbers (1-based).\n- Do NOT read with line numbers, UNLESS you specifically need them (e.g., to match against test failures)\n- Limitations: maximum file size is 250KB; max 10000 lines; max 2000 characters per line before truncation; cannot display binary files.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "read_file",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "line_numbers": {
+                  "description": "Prefix each line with a line number if true",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "path": {
+                  "description": "The path of the file to read (absolute, or relative to **sandbox** dir)",
+                  "type": "string"
+                },
+                "request_permission": {
+                  "description": "Optionally request the user's permission to run this command. Set to true for material access outside sandbox dir",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "line_numbers",
+                "path",
+                "request_permission"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Directory listing tool that lists files in a directory.\n- Provide a path to list (either absolute or relative to sandbox directory)\n- Provide '.' to list the sandbox directory\n- Automatically skips hidden files/directories (starting with '.')\n- The <ls> output includes a cwd attribute indicating the absolute directory listed",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "ls",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "description": "The path to the directory to list (absolute, or relative to sandbox dir)",
+                  "type": "string"
+                },
+                "request_permission": {
+                  "description": "Optionally request the user's permission to run this command. Set to true for material access outside sandbox dir",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "request_permission"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Run a shell command (argv array) and return combined stdout+stderr.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "shell",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "description": "Command and args (argv style), e.g., ['go','test','./...']",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "cwd": {
+                  "description": "Optional working directory (absolute, or relative to sandbox dir; defaults to sandbox dir itself)",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "request_permission": {
+                  "description": "Optionally request the user's permission to run this command. Set to true for dangerous commands, and material access outside sandbox dir",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "timeout_ms": {
+                  "description": "Optional timeout in milliseconds (default ~120s)",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "command",
+                "cwd",
+                "request_permission",
+                "timeout_ms"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Updates the task plan.\nProvide an optional explanation and a list of plan items, each with a step and status.\nAt most one step can be in_progress at a time.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "update_plan",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "explanation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "plan": {
+                  "description": "The list of steps",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "status": {
+                        "description": "One of: pending, in_progress, completed",
+                        "enum": [
+                          "pending",
+                          "in_progress",
+                          "completed"
+                        ],
+                        "type": "string"
+                      },
+                      "step": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "step",
+                      "status"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "explanation",
+                "plan"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "start: begin_patch hunk+ end_patch\nbegin_patch: \"*** Begin Patch\" LF\nend_patch: \"*** End Patch\" LF?\n\nhunk: add_hunk | delete_hunk | update_hunk\nadd_hunk: \"*** Add File: \" filename LF add_line+\ndelete_hunk: \"*** Delete File: \" filename LF\nupdate_hunk: \"*** Update File: \" filename LF change_move? change?\n\nfilename: /(.+)/\nadd_line: \"+\" /(.*)/ LF -> line\n\nchange_move: \"*** Move to: \" filename LF\nchange: (change_context | change_line)+ eof_line?\nchange_context: (\"@@\" | \"@@ \" /(.+)/) LF\nchange_line: (\"+\" | \"-\" | \" \") /(.*)/ LF\neof_line: \"*** End of File\" LF\n\n%import common.LF",
+              "syntax": "lark",
+              "type": "grammar"
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "apply_patch",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": null,
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": false,
+            "tools": null,
+            "type": "custom",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          }
+        ],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 3037,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 89,
+          "output_tokens_details": {
+            "reasoning_tokens": 51
+          },
+          "total_tokens": 3126
+        },
+        "user": ""
+      }
+    },
+    {
+      "name": "turn-02",
+      "consume": true,
+      "request": {
+        "input": [
+          {
+            "call_id": "call_9elLQYpfNUAroeBP7GwcvLxo",
+            "output": {
+              "match": "partial",
+              "texts": [
+                "\"content\":\"Command: echo hello world",
+                "Process State: exit status 0",
+                "Timeout: false",
+                "Output:\\nhello world\\n\",\"success\":true}"
+              ]
+            },
+            "type": "function_call_output"
+          }
+        ],
+        "model": "mock-model-generic-shell",
+        "previous_response_id": "resp_0e02d310ea4b653e0069c706adf7608194ab9e45b8fa685758"
+      },
+      "response": {
+        "background": false,
+        "completed_at": 1774651059,
+        "conversation": {
+          "id": ""
+        },
+        "created_at": 1774651058,
+        "error": {
+          "code": "",
+          "message": ""
+        },
+        "id": "resp_0e02d310ea4b653e0069c706b255b0819483bf20b429a87e08",
+        "incomplete_details": {
+          "reason": ""
+        },
+        "instructions": {
+          "OfInputItemList": null,
+          "OfString": ""
+        },
+        "max_output_tokens": 0,
+        "max_tool_calls": 0,
+        "metadata": {},
+        "model": "gpt-5.4-2026-03-05",
+        "object": "response",
+        "output": [
+          {
+            "action": {
+              "button": "",
+              "command": null,
+              "commands": null,
+              "env": null,
+              "keys": null,
+              "max_output_length": 0,
+              "path": null,
+              "pattern": "",
+              "queries": null,
+              "query": "",
+              "scroll_x": 0,
+              "scroll_y": 0,
+              "sources": null,
+              "text": "",
+              "timeout_ms": 0,
+              "type": "",
+              "url": "",
+              "user": "",
+              "working_directory": "",
+              "x": 0,
+              "y": 0
+            },
+            "actions": null,
+            "approval_request_id": "",
+            "arguments": "",
+            "call_id": "",
+            "code": "",
+            "container_id": "",
+            "content": [
+              {
+                "annotations": [],
+                "logprobs": [],
+                "refusal": "",
+                "text": "Ran `echo \"hello world\"`.\n\nOutput:\n`hello world`",
+                "type": "output_text"
+              }
+            ],
+            "created_by": "",
+            "encrypted_content": "",
+            "environment": {
+              "container_id": "",
+              "type": ""
+            },
+            "error": "",
+            "execution": "",
+            "id": "msg_0e02d310ea4b653e0069c706b350488194a5983319ceacd747",
+            "input": "",
+            "max_output_length": 0,
+            "name": "",
+            "namespace": "",
+            "operation": {
+              "diff": "",
+              "path": "",
+              "type": ""
+            },
+            "output": {
+              "OfResponseFunctionShellToolCallOutputOutputArray": null,
+              "OfString": ""
+            },
+            "outputs": null,
+            "pending_safety_checks": null,
+            "phase": "final_answer",
+            "queries": null,
+            "result": "",
+            "results": null,
+            "role": "assistant",
+            "server_label": "",
+            "status": "completed",
+            "summary": null,
+            "tools": {
+              "OfResponseOutputItemMcpListToolsTools": null,
+              "OfToolArray": null
+            },
+            "type": "message"
+          }
+        ],
+        "parallel_tool_calls": true,
+        "previous_response_id": "resp_0e02d310ea4b653e0069c706adf7608194ab9e45b8fa685758",
+        "prompt": {
+          "id": "",
+          "variables": null,
+          "version": ""
+        },
+        "prompt_cache_key": "6a1d08bd064facd8f8ec1899ba4f1e7f907caf7077d9fa0debb0f3b9c62aee3d",
+        "prompt_cache_retention": "",
+        "reasoning": {
+          "effort": "high",
+          "generate_summary": "",
+          "summary": "detailed"
+        },
+        "safety_identifier": "",
+        "service_tier": "default",
+        "status": "completed",
+        "temperature": 1,
+        "text": {
+          "format": {
+            "description": "",
+            "name": "",
+            "schema": null,
+            "strict": false,
+            "type": "text"
+          },
+          "verbosity": "medium"
+        },
+        "tool_choice": {
+          "OfToolChoiceMode": "auto",
+          "mode": "",
+          "name": "",
+          "server_label": "",
+          "tools": null,
+          "type": ""
+        },
+        "tools": [
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "File reading tool that reads and displays the contents of a file, optionally with line numbers (1-based).\n- Do NOT read with line numbers, UNLESS you specifically need them (e.g., to match against test failures)\n- Limitations: maximum file size is 250KB; max 10000 lines; max 2000 characters per line before truncation; cannot display binary files.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "read_file",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "line_numbers": {
+                  "description": "Prefix each line with a line number if true",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "path": {
+                  "description": "The path of the file to read (absolute, or relative to **sandbox** dir)",
+                  "type": "string"
+                },
+                "request_permission": {
+                  "description": "Optionally request the user's permission to run this command. Set to true for material access outside sandbox dir",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "line_numbers",
+                "path",
+                "request_permission"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Directory listing tool that lists files in a directory.\n- Provide a path to list (either absolute or relative to sandbox directory)\n- Provide '.' to list the sandbox directory\n- Automatically skips hidden files/directories (starting with '.')\n- The <ls> output includes a cwd attribute indicating the absolute directory listed",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "ls",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "description": "The path to the directory to list (absolute, or relative to sandbox dir)",
+                  "type": "string"
+                },
+                "request_permission": {
+                  "description": "Optionally request the user's permission to run this command. Set to true for material access outside sandbox dir",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "request_permission"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Run a shell command (argv array) and return combined stdout+stderr.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "shell",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "description": "Command and args (argv style), e.g., ['go','test','./...']",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "cwd": {
+                  "description": "Optional working directory (absolute, or relative to sandbox dir; defaults to sandbox dir itself)",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "request_permission": {
+                  "description": "Optionally request the user's permission to run this command. Set to true for dangerous commands, and material access outside sandbox dir",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "timeout_ms": {
+                  "description": "Optional timeout in milliseconds (default ~120s)",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "command",
+                "cwd",
+                "request_permission",
+                "timeout_ms"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Updates the task plan.\nProvide an optional explanation and a list of plan items, each with a step and status.\nAt most one step can be in_progress at a time.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "",
+              "syntax": "",
+              "type": ""
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "update_plan",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "explanation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "plan": {
+                  "description": "The list of steps",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "status": {
+                        "description": "One of: pending, in_progress, completed",
+                        "enum": [
+                          "pending",
+                          "in_progress",
+                          "completed"
+                        ],
+                        "type": "string"
+                      },
+                      "step": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "step",
+                      "status"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "explanation",
+                "plan"
+              ],
+              "type": "object"
+            },
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": true,
+            "tools": null,
+            "type": "function",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          },
+          {
+            "action": "",
+            "allowed_tools": {
+              "OfMcpAllowedTools": null,
+              "read_only": false,
+              "tool_names": null
+            },
+            "authorization": "",
+            "background": "",
+            "connector_id": "",
+            "container": {
+              "OfString": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "type": "auto"
+            },
+            "defer_loading": false,
+            "description": "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.",
+            "display_height": 0,
+            "display_width": 0,
+            "environment": {
+              "OfComputerUsePreviewToolEnvironment": "",
+              "container_id": "",
+              "file_ids": null,
+              "memory_limit": "",
+              "network_policy": {
+                "allowed_domains": null,
+                "domain_secrets": null,
+                "type": ""
+              },
+              "skills": {
+                "OfContainerAutoSkills": null,
+                "OfLocalSkillArray": null
+              },
+              "type": ""
+            },
+            "execution": "",
+            "filters": {
+              "allowed_domains": null,
+              "filters": null,
+              "key": "",
+              "type": "",
+              "value": {
+                "OfBool": false,
+                "OfComparisonFilterValueArray": null,
+                "OfFloat": 0,
+                "OfString": ""
+              }
+            },
+            "format": {
+              "definition": "start: begin_patch hunk+ end_patch\nbegin_patch: \"*** Begin Patch\" LF\nend_patch: \"*** End Patch\" LF?\n\nhunk: add_hunk | delete_hunk | update_hunk\nadd_hunk: \"*** Add File: \" filename LF add_line+\ndelete_hunk: \"*** Delete File: \" filename LF\nupdate_hunk: \"*** Update File: \" filename LF change_move? change?\n\nfilename: /(.+)/\nadd_line: \"+\" /(.*)/ LF -> line\n\nchange_move: \"*** Move to: \" filename LF\nchange: (change_context | change_line)+ eof_line?\nchange_context: (\"@@\" | \"@@ \" /(.+)/) LF\nchange_line: (\"+\" | \"-\" | \" \") /(.*)/ LF\neof_line: \"*** End of File\" LF\n\n%import common.LF",
+              "syntax": "lark",
+              "type": "grammar"
+            },
+            "headers": null,
+            "input_fidelity": "",
+            "input_image_mask": {
+              "file_id": "",
+              "image_url": ""
+            },
+            "max_num_results": 0,
+            "model": "",
+            "moderation": "",
+            "name": "apply_patch",
+            "output_compression": 0,
+            "output_format": "",
+            "parameters": null,
+            "partial_images": 0,
+            "quality": "",
+            "ranking_options": {
+              "hybrid_search": {
+                "embedding_weight": 0,
+                "text_weight": 0
+              },
+              "ranker": "",
+              "score_threshold": 0
+            },
+            "require_approval": {
+              "OfMcpToolApprovalSetting": "",
+              "always": {
+                "read_only": false,
+                "tool_names": null
+              },
+              "never": {
+                "read_only": false,
+                "tool_names": null
+              }
+            },
+            "search_content_types": null,
+            "search_context_size": "",
+            "server_description": "",
+            "server_label": "",
+            "server_url": "",
+            "size": "",
+            "strict": false,
+            "tools": null,
+            "type": "custom",
+            "user_location": {
+              "city": "",
+              "country": "",
+              "region": "",
+              "timezone": "",
+              "type": ""
+            },
+            "vector_store_ids": null
+          }
+        ],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 3177,
+          "input_tokens_details": {
+            "cached_tokens": 2944
+          },
+          "output_tokens": 18,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 3195
+        },
+        "user": ""
+      }
+    }
+  ]
+}
