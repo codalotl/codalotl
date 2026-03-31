@@ -371,7 +371,7 @@ func buildHTTPFixture(caseName string, turns []recordedTurn, roots []string) (ht
 		Responses: make([]httpFixtureResponse, 0, len(turns)),
 	}
 	for i, turn := range turns {
-		request, err := buildHTTPFixtureRequest(caseSuffix, i == 0, turn, roots)
+		request, err := buildHTTPFixtureRequest(caseSuffix, isFirstHTTPFixtureTurnRequest(turn.Request), turn, roots)
 		if err != nil {
 			return httpFixtureConfig{}, err
 		}

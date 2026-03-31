@@ -154,6 +154,97 @@ func TestBuildGeneratedCaseNormalizesPromptAbsolutePaths(t *testing.T) {
 	assert.Equal(t, "Read @"+httpFixtureRepoRootPlaceholder+"/note.txt and @"+httpFixtureGoRootSrcPlaceholder+"/errors/errors.go", cfg.Prompt)
 }
 
+func TestBuildHTTPFixturePrunesNestedFirstTurnInputText(t *testing.T) {
+	turns := []recordedTurn{
+		{
+			Request: mustJSONObject(t, `{
+				"model": "gpt-5.4-high",
+				"input": [
+					{
+						"type": "message",
+						"role": "system",
+						"content": [{"type": "input_text", "text": "Root system prompt"}]
+					},
+					{
+						"type": "message",
+						"role": "user",
+						"content": [{"type": "input_text", "text": "Root user prompt"}]
+					}
+				]
+			}`),
+			Response: mustJSONObject(t, `{
+				"id": "resp_root_1",
+				"object": "response",
+				"status": "completed",
+				"output": []
+			}`),
+		},
+		{
+			Request: mustJSONObject(t, `{
+				"model": "gpt-5.4-high",
+				"input": [
+					{
+						"type": "message",
+						"role": "system",
+						"content": [{"type": "input_text", "text": "Nested system prompt"}]
+					},
+					{
+						"type": "message",
+						"role": "user",
+						"content": [{"type": "input_text", "text": "Nested user prompt"}]
+					},
+					{
+						"type": "message",
+						"role": "user",
+						"content": [{"type": "input_text", "text": "Nested follow-up prompt"}]
+					}
+				]
+			}`),
+			Response: mustJSONObject(t, `{
+				"id": "resp_nested_1",
+				"object": "response",
+				"status": "completed",
+				"output": []
+			}`),
+		},
+	}
+
+	got, err := buildHTTPFixture("nested-first-turn", turns, nil)
+	require.NoError(t, err)
+	require.Len(t, got.Responses, 2)
+
+	assert.Equal(t, []any{
+		map[string]any{
+			"type": "message",
+			"role": "system",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+				},
+			},
+		},
+		map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": "Nested follow-up prompt",
+				},
+			},
+		},
+	}, got.Responses[1].Request["input"])
+}
+
 func TestBuildGeneratedCaseCarriesLintConfig(t *testing.T) {
 	repoDir := t.TempDir()
 	workDir := t.TempDir()

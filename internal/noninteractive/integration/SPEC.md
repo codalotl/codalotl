@@ -33,6 +33,8 @@ The following must be test cases in `testdata/`.
     - edit a SPEC.md (trigging the lint `codalotl spec fmt`), then `fix_lints` (triggering `codalotl spec diff`).
 - pm-custom-lint
     - verifies a custom lint is used during apply_patch.
+- pm-clarify
+    - uses `get_public_api` on another package, then `clarify_public_api` on a specific identifier and answers without editing files.
 
 TODO:
 
@@ -48,8 +50,8 @@ TODO:
     - [DONE] run_tests
     - [DONE] run_project_tests
     - module_info
-    - get_public_api
-    - clarify_public_api
+    - [DONE] get_public_api
+    - [DONE] clarify_public_api
     - get_usage
     - update_usage
     - change_api
