@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/lints"
+	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -150,6 +152,75 @@ func TestBuildGeneratedCaseNormalizesPromptAbsolutePaths(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "Read @"+httpFixtureRepoRootPlaceholder+"/note.txt and @"+httpFixtureGoRootSrcPlaceholder+"/errors/errors.go", cfg.Prompt)
+}
+
+func TestBuildGeneratedCaseCarriesLintConfig(t *testing.T) {
+	repoDir := t.TempDir()
+	workDir := t.TempDir()
+
+	opts := CreateOptions{
+		Prompt:      "Fix the package.",
+		OutputDir:   filepath.Join(t.TempDir(), "generated-case"),
+		PackagePath: "catalog",
+		ReflowWidth: 88,
+		Lints: lints.Lints{
+			Mode: lints.ConfigModeReplace,
+			Steps: []lints.Step{
+				{
+					ID:         "custom-echo",
+					Situations: []lints.Situation{lints.SituationPatch},
+					Fix: &cmdrunner.Command{
+						Command: "echo",
+						Args:    []string{"custom patch lint"},
+					},
+				},
+			},
+		},
+	}
+
+	turns := []recordedTurn{
+		{
+			Request: map[string]any{
+				"model": "gpt-5.4-high",
+				"input": []any{
+					map[string]any{
+						"type": "message",
+						"content": []any{
+							map[string]any{"type": "input_text", "text": "system"},
+						},
+					},
+					map[string]any{
+						"type": "message",
+						"content": []any{
+							map[string]any{"type": "input_text", "text": "env"},
+						},
+					},
+					map[string]any{
+						"type": "message",
+						"content": []any{
+							map[string]any{"type": "input_text", "text": opts.Prompt},
+						},
+					},
+				},
+			},
+			Response: map[string]any{
+				"id":     "resp_1",
+				"object": "response",
+				"output": []any{},
+			},
+		},
+	}
+	actualEvents := []map[string]any{
+		{"type": "start", "package_path": "catalog"},
+		{"type": "user_message", "text": opts.Prompt},
+		{"type": "done"},
+	}
+
+	cfg, _, _, err := buildGeneratedCase("generated-case", repoDir, workDir, actualEvents, turns, opts)
+	require.NoError(t, err)
+
+	assert.Equal(t, 88, cfg.ReflowWidth)
+	assert.Equal(t, opts.Lints, cfg.Lints)
 }
 
 func TestBuildHTTPFixtureRequestPreservesStructuredRequestAndNormalizesPaths(t *testing.T) {
@@ -732,6 +803,20 @@ func TestMarshalConfigJSONUsesSingleLineExpectedItems(t *testing.T) {
 	cfg := testCaseConfig{
 		Prompt:      "fix bug",
 		PackagePath: "catalog",
+		ReflowWidth: 120,
+		Lints: lints.Lints{
+			Mode: lints.ConfigModeReplace,
+			Steps: []lints.Step{
+				{
+					ID:         "custom-echo",
+					Situations: []lints.Situation{lints.SituationPatch},
+					Fix: &cmdrunner.Command{
+						Command: "echo",
+						Args:    []string{"custom patch lint"},
+					},
+				},
+			},
+		},
 		Expected: []map[string]any{
 			{
 				"type":         "start",
@@ -751,6 +836,10 @@ func TestMarshalConfigJSONUsesSingleLineExpectedItems(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, string(data), "  \"expected\": [\n")
+	assert.Contains(t, string(data), "  \"reflowwidth\": 120,\n")
+	assert.Contains(t, string(data), "  \"lints\": {\n")
+	assert.Contains(t, string(data), "    \"mode\": \"replace\",\n")
+	assert.Contains(t, string(data), "    \"steps\": [\n")
 	assert.Contains(t, string(data), "    {\"package_path\":\"catalog\",\"type\":\"start\"},\n")
 	assert.Contains(t, string(data), "    {\"tool\":{\"input\":\"{\\\"path\\\":\\\"catalog/query.go\\\"}\",\"name\":\"read_file\"},\"type\":\"tool_call\"}\n")
 

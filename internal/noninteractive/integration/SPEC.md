@@ -29,6 +29,10 @@ The following must be test cases in `testdata/`.
     - @ can mention individual files and dirs (read_file and ls access).
 - pm-mention-outside-repo
     - @ can mention files outside the repo.
+- pm-lints
+    - edit a SPEC.md (trigging the lint `codalotl spec fmt`), then `fix_lints` (triggering `codalotl spec diff`).
+- pm-custom-lint
+    - verifies a custom lint is used during apply_patch.
 
 TODO:
 
@@ -40,7 +44,7 @@ TODO:
     - skill_shell
     - [DONE] update_plan
     - [DONE] diagnostics
-    - fix_lints
+    - [DONE] fix_lints
     - [DONE] run_tests
     - [DONE] run_project_tests
     - module_info
@@ -144,6 +148,7 @@ go run ./internal/noninteractive/integration/cmd/create \
   --package="path/to/pkg" \
   --prompt="fix bug..." \
   --output="path/to/output/dir" \
+  --lints-config="path/to/lints.json" \
   --include-token-usage=true
 ```
 
@@ -153,6 +158,8 @@ Args:
 - `--model`: required; which model to use.
 - `--prompt`: required
 - `--output`: required; where to write files (`config.json`, `http.json`, etc). The dir must not exist yet, or must exist and be empty.
+- `--reflowwidth`: optional; passed into lint resolution and recorded in `config.json` when non-zero.
+- `--lints-config`: optional; path to a JSON file containing the `lints` config object to use during recording and replay.
 - `--include-token-usage`: optional (default false); if "true", includes token usage in `done` event.
 
 Details:

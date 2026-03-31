@@ -12,9 +12,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/noninteractive"
+	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 )
 
 type CreateOptions struct {
@@ -23,6 +25,8 @@ type CreateOptions struct {
 	ModelID           llmmodel.ModelID
 	Prompt            string
 	OutputDir         string
+	ReflowWidth       int
+	Lints             lints.Lints
 	IncludeTokenUsage bool
 	ProgressOut       io.Writer
 	JSONStreamOut     io.Writer
@@ -86,11 +90,17 @@ func CreateCase(opts CreateOptions) error {
 	if opts.JSONStreamOut != nil {
 		runOut = io.MultiWriter(&out, opts.JSONStreamOut)
 	}
+	lintSteps, err := lints.ResolveSteps(&opts.Lints, opts.ReflowWidth)
+	if err != nil {
+		return fmt.Errorf("resolve lint steps: %w", err)
+	}
 	reportProgress(opts.ProgressOut, "Running real agent now. Streaming NDJSON to stdout...")
 	err = noninteractive.Exec(opts.Prompt, noninteractive.Options{
 		CWD:         workDir,
 		PackagePath: opts.PackagePath,
 		ModelID:     opts.ModelID,
+		LintSteps:   lintSteps,
+		ReflowWidth: opts.ReflowWidth,
 		OutputJSON:  true,
 		AutoYes:     true,
 		Out:         runOut,
@@ -304,6 +314,8 @@ func buildGeneratedCase(caseName string, originalRepoRoot string, actualRepoRoot
 	return testCaseConfig{
 		Prompt:      normalizeConfigPromptText(opts.Prompt, []string{actualRepoRoot}),
 		PackagePath: opts.PackagePath,
+		ReflowWidth: opts.ReflowWidth,
+		Lints:       opts.Lints,
 		Expected:    expected,
 	}, httpCfg, expectedRepoFiles, nil
 }
@@ -934,6 +946,20 @@ func marshalConfigJSON(cfg testCaseConfig) ([]byte, error) {
 		}
 		fmt.Fprintf(&buf, ",\n  \"package_path\": %s", packagePath)
 	}
+	if cfg.ReflowWidth > 0 {
+		reflowWidth, err := marshalCompactJSON(cfg.ReflowWidth)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(&buf, ",\n  \"reflowwidth\": %s", reflowWidth)
+	}
+	if hasLintsConfig(cfg.Lints) {
+		lintsJSON, err := marshalPrettyJSON(normalizeLintsConfigJSON(cfg.Lints))
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(&buf, ",\n  \"lints\": %s", strings.ReplaceAll(string(bytes.TrimSuffix(lintsJSON, []byte("\n"))), "\n", "\n  "))
+	}
 
 	buf.WriteString(",\n  \"expected\": [\n")
 	for i, event := range cfg.Expected {
@@ -950,6 +976,76 @@ func marshalConfigJSON(cfg testCaseConfig) ([]byte, error) {
 	}
 	buf.WriteString("  ]\n}\n")
 	return buf.Bytes(), nil
+}
+
+func hasLintsConfig(cfg lints.Lints) bool {
+	return cfg.Mode != "" || len(cfg.Disable) > 0 || len(cfg.Steps) > 0
+}
+
+func normalizeLintsConfigJSON(cfg lints.Lints) map[string]any {
+	out := make(map[string]any)
+	if cfg.Mode != "" {
+		out["mode"] = cfg.Mode
+	}
+	if len(cfg.Disable) > 0 {
+		out["disable"] = append([]string(nil), cfg.Disable...)
+	}
+	if len(cfg.Steps) > 0 {
+		steps := make([]map[string]any, 0, len(cfg.Steps))
+		for _, step := range cfg.Steps {
+			steps = append(steps, normalizeLintStepJSON(step))
+		}
+		out["steps"] = steps
+	}
+	return out
+}
+
+func normalizeLintStepJSON(step lints.Step) map[string]any {
+	out := make(map[string]any)
+	if step.ID != "" {
+		out["id"] = step.ID
+	}
+	if len(step.Situations) > 0 {
+		out["situations"] = append([]lints.Situation(nil), step.Situations...)
+	}
+	if step.Active != nil {
+		out["active"] = normalizeLintCommandJSON(step.Active)
+	}
+	if step.Check != nil {
+		out["check"] = normalizeLintCommandJSON(step.Check)
+	}
+	if step.Fix != nil {
+		out["fix"] = normalizeLintCommandJSON(step.Fix)
+	}
+	return out
+}
+
+func normalizeLintCommandJSON(cmd *cmdrunner.Command) map[string]any {
+	out := map[string]any{
+		"command": cmd.Command,
+	}
+	if len(cmd.Args) > 0 {
+		out["args"] = append([]string(nil), cmd.Args...)
+	}
+	if cmd.CWD != "" {
+		out["cwd"] = cmd.CWD
+	}
+	if len(cmd.Env) > 0 {
+		out["env"] = append([]string(nil), cmd.Env...)
+	}
+	if cmd.OutcomeFailIfAnyOutput {
+		out["outcomefailifanyoutput"] = true
+	}
+	if cmd.MessageIfNoOutput != "" {
+		out["messageifnooutput"] = cmd.MessageIfNoOutput
+	}
+	if cmd.ShowCWD {
+		out["showcwd"] = true
+	}
+	if len(cmd.Attrs) > 0 {
+		out["attrs"] = append([]string(nil), cmd.Attrs...)
+	}
+	return out
 }
 
 func cloneJSONObject(value map[string]any) map[string]any {

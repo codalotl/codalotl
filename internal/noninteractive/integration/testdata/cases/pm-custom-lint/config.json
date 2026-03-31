@@ -1,0 +1,31 @@
+{
+  "prompt": "Read query.go. Make the smallest possible change so ProductsWithTag returns nil immediately when tag is empty. Stop after the edit. Do not run tests.",
+  "package_path": "catalog",
+  "lints": {
+    "mode": "replace",
+    "steps": [
+      {
+        "fix": {
+          "args": [
+            "custom patch lint"
+          ],
+          "command": "echo"
+        },
+        "id": "custom-echo",
+        "situations": [
+          "patch"
+        ]
+      }
+    ]
+  },
+  "expected": [
+    {"package_path":"catalog","type":"start"},
+    {"text":"Read query.go. Make the smallest possible change so ProductsWithTag returns nil immediately when tag is empty. Stop after the edit. Do not run tests.","type":"user_message"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_gaXMqp59QLZyIAd3wDWq7Vbv","input":"{\"line_numbers\":false,\"path\":\"catalog/query.go\",\"request_permission\":false}","name":"read_file","type":"function_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":"<file name=\"catalog/query.go\" line-count=\"26\" byte-count=\"620\" any-line-truncated=\"false\" file-truncated=\"false\">\npackage catalog\n\n// ProductsWithTag returns all products with tag, sorted by SKU.\nfunc (c *Catalog) ProductsWithTag(tag string) []Product {\n\tproducts := c.All()\n\tfiltered := make([]Product, 0, len(products))\n\tfor _, product := range products {\n\t\tif product.HasTag(tag) {\n\t\t\tfiltered = append(filtered, product)\n\t\t}\n\t}\n\treturn filtered\n}\n\n// TotalWeight sums the weights of the provided SKUs and ignores unknown products.\nfunc (c *Catalog) TotalWeight(skus []string) int {\n\ttotal := 0\n\tfor _, sku := range skus {\n\t\tproduct, ok := c.Lookup(sku)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n\t\ttotal += product.WeightGrams\n\t}\n\treturn total\n}\n</file>\n"},"tool":{"call_id":"call_gaXMqp59QLZyIAd3wDWq7Vbv","name":"read_file","type":"function_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"tool":{"call_id":"call_iwdrRQxGevBgiHu4sfViGdkD","input":"*** Begin Patch\n*** Update File: catalog/query.go\n@@\n // ProductsWithTag returns all products with tag, sorted by SKU.\n func (c *Catalog) ProductsWithTag(tag string) []Product {\n+\tif tag == \"\" {\n+\t\treturn nil\n+\t}\n \tproducts := c.All()\n \tfiltered := make([]Product, 0, len(products))\n \tfor _, product := range products {\n*** End Patch\n","name":"apply_patch","type":"custom_tool_call"},"type":"tool_call"},
+    {"agent":{"depth":0},"result":{"is_error":false,"output":"<apply-patch ok=\"true\">\nUpdated the following files:\nM catalog/query.go\n</apply-patch>\n<diagnostics-status ok=\"true\" message=\"build succeeded\">\n$ go build -o /dev/null ./catalog\n</diagnostics-status>\n<lint-status ok=\"true\" mode=\"fix\">\n$ echo custom patch lint\ncustom patch lint\n</lint-status>"},"tool":{"call_id":"call_iwdrRQxGevBgiHu4sfViGdkD","name":"apply_patch","type":"custom_tool_call"},"type":"tool_complete"},
+    {"agent":{"depth":0},"content":"Made the smallest change in `catalog/query.go`: `ProductsWithTag` now returns `nil` immediately when `tag == \"\"`.\n\nI did not run tests, per your instruction.","type":"assistant_text"},
+    {"type":"done"}
+  ]
+}
