@@ -35,6 +35,8 @@ The following must be test cases in `testdata/`.
     - verifies a custom lint is used during apply_patch.
 - pm-clarify
     - uses `get_public_api` on another package, then `clarify_public_api` on a specific identifier and answers without editing files.
+- pm-update_usage
+    - uses `get_usage` on a package identifier, then renames that API in-package and uses `update_usage` to update downstream callsites.
 
 TODO:
 
@@ -52,8 +54,8 @@ TODO:
     - module_info
     - [DONE] get_public_api
     - [DONE] clarify_public_api
-    - get_usage
-    - update_usage
+    - [DONE] get_usage
+    - [DONE] update_usage
     - change_api
 
 ### Steps To Create an Actual Test
