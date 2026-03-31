@@ -54,9 +54,9 @@ type httpFixtureResponse struct {
 }
 
 const (
-	httpFixtureRepoRootPlaceholder   = "__REPO_ROOT__"
-	httpFixtureGoRootSrcPlaceholder  = "__GOROOT_SRC__"
-	httpFixtureGoModCachePlaceholder = "__GOMODCACHE__"
+	httpFixtureRepoRootPlaceholder     = "__REPO_ROOT__"
+	httpFixtureGoRootSrcPlaceholder    = "__GOROOT_SRC__"
+	httpFixtureGoModCachePlaceholder   = "__GOMODCACHE__"
 	httpFixtureSystemSkillsPlaceholder = "__SYSTEM_SKILLS__"
 )
 
