@@ -16,12 +16,10 @@ Running these tests are meant to catch actual regressions. All choices should be
 The following must be test cases in `testdata/`.
 
 - hello-world: self-contained test (non-shared-repo) that non-package mode works with a hi prompt and simple answer without tool calls.
-- simple-tool-call-generic-mode:
-    - read_file then apply_patch
-- simple-tool-call-package-mode:
-    - read_file then apply_patch
 - generic-shell
     - shell
+- pm-edit-package
+    - basic edit package flow: update_plan, read_file, apply_patch (w/ default gofmt lint), diagnostics, run_tests, run_project_tests
 - pm-package-isolation
     - ls outside package causes access error
     - NOTE: to get the LLM to do this in the first place, I needed to **temporarily** add "You may attempt to use `read_file` and `ls` on other packages, only if the user tells you to (the agent harness may still block this - that's ok)." to the prompt.
@@ -31,8 +29,6 @@ The following must be test cases in `testdata/`.
     - @ can mention individual files and dirs (read_file and ls access).
 - pm-mention-outside-repo
     - @ can mention files outside the repo.
-- pm-edit-package
-    - basic edit package flow: update_plan, read_file, apply_patch (w/ default gofmt lint), diagnostics, run_tests, run_project_tests
 
 TODO:
 
