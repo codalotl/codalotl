@@ -31,10 +31,10 @@ The following must be test cases in `testdata/`.
     - @ can mention individual files and dirs (read_file and ls access).
 - pm-mention-outside-repo
     - @ can mention files outside the repo.
+- pm-edit-package
+    - basic edit package flow: update_plan, read_file, apply_patch (w/ default gofmt lint), diagnostics, run_tests, run_project_tests
 
 TODO:
-
-- package skill_shell can run a command
 
 - All tools covered:
     - [DONE] read_file
@@ -42,11 +42,11 @@ TODO:
     - [DONE] apply_patch
     - [DONE] shell
     - skill_shell
-    - update_plan
-    - diagnostics
+    - [DONE] update_plan
+    - [DONE] diagnostics
     - fix_lints
-    - run_tests
-    - run_project_tests
+    - [DONE] run_tests
+    - [DONE] run_project_tests
     - module_info
     - get_public_api
     - clarify_public_api
