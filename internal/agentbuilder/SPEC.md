@@ -7,7 +7,9 @@
 - generic: core_agent toolset
 - package_mode: package_agent toolset
     - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
-- (other agents: will build later)
+- clarify_public_api: simple_read_only toolset
+    - Prompt specialized for clarification requests.
+    - Uses `InitialTurnsBuilder` to lazily build sandbox/env + initial context from request path + identifier.
 
 ## Toolsets
 

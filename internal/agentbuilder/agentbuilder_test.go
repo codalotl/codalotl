@@ -29,14 +29,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildRegistry_RegistersGenericAndPackageModeAgents(t *testing.T) {
+func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	registry, err := BuildRegistry()
 	require.NoError(t, err)
 
 	require.NoError(t, registry.ValidateTools())
 
-	defs := registry.List()
-	require.Len(t, defs, 2)
+	require.Len(t, registry.List(), 3)
 
 	genericDef, ok := registry.Lookup(AgentGeneric)
 	assert.True(t, ok)
@@ -47,6 +46,20 @@ func TestBuildRegistry_RegistersGenericAndPackageModeAgents(t *testing.T) {
 	assert.Equal(t, AgentPackageMode, packageModeDef.Name)
 	assert.Equal(t, agentregistry.AuthPolicyPackage, packageModeDef.AuthPolicy)
 	assert.Nil(t, packageModeDef.InitialTurnsBuilder)
+
+	clarifyDef, ok := registry.Lookup(agentClarifyPublicAPI)
+	require.True(t, ok)
+	assert.Equal(t, agentClarifyPublicAPI, clarifyDef.Name)
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+	}, clarifyDef.ToolNames)
+	assert.NotNil(t, clarifyDef.InitialTurnsBuilder)
+
+	clarifyPrompt, err := clarifyDef.SystemPromptBuilder(agentregistry.BuildOptions{})
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(clarifyPrompt, prompt.GetBasicPrompt()))
+	assert.Contains(t, clarifyPrompt, "read-only agent for clarifying public API documentation")
 }
 
 func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
@@ -311,6 +324,81 @@ func TestBuildRegistry_PackageModeChangeAPIUsesFullPackageToolset(t *testing.T) 
 	toolsetField := reflect.ValueOf(changeAPITool).Elem().FieldByName("toolset")
 	require.True(t, toolsetField.IsValid())
 	assert.Equal(t, reflect.ValueOf(toolsets.PackageAgentTools).Pointer(), toolsetField.Pointer())
+}
+
+func TestBuildClarifyPublicAPIInitialTurns_GoRequestBuildsEnvAndInitialContext(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
+
+	pkgDir := filepath.Join(sandbox, "pkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n\n// Hello returns a greeting.\nfunc Hello() string { return \"hello\" }\n"), 0o644))
+
+	requestBytes, err := json.Marshal(clarifyPublicAPIRequest{
+		Path:       "pkg",
+		Identifier: "Hello",
+		Question:   "What does Hello return?",
+	})
+	require.NoError(t, err)
+
+	turns, err := buildClarifyPublicAPIInitialTurns(context.Background(), agentregistry.BuildOptions{
+		ToolOptions: toolsetinterface.Options{
+			SandboxDir: sandbox,
+		},
+		Request: toolsetinterface.InvokeRequest{
+			Messages: []string{string(requestBytes)},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, turns, 2)
+
+	assert.Equal(t, "<env>\nSandbox directory: "+sandbox+"\n</env>", turns[0])
+	assert.Contains(t, turns[1], "Identifier: Hello")
+	assert.Contains(t, turns[1], "Path: "+pkgDir)
+	assert.Contains(t, turns[1], "<current-package>")
+	assert.Contains(t, turns[1], `Package relative path: "pkg"`)
+	assert.Contains(t, turns[1], `<diagnostics-status ok="unknown">`)
+	assert.Contains(t, turns[1], `(diagnostics not run; deliberately skipped)`)
+}
+
+func TestBuildClarifyPublicAPIInitialTurns_RejectsOutsideSandboxPath(t *testing.T) {
+	sandbox := t.TempDir()
+	outsideDir := t.TempDir()
+	outsidePath := filepath.Join(outsideDir, "target.txt")
+	require.NoError(t, os.WriteFile(outsidePath, []byte("hello"), 0o644))
+
+	requestBytes, err := json.Marshal(clarifyPublicAPIRequest{
+		Path:       outsidePath,
+		Identifier: "Hello",
+		Question:   "What does Hello mean?",
+	})
+	require.NoError(t, err)
+
+	_, err = buildClarifyPublicAPIInitialTurns(context.Background(), agentregistry.BuildOptions{
+		ToolOptions: toolsetinterface.Options{
+			SandboxDir: sandbox,
+		},
+		Request: toolsetinterface.InvokeRequest{
+			Messages: []string{string(requestBytes)},
+		},
+	})
+	require.ErrorContains(t, err, "outside of sandbox")
+}
+
+func TestParseClarifyPublicAPIRequest_TextRequest(t *testing.T) {
+	request, err := parseClarifyPublicAPIRequest([]string{`Clarify this identifier.
+
+Identifier: Hello
+Path: internal/example
+
+Question:
+What does Hello do?
+Does it allocate?`})
+	require.NoError(t, err)
+
+	assert.Equal(t, "Hello", request.Identifier)
+	assert.Equal(t, "internal/example", request.Path)
+	assert.Equal(t, "What does Hello do?\nDoes it allocate?", request.Question)
 }
 
 func invokeAgentForModel(t *testing.T, agentName string, model llmmodel.ModelID) (string, []string) {
