@@ -19,6 +19,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
+	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
@@ -27,11 +28,12 @@ import (
 )
 
 const (
-	AgentGeneric              string = "generic"
-	AgentPackageModeNoContext string = "package_mode_no_context"
-
-	agentClarifyPublicAPI = pkgtools.ToolNameClarifyPublicAPI
-	clarifyRGLines        = "4"
+	AgentGeneric                   string = "generic"
+	AgentPackageModeNoContext      string = "package_mode_no_context"
+	AgentPackageModeDefaultContext string = "package_mode_default_context" // AgentPackageModeDefaultContext adds package initial context before user messages.
+	AgentLimitedPackageMode        string = "limited_package_mode"
+	agentClarifyPublicAPI                 = pkgtools.ToolNameClarifyPublicAPI
+	clarifyRGLines                        = "4"
 )
 
 type clarifyPublicAPIRequest struct {
@@ -77,6 +79,40 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 			return prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull), nil
 		},
 		AuthPolicy: agentregistry.AuthPolicyPackage,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := registry.RegisterAgent(agentregistry.Definition{
+		Name:        AgentPackageModeDefaultContext,
+		Description: "Go package-focused agent with package-jail editing, testing, API analysis tools, and default initial context.",
+		ToolNames: []string{
+			coretools.ToolNameReadFile,
+			coretools.ToolNameLS,
+		},
+		ToolsBuilder: buildPackageModeToolNames,
+		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
+			return buildPackageModeSystemPrompt(options, prompt.GoPackageModePromptKindFull)
+		},
+		InitialTurnsBuilder: buildPackageModeDefaultContextInitialTurns,
+		AuthPolicy:          agentregistry.AuthPolicyPackage,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := registry.RegisterAgent(agentregistry.Definition{
+		Name:        AgentLimitedPackageMode,
+		Description: "Go package-focused agent for smaller mechanical package edits with default initial context and a limited toolset.",
+		ToolNames: []string{
+			coretools.ToolNameReadFile,
+			coretools.ToolNameLS,
+		},
+		ToolsBuilder: buildLimitedPackageModeToolNames,
+		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
+			return buildPackageModeSystemPrompt(options, prompt.GoPackageModePromptKindUpdateUsage)
+		},
+		InitialTurnsBuilder: buildPackageModeDefaultContextInitialTurns,
+		AuthPolicy:          agentregistry.AuthPolicyPackage,
 	}); err != nil {
 		return nil, err
 	}
@@ -191,7 +227,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 }
 
 func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchPostChecks {
-	if opts.AgentName != AgentPackageModeNoContext {
+	if !isPackageModeAgent(opts.AgentName) {
 		return nil
 	}
 	lintSteps := opts.LintSteps
@@ -202,10 +238,28 @@ func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchP
 }
 
 func changeAPIToolset(opts toolsetinterface.Options) toolsetinterface.Toolset {
-	if opts.AgentName == AgentPackageModeNoContext {
+	if isFullPackageModeAgent(opts.AgentName) {
 		return toolsets.PackageAgentTools
 	}
 	return toolsets.LimitedPackageAgentTools
+}
+
+func isFullPackageModeAgent(agentName string) bool {
+	switch agentName {
+	case AgentPackageModeNoContext, AgentPackageModeDefaultContext:
+		return true
+	default:
+		return false
+	}
+}
+
+func isPackageModeAgent(agentName string) bool {
+	switch agentName {
+	case AgentPackageModeNoContext, AgentPackageModeDefaultContext, AgentLimitedPackageMode:
+		return true
+	default:
+		return false
+	}
 }
 
 func buildGenericToolNames(opts toolsetinterface.Options) ([]string, error) {
@@ -236,6 +290,19 @@ func buildPackageModeToolNames(opts toolsetinterface.Options) ([]string, error) 
 	return toolNames, nil
 }
 
+func buildLimitedPackageModeToolNames(opts toolsetinterface.Options) ([]string, error) {
+	toolNames := buildEditFileToolNames(opts.Model)
+	toolNames = append(toolNames,
+		coretools.ToolNameSkillShell,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+	)
+	return toolNames, nil
+}
+
 func buildEditFileToolNames(model llmmodel.ModelID) []string {
 	if model.ProviderID() == llmmodel.ProviderIDOpenAI {
 		return []string{coretools.ToolNameApplyPatch}
@@ -246,6 +313,106 @@ func buildEditFileToolNames(model llmmodel.ModelID) []string {
 		coretools.ToolNameWrite,
 		coretools.ToolNameDelete,
 	}
+}
+
+func buildPackageModeSystemPrompt(options agentregistry.BuildOptions, promptKind prompt.GoPackageModePromptKind) (string, error) {
+	systemPrompt := prompt.GetGoPackageModeModePrompt(promptKind)
+
+	if err := skills.InstallDefault(); err != nil {
+		return "", fmt.Errorf("install default skills: %w", err)
+	}
+
+	searchDir := options.ToolOptions.GoPkgAbsDir
+	if strings.TrimSpace(searchDir) == "" {
+		searchDir = options.ToolOptions.SandboxDir
+	}
+
+	validSkills, invalidSkills, failedSkillLoads, skillsErr := skills.LoadSkills(skills.SearchPaths(searchDir))
+	if skillsErr != nil {
+		validSkills = nil
+		invalidSkills = nil
+		failedSkillLoads = nil
+	}
+	_ = invalidSkills
+	_ = failedSkillLoads
+
+	if options.ToolOptions.Authorizer != nil {
+		if err := skills.Authorize(validSkills, options.ToolOptions.Authorizer); err != nil {
+			return "", fmt.Errorf("authorize skills: %w", err)
+		}
+	}
+
+	return joinContextBlocks(
+		systemPrompt,
+		skills.Prompt(validSkills, coretools.ToolNameSkillShell, true),
+	), nil
+}
+
+func buildPackageModeDefaultContextInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
+	sandboxAbsDir := strings.TrimSpace(options.ToolOptions.SandboxDir)
+	if sandboxAbsDir == "" {
+		return nil, errors.New("sandbox dir is required")
+	}
+
+	goPkgAbsDir := strings.TrimSpace(options.ToolOptions.GoPkgAbsDir)
+	if goPkgAbsDir == "" {
+		return nil, errors.New("go package dir is required")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	lang, _ := detectlang.Detect(sandboxAbsDir, goPkgAbsDir)
+	if lang != detectlang.LangGo {
+		return nil, errors.New("only go is supported right now")
+	}
+
+	initialContext, err := buildGoPackageInitialContext(goPkgAbsDir, options.ToolOptions.LintSteps)
+	if err != nil {
+		return nil, err
+	}
+
+	return []string{
+		buildClarifyPublicAPIEnvTurn(sandboxAbsDir),
+		initialContext,
+	}, nil
+}
+
+func buildGoPackageInitialContext(goPkgAbsDir string, lintSteps []lints.Step) (string, error) {
+	module, err := gocode.NewModule(goPkgAbsDir)
+	if err != nil {
+		return "", err
+	}
+
+	relDir, err := filepath.Rel(module.AbsolutePath, goPkgAbsDir)
+	if err != nil {
+		return "", fmt.Errorf("determine package relative dir: %w", err)
+	}
+	relDir = filepath.ToSlash(relDir)
+
+	pkg, err := module.LoadPackageByRelativeDir(relDir)
+	if err != nil {
+		return "", err
+	}
+
+	initial, err := initialcontext.Create(pkg, lintSteps, false)
+	if err != nil {
+		return "", fmt.Errorf("initial context: %w", err)
+	}
+
+	return initial, nil
+}
+
+func joinContextBlocks(blocks ...string) string {
+	nonEmpty := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		if strings.TrimSpace(block) == "" {
+			continue
+		}
+		nonEmpty = append(nonEmpty, strings.TrimSpace(block))
+	}
+	return strings.Join(nonEmpty, "\n\n")
 }
 
 func buildClarifyPublicAPISystemPrompt(options agentregistry.BuildOptions) (string, error) {
