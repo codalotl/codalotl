@@ -1,11 +1,10 @@
 package inventory
 
 import (
+	"reflect"
 	"testing"
 
 	"example.com/clarifyintegration/catalog"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAvailableClampsNegativeToZero(t *testing.T) {
@@ -13,7 +12,9 @@ func TestAvailableClampsNegativeToZero(t *testing.T) {
 		"tea-earl-grey": {OnHand: 2, Reserved: 5},
 	})
 
-	assert.Equal(t, 0, snapshot.Available("tea-earl-grey"))
+	if got := snapshot.Available("tea-earl-grey"); got != 0 {
+		t.Fatalf("expected available quantity %d, got %d", 0, got)
+	}
 }
 
 func TestReserveAggregatesDuplicateRequestsAndCapturesColdChain(t *testing.T) {
@@ -32,10 +33,22 @@ func TestReserveAggregatesDuplicateRequestsAndCapturesColdChain(t *testing.T) {
 		{SKU: "gel-pack", Quantity: 1},
 	})
 
-	require.Len(t, reservation.Confirmed, 2)
-	assert.Equal(t, 4, reservation.ConfirmedQuantity("tea-earl-grey"))
-	assert.Equal(t, 1, reservation.ConfirmedQuantity("gel-pack"))
-	require.Len(t, reservation.Shortages, 1)
-	assert.Equal(t, Shortage{SKU: "tea-earl-grey", Requested: 5, Available: 4}, reservation.Shortages[0])
-	assert.Equal(t, []string{"gel-pack"}, reservation.ColdChainSKUs)
+	if len(reservation.Confirmed) != 2 {
+		t.Fatalf("expected 2 confirmed reservations, got %d", len(reservation.Confirmed))
+	}
+	if got := reservation.ConfirmedQuantity("tea-earl-grey"); got != 4 {
+		t.Fatalf("expected tea-earl-grey quantity %d, got %d", 4, got)
+	}
+	if got := reservation.ConfirmedQuantity("gel-pack"); got != 1 {
+		t.Fatalf("expected gel-pack quantity %d, got %d", 1, got)
+	}
+	if len(reservation.Shortages) != 1 {
+		t.Fatalf("expected 1 shortage, got %d", len(reservation.Shortages))
+	}
+	if got := reservation.Shortages[0]; got != (Shortage{SKU: "tea-earl-grey", Requested: 5, Available: 4}) {
+		t.Fatalf("expected shortage %+v, got %+v", Shortage{SKU: "tea-earl-grey", Requested: 5, Available: 4}, got)
+	}
+	if !reflect.DeepEqual([]string{"gel-pack"}, reservation.ColdChainSKUs) {
+		t.Fatalf("expected cold chain SKUs %v, got %v", []string{"gel-pack"}, reservation.ColdChainSKUs)
+	}
 }

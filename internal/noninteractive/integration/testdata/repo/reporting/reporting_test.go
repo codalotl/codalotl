@@ -1,11 +1,11 @@
 package reporting
 
 import (
+	"reflect"
 	"testing"
 
 	orders "example.com/clarifyintegration"
 	"example.com/clarifyintegration/pricing"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestSummarizePlansAggregatesTopIssue(t *testing.T) {
@@ -25,13 +25,21 @@ func TestSummarizePlansAggregatesTopIssue(t *testing.T) {
 
 	summary := SummarizePlans(plans)
 
-	assert.Equal(t, Summary{
+	if got := summary; !reflect.DeepEqual(got, Summary{
 		Orders:        3,
 		Ready:         1,
 		RevenueCents:  3600,
 		DiscountCents: 150,
 		TopIssue:      "requires cold-chain shipping",
-	}, summary)
+	}) {
+		t.Fatalf("expected summary %+v, got %+v", Summary{
+			Orders:        3,
+			Ready:         1,
+			RevenueCents:  3600,
+			DiscountCents: 150,
+			TopIssue:      "requires cold-chain shipping",
+		}, got)
+	}
 }
 
 func TestPromotionCountsAndFormatSummary(t *testing.T) {
@@ -40,10 +48,15 @@ func TestPromotionCountsAndFormatSummary(t *testing.T) {
 		{Applied: []string{"tea-sale"}},
 	})
 
-	assert.Equal(t, map[string]int{
+	if got := counts; !reflect.DeepEqual(got, map[string]int{
 		"preferred-loyalty": 1,
 		"tea-sale":          2,
-	}, counts)
+	}) {
+		t.Fatalf("expected promotion counts %v, got %v", map[string]int{
+			"preferred-loyalty": 1,
+			"tea-sale":          2,
+		}, got)
+	}
 
 	rendered := FormatSummary(Summary{
 		Orders:        2,
@@ -52,5 +65,7 @@ func TestPromotionCountsAndFormatSummary(t *testing.T) {
 		DiscountCents: 375,
 	})
 
-	assert.Equal(t, "2 orders, 1 ready, revenue $22.50, discounts $3.75, top issue: none", rendered)
+	if rendered != "2 orders, 1 ready, revenue $22.50, discounts $3.75, top issue: none" {
+		t.Fatalf("expected rendered summary %q, got %q", "2 orders, 1 ready, revenue $22.50, discounts $3.75, top issue: none", rendered)
+	}
 }

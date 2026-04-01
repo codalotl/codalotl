@@ -1,11 +1,10 @@
 package pricing
 
 import (
+	"reflect"
 	"testing"
 
 	"example.com/clarifyintegration/catalog"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestQuoteOrderAppliesFlatBeforePercent(t *testing.T) {
@@ -24,11 +23,21 @@ func TestQuoteOrderAppliesFlatBeforePercent(t *testing.T) {
 		{Label: "preferred-loyalty", PercentOff: 10},
 	})
 
-	require.NoError(t, err)
-	assert.Equal(t, 2400, quote.SubtotalCents)
-	assert.Equal(t, 375, quote.DiscountCents)
-	assert.Equal(t, 2025, quote.TotalCents)
-	assert.Equal(t, []string{"tea-sale", "preferred-loyalty"}, quote.Applied)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if quote.SubtotalCents != 2400 {
+		t.Fatalf("expected subtotal %d, got %d", 2400, quote.SubtotalCents)
+	}
+	if quote.DiscountCents != 375 {
+		t.Fatalf("expected discount %d, got %d", 375, quote.DiscountCents)
+	}
+	if quote.TotalCents != 2025 {
+		t.Fatalf("expected total %d, got %d", 2025, quote.TotalCents)
+	}
+	if !reflect.DeepEqual([]string{"tea-sale", "preferred-loyalty"}, quote.Applied) {
+		t.Fatalf("expected applied rules %v, got %v", []string{"tea-sale", "preferred-loyalty"}, quote.Applied)
+	}
 }
 
 func TestQuoteOrderCapsDiscountAtSubtotal(t *testing.T) {
@@ -46,15 +55,31 @@ func TestQuoteOrderCapsDiscountAtSubtotal(t *testing.T) {
 		{Label: "extra-percent", PercentOff: 50},
 	})
 
-	require.NoError(t, err)
-	assert.Equal(t, 100, quote.SubtotalCents)
-	assert.Equal(t, 100, quote.DiscountCents)
-	assert.Equal(t, 0, quote.TotalCents)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if quote.SubtotalCents != 100 {
+		t.Fatalf("expected subtotal %d, got %d", 100, quote.SubtotalCents)
+	}
+	if quote.DiscountCents != 100 {
+		t.Fatalf("expected discount %d, got %d", 100, quote.DiscountCents)
+	}
+	if quote.TotalCents != 0 {
+		t.Fatalf("expected total %d, got %d", 0, quote.TotalCents)
+	}
 }
 
 func TestLoyaltyTierThresholds(t *testing.T) {
-	assert.Equal(t, "starter", LoyaltyTier(4999))
-	assert.Equal(t, "regular", LoyaltyTier(5000))
-	assert.Equal(t, "preferred", LoyaltyTier(20000))
-	assert.Equal(t, "-$1.50", FormatCents(-150))
+	if got := LoyaltyTier(4999); got != "starter" {
+		t.Fatalf("expected loyalty tier %q, got %q", "starter", got)
+	}
+	if got := LoyaltyTier(5000); got != "regular" {
+		t.Fatalf("expected loyalty tier %q, got %q", "regular", got)
+	}
+	if got := LoyaltyTier(20000); got != "preferred" {
+		t.Fatalf("expected loyalty tier %q, got %q", "preferred", got)
+	}
+	if got := FormatCents(-150); got != "-$1.50" {
+		t.Fatalf("expected formatted cents %q, got %q", "-$1.50", got)
+	}
 }
