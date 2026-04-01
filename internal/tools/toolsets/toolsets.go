@@ -99,7 +99,10 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 		exttools.NewRunProjectTestsTool(opts.GoPkgAbsDir, authorizer),
 		pkgtools.NewModuleInfoTool(authorizer),
 		pkgtools.NewGetPublicAPITool(authorizer),
-		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
+		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools, pkgtools.ClarifyPublicAPIToolOptions{
+			AgentInvoker: opts.AgentInvoker,
+			Model:        opts.Model,
+		}),
 		pkgtools.NewGetUsageTool(authorizer),
 		pkgtools.NewUpdateUsageTool(opts.GoPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools, opts.Model, opts.LintSteps),
 		pkgtools.NewChangeAPITool(opts.GoPkgAbsDir, sandboxAuthorizer, PackageAgentTools, opts.Model, opts.LintSteps),
@@ -165,7 +168,10 @@ func LimitedPackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 		exttools.NewFixLintsTool(authorizer, lintSteps),
 		exttools.NewRunTestsTool(authorizer, lintSteps),
 		pkgtools.NewGetPublicAPITool(authorizer),
-		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools),
+		pkgtools.NewClarifyPublicAPITool(sandboxAuthorizer, SimpleReadOnlyTools, pkgtools.ClarifyPublicAPIToolOptions{
+			AgentInvoker: opts.AgentInvoker,
+			Model:        opts.Model,
+		}),
 	)
 	return tools, nil
 }

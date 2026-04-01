@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -63,7 +62,15 @@ func resolveToolPackageRef(mod *gocode.Module, input string) (resolvedPackageRef
 	}
 
 	tryImport := func() (resolvedPackageRef, error) {
-		m, p, r, ip, err := mod.ResolvePackageByImport(raw)
+		importCandidate := raw
+		if raw == mod.Name || strings.HasPrefix(raw, mod.Name+"/") {
+			fqImportPath, _, err := resolveImportPath(mod.Name, raw)
+			if err == nil {
+				importCandidate = fqImportPath
+			}
+		}
+
+		m, p, r, ip, err := mod.ResolvePackageByImport(importCandidate)
 		if err != nil {
 			return resolvedPackageRef{}, err
 		}
@@ -197,7 +204,7 @@ func loadPackageForResolved(baseMod *gocode.Module, moduleAbsDir string, package
 	}
 
 	// Standard library packages are not within a module. We still load them for docs.
-	stdRootAbsDir, stdRelDir := stdlibRootAndRel(packageAbsDir)
+	stdRootAbsDir, stdRelDir := stdlibRootAndRel(packageAbsDir, fqImportPath)
 	stdMod := &gocode.Module{
 		Name:         "",
 		AbsolutePath: stdRootAbsDir,
@@ -232,22 +239,19 @@ func resolvedRelDir(moduleAbsDir string, packageAbsDir string, packageRelDir str
 	return rel, nil
 }
 
-func stdlibRootAndRel(packageAbsDir string) (rootAbsDir string, relDir string) {
+func stdlibRootAndRel(packageAbsDir string, importPath string) (rootAbsDir string, relDir string) {
 	if packageAbsDir == "" {
 		return "", "."
 	}
-	goroot := runtime.GOROOT()
-	if goroot != "" {
-		gorootSrc := filepath.Join(goroot, "src")
-		if isWithinDir(gorootSrc, packageAbsDir) {
-			rel, err := filepath.Rel(gorootSrc, packageAbsDir)
-			if err == nil {
-				rel = filepath.ToSlash(rel)
-				if rel == "" {
-					return gorootSrc, "."
-				}
-				return gorootSrc, rel
-			}
+
+	relDir = strings.TrimPrefix(filepath.ToSlash(importPath), "/")
+	if relDir != "" && relDir != "." {
+		rootAbsDir = packageAbsDir
+		for range strings.Split(relDir, "/") {
+			rootAbsDir = filepath.Dir(rootAbsDir)
+		}
+		if filepath.Clean(filepath.Join(rootAbsDir, filepath.FromSlash(relDir))) == filepath.Clean(packageAbsDir) {
+			return rootAbsDir, relDir
 		}
 	}
 

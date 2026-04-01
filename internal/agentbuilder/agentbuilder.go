@@ -129,7 +129,14 @@ func genericTools() map[string]toolsetinterface.Tool {
 			), nil
 		},
 		pkgtools.ToolNameClarifyPublicAPI: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			return pkgtools.NewClarifyPublicAPITool(opts.Authorizer.WithoutCodeUnit(), toolsets.SimpleReadOnlyTools), nil
+			return pkgtools.NewClarifyPublicAPITool(
+				opts.Authorizer.WithoutCodeUnit(),
+				toolsets.SimpleReadOnlyTools,
+				pkgtools.ClarifyPublicAPIToolOptions{
+					AgentInvoker: opts.AgentInvoker,
+					Model:        opts.Model,
+				},
+			), nil
 		},
 		coretools.ToolNameLS: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			return coretools.NewLsTool(opts.Authorizer), nil

@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	clarify "github.com/codalotl/codalotl/internal/subagents/clarifydocs"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
@@ -26,7 +27,8 @@ const ToolNameClarifyPublicAPI = "clarify_public_api"
 type toolClarifyPublicAPI struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
-	toolset       toolsetinterface.Toolset
+	agentInvoker  toolsetinterface.AgentInvoker
+	model         llmmodel.ModelID
 }
 
 type clarifyPublicAPIParams struct {
@@ -35,13 +37,23 @@ type clarifyPublicAPIParams struct {
 	Question   string `json:"question"`
 }
 
+type ClarifyPublicAPIToolOptions struct {
+	AgentInvoker toolsetinterface.AgentInvoker
+	Model        llmmodel.ModelID
+}
+
 // authorizer is the fallback authorizer the clarify subagent should use underneath its target-package jail.
-func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
+func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, options ...ClarifyPublicAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
+	var option ClarifyPublicAPIToolOptions
+	if len(options) > 0 {
+		option = options[0]
+	}
 	return &toolClarifyPublicAPI{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
-		toolset:       toolset,
+		agentInvoker:  option.AgentInvoker,
+		model:         option.Model,
 	}
 }
 
@@ -92,7 +104,7 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	moduleAbsDir, packageAbsDir, _, _, err := resolvePackagePath(mod, params.Path)
+	moduleAbsDir, packageAbsDir, _, importPath, err := resolvePackagePath(mod, params.Path)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
@@ -108,7 +120,7 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		if moduleAbsDir != "" {
 			effectiveSandboxAbsDir = moduleAbsDir
 		} else {
-			stdRootAbsDir, _ := stdlibRootAndRel(packageAbsDir)
+			stdRootAbsDir, _ := stdlibRootAndRel(packageAbsDir, importPath)
 			if stdRootAbsDir != "" {
 				effectiveSandboxAbsDir = stdRootAbsDir
 			}
@@ -128,6 +140,11 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
+	agentPath, err := packagePathForSandbox(effectiveSandboxAbsDir, packageAbsDir)
+	if err != nil {
+		return coretools.NewToolErrorResult(call, err.Error(), err)
+	}
+
 	if t.authorizer != nil && isWithinDir(t.sandboxAbsDir, packageAbsDir) {
 		// Only prompt/deny for sandbox reads; resolved dependency/stdlib packages are always readable.
 		if authErr := t.authorizer.IsAuthorizedForRead(false, "", ToolNameClarifyPublicAPI, packageAbsDir); authErr != nil {
@@ -140,7 +157,20 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	answer, err := clarify.ClarifyAPI(ctx, agentCreator, effectiveSandboxAbsDir, effectiveAuthorizer, t.toolset, packageAbsDir, params.Identifier, params.Question)
+	answer, err := invokeClarifyAgent(
+		ctx,
+		t.agentInvoker,
+		agentCreator,
+		t.sandboxAbsDir,
+		t.authorizer,
+		effectiveSandboxAbsDir,
+		effectiveAuthorizer,
+		t.model,
+		agentPath,
+		packageAbsDir,
+		params.Identifier,
+		params.Question,
+	)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
@@ -151,6 +181,63 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		Type:   call.Type,
 		Result: answer,
 	}
+}
+
+func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, callerSandboxAbsDir string, callerAuthorizer authdomain.Authorizer, targetSandboxAbsDir string, targetAuthorizer authdomain.Authorizer, model llmmodel.ModelID, path string, packageAbsDir string, identifier string, question string) (string, error) {
+	if invoker == nil {
+		return "", fmt.Errorf("clarify agent unavailable")
+	}
+
+	request, err := json.Marshal(clarifyPublicAPIParams{
+		Path:       path,
+		Identifier: identifier,
+		Question:   question,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	req := toolsetinterface.InvokeRequest{
+		AgentCreator:       agentCreator,
+		CallerAuthorizer:   callerAuthorizer,
+		CallerSandboxDir:   callerSandboxAbsDir,
+		OverrideAuthorizer: targetAuthorizer,
+		OverrideSandboxDir: targetSandboxAbsDir,
+		ToolOptions: toolsetinterface.Options{
+			GoPkgAbsDir: packageAbsDir,
+			Model:       model,
+		},
+		Messages: []string{string(request)},
+	}
+
+	events, err := invoker.Invoke(ctx, ToolNameClarifyPublicAPI, req)
+	if err != nil {
+		return "", err
+	}
+
+	return agent.CollectFinalAssistantText(ctx, events)
+}
+
+func packagePathForSandbox(sandboxAbsDir string, packageAbsDir string) (string, error) {
+	if sandboxAbsDir == "" {
+		return "", fmt.Errorf("sandbox directory required")
+	}
+	if packageAbsDir == "" {
+		return "", fmt.Errorf("package path is required")
+	}
+
+	rel, err := filepath.Rel(sandboxAbsDir, packageAbsDir)
+	if err != nil {
+		return "", err
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." {
+		return ".", nil
+	}
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", fmt.Errorf("package %q is outside sandbox %q", packageAbsDir, sandboxAbsDir)
+	}
+	return rel, nil
 }
 
 func newClarifyTargetAuthorizer(baseAuthorizer authdomain.Authorizer, packageAbsDir string) (authdomain.Authorizer, error) {
