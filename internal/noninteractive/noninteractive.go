@@ -920,7 +920,7 @@ func buildAgent(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath s
 	agentName := agentbuilder.AgentGeneric
 	if pkgMode {
 		toolOptions.GoPkgAbsDir = pkgAbsPath
-		agentName = agentbuilder.AgentFullPackageMode
+		agentName = agentbuilder.AgentPackageModeNoContext
 	}
 
 	registry, err := agentbuilder.BuildRegistry()

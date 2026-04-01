@@ -5,7 +5,7 @@
 ## Agents
 
 - generic: core_agent toolset
-- full_package_mode: package_agent toolset
+- package_mode_no_context: package_agent toolset
     - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
 - clarify_public_api: simple_read_only toolset
     - Prompt specialized for clarification requests.
@@ -39,8 +39,8 @@ Toolsets are just a device used in this SPEC.md file to factor this file (and ma
 
 ```go
 const (
-	AgentGeneric     string = "generic"
-	AgentFullPackageMode string = "full_package_mode"
+	AgentGeneric              string = "generic"
+	AgentPackageModeNoContext string = "package_mode_no_context"
 )
 
 // BuildRegistry builds the registry.

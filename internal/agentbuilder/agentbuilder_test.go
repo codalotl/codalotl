@@ -41,9 +41,9 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, AgentGeneric, genericDef.Name)
 
-	packageModeDef, ok := registry.Lookup(AgentFullPackageMode)
+	packageModeDef, ok := registry.Lookup(AgentPackageModeNoContext)
 	assert.True(t, ok)
-	assert.Equal(t, AgentFullPackageMode, packageModeDef.Name)
+	assert.Equal(t, AgentPackageModeNoContext, packageModeDef.Name)
 	assert.Equal(t, agentregistry.AuthPolicyPackage, packageModeDef.AuthPolicy)
 	assert.Nil(t, packageModeDef.InitialTurnsBuilder)
 
@@ -90,7 +90,7 @@ func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) 
 }
 
 func TestBuildRegistry_InvokePackageMode_OpenAIUsesPackagePromptAndTools(t *testing.T) {
-	gotPrompt, gotTools := invokeAgentForModel(t, AgentFullPackageMode, llmmodel.ProviderIDOpenAI.DefaultModel())
+	gotPrompt, gotTools := invokeAgentForModel(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel())
 
 	assert.Equal(t, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull), gotPrompt)
 	assert.Equal(t, []string{
@@ -113,7 +113,7 @@ func TestBuildRegistry_InvokePackageMode_OpenAIUsesPackagePromptAndTools(t *test
 }
 
 func TestBuildRegistry_InvokePackageMode_NonOpenAIUsesEditWriteDelete(t *testing.T) {
-	_, gotTools := invokeAgentForModel(t, AgentFullPackageMode, llmmodel.ProviderIDAnthropic.DefaultModel())
+	_, gotTools := invokeAgentForModel(t, AgentPackageModeNoContext, llmmodel.ProviderIDAnthropic.DefaultModel())
 
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
@@ -154,7 +154,7 @@ func TestBuildRegistry_PackageModeOpenAIApplyPatchRunsPostChecks(t *testing.T) {
 		},
 	}
 
-	tools := invokeAgentTools(t, AgentFullPackageMode, llmmodel.ProviderIDOpenAI.DefaultModel(), sandbox, pkgDir, steps)
+	tools := invokeAgentTools(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel(), sandbox, pkgDir, steps)
 	applyTool := requireTool(t, tools, coretools.ToolNameApplyPatch)
 
 	patch := `*** Begin Patch
@@ -199,7 +199,7 @@ func TestBuildRegistry_PackageModeNonOpenAIEditAndWriteRunPostChecks(t *testing.
 		},
 	}
 
-	tools := invokeAgentTools(t, AgentFullPackageMode, llmmodel.ProviderIDAnthropic.DefaultModel(), sandbox, pkgDir, steps)
+	tools := invokeAgentTools(t, AgentPackageModeNoContext, llmmodel.ProviderIDAnthropic.DefaultModel(), sandbox, pkgDir, steps)
 	editTool := requireTool(t, tools, coretools.ToolNameEdit)
 	writeTool := requireTool(t, tools, coretools.ToolNameWrite)
 
@@ -238,7 +238,7 @@ func TestBuildRegistry_PackageModeOpenAIApplyPatchUsesDefaultLintStepsWhenUnset(
 	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n\nfunc F() {}\n"), 0o644))
 
-	tools := invokeAgentTools(t, AgentFullPackageMode, llmmodel.ProviderIDOpenAI.DefaultModel(), sandbox, pkgDir, nil)
+	tools := invokeAgentTools(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel(), sandbox, pkgDir, nil)
 	applyTool := requireTool(t, tools, coretools.ToolNameApplyPatch)
 
 	patch := `*** Begin Patch
@@ -277,7 +277,7 @@ func TestBuildRegistry_PackageModeNonOpenAIEditAndWriteUseDefaultLintStepsWhenUn
 	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n\nfunc F() {}\n"), 0o644))
 
-	tools := invokeAgentTools(t, AgentFullPackageMode, llmmodel.ProviderIDAnthropic.DefaultModel(), sandbox, pkgDir, nil)
+	tools := invokeAgentTools(t, AgentPackageModeNoContext, llmmodel.ProviderIDAnthropic.DefaultModel(), sandbox, pkgDir, nil)
 	editTool := requireTool(t, tools, coretools.ToolNameEdit)
 	writeTool := requireTool(t, tools, coretools.ToolNameWrite)
 
@@ -318,7 +318,7 @@ func TestBuildRegistry_PackageModeNonOpenAIEditAndWriteUseDefaultLintStepsWhenUn
 }
 
 func TestBuildRegistry_PackageModeChangeAPIUsesFullPackageToolset(t *testing.T) {
-	tools := invokeAgentTools(t, AgentFullPackageMode, llmmodel.ProviderIDOpenAI.DefaultModel(), "", "", nil)
+	tools := invokeAgentTools(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel(), "", "", nil)
 	changeAPITool := requireTool(t, tools, pkgtools.ToolNameChangeAPI)
 
 	toolsetField := reflect.ValueOf(changeAPITool).Elem().FieldByName("toolset")
@@ -430,7 +430,7 @@ func invokeAgentForModelDetailed(t *testing.T, agentName string, model llmmodel.
 	creator := &captureAgentCreator{err: errors.New("stop")}
 	authorizer := authdomain.NewAutoApproveAuthorizer(sandbox)
 
-	if agentName == AgentFullPackageMode {
+	if agentName == AgentPackageModeNoContext {
 		unit, err := codeunit.NewCodeUnit("package .", goPkgAbsDir)
 		require.NoError(t, err)
 		authorizer = authdomain.NewCodeUnitAuthorizer(unit, authorizer)
