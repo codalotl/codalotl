@@ -9,10 +9,10 @@
     - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
 - package_mode_default_context: toolset_package
     - The same as package_mode_no_context, except:
-    - Uses `InitialTurnsBuilder` to add with context (e.g., calls `initialcontext.Create`).
+    - Uses `InitialTurnsBuilder` to add with context (e.g., env and calls `initialcontext.Create`).
 - limited_package_mode: toolset_limited_package
     - Uses the "Package Mode Update Usage" prompt kind
-    - Uses `InitialTurnsBuilder` to add with context (e.g., calls `initialcontext.Create`).
+    - Uses `InitialTurnsBuilder` to add with context (e.g., env and calls `initialcontext.Create`).
 - clarify_public_api: simple_read_only toolset
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
