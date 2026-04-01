@@ -215,6 +215,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 				toolsets.LimitedPackageAgentTools,
 				opts.Model,
 				opts.LintSteps,
+				pkgtools.UpdateUsageToolOptions{AgentInvoker: opts.AgentInvoker},
 			), nil
 		},
 		coretools.ToolNameWrite: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
@@ -390,7 +391,7 @@ func buildGoPackageInitialContext(goPkgAbsDir string, lintSteps []lints.Step) (s
 	if err != nil {
 		return "", fmt.Errorf("determine package relative dir: %w", err)
 	}
-	relDir = filepath.ToSlash(relDir)
+	relDir = normalizeModuleRelativeDir(relDir)
 
 	pkg, err := module.LoadPackageByRelativeDir(relDir)
 	if err != nil {
@@ -624,7 +625,7 @@ func tryBuildClarifyGoContext(absPath string) (string, bool, error) {
 	if err != nil {
 		return "", false, fmt.Errorf("determine package relative dir: %w", err)
 	}
-	relDir = filepath.ToSlash(relDir)
+	relDir = normalizeModuleRelativeDir(relDir)
 
 	pkg, err := module.LoadPackageByRelativeDir(relDir)
 	if err != nil {
@@ -637,6 +638,14 @@ func tryBuildClarifyGoContext(absPath string) (string, bool, error) {
 	}
 
 	return initial, true, nil
+}
+
+func normalizeModuleRelativeDir(relDir string) string {
+	relDir = filepath.ToSlash(relDir)
+	if relDir == "." {
+		return ""
+	}
+	return relDir
 }
 
 func buildClarifyGenericContext(absPath string, stat os.FileInfo, identifier string) (string, error) {

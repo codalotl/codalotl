@@ -8,14 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gousage"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/subagents/packagemode"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
@@ -26,10 +25,14 @@ var descriptionUpdateUsage string
 
 const ToolNameUpdateUsage = "update_usage"
 
+// This mirrors internal/agentbuilder.AgentLimitedPackageMode without importing that package and creating an import cycle.
+const updateUsageAgentName = "limited_package_mode"
+
 type toolUpdateUsage struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
 	toolset       toolsetinterface.Toolset
+	agentInvoker  toolsetinterface.AgentInvoker
 	model         llmmodel.ModelID
 	pkgDirAbsPath string
 	lintSteps     []lints.Step
@@ -40,17 +43,26 @@ type updateUsageParams struct {
 	Paths        []string `json:"paths"`
 }
 
+type UpdateUsageToolOptions struct {
+	AgentInvoker toolsetinterface.AgentInvoker
+}
+
 // authorizer should be the "sandbox" authorizer, not a package-jailed authorizer.
 //
 // pkgDirAbsPath is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it).
 //
-// toolset are the tools that the subagent doing the updating will have access to.
-func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, model llmmodel.ModelID, lintSteps []lints.Step) llmstream.Tool {
+// toolset is retained for compatibility with existing builders; registry-backed subagent invocation is driven by AgentInvoker.
+func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, model llmmodel.ModelID, lintSteps []lints.Step, options ...UpdateUsageToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
+	var option UpdateUsageToolOptions
+	if len(options) > 0 {
+		option = options[0]
+	}
 	return &toolUpdateUsage{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 		toolset:       toolset,
+		agentInvoker:  option.AgentInvoker,
 		model:         model,
 		pkgDirAbsPath: filepath.Clean(pkgDirAbsPath),
 		lintSteps:     lintSteps,
@@ -94,10 +106,6 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 
 	if len(params.Paths) == 0 {
 		return llmstream.NewErrorToolResult("paths is required", call)
-	}
-
-	if t.toolset == nil {
-		return coretools.NewToolErrorResult(call, "toolset unavailable", nil)
 	}
 
 	mod, err := gocode.NewModule(t.sandboxAbsDir)
@@ -228,18 +236,17 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, t.authorizer)
 
-		answer, err := packagemode.Run(
+		answer, err := invokeUpdateUsageAgent(
 			ctx,
+			t.agentInvoker,
 			agentCreator,
+			t.sandboxAbsDir,
 			pkgAuthorizer,
 			targetAbsPath,
-			func(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
-				opts.Model = t.model
-				return t.toolset(opts)
-			},
-			instructions,
+			t.model,
 			t.lintSteps,
-			prompt.GoPackageModePromptKindUpdateUsage,
+			t.agentInvoker,
+			instructions,
 		)
 		if err != nil {
 			return coretools.NewToolErrorResult(call, err.Error(), err)
@@ -259,4 +266,31 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 		Type:   call.Type,
 		Result: strings.Join(results, "\n\n"),
 	}
+}
+
+func invokeUpdateUsageAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, sandboxAbsDir string, pkgAuthorizer authdomain.Authorizer, packageAbsDir string, model llmmodel.ModelID, lintSteps []lints.Step, nestedAgentInvoker toolsetinterface.AgentInvoker, instructions string) (string, error) {
+	if invoker == nil {
+		return "", fmt.Errorf("update_usage agent unavailable")
+	}
+
+	req := toolsetinterface.InvokeRequest{
+		AgentCreator:     agentCreator,
+		CallerAuthorizer: pkgAuthorizer,
+		CallerSandboxDir: sandboxAbsDir,
+		ToolOptions: toolsetinterface.Options{
+			SandboxDir:   sandboxAbsDir,
+			GoPkgAbsDir:  packageAbsDir,
+			Model:        model,
+			LintSteps:    lintSteps,
+			AgentInvoker: nestedAgentInvoker,
+		},
+		Messages: []string{instructions},
+	}
+
+	events, err := invoker.Invoke(ctx, updateUsageAgentName, req)
+	if err != nil {
+		return "", err
+	}
+
+	return agent.CollectFinalAssistantText(ctx, events)
 }

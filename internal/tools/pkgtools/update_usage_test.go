@@ -2,6 +2,7 @@ package pkgtools
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -18,12 +19,16 @@ func TestNewUpdateUsageTool_StoresLintSteps(t *testing.T) {
 	sandbox := t.TempDir()
 	steps := []lints.Step{{ID: "custom"}}
 	model := llmmodel.DefaultModel
+	invoker := &fakeAgentInvoker{}
 
-	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), model, steps)
+	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), model, steps, UpdateUsageToolOptions{
+		AgentInvoker: invoker,
+	})
 	updateTool, ok := tool.(*toolUpdateUsage)
 	require.True(t, ok)
 	assert.Equal(t, model, updateTool.model)
 	assert.Equal(t, steps, updateTool.lintSteps)
+	assert.Equal(t, invoker, updateTool.agentInvoker)
 }
 
 func TestUpdateUsage_Run_DownstreamPackagePath_ReachesSubagentCheck(t *testing.T) {
@@ -85,4 +90,57 @@ func TestUpdateUsage_Run_RejectsAbsolutePaths(t *testing.T) {
 		assert.True(t, res.IsError)
 		assert.Contains(t, res.Result, "absolute paths are not allowed")
 	})
+}
+
+func TestInvokeUpdateUsageAgent_UsesLimitedPackageAgentAndPassesInstructions(t *testing.T) {
+	sandboxDir := t.TempDir()
+	authorizer := authdomain.NewAutoApproveAuthorizer(sandboxDir)
+	creator := &fakeAgentCreator{}
+	invoker := &fakeAgentInvoker{
+		events: successfulClarifyEvents("updated downstream package"),
+	}
+	lintSteps := []lints.Step{{ID: "custom"}}
+	packageDir := filepath.Join(sandboxDir, "consumer")
+
+	answer, err := invokeUpdateUsageAgent(
+		context.Background(),
+		invoker,
+		creator,
+		sandboxDir,
+		authorizer,
+		packageDir,
+		"mock-model",
+		lintSteps,
+		invoker,
+		"Update downstream callers safely.",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "updated downstream package", answer)
+	assert.Equal(t, updateUsageAgentName, invoker.invokedAgentName)
+	assert.Equal(t, creator, invoker.req.AgentCreator)
+	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
+	assert.Equal(t, sandboxDir, invoker.req.CallerSandboxDir)
+	assert.Equal(t, sandboxDir, invoker.req.ToolOptions.SandboxDir)
+	assert.Equal(t, packageDir, invoker.req.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, llmmodel.ModelID("mock-model"), invoker.req.ToolOptions.Model)
+	assert.Equal(t, lintSteps, invoker.req.ToolOptions.LintSteps)
+	assert.Equal(t, invoker, invoker.req.ToolOptions.AgentInvoker)
+	require.Len(t, invoker.req.Messages, 1)
+	assert.Equal(t, "Update downstream callers safely.", invoker.req.Messages[0])
+}
+
+func TestInvokeUpdateUsageAgent_RequiresInvoker(t *testing.T) {
+	_, err := invokeUpdateUsageAgent(
+		context.Background(),
+		nil,
+		fakeAgentCreator{},
+		t.TempDir(),
+		nil,
+		t.TempDir(),
+		"",
+		nil,
+		nil,
+		"Update callers.",
+	)
+	assert.EqualError(t, err, "update_usage agent unavailable")
 }

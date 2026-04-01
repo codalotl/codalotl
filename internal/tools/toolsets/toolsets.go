@@ -104,7 +104,9 @@ func PackageAgentTools(opts Options) ([]llmstream.Tool, error) {
 			Model:        opts.Model,
 		}),
 		pkgtools.NewGetUsageTool(authorizer),
-		pkgtools.NewUpdateUsageTool(opts.GoPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools, opts.Model, opts.LintSteps),
+		pkgtools.NewUpdateUsageTool(opts.GoPkgAbsDir, sandboxAuthorizer, LimitedPackageAgentTools, opts.Model, opts.LintSteps, pkgtools.UpdateUsageToolOptions{
+			AgentInvoker: opts.AgentInvoker,
+		}),
 		pkgtools.NewChangeAPITool(opts.GoPkgAbsDir, sandboxAuthorizer, PackageAgentTools, opts.Model, opts.LintSteps, pkgtools.ChangeAPIToolOptions{
 			AgentInvoker: opts.AgentInvoker,
 		}),

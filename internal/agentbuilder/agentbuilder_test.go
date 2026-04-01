@@ -551,6 +551,25 @@ func TestBuildPackageModeDefaultContextInitialTurns_BuildsEnvAndInitialContext(t
 	assert.NotContains(t, turns[1], "deliberately skipped")
 }
 
+func TestBuildPackageModeDefaultContextInitialTurns_RootPackageUsesModuleImportPath(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "root.go"), []byte("package root\n\nfunc Hello() string { return \"hello\" }\n"), 0o644))
+
+	turns, err := buildPackageModeDefaultContextInitialTurns(context.Background(), agentregistry.BuildOptions{
+		ToolOptions: toolsetinterface.Options{
+			SandboxDir:  sandbox,
+			GoPkgAbsDir: sandbox,
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, turns, 2)
+
+	assert.Contains(t, turns[1], `Package relative path: ""`)
+	assert.Contains(t, turns[1], `Package import path: "example.com/test"`)
+	assert.NotContains(t, turns[1], `Package import path: "example.com/test/."`)
+}
+
 func TestBuildClarifyPublicAPIInitialTurns_GoRequestBuildsEnvAndInitialContext(t *testing.T) {
 	sandbox := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))

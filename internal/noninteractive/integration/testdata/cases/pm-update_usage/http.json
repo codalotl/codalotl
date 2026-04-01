@@ -11148,6 +11148,33 @@
             ],
             "role": "user",
             "type": "message"
+          },
+          {
+            "content": [
+              {
+                "text": {
+                  "match": "partial",
+                  "texts": [
+                    "<current-package>",
+                    "Package import path: \"example.com/clarifyintegration\"",
+                    "<pkg-map type=\"non-tests\">"
+                  ]
+                },
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "text": "The `catalog.Product` method `HasTag(tag string) bool` was renamed to `MatchesTag(tag string) bool`. Please update any call sites in your assigned package from `.HasTag(...)` to `.MatchesTag(...)`. Keep the change minimal and do not add compatibility wrappers.",
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
           }
         ],
         "model": "mock-model-pm-update-usage"
@@ -15538,6 +15565,33 @@
           {
             "content": [
               {
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "text": {
+                  "match": "partial",
+                  "texts": [
+                    "<current-package>",
+                    "Package import path: \"example.com/clarifyintegration/inventory\"",
+                    "<pkg-map type=\"non-tests\">"
+                  ]
+                },
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "text": "The `catalog.Product` method `HasTag(tag string) bool` was renamed to `MatchesTag(tag string) bool`. Please update any call sites in your assigned package from `.HasTag(...)` to `.MatchesTag(...)`. Keep the change minimal and do not add compatibility wrappers.",
                 "type": "input_text"
               }
             ],
@@ -21523,6 +21577,33 @@
           {
             "content": [
               {
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "text": {
+                  "match": "partial",
+                  "texts": [
+                    "<current-package>",
+                    "Package import path: \"example.com/clarifyintegration/pricing\"",
+                    "<pkg-map type=\"non-tests\">"
+                  ]
+                },
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "text": "The `catalog.Product` method `HasTag(tag string) bool` was renamed to `MatchesTag(tag string) bool`. Please update any call sites in your assigned package from `.HasTag(...)` to `.MatchesTag(...)`. Keep the change minimal and do not add compatibility wrappers.",
                 "type": "input_text"
               }
             ],
