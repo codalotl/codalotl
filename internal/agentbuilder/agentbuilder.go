@@ -162,6 +162,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 				changeAPIToolset(opts),
 				opts.Model,
 				opts.LintSteps,
+				pkgtools.ChangeAPIToolOptions{AgentInvoker: opts.AgentInvoker},
 			), nil
 		},
 		pkgtools.ToolNameClarifyPublicAPI: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
