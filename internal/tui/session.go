@@ -146,7 +146,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 		toolAuthorizer = pkgAuthorizer
 		toolOptions.Authorizer = pkgAuthorizer
 		toolOptions.GoPkgAbsDir = pkgAbsPath
-		agentName = agentbuilder.AgentPackageMode
+		agentName = agentbuilder.AgentFullPackageMode
 	}
 
 	registry, err := agentbuilder.BuildRegistry()

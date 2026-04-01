@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	AgentGeneric     string = "generic"
-	AgentPackageMode string = "package_mode"
+	AgentGeneric         string = "generic"
+	AgentFullPackageMode string = "full_package_mode"
 
 	agentClarifyPublicAPI = pkgtools.ToolNameClarifyPublicAPI
 	clarifyRGLines        = "4"
@@ -66,7 +66,7 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 	}
 
 	if err := registry.RegisterAgent(agentregistry.Definition{
-		Name:        AgentPackageMode,
+		Name:        AgentFullPackageMode,
 		Description: "Go package-focused agent with package-jail editing, testing, and API analysis tools.",
 		ToolNames: []string{
 			coretools.ToolNameReadFile,
@@ -191,7 +191,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 }
 
 func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchPostChecks {
-	if opts.AgentName != AgentPackageMode {
+	if opts.AgentName != AgentFullPackageMode {
 		return nil
 	}
 	lintSteps := opts.LintSteps
@@ -202,7 +202,7 @@ func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchP
 }
 
 func changeAPIToolset(opts toolsetinterface.Options) toolsetinterface.Toolset {
-	if opts.AgentName == AgentPackageMode {
+	if opts.AgentName == AgentFullPackageMode {
 		return toolsets.PackageAgentTools
 	}
 	return toolsets.LimitedPackageAgentTools
