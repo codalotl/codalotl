@@ -5,8 +5,11 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	clarify "github.com/codalotl/codalotl/internal/subagents/clarifydocs"
@@ -32,7 +35,7 @@ type clarifyPublicAPIParams struct {
 	Question   string `json:"question"`
 }
 
-// authorizer is what the **subagent** is authorized to do, which is usually more than a package-jailed agent.
+// authorizer is the fallback authorizer the clarify subagent should use underneath its target-package jail.
 func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolClarifyPublicAPI{
@@ -95,7 +98,10 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 	}
 
 	effectiveSandboxAbsDir := t.sandboxAbsDir
-	effectiveAuthorizer := t.authorizer
+	baseAuthorizer := t.authorizer
+	if baseAuthorizer != nil {
+		baseAuthorizer = baseAuthorizer.WithoutCodeUnit()
+	}
 	if !isWithinDir(t.sandboxAbsDir, packageAbsDir) {
 		// If the resolved package is outside of the primary sandbox, treat its module (or stdlib root)
 		// as the sandbox root for relative path resolution in the clarify subagent.
@@ -110,11 +116,16 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 
 		// Some authorizers enforce sandbox membership. If we can, clone it with an updated sandbox
 		// to allow read access to the resolved dependency/stdlib package while still confining reads.
-		if t.authorizer != nil && effectiveSandboxAbsDir != "" {
-			if updated, updErr := authdomain.WithUpdatedSandbox(t.authorizer, effectiveSandboxAbsDir); updErr == nil {
-				effectiveAuthorizer = updated
+		if baseAuthorizer != nil && effectiveSandboxAbsDir != "" {
+			if updated, updErr := authdomain.WithUpdatedSandbox(baseAuthorizer, effectiveSandboxAbsDir); updErr == nil {
+				baseAuthorizer = updated
 			}
 		}
+	}
+
+	effectiveAuthorizer, err := newClarifyTargetAuthorizer(baseAuthorizer, packageAbsDir)
+	if err != nil {
+		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
 	if t.authorizer != nil && isWithinDir(t.sandboxAbsDir, packageAbsDir) {
@@ -140,4 +151,55 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		Type:   call.Type,
 		Result: answer,
 	}
+}
+
+func newClarifyTargetAuthorizer(baseAuthorizer authdomain.Authorizer, packageAbsDir string) (authdomain.Authorizer, error) {
+	if baseAuthorizer == nil {
+		return nil, nil
+	}
+	if packageAbsDir == "" {
+		return nil, fmt.Errorf("package path is required")
+	}
+
+	unit, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", packageAbsDir), packageAbsDir)
+	if err != nil {
+		return nil, fmt.Errorf("build code unit: %w", err)
+	}
+	if err := unit.IncludeSubtreeUnlessContains("*.go"); err != nil {
+		return nil, fmt.Errorf("expand code unit subtree: %w", err)
+	}
+	if err := includeReachableTestdataDirs(unit); err != nil {
+		return nil, fmt.Errorf("include reachable testdata dirs: %w", err)
+	}
+	return authdomain.NewCodeUnitAuthorizer(unit, baseAuthorizer), nil
+}
+
+func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
+	if unit == nil {
+		return nil
+	}
+
+	for _, absPath := range unit.IncludedFiles() {
+		info, err := os.Stat(absPath)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+
+		testdataPath := filepath.Join(absPath, "testdata")
+		tdInfo, err := os.Stat(testdataPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("stat %q: %w", testdataPath, err)
+		}
+		if !tdInfo.IsDir() || unit.Includes(testdataPath) {
+			continue
+		}
+		if err := unit.IncludeDir(testdataPath, true); err != nil {
+			return fmt.Errorf("include %q: %w", testdataPath, err)
+		}
+	}
+
+	return nil
 }

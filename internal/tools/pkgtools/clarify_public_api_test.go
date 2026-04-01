@@ -3,6 +3,8 @@ package pkgtools
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type denyReadAuthorizer struct {
@@ -78,4 +81,44 @@ func TestClarifyPublicAPI_RunDependencyImportDoesNotRequestAuth(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Result, "unable to create subagent")
 	assert.Empty(t, auth.readCalls)
+}
+
+func TestNewClarifyTargetAuthorizer_JailsToTargetPackage(t *testing.T) {
+	sandbox := t.TempDir()
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	require.NoError(t, os.MkdirAll(filepath.Join(targetPkgDir, "data"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(targetPkgDir, "testdata"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(targetPkgDir, "nestedpkg"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(sandbox, "otherpkg"), 0o755))
+
+	targetFile := filepath.Join(targetPkgDir, "target.go")
+	supportFile := filepath.Join(targetPkgDir, "data", "config.json")
+	testdataFile := filepath.Join(targetPkgDir, "testdata", "fixture.go")
+	nestedPkgFile := filepath.Join(targetPkgDir, "nestedpkg", "nested.go")
+	otherPkgFile := filepath.Join(sandbox, "otherpkg", "other.go")
+
+	require.NoError(t, os.WriteFile(targetFile, []byte("package targetpkg\n"), 0o644))
+	require.NoError(t, os.WriteFile(supportFile, []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(testdataFile, []byte("package testdata\n"), 0o644))
+	require.NoError(t, os.WriteFile(nestedPkgFile, []byte("package nestedpkg\n"), 0o644))
+	require.NoError(t, os.WriteFile(otherPkgFile, []byte("package otherpkg\n"), 0o644))
+
+	auth, err := newClarifyTargetAuthorizer(authdomain.NewAutoApproveAuthorizer(sandbox), targetPkgDir)
+	require.NoError(t, err)
+	require.NotNil(t, auth)
+	assert.True(t, auth.IsCodeUnitDomain())
+	assert.Equal(t, targetPkgDir, auth.CodeUnitDir())
+	assert.Equal(t, sandbox, auth.SandboxDir())
+
+	assert.NoError(t, auth.IsAuthorizedForRead(false, "", "read_file", targetFile))
+	assert.NoError(t, auth.IsAuthorizedForRead(false, "", "read_file", supportFile))
+	assert.NoError(t, auth.IsAuthorizedForRead(false, "", "read_file", testdataFile))
+	assert.ErrorIs(t, auth.IsAuthorizedForRead(false, "", "read_file", nestedPkgFile), authdomain.ErrCodeUnitPathOutside)
+	assert.ErrorIs(t, auth.IsAuthorizedForRead(false, "", "read_file", otherPkgFile), authdomain.ErrCodeUnitPathOutside)
+}
+
+func TestNewClarifyTargetAuthorizer_NilBaseAuthorizer(t *testing.T) {
+	auth, err := newClarifyTargetAuthorizer(nil, t.TempDir())
+	require.NoError(t, err)
+	assert.Nil(t, auth)
 }
