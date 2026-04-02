@@ -8779,6 +8779,24 @@
             ],
             "role": "user",
             "type": "message"
+          },
+          {
+            "content": [
+              {
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
+          },
+          {
+            "content": [
+              {
+                "type": "input_text"
+              }
+            ],
+            "role": "user",
+            "type": "message"
           }
         ],
         "model": "mock-model-pm-change-api"

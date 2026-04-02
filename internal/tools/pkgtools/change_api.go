@@ -24,8 +24,8 @@ var descriptionChangeAPI string
 
 const ToolNameChangeAPI = "change_api"
 
-// This mirrors internal/agentbuilder.AgentPackageModeNoContext without importing that package and creating an import cycle.
-const changeAPIAgentName = "package_mode_no_context"
+// This mirrors internal/agentbuilder.AgentPackageModeDefaultContext without importing that package and creating an import cycle.
+const changeAPIAgentName = "package_mode_default_context"
 
 type toolChangeAPI struct {
 	sandboxAbsDir string

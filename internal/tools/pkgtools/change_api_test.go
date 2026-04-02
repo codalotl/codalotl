@@ -142,6 +142,7 @@ func TestInvokeChangeAPIAgent_UsesPackageModeAgentAndPassesInstructions(t *testi
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "updated upstream package", answer)
+	assert.Equal(t, "package_mode_default_context", changeAPIAgentName)
 	assert.Equal(t, changeAPIAgentName, invoker.invokedAgentName)
 	assert.Equal(t, creator, invoker.req.AgentCreator)
 	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
