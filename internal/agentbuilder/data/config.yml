@@ -1,0 +1,36 @@
+---
+agents:
+  - name: pr-orchestrator
+    prompts:
+      - name: base
+      - file: pr-orchestrator.prompt.md
+    tools:
+      - review
+      - implement
+  
+tools:
+  - name: review
+    description: |
+      Reviews changes made vs the base of a branch (vs base_branch) or uncommitted changes (vs commited), and outputs a textual list of prioritized issues.
+    parameters:
+      vs:
+        type: string
+        description: What to review against. Can be "base_branch", "commited"
+        required: true
+    cmd: codex todo
+  - name: implement
+    description: Implements changes to a specific package.
+    parameters:
+      path:
+        type: string
+        description: A Go package directory (relative to the sandbox) or a Go import path. Must resolve to an upstream package that the current package directly imports.
+        required: true
+      instructions:
+        type: string
+        description: What to change and why. Include enough context for a new agent to update the package.
+        required: true
+    subagent:
+      name: package_mode_default_context
+      package: path
+    
+
