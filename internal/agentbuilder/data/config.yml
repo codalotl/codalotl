@@ -34,7 +34,7 @@ tools:
     parameters:
       path:
         type: string
-        description: A Go package directory (relative to the sandbox) or a Go import path. Must resolve to an upstream package that the current package directly imports.
+        description: A Go package directory (relative to the sandbox) or a Go import path.
         required: true
       instructions:
         type: string

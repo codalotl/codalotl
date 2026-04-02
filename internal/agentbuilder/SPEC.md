@@ -24,14 +24,14 @@ YAML files can construct agents and tools, which can be added to the registry. T
 Agents:
 - An agent object has 4 required fields: `name`, `prompts`, `tools`, and `mode`.
 - `name` is the agent name.
-- `prompts` is an array (each concatenated once resolved). Each element:
+- `prompts` is an array; resolved elements are concatenated in order. Each element:
     - An object with one of three fields set (`name`, `file`, or `text`).
     - `name`: refers to an existing prompt. Built-in options are `base` and `package-base`, referring to the `generic` agent's prompt, and the `package_mode_no_context` agent's prompt, respectively.
     - `file`: refers to a textual file (usually a `.md` file) relative to the YAML file, which is read.
     - `text`: just use this text directly.
 - `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one "virtual" tool: the `edit_files` tool refers to the `toolset_edit_files` tools.
 - `mode` is one of `generic` or `package`.
-- `include_package_mode_context` of true includes package env and `initialcontext.Create` (optional; only value if `mode` is `package`).
+- `include_package_mode_context` set to true includes package env and `initialcontext.Create` (optional; only valid if `mode` is `package`).
 
 Tools:
 - A tool must have `name`, `description`, `parameters`, and then one of {`command`, `subagent`}.
@@ -47,7 +47,7 @@ Tools:
     - `package`: optional. If present, indicates we're using package mode. The only value supported is the name of a parameter, which is interpreted as the package to jail to.
     - `message`: Message to send. Uses Go templating.
     - NOTE: A package-mode agent must be supplied a package, and a non-package-mode agent must not be supplied a package.
-- Fields compatible with Go templating are supplied:
+- The following fields are available to Go templating:
     - parameters (e.g., a param named `path` is accessed as `{{ .path }}`).
     - Calling context:
         - `sandbox_dir`: the current sandbox dir
