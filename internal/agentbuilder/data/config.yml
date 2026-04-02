@@ -11,13 +11,18 @@ agents:
 tools:
   - name: review
     description: |
-      Reviews changes made vs the base of a branch (vs base_branch) or uncommitted changes (vs commited), and outputs a textual list of prioritized issues.
+      Reviews changes made vs some branch, and outputs a textual list of prioritized issues.
     parameters:
-      vs:
+      base:
         type: string
-        description: What to review against. Can be "base_branch", "commited"
+        description: Branch to review against, often main or master.
         required: true
-    cmd: codex todo
+    command:
+      cmd: codex
+      args:
+        - review
+        - "--base"
+        - "{{ .base }}"
   - name: implement
     description: Implements changes to a specific package.
     parameters:
@@ -32,5 +37,6 @@ tools:
     subagent:
       name: package_mode_default_context
       package: path
-    
+      message: "{{ .instructions }}"
+
 

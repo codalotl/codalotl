@@ -17,6 +17,34 @@
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
 
+## Data-Driven Agent/Tool Construction
+
+YAML files can construct agents and tools, which can be added to the registry. The top level of YAML file: `agents` and `tools`, both of which are arrays.
+
+Agents:
+- An agent object has 3 required fields: `name`, `prompts`, and `tools`.
+- `name` is the agent name.
+- `prompts` is an array. Each element:
+    - An object with one of three fields set (`name`, `file`, or `text`).
+    - `name`: refers to an existing prompt. Built-in options are `base` and `package-base`, referring to the `generic` agent's prompt, and the `package_mode_no_context` agent's prompt, respectively.
+    - `file`: refers to a textual file (usually a `.md` file) relative to the YAML file, which is read.
+    - `text`: just use this text directly.
+- `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one toolset may be referred to: `edit_files` refers to `toolset_edit_files`.
+
+Tools:
+- A tool must have `name`, `description`, `parameters`, and then one of {`command`, `subagent`}.
+- `name` is the tool name.
+- `description` is the tool description (this is sent to the LLM as the tool description).
+- `parameters` is an object, which has fields that map to parameters. Each parameter must have `type` (ex: `string`), `description` (sent to LLM), and `required` (true or false). This maps to the construction of an `llmstream.ToolInfo`.
+- `command` is used to map the tool to the execution of a shell command. Subfields:
+    - `cmd`: the actual command to run (not including args).
+    - `args`: array of strings. Each string can use Go templating to refer to named parameter values.
+- `subagent` is used to run a named agent.
+    - `name`: name of the agent to use (either from this YAML file, previously added YAML files, or the base pre-installed `## Agents` above).
+    - `package`: optional. If present, indicates we're using package mode. The only value supported is the name of a parameter, which is interpreted as the package to jail to.
+    - `message`: Message to send. Uses Go templating, which can refer to named parameter values.
+    - NOTE: A package-mode agent must be supplied a package, and a non-package-mode agent must not be supplied a package.
+
 ## Toolsets
 
 Toolsets are just a device used in this SPEC.md file to factor this file (and may be used in non-exported code), not intended to be a public part of the API.
@@ -50,4 +78,10 @@ const (
 
 // BuildRegistry builds the registry.
 func BuildRegistry() (*agentregistry.Registry, error)
+
+// AddYMLToRegistry adds agents and tools to reg based on the YAML file indicated by path.
+//
+// An error is returned for typical issues reading the yaml file, but also:
+//   - If an agent/tool's name overwrites an existing agent/tool name.
+func AddYMLToRegistry(reg *agentregistry.Registry, path string) error
 ```
