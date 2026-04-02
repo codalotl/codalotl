@@ -5,8 +5,14 @@ agents:
       - name: base
       - file: pr-orchestrator.prompt.md
     tools:
+      - read_file
+      - ls
+      - shell
+      - edit_files
+      - update_plan
       - review
       - implement
+    mode: generic
   
 tools:
   - name: review
