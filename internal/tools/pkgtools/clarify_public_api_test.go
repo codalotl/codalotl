@@ -158,9 +158,34 @@ func TestInvokeClarifyAgent_UsesClarifyAgentAndReturnsAnswer(t *testing.T) {
 	assert.Equal(t, sandboxDir, invoker.req.CallerSandboxDir)
 	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
 	require.Len(t, invoker.req.Messages, 1)
-	assert.Contains(t, invoker.req.Messages[0], `"path":"pkg"`)
-	assert.Contains(t, invoker.req.Messages[0], `"identifier":"Equal"`)
-	assert.Contains(t, invoker.req.Messages[0], "What does Equal do?")
+	assert.Equal(t, "Clarify this identifier.\n\nPath: pkg\nIdentifier: Equal\n\nQuestion:\nWhat does Equal do?", invoker.req.Messages[0])
+}
+
+func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T) {
+	sandboxDir := t.TempDir()
+	invoker := &fakeAgentInvoker{
+		events: successfulClarifyEvents("It compares the values using equality semantics."),
+	}
+
+	_, err := invokeClarifyAgent(
+		context.Background(),
+		invoker,
+		&fakeAgentCreator{},
+		sandboxDir,
+		authdomain.NewAutoApproveAuthorizer(sandboxDir),
+		sandboxDir,
+		authdomain.NewAutoApproveAuthorizer(sandboxDir),
+		"mock-model",
+		"pkg",
+		filepath.Join(sandboxDir, "pkg"),
+		"Equal",
+		"What does \"Equal\" do?\nDoes it treat nil specially?",
+	)
+	require.NoError(t, err)
+	require.Len(t, invoker.req.Messages, 1)
+	assert.Equal(t, "Clarify this identifier.\n\nPath: pkg\nIdentifier: Equal\n\nQuestion:\nWhat does \"Equal\" do?\nDoes it treat nil specially?", invoker.req.Messages[0])
+	assert.NotContains(t, invoker.req.Messages[0], `\"`)
+	assert.NotContains(t, invoker.req.Messages[0], `\n`)
 }
 
 func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {

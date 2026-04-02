@@ -188,15 +188,6 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 		return "", fmt.Errorf("clarify agent unavailable")
 	}
 
-	request, err := json.Marshal(clarifyPublicAPIParams{
-		Path:       path,
-		Identifier: identifier,
-		Question:   question,
-	})
-	if err != nil {
-		return "", err
-	}
-
 	req := toolsetinterface.InvokeRequest{
 		AgentCreator:       agentCreator,
 		CallerAuthorizer:   callerAuthorizer,
@@ -207,7 +198,7 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 			GoPkgAbsDir: packageAbsDir,
 			Model:       model,
 		},
-		Messages: []string{string(request)},
+		Messages: []string{formatClarifyPublicAPIRequest(path, identifier, question)},
 	}
 
 	events, err := invoker.Invoke(ctx, ToolNameClarifyPublicAPI, req)
@@ -216,6 +207,16 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 	}
 
 	return agent.CollectFinalAssistantText(ctx, events)
+}
+
+func formatClarifyPublicAPIRequest(path string, identifier string, question string) string {
+	return fmt.Sprintf(`Clarify this identifier.
+
+Path: %s
+Identifier: %s
+
+Question:
+%s`, path, identifier, question)
 }
 
 func packagePathForSandbox(sandboxAbsDir string, packageAbsDir string) (string, error) {
