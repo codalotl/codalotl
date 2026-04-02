@@ -24,7 +24,6 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"github.com/codalotl/codalotl/internal/tools/toolsets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -381,7 +380,7 @@ func TestBuildRegistry_PackageModeChangeAPIUsesFullPackageToolset(t *testing.T) 
 
 	toolsetField := reflect.ValueOf(changeAPITool).Elem().FieldByName("toolset")
 	require.True(t, toolsetField.IsValid())
-	assert.Equal(t, reflect.ValueOf(toolsets.PackageAgentTools).Pointer(), toolsetField.Pointer())
+	assert.Equal(t, reflect.ValueOf(packageAgentTools).Pointer(), toolsetField.Pointer())
 }
 
 func TestBuildRegistry_PackageModeDefaultContextOpenAIApplyPatchRunsPostChecks(t *testing.T) {
@@ -484,7 +483,7 @@ func TestBuildRegistry_PackageModeDefaultContextChangeAPIUsesFullPackageToolset(
 
 	toolsetField := reflect.ValueOf(changeAPITool).Elem().FieldByName("toolset")
 	require.True(t, toolsetField.IsValid())
-	assert.Equal(t, reflect.ValueOf(toolsets.PackageAgentTools).Pointer(), toolsetField.Pointer())
+	assert.Equal(t, reflect.ValueOf(packageAgentTools).Pointer(), toolsetField.Pointer())
 }
 
 func TestBuildPackageModeSystemPrompt_IncludesSkillsPromptAndAuthorizesSkillDirs(t *testing.T) {

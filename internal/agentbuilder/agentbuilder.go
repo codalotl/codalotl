@@ -24,7 +24,6 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
-	"github.com/codalotl/codalotl/internal/tools/toolsets"
 )
 
 const (
@@ -168,7 +167,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 		pkgtools.ToolNameClarifyPublicAPI: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			return pkgtools.NewClarifyPublicAPITool(
 				opts.Authorizer.WithoutCodeUnit(),
-				toolsets.SimpleReadOnlyTools,
+				simpleReadOnlyTools,
 				pkgtools.ClarifyPublicAPIToolOptions{
 					AgentInvoker: opts.AgentInvoker,
 					Model:        opts.Model,
@@ -212,7 +211,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 			return pkgtools.NewUpdateUsageTool(
 				opts.GoPkgAbsDir,
 				opts.Authorizer.WithoutCodeUnit(),
-				toolsets.LimitedPackageAgentTools,
+				limitedPackageAgentTools,
 				opts.Model,
 				opts.LintSteps,
 				pkgtools.UpdateUsageToolOptions{AgentInvoker: opts.AgentInvoker},
@@ -236,14 +235,101 @@ func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchP
 	if lintSteps == nil {
 		lintSteps = lints.DefaultSteps()
 	}
-	return toolsets.PackagePostChecks(lintSteps)
+	return packagePostChecks(lintSteps)
 }
 
 func changeAPIToolset(opts toolsetinterface.Options) toolsetinterface.Toolset {
 	if isFullPackageModeAgent(opts.AgentName) {
-		return toolsets.PackageAgentTools
+		return packageAgentTools
 	}
-	return toolsets.LimitedPackageAgentTools
+	return limitedPackageAgentTools
+}
+
+func simpleReadOnlyTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
+	return buildTools(opts, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+	})
+}
+
+func packageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
+	opts.AgentName = AgentPackageModeNoContext
+	toolNames := []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+	}
+	toolNames = append(toolNames, buildEditFileToolNames(opts.Model)...)
+	toolNames = append(toolNames,
+		coretools.ToolNameSkillShell,
+		coretools.ToolNameUpdatePlan,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
+		exttools.ToolNameRunProjectTests,
+		pkgtools.ToolNameModuleInfo,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+		pkgtools.ToolNameGetUsage,
+		pkgtools.ToolNameUpdateUsage,
+		pkgtools.ToolNameChangeAPI,
+	)
+	return buildTools(opts, toolNames)
+}
+
+func limitedPackageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
+	opts.AgentName = AgentLimitedPackageMode
+	toolNames := []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+	}
+	toolNames = append(toolNames, buildEditFileToolNames(opts.Model)...)
+	toolNames = append(toolNames,
+		coretools.ToolNameSkillShell,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+	)
+	return buildTools(opts, toolNames)
+}
+
+func buildTools(opts toolsetinterface.Options, toolNames []string) ([]llmstream.Tool, error) {
+	builders := genericTools()
+	tools := make([]llmstream.Tool, 0, len(toolNames))
+	for _, toolName := range toolNames {
+		builder, ok := builders[toolName]
+		if !ok {
+			return nil, fmt.Errorf("tool %q is not registered", toolName)
+		}
+		tool, err := builder(opts)
+		if err != nil {
+			return nil, fmt.Errorf("build tool %q: %w", toolName, err)
+		}
+		tools = append(tools, tool)
+	}
+	return tools, nil
+}
+
+func packagePostChecks(lintSteps []lints.Step) *coretools.ApplyPatchPostChecks {
+	return &coretools.ApplyPatchPostChecks{
+		RunDiagnostics: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			return exttools.RunDiagnostics(ctx, sandboxDir, postCheckTargetPath(sandboxDir, targetDir))
+		},
+		FixLints: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			return lints.Run(ctx, sandboxDir, postCheckTargetPath(sandboxDir, targetDir), lintSteps, lints.SituationPatch)
+		},
+	}
+}
+
+func postCheckTargetPath(sandboxDir string, targetDir string) string {
+	if targetDir == "" {
+		return sandboxDir
+	}
+	if filepath.IsAbs(targetDir) || sandboxDir == "" {
+		return targetDir
+	}
+	return filepath.Join(sandboxDir, targetDir)
 }
 
 func isFullPackageModeAgent(agentName string) bool {
