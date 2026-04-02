@@ -1,10 +1,8 @@
 package catalog
 
 import (
+	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestLookupReturnsDefensiveCopy(t *testing.T) {
@@ -18,13 +16,19 @@ func TestLookupReturnsDefensiveCopy(t *testing.T) {
 	})
 
 	product, ok := cat.Lookup("tea-earl-grey")
-	require.True(t, ok)
+	if !ok {
+		t.Fatal("expected product lookup to succeed")
+	}
 
 	product.Tags[0] = "changed"
 
 	again, ok := cat.Lookup("tea-earl-grey")
-	require.True(t, ok)
-	assert.Equal(t, []string{"black-tea", "tea"}, again.Tags)
+	if !ok {
+		t.Fatal("expected product lookup to succeed")
+	}
+	if !reflect.DeepEqual([]string{"black-tea", "tea"}, again.Tags) {
+		t.Fatalf("expected tags %v, got %v", []string{"black-tea", "tea"}, again.Tags)
+	}
 }
 
 func TestProductsWithTagSortedBySKU(t *testing.T) {
@@ -36,9 +40,15 @@ func TestProductsWithTagSortedBySKU(t *testing.T) {
 
 	products := cat.ProductsWithTag("tea")
 
-	require.Len(t, products, 2)
-	assert.Equal(t, "a", products[0].SKU)
-	assert.Equal(t, "b", products[1].SKU)
+	if len(products) != 2 {
+		t.Fatalf("expected 2 products, got %d", len(products))
+	}
+	if products[0].SKU != "a" {
+		t.Fatalf("expected first SKU %q, got %q", "a", products[0].SKU)
+	}
+	if products[1].SKU != "b" {
+		t.Fatalf("expected second SKU %q, got %q", "b", products[1].SKU)
+	}
 }
 
 func TestTotalWeightIgnoresMissingSKUs(t *testing.T) {
@@ -49,5 +59,7 @@ func TestTotalWeightIgnoresMissingSKUs(t *testing.T) {
 
 	total := cat.TotalWeight([]string{"tea-earl-grey", "missing", "tea-jasmine"})
 
-	assert.Equal(t, 210, total)
+	if total != 210 {
+		t.Fatalf("expected total weight %d, got %d", 210, total)
+	}
 }

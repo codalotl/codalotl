@@ -10,17 +10,17 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/agentbuilder"
 	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
-	"github.com/codalotl/codalotl/internal/tools/toolsets"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
 const (
@@ -116,12 +116,15 @@ func newSession(cfg sessionConfig) (*session, error) {
 		debugLogf("skills issues:\n%s", skills.FormatSkillErrors(invalidSkills, failedSkillLoads))
 	}
 
-	var tools []llmstream.Tool
 	toolAuthorizer := authdomain.Authorizer(sandboxAuthorizer)
-
-	var systemPrompt string
+	toolOptions := toolsetinterface.Options{
+		SandboxDir: sandboxDir,
+		Authorizer: toolAuthorizer,
+		Model:      modelID,
+		LintSteps:  cfg.lintSteps,
+	}
+	agentName := agentbuilder.AgentGeneric
 	if cfg.packageMode() {
-		systemPrompt = prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull)
 		unitName := codeUnitName(cfg.packagePath)
 		unit, err := codeunit.NewCodeUnit(unitName, pkgAbsPath)
 		if err != nil {
@@ -141,34 +144,28 @@ func newSession(cfg sessionConfig) (*session, error) {
 		}
 		pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, sandboxAuthorizer)
 		toolAuthorizer = pkgAuthorizer
-		tools, err = toolsets.PackageAgentTools(toolsets.Options{
-			SandboxDir:  sandboxDir,
-			Authorizer:  pkgAuthorizer,
-			GoPkgAbsDir: pkgAbsPath,
-			Model:       modelID,
-			LintSteps:   cfg.lintSteps,
-		})
-		if err != nil {
-			sandboxAuthorizer.Close()
-			return nil, fmt.Errorf("build package toolset: %w", err)
-		}
-	} else {
-		systemPrompt = prompt.GetBasicPrompt()
-		tools, err = toolsets.CoreAgentTools(toolsets.Options{
-			SandboxDir: sandboxDir,
-			Authorizer: sandboxAuthorizer,
-			Model:      modelID,
-			LintSteps:  cfg.lintSteps,
-		})
-		if err != nil {
-			sandboxAuthorizer.Close()
-			return nil, fmt.Errorf("build toolset: %w", err)
-		}
+		toolOptions.Authorizer = pkgAuthorizer
+		toolOptions.GoPkgAbsDir = pkgAbsPath
+		agentName = agentbuilder.AgentPackageModeNoContext
 	}
 
-	systemPrompt = strings.TrimSpace(systemPrompt)
+	registry, err := agentbuilder.BuildRegistry()
+	if err != nil {
+		sandboxAuthorizer.Close()
+		return nil, fmt.Errorf("build agent registry: %w", err)
+	}
 
-	if shellToolName, ok := detectShellToolName(tools); ok {
+	prepared, err := registry.Prepare(context.Background(), agentName, toolsetinterface.InvokeRequest{
+		ToolOptions: toolOptions,
+	})
+	if err != nil {
+		sandboxAuthorizer.Close()
+		return nil, fmt.Errorf("prepare agent: %w", err)
+	}
+
+	systemPrompt := strings.TrimSpace(prepared.SystemPrompt)
+
+	if shellToolName, ok := detectShellToolName(prepared.ToolNames); ok {
 		if err := skills.Authorize(validSkills, toolAuthorizer); err != nil {
 			sandboxAuthorizer.Close()
 			return nil, fmt.Errorf("authorize skills: %w", err)
@@ -176,18 +173,8 @@ func newSession(cfg sessionConfig) (*session, error) {
 		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, cfg.packageMode()))
 		systemPrompt = strings.TrimSpace(systemPrompt)
 	}
-
-	agentInstance, err := agent.NewAgent(modelID, systemPrompt, tools)
-	if err != nil {
-		sandboxAuthorizer.Close()
-		return nil, fmt.Errorf("construct agent: %w", err)
-	}
-
-	envMsg := buildEnvironmentInfo(sandboxDir)
-	if err := agentInstance.AddUserTurn(envMsg); err != nil {
-		sandboxAuthorizer.Close()
-		return nil, fmt.Errorf("add environment info: %w", err)
-	}
+	prepared.SystemPrompt = systemPrompt
+	prepared.InitialTurns = append(prepared.InitialTurns, buildEnvironmentInfo(sandboxDir))
 
 	// In generic mode we don't gather package initialcontext, so include AGENTS.md
 	// context up front if present.
@@ -196,11 +183,14 @@ func newSession(cfg sessionConfig) (*session, error) {
 		if err != nil {
 			debugLogf("agentsmd.Read failed: %v", err)
 		} else if strings.TrimSpace(agentsMsg) != "" {
-			if err := agentInstance.AddUserTurn(agentsMsg); err != nil {
-				sandboxAuthorizer.Close()
-				return nil, fmt.Errorf("add AGENTS.md context: %w", err)
-			}
+			prepared.InitialTurns = append(prepared.InitialTurns, agentsMsg)
 		}
+	}
+
+	agentInstance, err := prepared.Create(agent.NewAgentCreator())
+	if err != nil {
+		sandboxAuthorizer.Close()
+		return nil, fmt.Errorf("construct agent: %w", err)
 	}
 
 	return &session{
@@ -220,12 +210,12 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}, nil
 }
 
-func detectShellToolName(tools []llmstream.Tool) (name string, ok bool) {
-	// We want skills.Prompt to reference the actual shell tool name exposed to the LLM.
-	// "skill_shell" is the harness-level default, but some toolsets may export it as "shell".
+func detectShellToolName(toolNames []string) (name string, ok bool) {
+	// We want skills.Prompt to reference the actual shell-capable tool name exposed to
+	// the LLM. The registry may expose this as either "skill_shell" or "shell".
 	for _, candidate := range []string{"skill_shell", "shell"} {
-		for _, t := range tools {
-			if t != nil && t.Name() == candidate {
+		for _, toolName := range toolNames {
+			if toolName == candidate {
 				return candidate, true
 			}
 		}

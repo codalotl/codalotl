@@ -3,13 +3,19 @@ package pkgtools
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type denyReadAuthorizer struct {
@@ -78,4 +84,161 @@ func TestClarifyPublicAPI_RunDependencyImportDoesNotRequestAuth(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Result, "unable to create subagent")
 	assert.Empty(t, auth.readCalls)
+}
+
+func TestNewClarifyTargetAuthorizer_JailsToTargetPackage(t *testing.T) {
+	sandbox := t.TempDir()
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	require.NoError(t, os.MkdirAll(filepath.Join(targetPkgDir, "data"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(targetPkgDir, "testdata"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(targetPkgDir, "nestedpkg"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(sandbox, "otherpkg"), 0o755))
+
+	targetFile := filepath.Join(targetPkgDir, "target.go")
+	supportFile := filepath.Join(targetPkgDir, "data", "config.json")
+	testdataFile := filepath.Join(targetPkgDir, "testdata", "fixture.go")
+	nestedPkgFile := filepath.Join(targetPkgDir, "nestedpkg", "nested.go")
+	otherPkgFile := filepath.Join(sandbox, "otherpkg", "other.go")
+
+	require.NoError(t, os.WriteFile(targetFile, []byte("package targetpkg\n"), 0o644))
+	require.NoError(t, os.WriteFile(supportFile, []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(testdataFile, []byte("package testdata\n"), 0o644))
+	require.NoError(t, os.WriteFile(nestedPkgFile, []byte("package nestedpkg\n"), 0o644))
+	require.NoError(t, os.WriteFile(otherPkgFile, []byte("package otherpkg\n"), 0o644))
+
+	auth, err := newClarifyTargetAuthorizer(authdomain.NewAutoApproveAuthorizer(sandbox), targetPkgDir)
+	require.NoError(t, err)
+	require.NotNil(t, auth)
+	assert.True(t, auth.IsCodeUnitDomain())
+	assert.Equal(t, targetPkgDir, auth.CodeUnitDir())
+	assert.Equal(t, sandbox, auth.SandboxDir())
+
+	assert.NoError(t, auth.IsAuthorizedForRead(false, "", "read_file", targetFile))
+	assert.NoError(t, auth.IsAuthorizedForRead(false, "", "read_file", supportFile))
+	assert.NoError(t, auth.IsAuthorizedForRead(false, "", "read_file", testdataFile))
+	assert.ErrorIs(t, auth.IsAuthorizedForRead(false, "", "read_file", nestedPkgFile), authdomain.ErrCodeUnitPathOutside)
+	assert.ErrorIs(t, auth.IsAuthorizedForRead(false, "", "read_file", otherPkgFile), authdomain.ErrCodeUnitPathOutside)
+}
+
+func TestNewClarifyTargetAuthorizer_NilBaseAuthorizer(t *testing.T) {
+	auth, err := newClarifyTargetAuthorizer(nil, t.TempDir())
+	require.NoError(t, err)
+	assert.Nil(t, auth)
+}
+
+func TestInvokeClarifyAgent_UsesClarifyAgentAndReturnsAnswer(t *testing.T) {
+	sandboxDir := t.TempDir()
+	authorizer := authdomain.NewAutoApproveAuthorizer(sandboxDir)
+	creator := &fakeAgentCreator{}
+	invoker := &fakeAgentInvoker{
+		events: successfulClarifyEvents("It compares the values using equality semantics."),
+	}
+
+	answer, err := invokeClarifyAgent(
+		context.Background(),
+		invoker,
+		creator,
+		sandboxDir,
+		authorizer,
+		filepath.Join(sandboxDir, "effective-sandbox"),
+		authdomain.NewAutoApproveAuthorizer(filepath.Join(sandboxDir, "effective-sandbox")),
+		"mock-model",
+		"pkg",
+		filepath.Join(sandboxDir, "pkg"),
+		"Equal",
+		"What does Equal do?",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "It compares the values using equality semantics.", answer)
+	assert.Equal(t, ToolNameClarifyPublicAPI, invoker.invokedAgentName)
+	assert.Equal(t, creator, invoker.req.AgentCreator)
+	assert.Equal(t, filepath.Join(sandboxDir, "pkg"), invoker.req.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, llmmodel.ModelID("mock-model"), invoker.req.ToolOptions.Model)
+	assert.Equal(t, filepath.Join(sandboxDir, "effective-sandbox"), invoker.req.OverrideSandboxDir)
+	assert.Equal(t, sandboxDir, invoker.req.CallerSandboxDir)
+	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
+	require.Len(t, invoker.req.Messages, 1)
+	assert.Equal(t, "Clarify this identifier.\n\nPath: pkg\nIdentifier: Equal\n\nQuestion:\nWhat does Equal do?", invoker.req.Messages[0])
+}
+
+func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T) {
+	sandboxDir := t.TempDir()
+	invoker := &fakeAgentInvoker{
+		events: successfulClarifyEvents("It compares the values using equality semantics."),
+	}
+
+	_, err := invokeClarifyAgent(
+		context.Background(),
+		invoker,
+		&fakeAgentCreator{},
+		sandboxDir,
+		authdomain.NewAutoApproveAuthorizer(sandboxDir),
+		sandboxDir,
+		authdomain.NewAutoApproveAuthorizer(sandboxDir),
+		"mock-model",
+		"pkg",
+		filepath.Join(sandboxDir, "pkg"),
+		"Equal",
+		"What does \"Equal\" do?\nDoes it treat nil specially?",
+	)
+	require.NoError(t, err)
+	require.Len(t, invoker.req.Messages, 1)
+	assert.Equal(t, "Clarify this identifier.\n\nPath: pkg\nIdentifier: Equal\n\nQuestion:\nWhat does \"Equal\" do?\nDoes it treat nil specially?", invoker.req.Messages[0])
+	assert.NotContains(t, invoker.req.Messages[0], `\"`)
+	assert.NotContains(t, invoker.req.Messages[0], `\n`)
+}
+
+func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {
+	_, err := invokeClarifyAgent(
+		context.Background(),
+		nil,
+		fakeAgentCreator{},
+		t.TempDir(),
+		nil,
+		t.TempDir(),
+		nil,
+		"",
+		"fmt",
+		t.TempDir(),
+		"Thing",
+		"What does Thing do?",
+	)
+	assert.EqualError(t, err, "clarify agent unavailable")
+}
+
+type fakeAgentInvoker struct {
+	events           <-chan agent.Event
+	err              error
+	invokedAgentName string
+	req              toolsetinterface.InvokeRequest
+}
+
+func (f *fakeAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+	f.invokedAgentName = agentName
+	f.req = req
+	return f.events, f.err
+}
+
+type fakeAgentCreator struct{}
+
+func (fakeAgentCreator) New(llmmodel.ModelID, string, []llmstream.Tool) (*agent.Agent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeAgentCreator) NewWithDefaultModel(string, []llmstream.Tool) (*agent.Agent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func successfulClarifyEvents(answer string) <-chan agent.Event {
+	events := make(chan agent.Event, 2)
+	events <- agent.Event{
+		Type: agent.EventTypeAssistantTurnComplete,
+		Turn: &llmstream.Turn{
+			Role:  llmstream.RoleAssistant,
+			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: answer}},
+		},
+	}
+	events <- agent.Event{Type: agent.EventTypeDoneSuccess}
+	close(events)
+	return events
 }

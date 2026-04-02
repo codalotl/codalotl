@@ -6,8 +6,6 @@ import (
 	"example.com/clarifyintegration/catalog"
 	"example.com/clarifyintegration/inventory"
 	"example.com/clarifyintegration/pricing"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestBuildPlanReturnsIssuesForShortagesAndColdShipping(t *testing.T) {
@@ -39,14 +37,30 @@ func TestBuildPlanReturnsIssuesForShortagesAndColdShipping(t *testing.T) {
 		{Label: "tea-sale", Tag: "tea", FlatOffCents: 100},
 	})
 
-	require.NoError(t, err)
-	assert.Equal(t, "preferred", plan.LoyaltyTier)
-	assert.Equal(t, 2, len(plan.Issues))
-	assert.Equal(t, 1, plan.Reservation.ConfirmedQuantity("tea-earl-grey"))
-	assert.Equal(t, 1, plan.Reservation.ConfirmedQuantity("gel-pack"))
-	assert.Equal(t, 1215, plan.Quote.TotalCents)
-	assert.Equal(t, 180, plan.TotalWeightGrams)
-	assert.False(t, plan.ReadyToShip())
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if plan.LoyaltyTier != "preferred" {
+		t.Fatalf("expected loyalty tier %q, got %q", "preferred", plan.LoyaltyTier)
+	}
+	if len(plan.Issues) != 2 {
+		t.Fatalf("expected 2 issues, got %d", len(plan.Issues))
+	}
+	if got := plan.Reservation.ConfirmedQuantity("tea-earl-grey"); got != 1 {
+		t.Fatalf("expected tea-earl-grey quantity %d, got %d", 1, got)
+	}
+	if got := plan.Reservation.ConfirmedQuantity("gel-pack"); got != 1 {
+		t.Fatalf("expected gel-pack quantity %d, got %d", 1, got)
+	}
+	if plan.Quote.TotalCents != 1215 {
+		t.Fatalf("expected total cents %d, got %d", 1215, plan.Quote.TotalCents)
+	}
+	if plan.TotalWeightGrams != 180 {
+		t.Fatalf("expected total weight %d, got %d", 180, plan.TotalWeightGrams)
+	}
+	if plan.ReadyToShip() {
+		t.Fatal("expected plan not to be ready to ship")
+	}
 }
 
 func TestSummaryUsesConfirmedItems(t *testing.T) {
@@ -67,7 +81,13 @@ func TestSummaryUsesConfirmedItems(t *testing.T) {
 		Items:    []pricing.LineItem{{SKU: "tea-jasmine", Quantity: 2}},
 	}, nil)
 
-	require.NoError(t, err)
-	assert.True(t, plan.ReadyToShip())
-	assert.Equal(t, "2 items, total $15.20, issues: 0", plan.Summary())
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !plan.ReadyToShip() {
+		t.Fatal("expected plan to be ready to ship")
+	}
+	if plan.Summary() != "2 items, total $15.20, issues: 0" {
+		t.Fatalf("expected summary %q, got %q", "2 items, total $15.20, issues: 0", plan.Summary())
+	}
 }

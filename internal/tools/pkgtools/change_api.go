@@ -14,8 +14,6 @@ import (
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/subagents/packagemode"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
@@ -26,10 +24,14 @@ var descriptionChangeAPI string
 
 const ToolNameChangeAPI = "change_api"
 
+// This mirrors internal/agentbuilder.AgentPackageModeDefaultContext without importing that package and creating an import cycle.
+const changeAPIAgentName = "package_mode_default_context"
+
 type toolChangeAPI struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
 	toolset       toolsetinterface.Toolset
+	agentInvoker  toolsetinterface.AgentInvoker
 	model         llmmodel.ModelID
 
 	// pkgDirAbsPath is the package directory of the agent that is invoking this tool. The tool only allows changing packages that this package directly imports.
@@ -43,17 +45,26 @@ type changeAPIParams struct {
 	Instructions string `json:"instructions"`
 }
 
+type ChangeAPIToolOptions struct {
+	AgentInvoker toolsetinterface.AgentInvoker
+}
+
 // NewChangeAPITool creates a tool that can update upstream packages that the current package directly imports.
 //
 // authorizer should be a sandbox authorizer (not a package-jail authorizer). If the calling agent is jailed, pass authorizer.WithoutCodeUnit().
 //
 // toolset is injected into the subagent that performs the package update (ex: toolsets.PackageAgentTools).
-func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, model llmmodel.ModelID, lintSteps []lints.Step) llmstream.Tool {
+func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, model llmmodel.ModelID, lintSteps []lints.Step, options ...ChangeAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
+	var option ChangeAPIToolOptions
+	if len(options) > 0 {
+		option = options[0]
+	}
 	return &toolChangeAPI{
 		sandboxAbsDir: sandboxAbsDir,
 		authorizer:    authorizer,
 		toolset:       toolset,
+		agentInvoker:  option.AgentInvoker,
 		model:         model,
 		pkgDirAbsPath: filepath.Clean(pkgDirAbsPath),
 		lintSteps:     lintSteps,
@@ -163,10 +174,6 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 		}
 	}
 
-	if t.toolset == nil {
-		return coretools.NewToolErrorResult(call, "toolset unavailable", nil)
-	}
-
 	agentCreator, err := subAgentCreatorFromContextSafe(ctx)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
@@ -185,18 +192,17 @@ func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstr
 
 	pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, t.authorizer)
 
-	answer, err := packagemode.Run(
+	answer, err := invokeChangeAPIAgent(
 		ctx,
+		t.agentInvoker,
 		agentCreator,
+		t.sandboxAbsDir,
 		pkgAuthorizer,
 		targetAbsDir,
-		func(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
-			opts.Model = t.model
-			return t.toolset(opts)
-		},
-		instructions,
+		t.model,
 		t.lintSteps,
-		prompt.GoPackageModePromptKindFull,
+		t.agentInvoker,
+		instructions,
 	)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
@@ -223,4 +229,31 @@ func subAgentCreatorFromContextSafe(ctx context.Context) (creator agent.SubAgent
 		return nil, fmt.Errorf("unable to create subagent")
 	}
 	return creator, nil
+}
+
+func invokeChangeAPIAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, sandboxAbsDir string, pkgAuthorizer authdomain.Authorizer, packageAbsDir string, model llmmodel.ModelID, lintSteps []lints.Step, nestedAgentInvoker toolsetinterface.AgentInvoker, instructions string) (string, error) {
+	if invoker == nil {
+		return "", fmt.Errorf("change_api agent unavailable")
+	}
+
+	req := toolsetinterface.InvokeRequest{
+		AgentCreator:     agentCreator,
+		CallerAuthorizer: pkgAuthorizer,
+		CallerSandboxDir: sandboxAbsDir,
+		ToolOptions: toolsetinterface.Options{
+			SandboxDir:   sandboxAbsDir,
+			GoPkgAbsDir:  packageAbsDir,
+			Model:        model,
+			LintSteps:    lintSteps,
+			AgentInvoker: nestedAgentInvoker,
+		},
+		Messages: []string{instructions},
+	}
+
+	events, err := invoker.Invoke(ctx, changeAPIAgentName, req)
+	if err != nil {
+		return "", err
+	}
+
+	return agent.CollectFinalAssistantText(ctx, events)
 }

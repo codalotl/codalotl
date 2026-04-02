@@ -20,12 +20,16 @@ func TestNewChangeAPITool_StoresLintSteps(t *testing.T) {
 	sandbox := t.TempDir()
 	steps := []lints.Step{{ID: "custom"}}
 	model := llmmodel.DefaultModel
+	invoker := &fakeAgentInvoker{}
 
-	tool := NewChangeAPITool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), model, steps)
+	tool := NewChangeAPITool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), model, steps, ChangeAPIToolOptions{
+		AgentInvoker: invoker,
+	})
 	changeTool, ok := tool.(*toolChangeAPI)
 	require.True(t, ok)
 	assert.Equal(t, model, changeTool.model)
 	assert.Equal(t, steps, changeTool.lintSteps)
+	assert.Equal(t, invoker, changeTool.agentInvoker)
 }
 
 func TestChangeAPI_MissingImportPath(t *testing.T) {
@@ -112,6 +116,60 @@ func TestChangeAPI_RejectsPackagesOutsideSandbox(t *testing.T) {
 		assert.True(t, res.IsError)
 		assert.Contains(t, res.Result, "outside the sandbox")
 	})
+}
+
+func TestInvokeChangeAPIAgent_UsesPackageModeAgentAndPassesInstructions(t *testing.T) {
+	sandboxDir := t.TempDir()
+	authorizer := authdomain.NewAutoApproveAuthorizer(sandboxDir)
+	creator := &fakeAgentCreator{}
+	invoker := &fakeAgentInvoker{
+		events: successfulClarifyEvents("updated upstream package"),
+	}
+	lintSteps := []lints.Step{{ID: "custom"}}
+	packageDir := filepath.Join(sandboxDir, "upstream")
+
+	answer, err := invokeChangeAPIAgent(
+		context.Background(),
+		invoker,
+		creator,
+		sandboxDir,
+		authorizer,
+		packageDir,
+		"mock-model",
+		lintSteps,
+		invoker,
+		"Update the exported API safely.",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "updated upstream package", answer)
+	assert.Equal(t, "package_mode_default_context", changeAPIAgentName)
+	assert.Equal(t, changeAPIAgentName, invoker.invokedAgentName)
+	assert.Equal(t, creator, invoker.req.AgentCreator)
+	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
+	assert.Equal(t, sandboxDir, invoker.req.CallerSandboxDir)
+	assert.Equal(t, sandboxDir, invoker.req.ToolOptions.SandboxDir)
+	assert.Equal(t, packageDir, invoker.req.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, llmmodel.ModelID("mock-model"), invoker.req.ToolOptions.Model)
+	assert.Equal(t, lintSteps, invoker.req.ToolOptions.LintSteps)
+	assert.Equal(t, invoker, invoker.req.ToolOptions.AgentInvoker)
+	require.Len(t, invoker.req.Messages, 1)
+	assert.Equal(t, "Update the exported API safely.", invoker.req.Messages[0])
+}
+
+func TestInvokeChangeAPIAgent_RequiresInvoker(t *testing.T) {
+	_, err := invokeChangeAPIAgent(
+		context.Background(),
+		nil,
+		fakeAgentCreator{},
+		t.TempDir(),
+		nil,
+		t.TempDir(),
+		"",
+		nil,
+		nil,
+		"Update it.",
+	)
+	assert.EqualError(t, err, "change_api agent unavailable")
 }
 
 func dummyPackageToolset() toolsetinterface.Toolset {

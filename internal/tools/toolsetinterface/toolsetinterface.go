@@ -9,14 +9,29 @@
 package toolsetinterface
 
 import (
+	"context"
+
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
+// AgentInvoker is an interface that can invoke subagents by name.
+type AgentInvoker interface {
+	// Invoke invokes a named agent with req, and returns a channel from which to read events.
+	Invoke(ctx context.Context, agentName string, req InvokeRequest) (<-chan agent.Event, error)
+}
+
 // Options configures a Toolset.
 type Options struct {
+	// AgentName is the name of the agent currently being constructed.
+	//
+	// Tool constructors can use this to preserve agent-specific behavior when the
+	// same tool name is shared across multiple registered agents.
+	AgentName string
+
 	// SandboxDir is the sandbox root used to resolve relative paths provided by the LLM into absolute paths. The authorizer implements the actual access constraints
 	// ("jail").
 	SandboxDir string
@@ -31,7 +46,28 @@ type Options struct {
 
 	// LintSteps are the linting steps that can be used by tools that need to check/fix formatting or other repo conventions.
 	LintSteps []lints.Step
+
+	// AgentInvoker allows a tool to invoke other agents.
+	AgentInvoker AgentInvoker
 }
 
 // Toolset returns tools configured by opts.
 type Toolset func(opts Options) ([]llmstream.Tool, error)
+
+// Tool returns a single tool configured by opts.
+type Tool func(opts Options) (llmstream.Tool, error)
+
+// InvokeRequest is the data needed to invoke an agent.
+type InvokeRequest struct {
+	// ToolOptions supplies information needed to construct tools, such as GoPkgAbsDir, Authorizer, SandboxDir, Model.
+	//
+	// Any field supplied here is not duplicated elsewhere in InvokeRequest (ex: Model).
+	ToolOptions Options
+
+	AgentCreator       agent.AgentCreator    // AgentCreator creates the agent (either a root or child agent).
+	CallerAuthorizer   authdomain.Authorizer // CallerAuthorizer is the current authorizer of the calling agent.
+	CallerSandboxDir   string                // CallerSandboxDir is the current sandbox root of the calling agent.
+	OverrideAuthorizer authdomain.Authorizer // If not nil, use this authorizer for the new agent.
+	OverrideSandboxDir string                // If not "", use this sandbox dir for the new agent.
+	Messages           []string              // Messages are the initial user messages to the LLM (after the prompt).
+}
