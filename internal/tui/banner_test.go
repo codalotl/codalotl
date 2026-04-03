@@ -46,6 +46,16 @@ func TestBannerStacksNameWhenExtremelyNarrow(t *testing.T) {
 	require.Contains(t, stripANSI(result), expectedLine)
 }
 
+func TestNewSessionBlock_OrchestrateMode(t *testing.T) {
+	pal := newColorPalette(Config{ColorProfile: termformat.ColorProfileANSI256, Palette: PaletteDark})
+	block := newSessionBlock(100, pal, sessionConfig{agentName: orchestrateAgentName})
+	plain := stripANSI(block)
+
+	require.Contains(t, plain, "orchestrate mode")
+	require.Contains(t, plain, "pr-orchestrator")
+	require.Contains(t, plain, "/orchestrate")
+}
+
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func stripANSI(s string) string {

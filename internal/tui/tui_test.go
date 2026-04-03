@@ -285,6 +285,82 @@ func TestPackageCommandStartsSession(t *testing.T) {
 	assert.Equal(t, "Package: .", m.packageSection())
 }
 
+func TestOrchestrateCommandStartsSession(t *testing.T) {
+	var factoryCfg sessionConfig
+	factory := func(cfg sessionConfig) (*session, error) {
+		factoryCfg = cfg
+		return &session{config: cfg}, nil
+	}
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, factory, nil, nil, nil)
+	var started []string
+	m.startAgentRunHook = func(message string) {
+		started = append(started, message)
+	}
+
+	handled := m.handleSlashCommand("/orchestrate")
+	require.True(t, handled)
+
+	require.Equal(t, orchestrateAgentName, factoryCfg.agentName)
+	require.Empty(t, factoryCfg.packagePath)
+	require.Equal(t, []string{""}, started)
+	require.NotNil(t, m.session)
+	require.True(t, m.sessionConfig.orchestrateMode())
+	require.Len(t, m.messages, 1)
+	require.Equal(t, messageKindWelcome, m.messages[0].kind)
+}
+
+func TestOrchestrateCommandWithMessageAddsInitialUserMessage(t *testing.T) {
+	var factoryCfg sessionConfig
+	factory := func(cfg sessionConfig) (*session, error) {
+		factoryCfg = cfg
+		return &session{config: cfg}, nil
+	}
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, factory, nil, nil, nil)
+	var started []string
+	m.startAgentRunHook = func(message string) {
+		started = append(started, message)
+	}
+
+	handled := m.handleSlashCommand("/orchestrate plan the release work")
+	require.True(t, handled)
+
+	require.Equal(t, orchestrateAgentName, factoryCfg.agentName)
+	require.Equal(t, []string{"plan the release work"}, started)
+	require.True(t, m.sessionConfig.orchestrateMode())
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindWelcome, m.messages[0].kind)
+	require.Equal(t, messageKindUser, m.messages[1].kind)
+	require.Equal(t, "plan the release work", m.messages[1].userMessage)
+}
+
+func TestNewSessionRetainsOrchestrateMode(t *testing.T) {
+	var factoryCfg sessionConfig
+	factory := func(cfg sessionConfig) (*session, error) {
+		factoryCfg = cfg
+		return &session{config: cfg}, nil
+	}
+
+	m := newModel(
+		colorPalette{},
+		noopFormatter{},
+		&session{config: sessionConfig{agentName: orchestrateAgentName}},
+		sessionConfig{agentName: orchestrateAgentName},
+		factory,
+		nil,
+		nil,
+		nil,
+	)
+
+	m.handleNewSessionCommand()
+
+	require.Equal(t, orchestrateAgentName, factoryCfg.agentName)
+	require.True(t, m.sessionConfig.orchestrateMode())
+	require.Len(t, m.messages, 1)
+	require.Equal(t, messageKindWelcome, m.messages[0].kind)
+}
+
 func TestPackageCommandRejectsInvalidPath(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 

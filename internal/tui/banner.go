@@ -126,6 +126,20 @@ func newSessionBlock(width int, pal colorPalette, cfg sessionConfig) string {
 			styledChunk{style: bodyStyle, text: "To share context from other packages directly, use"},
 			styledChunk{style: hintStyle, text: "@path/to/context."},
 		)
+	} else if cfg.orchestrateMode() {
+		appendWrappedChunks(
+			styledChunk{style: bodyStyle, text: "You are in"},
+			styledChunk{style: emphTitleStyle, text: "orchestrate mode."},
+			styledChunk{style: bodyStyle, text: " This uses the built-in"},
+			styledChunk{style: hintStyle, text: "pr-orchestrator"},
+			styledChunk{style: bodyStyle, text: "agent to review a branch and delegate package implementation work."},
+		)
+
+		lines = append(lines, "")
+		appendWrapped(bodyStyle, "Start by describing the change to orchestrate, or use one of the commands:")
+		appendWrapped(hintStyle, "• /orchestrate add tests for x")
+		appendWrapped(hintStyle, "• /package path/to/pkg")
+		appendWrapped(hintStyle, "• /quit")
 	} else {
 		appendWrappedChunks(
 			styledChunk{style: bodyStyle, text: "You are in the generic, language-agnostic,"},

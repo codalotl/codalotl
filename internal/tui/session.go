@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	defaultModelID = llmmodel.DefaultModel
-	tuiAgentName   = "codalotl"
+	defaultModelID       = llmmodel.DefaultModel
+	tuiAgentName         = "codalotl"
+	orchestrateAgentName = "pr-orchestrator"
 )
 
 type session struct {
@@ -50,6 +51,7 @@ type session struct {
 
 type sessionConfig struct {
 	packagePath string
+	agentName   string
 	modelID     llmmodel.ModelID
 	lintSteps   []lints.Step
 
@@ -60,6 +62,10 @@ type sessionConfig struct {
 
 func (cfg sessionConfig) packageMode() bool {
 	return strings.TrimSpace(cfg.packagePath) != ""
+}
+
+func (cfg sessionConfig) orchestrateMode() bool {
+	return strings.TrimSpace(cfg.agentName) == orchestrateAgentName
 }
 
 func newSession(cfg sessionConfig) (*session, error) {
@@ -123,6 +129,9 @@ func newSession(cfg sessionConfig) (*session, error) {
 		LintSteps:  cfg.lintSteps,
 	}
 	agentName := agentbuilder.AgentGeneric
+	if cfg.orchestrateMode() {
+		agentName = orchestrateAgentName
+	}
 	if cfg.packageMode() {
 		unitName := codeUnitName(cfg.packagePath)
 		unit, err := codeunit.NewCodeUnit(unitName, pkgAbsPath)
@@ -333,6 +342,7 @@ func boolToYesNo(v bool) string {
 // along with the absolute package path.
 func normalizeSessionConfig(cfg sessionConfig, sandboxDir string) (sessionConfig, string, error) {
 	cfg.packagePath = strings.TrimSpace(cfg.packagePath)
+	cfg.agentName = strings.TrimSpace(cfg.agentName)
 	cfg.modelID = llmmodel.ModelID(strings.TrimSpace(string(cfg.modelID)))
 	if cfg.modelID == "" {
 		cfg.modelID = defaultModelID
