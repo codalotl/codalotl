@@ -1,6 +1,6 @@
 # agentbuilder
 
-`agentbuilder` registers our agents into `agentregistry`, allowing `agentregistry` to keep low deps.
+`agentbuilder` registers our default agents/tools into `agentregistry`, allowing `agentregistry` to keep low deps. It also exposes a way to create new agents and tools via YAML files.
 
 ## Agents
 
@@ -19,7 +19,9 @@
 
 ## Data-Driven Agent/Tool Construction
 
-YAML files can construct agents and tools, which can be added to the registry. Top-level keys: `agents` and `tools`, both arrays.
+YAML files can construct agents and tools, which can be added to the registry. All agents above (except clarify_public_api) must be able to be implemented with YAML files.
+
+Top-level keys: `agents` and `tools`, both arrays.
 
 Agents:
 - An agent object has 4 required fields: `name`, `prompts`, `tools`, and `mode`.
@@ -45,8 +47,15 @@ Tools:
     - `cwd`: optional. Default: the sandbox dir of callers. Can use Go templating.
 - `subagent` is used to run a named agent.
     - `name`: name of the agent to use (either from this YAML file, previously added YAML files, or the base pre-installed `## Agents` above).
-    - `package`: optional. If present, indicates we're using package mode. The only value supported is the name of a parameter, which is interpreted as the package to jail to.
+    - `package`: optional. If present, indicates we're using package mode. The only value supported is the name of a parameter, whose value is interpreted as the package to jail to (relative path to sandbox or Go import path).
     - `message`: Message to send. Uses Go templating.
+    - `package_restrictions`: optional; only relevant for package-based subagents. Subfields (all optional. All except `require_package_mode` only apply if we're already in package mode):
+        - `disallow_self`: disallow the same package as is currently running.
+        - `relation`: optional relationship between the current package and the target package. Supported values:
+            - `direct_import_of_caller`: the target package must be directly imported by the current package.
+            - `direct_importer_of_caller`: the target package must directly import the current package.
+        - `allow_outside_sandbox`: allows calling the tool on packages outside of the sandbox (e.g., deps from go.mod or the stdlib). Default false.
+        - `require_package_mode`: require the caller be in package mode. Default false.
     - NOTE: A package-mode agent must be supplied a package, and a non-package-mode agent must not be supplied a package.
 - The following fields are available to Go templating:
     - parameters (e.g., a param named `path` is accessed as `{{ .path }}`).
@@ -81,11 +90,6 @@ Toolsets are just a device used in this SPEC.md file to factor this file (and ma
 ## Public API
 
 ```go
-const (
-	AgentGeneric              string = "generic"
-	AgentPackageModeNoContext string = "package_mode_no_context"
-)
-
 // BuildRegistry builds the registry.
 func BuildRegistry() (*agentregistry.Registry, error)
 
