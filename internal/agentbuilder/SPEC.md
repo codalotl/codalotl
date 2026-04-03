@@ -1,6 +1,6 @@
 # agentbuilder
 
-`agentbuilder` registers our default agents/tools into `agentregistry`, allowing `agentregistry` to keep low deps. It also exposes a way to create new agents and tools via YAML files.
+`agentbuilder` registers our default agents/tools into `agentregistry`, keeping `agentregistry` deps low. It also exposes a way to create new agents and tools via YAML files.
 
 ## Agents
 
@@ -9,17 +9,17 @@
     - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
 - package_mode_default_context: toolset_package
     - The same as package_mode_no_context, except:
-    - Uses `InitialTurnsBuilder` to add with context (e.g., env and calls `initialcontext.Create`).
+    - Uses `InitialTurnsBuilder` to add env + `initialcontext.Create` context.
 - limited_package_mode: toolset_limited_package
     - Uses the "Package Mode Update Usage" prompt kind
-    - Uses `InitialTurnsBuilder` to add with context (e.g., env and calls `initialcontext.Create`).
-- clarify_public_api: simple_read_only toolset
+    - Uses `InitialTurnsBuilder` to add env + `initialcontext.Create` context.
+- clarify_public_api: toolset_simple_read_only
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
 
 ## Data-Driven Agent/Tool Construction
 
-YAML files can construct agents and tools, which can be added to the registry. All agents above (except clarify_public_api) must be able to be implemented with YAML files.
+YAML files can construct agents and tools, which can be added to the registry. All agents above (except clarify_public_api) must be implementable with YAML files.
 
 Top-level keys: `agents` and `tools`, both arrays.
 
@@ -31,7 +31,7 @@ Agents:
     - `name`: refers to an existing prompt. Built-in options are `base`, `package-base`, and `limited-package-base`, referring to the agent prompts from `generic`, `package_mode_no_context`, and `limited_package_mode`, respectively.
     - `file`: refers to a textual file (usually a `.md` file) relative to the YAML file, which is read.
     - `text`: just use this text directly.
-- `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one "virtual" tool: the `edit_files` tool refers to the `toolset_edit_files` tools.
+- `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one virtual tool exists: `edit_files`, which refers to the `toolset_edit_files` tools.
 - `mode` is one of `generic` or `package`.
 - `include_package_mode_context` set to true includes package env and `initialcontext.Create` (optional; only valid if `mode` is `package`).
 - `skills` is an optional boolean (default true) that adds skill support to the prompt (passing appropriate shell tool). Requires the tool `shell` or `skill_shell` to be present.
@@ -49,7 +49,7 @@ Tools:
     - `name`: name of the agent to use (either from this YAML file, previously added YAML files, or the base pre-installed `## Agents` above).
     - `package`: optional. If present, indicates we're using package mode. The only value supported is the name of a parameter, whose value is interpreted as the package to jail to (relative path to sandbox or Go import path).
     - `message`: Message to send. Uses Go templating.
-    - `package_restrictions`: optional; only relevant for package-based subagents. Subfields (all optional. All except `require_package_mode` only apply if we're already in package mode):
+    - `package_restrictions`: optional; only relevant for package-based subagents. Subfields (all optional; all except `require_package_mode` only apply if already in package mode):
         - `disallow_self`: disallow the same package as is currently running.
         - `relation`: optional relationship between the current package and the target package. Supported values:
             - `direct_import_of_caller`: the target package must be directly imported by the current package.
@@ -66,7 +66,7 @@ Tools:
 
 ## Toolsets
 
-Toolsets are just a device used in this SPEC.md file to factor this file (and may be used in non-exported code), not intended to be a public part of the API.
+Toolsets are just a device used in this SPEC.md to factor the file (and may be used in non-exported code), not intended to be a public part of the API.
 
 - toolset_edit_files:
     - when the model provider is openai: {`apply_patch`}
@@ -93,9 +93,9 @@ Toolsets are just a device used in this SPEC.md file to factor this file (and ma
 // BuildRegistry builds the registry.
 func BuildRegistry() (*agentregistry.Registry, error)
 
-// AddYMLToRegistry adds agents and tools to reg based on the YAML file indicated by path. If an error occurs, reg will not be mutated.
+// AddYAMLToRegistry adds agents and tools to reg based on the YAML file at path. If an error occurs, reg will not be mutated.
 //
-// An error is returned for typical issues reading the YAML file, but also:
+// Errors are returned for typical issues reading the YAML file, and also:
 //   - If an agent/tool's name overwrites an existing agent/tool name.
-func AddYMLToRegistry(reg *agentregistry.Registry, path string) error
+func AddYAMLToRegistry(reg *agentregistry.Registry, path string) error
 ```
