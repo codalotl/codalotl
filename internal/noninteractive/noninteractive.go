@@ -25,7 +25,6 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"golang.org/x/term"
@@ -882,35 +881,7 @@ func detectTerminalWidth(out io.Writer) int {
 	return 0
 }
 
-func detectShellToolName(toolNames []string) (name string, ok bool) {
-	// We want skills.Prompt to reference the actual shell tool name exposed to the LLM.
-	// "skill_shell" is the harness-level default, but some toolsets may export it as "shell".
-	for _, candidate := range []string{"skill_shell", "shell"} {
-		for _, toolName := range toolNames {
-			if toolName == candidate {
-				return candidate, true
-			}
-		}
-	}
-	return "", false
-}
-
 func buildAgent(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) (*agent.Agent, error) {
-	skillSearchStartDir := sandboxDir
-	if pkgMode {
-		skillSearchStartDir = pkgAbsPath
-	}
-	if err := skills.InstallDefault(); err != nil {
-		return nil, fmt.Errorf("install default skills: %w", err)
-	}
-	searchDirs := skills.SearchPaths(skillSearchStartDir)
-	validSkills, _, _, skillsErr := skills.LoadSkills(searchDirs)
-	if skillsErr != nil {
-		// Non-fatal: skills are optional and the app should still run even if discovery fails.
-		// The agent will simply not be told about skills in the prompt.
-		validSkills = nil
-	}
-
 	toolOptions := toolsetinterface.Options{
 		SandboxDir: sandboxDir,
 		Authorizer: authorizer,
@@ -934,16 +905,6 @@ func buildAgent(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath s
 	if err != nil {
 		return nil, fmt.Errorf("prepare agent: %w", err)
 	}
-
-	systemPrompt := strings.TrimSpace(prepared.SystemPrompt)
-	if shellToolName, ok := detectShellToolName(prepared.ToolNames); ok {
-		if err := skills.Authorize(validSkills, authorizer); err != nil {
-			return nil, fmt.Errorf("authorize skills: %w", err)
-		}
-		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, pkgMode))
-		systemPrompt = strings.TrimSpace(systemPrompt)
-	}
-	prepared.SystemPrompt = systemPrompt
 
 	envMsg := buildEnvironmentInfo(sandboxDir)
 	if pkgMode {

@@ -34,7 +34,7 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 
 	require.NoError(t, registry.ValidateTools())
 
-	require.Len(t, registry.List(), 5)
+	require.Len(t, registry.List(), 6)
 
 	genericDef, ok := registry.Lookup(AgentGeneric)
 	assert.True(t, ok)
@@ -71,12 +71,19 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(clarifyPrompt, prompt.GetBasicPrompt()))
 	assert.Contains(t, clarifyPrompt, "read-only agent for clarifying public API documentation")
+
+	prOrchestratorDef, ok := registry.Lookup("pr-orchestrator")
+	require.True(t, ok)
+	assert.Equal(t, "pr-orchestrator", prOrchestratorDef.Name)
 }
 
 func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	gotPrompt, gotTools := invokeAgentForModel(t, AgentGeneric, llmmodel.ProviderIDOpenAI.DefaultModel())
 
-	assert.Equal(t, prompt.GetBasicPrompt(), gotPrompt)
+	assert.Contains(t, gotPrompt, prompt.GetBasicPrompt())
+	assert.Contains(t, gotPrompt, "# Skills")
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
@@ -101,9 +108,12 @@ func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) 
 }
 
 func TestBuildRegistry_InvokePackageMode_OpenAIUsesPackagePromptAndTools(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	gotPrompt, gotTools := invokeAgentForModel(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel())
 
-	assert.Equal(t, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull), gotPrompt)
+	assert.Contains(t, gotPrompt, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull))
+	assert.Contains(t, gotPrompt, "# Skills")
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
@@ -190,6 +200,25 @@ func TestBuildRegistry_InvokeLimitedPackageMode_OpenAIUsesLimitedPromptAndTools(
 		exttools.ToolNameRunTests,
 		pkgtools.ToolNameGetPublicAPI,
 		pkgtools.ToolNameClarifyPublicAPI,
+	}, gotTools)
+}
+
+func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	gotPrompt, gotTools := invokeAgentForModel(t, "pr-orchestrator", llmmodel.ProviderIDOpenAI.DefaultModel())
+
+	assert.Contains(t, gotPrompt, prompt.GetBasicPrompt())
+	assert.Contains(t, gotPrompt, "# PR Orchestrator")
+	assert.Contains(t, gotPrompt, "# Skills")
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameShell,
+		coretools.ToolNameApplyPatch,
+		coretools.ToolNameUpdatePlan,
+		"review",
+		"implement",
 	}, gotTools)
 }
 

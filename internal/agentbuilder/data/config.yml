@@ -1,5 +1,26 @@
 ---
 agents:
+  - name: package_mode_no_context
+    prompts:
+      - name: package-base
+    tools:
+      - read_file
+      - ls
+      - edit_files
+      - skill_shell
+      - update_plan
+      - diagnostics
+      - fix_lints
+      - run_tests
+      - run_project_tests
+      - module_info
+      - get_public_api
+      - clarify_public_api
+      - get_usage
+      - update_usage
+      - change_api
+    mode: package
+    skills: true
   - name: pr-orchestrator
     prompts:
       - name: base
@@ -44,5 +65,4 @@ tools:
       name: package_mode_default_context
       package: path
       message: "{{ .instructions }}"
-
 

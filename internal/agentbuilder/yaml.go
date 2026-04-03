@@ -3,10 +3,12 @@ package agentbuilder
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,6 +33,7 @@ import (
 const (
 	yamlAgentModeGeneric       = "generic"
 	yamlAgentModePackage       = "package"
+	yamlDefaultConfigPath      = "data/config.yml"
 	yamlPromptBase             = "base"
 	yamlPromptPackageBase      = "package-base"
 	yamlPromptLimitedPkgBase   = "limited-package-base"
@@ -38,6 +41,9 @@ const (
 	yamlRelationDirectImport   = "direct_import_of_caller"
 	yamlRelationDirectImporter = "direct_importer_of_caller"
 )
+
+//go:embed data/*
+var embeddedYAMLData embed.FS
 
 type yamlRegistrySpec struct {
 	Agents []yamlAgentSpec `yaml:"agents"`
@@ -147,7 +153,20 @@ func AddYAMLToRegistry(reg *agentregistry.Registry, path string) error {
 		return errors.New("yaml path is required")
 	}
 
-	spec, yamlDir, err := loadYAMLRegistrySpec(path)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("make yaml path absolute: %w", err)
+	}
+
+	return addYAMLToRegistryFS(reg, os.DirFS(filepath.Dir(absPath)), filepath.Base(absPath), absPath)
+}
+
+func addEmbeddedYAMLToRegistry(reg *agentregistry.Registry) error {
+	return addYAMLToRegistryFS(reg, embeddedYAMLData, yamlDefaultConfigPath, yamlDefaultConfigPath)
+}
+
+func addYAMLToRegistryFS(reg *agentregistry.Registry, yamlFS fs.FS, yamlPath string, displayPath string) error {
+	spec, yamlDir, err := loadYAMLRegistrySpecFS(yamlFS, yamlPath, displayPath)
 	if err != nil {
 		return err
 	}
@@ -192,7 +211,7 @@ func AddYAMLToRegistry(reg *agentregistry.Registry, path string) error {
 
 	preparedAgents := make([]yamlPreparedAgent, 0, len(spec.Agents))
 	for _, agentSpec := range spec.Agents {
-		prepared, err := prepareYAMLAgent(agentSpec, yamlDir, existingToolNames, newToolNames)
+		prepared, err := prepareYAMLAgent(agentSpec, yamlFS, yamlDir, existingToolNames, newToolNames)
 		if err != nil {
 			return fmt.Errorf("agent %q: %w", agentSpec.Name, err)
 		}
@@ -214,9 +233,8 @@ func AddYAMLToRegistry(reg *agentregistry.Registry, path string) error {
 }
 
 func loadYAMLRegistrySpec(path string) (yamlRegistrySpec, string, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return yamlRegistrySpec{}, "", fmt.Errorf("read yaml file %q: %w", path, err)
+	if strings.TrimSpace(path) == "" {
+		return yamlRegistrySpec{}, "", errors.New("yaml path is required")
 	}
 
 	absPath, err := filepath.Abs(path)
@@ -224,21 +242,30 @@ func loadYAMLRegistrySpec(path string) (yamlRegistrySpec, string, error) {
 		return yamlRegistrySpec{}, "", fmt.Errorf("make yaml path absolute: %w", err)
 	}
 
+	return loadYAMLRegistrySpecFS(os.DirFS(filepath.Dir(absPath)), filepath.Base(absPath), absPath)
+}
+
+func loadYAMLRegistrySpecFS(yamlFS fs.FS, path string, displayPath string) (yamlRegistrySpec, string, error) {
+	content, err := fs.ReadFile(yamlFS, path)
+	if err != nil {
+		return yamlRegistrySpec{}, "", fmt.Errorf("read yaml file %q: %w", displayPath, err)
+	}
+
 	var spec yamlRegistrySpec
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&spec); err != nil {
-		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: %w", path, err)
+		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: %w", displayPath, err)
 	}
 
 	var extra any
 	if err := decoder.Decode(&extra); err == nil {
-		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: multiple yaml documents are not supported", path)
+		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: multiple yaml documents are not supported", displayPath)
 	} else if !errors.Is(err, io.EOF) {
-		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: %w", path, err)
+		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: %w", displayPath, err)
 	}
 
-	return spec, filepath.Dir(absPath), nil
+	return spec, filepath.Dir(path), nil
 }
 
 func validateYAMLAgentHeader(spec yamlAgentSpec) (string, error) {
@@ -347,7 +374,7 @@ func normalizeYAMLToolSpec(spec yamlToolSpec, existingAgentModes map[string]stri
 	}, nil
 }
 
-func prepareYAMLAgent(spec yamlAgentSpec, yamlDir string, existingToolNames map[string]struct{}, newToolNames map[string]struct{}) (yamlPreparedAgent, error) {
+func prepareYAMLAgent(spec yamlAgentSpec, yamlFS fs.FS, yamlDir string, existingToolNames map[string]struct{}, newToolNames map[string]struct{}) (yamlPreparedAgent, error) {
 	if len(spec.Prompts) == 0 {
 		return yamlPreparedAgent{}, errors.New("prompts is required")
 	}
@@ -358,7 +385,7 @@ func prepareYAMLAgent(spec yamlAgentSpec, yamlDir string, existingToolNames map[
 		return yamlPreparedAgent{}, errors.New("include_package_mode_context is only valid for package mode agents")
 	}
 
-	resolvedPrompt, err := resolveYAMLAgentPrompt(yamlDir, spec.Prompts)
+	resolvedPrompt, err := resolveYAMLAgentPrompt(yamlFS, yamlDir, spec.Prompts)
 	if err != nil {
 		return yamlPreparedAgent{}, err
 	}
@@ -397,7 +424,7 @@ func prepareYAMLAgent(spec yamlAgentSpec, yamlDir string, existingToolNames map[
 	return prepared, nil
 }
 
-func resolveYAMLAgentPrompt(yamlDir string, prompts []yamlPromptRef) (string, error) {
+func resolveYAMLAgentPrompt(yamlFS fs.FS, yamlDir string, prompts []yamlPromptRef) (string, error) {
 	blocks := make([]string, 0, len(prompts))
 	for i, promptRef := range prompts {
 		count := 0
@@ -422,8 +449,8 @@ func resolveYAMLAgentPrompt(yamlDir string, prompts []yamlPromptRef) (string, er
 			}
 			blocks = append(blocks, text)
 		case promptRef.File != "":
-			absPath := filepath.Join(yamlDir, promptRef.File)
-			content, err := os.ReadFile(absPath)
+			promptPath := filepath.Join(yamlDir, promptRef.File)
+			content, err := fs.ReadFile(yamlFS, promptPath)
 			if err != nil {
 				return "", fmt.Errorf("read prompt file %q: %w", promptRef.File, err)
 			}
@@ -475,16 +502,20 @@ func buildYAMLAgentSystemPrompt(options agentregistry.BuildOptions, basePrompt s
 		return basePrompt, nil
 	}
 
-	if err := skills.InstallDefault(); err != nil {
-		return "", fmt.Errorf("install default skills: %w", err)
-	}
-
 	shellToolName := yamlSkillShellToolName(toolNames)
 	if shellToolName == "" {
 		shellToolName = yamlSkillShellToolName(expandYAMLToolNames(toolNames, options.ToolOptions.Model))
 	}
 	if shellToolName == "" {
 		return "", errors.New("skills require shell or skill_shell")
+	}
+
+	return buildSkillsEnabledSystemPrompt(options, basePrompt, shellToolName, isPackageMode)
+}
+
+func buildSkillsEnabledSystemPrompt(options agentregistry.BuildOptions, basePrompt string, shellToolName string, isPackageMode bool) (string, error) {
+	if err := skills.InstallDefault(); err != nil {
+		return "", fmt.Errorf("install default skills: %w", err)
 	}
 
 	searchDir := options.ToolOptions.GoPkgAbsDir

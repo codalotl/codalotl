@@ -105,8 +105,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	searchDirs := skills.SearchPaths(skillSearchStartDir)
 	validSkills, invalidSkills, failedSkillLoads, skillsLoadErr := skills.LoadSkills(searchDirs)
 	if skillsLoadErr != nil {
-		// Non-fatal: skills are optional and the app should still start even if discovery fails.
-		// The agent will simply not be told about skills in the prompt.
+		// Non-fatal: session startup should still succeed even if `/skills` cannot show results.
 		debugLogf("skills.LoadSkills failed: %v", skillsLoadErr)
 		validSkills = nil
 		invalidSkills = nil
@@ -162,18 +161,6 @@ func newSession(cfg sessionConfig) (*session, error) {
 		sandboxAuthorizer.Close()
 		return nil, fmt.Errorf("prepare agent: %w", err)
 	}
-
-	systemPrompt := strings.TrimSpace(prepared.SystemPrompt)
-
-	if shellToolName, ok := detectShellToolName(prepared.ToolNames); ok {
-		if err := skills.Authorize(validSkills, toolAuthorizer); err != nil {
-			sandboxAuthorizer.Close()
-			return nil, fmt.Errorf("authorize skills: %w", err)
-		}
-		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, cfg.packageMode()))
-		systemPrompt = strings.TrimSpace(systemPrompt)
-	}
-	prepared.SystemPrompt = systemPrompt
 	prepared.InitialTurns = append(prepared.InitialTurns, buildEnvironmentInfo(sandboxDir))
 
 	// In generic mode we don't gather package initialcontext, so include AGENTS.md
@@ -208,19 +195,6 @@ func newSession(cfg sessionConfig) (*session, error) {
 		userRequests:     userRequests,
 		config:           cfg,
 	}, nil
-}
-
-func detectShellToolName(toolNames []string) (name string, ok bool) {
-	// We want skills.Prompt to reference the actual shell-capable tool name exposed to
-	// the LLM. The registry may expose this as either "skill_shell" or "shell".
-	for _, candidate := range []string{"skill_shell", "shell"} {
-		for _, toolName := range toolNames {
-			if toolName == candidate {
-				return candidate, true
-			}
-		}
-	}
-	return "", false
 }
 
 // includeReachableTestdataDirs includes any "testdata" directory directly under an already-included directory (recursively). This allows Go fixture files in testdata

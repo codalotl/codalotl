@@ -19,7 +19,6 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
-	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
@@ -60,24 +59,8 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 		},
 		ToolsBuilder: buildGenericToolNames,
 		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
-			return prompt.GetBasicPrompt(), nil
+			return buildGenericSystemPrompt(options)
 		},
-	}); err != nil {
-		return nil, err
-	}
-
-	if err := registry.RegisterAgent(agentregistry.Definition{
-		Name:        AgentPackageModeNoContext,
-		Description: "Go package-focused agent with package-jail editing, testing, and API analysis tools.",
-		ToolNames: []string{
-			coretools.ToolNameReadFile,
-			coretools.ToolNameLS,
-		},
-		ToolsBuilder: buildPackageModeToolNames,
-		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
-			return prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull), nil
-		},
-		AuthPolicy: agentregistry.AuthPolicyPackage,
 	}); err != nil {
 		return nil, err
 	}
@@ -126,6 +109,10 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 		SystemPromptBuilder: buildClarifyPublicAPISystemPrompt,
 		InitialTurnsBuilder: buildClarifyPublicAPIInitialTurns,
 	}); err != nil {
+		return nil, err
+	}
+
+	if err := addEmbeddedYAMLToRegistry(registry); err != nil {
 		return nil, err
 	}
 
@@ -391,6 +378,10 @@ func buildLimitedPackageModeToolNames(opts toolsetinterface.Options) ([]string, 
 	return toolNames, nil
 }
 
+func buildGenericSystemPrompt(options agentregistry.BuildOptions) (string, error) {
+	return buildSkillsEnabledSystemPrompt(options, prompt.GetBasicPrompt(), coretools.ToolNameShell, false)
+}
+
 func buildEditFileToolNames(model llmmodel.ModelID) []string {
 	if model.ProviderID() == llmmodel.ProviderIDOpenAI {
 		return []string{coretools.ToolNameApplyPatch}
@@ -404,36 +395,12 @@ func buildEditFileToolNames(model llmmodel.ModelID) []string {
 }
 
 func buildPackageModeSystemPrompt(options agentregistry.BuildOptions, promptKind prompt.GoPackageModePromptKind) (string, error) {
-	systemPrompt := prompt.GetGoPackageModeModePrompt(promptKind)
-
-	if err := skills.InstallDefault(); err != nil {
-		return "", fmt.Errorf("install default skills: %w", err)
-	}
-
-	searchDir := options.ToolOptions.GoPkgAbsDir
-	if strings.TrimSpace(searchDir) == "" {
-		searchDir = options.ToolOptions.SandboxDir
-	}
-
-	validSkills, invalidSkills, failedSkillLoads, skillsErr := skills.LoadSkills(skills.SearchPaths(searchDir))
-	if skillsErr != nil {
-		validSkills = nil
-		invalidSkills = nil
-		failedSkillLoads = nil
-	}
-	_ = invalidSkills
-	_ = failedSkillLoads
-
-	if options.ToolOptions.Authorizer != nil {
-		if err := skills.Authorize(validSkills, options.ToolOptions.Authorizer); err != nil {
-			return "", fmt.Errorf("authorize skills: %w", err)
-		}
-	}
-
-	return joinContextBlocks(
-		systemPrompt,
-		skills.Prompt(validSkills, coretools.ToolNameSkillShell, true),
-	), nil
+	return buildSkillsEnabledSystemPrompt(
+		options,
+		prompt.GetGoPackageModeModePrompt(promptKind),
+		coretools.ToolNameSkillShell,
+		true,
+	)
 }
 
 func buildPackageModeDefaultContextInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
