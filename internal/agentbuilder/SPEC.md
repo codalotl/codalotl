@@ -2,6 +2,12 @@
 
 `agentbuilder` registers our default agents/tools into `agentregistry`, keeping `agentregistry` deps low. It also exposes a way to create new agents and tools via YAML files.
 
+## Documentation
+
+`doc.go` should contain godoc documentation that lets consumers of this package know:
+- which agents are available
+- structure of a YAML file.
+
 ## Agents
 
 - generic: toolset_core

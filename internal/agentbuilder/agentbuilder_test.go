@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/doc"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,6 +31,44 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, filepath.Dir(thisFile), nil, parser.ParseComments)
+	require.NoError(t, err)
+
+	astPkg, ok := pkgs["agentbuilder"]
+	require.True(t, ok)
+
+	pkgDoc := doc.New(astPkg, "github.com/codalotl/codalotl/internal/agentbuilder", 0)
+	require.NotEmpty(t, pkgDoc.Doc)
+
+	for _, agentName := range []string{
+		AgentGeneric,
+		AgentPackageModeNoContext,
+		AgentPackageModeDefaultContext,
+		AgentLimitedPackageMode,
+		agentClarifyPublicAPI,
+		"pr-orchestrator",
+	} {
+		assert.Contains(t, pkgDoc.Doc, agentName)
+	}
+
+	for _, snippet := range []string{
+		"top-level `agents` and `tools` arrays",
+		"`prompts`",
+		"`edit_files`",
+		"`command`",
+		"`subagent`",
+		"`sandbox_dir`",
+		"`package_dir`",
+	} {
+		assert.Contains(t, pkgDoc.Doc, snippet)
+	}
+}
 
 func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	registry, err := BuildRegistry()
