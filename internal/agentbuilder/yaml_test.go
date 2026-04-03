@@ -20,6 +20,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
+	spec, _, err := loadYAMLRegistrySpecFS(embeddedYAMLData, yamlDefaultConfigPath, yamlDefaultConfigPath)
+	require.NoError(t, err)
+
+	agentsByName := make(map[string]yamlAgentSpec, len(spec.Agents))
+	for _, agentSpec := range spec.Agents {
+		agentsByName[agentSpec.Name] = agentSpec
+	}
+
+	require.Contains(t, agentsByName, AgentGeneric)
+	assert.Equal(t, yamlAgentModeGeneric, agentsByName[AgentGeneric].Mode)
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		yamlToolVirtualEditFiles,
+		coretools.ToolNameShell,
+		coretools.ToolNameUpdatePlan,
+	}, agentsByName[AgentGeneric].Tools)
+
+	require.Contains(t, agentsByName, AgentPackageModeDefaultContext)
+	assert.Equal(t, yamlAgentModePackage, agentsByName[AgentPackageModeDefaultContext].Mode)
+	assert.True(t, agentsByName[AgentPackageModeDefaultContext].IncludePackageModeContext)
+
+	require.Contains(t, agentsByName, AgentLimitedPackageMode)
+	assert.Equal(t, yamlAgentModePackage, agentsByName[AgentLimitedPackageMode].Mode)
+	assert.True(t, agentsByName[AgentLimitedPackageMode].IncludePackageModeContext)
+}
+
 func TestAddYAMLToRegistry_AddsAgentsAndTools(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -282,6 +310,76 @@ func TestYAMLSubagentToolRun_PackageModeUsesCallerScopeNotOverrides(t *testing.T
 
 	_, err = registry.Prepare(context.Background(), AgentPackageModeDefaultContext, req)
 	require.NoError(t, err)
+}
+
+func TestBuildRegistry_YAMLBackedBuiltInAgentsPreserveToolsets(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	tests := []struct {
+		name      string
+		agentName string
+		model     llmmodel.ModelID
+		wantTools []string
+	}{
+		{
+			name:      "generic openai",
+			agentName: AgentGeneric,
+			model:     llmmodel.ProviderIDOpenAI.DefaultModel(),
+			wantTools: []string{
+				coretools.ToolNameReadFile,
+				coretools.ToolNameLS,
+				coretools.ToolNameApplyPatch,
+				coretools.ToolNameShell,
+				coretools.ToolNameUpdatePlan,
+			},
+		},
+		{
+			name:      "package default context openai",
+			agentName: AgentPackageModeDefaultContext,
+			model:     llmmodel.ProviderIDOpenAI.DefaultModel(),
+			wantTools: []string{
+				coretools.ToolNameReadFile,
+				coretools.ToolNameLS,
+				coretools.ToolNameApplyPatch,
+				coretools.ToolNameSkillShell,
+				coretools.ToolNameUpdatePlan,
+				"diagnostics",
+				"fix_lints",
+				"run_tests",
+				"run_project_tests",
+				"module_info",
+				"get_public_api",
+				"clarify_public_api",
+				"get_usage",
+				"update_usage",
+				"change_api",
+			},
+		},
+		{
+			name:      "limited package openai",
+			agentName: AgentLimitedPackageMode,
+			model:     llmmodel.ProviderIDOpenAI.DefaultModel(),
+			wantTools: []string{
+				coretools.ToolNameReadFile,
+				coretools.ToolNameLS,
+				coretools.ToolNameApplyPatch,
+				coretools.ToolNameSkillShell,
+				"diagnostics",
+				"fix_lints",
+				"run_tests",
+				"get_public_api",
+				"clarify_public_api",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPrompt, gotTools := invokeAgentForModel(t, tt.agentName, tt.model)
+			assert.Equal(t, tt.wantTools, gotTools)
+			assert.Contains(t, gotPrompt, "# Skills")
+		})
+	}
 }
 
 func invokeAgentForModelWithRegistryDetailed(t *testing.T, registry *agentregistry.Registry, agentName string, model llmmodel.ModelID, sandbox string, goPkgAbsDir string, lintSteps []lints.Step) (string, []llmstream.Tool) {

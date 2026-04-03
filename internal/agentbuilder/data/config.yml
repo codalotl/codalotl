@@ -1,5 +1,16 @@
 ---
 agents:
+  - name: generic
+    prompts:
+      - name: base
+    tools:
+      - read_file
+      - ls
+      - edit_files
+      - shell
+      - update_plan
+    mode: generic
+    skills: true
   - name: package_mode_no_context
     prompts:
       - name: package-base
@@ -20,6 +31,44 @@ agents:
       - update_usage
       - change_api
     mode: package
+    skills: true
+  - name: package_mode_default_context
+    prompts:
+      - name: package-base
+    tools:
+      - read_file
+      - ls
+      - edit_files
+      - skill_shell
+      - update_plan
+      - diagnostics
+      - fix_lints
+      - run_tests
+      - run_project_tests
+      - module_info
+      - get_public_api
+      - clarify_public_api
+      - get_usage
+      - update_usage
+      - change_api
+    mode: package
+    include_package_mode_context: true
+    skills: true
+  - name: limited_package_mode
+    prompts:
+      - name: limited-package-base
+    tools:
+      - read_file
+      - ls
+      - edit_files
+      - skill_shell
+      - diagnostics
+      - fix_lints
+      - run_tests
+      - get_public_api
+      - clarify_public_api
+    mode: package
+    include_package_mode_context: true
     skills: true
   - name: pr-orchestrator
     prompts:

@@ -51,55 +51,6 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 	}
 
 	if err := registry.RegisterAgent(agentregistry.Definition{
-		Name:        AgentGeneric,
-		Description: "General-purpose agent with core file editing and shell tools.",
-		ToolNames: []string{
-			coretools.ToolNameReadFile,
-			coretools.ToolNameLS,
-		},
-		ToolsBuilder: buildGenericToolNames,
-		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
-			return buildGenericSystemPrompt(options)
-		},
-	}); err != nil {
-		return nil, err
-	}
-
-	if err := registry.RegisterAgent(agentregistry.Definition{
-		Name:        AgentPackageModeDefaultContext,
-		Description: "Go package-focused agent with package-jail editing, testing, API analysis tools, and default initial context.",
-		ToolNames: []string{
-			coretools.ToolNameReadFile,
-			coretools.ToolNameLS,
-		},
-		ToolsBuilder: buildPackageModeToolNames,
-		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
-			return buildPackageModeSystemPrompt(options, prompt.GoPackageModePromptKindFull)
-		},
-		InitialTurnsBuilder: buildPackageModeDefaultContextInitialTurns,
-		AuthPolicy:          agentregistry.AuthPolicyPackage,
-	}); err != nil {
-		return nil, err
-	}
-
-	if err := registry.RegisterAgent(agentregistry.Definition{
-		Name:        AgentLimitedPackageMode,
-		Description: "Go package-focused agent for smaller mechanical package edits with default initial context and a limited toolset.",
-		ToolNames: []string{
-			coretools.ToolNameReadFile,
-			coretools.ToolNameLS,
-		},
-		ToolsBuilder: buildLimitedPackageModeToolNames,
-		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
-			return buildPackageModeSystemPrompt(options, prompt.GoPackageModePromptKindUpdateUsage)
-		},
-		InitialTurnsBuilder: buildPackageModeDefaultContextInitialTurns,
-		AuthPolicy:          agentregistry.AuthPolicyPackage,
-	}); err != nil {
-		return nil, err
-	}
-
-	if err := registry.RegisterAgent(agentregistry.Definition{
 		Name:        agentClarifyPublicAPI,
 		Description: "Read-only agent for clarifying public API docs for a single identifier.",
 		ToolNames: []string{
@@ -335,51 +286,6 @@ func isPackageModeAgent(agentName string) bool {
 	default:
 		return false
 	}
-}
-
-func buildGenericToolNames(opts toolsetinterface.Options) ([]string, error) {
-	toolNames := buildEditFileToolNames(opts.Model)
-	toolNames = append(toolNames,
-		coretools.ToolNameShell,
-		coretools.ToolNameUpdatePlan,
-	)
-	return toolNames, nil
-}
-
-func buildPackageModeToolNames(opts toolsetinterface.Options) ([]string, error) {
-	toolNames := buildEditFileToolNames(opts.Model)
-	toolNames = append(toolNames,
-		coretools.ToolNameSkillShell,
-		coretools.ToolNameUpdatePlan,
-		exttools.ToolNameDiagnostics,
-		exttools.ToolNameFixLints,
-		exttools.ToolNameRunTests,
-		exttools.ToolNameRunProjectTests,
-		pkgtools.ToolNameModuleInfo,
-		pkgtools.ToolNameGetPublicAPI,
-		pkgtools.ToolNameClarifyPublicAPI,
-		pkgtools.ToolNameGetUsage,
-		pkgtools.ToolNameUpdateUsage,
-		pkgtools.ToolNameChangeAPI,
-	)
-	return toolNames, nil
-}
-
-func buildLimitedPackageModeToolNames(opts toolsetinterface.Options) ([]string, error) {
-	toolNames := buildEditFileToolNames(opts.Model)
-	toolNames = append(toolNames,
-		coretools.ToolNameSkillShell,
-		exttools.ToolNameDiagnostics,
-		exttools.ToolNameFixLints,
-		exttools.ToolNameRunTests,
-		pkgtools.ToolNameGetPublicAPI,
-		pkgtools.ToolNameClarifyPublicAPI,
-	)
-	return toolNames, nil
-}
-
-func buildGenericSystemPrompt(options agentregistry.BuildOptions) (string, error) {
-	return buildSkillsEnabledSystemPrompt(options, prompt.GetBasicPrompt(), coretools.ToolNameShell, false)
 }
 
 func buildEditFileToolNames(model llmmodel.ModelID) []string {
