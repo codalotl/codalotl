@@ -52,8 +52,10 @@ func TestNewSessionBlock_OrchestrateMode(t *testing.T) {
 	plain := stripANSI(block)
 
 	require.Contains(t, plain, "orchestrate mode")
-	require.Contains(t, plain, "pr-orchestrator")
+	require.Contains(t, plain, "fresh generic session")
+	require.Contains(t, plain, "Follow-up messages stay in this same session")
 	require.Contains(t, plain, "/orchestrate")
+	require.NotContains(t, plain, "pr-orchestrator")
 }
 
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)

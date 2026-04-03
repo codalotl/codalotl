@@ -287,12 +287,24 @@ func TestPackageCommandStartsSession(t *testing.T) {
 
 func TestOrchestrateCommandStartsSession(t *testing.T) {
 	var factoryCfg sessionConfig
+	factoryCalls := 0
 	factory := func(cfg sessionConfig) (*session, error) {
+		factoryCalls++
 		factoryCfg = cfg
 		return &session{config: cfg}, nil
 	}
 
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, factory, nil, nil, nil)
+	initialCfg := sessionConfig{packagePath: "internal/tui"}
+	m := newModel(
+		colorPalette{},
+		noopFormatter{},
+		&session{config: initialCfg, packagePath: initialCfg.packagePath},
+		initialCfg,
+		factory,
+		nil,
+		nil,
+		nil,
+	)
 	var started []string
 	m.startAgentRunHook = func(message string) {
 		started = append(started, message)
@@ -304,10 +316,22 @@ func TestOrchestrateCommandStartsSession(t *testing.T) {
 	require.Equal(t, orchestrateAgentName, factoryCfg.agentName)
 	require.Empty(t, factoryCfg.packagePath)
 	require.Equal(t, []string{""}, started)
+	require.Equal(t, 1, factoryCalls)
 	require.NotNil(t, m.session)
 	require.True(t, m.sessionConfig.orchestrateMode())
+	require.Empty(t, m.sessionConfig.packagePath)
 	require.Len(t, m.messages, 1)
 	require.Equal(t, messageKindWelcome, m.messages[0].kind)
+	require.Contains(t, m.packageSection(), "Package: <none>")
+
+	m.sendOrQueueMessage("follow up")
+	m.startAgentRunIfPossible("follow up")
+
+	require.Equal(t, 1, factoryCalls)
+	require.Equal(t, []string{"", "follow up"}, started)
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindUser, m.messages[1].kind)
+	require.Equal(t, "follow up", m.messages[1].userMessage)
 }
 
 func TestOrchestrateCommandWithMessageAddsInitialUserMessage(t *testing.T) {
@@ -667,7 +691,7 @@ func TestModelCommandListsAvailableModels(t *testing.T) {
 		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
 	}
 }
-func TestNewSessionBlock_GenericMode_DoesNotMentionSessionCommand(t *testing.T) {
+func TestNewSessionBlock_GenericMode_ShowsOrchestrateHelpWithoutInternalAgentName(t *testing.T) {
 	pal := colorPalette{
 		primaryBackground:  termformat.ANSIColor(0),
 		accentBackground:   termformat.ANSIColor(1),
@@ -678,9 +702,11 @@ func TestNewSessionBlock_GenericMode_DoesNotMentionSessionCommand(t *testing.T) 
 	block := newSessionBlock(100, pal, sessionConfig{})
 	plain := stripAnsi(block)
 	require.Contains(t, plain, "/package")
+	require.Contains(t, plain, "/orchestrate")
 	require.Contains(t, plain, "/model")
 	require.Contains(t, plain, "/quit")
 	require.NotContains(t, plain, "/session")
+	require.NotContains(t, plain, "pr-orchestrator")
 }
 
 func TestModelsCommandListsAvailableModels(t *testing.T) {

@@ -96,10 +96,10 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 ## New Sessions
 
 When a new session is initiated (application startup; /new; /package; /orchestrate; etc), the Message Area is cleared, and replaced with "new session text".
-- There are two types of new session text: generic, and Package Mode.
-- Both new session texts have ASCII art (ex: codalotl icon + codalotl word art).
+- There are three types of new session text: generic, orchestrate, and Package Mode.
+- All new session texts have ASCII art (ex: codalotl icon + codalotl word art).
 - The new session text will describe the currently active mode. For example: "Package mode is a Go-specific mode that..."
-- Non-package mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
+- Generic mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
 - The new session text does not mention the current configuration (ex: active model, session ID, current package), but may give the guidance, including illustrative examples of commands.
 
 ## Package Mode
