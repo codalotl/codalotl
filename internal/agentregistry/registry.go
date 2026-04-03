@@ -66,6 +66,16 @@ func (r *Registry) RegisterTool(toolName string, tool toolsetinterface.Tool) err
 	return nil
 }
 
+// ListToolNames returns all registered tool names in sorted order.
+func (r *Registry) ListToolNames() []string {
+	names := make([]string, 0, len(r.tools))
+	for toolName := range r.tools {
+		names = append(names, toolName)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // ValidateTools checks that all agents' references to tools are valid.
 func (r *Registry) ValidateTools() error {
 	for agentName, def := range r.agents {

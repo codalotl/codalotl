@@ -64,6 +64,9 @@ func (r *Registry) RegisterAgent(def Definition) error
 // RegisterTool adds or replaces a tool by toolName.
 func (r *Registry) RegisterTool(toolName string, tool toolsetinterface.Tool) error
 
+// ListToolNames returns all registered tool names in sorted order.
+func (r *Registry) ListToolNames() []string
+
 // ValidateTools checks that all agents' references to tools are valid.
 func (r *Registry) ValidateTools() error
 

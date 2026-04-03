@@ -96,6 +96,27 @@ func TestRegistry_Tools(t *testing.T) {
 	assert.ErrorContains(t, err, `agent "test-agent-missing-tool" references unknown tool "missing-tool"`)
 }
 
+func TestRegistry_ListToolNamesSorted(t *testing.T) {
+	r := NewRegistry()
+
+	dummyToolFunc := func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+		return nil, nil
+	}
+
+	require.NoError(t, r.RegisterTool("z-tool", dummyToolFunc))
+	require.NoError(t, r.RegisterTool("a-tool", dummyToolFunc))
+	require.NoError(t, r.RegisterTool("m-tool", dummyToolFunc))
+
+	names := r.ListToolNames()
+	assert.Equal(t, []string{"a-tool", "m-tool", "z-tool"}, names)
+
+	names[0] = "changed"
+	assert.Equal(t, []string{"a-tool", "m-tool", "z-tool"}, r.ListToolNames())
+
+	require.NoError(t, r.RegisterTool("a-tool", dummyToolFunc))
+	assert.Equal(t, []string{"a-tool", "m-tool", "z-tool"}, r.ListToolNames())
+}
+
 func TestDefinition_Validate(t *testing.T) {
 	t.Run("empty name", func(t *testing.T) {
 		def := Definition{}
