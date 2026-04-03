@@ -26,12 +26,13 @@ Agents:
 - `name` is the agent name.
 - `prompts` is an array; resolved elements are concatenated in order. Each element:
     - An object with one of three fields set (`name`, `file`, or `text`).
-    - `name`: refers to an existing prompt. Built-in options are `base` and `package-base`, referring to the `generic` agent's prompt, and the `package_mode_no_context` agent's prompt, respectively.
+    - `name`: refers to an existing prompt. Built-in options are `base`, `package-base`, and `limited-package-base`, referring to the agent prompts from `generic`, `package_mode_no_context`, and `limited_package_mode`, respectively.
     - `file`: refers to a textual file (usually a `.md` file) relative to the YAML file, which is read.
     - `text`: just use this text directly.
 - `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one "virtual" tool: the `edit_files` tool refers to the `toolset_edit_files` tools.
 - `mode` is one of `generic` or `package`.
 - `include_package_mode_context` set to true includes package env and `initialcontext.Create` (optional; only valid if `mode` is `package`).
+- `skills` is an optional boolean (default true) that adds skill support to the prompt (passing appropriate shell tool). Requires the tool `shell` or `skill_shell` to be present.
 
 Tools:
 - A tool must have `name`, `description`, `parameters`, and then one of {`command`, `subagent`}.
