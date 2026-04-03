@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -233,6 +234,8 @@ func loadYAMLRegistrySpec(path string) (yamlRegistrySpec, string, error) {
 	var extra any
 	if err := decoder.Decode(&extra); err == nil {
 		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: multiple yaml documents are not supported", path)
+	} else if !errors.Is(err, io.EOF) {
+		return yamlRegistrySpec{}, "", fmt.Errorf("decode yaml file %q: %w", path, err)
 	}
 
 	return spec, filepath.Dir(absPath), nil
@@ -731,49 +734,13 @@ func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llm
 		return yamlToolErrorResult(call, fmt.Errorf("render subagent.message: %w", err))
 	}
 
-	req := toolsetinterface.InvokeRequest{
-		Messages: []string{message},
-		ToolOptions: toolsetinterface.Options{
-			Model:        t.opts.Model,
-			Authorizer:   t.opts.Authorizer,
-			SandboxDir:   t.opts.SandboxDir,
-			GoPkgAbsDir:  t.opts.GoPkgAbsDir,
-			LintSteps:    t.opts.LintSteps,
-			AgentInvoker: t.opts.AgentInvoker,
-		},
-		CallerAuthorizer: t.opts.Authorizer,
-		CallerSandboxDir: t.opts.SandboxDir,
-	}
-
 	subAgentCreator := agent.SubAgentCreatorFromContext(ctx)
-	if subAgentCreator != nil {
-		req.AgentCreator = subAgentCreator
-	} else {
-		req.AgentCreator = agent.NewAgentCreator()
+	req, err := t.buildInvokeRequest(message, params, subAgentCreator)
+	if err != nil {
+		return yamlToolErrorResult(call, err)
 	}
-
-	if t.targetPackageMode {
-		targetPackage, err := t.resolveTargetPackage(params)
-		if err != nil {
-			return yamlToolErrorResult(call, err)
-		}
-
-		req.ToolOptions.GoPkgAbsDir = targetPackage.AbsDir
-		overrideSandboxDir := t.opts.SandboxDir
-		if !targetPackage.WithinSandbox {
-			overrideSandboxDir = targetPackage.ModuleAbsDir
-			if overrideSandboxDir == "" {
-				overrideSandboxDir = targetPackage.AbsDir
-			}
-		}
-		if overrideSandboxDir == "" {
-			overrideSandboxDir = targetPackage.AbsDir
-		}
-
-		req.OverrideSandboxDir = overrideSandboxDir
-		req.ToolOptions.SandboxDir = overrideSandboxDir
-		req.OverrideAuthorizer = t.buildTargetPackageAuthorizer(targetPackage, overrideSandboxDir)
-		req.ToolOptions.Authorizer = req.OverrideAuthorizer
+	if req.AgentCreator == nil {
+		req.AgentCreator = agent.NewAgentCreator()
 	}
 
 	events, err := t.opts.AgentInvoker.Invoke(ctx, t.spec.Name, req)
@@ -792,6 +759,53 @@ func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llm
 		Type:   call.Type,
 		Result: answer,
 	}
+}
+
+func (t *yamlSubagentTool) buildInvokeRequest(message string, params map[string]any, agentCreator agent.AgentCreator) (toolsetinterface.InvokeRequest, error) {
+	req := toolsetinterface.InvokeRequest{
+		Messages: []string{message},
+		ToolOptions: toolsetinterface.Options{
+			Model:        t.opts.Model,
+			Authorizer:   t.opts.Authorizer,
+			SandboxDir:   t.opts.SandboxDir,
+			GoPkgAbsDir:  t.opts.GoPkgAbsDir,
+			LintSteps:    t.opts.LintSteps,
+			AgentInvoker: t.opts.AgentInvoker,
+		},
+		CallerAuthorizer: t.opts.Authorizer,
+		CallerSandboxDir: t.opts.SandboxDir,
+		AgentCreator:     agentCreator,
+	}
+
+	if agentCreator != nil {
+		req.AgentCreator = agentCreator
+	}
+
+	if t.targetPackageMode {
+		targetPackage, err := t.resolveTargetPackage(params)
+		if err != nil {
+			return toolsetinterface.InvokeRequest{}, err
+		}
+
+		req.ToolOptions.GoPkgAbsDir = targetPackage.AbsDir
+		overrideSandboxDir := t.opts.SandboxDir
+		if !targetPackage.WithinSandbox {
+			overrideSandboxDir = targetPackage.ModuleAbsDir
+			if overrideSandboxDir == "" {
+				overrideSandboxDir = targetPackage.AbsDir
+			}
+		}
+		if overrideSandboxDir == "" {
+			overrideSandboxDir = targetPackage.AbsDir
+		}
+
+		req.CallerSandboxDir = overrideSandboxDir
+		req.ToolOptions.SandboxDir = overrideSandboxDir
+		req.CallerAuthorizer = t.buildTargetPackageAuthorizer(targetPackage, overrideSandboxDir)
+		req.ToolOptions.Authorizer = req.CallerAuthorizer
+	}
+
+	return req, nil
 }
 
 func (t *yamlSubagentTool) resolveTargetPackage(params map[string]any) (resolvedPackageTarget, error) {

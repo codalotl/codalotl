@@ -211,6 +211,79 @@ tools: []
 	assert.False(t, ok)
 }
 
+func TestLoadYAMLRegistrySpec_RejectsMalformedTrailingDocument(t *testing.T) {
+	yamlPath := filepath.Join(t.TempDir(), "bad.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte("agents: []\ntools: []\n---\n: bad\n"), 0o644))
+
+	_, _, err := loadYAMLRegistrySpec(yamlPath)
+	require.ErrorContains(t, err, "decode yaml file")
+}
+
+func TestYAMLSubagentToolRun_PackageModeUsesCallerScopeNotOverrides(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	ensureGoPackageFixture(t, sandbox, targetPkgDir)
+
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{
+			Name: "implement",
+		},
+		spec: &yamlSubagentSpec{
+			Name:    AgentPackageModeDefaultContext,
+			Package: "path",
+			Message: "{{ .instructions }}",
+		},
+		params: map[string]yamlNormalizedParameter{
+			"path": {
+				Type:        "string",
+				Description: "Target package.",
+				Required:    true,
+			},
+			"instructions": {
+				Type:        "string",
+				Description: "Work to perform.",
+				Required:    true,
+			},
+		},
+		opts: toolsetinterface.Options{
+			AgentName:  "pr-orchestrator",
+			Model:      llmmodel.ProviderIDOpenAI.DefaultModel(),
+			Authorizer: authdomain.NewAutoApproveAuthorizer(sandbox),
+			SandboxDir: sandbox,
+		},
+		targetPackageMode: true,
+	}
+
+	req, err := tool.buildInvokeRequest("make the change", map[string]any{
+		"path":         "targetpkg",
+		"instructions": "make the change",
+	}, &captureAgentCreator{err: errors.New("stop")})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"make the change"}, req.Messages)
+	assert.Empty(t, req.OverrideSandboxDir)
+	assert.Nil(t, req.OverrideAuthorizer)
+	assert.Equal(t, targetPkgDir, req.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, sandbox, req.CallerSandboxDir)
+	assert.Equal(t, sandbox, req.ToolOptions.SandboxDir)
+
+	require.NotNil(t, req.CallerAuthorizer)
+	assert.True(t, req.CallerAuthorizer.IsCodeUnitDomain())
+	assert.Equal(t, targetPkgDir, req.CallerAuthorizer.CodeUnitDir())
+	assert.Equal(t, sandbox, req.CallerAuthorizer.SandboxDir())
+
+	require.NotNil(t, req.ToolOptions.Authorizer)
+	assert.True(t, req.ToolOptions.Authorizer.IsCodeUnitDomain())
+	assert.Equal(t, targetPkgDir, req.ToolOptions.Authorizer.CodeUnitDir())
+	assert.Equal(t, sandbox, req.ToolOptions.Authorizer.SandboxDir())
+
+	_, err = registry.Prepare(context.Background(), AgentPackageModeDefaultContext, req)
+	require.NoError(t, err)
+}
+
 func invokeAgentForModelWithRegistryDetailed(t *testing.T, registry *agentregistry.Registry, agentName string, model llmmodel.ModelID, sandbox string, goPkgAbsDir string, lintSteps []lints.Step) (string, []llmstream.Tool) {
 	t.Helper()
 
