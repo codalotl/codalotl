@@ -9,7 +9,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 ## Plan
 
-### internal/tui
+### internal/tui [DONE]
 
 - Verify `/orchestrate` resets into a fresh generic-mode orchestrator session and preserves normal follow-up chat behavior.
 - Keep this interactive-only; do not add noninteractive support in this PR.
