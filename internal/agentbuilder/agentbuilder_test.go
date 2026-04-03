@@ -589,7 +589,7 @@ func TestBuildClarifyPublicAPIInitialTurns_GoRequestBuildsEnvAndInitialContext(t
 			SandboxDir: sandbox,
 		},
 		Request: toolsetinterface.InvokeRequest{
-			Messages: []string{string(requestBytes)},
+			Payload: requestBytes,
 		},
 	})
 	require.NoError(t, err)
@@ -622,14 +622,30 @@ func TestBuildClarifyPublicAPIInitialTurns_RejectsOutsideSandboxPath(t *testing.
 			SandboxDir: sandbox,
 		},
 		Request: toolsetinterface.InvokeRequest{
-			Messages: []string{string(requestBytes)},
+			Payload: requestBytes,
 		},
 	})
 	require.ErrorContains(t, err, "outside of sandbox")
 }
 
+func TestParseClarifyPublicAPIRequest_PayloadRequest(t *testing.T) {
+	requestBytes, err := json.Marshal(clarifyPublicAPIRequest{
+		Path:       "internal/example",
+		Identifier: "Hello",
+		Question:   "What does Hello do?",
+	})
+	require.NoError(t, err)
+
+	request, err := parseClarifyPublicAPIRequest(requestBytes, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Hello", request.Identifier)
+	assert.Equal(t, "internal/example", request.Path)
+	assert.Equal(t, "What does Hello do?", request.Question)
+}
+
 func TestParseClarifyPublicAPIRequest_TextRequest(t *testing.T) {
-	request, err := parseClarifyPublicAPIRequest([]string{`Clarify this identifier.
+	request, err := parseClarifyPublicAPIRequest(nil, []string{`Clarify this identifier.
 
 Identifier: Hello
 Path: internal/example

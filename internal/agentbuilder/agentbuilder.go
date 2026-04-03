@@ -514,7 +514,7 @@ func buildClarifyPublicAPISystemPrompt(options agentregistry.BuildOptions) (stri
 }
 
 func buildClarifyPublicAPIInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
-	request, err := parseClarifyPublicAPIRequest(options.Request.Messages)
+	request, err := parseClarifyPublicAPIRequest(options.Request.Payload, options.Request.Messages)
 	if err != nil {
 		return nil, err
 	}
@@ -530,9 +530,20 @@ func buildClarifyPublicAPIInitialTurns(ctx context.Context, options agentregistr
 	}, nil
 }
 
-func parseClarifyPublicAPIRequest(messages []string) (clarifyPublicAPIRequest, error) {
+func parseClarifyPublicAPIRequest(payload json.RawMessage, messages []string) (clarifyPublicAPIRequest, error) {
+	if len(payload) > 0 {
+		var request clarifyPublicAPIRequest
+		if err := json.Unmarshal(payload, &request); err != nil {
+			return clarifyPublicAPIRequest{}, fmt.Errorf("clarify_public_api request payload: %w", err)
+		}
+		if err := validateClarifyPublicAPIRequest(request); err != nil {
+			return clarifyPublicAPIRequest{}, err
+		}
+		return request, nil
+	}
+
 	if len(messages) == 0 {
-		return clarifyPublicAPIRequest{}, errors.New("clarify_public_api agent requires a request message")
+		return clarifyPublicAPIRequest{}, errors.New("clarify_public_api agent requires a request payload")
 	}
 
 	raw := messages[0]

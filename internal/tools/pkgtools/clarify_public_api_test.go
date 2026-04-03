@@ -158,7 +158,8 @@ func TestInvokeClarifyAgent_UsesClarifyAgentAndReturnsAnswer(t *testing.T) {
 	assert.Equal(t, sandboxDir, invoker.req.CallerSandboxDir)
 	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
 	require.Len(t, invoker.req.Messages, 1)
-	assert.Equal(t, "Clarify this identifier.\n\nPath: pkg\nIdentifier: Equal\n\nQuestion:\nWhat does Equal do?", invoker.req.Messages[0])
+	assert.Equal(t, "What does Equal do?", invoker.req.Messages[0])
+	assert.JSONEq(t, `{"path":"pkg","identifier":"Equal","question":"What does Equal do?"}`, string(invoker.req.Payload))
 }
 
 func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T) {
@@ -183,9 +184,8 @@ func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T)
 	)
 	require.NoError(t, err)
 	require.Len(t, invoker.req.Messages, 1)
-	assert.Equal(t, "Clarify this identifier.\n\nPath: pkg\nIdentifier: Equal\n\nQuestion:\nWhat does \"Equal\" do?\nDoes it treat nil specially?", invoker.req.Messages[0])
-	assert.NotContains(t, invoker.req.Messages[0], `\"`)
-	assert.NotContains(t, invoker.req.Messages[0], `\n`)
+	assert.Equal(t, "What does \"Equal\" do?\nDoes it treat nil specially?", invoker.req.Messages[0])
+	assert.JSONEq(t, `{"path":"pkg","identifier":"Equal","question":"What does \"Equal\" do?\nDoes it treat nil specially?"}`, string(invoker.req.Payload))
 }
 
 func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {

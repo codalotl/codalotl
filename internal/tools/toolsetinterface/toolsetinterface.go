@@ -10,6 +10,7 @@ package toolsetinterface
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/lints"
@@ -70,4 +71,5 @@ type InvokeRequest struct {
 	OverrideAuthorizer authdomain.Authorizer // If not nil, use this authorizer for the new agent.
 	OverrideSandboxDir string                // If not "", use this sandbox dir for the new agent.
 	Messages           []string              // Messages are the initial user messages to the LLM (after the prompt).
+	Payload            json.RawMessage       // Optional JSON data that agents can use to construct prompts/context/initial turns.
 }
