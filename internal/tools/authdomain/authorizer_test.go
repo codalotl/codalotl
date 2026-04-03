@@ -59,6 +59,34 @@ func TestNewPermissiveSandboxAuthorizerRejectsEmptySandbox(t *testing.T) {
 	require.Nil(t, requests)
 }
 
+func TestNewSessionAuthorizer_PermissiveWhenAutoApproveDisabled(t *testing.T) {
+	t.Parallel()
+
+	sandbox := t.TempDir()
+	auth, requests, err := NewSessionAuthorizer(sandbox, nil, false)
+	require.NoError(t, err)
+	require.NotNil(t, requests)
+	require.False(t, auth.IsCodeUnitDomain())
+
+	auth.Close()
+	_, ok := <-requests
+	require.False(t, ok)
+}
+
+func TestNewSessionAuthorizer_AutoApproveWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	sandbox := t.TempDir()
+	auth, requests, err := NewSessionAuthorizer(sandbox, nil, true)
+	require.NoError(t, err)
+	require.Nil(t, requests)
+
+	target := filepath.Join(sandbox, "file.txt")
+	require.NoError(t, auth.IsAuthorizedForRead(true, "need approval", "reader", target))
+
+	auth.Close()
+}
+
 func TestSandboxReadInsideNoRequest(t *testing.T) {
 	t.Parallel()
 

@@ -35,6 +35,8 @@ Prints standard usage.
 
 The naked `codalotl` launches the TUI (`codalotl .` is an alias, supported so that muscle memory from things like `code .` work; any other path-like argument is an error).
 
+If config sets `autoyes: true`, the TUI launches with auto-approved permission checks.
+
 If the TUI (`internal/tui`) requests that a newly selected model be persisted (via `tui.Config.PersistModelID`), the CLI writes the model to `preferredmodel` in a JSON config file:
 - If some config file explicitly set `preferredmodel` during load, update that same file.
 - Otherwise, update the highest-precedence config file that contributed any values.
@@ -84,6 +86,7 @@ Current Configuration:
     "openai": "sk-p..._LQA",
     "anthropic": ""
   },
+  "autoyes": true,
   "reflowwidth": 160,
   "theme": "",
   "preferredprovider": "",

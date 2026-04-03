@@ -152,6 +152,7 @@ func RunWithConfig(cfg Config) error {
 	initialCfg := sessionConfig{
 		modelID:   cfg.ModelID,
 		lintSteps: cfg.LintSteps,
+		autoYes:   cfg.AutoYes,
 	}
 	initialSession, err := newSession(initialCfg)
 	if err != nil {

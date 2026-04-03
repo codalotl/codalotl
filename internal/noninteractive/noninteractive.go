@@ -272,7 +272,7 @@ func Exec(userPrompt string, opts Options) error {
 	modelID := effectiveModelID(opts)
 	prompt.SetModel(modelID)
 
-	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
+	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, nil, opts.AutoYes)
 	if err != nil {
 		return err
 	}
@@ -283,7 +283,9 @@ func Exec(userPrompt string, opts Options) error {
 	}
 	defer authorizerForTools.Close()
 
-	go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
+	if userRequests != nil {
+		go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
+	}
 
 	agentInstance, err := buildAgent(pkgMode, sandboxDir, pkgRelPath, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
 	if err != nil {

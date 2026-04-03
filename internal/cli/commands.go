@@ -144,6 +144,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 				ModelID:     modelID,
 				LintSteps:   steps,
 				ReflowWidth: cfg.ReflowWidth,
+				AutoYes:     cfg.AutoYes,
 				CASDB:       casDB,
 				Monitor:     m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
@@ -185,7 +186,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			ModelID:      modelID,
 			LintSteps:    steps,
 			ReflowWidth:  cfg.ReflowWidth,
-			AutoYes:      *execYes,
+			AutoYes:      cfg.AutoYes || *execYes,
 			NoFormatting: *execNoColor,
 			OutputJSON:   *execJSON,
 			Out:          c.Out,

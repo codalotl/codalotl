@@ -54,6 +54,7 @@ type sessionConfig struct {
 	agentName   string
 	modelID     llmmodel.ModelID
 	lintSteps   []lints.Step
+	autoYes     bool
 
 	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd). This is primarily to make tests independent of process-wide working directory and to avoid
 	// path aliasing issues (ex: /var vs /private/var on macOS).
@@ -93,7 +94,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 	prompt.SetModel(modelID)
 
-	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
+	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, nil, cfg.autoYes)
 	if err != nil {
 		return nil, err
 	}

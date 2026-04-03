@@ -49,3 +49,11 @@ func TestNewSession_OrchestrateMode(t *testing.T) {
 	require.True(t, s.config.orchestrateMode())
 	require.False(t, s.config.packageMode())
 }
+
+func TestNewSession_AutoYesDisablesUserRequests(t *testing.T) {
+	s, err := newSession(sessionConfig{autoYes: true})
+	require.NoError(t, err)
+	t.Cleanup(s.Close)
+
+	require.Nil(t, s.UserRequests())
+}
