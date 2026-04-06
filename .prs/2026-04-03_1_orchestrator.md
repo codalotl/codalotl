@@ -76,6 +76,8 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 ## Review
 
+### Review feedback [DONE]
+
 - [P2] `internal/agentbuilder`: package-mode subagent jails created by the YAML-backed `implement` tool do not re-include reachable `testdata` directories, so orchestrated package edits can fail on fixture files that normal package mode allows.
 - [P2] `internal/agentbuilder`: YAML package-target resolution falls back to `gocode.NewModule(opts.GoPkgAbsDir)` for import-path targets, which is empty for generic callers like `pr-orchestrator`, so the built-in `implement` tool does not actually support the advertised import-path targets from generic mode.
 
