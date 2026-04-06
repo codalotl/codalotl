@@ -765,7 +765,7 @@ func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llm
 		return yamlToolErrorResult(call, fmt.Errorf("render subagent.message: %w", err))
 	}
 
-	subAgentCreator := agent.SubAgentCreatorFromContext(ctx)
+	subAgentCreator := yamlSubAgentCreatorFromContextSafe(ctx)
 	req, err := t.buildInvokeRequest(message, params, subAgentCreator)
 	if err != nil {
 		return yamlToolErrorResult(call, err)
@@ -1047,6 +1047,14 @@ func yamlToolErrorResult(call llmstream.ToolCall, err error) llmstream.ToolResul
 		IsError:   true,
 		SourceErr: err,
 	}
+}
+
+func yamlSubAgentCreatorFromContextSafe(ctx context.Context) agent.AgentCreator {
+	defer func() {
+		_ = recover()
+	}()
+
+	return agent.SubAgentCreatorFromContext(ctx)
 }
 
 func resolveYAMLTargetPackage(opts toolsetinterface.Options, target string) (resolvedPackageTarget, error) {

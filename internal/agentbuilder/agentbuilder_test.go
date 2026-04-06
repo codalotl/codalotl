@@ -858,6 +858,16 @@ func agentbuilderHelperCmd(stdout string, exitCode int) *cmdrunner.Command {
 	}
 }
 
+func installCodexHelper(t *testing.T, dir string) string {
+	t.Helper()
+
+	scriptPath := filepath.Join(dir, "codex")
+	script := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestAgentbuilderCodexHelperProcess$ -- \"$@\"\n"
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
+	require.NoError(t, os.Chmod(scriptPath, 0o755))
+	return scriptPath
+}
+
 func TestAgentbuilderLintsHelperProcess(t *testing.T) {
 	if os.Getenv("CODALOTL_AGENTBUILDER_LINTS_HELPER_PROCESS") != "1" {
 		return
@@ -897,4 +907,25 @@ func TestAgentbuilderLintsHelperProcess(t *testing.T) {
 		_, _ = os.Stdout.WriteString(stdout)
 	}
 	os.Exit(exitCode)
+}
+
+func TestAgentbuilderCodexHelperProcess(t *testing.T) {
+	if os.Getenv("CODALOTL_AGENTBUILDER_CODEX_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	args := os.Args
+	delimiter := -1
+	for i, a := range args {
+		if a == "--" {
+			delimiter = i
+			break
+		}
+	}
+	if delimiter == -1 {
+		os.Exit(2)
+	}
+
+	_, _ = os.Stdout.WriteString("codex helper saw args: " + strings.Join(args[delimiter+1:], " "))
+	os.Exit(0)
 }

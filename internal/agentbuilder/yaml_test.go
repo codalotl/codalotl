@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentregistry"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/lints"
@@ -185,6 +186,39 @@ tools:
 	assert.Contains(t, result.Result, "hello|"+sandbox+"|")
 }
 
+func TestBuildRegistry_PROrchestratorReviewTool_RunsCodexReviewAgainstBase(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODALOTL_AGENTBUILDER_CODEX_HELPER_PROCESS", "1")
+
+	binDir := t.TempDir()
+	installCodexHelper(t, binDir)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	reviewTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		t.TempDir(),
+		"",
+		nil,
+	), "review")
+
+	result := reviewTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Input:  `{"base":"origin/main"}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "review-call", result.CallID)
+	assert.Equal(t, "review", result.Name)
+	assert.Equal(t, "function_call", result.Type)
+	assert.Contains(t, result.Result, `<command ok="true"`)
+	assert.Contains(t, result.Result, `$ codex review --base origin/main`)
+	assert.Contains(t, result.Result, "codex helper saw args: review --base origin/main")
+}
+
 func TestAddYAMLToRegistry_DuplicateToolDoesNotMutateRegistry(t *testing.T) {
 	registry, err := BuildRegistry()
 	require.NoError(t, err)
@@ -312,6 +346,69 @@ func TestYAMLSubagentToolRun_PackageModeUsesCallerScopeNotOverrides(t *testing.T
 	require.NoError(t, err)
 }
 
+func TestBuildRegistry_PROrchestratorImplementTool_InvokesPackageModeSubagent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sandbox := t.TempDir()
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	ensureGoPackageFixture(t, sandbox, targetPkgDir)
+
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "implemented target package"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	implementTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	), "implement")
+	require.IsType(t, &yamlSubagentTool{}, implementTool)
+	implementTool.(*yamlSubagentTool).opts.AgentInvoker = invoker
+
+	result := implementTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "implement-call",
+		Name:   "implement",
+		Type:   "function_call",
+		Input:  `{"path":"targetpkg","instructions":"Add the remaining built-in orchestrator coverage."}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "implement-call", result.CallID)
+	assert.Equal(t, "implement", result.Name)
+	assert.Equal(t, "function_call", result.Type)
+	assert.Equal(t, "implemented target package", result.Result)
+
+	assert.Equal(t, AgentPackageModeDefaultContext, invoker.lastAgentName)
+	assert.Equal(t, []string{"Add the remaining built-in orchestrator coverage."}, invoker.lastRequest.Messages)
+	assert.Equal(t, targetPkgDir, invoker.lastRequest.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, sandbox, invoker.lastRequest.CallerSandboxDir)
+	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.SandboxDir)
+	assert.Empty(t, invoker.lastRequest.OverrideSandboxDir)
+	assert.Nil(t, invoker.lastRequest.OverrideAuthorizer)
+
+	require.NotNil(t, invoker.lastRequest.CallerAuthorizer)
+	assert.True(t, invoker.lastRequest.CallerAuthorizer.IsCodeUnitDomain())
+	assert.Equal(t, targetPkgDir, invoker.lastRequest.CallerAuthorizer.CodeUnitDir())
+	assert.Equal(t, sandbox, invoker.lastRequest.CallerAuthorizer.SandboxDir())
+
+	require.NotNil(t, invoker.lastRequest.ToolOptions.Authorizer)
+	assert.True(t, invoker.lastRequest.ToolOptions.Authorizer.IsCodeUnitDomain())
+	assert.Equal(t, targetPkgDir, invoker.lastRequest.ToolOptions.Authorizer.CodeUnitDir())
+	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.Authorizer.SandboxDir())
+}
+
 func TestBuildRegistry_YAMLBackedBuiltInAgentsPreserveToolsets(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -421,3 +518,28 @@ func invokeAgentForModelWithRegistryDetailed(t *testing.T, registry *agentregist
 
 	return creator.lastSystemPrompt, creator.lastTools
 }
+
+type captureAgentInvoker struct {
+	lastAgentName string
+	lastRequest   toolsetinterface.InvokeRequest
+	events        []agent.Event
+	err           error
+}
+
+func (c *captureAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+	c.lastAgentName = agentName
+	c.lastRequest = req
+
+	if c.err != nil {
+		return nil, c.err
+	}
+
+	events := make(chan agent.Event, len(c.events))
+	for _, event := range c.events {
+		events <- event
+	}
+	close(events)
+	return events, nil
+}
+
+var _ toolsetinterface.AgentInvoker = (*captureAgentInvoker)(nil)
