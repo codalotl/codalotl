@@ -35,21 +35,26 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - Route orchestrate startup through the built-in orchestrator agent in generic mode and ignore package mode for that path.
 - Cover session-start selection and JSON startup output with focused `internal/noninteractive` tests.
 
-### internal/cli
+### internal/cli [DONE]
 
 - Add noninteractive `/orchestrate` entrypoints via `codalotl exec --slash-command=orchestrate` and `codalotl exec --slash-command=/orchestrate`.
 - Update `exec` positional-arg validation so orchestrate slash-command runs may omit `<prompt>`, while other `exec` invocations still require one.
 - Forward the slash-command into `noninteractive.Options` and list the flag in `exec --help`.
 - Keep user-facing copy on the slash-command names rather than the internal orchestrator agent identifier.
 
-### Validation
+### Validation [DONE]
 
 - Run focused tests for `internal/cli`.
+- Run `go test ./...` as a regression check.
 
-### Manual validation
+### Manual validation (noninteractive) [DONE]
+
+- Manually verify `codalotl exec --help` lists `--slash-command`.
+- Manually exercise noninteractive slash-command handling for both `codalotl exec --slash-command="orchestrate"` and `codalotl exec --slash-command="/orchestrate"`.
+
+### Manual validation (interactive TUI)
 
 - Manually exercise `/orchestrate` in the interactive TUI.
-- Manually exercise noninteractive slash-command handling for both `codalotl exec --slash-command="orchestrate"` and `codalotl exec --slash-command="/orchestrate"`.
 
 ## Decisions
 
