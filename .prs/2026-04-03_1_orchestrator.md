@@ -19,15 +19,20 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - Remove internal agent-name wording from user-visible copy while keeping `/orchestrate` discoverable.
 - Cover the session flow and welcome/help copy with focused TUI tests.
 
-### internal/agentbuilder
+### internal/agentbuilder [DONE]
 
 - Verify the embedded orchestrator agent is registered with the expected prompt and toolset.
 - Add focused tests for the built-in `review` tool using a stubbed external command so command/arg wiring is exercised end-to-end from the registry-built tool.
 - Add focused tests for the built-in `implement` tool by invoking the registry-built subagent tool and asserting target package resolution, forwarded instructions, and final assistant-text collection behavior.
 
-### Validation
+### Validation [DONE]
 
 - Run focused tests for `internal/tui` and `internal/agentbuilder`.
+
+### Manual validation
+
+- Manually exercise `/orchestrate` in the interactive TUI.
+- Manually exercise noninteractive slash-command handling for both `codalotl exec --slash-command="orchestrate"` and `codalotl exec --slash-command="/orchestrate"`.
 
 ## Decisions
 
