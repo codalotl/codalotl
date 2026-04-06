@@ -82,3 +82,8 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - [P2] `internal/agentbuilder`: YAML package-target resolution falls back to `gocode.NewModule(opts.GoPkgAbsDir)` for import-path targets, which is empty for generic callers like `pr-orchestrator`, so the built-in `implement` tool does not actually support the advertised import-path targets from generic mode.
 
 ## Summary
+
+- Added `/orchestrate` as a user-facing TUI command that starts a fresh generic-mode orchestrator session, keeps follow-up chat/slash-command behavior working, and avoids exposing the internal `pr-orchestrator` agent name in visible copy.
+- Added noninteractive orchestrate startup support via `codalotl exec --slash-command=orchestrate` and `codalotl exec --slash-command=/orchestrate`, including empty-prompt startup, CLI flag/help wiring, and session-selection logic that routes this path through the built-in orchestrator agent in generic mode.
+- Added focused coverage for the built-in orchestrator tool wiring in `internal/agentbuilder`, including registry-built `review` and `implement` tool execution tests, then fixed follow-up issues so `implement` resolves import-path targets from generic mode and preserves reachable `testdata` directories in package-mode jails.
+- Validated the change with focused package tests, a full `go test ./...`, and manual checks for both interactive `/orchestrate` flow and the noninteractive `exec --slash-command` entrypoints.
