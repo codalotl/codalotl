@@ -38,6 +38,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 ### internal/cli
 
 - Add noninteractive `/orchestrate` entrypoints via `codalotl exec --slash-command=orchestrate` and `codalotl exec --slash-command=/orchestrate`.
+- Update `exec` positional-arg validation so orchestrate slash-command runs may omit `<prompt>`, while other `exec` invocations still require one.
 - Forward the slash-command into `noninteractive.Options` and list the flag in `exec --help`.
 - Keep user-facing copy on the slash-command names rather than the internal orchestrator agent identifier.
 
@@ -62,6 +63,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - 2026-04-06: Manual validation surfaced that `codalotl exec --help` does not list `--slash-command`, so the noninteractive orchestrate requirement is not implemented yet. The next implementation step should be located in `internal/cli` plus any required `internal/noninteractive` session wiring.
 - 2026-04-06: A follow-up `internal/cli` implementation pass only changed `internal/noninteractive`, skipped the `exec --slash-command` CLI flag, and treated empty orchestrate startup as a no-op. The next pass should keep CLI plumbing in scope and mirror the TUI by actually starting the orchestrator session even with no initial user message.
 - 2026-04-06: A later `internal/cli`-targeted pass produced useful `internal/noninteractive` session-start support, but still did not wire the CLI flag. The next pass should stay narrowly on `internal/cli` flag registration, help text, and forwarding `SlashCommand` into `noninteractive.Options`.
+- 2026-04-06: Another `internal/cli` implementation pass produced no diff, but it confirmed `internal/q/cli` parses flag values before calling a command's `Args` validator. The next pass should use that in `exec` to permit zero positional args only when `--slash-command` is `orchestrate` or `/orchestrate`, while also wiring the flag/help text and forwarding into `noninteractive.Options`.
 
 ## Review
 
