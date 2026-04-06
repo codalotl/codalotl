@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codalotl/codalotl/internal/agentbuilder"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -72,6 +73,81 @@ func TestExecValidationErrorsPrintNothing(t *testing.T) {
 			t.Fatalf("expected no output, got %q", buf.String())
 		}
 	})
+}
+
+func TestBuildSessionStart_EmptyPromptValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty prompt rejected without slash command", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := buildSessionStart("", Options{})
+		require.EqualError(t, err, "prompt is required")
+	})
+
+	t.Run("empty prompt rejected for unsupported slash command", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := buildSessionStart("", Options{SlashCommand: "/unknown"})
+		require.EqualError(t, err, `unsupported slash command "/unknown"`)
+	})
+
+	t.Run("empty prompt accepted for orchestrate slash command", func(t *testing.T) {
+		t.Parallel()
+
+		for _, slashCommand := range []string{"orchestrate", "/orchestrate"} {
+			start, err := buildSessionStart("", Options{SlashCommand: slashCommand, PackagePath: "internal/noninteractive"})
+			require.NoError(t, err)
+			require.Equal(t, orchestratorAgentName, start.agentName)
+			require.False(t, start.pkgMode)
+			require.Empty(t, start.initialUserMessage)
+			require.Empty(t, start.visibleUserPrompt)
+		}
+	})
+}
+
+func TestBuildSessionStart_ModeSelection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("package mode without slash command", func(t *testing.T) {
+		t.Parallel()
+
+		start, err := buildSessionStart("fix failing test", Options{PackagePath: "internal/noninteractive"})
+		require.NoError(t, err)
+		require.Equal(t, agentbuilder.AgentPackageModeNoContext, start.agentName)
+		require.True(t, start.pkgMode)
+		require.Equal(t, "fix failing test", start.initialUserMessage)
+		require.Equal(t, "fix failing test", start.visibleUserPrompt)
+	})
+
+	t.Run("orchestrate ignores package mode and uses orchestrator agent", func(t *testing.T) {
+		t.Parallel()
+
+		start, err := buildSessionStart("fix failing test", Options{
+			PackagePath:  "internal/noninteractive",
+			SlashCommand: "/orchestrate",
+		})
+		require.NoError(t, err)
+		require.Equal(t, orchestratorAgentName, start.agentName)
+		require.False(t, start.pkgMode)
+		require.Equal(t, "fix failing test", start.initialUserMessage)
+		require.Equal(t, "fix failing test", start.visibleUserPrompt)
+	})
+}
+
+func TestBuildAgent_OrchestrateStartBuildsBuiltInOrchestrator(t *testing.T) {
+	t.Parallel()
+
+	start, err := buildSessionStart("fix failing test", Options{
+		PackagePath:  "internal/noninteractive",
+		SlashCommand: "/orchestrate",
+	})
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	agentInstance, err := buildAgent(start, sandbox, "", "", defaultModelID, authdomain.NewAutoApproveAuthorizer(sandbox), nil)
+	require.NoError(t, err)
+	require.NotNil(t, agentInstance)
 }
 
 func TestShouldSuppressFormattedOutput(t *testing.T) {

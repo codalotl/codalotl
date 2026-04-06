@@ -118,8 +118,8 @@ type Options struct {
 
 	// SlashCommand applies a TUI-style slash command at session start. Supported values are "", "orchestrate", and "/orchestrate".
 	//
-	// "orchestrate" and "/orchestrate" start a fresh generic-mode orchestrator session around the built-in orchestrator agent, matching the TUI's `/orchestrate`
-	// behavior. PackagePath is ignored for orchestrate mode.
+	// "orchestrate" and "/orchestrate" start a fresh generic-mode orchestrator session around the built-in orchestrator agent, matching the TUI's `/orchestrate` behavior.
+	// PackagePath is ignored for orchestrate mode.
 	SlashCommand string
 
 	ModelID     llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.

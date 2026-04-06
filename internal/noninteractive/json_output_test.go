@@ -249,6 +249,52 @@ func TestJSONEventWriterWriteStartAndUserMessage(t *testing.T) {
 	}, msg)
 }
 
+func TestWriteSessionStartOutputJSON_OnlyEmitsEndUserPrompt(t *testing.T) {
+	t.Parallel()
+
+	t.Run("orchestrate without initial prompt omits user_message", func(t *testing.T) {
+		t.Parallel()
+
+		start, err := buildSessionStart("", Options{SlashCommand: "/orchestrate"})
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		require.NoError(t, writeSessionStartOutput(&buf, newJSONEventWriter(&buf), true, "/tmp/sandbox", "", llmmodel.ModelID("gpt-5.4-high"), start))
+
+		lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
+		require.Len(t, lines, 1)
+
+		var event map[string]any
+		require.NoError(t, json.Unmarshal(lines[0], &event))
+		require.Equal(t, map[string]any{
+			"type":         "start",
+			"cwd":          "/tmp/sandbox",
+			"package_path": "",
+			"model_id":     "gpt-5.4-high",
+		}, event)
+	})
+
+	t.Run("orchestrate with initial prompt emits only that prompt", func(t *testing.T) {
+		t.Parallel()
+
+		start, err := buildSessionStart("fix failing test", Options{SlashCommand: "orchestrate"})
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		require.NoError(t, writeSessionStartOutput(&buf, newJSONEventWriter(&buf), true, "/tmp/sandbox", "", llmmodel.ModelID("gpt-5.4-high"), start))
+
+		lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
+		require.Len(t, lines, 2)
+
+		var msg map[string]any
+		require.NoError(t, json.Unmarshal(lines[1], &msg))
+		require.Equal(t, map[string]any{
+			"type": "user_message",
+			"text": "fix failing test",
+		}, msg)
+	})
+}
+
 func TestAutoRespondToUserRequestsJSON(t *testing.T) {
 	t.Parallel()
 
