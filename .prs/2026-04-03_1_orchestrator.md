@@ -3,16 +3,19 @@
 ## User Summary (do not modify)
 
 Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orchestrator.prompt.md for the expected workflow. Yes, you're an orchestrator working on orchestrator. Yodawg.
-- don't do noninteractive yet
 - make sure review and implement tools approximiately work, i haven't tried them yet.
 - the text "pr-orchestrator" is not meant to be user visible copy.
+
+2026-04-06, 7:26am:
+- add requirement to support in noninteractive.
+    - add flag, like `codalotl exec --slash-command="orchestrate"`, also support `codalotl exec --slash-command="/orchestrate"`
+- make sure you manually test this, don't just rely on `go test`
 
 ## Plan
 
 ### internal/tui [DONE]
 
 - Verify `/orchestrate` resets into a fresh generic-mode orchestrator session and preserves normal follow-up chat behavior.
-- Keep this interactive-only; do not add noninteractive support in this PR.
 - Remove internal agent-name wording from user-visible copy while keeping `/orchestrate` discoverable.
 - Cover the session flow and welcome/help copy with focused TUI tests.
 
