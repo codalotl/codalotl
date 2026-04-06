@@ -22,8 +22,8 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 ### internal/agentbuilder
 
 - Verify the embedded orchestrator agent is registered with the expected prompt and toolset.
-- Add focused tests for the built-in `review` tool using a stubbed external command so command/arg wiring is exercised.
-- Add focused tests for the built-in `implement` tool by invoking the registry-built subagent tool and asserting target package resolution and forwarded instructions.
+- Add focused tests for the built-in `review` tool using a stubbed external command so command/arg wiring is exercised end-to-end from the registry-built tool.
+- Add focused tests for the built-in `implement` tool by invoking the registry-built subagent tool and asserting target package resolution, forwarded instructions, and final assistant-text collection behavior.
 
 ### Validation
 
@@ -37,6 +37,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 ## Learnings
 
 - 2026-04-06: A broad `internal/agentbuilder` implementation request produced no code diff. The next pass should stay narrowly scoped to explicit `review` and `implement` tool invocation tests.
+- 2026-04-06: A follow-up `internal/agentbuilder` test request also produced no code diff after drifting into `internal/agent` event details. The next implementation pass should include the specific event contract needed for `CollectFinalAssistantText` and keep the scope on registry-built tool execution.
 
 ## Review
 
