@@ -11,6 +11,9 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
     - add flag, like `codalotl exec --slash-command="orchestrate"`, also support `codalotl exec --slash-command="/orchestrate"`
 - make sure you manually test this, don't just rely on `go test`
 
+2026-04-06, 2:56pm (after review):
+- I want 
+
 ## Plan
 
 ### internal/tui [DONE]
@@ -72,5 +75,8 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - 2026-04-06: Another `internal/cli` implementation pass produced no diff, but it confirmed `internal/q/cli` parses flag values before calling a command's `Args` validator. The next pass should use that in `exec` to permit zero positional args only when `--slash-command` is `orchestrate` or `/orchestrate`, while also wiring the flag/help text and forwarding into `noninteractive.Options`.
 
 ## Review
+
+- [P2] `internal/agentbuilder`: package-mode subagent jails created by the YAML-backed `implement` tool do not re-include reachable `testdata` directories, so orchestrated package edits can fail on fixture files that normal package mode allows.
+- [P2] `internal/agentbuilder`: YAML package-target resolution falls back to `gocode.NewModule(opts.GoPkgAbsDir)` for import-path targets, which is empty for generic callers like `pr-orchestrator`, so the built-in `implement` tool does not actually support the advertised import-path targets from generic mode.
 
 ## Summary
