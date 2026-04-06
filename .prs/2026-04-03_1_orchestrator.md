@@ -29,15 +29,21 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 - Run focused tests for `internal/tui` and `internal/agentbuilder`.
 
-### internal/cli + internal/noninteractive
+### internal/noninteractive [DONE]
+
+- Allow `Exec` to start orchestrate sessions from `SlashCommand` with or without an initial user prompt.
+- Route orchestrate startup through the built-in orchestrator agent in generic mode and ignore package mode for that path.
+- Cover session-start selection and JSON startup output with focused `internal/noninteractive` tests.
+
+### internal/cli
 
 - Add noninteractive `/orchestrate` entrypoints via `codalotl exec --slash-command=orchestrate` and `codalotl exec --slash-command=/orchestrate`.
-- Wire slash-command execution into the same orchestrator session setup used by the TUI, without exposing the internal agent identifier in user-facing copy.
-- Extend focused tests around `exec`/`noninteractive` flag handling and session selection.
+- Forward the slash-command into `noninteractive.Options` and list the flag in `exec --help`.
+- Keep user-facing copy on the slash-command names rather than the internal orchestrator agent identifier.
 
 ### Validation
 
-- Run focused tests for `internal/cli` and `internal/noninteractive`.
+- Run focused tests for `internal/cli`.
 
 ### Manual validation
 
@@ -55,6 +61,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - 2026-04-06: A follow-up `internal/agentbuilder` test request also produced no code diff after drifting into `internal/agent` event details. The next implementation pass should include the specific event contract needed for `CollectFinalAssistantText` and keep the scope on registry-built tool execution.
 - 2026-04-06: Manual validation surfaced that `codalotl exec --help` does not list `--slash-command`, so the noninteractive orchestrate requirement is not implemented yet. The next implementation step should be located in `internal/cli` plus any required `internal/noninteractive` session wiring.
 - 2026-04-06: A follow-up `internal/cli` implementation pass only changed `internal/noninteractive`, skipped the `exec --slash-command` CLI flag, and treated empty orchestrate startup as a no-op. The next pass should keep CLI plumbing in scope and mirror the TUI by actually starting the orchestrator session even with no initial user message.
+- 2026-04-06: A later `internal/cli`-targeted pass produced useful `internal/noninteractive` session-start support, but still did not wire the CLI flag. The next pass should stay narrowly on `internal/cli` flag registration, help text, and forwarding `SlashCommand` into `noninteractive.Options`.
 
 ## Review
 
