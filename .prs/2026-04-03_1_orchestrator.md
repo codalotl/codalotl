@@ -22,8 +22,8 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 ### internal/agentbuilder
 
 - Verify the embedded orchestrator agent is registered with the expected prompt and toolset.
-- Make sure `review` and `implement` are usable enough for the orchestrator workflow, especially package targeting for `implement`.
-- Add or tighten registry/YAML tests around the orchestrator wiring and tool behavior.
+- Add focused tests for the built-in `review` tool using a stubbed external command so command/arg wiring is exercised.
+- Add focused tests for the built-in `implement` tool by invoking the registry-built subagent tool and asserting target package resolution and forwarded instructions.
 
 ### Validation
 
@@ -33,6 +33,10 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 - `/orchestrate` is the user-facing command and mode name; the internal agent identifier stays implementation-only.
 - Existing preliminary branch work should be validated and fixed forward rather than reimplemented from scratch.
+
+## Learnings
+
+- 2026-04-06: A broad `internal/agentbuilder` implementation request produced no code diff. The next pass should stay narrowly scoped to explicit `review` and `implement` tool invocation tests.
 
 ## Review
 
