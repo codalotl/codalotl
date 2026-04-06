@@ -11,6 +11,7 @@ Otherwise, you can read files, navigate the repo, use shell tools, plan next ste
 The PR file should have these sections (add them if missing):
 - `# PR` - root heading. Always this. No direct text underneath (just the headings below).
 - `## User Summary (do not modify)` - you can move the user's instructions into this section if it's not already. Don't modify their instructions.
+    - The user may occasionally edit this section, ideally with timestamps, to add/modify requirements, and to provide feedback.
 - `## Plan` - an up-to-date implementation plan. If multiple implementation steps, use multiple `###` subheadings. Keep state with `[DONE]` in the subheading. Can be revised upon contact with reality.
 - `## Review` - review notes from the final review pass.
 - `## Summary` - the final body of the PR (as seen on GitHub, for instance).
