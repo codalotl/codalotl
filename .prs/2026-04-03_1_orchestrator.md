@@ -52,9 +52,10 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - Manually verify `codalotl exec --help` lists `--slash-command`.
 - Manually exercise noninteractive slash-command handling for both `codalotl exec --slash-command="orchestrate"` and `codalotl exec --slash-command="/orchestrate"`.
 
-### Manual validation (interactive TUI)
+### Manual validation (interactive TUI) [DONE]
 
 - Manually exercise `/orchestrate` in the interactive TUI.
+- Confirm the orchestrate welcome text appears and follow-up slash commands still work in that session (validated with `/quit`).
 
 ## Decisions
 
