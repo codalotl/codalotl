@@ -346,6 +346,38 @@ func TestYAMLSubagentToolRun_PackageModeUsesCallerScopeNotOverrides(t *testing.T
 	require.NoError(t, err)
 }
 
+func TestYAMLSubagentToolBuildTargetPackageAuthorizer_IncludesReachableTestdataOnly(t *testing.T) {
+	sandbox := t.TempDir()
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	ensureGoPackageFixture(t, sandbox, targetPkgDir)
+
+	reachableTestdataFile := filepath.Join(targetPkgDir, "testdata", "fixture.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(reachableTestdataFile), 0o755))
+	require.NoError(t, os.WriteFile(reachableTestdataFile, []byte("fixture"), 0o644))
+
+	excludedTestdataFile := filepath.Join(targetPkgDir, "nested", "testdata", "blocked.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(excludedTestdataFile), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(targetPkgDir, "nested", "nested.go"), []byte("package nested\n"), 0o644))
+	require.NoError(t, os.WriteFile(excludedTestdataFile, []byte("blocked"), 0o644))
+
+	tool := &yamlSubagentTool{
+		opts: toolsetinterface.Options{
+			SandboxDir:  sandbox,
+			Authorizer:  authdomain.NewAutoApproveAuthorizer(sandbox),
+			GoPkgAbsDir: targetPkgDir,
+		},
+	}
+
+	authorizer := tool.buildTargetPackageAuthorizer(resolvedPackageTarget{
+		AbsDir:        targetPkgDir,
+		WithinSandbox: true,
+	}, sandbox)
+	t.Cleanup(authorizer.Close)
+
+	require.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", reachableTestdataFile))
+	require.Error(t, authorizer.IsAuthorizedForRead(false, "", "read_file", excludedTestdataFile))
+}
+
 func TestBuildRegistry_PROrchestratorImplementTool_InvokesPackageModeSubagent(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -407,6 +439,61 @@ func TestBuildRegistry_PROrchestratorImplementTool_InvokesPackageModeSubagent(t 
 	assert.True(t, invoker.lastRequest.ToolOptions.Authorizer.IsCodeUnitDomain())
 	assert.Equal(t, targetPkgDir, invoker.lastRequest.ToolOptions.Authorizer.CodeUnitDir())
 	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.Authorizer.SandboxDir())
+}
+
+func TestBuildRegistry_PROrchestratorImplementTool_GenericModeImportPathResolvesTargetPackage(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	ensureGoPackageFixture(t, sandbox, targetPkgDir)
+
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "implemented target package"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	_, tools := invokeAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	)
+	implementTool := requireTool(t, tools, "implement")
+	require.IsType(t, &yamlSubagentTool{}, implementTool)
+
+	yamlTool := implementTool.(*yamlSubagentTool)
+	assert.Empty(t, yamlTool.opts.GoPkgAbsDir)
+	yamlTool.opts.AgentInvoker = invoker
+
+	result := yamlTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "implement-import-call",
+		Name:   "implement",
+		Type:   "function_call",
+		Input:  `{"path":"example.com/test/targetpkg","instructions":"Implement the requested change."}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "implemented target package", result.Result)
+	assert.Equal(t, AgentPackageModeDefaultContext, invoker.lastAgentName)
+	assert.Equal(t, []string{"Implement the requested change."}, invoker.lastRequest.Messages)
+	assert.Equal(t, targetPkgDir, invoker.lastRequest.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, sandbox, invoker.lastRequest.CallerSandboxDir)
+	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.SandboxDir)
 }
 
 func TestBuildRegistry_YAMLBackedBuiltInAgentsPreserveToolsets(t *testing.T) {
