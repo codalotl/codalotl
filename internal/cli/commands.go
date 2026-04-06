@@ -157,7 +157,6 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	execCmd := &qcli.Command{
 		Name:  "exec",
 		Short: "Run codalotl noninteractively with a prompt.",
-		Args:  qcli.MinimumArgs(1),
 	}
 	execFlags := execCmd.Flags()
 	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode, rooted at this package path (must be within cwd).")
@@ -165,8 +164,20 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	execNoColor := execFlags.Bool("no-color", 0, false, "Disable ANSI colors and formatting.")
 	execJSON := execFlags.Bool("json", 0, false, "Output newline-delimited JSON.")
 	execModel := execFlags.String("model", 0, "", "LLM model ID to use (overrides config preferredmodel; empty = default).")
+	execSlashCommand := execFlags.String("slash-command", 0, "", "Apply a TUI-style slash command at session start (supported: orchestrate, /orchestrate).")
+	execArgs := qcli.MinimumArgs(1)
+	execCmd.Args = func(args []string) error {
+		if len(args) == 0 {
+			switch strings.TrimSpace(*execSlashCommand) {
+			case "orchestrate", "/orchestrate":
+				return nil
+			}
+		}
+		return execArgs(args)
+	}
 	execCmd.Run = runWithConfig("exec", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 		userPrompt := strings.TrimSpace(strings.Join(c.Args, " "))
+		slashCommand := strings.TrimSpace(*execSlashCommand)
 
 		// Match the TUI behavior: if the user hasn't explicitly selected a model
 		// on the command line, use the configured preferred model, and otherwise
@@ -183,6 +194,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 
 		err = runNoninteractiveExec(userPrompt, noninteractive.Options{
 			PackagePath:  *execPackage,
+			SlashCommand: slashCommand,
 			ModelID:      modelID,
 			LintSteps:    steps,
 			ReflowWidth:  cfg.ReflowWidth,
