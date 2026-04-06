@@ -29,6 +29,16 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 - Run focused tests for `internal/tui` and `internal/agentbuilder`.
 
+### internal/cli + internal/noninteractive
+
+- Add noninteractive `/orchestrate` entrypoints via `codalotl exec --slash-command=orchestrate` and `codalotl exec --slash-command=/orchestrate`.
+- Wire slash-command execution into the same orchestrator session setup used by the TUI, without exposing the internal agent identifier in user-facing copy.
+- Extend focused tests around `exec`/`noninteractive` flag handling and session selection.
+
+### Validation
+
+- Run focused tests for `internal/cli` and `internal/noninteractive`.
+
 ### Manual validation
 
 - Manually exercise `/orchestrate` in the interactive TUI.
@@ -43,6 +53,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 - 2026-04-06: A broad `internal/agentbuilder` implementation request produced no code diff. The next pass should stay narrowly scoped to explicit `review` and `implement` tool invocation tests.
 - 2026-04-06: A follow-up `internal/agentbuilder` test request also produced no code diff after drifting into `internal/agent` event details. The next implementation pass should include the specific event contract needed for `CollectFinalAssistantText` and keep the scope on registry-built tool execution.
+- 2026-04-06: Manual validation surfaced that `codalotl exec --help` does not list `--slash-command`, so the noninteractive orchestrate requirement is not implemented yet. The next implementation step should be located in `internal/cli` plus any required `internal/noninteractive` session wiring.
 
 ## Review
 
