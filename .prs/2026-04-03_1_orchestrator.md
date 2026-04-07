@@ -11,8 +11,11 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
     - add flag, like `codalotl exec --slash-command="orchestrate"`, also support `codalotl exec --slash-command="/orchestrate"`
 - make sure you manually test this, don't just rely on `go test`
 
-2026-04-06, 2:56pm (after review):
-- I want 
+2026-04-07, 7:49pm (post-summary):
+- I reviewed what we have here. One big miss: the new events added are not formatted. How did you miss this? You should have seen it in manual testing. In any case, handle as follows:
+    - Edit agentformatter/SPEC.md to document new forms (NOTE: we are NOT implementing new general forms of formatting tools yet, like letting the yaml specify formatters)
+    - use implement to implement it
+    - Verify it works by tring manually with noninteractive
 
 ## Plan
 
