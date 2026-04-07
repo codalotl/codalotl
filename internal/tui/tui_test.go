@@ -650,22 +650,26 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 }
 
 func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	for _, toolName := range []string{"change_api", "update_usage", "clarify_public_api", "implement", "review"} {
+		t.Run(toolName, func(t *testing.T) {
+			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
-	callID := "call-2"
-	call := &llmstream.ToolCall{CallID: callID, Name: "change_api"}
-	result := &llmstream.ToolResult{CallID: callID, Name: "change_api"}
+			callID := "call-2"
+			call := &llmstream.ToolCall{CallID: callID, Name: toolName}
+			result := &llmstream.ToolResult{CallID: callID, Name: toolName}
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "change_api", ToolCall: call})
-	require.Len(t, m.messages, 1)
-	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: toolName, ToolCall: call})
+			require.Len(t, m.messages, 1)
+			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "change_api", ToolCall: call, ToolResult: result})
+			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: toolName, ToolCall: call, ToolResult: result})
 
-	// Exception behavior: for SubAgent tools, keep the call and append the result.
-	require.Len(t, m.messages, 2)
-	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
-	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+			// Exception behavior: for SubAgent tools, keep the call and append the result.
+			require.Len(t, m.messages, 2)
+			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+			require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+		})
+	}
 }
 
 func TestModelCommandListsAvailableModels(t *testing.T) {
