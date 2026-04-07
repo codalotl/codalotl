@@ -54,7 +54,14 @@ Tools:
 - `subagent` is used to run a named agent.
     - `name`: name of the agent to use (either from this YAML file, previously added YAML files, or the base pre-installed `## Agents` above).
     - `package`: optional. If present, indicates we're using package mode. The only value supported is the name of a parameter, whose value is interpreted as the package to jail to (relative path to sandbox or Go import path).
-    - `message`: Message to send. Uses Go templating.
+    - `message`: shorthand for sending one templated user message.
+    - `messages`: optional array of user messages. Exactly one of `message` or `messages`.
+        - Each message item sets exactly one of `name`, `file`, `text`, or `command`.
+        - `name`, `file`, and `text` resolve like agent prompt blocks, then are rendered with Go templating.
+        - `command` runs a templated command and uses its textual output as the message body.
+    - `result_format`: optional. Supported values:
+        - `text` (default): return final assistant text as-is.
+        - `json`: parse final assistant text as JSON and return normalized JSON; invalid JSON is a tool error.
     - `package_restrictions`: optional; only relevant for package-based subagents. Subfields (all optional; all except `require_package_mode` only apply if already in package mode):
         - `disallow_self`: disallow the same package as is currently running.
         - `relation`: optional relationship between the current package and the target package. Supported values:
