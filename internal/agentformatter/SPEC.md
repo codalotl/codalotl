@@ -286,6 +286,53 @@ The EventTypeToolComplete looks like this:
 
 - NOTE: no body (i.e., no └ below the line). Might change later.
 
+### EventTypeToolCall and EventTypeToolComplete - review
+
+The EventTypeToolCall looks like this:
+
+```
+• Reviewing origin/main
+```
+
+- Reviewing is Bold, Colorful.
+- origin/main is normal.
+- No body on the call.
+
+The EventTypeToolComplete looks like this:
+
+```
+• Reviewed origin/main
+  └ [P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.
+```
+
+- Reviewed is Bold, Colorful.
+- origin/main is normal.
+- If there is output, summarize it like other tool output (max 5 lines).
+
+### EventTypeToolCall and EventTypeToolComplete - implement
+
+The EventTypeToolCall looks like this:
+
+```
+• Implementing internal/agentformatter
+  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.
+```
+
+- Implementing is Bold, Colorful.
+- internal/agentformatter is normal.
+- Instructions are Accent.
+
+The EventTypeToolComplete looks like this:
+
+```
+• Implemented internal/agentformatter
+  └ Added focused coverage for orchestrator tool-event formatting.
+```
+
+- Implemented is Bold, Colorful.
+- internal/agentformatter is normal.
+- If the tool returns text, summarize it like other tool output (max 5 lines).
+
 ### EventTypeToolCall and EventTypeToolComplete - get_usage
 
 ```
