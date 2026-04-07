@@ -19,6 +19,17 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 ## Plan
 
+### internal/agentformatter
+
+- Update `internal/agentformatter/SPEC.md` to cover the new orchestrator tool-event formatting forms without introducing a new general formatter-configuration mechanism.
+- Format the new orchestrator `implement`/`review` events so manual and noninteractive output stays readable and user-facing copy avoids internal agent identifiers.
+- Add focused `internal/agentformatter` coverage for the new formatted output.
+
+### Validation
+
+- Run focused tests for `internal/agentformatter`.
+- Manually verify the formatted orchestrator tool events in noninteractive mode.
+
 ### internal/tui [DONE]
 
 - Verify `/orchestrate` resets into a fresh generic-mode orchestrator session and preserves normal follow-up chat behavior.
@@ -76,6 +87,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - 2026-04-06: A follow-up `internal/cli` implementation pass only changed `internal/noninteractive`, skipped the `exec --slash-command` CLI flag, and treated empty orchestrate startup as a no-op. The next pass should keep CLI plumbing in scope and mirror the TUI by actually starting the orchestrator session even with no initial user message.
 - 2026-04-06: A later `internal/cli`-targeted pass produced useful `internal/noninteractive` session-start support, but still did not wire the CLI flag. The next pass should stay narrowly on `internal/cli` flag registration, help text, and forwarding `SlashCommand` into `noninteractive.Options`.
 - 2026-04-06: Another `internal/cli` implementation pass produced no diff, but it confirmed `internal/q/cli` parses flag values before calling a command's `Args` validator. The next pass should use that in `exec` to permit zero positional args only when `--slash-command` is `orchestrate` or `/orchestrate`, while also wiring the flag/help text and forwarding into `noninteractive.Options`.
+- 2026-04-07: Manual validation covered orchestrate startup flow, but it did not explicitly verify that the newly added orchestrator tool events were rendered through `internal/agentformatter`. Future manual checks for new event types should confirm both behavior and formatted output.
 
 ## Review
 
