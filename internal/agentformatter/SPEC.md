@@ -312,6 +312,7 @@ The EventTypeToolComplete looks like this:
 - With findings, show finding titles only (max 5; then `… +N findings`).
 - With no findings, show a concise success line rather than raw JSON.
 - If parsing fails, fall back to normal summarized tool output/error formatting.
+- If a subagent emits assistant text that parses as the same review JSON schema, do not print that raw JSON as a separate assistant-text line; the enclosing `review` tool completion is the user-visible representation.
 
 ### EventTypeToolCall and EventTypeToolComplete - implement
 
