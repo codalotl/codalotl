@@ -17,6 +17,9 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
     - use implement to implement it
     - Verify it works by tring manually with noninteractive
 
+2026-04-07, 8:44pm (more feedback):
+- We tried to let @mentions make grants when the calling agent invokes something like implement with `Read @.prs/2026-04-03_1_orchestrator.md`. But I see it doesn't work. Make it work. Make sure to test it manually to ensure it really works.
+
 ## Plan
 
 ### internal/agentformatter [DONE]
