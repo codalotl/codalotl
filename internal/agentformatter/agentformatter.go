@@ -341,6 +341,10 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiUpdateUsageToolCall(e, width)
 	case "change_api":
 		return f.tuiChangeAPIToolCall(e, width)
+	case "review":
+		return f.tuiReviewToolCall(e, width)
+	case "implement":
+		return f.tuiImplementToolCall(e, width)
 	default:
 		return f.tuiGenericToolCall(e, width)
 	}
@@ -384,6 +388,10 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliUpdateUsageToolCall(e)
 	case "change_api":
 		return f.cliChangeAPIToolCall(e)
+	case "review":
+		return f.cliReviewToolCall(e)
+	case "implement":
+		return f.cliImplementToolCall(e)
 	default:
 		return f.cliGenericToolCall(e)
 	}
@@ -553,6 +561,10 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiUpdateUsageToolComplete(e, width, success, cmd, outputLines)
 	case "change_api":
 		return f.tuiChangeAPIToolComplete(e, width, success, cmd, outputLines)
+	case "review":
+		return f.tuiReviewToolComplete(e, width, success, cmd, outputLines)
+	case "implement":
+		return f.tuiImplementToolComplete(e, width, success, cmd, outputLines)
 	default:
 		return f.tuiGenericToolComplete(e, width, success, cmd, outputLines)
 	}
@@ -600,6 +612,10 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliUpdateUsageToolComplete(e, success, cmd, outputLines)
 	case "change_api":
 		return f.cliChangeAPIToolComplete(e, success, cmd, outputLines)
+	case "review":
+		return f.cliReviewToolComplete(e, success, cmd, outputLines)
+	case "implement":
+		return f.cliImplementToolComplete(e, success, cmd, outputLines)
 	default:
 		return f.cliGenericToolComplete(e, success, cmd, outputLines)
 	}
@@ -2549,6 +2565,42 @@ func extractChangeAPI(call *llmstream.ToolCall) (path string, instructions strin
 	return path, instructions, true
 }
 
+func extractReview(call *llmstream.ToolCall) (base string, ok bool) {
+	if call == nil {
+		return "", false
+	}
+	var payload struct {
+		Base string `json:"base"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
+		return "", false
+	}
+	base = sanitizeText(strings.TrimSpace(payload.Base))
+	if base == "" {
+		return "", false
+	}
+	return base, true
+}
+
+func extractImplement(call *llmstream.ToolCall) (path string, instructions string, ok bool) {
+	if call == nil {
+		return "", "", false
+	}
+	var payload struct {
+		Path         string `json:"path"`
+		Instructions string `json:"instructions"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
+		return "", "", false
+	}
+	path = sanitizeText(strings.TrimSpace(payload.Path))
+	instructions = sanitizeText(strings.TrimSpace(payload.Instructions))
+	if path == "" {
+		return "", "", false
+	}
+	return path, instructions, true
+}
+
 func summarizeUpdateUsagePaths(paths []string) (summary string, extra int) {
 	if len(paths) == 0 {
 		return "", 0
@@ -2739,6 +2791,143 @@ func (f *textTUIFormatter) cliChangeAPIToolComplete(e agent.Event, success bool,
 		if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
 			lines = append(lines, rest...)
 		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func reviewHeaderSegments(verb string, base string) []textSegment {
+	segments := []textSegment{
+		{text: verb, style: runeStyle{color: colorColorful, bold: true}},
+	}
+	base = strings.TrimSpace(base)
+	if base != "" {
+		segments = append(segments, textSegment{text: " " + base})
+	}
+	return segments
+}
+
+func implementHeaderSegments(verb string, path string) []textSegment {
+	segments := []textSegment{
+		{text: verb, style: runeStyle{color: colorColorful, bold: true}},
+	}
+	path = strings.TrimSpace(path)
+	if path != "" {
+		segments = append(segments, textSegment{text: " " + path})
+	}
+	return segments
+}
+
+func (f *textTUIFormatter) tuiReviewToolCall(e agent.Event, width int) string {
+	base, ok := extractReview(e.ToolCall)
+	if !ok {
+		return f.tuiGenericToolCall(e, width)
+	}
+	return f.tuiBulletLine(width, colorAccent, reviewHeaderSegments("Reviewing", base)...)
+}
+
+func (f *textTUIFormatter) cliReviewToolCall(e agent.Event) string {
+	base, ok := extractReview(e.ToolCall)
+	if !ok {
+		return f.cliGenericToolCall(e)
+	}
+	return f.cliBulletLine(colorAccent, reviewHeaderSegments("Reviewing", base)...)
+}
+
+func (f *textTUIFormatter) tuiReviewToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+	base, ok := extractReview(e.ToolCall)
+	if !ok {
+		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, bullet, reviewHeaderSegments("Reviewed", base)...))
+	if len(outputLines) > 0 {
+		f.appendTUIToolOutput(&builder, width, outputLines)
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliReviewToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+	base, ok := extractReview(e.ToolCall)
+	if !ok {
+		return f.cliGenericToolComplete(e, success, "", outputLines)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	lines := []string{f.cliBulletLine(bullet, reviewHeaderSegments("Reviewed", base)...)}
+	if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
+		lines = append(lines, rest...)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (f *textTUIFormatter) tuiImplementToolCall(e agent.Event, width int) string {
+	path, instructions, ok := extractImplement(e.ToolCall)
+	if !ok {
+		return f.tuiGenericToolCall(e, width)
+	}
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, colorAccent, implementHeaderSegments("Implementing", path)...))
+	if instructions != "" {
+		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
+			text:          instructions,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: true,
+		}})
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliImplementToolCall(e agent.Event) string {
+	path, instructions, ok := extractImplement(e.ToolCall)
+	if !ok {
+		return f.cliGenericToolCall(e)
+	}
+	lines := []string{f.cliBulletLine(colorAccent, implementHeaderSegments("Implementing", path)...)}
+	if instructions != "" {
+		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
+			text:          instructions,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: true,
+		}})...)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (f *textTUIFormatter) tuiImplementToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+	path, _, ok := extractImplement(e.ToolCall)
+	if !ok {
+		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	var builder strings.Builder
+	builder.WriteString(f.tuiBulletLine(width, bullet, implementHeaderSegments("Implemented", path)...))
+	if len(outputLines) > 0 {
+		f.appendTUIToolOutput(&builder, width, outputLines)
+	}
+	return builder.String()
+}
+
+func (f *textTUIFormatter) cliImplementToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+	path, _, ok := extractImplement(e.ToolCall)
+	if !ok {
+		return f.cliGenericToolComplete(e, success, "", outputLines)
+	}
+	bullet := colorGreen
+	if !success {
+		bullet = colorRed
+	}
+	lines := []string{f.cliBulletLine(bullet, implementHeaderSegments("Implemented", path)...)}
+	if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
+		lines = append(lines, rest...)
 	}
 	return strings.Join(lines, "\n")
 }

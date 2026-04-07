@@ -1562,6 +1562,249 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure should use red bullet")
 }
 
+func TestReviewToolCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "review",
+		Input: `{"base":"origin/main"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "review",
+		ToolCall: &call,
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		require.Equal(t, "• Reviewing origin/main", stripANSI(out))
+		assert.Contains(t, out, ansiWrap("Reviewing", pal, colorColorful, false, true))
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
+		assert.NotContains(t, stripANSI(out), "└")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		require.Equal(t, "• Reviewing origin/main", stripANSI(out))
+		assert.NotContains(t, stripANSI(out), "review {")
+	})
+}
+
+func TestReviewToolCompleteFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "review",
+		Input: `{"base":"origin/main"}`,
+	}
+
+	t.Run("success with summarized output", func(t *testing.T) {
+		result := llmstream.ToolResult{
+			Result:  `{"success":true,"content":"[P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers."}`,
+			IsError: false,
+		}
+		event := agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       "review",
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+
+		t.Run("tui", func(t *testing.T) {
+			out := formatter.FormatEvent(event, 160)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Reviewed origin/main",
+				"  └ [P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
+			}, lines)
+			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+			assert.Contains(t, out, ansiWrap("Reviewed", pal, colorColorful, false, true))
+		})
+
+		t.Run("cli", func(t *testing.T) {
+			out := formatter.FormatEvent(event, MinTerminalWidth)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Reviewed origin/main",
+				"  └ [P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
+			}, lines)
+		})
+	})
+
+	t.Run("error shows message", func(t *testing.T) {
+		result := llmstream.ToolResult{
+			Result:  "review failed",
+			IsError: true,
+		}
+		event := agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       "review",
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+
+		t.Run("tui", func(t *testing.T) {
+			out := formatter.FormatEvent(event, 120)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Reviewed origin/main",
+				"  └ Error: review failed",
+			}, lines)
+			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+		})
+
+		t.Run("cli", func(t *testing.T) {
+			out := formatter.FormatEvent(event, MinTerminalWidth)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Reviewed origin/main",
+				"  └ Error: review failed",
+			}, lines)
+		})
+	})
+}
+
+func TestImplementToolCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentformatter","instructions":"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     "implement",
+		ToolCall: &call,
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 160)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Implementing internal/agentformatter",
+			"  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.",
+		}, lines)
+		assert.Contains(t, out, ansiWrap("Implementing", pal, colorColorful, false, true))
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		lines := strings.Split(stripANSI(out), "\n")
+		require.Equal(t, []string{
+			"• Implementing internal/agentformatter",
+			"  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.",
+		}, lines)
+		assert.NotContains(t, stripANSI(out), "subagent")
+	})
+}
+
+func TestImplementToolCompleteFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentformatter","instructions":"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."}`,
+	}
+
+	t.Run("success with summarized output", func(t *testing.T) {
+		result := llmstream.ToolResult{
+			Result:  `{"success":true,"content":"Added focused coverage for orchestrator tool-event formatting."}`,
+			IsError: false,
+		}
+		event := agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       "implement",
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+
+		t.Run("tui", func(t *testing.T) {
+			out := formatter.FormatEvent(event, 160)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Implemented internal/agentformatter",
+				"  └ Added focused coverage for orchestrator tool-event formatting.",
+			}, lines)
+			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+			assert.Contains(t, out, ansiWrap("Implemented", pal, colorColorful, false, true))
+		})
+
+		t.Run("cli", func(t *testing.T) {
+			out := formatter.FormatEvent(event, MinTerminalWidth)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Implemented internal/agentformatter",
+				"  └ Added focused coverage for orchestrator tool-event formatting.",
+			}, lines)
+		})
+	})
+
+	t.Run("error shows message", func(t *testing.T) {
+		result := llmstream.ToolResult{
+			Result:  "implementation failed",
+			IsError: true,
+		}
+		event := agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       "implement",
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+
+		t.Run("tui", func(t *testing.T) {
+			out := formatter.FormatEvent(event, 120)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Implemented internal/agentformatter",
+				"  └ Error: implementation failed",
+			}, lines)
+			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+		})
+
+		t.Run("cli", func(t *testing.T) {
+			out := formatter.FormatEvent(event, MinTerminalWidth)
+			require.NotEmpty(t, out)
+			lines := strings.Split(stripANSI(out), "\n")
+			require.Equal(t, []string{
+				"• Implemented internal/agentformatter",
+				"  └ Error: implementation failed",
+			}, lines)
+		})
+	})
+}
+
 func TestModuleInfoToolCallNoOptions(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
