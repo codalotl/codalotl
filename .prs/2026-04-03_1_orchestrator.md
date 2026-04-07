@@ -78,6 +78,16 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - Manually exercise `/orchestrate` in the interactive TUI.
 - Confirm the orchestrate welcome text appears and follow-up slash commands still work in that session (validated with `/quit`).
 
+### internal/agentbuilder
+
+- Fix YAML-backed package subagent invocation so `implement` preserves `@`-mention read grants from its `instructions` message when the spawned package-mode agent reads files outside the target package jail.
+- Add focused regression coverage around the built-in `implement` tool path proving a mentioned file like `@.prs/2026-04-03_1_orchestrator.md` can be read by the spawned package-mode agent.
+
+### Validation
+
+- Run focused tests for `internal/agentbuilder` and any adjacent package touched by the fix.
+- Manually verify in noninteractive orchestrate mode that `implement` can read the mentioned PR file.
+
 ## Decisions
 
 - `/orchestrate` is the user-facing command and mode name; the internal agent identifier stays implementation-only.
