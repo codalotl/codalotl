@@ -19,16 +19,16 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 ## Plan
 
-### internal/agentformatter
+### internal/agentformatter [DONE]
 
 - Update `internal/agentformatter/SPEC.md` to cover the new orchestrator tool-event formatting forms without introducing a new general formatter-configuration mechanism.
 - Format the new orchestrator `implement`/`review` events so manual and noninteractive output stays readable and user-facing copy avoids internal agent identifiers.
 - Add focused `internal/agentformatter` coverage for the new formatted output.
 
-### Validation
+### Validation [DONE]
 
 - Run focused tests for `internal/agentformatter`.
-- Manually verify the formatted orchestrator tool events in noninteractive mode.
+- Manually verify the formatted orchestrator `review` and `implement` tool events in noninteractive mode.
 
 ### internal/tui [DONE]
 
@@ -68,6 +68,7 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 
 - Manually verify `codalotl exec --help` lists `--slash-command`.
 - Manually exercise noninteractive slash-command handling for both `codalotl exec --slash-command="orchestrate"` and `codalotl exec --slash-command="/orchestrate"`.
+- Manually verify formatted noninteractive orchestrator `review` and `implement` tool events.
 
 ### Manual validation (interactive TUI) [DONE]
 
@@ -101,4 +102,5 @@ Add an /orchestrate command to the TUI. See internal/agentbuilder/data/pr-orches
 - Added `/orchestrate` as a user-facing TUI command that starts a fresh generic-mode orchestrator session, keeps follow-up chat/slash-command behavior working, and avoids exposing the internal `pr-orchestrator` agent name in visible copy.
 - Added noninteractive orchestrate startup support via `codalotl exec --slash-command=orchestrate` and `codalotl exec --slash-command=/orchestrate`, including empty-prompt startup, CLI flag/help wiring, and session-selection logic that routes this path through the built-in orchestrator agent in generic mode.
 - Added focused coverage for the built-in orchestrator tool wiring in `internal/agentbuilder`, including registry-built `review` and `implement` tool execution tests, then fixed follow-up issues so `implement` resolves import-path targets from generic mode and preserves reachable `testdata` directories in package-mode jails.
-- Validated the change with focused package tests, a full `go test ./...`, and manual checks for both interactive `/orchestrate` flow and the noninteractive `exec --slash-command` entrypoints.
+- Formatted orchestrator `review` and `implement` tool events in `internal/agentformatter`, keeping the user-facing copy on the tool actions/targets and adding focused formatter coverage for both TUI and CLI output paths.
+- Validated the change with focused package tests, a full `go test ./...`, and manual checks for interactive `/orchestrate`, the noninteractive `exec --slash-command` entrypoints, and the formatted orchestrator tool events.
