@@ -1782,7 +1782,7 @@ func toolName(ev agent.Event) string {
 
 func shouldReplaceToolCallWithResult(ev agent.Event) bool {
 	switch toolName(ev) {
-	case "change_api", "update_usage", "clarify_public_api":
+	case "change_api", "update_usage", "clarify_public_api", "implement", "review":
 		// SubAgent tools: we want to show the call *and* the result as separate messages.
 		return false
 	default:

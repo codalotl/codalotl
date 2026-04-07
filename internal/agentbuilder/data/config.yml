@@ -84,22 +84,63 @@ agents:
       - implement
     mode: generic
     skills: true
+  - name: pr-review
+    prompts:
+      - file: review.prompt.md
+    tools:
+      - read_file
+      - ls
+      - shell
+    mode: generic
+    skills: false
   
 tools:
   - name: review
     description: |
-      Reviews changes made vs some branch, and outputs a textual list of prioritized issues.
+      Reviews changes made vs some branch, and returns raw JSON findings plus an overall correctness verdict.
     parameters:
       base:
         type: string
         description: Branch to review against, often main or master.
         required: true
-    command:
-      cmd: codex
-      args:
-        - review
-        - "--base"
-        - "{{ .base }}"
+    subagent:
+      name: pr-review
+      result_format: json
+      messages:
+        - text: |
+            Review the current branch against base ref `{{ .base }}`.
+
+            Sandbox root: `{{ .sandbox_dir }}`.
+
+            When you report a finding, `code_location.absolute_file_path` must be an absolute path under this sandbox. Diff paths are repo-relative, so join them to `{{ .sandbox_dir }}` when filling that field.
+
+            The next messages contain, in order:
+            1. Commit log since `{{ .base }}`.
+            2. Diff stat vs `{{ .base }}`.
+            3. Full diff vs `{{ .base }}`.
+
+            Only report actionable bugs introduced by this diff. Return JSON that exactly matches your schema.
+        - command:
+            cmd: git
+            args:
+              - log
+              - --oneline
+              - --decorate
+              - "{{ .base }}..HEAD"
+        - command:
+            cmd: git
+            args:
+              - diff
+              - --stat
+              - --find-renames
+              - "{{ .base }}...HEAD"
+        - command:
+            cmd: git
+            args:
+              - diff
+              - --find-renames
+              - --submodule=diff
+              - "{{ .base }}...HEAD"
   - name: implement
     description: Implements changes to a specific package.
     parameters:
