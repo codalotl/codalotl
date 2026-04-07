@@ -340,6 +340,9 @@ func TestBuildRegistry_PROrchestratorReviewTool_InvokesReviewSubagentAndReturnsJ
 
 	require.Len(t, invoker.lastRequest.Messages, 4)
 	assert.Contains(t, invoker.lastRequest.Messages[0], "base ref `main`")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "Sandbox root: `"+sandbox+"`")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "`code_location.absolute_file_path`")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "Diff paths are repo-relative")
 	assert.Contains(t, invoker.lastRequest.Messages[1], "feature change")
 	assert.Contains(t, invoker.lastRequest.Messages[2], "pkg.go")
 	assert.Contains(t, invoker.lastRequest.Messages[3], "diff --git")

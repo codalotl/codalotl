@@ -109,6 +109,10 @@ tools:
         - text: |
             Review the current branch against base ref `{{ .base }}`.
 
+            Sandbox root: `{{ .sandbox_dir }}`.
+
+            When you report a finding, `code_location.absolute_file_path` must be an absolute path under this sandbox. Diff paths are repo-relative, so join them to `{{ .sandbox_dir }}` when filling that field.
+
             The next messages contain, in order:
             1. Commit log since `{{ .base }}`.
             2. Diff stat vs `{{ .base }}`.
