@@ -131,10 +131,8 @@ func NewAutoApproveAuthorizer(sandboxDir string) Authorizer {
 
 // NewSessionAuthorizer constructs the standard codalotl session authorizer.
 //
-// When autoApprove is false, this uses the permissive sandbox policy and returns
-// the user request channel for interactive approvals. When autoApprove is true,
-// this uses the auto-approve policy and returns a nil request channel because no
-// approval prompts can be emitted.
+// When autoApprove is false, this uses the permissive sandbox policy and returns the user request channel for interactive approvals. When autoApprove is true, this
+// uses the auto-approve policy and returns a nil request channel because no approval prompts can be emitted.
 func NewSessionAuthorizer(sandboxDir string, commands *ShellAllowedCommands, autoApprove bool) (Authorizer, <-chan UserRequest, error) {
 	if autoApprove {
 		sandbox, err := normalizeSandboxDir(sandboxDir)

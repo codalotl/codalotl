@@ -285,7 +285,7 @@ func extractGrantPatterns(message string) []string {
 		}
 
 		token = strings.TrimSpace(token)
-		token = strings.TrimRight(token, ".,;:!?)]}\"'")
+		token = strings.TrimRight(token, ".,;:!?)]}\"'`")
 		if token == "" || token == string(filepath.Separator) {
 			continue
 		}
@@ -299,7 +299,7 @@ func isGrantTokenTerminator(b byte) bool {
 		return true
 	}
 	switch b {
-	case ',', ';', ':', ')', ']', '}', '"':
+	case ',', ';', ':', ')', ']', '}', '"', '`':
 		return true
 	default:
 		return false
