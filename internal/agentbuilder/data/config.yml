@@ -90,6 +90,7 @@ agents:
     tools:
       - read_file
       - ls
+      - shell
     mode: generic
     skills: false
   
