@@ -1620,6 +1620,92 @@ func builtInReviewToolPayload() map[string]any {
 	}
 }
 
+func TestSubagentReviewJSONAssistantTextIsSuppressed(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	payload := builtInReviewToolPayload()
+	data, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	assistantEvent := agent.Event{
+		Agent: agent.AgentMeta{Depth: 1},
+		Type:  agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{
+			Content: string(data),
+		},
+	}
+
+	reviewCall := llmstream.ToolCall{
+		Name:  "review",
+		Input: `{"base":"origin/main"}`,
+	}
+	reviewResult := llmstream.ToolResult{
+		Result:  string(data),
+		IsError: false,
+	}
+	reviewEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "review",
+		ToolCall:   &reviewCall,
+		ToolResult: &reviewResult,
+	}
+
+	expectedReviewLines := []string{
+		"• Reviewed origin/main",
+		"  └ [P2] Return JSON payload",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		assistantOut := formatter.FormatEvent(assistantEvent, 200)
+		require.Empty(t, stripANSI(assistantOut))
+
+		reviewOut := formatter.FormatEvent(reviewEvent, 200)
+		require.Equal(t, expectedReviewLines, strings.Split(stripANSI(reviewOut), "\n"))
+		assert.NotContains(t, stripANSI(reviewOut), `"overall_correctness"`)
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		assistantOut := formatter.FormatEvent(assistantEvent, MinTerminalWidth)
+		require.Empty(t, stripANSI(assistantOut))
+
+		reviewOut := formatter.FormatEvent(reviewEvent, MinTerminalWidth)
+		require.Equal(t, expectedReviewLines, strings.Split(stripANSI(reviewOut), "\n"))
+		assert.NotContains(t, stripANSI(reviewOut), `"overall_correctness"`)
+	})
+}
+
+func TestSubagentNonReviewAssistantTextStillRenders(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	event := agent.Event{
+		Agent: agent.AgentMeta{Depth: 1},
+		Type:  agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{
+			Content: `{"hello":"world"}`,
+		},
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 200)
+		require.NotEmpty(t, out)
+		assert.Contains(t, stripANSI(out), `{"hello":"world"}`)
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Contains(t, stripANSI(out), `{"hello":"world"}`)
+	})
+}
+
 func TestReviewToolCompleteFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),

@@ -115,6 +115,9 @@ func (f *textTUIFormatter) formatCLI(e agent.Event) string {
 	case agent.EventTypeQueuedUserMessageSent:
 		return f.cliUserMessage(e.UserMessage, false)
 	case agent.EventTypeAssistantText:
+		if shouldSuppressAssistantText(e) {
+			return ""
+		}
 		return f.cliAssistantText(e.TextContent.Content)
 	case agent.EventTypeAssistantReasoning:
 		return f.cliAssistantReasoning(e.ReasoningContent.Content)
@@ -146,6 +149,9 @@ func (f *textTUIFormatter) formatTUI(e agent.Event, terminalWidth int) string {
 	case agent.EventTypeQueuedUserMessageSent:
 		return f.tuiUserMessage(e.UserMessage, terminalWidth, false)
 	case agent.EventTypeAssistantText:
+		if shouldSuppressAssistantText(e) {
+			return ""
+		}
 		return f.tuiAssistantText(e.TextContent.Content, terminalWidth)
 	case agent.EventTypeAssistantReasoning:
 		return f.tuiAssistantReasoning(e.ReasoningContent.Content, terminalWidth)
@@ -186,6 +192,14 @@ func (f *textTUIFormatter) tuiAssistantText(content string, width int) string {
 	}
 	runes := f.buildStyledRunes(content, runeStyle{color: colorNormal}, f.codeRanges(content))
 	return f.wrapStyledText(runes, width, f.bulletPrefix(colorAccent), "  ")
+}
+
+func shouldSuppressAssistantText(e agent.Event) bool {
+	if e.Type != agent.EventTypeAssistantText || e.Agent.Depth <= 0 {
+		return false
+	}
+	_, ok := parseReviewToolPayload(e.TextContent.Content)
+	return ok
 }
 
 func (f *textTUIFormatter) cliUserMessage(message string, queued bool) string {
