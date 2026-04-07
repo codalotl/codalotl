@@ -91,14 +91,15 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 - /package path/to/pkg - enter Package Mode for a given package.
 - /package - exit Package Mode. Prints a message indicating how Package Mode works.
 - /generic - exits Package Mode. Enters generic mode.
+- /orchestrate, /orchestrate <msg> - starts a new `## Orchestrate` session.
 
 ## New Sessions
 
-When a new session is initiated (application startup; /new; /package; etc), the Message Area is cleared, and replaced with "new session text".
-- There are two types of new session text: generic, and Package Mode.
-- Both new session texts have ASCII art (ex: codalotl icon + codalotl word art).
+When a new session is initiated (application startup; /new; /package; /orchestrate; etc), the Message Area is cleared, and replaced with "new session text".
+- There are three types of new session text: generic, orchestrate, and Package Mode.
+- All new session texts have ASCII art (ex: codalotl icon + codalotl word art).
 - The new session text will describe the currently active mode. For example: "Package mode is a Go-specific mode that..."
-- Non-package mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
+- Generic mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
 - The new session text does not mention the current configuration (ex: active model, session ID, current package), but may give the guidance, including illustrative examples of commands.
 
 ## Package Mode
@@ -122,6 +123,13 @@ Other notes:
 - Package Mode requires the selected path to exist and be a directory ("." is allowed), but does not need to be a buildable Go package.
 - Package mode uses initialcontext for the agent's initial context. This can take time to run (it runs tests). Switching to package mode starts getting this context immediately, and does not block the UI. If the user sends a message before this completes, the intialcontext is allowed to complete and then used as context for the User's message.
     - Uses the message `• Gathering context for path/to/package`, where the bullet indicates status (Accent=in progress -> Red vs Green).
+
+## Orchestrate
+
+`/orchestrate` starts a fresh generic-mode session around the built-in `pr-orchestrator` agent:
+- It implicitly starts a new session.
+- If `<msg>` is present, send it as the initial user message. Otherwise, start immediately with no initial message.
+- The Text Area stays open for normal follow-up messages. Those messages continue in that same orchestrator session until another new session command resets it.
 
 ## Color Palette
 

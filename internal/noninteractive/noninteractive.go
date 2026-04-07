@@ -25,14 +25,15 @@ import (
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/prompt"
-	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"golang.org/x/term"
 )
 
 const (
-	defaultModelID = llmmodel.DefaultModel
+	defaultModelID          = llmmodel.DefaultModel
+	orchestratorAgentName   = "pr-orchestrator"
+	slashCommandOrchestrate = "orchestrate"
 )
 
 var toolCallPrintDelay = 3 * time.Second
@@ -69,6 +70,12 @@ type Options struct {
 	// "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
 	PackagePath string
 
+	// SlashCommand applies a TUI-style slash command at session start. Supported values are "", "orchestrate", and "/orchestrate".
+	//
+	// "orchestrate" and "/orchestrate" start a fresh generic-mode orchestrator session around the built-in orchestrator agent, matching the TUI's `/orchestrate` behavior.
+	// PackagePath is ignored for orchestrate mode.
+	SlashCommand string
+
 	ModelID     llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
 	LintSteps   []lints.Step     // LintSteps controls which lint steps the agent runs.
 	ReflowWidth int              // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
@@ -91,6 +98,55 @@ func effectiveModelID(opts Options) llmmodel.ModelID {
 		return llmmodel.ModelID(strings.TrimSpace(string(opts.ModelID)))
 	}
 	return defaultModelID
+}
+
+type sessionStart struct {
+	agentName          string
+	pkgMode            bool
+	initialUserMessage string
+	visibleUserPrompt  string
+}
+
+func buildSessionStart(userPrompt string, opts Options) (sessionStart, error) {
+	userPrompt = strings.TrimSpace(userPrompt)
+
+	slashCommand, err := normalizeSlashCommand(opts.SlashCommand)
+	if err != nil {
+		return sessionStart{}, err
+	}
+
+	start := sessionStart{
+		agentName:          agentbuilder.AgentGeneric,
+		pkgMode:            strings.TrimSpace(opts.PackagePath) != "",
+		initialUserMessage: userPrompt,
+		visibleUserPrompt:  userPrompt,
+	}
+	if start.pkgMode {
+		start.agentName = agentbuilder.AgentPackageModeNoContext
+	}
+
+	if slashCommand == slashCommandOrchestrate {
+		start.agentName = orchestratorAgentName
+		start.pkgMode = false
+	}
+
+	if userPrompt == "" && slashCommand != slashCommandOrchestrate {
+		return sessionStart{}, fmt.Errorf("prompt is required")
+	}
+
+	return start, nil
+}
+
+func normalizeSlashCommand(slashCommand string) (string, error) {
+	original := strings.TrimSpace(slashCommand)
+	switch original {
+	case "", slashCommandOrchestrate:
+		return original, nil
+	case "/" + slashCommandOrchestrate:
+		return slashCommandOrchestrate, nil
+	default:
+		return "", fmt.Errorf("unsupported slash command %q", original)
+	}
 }
 
 type lockedWriter struct {
@@ -234,7 +290,16 @@ func (p *delayedToolCallPrinter) fire(callID string) {
 	_, _ = io.WriteString(p.out, line)
 }
 
+func shouldTrackTerminalError(ev agent.Event) bool {
+	if ev.Agent.Depth != 0 {
+		return false
+	}
+	return ev.Type == agent.EventTypeError || ev.Type == agent.EventTypeCanceled
+}
+
 // Exec runs the agent with prompt and opts. It prints messages, tool calls, and so on to the screen.
+//
+// `userPrompt` is the initial end-user message. It is required unless `Options.SlashCommand` starts a session that can run without an initial message.
 //
 // If there's any validation error (anything before the agent actually starts), an error is returned and nothing is nothing is printed. If there's an unhandled error
 // and the agent cannot complete its run (ex: cannot talk to LLM, even after retries), a message may be printed AND returned via err. Callers can use IsPrinted to
@@ -242,9 +307,9 @@ func (p *delayedToolCallPrinter) fire(callID string) {
 // to read non-existant files; shell commands will fail; etc. These do not typically constitute errors worthy of being returned (instead, the LLM is just told a
 // file doesn't exist).
 func Exec(userPrompt string, opts Options) error {
-	userPrompt = strings.TrimSpace(userPrompt)
-	if userPrompt == "" {
-		return fmt.Errorf("prompt is required")
+	start, err := buildSessionStart(userPrompt, opts)
+	if err != nil {
+		return err
 	}
 
 	out := opts.Out
@@ -260,10 +325,13 @@ func Exec(userPrompt string, opts Options) error {
 		return err
 	}
 
-	pkgMode := strings.TrimSpace(opts.PackagePath) != ""
-	pkgRelPath, pkgAbsPath, err := normalizePackagePath(opts.PackagePath, sandboxDir)
-	if err != nil {
-		return err
+	var pkgRelPath string
+	var pkgAbsPath string
+	if start.pkgMode {
+		pkgRelPath, pkgAbsPath, err = normalizePackagePath(opts.PackagePath, sandboxDir)
+		if err != nil {
+			return err
+		}
 	}
 
 	formatter := agentformatter.NewTUIFormatter(agentformatter.Config{
@@ -273,35 +341,28 @@ func Exec(userPrompt string, opts Options) error {
 	modelID := effectiveModelID(opts)
 	prompt.SetModel(modelID)
 
-	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
+	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, nil, opts.AutoYes)
 	if err != nil {
 		return err
 	}
-	authorizerForTools, err := buildAuthorizerForTools(pkgMode, pkgRelPath, pkgAbsPath, sandboxAuthorizer, userPrompt, authdomain.AddGrantsFromUserMessage)
+	authorizerForTools, err := buildAuthorizerForTools(start.pkgMode, pkgRelPath, pkgAbsPath, sandboxAuthorizer, start.visibleUserPrompt, authdomain.AddGrantsFromUserMessage)
 	if err != nil {
 		sandboxAuthorizer.Close()
 		return err
 	}
 	defer authorizerForTools.Close()
 
-	go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
+	if userRequests != nil {
+		go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
+	}
 
-	agentInstance, err := buildAgent(pkgMode, sandboxDir, pkgRelPath, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
+	agentInstance, err := buildAgent(start, sandboxDir, pkgRelPath, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
 	if err != nil {
 		return err
 	}
 
-	if opts.OutputJSON {
-		if err := jsonWriter.WriteStart(sandboxDir, pkgRelPath, modelID); err != nil {
-			return err
-		}
-		if err := jsonWriter.WriteUserMessage(userPrompt); err != nil {
-			return err
-		}
-	} else {
-		if err := printUserPrompt(out, userPrompt); err != nil {
-			return err
-		}
+	if err := writeSessionStartOutput(out, jsonWriter, opts.OutputJSON, sandboxDir, pkgRelPath, modelID, start); err != nil {
+		return err
 	}
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -315,7 +376,7 @@ func Exec(userPrompt string, opts Options) error {
 
 	var terminalErr error
 	completedAssistantTurnsByAgent := make(map[string][]llmstream.Turn)
-	for ev := range agentInstance.SendUserMessage(runCtx, userPrompt) {
+	for ev := range agentInstance.SendUserMessage(runCtx, start.initialUserMessage) {
 		switch ev.Type {
 		case agent.EventTypeAssistantTurnComplete:
 			// Capture all completed assistant turns (including subagents) so we can optionally
@@ -375,7 +436,7 @@ func Exec(userPrompt string, opts Options) error {
 			if err := jsonWriter.WriteAgentEvent(ev); err != nil {
 				return err
 			}
-			if ev.Type == agent.EventTypeError || ev.Type == agent.EventTypeCanceled {
+			if shouldTrackTerminalError(ev) {
 				terminalErr = ev.Error
 			}
 			continue
@@ -442,7 +503,7 @@ func Exec(userPrompt string, opts Options) error {
 				}
 			}
 		}
-		if ev.Type == agent.EventTypeError || ev.Type == agent.EventTypeCanceled {
+		if shouldTrackTerminalError(ev) {
 			terminalErr = ev.Error
 		}
 	}
@@ -882,45 +943,32 @@ func detectTerminalWidth(out io.Writer) int {
 	return 0
 }
 
-func detectShellToolName(toolNames []string) (name string, ok bool) {
-	// We want skills.Prompt to reference the actual shell tool name exposed to the LLM.
-	// "skill_shell" is the harness-level default, but some toolsets may export it as "shell".
-	for _, candidate := range []string{"skill_shell", "shell"} {
-		for _, toolName := range toolNames {
-			if toolName == candidate {
-				return candidate, true
-			}
+func writeSessionStartOutput(out io.Writer, jsonWriter *jsonEventWriter, outputJSON bool, sandboxDir string, pkgRelPath string, modelID llmmodel.ModelID, start sessionStart) error {
+	if outputJSON {
+		if err := jsonWriter.WriteStart(sandboxDir, pkgRelPath, modelID); err != nil {
+			return err
 		}
+		if strings.TrimSpace(start.visibleUserPrompt) == "" {
+			return nil
+		}
+		return jsonWriter.WriteUserMessage(start.visibleUserPrompt)
 	}
-	return "", false
+
+	if strings.TrimSpace(start.visibleUserPrompt) == "" {
+		return nil
+	}
+	return printUserPrompt(out, start.visibleUserPrompt)
 }
 
-func buildAgent(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) (*agent.Agent, error) {
-	skillSearchStartDir := sandboxDir
-	if pkgMode {
-		skillSearchStartDir = pkgAbsPath
-	}
-	if err := skills.InstallDefault(); err != nil {
-		return nil, fmt.Errorf("install default skills: %w", err)
-	}
-	searchDirs := skills.SearchPaths(skillSearchStartDir)
-	validSkills, _, _, skillsErr := skills.LoadSkills(searchDirs)
-	if skillsErr != nil {
-		// Non-fatal: skills are optional and the app should still run even if discovery fails.
-		// The agent will simply not be told about skills in the prompt.
-		validSkills = nil
-	}
-
+func buildAgent(start sessionStart, sandboxDir string, pkgRelPath string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) (*agent.Agent, error) {
 	toolOptions := toolsetinterface.Options{
 		SandboxDir: sandboxDir,
 		Authorizer: authorizer,
 		Model:      modelID,
 		LintSteps:  lintSteps,
 	}
-	agentName := agentbuilder.AgentGeneric
-	if pkgMode {
+	if start.pkgMode {
 		toolOptions.GoPkgAbsDir = pkgAbsPath
-		agentName = agentbuilder.AgentPackageModeNoContext
 	}
 
 	registry, err := agentbuilder.BuildRegistry()
@@ -928,32 +976,22 @@ func buildAgent(pkgMode bool, sandboxDir string, pkgRelPath string, pkgAbsPath s
 		return nil, fmt.Errorf("build agent registry: %w", err)
 	}
 
-	prepared, err := registry.Prepare(context.Background(), agentName, toolsetinterface.InvokeRequest{
+	prepared, err := registry.Prepare(context.Background(), start.agentName, toolsetinterface.InvokeRequest{
 		ToolOptions: toolOptions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("prepare agent: %w", err)
 	}
 
-	systemPrompt := strings.TrimSpace(prepared.SystemPrompt)
-	if shellToolName, ok := detectShellToolName(prepared.ToolNames); ok {
-		if err := skills.Authorize(validSkills, authorizer); err != nil {
-			return nil, fmt.Errorf("authorize skills: %w", err)
-		}
-		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, pkgMode))
-		systemPrompt = strings.TrimSpace(systemPrompt)
-	}
-	prepared.SystemPrompt = systemPrompt
-
 	envMsg := buildEnvironmentInfo(sandboxDir)
-	if pkgMode {
+	if start.pkgMode {
 		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
 	}
 	prepared.InitialTurns = append(prepared.InitialTurns, envMsg)
 
 	// In generic mode we don't gather package initialcontext, so include AGENTS.md
 	// context up front if present.
-	if !pkgMode {
+	if !start.pkgMode {
 		if agentsMsg := readAgentsMDContextBestEffort(sandboxDir, sandboxDir); agentsMsg != "" {
 			prepared.InitialTurns = append(prepared.InitialTurns, agentsMsg)
 		}

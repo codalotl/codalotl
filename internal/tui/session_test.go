@@ -40,3 +40,20 @@ func TestNewSession_ModelSelection_UsesProvidedModelID(t *testing.T) {
 	t.Cleanup(s.Close)
 	require.Equal(t, customID, s.modelID)
 }
+
+func TestNewSession_OrchestrateMode(t *testing.T) {
+	s, err := newSession(sessionConfig{agentName: orchestrateAgentName})
+	require.NoError(t, err)
+	t.Cleanup(s.Close)
+
+	require.True(t, s.config.orchestrateMode())
+	require.False(t, s.config.packageMode())
+}
+
+func TestNewSession_AutoYesDisablesUserRequests(t *testing.T) {
+	s, err := newSession(sessionConfig{autoYes: true})
+	require.NoError(t, err)
+	t.Cleanup(s.Close)
+
+	require.Nil(t, s.UserRequests())
+}

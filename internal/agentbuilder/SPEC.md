@@ -1,6 +1,12 @@
 # agentbuilder
 
-`agentbuilder` registers our agents into `agentregistry`, allowing `agentregistry` to keep low deps.
+`agentbuilder` registers our default agents/tools into `agentregistry`, keeping `agentregistry` deps low. It also exposes a way to create new agents and tools via YAML files.
+
+## Documentation
+
+`doc.go` should contain godoc documentation that lets consumers of this package know:
+- which agents are available
+- structure of a YAML file.
 
 ## Agents
 
@@ -9,17 +15,64 @@
     - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
 - package_mode_default_context: toolset_package
     - The same as package_mode_no_context, except:
-    - Uses `InitialTurnsBuilder` to add with context (e.g., env and calls `initialcontext.Create`).
+    - Uses `InitialTurnsBuilder` to add env + `initialcontext.Create` context.
 - limited_package_mode: toolset_limited_package
     - Uses the "Package Mode Update Usage" prompt kind
-    - Uses `InitialTurnsBuilder` to add with context (e.g., env and calls `initialcontext.Create`).
-- clarify_public_api: simple_read_only toolset
+    - Uses `InitialTurnsBuilder` to add env + `initialcontext.Create` context.
+- clarify_public_api: toolset_simple_read_only
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
 
+## Data-Driven Agent/Tool Construction
+
+YAML files can construct agents and tools, which can be added to the registry. All agents above (except clarify_public_api) must be implementable with YAML files.
+
+Top-level keys: `agents` and `tools`, both arrays.
+
+Agents:
+- An agent object has 4 required fields: `name`, `prompts`, `tools`, and `mode`.
+- `name` is the agent name.
+- `prompts` is an array; resolved elements are concatenated in order. Each element:
+    - An object with one of three fields set (`name`, `file`, or `text`).
+    - `name`: refers to an existing prompt. Built-in options are `base`, `package-base`, and `limited-package-base`, referring to the agent prompts from `generic`, `package_mode_no_context`, and `limited_package_mode`, respectively.
+    - `file`: refers to a textual file (usually a `.md` file) relative to the YAML file, which is read.
+    - `text`: just use this text directly.
+- `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one virtual tool exists: `edit_files`, which refers to the `toolset_edit_files` tools.
+- `mode` is one of `generic` or `package`.
+- `include_package_mode_context` set to true includes package env and `initialcontext.Create` (optional; only valid if `mode` is `package`).
+- `skills` is an optional boolean (default true) that adds skill support to the prompt (passing appropriate shell tool). Requires the tool `shell` or `skill_shell` to be present.
+
+Tools:
+- A tool must have `name`, `description`, `parameters`, and then one of {`command`, `subagent`}.
+- `name` is the tool name.
+- `description` is the tool description (this is sent to the LLM as the tool description).
+- `parameters` is an object, which has fields that map to parameters. Each parameter must have `type` (ex: `string`), `description` (sent to LLM), and `required` (true or false). This maps to the construction of an `llmstream.ToolInfo`.
+- `command` is used to map the tool to the execution of a shell command. Subfields:
+    - `cmd`: the actual command to run (not including args).
+    - `args`: array of strings. Each string can use Go templating.
+    - `cwd`: optional. Default: the sandbox dir of callers. Can use Go templating.
+- `subagent` is used to run a named agent.
+    - `name`: name of the agent to use (either from this YAML file, previously added YAML files, or the base pre-installed `## Agents` above).
+    - `package`: optional. If present, indicates we're using package mode. The only value supported is the name of a parameter, whose value is interpreted as the package to jail to (relative path to sandbox or Go import path).
+    - `message`: Message to send. Uses Go templating.
+    - `package_restrictions`: optional; only relevant for package-based subagents. Subfields (all optional; all except `require_package_mode` only apply if already in package mode):
+        - `disallow_self`: disallow the same package as is currently running.
+        - `relation`: optional relationship between the current package and the target package. Supported values:
+            - `direct_import_of_caller`: the target package must be directly imported by the current package.
+            - `direct_importer_of_caller`: the target package must directly import the current package.
+        - `allow_outside_sandbox`: allows calling the tool on packages outside of the sandbox (e.g., deps from go.mod or the stdlib). Default false.
+        - `require_package_mode`: require the caller be in package mode. Default false.
+    - NOTE: A package-mode agent must be supplied a package, and a non-package-mode agent must not be supplied a package.
+- The following fields are available to Go templating:
+    - parameters (e.g., a param named `path` is accessed as `{{ .path }}`).
+    - Calling context:
+        - `sandbox_dir`: the current sandbox dir
+        - `package_dir`: the current package dir (relative to sandbox)
+        - NOTE: we can add more things here as needed.
+
 ## Toolsets
 
-Toolsets are just a device used in this SPEC.md file to factor this file (and may be used in non-exported code), not intended to be a public part of the API.
+Toolsets are just a device used in this SPEC.md to factor the file (and may be used in non-exported code), not intended to be a public part of the API.
 
 - toolset_edit_files:
     - when the model provider is openai: {`apply_patch`}
@@ -43,11 +96,12 @@ Toolsets are just a device used in this SPEC.md file to factor this file (and ma
 ## Public API
 
 ```go
-const (
-	AgentGeneric              string = "generic"
-	AgentPackageModeNoContext string = "package_mode_no_context"
-)
-
 // BuildRegistry builds the registry.
 func BuildRegistry() (*agentregistry.Registry, error)
+
+// AddYAMLToRegistry adds agents and tools to reg based on the YAML file at path. If an error occurs, reg will not be mutated.
+//
+// Errors are returned for typical issues reading the YAML file, and also:
+//   - If an agent/tool's name overwrites an existing agent/tool name.
+func AddYAMLToRegistry(reg *agentregistry.Registry, path string) error
 ```

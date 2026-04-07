@@ -129,6 +129,21 @@ func NewAutoApproveAuthorizer(sandboxDir string) Authorizer {
 	return autoApproveAuthorizer{sandboxDir: sandbox}
 }
 
+// NewSessionAuthorizer constructs the standard codalotl session authorizer.
+//
+// When autoApprove is false, this uses the permissive sandbox policy and returns the user request channel for interactive approvals. When autoApprove is true, this
+// uses the auto-approve policy and returns a nil request channel because no approval prompts can be emitted.
+func NewSessionAuthorizer(sandboxDir string, commands *ShellAllowedCommands, autoApprove bool) (Authorizer, <-chan UserRequest, error) {
+	if autoApprove {
+		sandbox, err := normalizeSandboxDir(sandboxDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		return autoApproveAuthorizer{sandboxDir: sandbox}, nil, nil
+	}
+	return NewPermissiveSandboxAuthorizer(sandboxDir, commands)
+}
+
 // NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback. Close also closes fallback.
 func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer {
 	if unit == nil {

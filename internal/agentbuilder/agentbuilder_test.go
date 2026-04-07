@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/doc"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,13 +32,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, filepath.Dir(thisFile), nil, parser.ParseComments)
+	require.NoError(t, err)
+
+	astPkg, ok := pkgs["agentbuilder"]
+	require.True(t, ok)
+
+	pkgDoc := doc.New(astPkg, "github.com/codalotl/codalotl/internal/agentbuilder", 0)
+	require.NotEmpty(t, pkgDoc.Doc)
+
+	for _, agentName := range []string{
+		AgentGeneric,
+		AgentPackageModeNoContext,
+		AgentPackageModeDefaultContext,
+		AgentLimitedPackageMode,
+		agentClarifyPublicAPI,
+		"pr-orchestrator",
+	} {
+		assert.Contains(t, pkgDoc.Doc, agentName)
+	}
+
+	for _, snippet := range []string{
+		"top-level `agents` and `tools` arrays",
+		"`prompts`",
+		"`edit_files`",
+		"`command`",
+		"`subagent`",
+		"`sandbox_dir`",
+		"`package_dir`",
+	} {
+		assert.Contains(t, pkgDoc.Doc, snippet)
+	}
+}
+
 func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	registry, err := BuildRegistry()
 	require.NoError(t, err)
 
 	require.NoError(t, registry.ValidateTools())
 
-	require.Len(t, registry.List(), 5)
+	require.Len(t, registry.List(), 6)
 
 	genericDef, ok := registry.Lookup(AgentGeneric)
 	assert.True(t, ok)
@@ -71,12 +113,19 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(clarifyPrompt, prompt.GetBasicPrompt()))
 	assert.Contains(t, clarifyPrompt, "read-only agent for clarifying public API documentation")
+
+	prOrchestratorDef, ok := registry.Lookup("pr-orchestrator")
+	require.True(t, ok)
+	assert.Equal(t, "pr-orchestrator", prOrchestratorDef.Name)
 }
 
 func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	gotPrompt, gotTools := invokeAgentForModel(t, AgentGeneric, llmmodel.ProviderIDOpenAI.DefaultModel())
 
-	assert.Equal(t, prompt.GetBasicPrompt(), gotPrompt)
+	assert.Contains(t, gotPrompt, prompt.GetBasicPrompt())
+	assert.Contains(t, gotPrompt, "# Skills")
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
@@ -101,9 +150,12 @@ func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) 
 }
 
 func TestBuildRegistry_InvokePackageMode_OpenAIUsesPackagePromptAndTools(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	gotPrompt, gotTools := invokeAgentForModel(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel())
 
-	assert.Equal(t, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull), gotPrompt)
+	assert.Contains(t, gotPrompt, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull))
+	assert.Contains(t, gotPrompt, "# Skills")
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
@@ -190,6 +242,25 @@ func TestBuildRegistry_InvokeLimitedPackageMode_OpenAIUsesLimitedPromptAndTools(
 		exttools.ToolNameRunTests,
 		pkgtools.ToolNameGetPublicAPI,
 		pkgtools.ToolNameClarifyPublicAPI,
+	}, gotTools)
+}
+
+func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	gotPrompt, gotTools := invokeAgentForModel(t, "pr-orchestrator", llmmodel.ProviderIDOpenAI.DefaultModel())
+
+	assert.Contains(t, gotPrompt, prompt.GetBasicPrompt())
+	assert.Contains(t, gotPrompt, "# PR Orchestrator")
+	assert.Contains(t, gotPrompt, "# Skills")
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameShell,
+		coretools.ToolNameApplyPatch,
+		coretools.ToolNameUpdatePlan,
+		"review",
+		"implement",
 	}, gotTools)
 }
 
@@ -589,7 +660,7 @@ func TestBuildClarifyPublicAPIInitialTurns_GoRequestBuildsEnvAndInitialContext(t
 			SandboxDir: sandbox,
 		},
 		Request: toolsetinterface.InvokeRequest{
-			Messages: []string{string(requestBytes)},
+			Payload: requestBytes,
 		},
 	})
 	require.NoError(t, err)
@@ -622,14 +693,30 @@ func TestBuildClarifyPublicAPIInitialTurns_RejectsOutsideSandboxPath(t *testing.
 			SandboxDir: sandbox,
 		},
 		Request: toolsetinterface.InvokeRequest{
-			Messages: []string{string(requestBytes)},
+			Payload: requestBytes,
 		},
 	})
 	require.ErrorContains(t, err, "outside of sandbox")
 }
 
+func TestParseClarifyPublicAPIRequest_PayloadRequest(t *testing.T) {
+	requestBytes, err := json.Marshal(clarifyPublicAPIRequest{
+		Path:       "internal/example",
+		Identifier: "Hello",
+		Question:   "What does Hello do?",
+	})
+	require.NoError(t, err)
+
+	request, err := parseClarifyPublicAPIRequest(requestBytes, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Hello", request.Identifier)
+	assert.Equal(t, "internal/example", request.Path)
+	assert.Equal(t, "What does Hello do?", request.Question)
+}
+
 func TestParseClarifyPublicAPIRequest_TextRequest(t *testing.T) {
-	request, err := parseClarifyPublicAPIRequest([]string{`Clarify this identifier.
+	request, err := parseClarifyPublicAPIRequest(nil, []string{`Clarify this identifier.
 
 Identifier: Hello
 Path: internal/example
@@ -771,6 +858,16 @@ func agentbuilderHelperCmd(stdout string, exitCode int) *cmdrunner.Command {
 	}
 }
 
+func installCodexHelper(t *testing.T, dir string) string {
+	t.Helper()
+
+	scriptPath := filepath.Join(dir, "codex")
+	script := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestAgentbuilderCodexHelperProcess$ -- \"$@\"\n"
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
+	require.NoError(t, os.Chmod(scriptPath, 0o755))
+	return scriptPath
+}
+
 func TestAgentbuilderLintsHelperProcess(t *testing.T) {
 	if os.Getenv("CODALOTL_AGENTBUILDER_LINTS_HELPER_PROCESS") != "1" {
 		return
@@ -810,4 +907,25 @@ func TestAgentbuilderLintsHelperProcess(t *testing.T) {
 		_, _ = os.Stdout.WriteString(stdout)
 	}
 	os.Exit(exitCode)
+}
+
+func TestAgentbuilderCodexHelperProcess(t *testing.T) {
+	if os.Getenv("CODALOTL_AGENTBUILDER_CODEX_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	args := os.Args
+	delimiter := -1
+	for i, a := range args {
+		if a == "--" {
+			delimiter = i
+			break
+		}
+	}
+	if delimiter == -1 {
+		os.Exit(2)
+	}
+
+	_, _ = os.Stdout.WriteString("codex helper saw args: " + strings.Join(args[delimiter+1:], " "))
+	os.Exit(0)
 }

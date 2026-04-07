@@ -116,6 +116,12 @@ type Options struct {
 	// "foo/bar"; "./foo/bar"). It must be rooted inside of CWD.
 	PackagePath string
 
+	// SlashCommand applies a TUI-style slash command at session start. Supported values are "", "orchestrate", and "/orchestrate".
+	//
+	// "orchestrate" and "/orchestrate" start a fresh generic-mode orchestrator session around the built-in orchestrator agent, matching the TUI's `/orchestrate` behavior.
+	// PackagePath is ignored for orchestrate mode.
+	SlashCommand string
+
 	ModelID     llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
 	LintSteps   []lints.Step     // LintSteps controls which lint steps the agent runs.
 	ReflowWidth int              // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
@@ -134,6 +140,8 @@ type Options struct {
 }
 
 // Exec runs the agent with prompt and opts. It prints messages, tool calls, and so on to the screen.
+//
+// `userPrompt` is the initial end-user message. It is required unless `Options.SlashCommand` starts a session that can run without an initial message.
 //
 // If there's any validation error (anything before the agent actually starts), an error is returned and nothing is nothing is printed. If there's an unhandled error
 // and the agent cannot complete its run (ex: cannot talk to LLM, even after retries), a message may be printed AND returned via err. Callers can use IsPrinted to

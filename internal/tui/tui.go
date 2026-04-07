@@ -152,6 +152,7 @@ func RunWithConfig(cfg Config) error {
 	initialCfg := sessionConfig{
 		modelID:   cfg.ModelID,
 		lintSteps: cfg.LintSteps,
+		autoYes:   cfg.AutoYes,
 	}
 	initialSession, err := newSession(initialCfg)
 	if err != nil {
@@ -204,6 +205,7 @@ type model struct {
 	session                      *session
 	sessionConfig                sessionConfig
 	sessionFactory               func(sessionConfig) (*session, error)
+	startAgentRunHook            func(string)
 	agentFormatter               agentformatter.Formatter
 	queuedMessages               []queuedMessage // pending messages not yet sent (either queued into the agent or queued locally)
 	currentRun                   *agentRun
@@ -231,21 +233,23 @@ type model struct {
 	// /model) but still want to confirm what happened.
 	pendingPostResetMessage string
 
-	monitor               *remotemonitor.Monitor
-	latestVersion         string
-	versionCheckStarted   bool
-	casDB                 *cas.DB
-	specConformance       *specConformanceState
-	nextSpecConformanceID int
-	overlayMode           bool              // Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
-	overlayCopyFeedback   map[int]time.Time // overlayCopyFeedback tracks transient "copied!" feedback per message index.
-	overlayTargets        []overlayTarget   // overlayTargets are computed on each refreshViewport; they map viewport content rows to message indices for hit-testing.
-	lastLeftClickAt       time.Time         // lastLeftClick* is used for best-effort double-click detection.
-	lastLeftClickX        int
-	lastLeftClickY        int
-	clipboardSetter       func(text string) // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
-	osClipboardAvailable  func() bool       // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
-	osClipboardWrite      func(text string) error
+	pendingPostResetUserMessage string
+	pendingPostResetStartRun    bool
+	monitor                     *remotemonitor.Monitor
+	latestVersion               string
+	versionCheckStarted         bool
+	casDB                       *cas.DB
+	specConformance             *specConformanceState
+	nextSpecConformanceID       int
+	overlayMode                 bool              // Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
+	overlayCopyFeedback         map[int]time.Time // overlayCopyFeedback tracks transient "copied!" feedback per message index.
+	overlayTargets              []overlayTarget   // overlayTargets are computed on each refreshViewport; they map viewport content rows to message indices for hit-testing.
+	lastLeftClickAt             time.Time         // lastLeftClick* is used for best-effort double-click detection.
+	lastLeftClickX              int
+	lastLeftClickY              int
+	clipboardSetter             func(text string) // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
+	osClipboardAvailable        func() bool       // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
+	osClipboardWrite            func(text string) error
 
 	// now allows deterministic tests around transient UI state (ex: "copied!").
 	now func() time.Time
@@ -356,16 +360,14 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 			m.pendingSessionConfig = nil
 			postResetMsg := m.pendingPostResetMessage
 			m.pendingPostResetMessage = ""
+			postResetUserMsg := m.pendingPostResetUserMessage
+			m.pendingPostResetUserMessage = ""
+			postResetStartRun := m.pendingPostResetStartRun
+			m.pendingPostResetStartRun = false
 			m.finishAgentRun()
 			if pendingCfg != nil {
 				m.resetSessionWithConfig(*pendingCfg)
-				if postResetMsg != "" {
-					m.appendSystemMessage(postResetMsg)
-					m.refreshViewport(true)
-					if m.viewport != nil {
-						m.viewport.ScrollToBottom()
-					}
-				}
+				m.runPostResetActions(postResetMsg, postResetUserMsg, postResetStartRun)
 			} else {
 				m.startNextQueuedMessage()
 			}
@@ -741,6 +743,8 @@ func (m *model) handleSlashCommand(cmd string) bool {
 		m.stopUserRequestListener()
 		m.pendingSessionConfig = nil
 		m.pendingPostResetMessage = ""
+		m.pendingPostResetUserMessage = ""
+		m.pendingPostResetStartRun = false
 		m.appendSystemMessage("Ending session.")
 		m.refreshViewport(true)
 		if m.viewport != nil {
@@ -793,6 +797,10 @@ func (m *model) handleSlashCommand(cmd string) bool {
 	case "/generic":
 		m.handleGenericCommand()
 		return true
+	case "/orchestrate":
+		orchestrateArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/orchestrate"))
+		m.handleOrchestrateCommand(orchestrateArg)
+		return true
 	case "/fake":
 		if m.isAgentRunning() {
 			m.appendSystemMessage("Finish the current run before starting /fake.")
@@ -831,7 +839,15 @@ func (m *model) handleNewSessionCommand() {
 func (m *model) handleGenericCommand() {
 	cfg := m.sessionConfig
 	cfg.packagePath = ""
-	m.requestSessionReset(cfg, "Package mode disabled. Use `/package path/to/pkg` (path relative to sandbox) to select a package.")
+	cfg.agentName = ""
+	m.requestSessionReset(cfg, "Generic mode enabled. Use `/package path/to/pkg` (path relative to sandbox) to select a package.")
+}
+
+func (m *model) handleOrchestrateCommand(arg string) {
+	cfg := m.sessionConfig
+	cfg.packagePath = ""
+	cfg.agentName = orchestrateAgentName
+	m.requestSessionResetWithFollowUp(cfg, "", "", arg, true)
 }
 
 func (m *model) handleModelCommand(arg string) {
@@ -1059,6 +1075,7 @@ func (m *model) handlePackageCommand(arg string) {
 
 	cfg := m.sessionConfig
 	cfg.packagePath = arg
+	cfg.agentName = ""
 	cfg, err := m.normalizeConfigForCurrentSandbox(cfg)
 	if err != nil {
 		m.appendSystemMessage(fmt.Sprintf("Cannot enter package mode: %v", err))
@@ -1073,12 +1090,17 @@ func (m *model) handlePackageCommand(arg string) {
 }
 
 func (m *model) requestSessionReset(cfg sessionConfig, message string) {
-	m.requestSessionResetWithPostMessage(cfg, message, "")
+	m.requestSessionResetWithFollowUp(cfg, message, "", "", false)
 }
 
 func (m *model) requestSessionResetWithPostMessage(cfg sessionConfig, message string, postResetMessage string) {
+	m.requestSessionResetWithFollowUp(cfg, message, postResetMessage, "", false)
+}
+
+func (m *model) requestSessionResetWithFollowUp(cfg sessionConfig, message string, postResetMessage string, postResetUserMessage string, postResetStartRun bool) {
 	message = strings.TrimSpace(message)
 	postResetMessage = strings.TrimSpace(postResetMessage)
+	postResetUserMessage = strings.TrimSpace(postResetUserMessage)
 
 	if m.isAgentRunning() {
 		if m.pendingSessionConfig != nil {
@@ -1087,6 +1109,8 @@ func (m *model) requestSessionResetWithPostMessage(cfg sessionConfig, message st
 		pending := cfg
 		m.pendingSessionConfig = &pending
 		m.pendingPostResetMessage = postResetMessage
+		m.pendingPostResetUserMessage = postResetUserMessage
+		m.pendingPostResetStartRun = postResetStartRun
 		m.queuedMessages = nil
 		m.rejectOutstandingPermissions()
 		if message != "" {
@@ -1101,13 +1125,7 @@ func (m *model) requestSessionResetWithPostMessage(cfg sessionConfig, message st
 	}
 
 	m.resetSessionWithConfig(cfg)
-	if postResetMessage != "" {
-		m.appendSystemMessage(postResetMessage)
-		m.refreshViewport(true)
-		if m.viewport != nil {
-			m.viewport.ScrollToBottom()
-		}
-	}
+	m.runPostResetActions(postResetMessage, postResetUserMessage, postResetStartRun)
 }
 
 func (m *model) normalizeConfigForCurrentSandbox(cfg sessionConfig) (sessionConfig, error) {
@@ -1128,6 +1146,24 @@ func (m *model) normalizeConfigForCurrentSandbox(cfg sessionConfig) (sessionConf
 	normalizedCfg, _, err := normalizeSessionConfig(cfg, sandboxDir)
 	normalizedCfg.sandboxDir = sandboxDir
 	return normalizedCfg, err
+}
+
+func (m *model) runPostResetActions(postResetMessage string, postResetUserMessage string, postResetStartRun bool) {
+	if postResetMessage != "" {
+		m.appendSystemMessage(postResetMessage)
+	}
+	if postResetUserMessage != "" {
+		m.sendOrQueueMessage(postResetUserMessage)
+		m.startAgentRunIfPossible(postResetUserMessage)
+	} else if postResetStartRun {
+		m.startAgentRunIfPossible("")
+	}
+	if postResetMessage != "" || postResetUserMessage != "" {
+		m.refreshViewport(true)
+		if m.viewport != nil {
+			m.viewport.ScrollToBottom()
+		}
+	}
 }
 
 func (m *model) shouldExitCyclingForKey(msg qtui.KeyEvent) bool {
@@ -1377,6 +1413,10 @@ func (m *model) sendOrQueueMessage(value string) {
 
 func (m *model) startAgentRunIfPossible(value string) {
 	if m.session == nil || m.isAgentRunning() || m.packageContextPending() {
+		return
+	}
+	if m.startAgentRunHook != nil {
+		m.startAgentRunHook(value)
 		return
 	}
 	m.startAgentRun(value)
@@ -2460,6 +2500,8 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.activePermission = nil
 	m.pendingSessionConfig = nil
 	m.pendingPostResetMessage = ""
+	m.pendingPostResetUserMessage = ""
+	m.pendingPostResetStartRun = false
 	m.packageContext = nil
 	m.specConformance = nil
 	m.exitEditingState()

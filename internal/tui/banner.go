@@ -126,6 +126,20 @@ func newSessionBlock(width int, pal colorPalette, cfg sessionConfig) string {
 			styledChunk{style: bodyStyle, text: "To share context from other packages directly, use"},
 			styledChunk{style: hintStyle, text: "@path/to/context."},
 		)
+	} else if cfg.orchestrateMode() {
+		appendWrappedChunks(
+			styledChunk{style: bodyStyle, text: "You are in"},
+			styledChunk{style: emphTitleStyle, text: "orchestrate mode."},
+			styledChunk{style: bodyStyle, text: " This is a fresh generic session for coordinating repo-wide or multi-package work."},
+		)
+
+		lines = append(lines, "")
+		appendWrapped(bodyStyle, "Describe the work below. Follow-up messages stay in this same session until you start another new session.")
+		appendWrapped(bodyStyle, "Useful commands:")
+		appendWrapped(hintStyle, "• /orchestrate plan a cross-package change")
+		appendWrapped(hintStyle, "• /package path/to/pkg")
+		appendWrapped(hintStyle, "• /new")
+		appendWrapped(hintStyle, "• /quit")
 	} else {
 		appendWrappedChunks(
 			styledChunk{style: bodyStyle, text: "You are in the generic, language-agnostic,"},
@@ -143,8 +157,16 @@ func newSessionBlock(width int, pal colorPalette, cfg sessionConfig) string {
 		)
 
 		lines = append(lines, "")
+		appendWrappedChunks(
+			styledChunk{style: bodyStyle, text: "To coordinate branch-wide or multi-package work, use"},
+			styledChunk{style: hintStyle, text: "`/orchestrate`"},
+			styledChunk{style: bodyStyle, text: "for a fresh orchestration session."},
+		)
+
+		lines = append(lines, "")
 		appendWrapped(bodyStyle, "Start by describing a task below, or use one of the commands:")
 		appendWrapped(hintStyle, "• /package path/to/pkg")
+		appendWrapped(hintStyle, "• /orchestrate plan a cross-package change")
 		appendWrapped(hintStyle, "• /model gpt-5.4-high")
 		appendWrapped(hintStyle, "• /quit")
 	}

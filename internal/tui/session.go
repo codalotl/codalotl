@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	defaultModelID = llmmodel.DefaultModel
-	tuiAgentName   = "codalotl"
+	defaultModelID       = llmmodel.DefaultModel
+	tuiAgentName         = "codalotl"
+	orchestrateAgentName = "pr-orchestrator"
 )
 
 type session struct {
@@ -50,8 +51,10 @@ type session struct {
 
 type sessionConfig struct {
 	packagePath string
+	agentName   string
 	modelID     llmmodel.ModelID
 	lintSteps   []lints.Step
+	autoYes     bool
 
 	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd). This is primarily to make tests independent of process-wide working directory and to avoid
 	// path aliasing issues (ex: /var vs /private/var on macOS).
@@ -60,6 +63,10 @@ type sessionConfig struct {
 
 func (cfg sessionConfig) packageMode() bool {
 	return strings.TrimSpace(cfg.packagePath) != ""
+}
+
+func (cfg sessionConfig) orchestrateMode() bool {
+	return strings.TrimSpace(cfg.agentName) == orchestrateAgentName
 }
 
 func newSession(cfg sessionConfig) (*session, error) {
@@ -87,7 +94,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 	prompt.SetModel(modelID)
 
-	sandboxAuthorizer, userRequests, err := authdomain.NewPermissiveSandboxAuthorizer(sandboxDir, nil)
+	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, nil, cfg.autoYes)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +112,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	searchDirs := skills.SearchPaths(skillSearchStartDir)
 	validSkills, invalidSkills, failedSkillLoads, skillsLoadErr := skills.LoadSkills(searchDirs)
 	if skillsLoadErr != nil {
-		// Non-fatal: skills are optional and the app should still start even if discovery fails.
-		// The agent will simply not be told about skills in the prompt.
+		// Non-fatal: session startup should still succeed even if `/skills` cannot show results.
 		debugLogf("skills.LoadSkills failed: %v", skillsLoadErr)
 		validSkills = nil
 		invalidSkills = nil
@@ -124,6 +130,9 @@ func newSession(cfg sessionConfig) (*session, error) {
 		LintSteps:  cfg.lintSteps,
 	}
 	agentName := agentbuilder.AgentGeneric
+	if cfg.orchestrateMode() {
+		agentName = orchestrateAgentName
+	}
 	if cfg.packageMode() {
 		unitName := codeUnitName(cfg.packagePath)
 		unit, err := codeunit.NewCodeUnit(unitName, pkgAbsPath)
@@ -162,18 +171,6 @@ func newSession(cfg sessionConfig) (*session, error) {
 		sandboxAuthorizer.Close()
 		return nil, fmt.Errorf("prepare agent: %w", err)
 	}
-
-	systemPrompt := strings.TrimSpace(prepared.SystemPrompt)
-
-	if shellToolName, ok := detectShellToolName(prepared.ToolNames); ok {
-		if err := skills.Authorize(validSkills, toolAuthorizer); err != nil {
-			sandboxAuthorizer.Close()
-			return nil, fmt.Errorf("authorize skills: %w", err)
-		}
-		systemPrompt = joinContextBlocks(systemPrompt, skills.Prompt(validSkills, shellToolName, cfg.packageMode()))
-		systemPrompt = strings.TrimSpace(systemPrompt)
-	}
-	prepared.SystemPrompt = systemPrompt
 	prepared.InitialTurns = append(prepared.InitialTurns, buildEnvironmentInfo(sandboxDir))
 
 	// In generic mode we don't gather package initialcontext, so include AGENTS.md
@@ -208,19 +205,6 @@ func newSession(cfg sessionConfig) (*session, error) {
 		userRequests:     userRequests,
 		config:           cfg,
 	}, nil
-}
-
-func detectShellToolName(toolNames []string) (name string, ok bool) {
-	// We want skills.Prompt to reference the actual shell-capable tool name exposed to
-	// the LLM. The registry may expose this as either "skill_shell" or "shell".
-	for _, candidate := range []string{"skill_shell", "shell"} {
-		for _, toolName := range toolNames {
-			if toolName == candidate {
-				return candidate, true
-			}
-		}
-	}
-	return "", false
 }
 
 // includeReachableTestdataDirs includes any "testdata" directory directly under an already-included directory (recursively). This allows Go fixture files in testdata
@@ -359,6 +343,7 @@ func boolToYesNo(v bool) string {
 // along with the absolute package path.
 func normalizeSessionConfig(cfg sessionConfig, sandboxDir string) (sessionConfig, string, error) {
 	cfg.packagePath = strings.TrimSpace(cfg.packagePath)
+	cfg.agentName = strings.TrimSpace(cfg.agentName)
 	cfg.modelID = llmmodel.ModelID(strings.TrimSpace(string(cfg.modelID)))
 	if cfg.modelID == "" {
 		cfg.modelID = defaultModelID

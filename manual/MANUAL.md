@@ -181,9 +181,20 @@ codalotl exec -p ./internal/cli "fix failing test"
 
 Flags:
 - `-p, --package <path>`: run in package mode rooted at this package path.
-- `-y, --yes`: auto-approve permission checks.
+- `-y, --yes`: auto-approve permission checks for this run.
 - `--no-color`: disable ANSI formatting.
 - `--model <id>`: override configured preferred model for this run.
+
+Config:
+
+```json
+{
+  "autoyes": true
+}
+```
+
+- `autoyes: true` enables auto-approve in the TUI and as the default for `codalotl exec`.
+- `codalotl exec -y ...` also enables auto-approve for that run.
 
 ### `codalotl context public <path/to/pkg>`
 

@@ -35,10 +35,31 @@ Prints standard usage.
 
 The naked `codalotl` launches the TUI (`codalotl .` is an alias, supported so that muscle memory from things like `code .` work; any other path-like argument is an error).
 
+If config sets `autoyes: true`, the TUI launches with auto-approved permission checks.
+
 If the TUI (`internal/tui`) requests that a newly selected model be persisted (via `tui.Config.PersistModelID`), the CLI writes the model to `preferredmodel` in a JSON config file:
 - If some config file explicitly set `preferredmodel` during load, update that same file.
 - Otherwise, update the highest-precedence config file that contributed any values.
 - If no config files contributed values, write to the global config at `~/.codalotl/config.json` (expanded cross-OS).
+
+### codalotl exec [--package <path/to/pkg>] [--yes] [--no-color] [--json] [--model <id>] [--slash-command <cmd>] [<prompt> ...]
+
+Runs the noninteractive agent (`internal/noninteractive`).
+
+Notes:
+- `<prompt>` is the end-user message. It is required unless `--slash-command` starts a session that can run without an initial message.
+- `--package` enters package mode for the run.
+- `--yes` auto-approves permission checks for the run.
+- `--no-color` disables ANSI formatting.
+- `--json` switches to newline-delimited JSON output.
+- `--model` overrides the configured preferred model for the run.
+- `--slash-command` applies a TUI-style slash command at session start before any `<prompt>` is sent.
+	- Supported values:
+		- `orchestrate`
+		- `/orchestrate`
+	- These start a fresh generic-mode orchestrator session around the built-in orchestrator agent, matching the TUI's `/orchestrate` behavior.
+	- The slash-command name is user-facing; internal agent identifiers are not.
+	- If `<prompt>` is also provided, it is sent as the initial user message in that orchestrator session.
 
 ### codalotl version
 
@@ -84,6 +105,7 @@ Current Configuration:
     "openai": "sk-p..._LQA",
     "anthropic": ""
   },
+  "autoyes": true,
   "reflowwidth": 160,
   "theme": "",
   "preferredprovider": "",

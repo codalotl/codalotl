@@ -46,6 +46,35 @@ func TestSandboxReadFileGrantSkipsRequestPermissionPrompt(t *testing.T) {
 	}
 }
 
+func TestSandboxReadFileGrantInBackticksSkipsRequestPermissionPrompt(t *testing.T) {
+	t.Parallel()
+
+	sandbox := t.TempDir()
+	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	require.NoError(t, err)
+	defer auth.Close()
+
+	target := filepath.Join(sandbox, ".prs", "2026-04-03_1_orchestrator.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
+	require.NoError(t, os.WriteFile(target, []byte("hello"), 0o644))
+
+	require.NoError(t, AddGrantsFromUserMessage(auth, "Read `@.prs/2026-04-03_1_orchestrator.md` and blah blah."))
+
+	done := make(chan error, 1)
+	go func() {
+		done <- auth.IsAuthorizedForRead(true, "explicit", "read_file", target)
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case req := <-requests:
+		t.Fatalf("unexpected prompt: %#v", req)
+	case <-time.After(time.Second):
+		t.Fatal("authorization call blocked unexpectedly")
+	}
+}
+
 func TestSandboxReadFileGrantDoesNotAuthorizeOutsideSandbox(t *testing.T) {
 	t.Parallel()
 

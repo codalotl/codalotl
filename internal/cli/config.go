@@ -24,6 +24,7 @@ type Config struct {
 	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
 	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Defaults to 120.
 	ReflowWidthProvidence cascade.Providence `json:"-"`
+	AutoYes               bool               `json:"autoyes,omitempty"` // AutoYes auto-approves permission checks in TUI and as the default for noninteractive exec.
 
 	// Lints configures the lint pipeline used by `codalotl context initial`. See internal/lints/SPEC.md for full details.
 	Lints lints.Lints `json:"lints,omitempty"`
