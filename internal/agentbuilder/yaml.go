@@ -40,6 +40,8 @@ const (
 	yamlToolVirtualEditFiles   = "edit_files"
 	yamlRelationDirectImport   = "direct_import_of_caller"
 	yamlRelationDirectImporter = "direct_importer_of_caller"
+	yamlResultFormatText       = "text"
+	yamlResultFormatJSON       = "json"
 )
 
 //go:embed data/*
@@ -89,7 +91,16 @@ type yamlSubagentSpec struct {
 	Name                string                           `yaml:"name"`
 	Package             string                           `yaml:"package"`
 	Message             string                           `yaml:"message"`
+	Messages            []yamlSubagentMessageSpec        `yaml:"messages"`
+	ResultFormat        string                           `yaml:"result_format"`
 	PackageRestrictions *yamlSubagentPackageRestrictions `yaml:"package_restrictions"`
+}
+
+type yamlSubagentMessageSpec struct {
+	Name    string           `yaml:"name"`
+	File    string           `yaml:"file"`
+	Text    string           `yaml:"text"`
+	Command *yamlCommandSpec `yaml:"command"`
 }
 
 type yamlSubagentPackageRestrictions struct {
@@ -104,7 +115,7 @@ type yamlNormalizedToolSpec struct {
 	Description       string
 	Parameters        map[string]yamlNormalizedParameter
 	Command           *yamlCommandSpec
-	Subagent          *yamlSubagentSpec
+	Subagent          *yamlNormalizedSubagentSpec
 	TargetPackageMode bool
 }
 
@@ -112,6 +123,19 @@ type yamlNormalizedParameter struct {
 	Type        string
 	Description string
 	Required    bool
+}
+
+type yamlNormalizedSubagentSpec struct {
+	Name                string
+	Package             string
+	Messages            []yamlNormalizedSubagentMessageSpec
+	ResultFormat        string
+	PackageRestrictions *yamlSubagentPackageRestrictions
+}
+
+type yamlNormalizedSubagentMessageSpec struct {
+	Text    string
+	Command *yamlCommandSpec
 }
 
 type yamlPreparedAgent struct {
@@ -127,7 +151,7 @@ type yamlCommandTool struct {
 
 type yamlSubagentTool struct {
 	info              llmstream.ToolInfo
-	spec              *yamlSubagentSpec
+	spec              *yamlNormalizedSubagentSpec
 	params            map[string]yamlNormalizedParameter
 	opts              toolsetinterface.Options
 	targetPackageMode bool
@@ -201,7 +225,7 @@ func addYAMLToRegistryFS(reg *agentregistry.Registry, yamlFS fs.FS, yamlPath str
 		if _, exists := newToolNames[toolSpec.Name]; exists {
 			return fmt.Errorf("tool %q is defined more than once", toolSpec.Name)
 		}
-		normalized, err := normalizeYAMLToolSpec(toolSpec, existingAgentModes, newAgentModes)
+		normalized, err := normalizeYAMLToolSpec(toolSpec, yamlFS, yamlDir, existingAgentModes, newAgentModes)
 		if err != nil {
 			return fmt.Errorf("tool %q: %w", toolSpec.Name, err)
 		}
@@ -282,7 +306,7 @@ func validateYAMLAgentHeader(spec yamlAgentSpec) (string, error) {
 	return spec.Mode, nil
 }
 
-func normalizeYAMLToolSpec(spec yamlToolSpec, existingAgentModes map[string]string, newAgentModes map[string]string) (yamlNormalizedToolSpec, error) {
+func normalizeYAMLToolSpec(spec yamlToolSpec, yamlFS fs.FS, yamlDir string, existingAgentModes map[string]string, newAgentModes map[string]string) (yamlNormalizedToolSpec, error) {
 	if strings.TrimSpace(spec.Description) == "" {
 		return yamlNormalizedToolSpec{}, errors.New("description is required")
 	}
@@ -328,9 +352,6 @@ func normalizeYAMLToolSpec(spec yamlToolSpec, existingAgentModes map[string]stri
 	if strings.TrimSpace(spec.Subagent.Name) == "" {
 		return yamlNormalizedToolSpec{}, errors.New("subagent.name is required")
 	}
-	if strings.TrimSpace(spec.Subagent.Message) == "" {
-		return yamlNormalizedToolSpec{}, errors.New("subagent.message is required")
-	}
 
 	targetMode, ok := newAgentModes[spec.Subagent.Name]
 	if !ok {
@@ -365,13 +386,108 @@ func normalizeYAMLToolSpec(spec yamlToolSpec, existingAgentModes map[string]stri
 		}
 	}
 
+	normalizedSubagent, err := normalizeYAMLSubagentSpec(spec.Subagent, yamlFS, yamlDir)
+	if err != nil {
+		return yamlNormalizedToolSpec{}, err
+	}
+
 	return yamlNormalizedToolSpec{
 		Name:              spec.Name,
 		Description:       spec.Description,
 		Parameters:        normalizedParams,
-		Subagent:          spec.Subagent,
+		Subagent:          &normalizedSubagent,
 		TargetPackageMode: targetMode == yamlAgentModePackage,
 	}, nil
+}
+
+func normalizeYAMLSubagentSpec(spec *yamlSubagentSpec, yamlFS fs.FS, yamlDir string) (yamlNormalizedSubagentSpec, error) {
+	if spec == nil {
+		return yamlNormalizedSubagentSpec{}, errors.New("subagent is required")
+	}
+
+	normalizedMessages, err := normalizeYAMLSubagentMessages(spec, yamlFS, yamlDir)
+	if err != nil {
+		return yamlNormalizedSubagentSpec{}, err
+	}
+
+	resultFormat, err := normalizeYAMLSubagentResultFormat(spec.ResultFormat)
+	if err != nil {
+		return yamlNormalizedSubagentSpec{}, err
+	}
+
+	return yamlNormalizedSubagentSpec{
+		Name:                spec.Name,
+		Package:             spec.Package,
+		Messages:            normalizedMessages,
+		ResultFormat:        resultFormat,
+		PackageRestrictions: spec.PackageRestrictions,
+	}, nil
+}
+
+func normalizeYAMLSubagentMessages(spec *yamlSubagentSpec, yamlFS fs.FS, yamlDir string) ([]yamlNormalizedSubagentMessageSpec, error) {
+	hasMessage := strings.TrimSpace(spec.Message) != ""
+	hasMessages := len(spec.Messages) > 0
+	if hasMessage == hasMessages {
+		return nil, errors.New("exactly one of subagent.message or subagent.messages is required")
+	}
+
+	if hasMessage {
+		return []yamlNormalizedSubagentMessageSpec{{Text: spec.Message}}, nil
+	}
+
+	normalized := make([]yamlNormalizedSubagentMessageSpec, 0, len(spec.Messages))
+	for i, message := range spec.Messages {
+		resolved, err := normalizeYAMLSubagentMessageSpec(message, yamlFS, yamlDir)
+		if err != nil {
+			return nil, fmt.Errorf("subagent.messages[%d]: %w", i, err)
+		}
+		normalized = append(normalized, resolved)
+	}
+	return normalized, nil
+}
+
+func normalizeYAMLSubagentMessageSpec(spec yamlSubagentMessageSpec, yamlFS fs.FS, yamlDir string) (yamlNormalizedSubagentMessageSpec, error) {
+	count := 0
+	if strings.TrimSpace(spec.Name) != "" {
+		count++
+	}
+	if strings.TrimSpace(spec.File) != "" {
+		count++
+	}
+	if strings.TrimSpace(spec.Text) != "" {
+		count++
+	}
+	if spec.Command != nil {
+		count++
+	}
+	if count != 1 {
+		return yamlNormalizedSubagentMessageSpec{}, errors.New("must set exactly one of name, file, text, or command")
+	}
+
+	if spec.Command != nil {
+		if strings.TrimSpace(spec.Command.Cmd) == "" {
+			return yamlNormalizedSubagentMessageSpec{}, errors.New("command.cmd is required")
+		}
+		return yamlNormalizedSubagentMessageSpec{Command: spec.Command}, nil
+	}
+
+	text, err := resolveYAMLTextSource(yamlFS, yamlDir, spec.Name, spec.File, spec.Text)
+	if err != nil {
+		return yamlNormalizedSubagentMessageSpec{}, err
+	}
+	return yamlNormalizedSubagentMessageSpec{Text: text}, nil
+}
+
+func normalizeYAMLSubagentResultFormat(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return yamlResultFormatText, nil
+	}
+	switch raw {
+	case yamlResultFormatText, yamlResultFormatJSON:
+		return raw, nil
+	default:
+		return "", fmt.Errorf("unsupported subagent.result_format %q", raw)
+	}
 }
 
 func prepareYAMLAgent(spec yamlAgentSpec, yamlFS fs.FS, yamlDir string, existingToolNames map[string]struct{}, newToolNames map[string]struct{}) (yamlPreparedAgent, error) {
@@ -427,40 +543,44 @@ func prepareYAMLAgent(spec yamlAgentSpec, yamlFS fs.FS, yamlDir string, existing
 func resolveYAMLAgentPrompt(yamlFS fs.FS, yamlDir string, prompts []yamlPromptRef) (string, error) {
 	blocks := make([]string, 0, len(prompts))
 	for i, promptRef := range prompts {
-		count := 0
-		if promptRef.Name != "" {
-			count++
+		text, err := resolveYAMLTextSource(yamlFS, yamlDir, promptRef.Name, promptRef.File, promptRef.Text)
+		if err != nil {
+			return "", fmt.Errorf("prompt %d: %w", i, err)
 		}
-		if promptRef.File != "" {
-			count++
-		}
-		if promptRef.Text != "" {
-			count++
-		}
-		if count != 1 {
-			return "", fmt.Errorf("prompt %d must set exactly one of name, file, or text", i)
-		}
-
-		switch {
-		case promptRef.Name != "":
-			text, err := resolveBuiltinYAMLPrompt(promptRef.Name)
-			if err != nil {
-				return "", err
-			}
-			blocks = append(blocks, text)
-		case promptRef.File != "":
-			promptPath := filepath.Join(yamlDir, promptRef.File)
-			content, err := fs.ReadFile(yamlFS, promptPath)
-			if err != nil {
-				return "", fmt.Errorf("read prompt file %q: %w", promptRef.File, err)
-			}
-			blocks = append(blocks, string(content))
-		case promptRef.Text != "":
-			blocks = append(blocks, promptRef.Text)
-		}
+		blocks = append(blocks, text)
 	}
 
 	return joinContextBlocks(blocks...), nil
+}
+
+func resolveYAMLTextSource(yamlFS fs.FS, yamlDir string, name string, file string, text string) (string, error) {
+	count := 0
+	if strings.TrimSpace(name) != "" {
+		count++
+	}
+	if strings.TrimSpace(file) != "" {
+		count++
+	}
+	if strings.TrimSpace(text) != "" {
+		count++
+	}
+	if count != 1 {
+		return "", errors.New("must set exactly one of name, file, or text")
+	}
+
+	switch {
+	case strings.TrimSpace(name) != "":
+		return resolveBuiltinYAMLPrompt(name)
+	case strings.TrimSpace(file) != "":
+		promptPath := filepath.Join(yamlDir, file)
+		content, err := fs.ReadFile(yamlFS, promptPath)
+		if err != nil {
+			return "", fmt.Errorf("read prompt file %q: %w", file, err)
+		}
+		return string(content), nil
+	default:
+		return text, nil
+	}
 }
 
 func resolveBuiltinYAMLPrompt(name string) (string, error) {
@@ -657,6 +777,70 @@ func registryAgentModes(reg *agentregistry.Registry) map[string]string {
 	return modes
 }
 
+func runYAMLCommand(ctx context.Context, spec *yamlCommandSpec, data map[string]any, opts toolsetinterface.Options) (cmdrunner.Result, error) {
+	renderedCmd, renderedArgs, cwd, err := renderYAMLCommandSpec(spec, data, opts.SandboxDir)
+	if err != nil {
+		return cmdrunner.Result{}, err
+	}
+
+	command := append([]string{renderedCmd}, renderedArgs...)
+	if opts.Authorizer != nil {
+		if err := opts.Authorizer.IsShellAuthorized(false, "", cwd, command); err != nil {
+			return cmdrunner.Result{}, err
+		}
+	}
+
+	runner := cmdrunner.NewRunner(nil, nil)
+	runner.AddCommand(cmdrunner.Command{
+		Command: renderedCmd,
+		Args:    renderedArgs,
+		CWD:     cwd,
+		ShowCWD: true,
+	})
+
+	rootDir := opts.SandboxDir
+	if strings.TrimSpace(rootDir) == "" {
+		rootDir = cwd
+	}
+	return runner.Run(ctx, rootDir, nil)
+}
+
+func renderYAMLCommandSpec(spec *yamlCommandSpec, data map[string]any, defaultCWD string) (string, []string, string, error) {
+	if spec == nil {
+		return "", nil, "", errors.New("command is required")
+	}
+
+	renderedCmd, err := renderYAMLTemplateString(spec.Cmd, data)
+	if err != nil {
+		return "", nil, "", fmt.Errorf("render command.cmd: %w", err)
+	}
+
+	renderedArgs := make([]string, 0, len(spec.Args))
+	for i, arg := range spec.Args {
+		renderedArg, err := renderYAMLTemplateString(arg, data)
+		if err != nil {
+			return "", nil, "", fmt.Errorf("render command.args[%d]: %w", i, err)
+		}
+		renderedArgs = append(renderedArgs, renderedArg)
+	}
+
+	cwd := defaultCWD
+	if strings.TrimSpace(cwd) == "" {
+		cwd, err = os.Getwd()
+		if err != nil {
+			return "", nil, "", fmt.Errorf("determine working directory: %w", err)
+		}
+	}
+	if spec.CWD != "" {
+		cwd, err = renderYAMLTemplateString(spec.CWD, data)
+		if err != nil {
+			return "", nil, "", fmt.Errorf("render command.cwd: %w", err)
+		}
+	}
+
+	return renderedCmd, renderedArgs, cwd, nil
+}
+
 func (t *yamlCommandTool) Info() llmstream.ToolInfo {
 	return t.info
 }
@@ -676,54 +860,7 @@ func (t *yamlCommandTool) Run(ctx context.Context, call llmstream.ToolCall) llms
 		return yamlToolErrorResult(call, err)
 	}
 
-	renderedCmd, err := renderYAMLTemplateString(t.spec.Cmd, data)
-	if err != nil {
-		return yamlToolErrorResult(call, fmt.Errorf("render command.cmd: %w", err))
-	}
-
-	renderedArgs := make([]string, 0, len(t.spec.Args))
-	for i, arg := range t.spec.Args {
-		renderedArg, err := renderYAMLTemplateString(arg, data)
-		if err != nil {
-			return yamlToolErrorResult(call, fmt.Errorf("render command.args[%d]: %w", i, err))
-		}
-		renderedArgs = append(renderedArgs, renderedArg)
-	}
-
-	cwd := t.opts.SandboxDir
-	if strings.TrimSpace(cwd) == "" {
-		cwd, err = os.Getwd()
-		if err != nil {
-			return yamlToolErrorResult(call, fmt.Errorf("determine working directory: %w", err))
-		}
-	}
-	if t.spec.CWD != "" {
-		cwd, err = renderYAMLTemplateString(t.spec.CWD, data)
-		if err != nil {
-			return yamlToolErrorResult(call, fmt.Errorf("render command.cwd: %w", err))
-		}
-	}
-
-	command := append([]string{renderedCmd}, renderedArgs...)
-	if t.opts.Authorizer != nil {
-		if err := t.opts.Authorizer.IsShellAuthorized(false, "", cwd, command); err != nil {
-			return yamlToolErrorResult(call, err)
-		}
-	}
-
-	runner := cmdrunner.NewRunner(nil, nil)
-	runner.AddCommand(cmdrunner.Command{
-		Command: renderedCmd,
-		Args:    renderedArgs,
-		CWD:     cwd,
-		ShowCWD: true,
-	})
-
-	rootDir := t.opts.SandboxDir
-	if strings.TrimSpace(rootDir) == "" {
-		rootDir = cwd
-	}
-	result, err := runner.Run(ctx, rootDir, nil)
+	result, err := runYAMLCommand(ctx, t.spec, data, t.opts)
 	if err != nil {
 		return yamlToolErrorResult(call, err)
 	}
@@ -760,13 +897,13 @@ func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llm
 		return yamlToolErrorResult(call, err)
 	}
 
-	message, err := renderYAMLTemplateString(t.spec.Message, templateData)
+	messages, err := t.renderMessages(ctx, templateData)
 	if err != nil {
-		return yamlToolErrorResult(call, fmt.Errorf("render subagent.message: %w", err))
+		return yamlToolErrorResult(call, err)
 	}
 
 	subAgentCreator := yamlSubAgentCreatorFromContextSafe(ctx)
-	req, err := t.buildInvokeRequest(message, params, subAgentCreator)
+	req, err := t.buildInvokeRequest(messages, params, subAgentCreator)
 	if err != nil {
 		return yamlToolErrorResult(call, err)
 	}
@@ -784,6 +921,11 @@ func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llm
 		return yamlToolErrorResult(call, err)
 	}
 
+	answer, err = normalizeYAMLSubagentResult(answer, t.spec.ResultFormat)
+	if err != nil {
+		return yamlToolErrorResult(call, err)
+	}
+
 	return llmstream.ToolResult{
 		CallID: call.CallID,
 		Name:   call.Name,
@@ -792,9 +934,55 @@ func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llm
 	}
 }
 
-func (t *yamlSubagentTool) buildInvokeRequest(message string, params map[string]any, agentCreator agent.AgentCreator) (toolsetinterface.InvokeRequest, error) {
+func (t *yamlSubagentTool) renderMessages(ctx context.Context, templateData map[string]any) ([]string, error) {
+	messages := make([]string, 0, len(t.spec.Messages))
+	for i, messageSpec := range t.spec.Messages {
+		if messageSpec.Command != nil {
+			result, err := runYAMLCommand(ctx, messageSpec.Command, templateData, t.opts)
+			if err != nil {
+				return nil, fmt.Errorf("run subagent.messages[%d].command: %w", i, err)
+			}
+			if !result.Success() {
+				return nil, fmt.Errorf("run subagent.messages[%d].command: %s", i, result.ToXML("command"))
+			}
+			if len(result.Results) != 1 {
+				return nil, fmt.Errorf("run subagent.messages[%d].command: expected 1 result, got %d", i, len(result.Results))
+			}
+			messages = append(messages, result.Results[0].Output)
+			continue
+		}
+
+		message, err := renderYAMLTemplateString(messageSpec.Text, templateData)
+		if err != nil {
+			return nil, fmt.Errorf("render subagent.messages[%d]: %w", i, err)
+		}
+		messages = append(messages, message)
+	}
+	return messages, nil
+}
+
+func normalizeYAMLSubagentResult(answer string, resultFormat string) (string, error) {
+	switch resultFormat {
+	case "", yamlResultFormatText:
+		return answer, nil
+	case yamlResultFormatJSON:
+		var normalized any
+		if err := json.Unmarshal([]byte(answer), &normalized); err != nil {
+			return "", fmt.Errorf("parse subagent result as json: %w", err)
+		}
+		data, err := json.Marshal(normalized)
+		if err != nil {
+			return "", fmt.Errorf("normalize subagent json result: %w", err)
+		}
+		return string(data), nil
+	default:
+		return "", fmt.Errorf("unsupported subagent result format %q", resultFormat)
+	}
+}
+
+func (t *yamlSubagentTool) buildInvokeRequest(messages []string, params map[string]any, agentCreator agent.AgentCreator) (toolsetinterface.InvokeRequest, error) {
 	req := toolsetinterface.InvokeRequest{
-		Messages: []string{message},
+		Messages: append([]string(nil), messages...),
 		ToolOptions: toolsetinterface.Options{
 			Model:        t.opts.Model,
 			Authorizer:   t.opts.Authorizer,

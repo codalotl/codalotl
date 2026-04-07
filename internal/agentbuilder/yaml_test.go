@@ -47,6 +47,15 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	require.Contains(t, agentsByName, AgentLimitedPackageMode)
 	assert.Equal(t, yamlAgentModePackage, agentsByName[AgentLimitedPackageMode].Mode)
 	assert.True(t, agentsByName[AgentLimitedPackageMode].IncludePackageModeContext)
+
+	require.Contains(t, agentsByName, "pr-review")
+	assert.Equal(t, yamlAgentModeGeneric, agentsByName["pr-review"].Mode)
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+	}, agentsByName["pr-review"].Tools)
+	require.NotNil(t, agentsByName["pr-review"].Skills)
+	assert.False(t, *agentsByName["pr-review"].Skills)
 }
 
 func TestAddYAMLToRegistry_AddsAgentsAndTools(t *testing.T) {
@@ -186,37 +195,222 @@ tools:
 	assert.Contains(t, result.Result, "hello|"+sandbox+"|")
 }
 
-func TestBuildRegistry_PROrchestratorReviewTool_RunsCodexReviewAgainstBase(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("CODALOTL_AGENTBUILDER_CODEX_HELPER_PROCESS", "1")
+func TestYAMLSubagentToolRun_RendersMessagesFromTextFileAndCommand(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
 
-	binDir := t.TempDir()
-	installCodexHelper(t, binDir)
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	yamlDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(yamlDir, "message.md"), []byte("file={{ .value }}|sandbox={{ .sandbox_dir }}|pkg={{ .package_dir }}\n"), 0o644))
 
-	reviewTool := requireTool(t, invokeAgentTools(
+	yamlPath := filepath.Join(yamlDir, "messages.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: yaml_messages_agent
+    mode: generic
+    prompts:
+      - text: message agent
+    tools:
+      - render_messages
+    skills: false
+tools:
+  - name: render_messages
+    description: Render templated subagent messages.
+    parameters:
+      value:
+        type: string
+        description: Value to render.
+        required: true
+    subagent:
+      name: generic
+      messages:
+        - text: "text={{ .value }}|sandbox={{ .sandbox_dir }}|pkg={{ .package_dir }}"
+        - file: message.md
+        - command:
+            cmd: sh
+            args:
+              - -c
+              - "printf 'command=%s|sandbox=%s|pkg=%s' '{{ .value }}' '{{ .sandbox_dir }}' '{{ .package_dir }}'"
+`), 0o644))
+
+	require.NoError(t, AddYAMLToRegistry(registry, yamlPath))
+
+	sandbox := t.TempDir()
+	pkgDir := filepath.Join(sandbox, "pkg")
+	ensureGoPackageFixture(t, sandbox, pkgDir)
+
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	_, tools := invokeAgentForModelWithRegistryDetailed(
 		t,
-		"pr-orchestrator",
+		registry,
+		"yaml_messages_agent",
 		llmmodel.ProviderIDOpenAI.DefaultModel(),
-		t.TempDir(),
-		"",
+		sandbox,
+		pkgDir,
 		nil,
-	), "review")
+	)
+	tool := requireTool(t, tools, "render_messages")
+	require.IsType(t, &yamlSubagentTool{}, tool)
+	tool.(*yamlSubagentTool).opts.AgentInvoker = invoker
 
-	result := reviewTool.Run(context.Background(), llmstream.ToolCall{
-		CallID: "review-call",
-		Name:   "review",
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "render-messages-call",
+		Name:   "render_messages",
 		Type:   "function_call",
-		Input:  `{"base":"origin/main"}`,
+		Input:  `{"value":"hello"}`,
 	})
 
 	require.False(t, result.IsError)
-	assert.Equal(t, "review-call", result.CallID)
-	assert.Equal(t, "review", result.Name)
-	assert.Equal(t, "function_call", result.Type)
-	assert.Contains(t, result.Result, `<command ok="true"`)
-	assert.Contains(t, result.Result, `$ codex review --base origin/main`)
-	assert.Contains(t, result.Result, "codex helper saw args: review --base origin/main")
+	assert.Equal(t, "done", result.Result)
+	assert.Equal(t, "generic", invoker.lastAgentName)
+	assert.Equal(t, []string{
+		"text=hello|sandbox=" + sandbox + "|pkg=pkg",
+		"file=hello|sandbox=" + sandbox + "|pkg=pkg\n",
+		"command=hello|sandbox=" + sandbox + "|pkg=pkg",
+	}, invoker.lastRequest.Messages)
+}
+
+func TestAddYAMLToRegistry_RejectsInvalidSubagentMessageConfiguration(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "bad.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: bad_messages
+    mode: generic
+    prompts:
+      - text: bad
+    tools:
+      - broken
+    skills: false
+tools:
+  - name: broken
+    description: broken
+    parameters: {}
+    subagent:
+      name: generic
+      message: one
+      messages:
+        - text: two
+`), 0o644))
+
+	err = AddYAMLToRegistry(registry, yamlPath)
+	require.ErrorContains(t, err, "exactly one of subagent.message or subagent.messages is required")
+}
+
+func TestAddYAMLToRegistry_RejectsInvalidSubagentResultFormat(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "bad.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: bad_result_format
+    mode: generic
+    prompts:
+      - text: bad
+    tools:
+      - broken
+    skills: false
+tools:
+  - name: broken
+    description: broken
+    parameters: {}
+    subagent:
+      name: generic
+      message: hi
+      result_format: xml
+`), 0o644))
+
+	err = AddYAMLToRegistry(registry, yamlPath)
+	require.ErrorContains(t, err, `unsupported subagent.result_format "xml"`)
+}
+
+func TestYAMLSubagentToolRun_JSONResultHandling(t *testing.T) {
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "{\n  \"z\": 1,\n  \"a\": [true, false]\n}"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{Name: "json_review"},
+		spec: &yamlNormalizedSubagentSpec{
+			Name:         "generic",
+			Messages:     []yamlNormalizedSubagentMessageSpec{{Text: "review this"}},
+			ResultFormat: yamlResultFormatJSON,
+		},
+		params: map[string]yamlNormalizedParameter{},
+		opts: toolsetinterface.Options{
+			AgentInvoker: invoker,
+		},
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "json-review-call",
+		Name:   "json_review",
+		Type:   "function_call",
+		Input:  `{}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.JSONEq(t, `{"a":[true,false],"z":1}`, result.Result)
+	assert.Equal(t, []string{"review this"}, invoker.lastRequest.Messages)
+}
+
+func TestYAMLSubagentToolRun_InvalidJSONResultReturnsToolError(t *testing.T) {
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{Name: "json_review"},
+		spec: &yamlNormalizedSubagentSpec{
+			Name:         "generic",
+			Messages:     []yamlNormalizedSubagentMessageSpec{{Text: "review this"}},
+			ResultFormat: yamlResultFormatJSON,
+		},
+		params: map[string]yamlNormalizedParameter{},
+		opts: toolsetinterface.Options{
+			AgentInvoker: &captureAgentInvoker{
+				events: []agent.Event{
+					{
+						Type: agent.EventTypeAssistantTurnComplete,
+						Turn: &llmstream.Turn{
+							Role:  llmstream.RoleAssistant,
+							Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "not json"}},
+						},
+					},
+					{Type: agent.EventTypeDoneSuccess},
+				},
+			},
+		},
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "json-review-call",
+		Name:   "json_review",
+		Type:   "function_call",
+		Input:  `{}`,
+	})
+
+	require.True(t, result.IsError)
+	assert.Contains(t, result.Result, "parse subagent result as json")
 }
 
 func TestAddYAMLToRegistry_DuplicateToolDoesNotMutateRegistry(t *testing.T) {
@@ -293,10 +487,13 @@ func TestYAMLSubagentToolRun_PackageModeUsesCallerScopeNotOverrides(t *testing.T
 		info: llmstream.ToolInfo{
 			Name: "implement",
 		},
-		spec: &yamlSubagentSpec{
+		spec: &yamlNormalizedSubagentSpec{
 			Name:    AgentPackageModeDefaultContext,
 			Package: "path",
-			Message: "{{ .instructions }}",
+			Messages: []yamlNormalizedSubagentMessageSpec{
+				{Text: "{{ .instructions }}"},
+			},
+			ResultFormat: yamlResultFormatText,
 		},
 		params: map[string]yamlNormalizedParameter{
 			"path": {
@@ -319,7 +516,7 @@ func TestYAMLSubagentToolRun_PackageModeUsesCallerScopeNotOverrides(t *testing.T
 		targetPackageMode: true,
 	}
 
-	req, err := tool.buildInvokeRequest("make the change", map[string]any{
+	req, err := tool.buildInvokeRequest([]string{"make the change"}, map[string]any{
 		"path":         "targetpkg",
 		"instructions": "make the change",
 	}, &captureAgentCreator{err: errors.New("stop")})

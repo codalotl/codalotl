@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -52,6 +53,7 @@ func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) 
 		AgentPackageModeDefaultContext,
 		AgentLimitedPackageMode,
 		agentClarifyPublicAPI,
+		"pr-review",
 		"pr-orchestrator",
 	} {
 		assert.Contains(t, pkgDoc.Doc, agentName)
@@ -63,6 +65,8 @@ func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) 
 		"`edit_files`",
 		"`command`",
 		"`subagent`",
+		"`subagent.messages`",
+		"`result_format`",
 		"`sandbox_dir`",
 		"`package_dir`",
 	} {
@@ -76,7 +80,7 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 
 	require.NoError(t, registry.ValidateTools())
 
-	require.Len(t, registry.List(), 6)
+	require.Len(t, registry.List(), 7)
 
 	genericDef, ok := registry.Lookup(AgentGeneric)
 	assert.True(t, ok)
@@ -117,6 +121,10 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	prOrchestratorDef, ok := registry.Lookup("pr-orchestrator")
 	require.True(t, ok)
 	assert.Equal(t, "pr-orchestrator", prOrchestratorDef.Name)
+
+	prReviewDef, ok := registry.Lookup("pr-review")
+	require.True(t, ok)
+	assert.Equal(t, "pr-review", prReviewDef.Name)
 }
 
 func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
@@ -262,6 +270,80 @@ func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testi
 		"review",
 		"implement",
 	}, gotTools)
+}
+
+func TestBuildRegistry_PROrchestratorReviewTool_InvokesReviewSubagentAndReturnsJSON(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sandbox := t.TempDir()
+	reviewedFile := initGitRepoForReviewTest(t, sandbox)
+
+	payload, err := json.Marshal(map[string]any{
+		"findings": []map[string]any{
+			{
+				"title":            "[P2] Return JSON payload",
+				"body":             "The orchestrator expects JSON back from review so this must stay machine-readable.",
+				"confidence_score": 0.81,
+				"priority":         2,
+				"code_location": map[string]any{
+					"absolute_file_path": reviewedFile,
+					"line_range": map[string]any{
+						"start": 1,
+						"end":   1,
+					},
+				},
+			},
+		},
+		"overall_correctness":      "patch is incorrect",
+		"overall_explanation":      "The patch still has one actionable issue.",
+		"overall_confidence_score": 0.81,
+	})
+	require.NoError(t, err)
+
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: string(payload)}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	reviewTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	), "review")
+	require.IsType(t, &yamlSubagentTool{}, reviewTool)
+	reviewTool.(*yamlSubagentTool).opts.AgentInvoker = invoker
+
+	result := reviewTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Input:  `{"base":"main"}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "review-call", result.CallID)
+	assert.Equal(t, "review", result.Name)
+	assert.Equal(t, "function_call", result.Type)
+	assert.JSONEq(t, string(payload), result.Result)
+	assert.Equal(t, "pr-review", invoker.lastAgentName)
+
+	require.Len(t, invoker.lastRequest.Messages, 4)
+	assert.Contains(t, invoker.lastRequest.Messages[0], "base ref `main`")
+	assert.Contains(t, invoker.lastRequest.Messages[1], "feature change")
+	assert.Contains(t, invoker.lastRequest.Messages[2], "pkg.go")
+	assert.Contains(t, invoker.lastRequest.Messages[3], "diff --git")
+	assert.Contains(t, invoker.lastRequest.Messages[3], "+func Feature() string")
 }
 
 func TestBuildRegistry_PackageModeOpenAIApplyPatchRunsPostChecks(t *testing.T) {
@@ -858,14 +940,36 @@ func agentbuilderHelperCmd(stdout string, exitCode int) *cmdrunner.Command {
 	}
 }
 
-func installCodexHelper(t *testing.T, dir string) string {
+func initGitRepoForReviewTest(t *testing.T, dir string) string {
 	t.Helper()
 
-	scriptPath := filepath.Join(dir, "codex")
-	script := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestAgentbuilderCodexHelperProcess$ -- \"$@\"\n"
-	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
-	require.NoError(t, os.Chmod(scriptPath, 0o755))
-	return scriptPath
+	runGitCommand(t, dir, "init")
+	runGitCommand(t, dir, "config", "user.email", "test@example.com")
+	runGitCommand(t, dir, "config", "user.name", "Test User")
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/review\n\ngo 1.24\n"), 0o644))
+	reviewedFile := filepath.Join(dir, "pkg.go")
+	require.NoError(t, os.WriteFile(reviewedFile, []byte("package review\n\nfunc Base() string { return \"base\" }\n"), 0o644))
+	runGitCommand(t, dir, "add", "go.mod", "pkg.go")
+	runGitCommand(t, dir, "commit", "-m", "base")
+	runGitCommand(t, dir, "branch", "-M", "main")
+	runGitCommand(t, dir, "checkout", "-b", "feature/review")
+
+	require.NoError(t, os.WriteFile(reviewedFile, []byte("package review\n\nfunc Base() string { return \"base\" }\n\nfunc Feature() string { return \"feature\" }\n"), 0o644))
+	runGitCommand(t, dir, "add", "pkg.go")
+	runGitCommand(t, dir, "commit", "-m", "feature change")
+
+	return reviewedFile
+}
+
+func runGitCommand(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %s failed: %s", strings.Join(args, " "), string(output))
+	return string(output)
 }
 
 func TestAgentbuilderLintsHelperProcess(t *testing.T) {

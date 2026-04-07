@@ -6,6 +6,7 @@
 //   - package_mode_default_context: package-mode agent with the full package toolset plus env and initial package context.
 //   - limited_package_mode: package-mode agent with a narrower toolset for targeted package work.
 //   - clarify_public_api: read-only agent that explains public API docs for one identifier.
+//   - pr-review: generic review agent that emits structured JSON review findings.
 //   - pr-orchestrator: generic agent that reviews a branch and delegates package implementation work.
 //
 // AddYAMLToRegistry loads YAML with top-level `agents` and `tools` arrays.
@@ -22,7 +23,11 @@
 //   - `name`, `description`, and `parameters`.
 //   - exactly one of `command` or `subagent`.
 //   - `command` defines `cmd`, optional templated `args`, and optional templated `cwd`.
-//   - `subagent` defines target agent `name`, templated `message`, optional `package`, and optional `package_restrictions`.
+//   - `subagent` defines target agent `name`, either templated `message` or `subagent.messages`, optional `package`, optional `result_format`, and optional `package_restrictions`.
+//   - `subagent.messages` is an ordered list of user messages. Each item uses exactly one of `name`, `file`, `text`, or `command`.
+//   - `name`, `file`, and `text` message blocks are resolved to text first, then rendered with the same template data as command tools.
+//   - `command` message blocks run a templated command and use its textual output as the message body.
+//   - `result_format: json` parses the final assistant text as JSON and returns normalized JSON; `text` is the default.
 //
 // Templated YAML fields can reference tool parameters plus calling-context values such as `sandbox_dir` and `package_dir`.
 package agentbuilder
