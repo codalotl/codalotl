@@ -11,8 +11,18 @@ import (
 func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string, error) {
 	var assistantText []string
 	lastTurnText := ""
+	targetAgentID := ""
 
 	for event := range events {
+		if event.Agent.ID != "" {
+			if targetAgentID == "" {
+				targetAgentID = event.Agent.ID
+			}
+			if event.Agent.ID != targetAgentID {
+				continue
+			}
+		}
+
 		switch event.Type {
 		case EventTypeAssistantText:
 			text := strings.TrimSpace(event.TextContent.Content)

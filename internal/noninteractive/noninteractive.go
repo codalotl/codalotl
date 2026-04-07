@@ -290,6 +290,13 @@ func (p *delayedToolCallPrinter) fire(callID string) {
 	_, _ = io.WriteString(p.out, line)
 }
 
+func shouldTrackTerminalError(ev agent.Event) bool {
+	if ev.Agent.Depth != 0 {
+		return false
+	}
+	return ev.Type == agent.EventTypeError || ev.Type == agent.EventTypeCanceled
+}
+
 // Exec runs the agent with prompt and opts. It prints messages, tool calls, and so on to the screen.
 //
 // `userPrompt` is the initial end-user message. It is required unless `Options.SlashCommand` starts a session that can run without an initial message.
@@ -429,7 +436,7 @@ func Exec(userPrompt string, opts Options) error {
 			if err := jsonWriter.WriteAgentEvent(ev); err != nil {
 				return err
 			}
-			if ev.Type == agent.EventTypeError || ev.Type == agent.EventTypeCanceled {
+			if shouldTrackTerminalError(ev) {
 				terminalErr = ev.Error
 			}
 			continue
@@ -496,7 +503,7 @@ func Exec(userPrompt string, opts Options) error {
 				}
 			}
 		}
-		if ev.Type == agent.EventTypeError || ev.Type == agent.EventTypeCanceled {
+		if shouldTrackTerminalError(ev) {
 			terminalErr = ev.Error
 		}
 	}
