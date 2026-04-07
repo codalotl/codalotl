@@ -269,6 +269,10 @@ func (r *Registry) Prepare(ctx context.Context, agentName string, req toolsetint
 		return nil, fmt.Errorf("agentregistry: unknown auth policy %q", def.AuthPolicy)
 	}
 
+	if err := applyMentionGrants(effectiveOpts.Authorizer, req.Messages); err != nil {
+		return nil, err
+	}
+
 	effectiveOpts.AgentInvoker = r
 	effectiveOpts.AgentName = agentName
 
@@ -328,6 +332,22 @@ func (r *Registry) Prepare(ctx context.Context, agentName string, req toolsetint
 		InitialTurns: initialTurns,
 		tools:        tools,
 	}, nil
+}
+
+func applyMentionGrants(authorizer authdomain.Authorizer, messages []string) error {
+	if authorizer == nil || len(messages) == 0 {
+		return nil
+	}
+
+	for _, message := range messages {
+		if message == "" {
+			continue
+		}
+		if err := authdomain.AddGrantsFromUserMessage(authorizer, message); err != nil && !errors.Is(err, authdomain.ErrAuthorizerCannotAcceptGrants) {
+			return fmt.Errorf("agentregistry: apply mention grants: %w", err)
+		}
+	}
+	return nil
 }
 
 // Create constructs the named agent without starting a run.

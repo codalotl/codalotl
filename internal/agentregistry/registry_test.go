@@ -637,6 +637,111 @@ func TestRegistry_Invoke(t *testing.T) {
 		assert.Contains(t, res.Result, "# spec")
 	})
 
+	t.Run("default auth policy applies mention grants from request messages", func(t *testing.T) {
+		sandbox := t.TempDir()
+		pkgDir := filepath.Join(sandbox, "pkg")
+		allowedPath := filepath.Join(sandbox, "README.md")
+		require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+		require.NoError(t, os.WriteFile(allowedPath, []byte("granted by mention\n"), 0o644))
+
+		unit, err := codeunit.NewCodeUnit("package pkg", pkgDir)
+		require.NoError(t, err)
+		authorizer := authdomain.NewCodeUnitAuthorizer(unit, authdomain.NewAutoApproveAuthorizer(sandbox))
+
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name: "default-mention-grants-agent",
+		}))
+
+		prepared, err := r.Prepare(context.Background(), "default-mention-grants-agent", toolsetinterface.InvokeRequest{
+			ToolOptions: toolsetinterface.Options{
+				SandboxDir: sandbox,
+				Authorizer: authorizer,
+			},
+			Messages: []string{"Read @README.md before you start."},
+		})
+		require.NoError(t, err)
+
+		res := coretools.NewReadFileTool(prepared.BuildOptions.ToolOptions.Authorizer).Run(context.Background(), llmstream.ToolCall{
+			CallID: "default-mention-read",
+			Name:   coretools.ToolNameReadFile,
+			Type:   "function_call",
+			Input:  `{"path":"README.md"}`,
+		})
+		assert.False(t, res.IsError)
+		assert.Contains(t, res.Result, "granted by mention")
+	})
+
+	t.Run("default auth policy applies mention grants to override authorizer", func(t *testing.T) {
+		callerSandbox := t.TempDir()
+		overrideSandbox := t.TempDir()
+		overridePkgDir := filepath.Join(overrideSandbox, "pkg")
+		allowedPath := filepath.Join(overrideSandbox, "EXTRA.md")
+		require.NoError(t, os.MkdirAll(overridePkgDir, 0o755))
+		require.NoError(t, os.WriteFile(allowedPath, []byte("override grant\n"), 0o644))
+
+		unit, err := codeunit.NewCodeUnit("package pkg", overridePkgDir)
+		require.NoError(t, err)
+		overrideAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, authdomain.NewAutoApproveAuthorizer(overrideSandbox))
+
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name: "override-mention-grants-agent",
+		}))
+
+		prepared, err := r.Prepare(context.Background(), "override-mention-grants-agent", toolsetinterface.InvokeRequest{
+			CallerAuthorizer:   authdomain.NewAutoApproveAuthorizer(callerSandbox),
+			CallerSandboxDir:   callerSandbox,
+			OverrideAuthorizer: overrideAuthorizer,
+			OverrideSandboxDir: overrideSandbox,
+			Messages:           []string{"Use @EXTRA.md as additional context."},
+		})
+		require.NoError(t, err)
+
+		res := coretools.NewReadFileTool(prepared.BuildOptions.ToolOptions.Authorizer).Run(context.Background(), llmstream.ToolCall{
+			CallID: "override-mention-read",
+			Name:   coretools.ToolNameReadFile,
+			Type:   "function_call",
+			Input:  `{"path":"EXTRA.md"}`,
+		})
+		assert.False(t, res.IsError)
+		assert.Contains(t, res.Result, "override grant")
+	})
+
+	t.Run("package auth policy applies mention grants from request messages", func(t *testing.T) {
+		sandbox := t.TempDir()
+		pkgDir := filepath.Join(sandbox, "pkg")
+		allowedPath := filepath.Join(sandbox, "README.md")
+		require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+		require.NoError(t, os.WriteFile(allowedPath, []byte("package grant\n"), 0o644))
+
+		unit, err := codeunit.NewCodeUnit("package pkg", pkgDir)
+		require.NoError(t, err)
+		authorizer := authdomain.NewCodeUnitAuthorizer(unit, authdomain.NewAutoApproveAuthorizer(sandbox))
+
+		require.NoError(t, r.RegisterAgent(Definition{
+			Name:       "package-mention-grants-agent",
+			AuthPolicy: AuthPolicyPackage,
+		}))
+
+		prepared, err := r.Prepare(context.Background(), "package-mention-grants-agent", toolsetinterface.InvokeRequest{
+			ToolOptions: toolsetinterface.Options{
+				SandboxDir:  sandbox,
+				Authorizer:  authorizer,
+				GoPkgAbsDir: pkgDir,
+			},
+			Messages: []string{"Also inspect @README.md."},
+		})
+		require.NoError(t, err)
+
+		res := coretools.NewReadFileTool(prepared.BuildOptions.ToolOptions.Authorizer).Run(context.Background(), llmstream.ToolCall{
+			CallID: "package-mention-read",
+			Name:   coretools.ToolNameReadFile,
+			Type:   "function_call",
+			Input:  `{"path":"README.md"}`,
+		})
+		assert.False(t, res.IsError)
+		assert.Contains(t, res.Result, "package grant")
+	})
+
 	t.Run("system prompt builder overrides", func(t *testing.T) {
 		bDef := Definition{
 			Name: "builder-agent",
