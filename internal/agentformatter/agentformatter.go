@@ -1,6 +1,7 @@
 package agentformatter
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2834,37 +2835,99 @@ type reviewToolPayload struct {
 	OverallConfidenceScore *float64             `json:"overall_confidence_score"`
 }
 
-func parseReviewToolPayload(content string) (reviewToolPayload, bool) {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return reviewToolPayload{}, false
-	}
-
-	var payload reviewToolPayload
-	if err := json.Unmarshal([]byte(content), &payload); err != nil {
-		return reviewToolPayload{}, false
-	}
+func reviewToolPayloadValid(payload reviewToolPayload) bool {
 	if payload.Findings == nil || payload.OverallCorrectness == nil || payload.OverallExplanation == nil || payload.OverallConfidenceScore == nil {
-		return reviewToolPayload{}, false
+		return false
 	}
 
 	overallCorrectness := strings.TrimSpace(*payload.OverallCorrectness)
 	if overallCorrectness != "patch is correct" && overallCorrectness != "patch is incorrect" {
-		return reviewToolPayload{}, false
+		return false
 	}
 	if strings.TrimSpace(*payload.OverallExplanation) == "" {
-		return reviewToolPayload{}, false
+		return false
 	}
 	if *payload.OverallConfidenceScore < 0 || *payload.OverallConfidenceScore > 1 {
-		return reviewToolPayload{}, false
+		return false
 	}
 	for _, finding := range *payload.Findings {
 		if finding.Title == nil || strings.TrimSpace(*finding.Title) == "" {
-			return reviewToolPayload{}, false
+			return false
 		}
 	}
 
-	return payload, true
+	return true
+}
+
+func parseReviewToolPayload(content string) (reviewToolPayload, bool) {
+	return parseReviewToolPayloadRaw([]byte(strings.TrimSpace(content)))
+}
+
+func parseReviewToolPayloadRaw(raw []byte) (reviewToolPayload, bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return reviewToolPayload{}, false
+	}
+
+	var payload reviewToolPayload
+	if err := json.Unmarshal(raw, &payload); err == nil && reviewToolPayloadValid(payload) {
+		return payload, true
+	}
+
+	var wrappedString string
+	if err := json.Unmarshal(raw, &wrappedString); err == nil {
+		return parseReviewToolPayload(wrappedString)
+	}
+
+	var wrapper struct {
+		Content json.RawMessage `json:"content"`
+		Error   string          `json:"error"`
+		Success *bool           `json:"success"`
+	}
+	if err := json.Unmarshal(raw, &wrapper); err != nil {
+		return reviewToolPayload{}, false
+	}
+	if wrapper.Success != nil && !*wrapper.Success {
+		return reviewToolPayload{}, false
+	}
+	if strings.TrimSpace(wrapper.Error) != "" {
+		return reviewToolPayload{}, false
+	}
+	if len(bytes.TrimSpace(wrapper.Content)) == 0 {
+		return reviewToolPayload{}, false
+	}
+
+	return parseReviewToolPayloadRaw(wrapper.Content)
+}
+
+func reviewToolResultSuccess(result *llmstream.ToolResult) (bool, bool) {
+	if result == nil {
+		return false, false
+	}
+	if result.IsError {
+		return false, true
+	}
+
+	trimmed := strings.TrimSpace(result.Result)
+	if trimmed == "" {
+		return true, true
+	}
+
+	var wrapper struct {
+		Error   string `json:"error"`
+		Success *bool  `json:"success"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &wrapper); err == nil {
+		if wrapper.Success != nil {
+			return *wrapper.Success, true
+		}
+		if strings.TrimSpace(wrapper.Error) != "" {
+			return false, true
+		}
+		return true, true
+	}
+
+	return true, true
 }
 
 func reviewToolPayloadLines(payload reviewToolPayload) []toolOutputLine {
@@ -2913,24 +2976,6 @@ func summarizeReviewToolResult(result *llmstream.ToolResult) ([]toolOutputLine, 
 	if payload, ok := parseReviewToolPayload(trimmed); ok {
 		return reviewToolPayloadLines(payload), true
 	}
-
-	var wrapper struct {
-		Content string `json:"content"`
-		Error   string `json:"error"`
-		Success *bool  `json:"success"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &wrapper); err != nil {
-		return nil, false
-	}
-	if wrapper.Success != nil && !*wrapper.Success {
-		return nil, false
-	}
-	if strings.TrimSpace(wrapper.Error) != "" {
-		return nil, false
-	}
-	if payload, ok := parseReviewToolPayload(wrapper.Content); ok {
-		return reviewToolPayloadLines(payload), true
-	}
 	return nil, false
 }
 
@@ -2966,6 +3011,9 @@ func (f *textTUIFormatter) tuiReviewToolComplete(e agent.Event, width int, succe
 	if !ok {
 		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
 	}
+	if reviewSuccess, ok := reviewToolResultSuccess(e.ToolResult); ok {
+		success = reviewSuccess
+	}
 	bullet := colorGreen
 	if !success {
 		bullet = colorRed
@@ -2987,6 +3035,9 @@ func (f *textTUIFormatter) cliReviewToolComplete(e agent.Event, success bool, _ 
 	base, ok := extractReview(e.ToolCall)
 	if !ok {
 		return f.cliGenericToolComplete(e, success, "", outputLines)
+	}
+	if reviewSuccess, ok := reviewToolResultSuccess(e.ToolResult); ok {
+		success = reviewSuccess
 	}
 	bullet := colorGreen
 	if !success {

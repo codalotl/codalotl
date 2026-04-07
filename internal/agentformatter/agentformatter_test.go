@@ -1597,6 +1597,29 @@ func TestReviewToolCallFormatting(t *testing.T) {
 	})
 }
 
+func builtInReviewToolPayload() map[string]any {
+	return map[string]any{
+		"findings": []map[string]any{
+			{
+				"title":            "[P2] Return JSON payload",
+				"body":             "The orchestrator expects JSON back from review so this must stay machine-readable.",
+				"confidence_score": 0.81,
+				"priority":         2,
+				"code_location": map[string]any{
+					"absolute_file_path": "/tmp/review/pkg.go",
+					"line_range": map[string]any{
+						"start": 1,
+						"end":   1,
+					},
+				},
+			},
+		},
+		"overall_correctness":      "patch is incorrect",
+		"overall_explanation":      "The patch still has one actionable issue.",
+		"overall_confidence_score": 0.81,
+	}
+}
+
 func TestReviewToolCompleteFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -1627,33 +1650,84 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 	}
 
 	t.Run("success with findings", func(t *testing.T) {
-		payload := map[string]any{
-			"overall_correctness":      "patch is incorrect",
-			"overall_explanation":      "The patch has multiple issues that should be addressed.",
-			"overall_confidence_score": 0.94,
-		}
-		payload["findings"] = []map[string]any{
+		payload := builtInReviewToolPayload()
+		findings := append(payload["findings"].([]map[string]any), []map[string]any{
 			{
-				"title": "[P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
-				"body":  "Detailed explanation that should not be shown.",
+				"title":            "[P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
+				"body":             "Detailed explanation that should not be shown.",
+				"confidence_score": 0.9,
+				"priority":         1,
+				"code_location": map[string]any{
+					"absolute_file_path": "/tmp/review/internal/agentbuilder/config.go",
+					"line_range": map[string]any{
+						"start": 41,
+						"end":   41,
+					},
+				},
 			},
 			{
-				"title": "[P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
-				"body":  "Another body that should be ignored.",
+				"title":            "[P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
+				"body":             "Another body that should be ignored.",
+				"confidence_score": 0.92,
+				"priority":         1,
+				"code_location": map[string]any{
+					"absolute_file_path": "/tmp/review/internal/agentformatter/agentformatter.go",
+					"line_range": map[string]any{
+						"start": 2964,
+						"end":   2986,
+					},
+				},
 			},
 			{
-				"title": "[P2] internal/agentbuilder: review prompt file path is not validated before read.",
+				"title":            "[P2] internal/agentbuilder: review prompt file path is not validated before read.",
+				"confidence_score": 0.73,
+				"priority":         2,
+				"code_location": map[string]any{
+					"absolute_file_path": "/tmp/review/internal/agentbuilder/prompt.go",
+					"line_range": map[string]any{
+						"start": 10,
+						"end":   10,
+					},
+				},
 			},
 			{
-				"title": "[P2] internal/orchestrate: review errors are swallowed on retry.",
+				"title":            "[P2] internal/orchestrate: review errors are swallowed on retry.",
+				"confidence_score": 0.72,
+				"priority":         2,
+				"code_location": map[string]any{
+					"absolute_file_path": "/tmp/review/internal/orchestrate/retry.go",
+					"line_range": map[string]any{
+						"start": 22,
+						"end":   22,
+					},
+				},
 			},
 			{
-				"title": "[P3] internal/tui: completion banner wraps awkwardly for narrow terminals.",
+				"title":            "[P3] internal/tui: completion banner wraps awkwardly for narrow terminals.",
+				"confidence_score": 0.66,
+				"priority":         3,
+				"code_location": map[string]any{
+					"absolute_file_path": "/tmp/review/internal/tui/banner.go",
+					"line_range": map[string]any{
+						"start": 8,
+						"end":   8,
+					},
+				},
 			},
 			{
-				"title": "[P3] internal/noninteractive: status line omits review summary.",
+				"title":            "[P3] internal/noninteractive: status line omits review summary.",
+				"confidence_score": 0.61,
+				"priority":         3,
+				"code_location": map[string]any{
+					"absolute_file_path": "/tmp/review/internal/noninteractive/output.go",
+					"line_range": map[string]any{
+						"start": 17,
+						"end":   17,
+					},
+				},
 			},
-		}
+		}...)
+		payload["findings"] = findings
 		data, err := json.Marshal(payload)
 		require.NoError(t, err)
 
@@ -1670,12 +1744,12 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 
 		expected := []string{
 			"• Reviewed origin/main",
-			"  └ [P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
+			"  └ [P2] Return JSON payload",
+			"    [P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
 			"    [P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
 			"    [P2] internal/agentbuilder: review prompt file path is not validated before read.",
 			"    [P2] internal/orchestrate: review errors are swallowed on retry.",
-			"    [P3] internal/tui: completion banner wraps awkwardly for narrow terminals.",
-			"    … +1 findings",
+			"    … +2 findings",
 		}
 		assertBothModes(t, event, expected, expected)
 
@@ -1684,6 +1758,37 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		assert.Contains(t, out, ansiWrap("Reviewed", pal, colorColorful, false, true))
 		assert.NotContains(t, stripANSI(out), "Detailed explanation that should not be shown.")
 		assert.NotContains(t, stripANSI(out), "overall_correctness")
+	})
+
+	t.Run("success with wrapped built-in findings payload", func(t *testing.T) {
+		payload := builtInReviewToolPayload()
+		resultPayload := map[string]any{
+			"success": true,
+			"content": payload,
+		}
+		data, err := json.Marshal(resultPayload)
+		require.NoError(t, err)
+
+		result := llmstream.ToolResult{
+			Result:  string(data),
+			IsError: false,
+		}
+		event := agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       "review",
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+
+		expected := []string{
+			"• Reviewed origin/main",
+			"  └ [P2] Return JSON payload",
+		}
+		assertBothModes(t, event, expected, expected)
+
+		out := formatter.FormatEvent(event, 200)
+		assert.NotContains(t, stripANSI(out), `"findings"`)
+		assert.NotContains(t, stripANSI(out), `"overall_correctness"`)
 	})
 
 	t.Run("success with no findings", func(t *testing.T) {
