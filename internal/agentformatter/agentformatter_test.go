@@ -1610,9 +1610,55 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		Input: `{"base":"origin/main"}`,
 	}
 
-	t.Run("success with summarized output", func(t *testing.T) {
+	assertBothModes := func(t *testing.T, event agent.Event, tuiExpected []string, cliExpected []string) {
+		t.Helper()
+
+		t.Run("tui", func(t *testing.T) {
+			out := formatter.FormatEvent(event, 200)
+			require.NotEmpty(t, out)
+			require.Equal(t, tuiExpected, strings.Split(stripANSI(out), "\n"))
+		})
+
+		t.Run("cli", func(t *testing.T) {
+			out := formatter.FormatEvent(event, MinTerminalWidth)
+			require.NotEmpty(t, out)
+			require.Equal(t, cliExpected, strings.Split(stripANSI(out), "\n"))
+		})
+	}
+
+	t.Run("success with findings", func(t *testing.T) {
+		payload := map[string]any{
+			"overall_correctness":      "patch is incorrect",
+			"overall_explanation":      "The patch has multiple issues that should be addressed.",
+			"overall_confidence_score": 0.94,
+		}
+		payload["findings"] = []map[string]any{
+			{
+				"title": "[P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
+				"body":  "Detailed explanation that should not be shown.",
+			},
+			{
+				"title": "[P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
+				"body":  "Another body that should be ignored.",
+			},
+			{
+				"title": "[P2] internal/agentbuilder: review prompt file path is not validated before read.",
+			},
+			{
+				"title": "[P2] internal/orchestrate: review errors are swallowed on retry.",
+			},
+			{
+				"title": "[P3] internal/tui: completion banner wraps awkwardly for narrow terminals.",
+			},
+			{
+				"title": "[P3] internal/noninteractive: status line omits review summary.",
+			},
+		}
+		data, err := json.Marshal(payload)
+		require.NoError(t, err)
+
 		result := llmstream.ToolResult{
-			Result:  `{"success":true,"content":"[P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers."}`,
+			Result:  string(data),
 			IsError: false,
 		}
 		event := agent.Event{
@@ -1622,27 +1668,50 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 			ToolResult: &result,
 		}
 
-		t.Run("tui", func(t *testing.T) {
-			out := formatter.FormatEvent(event, 160)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Reviewed origin/main",
-				"  └ [P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
-			}, lines)
-			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
-			assert.Contains(t, out, ansiWrap("Reviewed", pal, colorColorful, false, true))
-		})
+		expected := []string{
+			"• Reviewed origin/main",
+			"  └ [P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
+			"    [P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
+			"    [P2] internal/agentbuilder: review prompt file path is not validated before read.",
+			"    [P2] internal/orchestrate: review errors are swallowed on retry.",
+			"    [P3] internal/tui: completion banner wraps awkwardly for narrow terminals.",
+			"    … +1 findings",
+		}
+		assertBothModes(t, event, expected, expected)
 
-		t.Run("cli", func(t *testing.T) {
-			out := formatter.FormatEvent(event, MinTerminalWidth)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Reviewed origin/main",
-				"  └ [P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
-			}, lines)
-		})
+		out := formatter.FormatEvent(event, 200)
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+		assert.Contains(t, out, ansiWrap("Reviewed", pal, colorColorful, false, true))
+		assert.NotContains(t, stripANSI(out), "Detailed explanation that should not be shown.")
+		assert.NotContains(t, stripANSI(out), "overall_correctness")
+	})
+
+	t.Run("success with no findings", func(t *testing.T) {
+		payload := map[string]any{
+			"findings":                 []map[string]any{},
+			"overall_correctness":      "patch is correct",
+			"overall_explanation":      "The patch looks correct and no actionable findings were identified.",
+			"overall_confidence_score": 0.88,
+		}
+		data, err := json.Marshal(payload)
+		require.NoError(t, err)
+
+		result := llmstream.ToolResult{
+			Result:  string(data),
+			IsError: false,
+		}
+		event := agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       "review",
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+
+		expected := []string{
+			"• Reviewed origin/main",
+			"  └ No findings. Patch is correct.",
+		}
+		assertBothModes(t, event, expected, expected)
 	})
 
 	t.Run("error shows message", func(t *testing.T) {
@@ -1657,26 +1726,51 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 			ToolResult: &result,
 		}
 
-		t.Run("tui", func(t *testing.T) {
-			out := formatter.FormatEvent(event, 120)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Reviewed origin/main",
-				"  └ Error: review failed",
-			}, lines)
-			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
-		})
+		expected := []string{
+			"• Reviewed origin/main",
+			"  └ Error: review failed",
+		}
+		assertBothModes(t, event, expected, expected)
 
-		t.Run("cli", func(t *testing.T) {
-			out := formatter.FormatEvent(event, MinTerminalWidth)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Reviewed origin/main",
-				"  └ Error: review failed",
-			}, lines)
-		})
+		out := formatter.FormatEvent(event, 120)
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+	})
+
+	t.Run("malformed or non-review json falls back", func(t *testing.T) {
+		testCases := []struct {
+			name    string
+			payload string
+		}{
+			{
+				name:    "non-review json",
+				payload: `{"hello":"world"}`,
+			},
+			{
+				name:    "malformed json",
+				payload: `{"hello"`,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				result := llmstream.ToolResult{
+					Result:  tc.payload,
+					IsError: false,
+				}
+				event := agent.Event{
+					Type:       agent.EventTypeToolComplete,
+					Tool:       "review",
+					ToolCall:   &call,
+					ToolResult: &result,
+				}
+
+				expected := []string{
+					"• Reviewed origin/main",
+					"  └ " + tc.payload,
+				}
+				assertBothModes(t, event, expected, expected)
+			})
+		}
 	})
 }
 
