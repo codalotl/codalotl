@@ -67,7 +67,7 @@ func TestCollectFinalAssistantText_IgnoresDescendantDoneSuccess(t *testing.T) {
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "child", Depth: 1},
-		Type: EventTypeAssistantTurnComplete,
+		Type:  EventTypeAssistantTurnComplete,
 		Turn: &llmstream.Turn{
 			Role:  llmstream.RoleAssistant,
 			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "child answer"}},
@@ -79,7 +79,7 @@ func TestCollectFinalAssistantText_IgnoresDescendantDoneSuccess(t *testing.T) {
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "root", Depth: 0},
-		Type: EventTypeAssistantTurnComplete,
+		Type:  EventTypeAssistantTurnComplete,
 		Turn: &llmstream.Turn{
 			Role:  llmstream.RoleAssistant,
 			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "root answer"}},
@@ -109,7 +109,7 @@ func TestCollectFinalAssistantText_IgnoresDescendantCanceled(t *testing.T) {
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "root", Depth: 0},
-		Type: EventTypeAssistantTurnComplete,
+		Type:  EventTypeAssistantTurnComplete,
 		Turn: &llmstream.Turn{
 			Role:  llmstream.RoleAssistant,
 			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "root answer"}},
@@ -139,7 +139,7 @@ func TestCollectFinalAssistantText_IgnoresDescendantError(t *testing.T) {
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "root", Depth: 0},
-		Type: EventTypeAssistantTurnComplete,
+		Type:  EventTypeAssistantTurnComplete,
 		Turn: &llmstream.Turn{
 			Role:  llmstream.RoleAssistant,
 			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "root answer"}},
