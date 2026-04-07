@@ -1000,7 +1000,8 @@ type toolOutputLine struct {
 	highlightCode bool
 }
 
-// parseToolResult returns success, command summary, and formatted output lines (limited to five entries).
+// parseToolResult returns success, command summary, and formatted output lines. Most tools use the default summarized output limit; tool-specific formatters can
+// ignore the returned lines and re-summarize with different rules.
 func (f *textTUIFormatter) parseToolResult(e agent.Event) (bool, string, []toolOutputLine) {
 	success := true
 	if e.ToolResult != nil {
@@ -1090,6 +1091,10 @@ func extractXMLishOK(s string) (ok bool, found bool) {
 }
 
 func summarizeToolResult(result llmstream.ToolResult) []toolOutputLine {
+	return summarizeToolResultWithMaxLines(result, 5)
+}
+
+func summarizeToolResultWithMaxLines(result llmstream.ToolResult, maxLines int) []toolOutputLine {
 	trimmed := strings.TrimSpace(result.Result)
 	if trimmed == "" {
 		return nil
@@ -1109,7 +1114,7 @@ func summarizeToolResult(result llmstream.ToolResult) []toolOutputLine {
 			}}
 		}
 		if payload.Content != "" {
-			return summarizeToolContent(payload.Content)
+			return summarizeToolContentWithMaxLines(payload.Content, maxLines)
 		}
 	}
 
@@ -1121,10 +1126,14 @@ func summarizeToolResult(result llmstream.ToolResult) []toolOutputLine {
 		}}
 	}
 
-	return summarizeToolContent(trimmed)
+	return summarizeToolContentWithMaxLines(trimmed, maxLines)
 }
 
 func summarizeToolContent(content string) []toolOutputLine {
+	return summarizeToolContentWithMaxLines(content, 5)
+}
+
+func summarizeToolContentWithMaxLines(content string, maxLines int) []toolOutputLine {
 	content = sanitizeText(content)
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")
@@ -1143,9 +1152,8 @@ func summarizeToolContent(content string) []toolOutputLine {
 		return nil
 	}
 
-	const maxLines = 5
 	var summarised []string
-	if len(lines) > maxLines {
+	if maxLines > 0 && len(lines) > maxLines {
 		remaining := len(lines) - maxLines
 		summarised = append(lines[:maxLines], fmt.Sprintf("… +%d lines", remaining))
 	} else {
@@ -1165,6 +1173,13 @@ func summarizeToolContent(content string) []toolOutputLine {
 		})
 	}
 	return output
+}
+
+func summarizeImplementToolResult(result *llmstream.ToolResult) []toolOutputLine {
+	if result == nil {
+		return nil
+	}
+	return summarizeToolResultWithMaxLines(*result, 0)
 }
 
 func trimEmpty(lines []string) []string {
@@ -2910,8 +2925,8 @@ func (f *textTUIFormatter) tuiImplementToolComplete(e agent.Event, width int, su
 	}
 	var builder strings.Builder
 	builder.WriteString(f.tuiBulletLine(width, bullet, implementHeaderSegments("Implemented", path)...))
-	if len(outputLines) > 0 {
-		f.appendTUIToolOutput(&builder, width, outputLines)
+	if lines := summarizeImplementToolResult(e.ToolResult); len(lines) > 0 {
+		f.appendTUIToolOutput(&builder, width, lines)
 	}
 	return builder.String()
 }
@@ -2926,7 +2941,7 @@ func (f *textTUIFormatter) cliImplementToolComplete(e agent.Event, success bool,
 		bullet = colorRed
 	}
 	lines := []string{f.cliBulletLine(bullet, implementHeaderSegments("Implemented", path)...)}
-	if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
+	if rest := f.cliToolOutputLines(summarizeImplementToolResult(e.ToolResult)); len(rest) > 0 {
 		lines = append(lines, rest...)
 	}
 	return strings.Join(lines, "\n")

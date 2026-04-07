@@ -1805,6 +1805,54 @@ func TestImplementToolCompleteFormatting(t *testing.T) {
 	})
 }
 
+func TestImplementToolCompleteDoesNotTruncateOutput(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentformatter","instructions":"Update formatter output."}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true,"content":"line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7"}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       "implement",
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	expectedLines := []string{
+		"• Implemented internal/agentformatter",
+		"  └ line 1",
+		"    line 2",
+		"    line 3",
+		"    line 4",
+		"    line 5",
+		"    line 6",
+		"    line 7",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 160)
+		require.NotEmpty(t, out)
+		require.Equal(t, expectedLines, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "… +")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		require.Equal(t, expectedLines, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "… +")
+	})
+}
+
 func TestModuleInfoToolCallNoOptions(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),

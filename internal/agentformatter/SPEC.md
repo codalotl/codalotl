@@ -331,7 +331,7 @@ The EventTypeToolComplete looks like this:
 
 - Implemented is Bold, Colorful.
 - internal/agentformatter is normal.
-- If the tool returns text, summarize it like other tool output (max 5 lines).
+- If the tool returns text, print it underneath in Accent.
 
 ### EventTypeToolCall and EventTypeToolComplete - get_usage
 
