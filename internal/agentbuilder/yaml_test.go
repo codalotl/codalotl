@@ -53,6 +53,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
+		coretools.ToolNameShell,
 	}, agentsByName["pr-review"].Tools)
 	require.NotNil(t, agentsByName["pr-review"].Skills)
 	assert.False(t, *agentsByName["pr-review"].Skills)
