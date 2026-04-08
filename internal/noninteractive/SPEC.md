@@ -21,9 +21,8 @@ Upon finishing a session, print a line like this:
 
 `Exec` is the one-shot entrypoint. The package may also expose a reusable session API for callers that want to run multiple top-level user messages against the same underlying agent conversation.
 
-- Reusing a session preserves conversation history, token usage, and context-usage tracking across steps.
-- Each step still prints the same human-readable or JSON event stream shape that `Exec` uses for a one-shot run.
-- A step result exposes enough structured metadata for higher-level coordinators to decide whether to stop, retry, continue fresh, or continue on the same session.
+- Reusing a session preserves conversation history, token usage, and context-usage tracking across `SendUserMessage` calls.
+- Each send still prints the same human-readable or JSON event stream shape that `Exec` uses for a one-shot run.
 
 ## JSON mode
 
@@ -147,11 +146,11 @@ type Options struct {
 	Out io.Writer
 }
 
-type StepResult struct {
-	TerminalEventType   agent.EventType
-	FinalAssistantText  string
-	TokenUsage          llmstream.TokenUsage
-	ContextUsagePercent int
+type Result struct {
+	TerminalEventType   agent.EventType      // Terminal event for this step's run.
+	FinalAssistantText  string               // Final top-level assistant text emitted for this step.
+	TokenUsage          llmstream.TokenUsage // Cumulative session token usage after this step, not a per-step delta.
+	ContextUsagePercent int                  // Overall session context usage after this step, based on the latest assistant turn.
 }
 
 type Session struct{}
@@ -160,7 +159,7 @@ type Session struct{}
 func NewSession(opts Options) (*Session, error)
 
 // SendUserMessage runs one top-level user message on an existing session, writes output according to the session options, and returns structured step metadata.
-func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (StepResult, error)
+func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Result, error)
 
 // Exec runs the agent with prompt and opts. It prints messages, tool calls, and so on to the screen.
 //

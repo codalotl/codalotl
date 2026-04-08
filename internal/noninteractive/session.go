@@ -35,12 +35,12 @@ type stepStartOutput struct {
 	modelID    llmmodel.ModelID
 }
 
-// StepResult reports structured metadata for one top-level noninteractive step.
-type StepResult struct {
-	TerminalEventType   agent.EventType
-	FinalAssistantText  string
-	TokenUsage          llmstream.TokenUsage
-	ContextUsagePercent int
+// Result reports structured metadata for one top-level noninteractive step.
+type Result struct {
+	TerminalEventType   agent.EventType      // Terminal event for this step's run.
+	FinalAssistantText  string               // Final top-level assistant text emitted for this step.
+	TokenUsage          llmstream.TokenUsage // Cumulative session token usage after this step, not a per-step delta.
+	ContextUsagePercent int                  // Overall session context usage after this step, based on the latest assistant turn.
 }
 
 // Session holds a reusable noninteractive agent conversation.
@@ -164,12 +164,12 @@ func NewSession(opts Options) (*Session, error) {
 }
 
 // SendUserMessage runs one top-level user message on an existing session, writes output according to the session options, and returns structured step metadata.
-func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (StepResult, error) {
+func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Result, error) {
 	if s == nil {
-		return StepResult{}, fmt.Errorf("nil session")
+		return Result{}, fmt.Errorf("nil session")
 	}
 	if s.agent == nil {
-		return StepResult{}, fmt.Errorf("nil agent")
+		return Result{}, fmt.Errorf("nil agent")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -177,14 +177,14 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (StepR
 
 	userPrompt = strings.TrimSpace(userPrompt)
 	if userPrompt == "" && !(s.stepsSent == 0 && s.config.allowEmptyInitialUser) {
-		return StepResult{}, fmt.Errorf("prompt is required")
+		return Result{}, fmt.Errorf("prompt is required")
 	}
 
 	if err := applyGrantsFromUserPrompt(s.authorizer, userPrompt, s.addGrants); err != nil {
-		return StepResult{}, err
+		return Result{}, err
 	}
 	if err := writeStepStartOutput(s.out, s.jsonWriter, s.opts.OutputJSON, s.startInfo, userPrompt); err != nil {
-		return StepResult{}, err
+		return Result{}, err
 	}
 
 	s.stepsSent++
@@ -195,7 +195,7 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (StepR
 		defer toolCallPrinter.Close()
 	}
 
-	result := StepResult{}
+	result := Result{}
 	var terminalErr error
 	var partialAssistantText strings.Builder
 
