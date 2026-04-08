@@ -148,9 +148,9 @@ type Options struct {
 }
 
 type StepResult struct {
-	TerminalEventType  agent.EventType
-	FinalAssistantText string
-	TokenUsage         llmstream.TokenUsage
+	TerminalEventType   agent.EventType
+	FinalAssistantText  string
+	TokenUsage          llmstream.TokenUsage
 	ContextUsagePercent int
 }
 
