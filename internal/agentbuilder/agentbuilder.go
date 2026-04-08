@@ -325,13 +325,19 @@ func buildPackageModeDefaultContextInitialTurns(ctx context.Context, options age
 	}
 
 	lang, _ := detectlang.Detect(sandboxAbsDir, goPkgAbsDir)
-	if lang != detectlang.LangGo {
-		return nil, errors.New("only go is supported right now")
-	}
-
 	initialContext, err := buildGoPackageInitialContext(goPkgAbsDir, options.ToolOptions.LintSteps)
 	if err != nil {
-		return nil, err
+		fallbackContext, fallbackOK, fallbackErr := tryBuildGoPackageFallbackInitialContext(goPkgAbsDir, err)
+		if fallbackErr != nil {
+			return nil, fallbackErr
+		}
+		if !fallbackOK {
+			if lang != detectlang.LangGo {
+				return nil, errors.New("only go is supported right now")
+			}
+			return nil, err
+		}
+		initialContext = fallbackContext
 	}
 
 	return []string{
@@ -363,6 +369,100 @@ func buildGoPackageInitialContext(goPkgAbsDir string, lintSteps []lints.Step) (s
 	}
 
 	return initial, nil
+}
+
+func tryBuildGoPackageFallbackInitialContext(goPkgAbsDir string, loadErr error) (string, bool, error) {
+	if strings.TrimSpace(goPkgAbsDir) == "" {
+		return "", false, errors.New("go package dir is required")
+	}
+
+	info, err := os.Stat(goPkgAbsDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("stat package dir %q: %w", goPkgAbsDir, err)
+	}
+	if !info.IsDir() {
+		return "", false, nil
+	}
+
+	module, err := gocode.NewModule(goPkgAbsDir)
+	if err != nil {
+		return "", false, nil
+	}
+
+	relDir, err := filepath.Rel(module.AbsolutePath, goPkgAbsDir)
+	if err != nil {
+		return "", false, fmt.Errorf("determine package relative dir: %w", err)
+	}
+	relDir = normalizeModuleRelativeDir(relDir)
+
+	dirListing, err := buildFallbackPackageDirListing(goPkgAbsDir)
+	if err != nil {
+		return "", false, err
+	}
+
+	importPath := module.Name
+	if relDir != "" {
+		if importPath == "" {
+			importPath = relDir
+		} else {
+			importPath += "/" + relDir
+		}
+	}
+
+	return buildFallbackPackageInitialContext(module.Name, relDir, goPkgAbsDir, importPath, dirListing, loadErr), true, nil
+}
+
+func buildFallbackPackageDirListing(goPkgAbsDir string) (string, error) {
+	entries, err := os.ReadDir(goPkgAbsDir)
+	if err != nil {
+		return "", fmt.Errorf("read package dir %q: %w", goPkgAbsDir, err)
+	}
+
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "<ls ok=\"true\" cwd=%q>\n", goPkgAbsDir)
+	builder.WriteString("$ ls -1p\n")
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		builder.WriteString(name)
+		if entry.IsDir() {
+			builder.WriteString("/")
+		}
+		builder.WriteString("\n")
+	}
+	builder.WriteString("</ls>")
+	return builder.String(), nil
+}
+
+func buildFallbackPackageInitialContext(modulePath string, relDir string, goPkgAbsDir string, importPath string, dirListing string, loadErr error) string {
+	loadMessage := "target directory does not currently load as a Go package"
+	if loadErr != nil {
+		loadMessage += ": " + strings.TrimSpace(loadErr.Error())
+	}
+
+	var currentPackage strings.Builder
+	currentPackage.WriteString("<current-package>\n")
+	fmt.Fprintf(&currentPackage, "Module path: %q\n", modulePath)
+	fmt.Fprintf(&currentPackage, "Package relative path: %q\n", relDir)
+	fmt.Fprintf(&currentPackage, "Absolute package path: %q\n", goPkgAbsDir)
+	fmt.Fprintf(&currentPackage, "Package import path: %q\n", importPath)
+	currentPackage.WriteString("</current-package>")
+
+	return joinContextBlocks(
+		currentPackage.String(),
+		dirListing,
+		"<pkg-map type=\"non-tests\">\n(fallback package context; "+loadMessage+")\n</pkg-map>",
+		"<pkg-map type=\"tests\">\n(no test package data available yet)\n</pkg-map>",
+		"<used-by>\n(used-by data unavailable until the directory loads as a Go package)\n</used-by>",
+		"<diagnostics-status ok=\"unknown\">\n(diagnostics not run; "+loadMessage+")\n</diagnostics-status>",
+		"<test-status ok=\"unknown\">\n(tests not run; "+loadMessage+")\n</test-status>",
+		"<lint-status ok=\"unknown\">\n(lints not run; "+loadMessage+")\n</lint-status>",
+	)
 }
 
 func joinContextBlocks(blocks ...string) string {
