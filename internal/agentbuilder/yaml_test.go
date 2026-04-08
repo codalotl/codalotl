@@ -694,6 +694,49 @@ func TestBuildRegistry_PROrchestratorImplementTool_GenericModeImportPathResolves
 	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.SandboxDir)
 }
 
+func TestBuildRegistry_PROrchestratorImplementTool_PrepareSupportsEmptyTargetDir(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
+
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	require.NoError(t, os.MkdirAll(targetPkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(targetPkgDir, "SPEC.md"), []byte("# targetpkg\n"), 0o644))
+
+	_, tools := invokeAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	)
+	implementTool := requireTool(t, tools, "implement")
+	require.IsType(t, &yamlSubagentTool{}, implementTool)
+
+	req, err := implementTool.(*yamlSubagentTool).buildInvokeRequest(
+		[]string{"Implement the package."},
+		map[string]any{
+			"path":         "targetpkg",
+			"instructions": "Implement the package.",
+		},
+		nil,
+	)
+	require.NoError(t, err)
+
+	prepared, err := registry.Prepare(context.Background(), AgentPackageModeDefaultContext, req)
+	require.NoError(t, err)
+	require.Len(t, prepared.InitialTurns, 2)
+	assert.Contains(t, prepared.InitialTurns[1], `Package relative path: "targetpkg"`)
+	assert.Contains(t, prepared.InitialTurns[1], "fallback package context; target directory does not currently load as a Go package")
+	assert.Contains(t, prepared.InitialTurns[1], "SPEC.md")
+}
+
 func TestBuildRegistry_YAMLBackedBuiltInAgentsPreserveToolsets(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

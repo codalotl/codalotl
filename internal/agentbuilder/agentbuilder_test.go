@@ -725,6 +725,36 @@ func TestBuildPackageModeDefaultContextInitialTurns_RootPackageUsesModuleImportP
 	assert.NotContains(t, turns[1], `Package import path: "example.com/test/."`)
 }
 
+func TestBuildPackageModeDefaultContextInitialTurns_ExistingDirWithoutGoFilesFallsBack(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
+
+	pkgDir := filepath.Join(sandbox, "pkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "SPEC.md"), []byte("# pkg\n"), 0o644))
+
+	turns, err := buildPackageModeDefaultContextInitialTurns(context.Background(), agentregistry.BuildOptions{
+		ToolOptions: toolsetinterface.Options{
+			SandboxDir:  sandbox,
+			GoPkgAbsDir: pkgDir,
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, turns, 2)
+
+	assert.Equal(t, "<env>\nSandbox directory: "+sandbox+"\n</env>", turns[0])
+	assert.Contains(t, turns[1], "<current-package>")
+	assert.Contains(t, turns[1], `Package relative path: "pkg"`)
+	assert.Contains(t, turns[1], `Package import path: "example.com/test/pkg"`)
+	assert.Contains(t, turns[1], `<ls ok="true" cwd="`+pkgDir+`">`)
+	assert.Contains(t, turns[1], "SPEC.md")
+	assert.Contains(t, turns[1], "fallback package context; target directory does not currently load as a Go package")
+	assert.Contains(t, turns[1], `<diagnostics-status ok="unknown">`)
+	assert.Contains(t, turns[1], `<test-status ok="unknown">`)
+	assert.Contains(t, turns[1], `<lint-status ok="unknown">`)
+	assert.NotContains(t, turns[1], `<diagnostics-status ok="true"`)
+}
+
 func TestBuildClarifyPublicAPIInitialTurns_GoRequestBuildsEnvAndInitialContext(t *testing.T) {
 	sandbox := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
