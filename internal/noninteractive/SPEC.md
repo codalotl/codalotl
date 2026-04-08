@@ -23,6 +23,7 @@ Upon finishing a session, print a line like this:
 
 - Reusing a session preserves conversation history, token usage, and context-usage tracking across `SendUserMessage` calls.
 - Each send still prints the same human-readable or JSON event stream shape that `Exec` uses for a one-shot run.
+- Sessions own authorizer/request-loop resources and should be closed when the caller is done with them.
 
 ## JSON mode
 
@@ -157,6 +158,9 @@ type Session struct{}
 
 // NewSession validates opts, prepares the underlying agent, and returns a reusable noninteractive session.
 func NewSession(opts Options) (*Session, error)
+
+// Close releases any resources owned by the session. It is safe to call multiple times.
+func (s *Session) Close() error
 
 // SendUserMessage runs one top-level user message on an existing session, writes output according to the session options, and returns structured step metadata.
 func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Result, error)
