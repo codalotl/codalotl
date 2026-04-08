@@ -15,10 +15,12 @@
     - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
 - package_mode_default_context: toolset_package
     - The same as package_mode_no_context, except:
-    - Uses `InitialTurnsBuilder` to add env + `initialcontext.Create` context.
+    - Uses `InitialTurnsBuilder` to add env + package initial context.
+    - When the target dir is an existing package-mode directory but does not yet load as a Go package, startup still succeeds with fallback package-path context.
 - limited_package_mode: toolset_limited_package
     - Uses the "Package Mode Update Usage" prompt kind
-    - Uses `InitialTurnsBuilder` to add env + `initialcontext.Create` context.
+    - Uses `InitialTurnsBuilder` to add env + package initial context.
+    - When the target dir is an existing package-mode directory but does not yet load as a Go package, startup still succeeds with fallback package-path context.
 - clarify_public_api: toolset_simple_read_only
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
@@ -39,7 +41,8 @@ Agents:
     - `text`: just use this text directly.
 - `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one virtual tool exists: `edit_files`, which refers to the `toolset_edit_files` tools.
 - `mode` is one of `generic` or `package`.
-- `include_package_mode_context` set to true includes package env and `initialcontext.Create` (optional; only valid if `mode` is `package`).
+- `include_package_mode_context` set to true includes package env and package initial context (optional; only valid if `mode` is `package`).
+    - If the selected dir already exists but does not yet load as a Go package, include fallback package-path context instead of failing startup.
 - `skills` is an optional boolean (default true) that adds skill support to the prompt (passing appropriate shell tool). Requires the tool `shell` or `skill_shell` to be present.
 
 Tools:
