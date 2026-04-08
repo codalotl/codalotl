@@ -16,7 +16,6 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentbuilder"
-	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -24,7 +23,6 @@ import (
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"golang.org/x/term"
@@ -100,41 +98,11 @@ func effectiveModelID(opts Options) llmmodel.ModelID {
 	return defaultModelID
 }
 
+var newSessionForExec = NewSession
+
 type sessionStart struct {
-	agentName          string
-	pkgMode            bool
-	initialUserMessage string
-	visibleUserPrompt  string
-}
-
-func buildSessionStart(userPrompt string, opts Options) (sessionStart, error) {
-	userPrompt = strings.TrimSpace(userPrompt)
-
-	slashCommand, err := normalizeSlashCommand(opts.SlashCommand)
-	if err != nil {
-		return sessionStart{}, err
-	}
-
-	start := sessionStart{
-		agentName:          agentbuilder.AgentGeneric,
-		pkgMode:            strings.TrimSpace(opts.PackagePath) != "",
-		initialUserMessage: userPrompt,
-		visibleUserPrompt:  userPrompt,
-	}
-	if start.pkgMode {
-		start.agentName = agentbuilder.AgentPackageModeNoContext
-	}
-
-	if slashCommand == slashCommandOrchestrate {
-		start.agentName = orchestratorAgentName
-		start.pkgMode = false
-	}
-
-	if userPrompt == "" && slashCommand != slashCommandOrchestrate {
-		return sessionStart{}, fmt.Errorf("prompt is required")
-	}
-
-	return start, nil
+	agentName string
+	pkgMode   bool
 }
 
 func normalizeSlashCommand(slashCommand string) (string, error) {
@@ -307,211 +275,19 @@ func shouldTrackTerminalError(ev agent.Event) bool {
 // to read non-existant files; shell commands will fail; etc. These do not typically constitute errors worthy of being returned (instead, the LLM is just told a
 // file doesn't exist).
 func Exec(userPrompt string, opts Options) error {
-	start, err := buildSessionStart(userPrompt, opts)
+	session, err := newSessionForExec(opts)
 	if err != nil {
 		return err
 	}
-
-	out := opts.Out
-	if out == nil {
-		out = os.Stdout
-	}
-	rawOut := out
-	out = &lockedWriter{w: out}
-	jsonWriter := newJSONEventWriter(out)
-
-	sandboxDir, err := normalizeSandboxDir(opts.CWD)
-	if err != nil {
-		return err
-	}
-
-	var pkgRelPath string
-	var pkgAbsPath string
-	if start.pkgMode {
-		pkgRelPath, pkgAbsPath, err = normalizePackagePath(opts.PackagePath, sandboxDir)
-		if err != nil {
-			return err
-		}
-	}
-
-	formatter := agentformatter.NewTUIFormatter(agentformatter.Config{
-		PlainText: opts.NoFormatting,
-	})
-	terminalWidth := detectTerminalWidth(rawOut)
-	modelID := effectiveModelID(opts)
-	prompt.SetModel(modelID)
-
-	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, nil, opts.AutoYes)
-	if err != nil {
-		return err
-	}
-	authorizerForTools, err := buildAuthorizerForTools(start.pkgMode, pkgRelPath, pkgAbsPath, sandboxAuthorizer, start.visibleUserPrompt, authdomain.AddGrantsFromUserMessage)
-	if err != nil {
-		sandboxAuthorizer.Close()
-		return err
-	}
-	defer authorizerForTools.Close()
-
-	if userRequests != nil {
-		go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
-	}
-
-	agentInstance, err := buildAgent(start, sandboxDir, pkgRelPath, pkgAbsPath, modelID, authorizerForTools, opts.LintSteps)
-	if err != nil {
-		return err
-	}
-
-	if err := writeSessionStartOutput(out, jsonWriter, opts.OutputJSON, sandboxDir, pkgRelPath, modelID, start); err != nil {
-		return err
-	}
+	defer func() {
+		_ = session.Close()
+	}()
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	var toolCallPrinter *delayedToolCallPrinter
-	if !opts.OutputJSON {
-		toolCallPrinter = newDelayedToolCallPrinter(out, toolCallPrintDelay)
-		defer toolCallPrinter.Close()
-	}
-
-	var terminalErr error
-	completedAssistantTurnsByAgent := make(map[string][]llmstream.Turn)
-	for ev := range agentInstance.SendUserMessage(runCtx, start.initialUserMessage) {
-		switch ev.Type {
-		case agent.EventTypeAssistantTurnComplete:
-			// Capture all completed assistant turns (including subagents) so we can optionally
-			// report "ideal caching" token usage across the entire run, without incorrectly
-			// letting prompt caching "carry over" between separate agent sessions.
-			if ev.Turn != nil {
-				completedAssistantTurnsByAgent[ev.Agent.ID] = append(completedAssistantTurnsByAgent[ev.Agent.ID], *ev.Turn)
-			}
-			// Suppress verbose per-turn usage/debug output like:
-			// "• Turn complete: finish=... input=... output=... reasoning=... cached_input=..."
-			//
-			// We still print the user-visible completion line (EventTypeDoneSuccess) with
-			// cumulative session token usage.
-			continue
-		case agent.EventTypeDoneSuccess:
-			if ev.Agent.Depth > 0 {
-				continue
-			}
-			if opts.OutputJSON {
-				var idealUsage *llmstream.TokenUsage
-				if reportIdealCachingEnabled() {
-					ideal := idealCachingForCompletedTurnsByAgent(completedAssistantTurnsByAgent, agentInstance.Turns())
-					idealUsage = &ideal
-				}
-				if err := jsonWriter.WriteDone(agentInstance.TokenUsage(), idealUsage); err != nil {
-					return err
-				}
-				continue
-			}
-
-			report := buildDoneSuccessReport(modelID, agentInstance.Turns(), completedAssistantTurnsByAgent, agentInstance.TokenUsage(), reportIdealCachingEnabled())
-
-			if strings.TrimSpace(report.UsageAndCaching) != "" {
-				s := report.UsageAndCaching
-				if !strings.HasSuffix(s, "\n") {
-					s += "\n"
-				}
-				if _, err := io.WriteString(out, s); err != nil {
-					return err
-				}
-			}
-
-			for _, line := range report.Lines {
-				if strings.TrimSpace(line) == "" {
-					continue
-				}
-				if !strings.HasSuffix(line, "\n") {
-					line += "\n"
-				}
-				if _, err := io.WriteString(out, line); err != nil {
-					return err
-				}
-			}
-			continue
-		}
-		if opts.OutputJSON {
-			if err := jsonWriter.WriteAgentEvent(ev); err != nil {
-				return err
-			}
-			if shouldTrackTerminalError(ev) {
-				terminalErr = ev.Error
-			}
-			continue
-		}
-
-		switch ev.Type {
-		case agent.EventTypeToolCall:
-			formatted := formatter.FormatEvent(ev, terminalWidth)
-			if shouldSuppressFormattedOutput(formatted) {
-				continue
-			}
-			if formatted == "" {
-				continue
-			}
-
-			callID := ""
-			if ev.ToolCall != nil {
-				callID = ev.ToolCall.CallID
-			}
-
-			// Delay printing the tool call itself: if the result comes back quickly,
-			// only print the tool result. If it takes longer, print the call after a
-			// short delay so a "hung" call is still visible in the log.
-			if callID == "" || toolCallPrintDelay <= 0 {
-				if !strings.HasSuffix(formatted, "\n") {
-					formatted += "\n"
-				}
-				if _, err := io.WriteString(out, formatted); err != nil {
-					return err
-				}
-			} else {
-				toolCallPrinter.Schedule(callID, formatted)
-			}
-			continue
-		case agent.EventTypeToolComplete:
-			if ev.ToolResult != nil && strings.TrimSpace(ev.ToolResult.CallID) != "" {
-				toolCallPrinter.Cancel(ev.ToolResult.CallID)
-			}
-			// Tool results are user-visible; print them like any other formatted event.
-			formatted := formatter.FormatEvent(ev, terminalWidth)
-			if shouldSuppressFormattedOutput(formatted) {
-				continue
-			}
-			if formatted != "" {
-				if !strings.HasSuffix(formatted, "\n") {
-					formatted += "\n"
-				}
-				if _, err := io.WriteString(out, formatted); err != nil {
-					return err
-				}
-			}
-			continue
-		default:
-			formatted := formatter.FormatEvent(ev, terminalWidth)
-			if shouldSuppressFormattedOutput(formatted) {
-				continue
-			}
-			if formatted != "" {
-				if !strings.HasSuffix(formatted, "\n") {
-					formatted += "\n"
-				}
-				if _, err := io.WriteString(out, formatted); err != nil {
-					return err
-				}
-			}
-		}
-		if shouldTrackTerminalError(ev) {
-			terminalErr = ev.Error
-		}
-	}
-
-	if terminalErr != nil {
-		return &printedError{err: terminalErr}
-	}
-	return nil
+	_, err = session.SendUserMessage(runCtx, userPrompt)
+	return err
 }
 
 type grantsAdder func(authorizer authdomain.Authorizer, userMessage string) error
@@ -941,23 +717,6 @@ func detectTerminalWidth(out io.Writer) int {
 		}
 	}
 	return 0
-}
-
-func writeSessionStartOutput(out io.Writer, jsonWriter *jsonEventWriter, outputJSON bool, sandboxDir string, pkgRelPath string, modelID llmmodel.ModelID, start sessionStart) error {
-	if outputJSON {
-		if err := jsonWriter.WriteStart(sandboxDir, pkgRelPath, modelID); err != nil {
-			return err
-		}
-		if strings.TrimSpace(start.visibleUserPrompt) == "" {
-			return nil
-		}
-		return jsonWriter.WriteUserMessage(start.visibleUserPrompt)
-	}
-
-	if strings.TrimSpace(start.visibleUserPrompt) == "" {
-		return nil
-	}
-	return printUserPrompt(out, start.visibleUserPrompt)
 }
 
 func buildAgent(start sessionStart, sandboxDir string, pkgRelPath string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) (*agent.Agent, error) {

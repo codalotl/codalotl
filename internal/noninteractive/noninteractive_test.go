@@ -2,8 +2,11 @@ package noninteractive
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +15,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentbuilder"
+	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -136,76 +140,70 @@ func TestExecValidationErrorsPrintNothing(t *testing.T) {
 	})
 }
 
-func TestBuildSessionStart_EmptyPromptValidation(t *testing.T) {
+func TestBuildSessionConfig(t *testing.T) {
 	t.Parallel()
 
-	t.Run("empty prompt rejected without slash command", func(t *testing.T) {
+	t.Run("unsupported slash command", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := buildSessionStart("", Options{})
-		require.EqualError(t, err, "prompt is required")
-	})
-
-	t.Run("empty prompt rejected for unsupported slash command", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := buildSessionStart("", Options{SlashCommand: "/unknown"})
+		_, err := buildSessionConfig(Options{SlashCommand: "/unknown"})
 		require.EqualError(t, err, `unsupported slash command "/unknown"`)
 	})
 
-	t.Run("empty prompt accepted for orchestrate slash command", func(t *testing.T) {
+	t.Run("orchestrate ignores package mode and allows empty first prompt", func(t *testing.T) {
 		t.Parallel()
 
 		for _, slashCommand := range []string{"orchestrate", "/orchestrate"} {
-			start, err := buildSessionStart("", Options{SlashCommand: slashCommand, PackagePath: "internal/noninteractive"})
+			config, err := buildSessionConfig(Options{SlashCommand: slashCommand, PackagePath: "internal/noninteractive"})
 			require.NoError(t, err)
-			require.Equal(t, orchestratorAgentName, start.agentName)
-			require.False(t, start.pkgMode)
-			require.Empty(t, start.initialUserMessage)
-			require.Empty(t, start.visibleUserPrompt)
+			require.Equal(t, orchestratorAgentName, config.agentName)
+			require.False(t, config.pkgMode)
+			require.True(t, config.allowEmptyInitialUser)
 		}
 	})
 }
 
-func TestBuildSessionStart_ModeSelection(t *testing.T) {
+func TestBuildSessionConfig_ModeSelection(t *testing.T) {
 	t.Parallel()
 
 	t.Run("package mode without slash command", func(t *testing.T) {
 		t.Parallel()
 
-		start, err := buildSessionStart("fix failing test", Options{PackagePath: "internal/noninteractive"})
+		config, err := buildSessionConfig(Options{PackagePath: "internal/noninteractive"})
 		require.NoError(t, err)
-		require.Equal(t, agentbuilder.AgentPackageModeNoContext, start.agentName)
-		require.True(t, start.pkgMode)
-		require.Equal(t, "fix failing test", start.initialUserMessage)
-		require.Equal(t, "fix failing test", start.visibleUserPrompt)
+		require.Equal(t, agentbuilder.AgentPackageModeNoContext, config.agentName)
+		require.True(t, config.pkgMode)
+		require.False(t, config.allowEmptyInitialUser)
 	})
 
 	t.Run("orchestrate ignores package mode and uses orchestrator agent", func(t *testing.T) {
 		t.Parallel()
 
-		start, err := buildSessionStart("fix failing test", Options{
+		config, err := buildSessionConfig(Options{
 			PackagePath:  "internal/noninteractive",
 			SlashCommand: "/orchestrate",
 		})
 		require.NoError(t, err)
-		require.Equal(t, orchestratorAgentName, start.agentName)
-		require.False(t, start.pkgMode)
-		require.Equal(t, "fix failing test", start.initialUserMessage)
-		require.Equal(t, "fix failing test", start.visibleUserPrompt)
+		require.Equal(t, orchestratorAgentName, config.agentName)
+		require.False(t, config.pkgMode)
+		require.True(t, config.allowEmptyInitialUser)
 	})
 }
 
 func TestBuildAgent_OrchestrateStartBuildsBuiltInOrchestrator(t *testing.T) {
 	t.Parallel()
 
-	start, err := buildSessionStart("fix failing test", Options{
+	config, err := buildSessionConfig(Options{
 		PackagePath:  "internal/noninteractive",
 		SlashCommand: "/orchestrate",
 	})
 	require.NoError(t, err)
 
 	sandbox := t.TempDir()
+	start := sessionStart{
+		agentName: config.agentName,
+		pkgMode:   config.pkgMode,
+	}
 	agentInstance, err := buildAgent(start, sandbox, "", "", defaultModelID, authdomain.NewAutoApproveAuthorizer(sandbox), nil)
 	require.NoError(t, err)
 	require.NotNil(t, agentInstance)
@@ -643,4 +641,383 @@ func TestBuildAuthorizerForToolsAppliesGrantsToCodeUnitAuthorizer(t *testing.T) 
 	if called != 1 {
 		t.Fatalf("called=%d, want 1", called)
 	}
+}
+
+type fakeSessionSend struct {
+	events              []agent.Event
+	tokenUsage          llmstream.TokenUsage
+	contextUsagePercent int
+	turns               []llmstream.Turn
+}
+
+type fakeSessionAgent struct {
+	sends    []fakeSessionSend
+	messages []string
+	call     int
+}
+
+func (a *fakeSessionAgent) SendUserMessage(_ context.Context, message string) <-chan agent.Event {
+	a.messages = append(a.messages, message)
+
+	if a.call >= len(a.sends) {
+		ch := make(chan agent.Event)
+		close(ch)
+		return ch
+	}
+
+	send := a.sends[a.call]
+	ch := make(chan agent.Event, len(send.events))
+	a.call++
+	for _, ev := range send.events {
+		ch <- ev
+	}
+	close(ch)
+	return ch
+}
+
+func (a *fakeSessionAgent) TokenUsage() llmstream.TokenUsage {
+	if a.call == 0 || a.call > len(a.sends) {
+		return llmstream.TokenUsage{}
+	}
+	return a.sends[a.call-1].tokenUsage
+}
+
+func (a *fakeSessionAgent) ContextUsagePercent() int {
+	if a.call == 0 || a.call > len(a.sends) {
+		return 0
+	}
+	return a.sends[a.call-1].contextUsagePercent
+}
+
+func (a *fakeSessionAgent) Turns() []llmstream.Turn {
+	if a.call == 0 || a.call > len(a.sends) {
+		return nil
+	}
+	return a.sends[a.call-1].turns
+}
+
+type countingAuthorizer struct {
+	sandboxDir string
+	requests   chan authdomain.UserRequest
+	closeCount int
+	closed     bool
+}
+
+func (a *countingAuthorizer) SandboxDir() string {
+	if a == nil {
+		return ""
+	}
+	return a.sandboxDir
+}
+
+func (a *countingAuthorizer) CodeUnitDir() string { return "" }
+
+func (a *countingAuthorizer) IsCodeUnitDomain() bool { return false }
+
+func (a *countingAuthorizer) WithoutCodeUnit() authdomain.Authorizer { return a }
+
+func (a *countingAuthorizer) IsAuthorizedForRead(bool, string, string, ...string) error { return nil }
+
+func (a *countingAuthorizer) IsAuthorizedForWrite(bool, string, string, ...string) error { return nil }
+
+func (a *countingAuthorizer) IsShellAuthorized(bool, string, string, []string) error { return nil }
+
+func (a *countingAuthorizer) Close() {
+	if a == nil {
+		return
+	}
+	a.closeCount++
+	if a.closed {
+		return
+	}
+	a.closed = true
+	if a.requests != nil {
+		close(a.requests)
+	}
+}
+
+func newTestSession(opts Options, agent sessionAgent, buf *bytes.Buffer) *Session {
+	out := io.Writer(buf)
+	lockedOut := &lockedWriter{w: out}
+	return &Session{
+		opts: opts,
+		startInfo: stepStartOutput{
+			sandboxDir: "/tmp/sandbox",
+			modelID:    effectiveModelID(opts),
+		},
+		out:                            lockedOut,
+		jsonWriter:                     newJSONEventWriter(lockedOut),
+		formatter:                      agentformatter.NewTUIFormatter(agentformatter.Config{PlainText: true}),
+		modelID:                        effectiveModelID(opts),
+		agent:                          agent,
+		completedAssistantTurnsByAgent: make(map[string][]llmstream.Turn),
+	}
+}
+
+func textAssistantTurn(text string) *llmstream.Turn {
+	return &llmstream.Turn{
+		Role: llmstream.RoleAssistant,
+		Parts: []llmstream.ContentPart{
+			llmstream.TextContent{Content: text},
+		},
+	}
+}
+
+func TestSessionSendUserMessageRequiresPromptOutsideInitialOrchestrateStep(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, &fakeSessionAgent{}, &buf)
+
+	_, err := session.SendUserMessage(context.Background(), "")
+	require.EqualError(t, err, "prompt is required")
+	require.Empty(t, buf.String())
+}
+
+func TestSessionCloseIsIdempotentAndPreventsFurtherUse(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	fake := &fakeSessionAgent{}
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+	authorizer := &countingAuthorizer{sandboxDir: t.TempDir()}
+	session.authorizer = authorizer
+
+	require.NoError(t, session.Close())
+	require.NoError(t, session.Close())
+	require.Equal(t, 1, authorizer.closeCount)
+
+	_, err := session.SendUserMessage(context.Background(), "after close")
+	require.EqualError(t, err, "session is closed")
+	require.Empty(t, fake.messages)
+}
+
+func TestSessionCloseWaitsForPermissionLoop(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	authorizer := &countingAuthorizer{
+		sandboxDir: t.TempDir(),
+		requests:   make(chan authdomain.UserRequest),
+	}
+	session := newTestSession(Options{}, &fakeSessionAgent{}, &buf)
+	session.authorizer = authorizer
+
+	exited := make(chan struct{})
+	session.requestLoopWG.Add(1)
+	go func() {
+		defer session.requestLoopWG.Done()
+		autoRespondToUserRequests(authorizer.requests, session.out, false, session.jsonWriter, false)
+		close(exited)
+	}()
+
+	require.NoError(t, session.Close())
+	require.Equal(t, 1, authorizer.closeCount)
+
+	select {
+	case <-exited:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("permission loop did not exit after Close")
+	}
+}
+
+func TestSessionSendUserMessageReusesConversationAcrossSteps(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       agent.AgentMeta{ID: "root", Depth: 0},
+						TextContent: llmstream.TextContent{Content: "draft"},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Turn:  textAssistantTurn("CONTINUE_ITERATION"),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  10,
+					TotalOutputTokens: 2,
+				},
+				contextUsagePercent: 12,
+			},
+			{
+				events: []agent.Event{
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       agent.AgentMeta{ID: "subagent", Depth: 1},
+						TextContent: llmstream.TextContent{Content: "ignore me"},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: agent.AgentMeta{ID: "subagent", Depth: 1},
+						Turn:  textAssistantTurn("ignore me"),
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       agent.AgentMeta{ID: "root", Depth: 0},
+						TextContent: llmstream.TextContent{Content: "STOP_ITERATION"},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Turn:  textAssistantTurn("STOP_ITERATION"),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  25,
+					CachedInputTokens: 5,
+					TotalOutputTokens: 6,
+				},
+				contextUsagePercent: 34,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+
+	step1, err := session.SendUserMessage(context.Background(), "step one")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step1.TerminalEventType)
+	require.Equal(t, "CONTINUE_ITERATION", step1.FinalAssistantText)
+	require.Equal(t, llmstream.TokenUsage{
+		TotalInputTokens:  10,
+		TotalOutputTokens: 2,
+	}, step1.TokenUsage)
+	require.Equal(t, 12, step1.ContextUsagePercent)
+
+	step2, err := session.SendUserMessage(context.Background(), "step two")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step2.TerminalEventType)
+	require.Equal(t, "STOP_ITERATION", step2.FinalAssistantText)
+	require.Equal(t, llmstream.TokenUsage{
+		TotalInputTokens:  25,
+		CachedInputTokens: 5,
+		TotalOutputTokens: 6,
+	}, step2.TokenUsage)
+	require.Equal(t, 34, step2.ContextUsagePercent)
+	require.Equal(t, []string{"step one", "step two"}, fake.messages)
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
+	require.Len(t, lines, 9)
+
+	var firstStart jsonStartEvent
+	require.NoError(t, json.Unmarshal(lines[0], &firstStart))
+	require.Equal(t, "start", firstStart.Type)
+
+	var firstUser jsonUserMessageEvent
+	require.NoError(t, json.Unmarshal(lines[1], &firstUser))
+	require.Equal(t, "step one", firstUser.Text)
+
+	var secondStart jsonStartEvent
+	require.NoError(t, json.Unmarshal(lines[4], &secondStart))
+	require.Equal(t, "start", secondStart.Type)
+
+	var secondUser jsonUserMessageEvent
+	require.NoError(t, json.Unmarshal(lines[5], &secondUser))
+	require.Equal(t, "step two", secondUser.Text)
+
+	var done jsonDoneEvent
+	require.NoError(t, json.Unmarshal(lines[len(lines)-1], &done))
+	require.Equal(t, "done", done.Type)
+	require.Equal(t, buildJSONTokenUsage(step2.TokenUsage), done.TokenUsage)
+}
+
+func TestSessionSendUserMessageReturnsPrintedErrorAndPartialAssistantText(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       agent.AgentMeta{ID: "root", Depth: 0},
+						TextContent: llmstream.TextContent{Content: "partial STOP_ITERATION"},
+					},
+					{
+						Type:  agent.EventTypeError,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Error: errors.New("boom"),
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  4,
+					TotalOutputTokens: 1,
+				},
+				contextUsagePercent: 9,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+
+	step, err := session.SendUserMessage(context.Background(), "continue")
+	require.Error(t, err)
+	require.True(t, IsPrinted(err))
+	require.Equal(t, agent.EventTypeError, step.TerminalEventType)
+	require.Equal(t, "partial STOP_ITERATION", step.FinalAssistantText)
+	require.Equal(t, llmstream.TokenUsage{
+		TotalInputTokens:  4,
+		TotalOutputTokens: 1,
+	}, step.TokenUsage)
+	require.Equal(t, 9, step.ContextUsagePercent)
+}
+
+func TestExecUsesSessionAPIAndPreservesTextOutput(t *testing.T) {
+	original := newSessionForExec
+	t.Cleanup(func() {
+		newSessionForExec = original
+	})
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Turn:  textAssistantTurn("done"),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  7,
+					TotalOutputTokens: 3,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	authorizer := &countingAuthorizer{sandboxDir: t.TempDir()}
+	session.authorizer = authorizer
+	newSessionForExec = func(_ Options) (*Session, error) {
+		return session, nil
+	}
+
+	err := Exec("fix failing test", Options{NoFormatting: true})
+	require.NoError(t, err)
+	require.Equal(t, 1, authorizer.closeCount)
+	require.Equal(t, []string{"fix failing test"}, fake.messages)
+	require.Contains(t, buf.String(), "> fix failing test\n")
+	require.Contains(t, buf.String(), "• Agent finished the turn. Tokens: input=7 cached_input=0 output=3 total=10")
 }

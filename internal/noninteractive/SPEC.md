@@ -17,6 +17,14 @@ Upon finishing a session, print a line like this:
 
 `• Agent finished the turn. Tokens: input=10042 cached_input=32000 output=1043 total=43085`
 
+## Reusable sessions
+
+`Exec` is the one-shot entrypoint. The package may also expose a reusable session API for callers that want to run multiple top-level user messages against the same underlying agent conversation.
+
+- Reusing a session preserves conversation history, token usage, and context-usage tracking across `SendUserMessage` calls.
+- Each send still prints the same human-readable or JSON event stream shape that `Exec` uses for a one-shot run.
+- Sessions own authorizer/request-loop resources and should be closed when the caller is done with them.
+
 ## JSON mode
 
 If `Options.OutputJSON` is true, output is newline-delimited JSON: one object per line, no surrounding array.
@@ -138,6 +146,24 @@ type Options struct {
 	// we'd still just print to Out (instead of something like Stderr).
 	Out io.Writer
 }
+
+type Result struct {
+	TerminalEventType   agent.EventType      // Terminal event for this step's run.
+	FinalAssistantText  string               // Final top-level assistant text emitted for this step.
+	TokenUsage          llmstream.TokenUsage // Cumulative session token usage after this step, not a per-step delta.
+	ContextUsagePercent int                  // Overall session context usage after this step, based on the latest assistant turn.
+}
+
+type Session struct{}
+
+// NewSession validates opts, prepares the underlying agent, and returns a reusable noninteractive session.
+func NewSession(opts Options) (*Session, error)
+
+// Close releases any resources owned by the session. It is safe to call multiple times.
+func (s *Session) Close() error
+
+// SendUserMessage runs one top-level user message on an existing session, writes output according to the session options, and returns structured step metadata.
+func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Result, error)
 
 // Exec runs the agent with prompt and opts. It prints messages, tool calls, and so on to the screen.
 //

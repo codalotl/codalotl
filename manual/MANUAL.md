@@ -196,6 +196,37 @@ Config:
 - `autoyes: true` enables auto-approve in the TUI and as the default for `codalotl exec`.
 - `codalotl exec -y ...` also enables auto-approve for that run.
 
+### `codalotl iterate`
+
+Runs repeated noninteractive agent steps until codalotl decides the workflow is done.
+
+```bash
+codalotl iterate --max-steps=10 "keep working until done; reply STOP_ITERATION when finished"
+```
+
+Choose a prompt source:
+- Pass the prompt directly on the command line.
+- Or use `--prompt-file <path>` to load the initial prompt from a file.
+- Or use `--orchestrate` to start the built-in PR orchestrator flow, with or without an extra prompt.
+
+Main iteration flags:
+- `--max-steps <n>`: stop before starting a new prompt step after `n` iterations.
+- `--max-minutes <n>`: stop before starting a new prompt step after `n` minutes of elapsed time.
+- `--decision-prompt <text>`: override the follow-up prompt used when the agent did not clearly say whether to continue. Use `--decision-prompt=''` to disable that extra check.
+- `--continue-mode <fresh|resume|auto>`: choose whether each next step starts a fresh session, resumes the prior session, or lets codalotl choose automatically.
+
+`iterate` accepts the same useful execution flags as `exec`: `--yes`, `--no-color`, `--json`, `--model`, and `--slash-command`.
+
+How stopping works:
+- If the final assistant message includes `STOP_ITERATION`, the loop stops.
+- If it includes `CONTINUE_ITERATION`, `CONTINUE_FRESH`, or `CONTINUE_RESUME`, the loop continues.
+- If it says neither, codalotl can ask a short decision prompt unless you disabled it.
+- Ctrl-C stops the command instead of merely ending the current step and starting another one.
+
+Output:
+- Text mode prints a short start/finish line for each step, including the continue mode and terminal event.
+- JSON mode emits newline-delimited lifecycle events around the normal noninteractive stream.
+
 ### `codalotl context public <path/to/pkg>`
 
 Print public API documentation context for a package.
