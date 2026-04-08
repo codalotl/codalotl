@@ -25,9 +25,15 @@ Testing:
 
 ## Review
 
-- Review status: changes requested.
-- Overall verdict: incorrect.
-- Action item:
-  - Restrict the new fallback package-context path to directories that genuinely do not yet load as Go packages because they are empty/SPEC-only. Do not swallow unrelated `buildGoPackageInitialContext` failures for real Go packages with parse/load errors; those should still surface their original error.
+- Review status: [DONE] non-actioned.
+- Reviewed concern:
+  - Restrict the new fallback package-context path to empty/SPEC-only directories and keep surfacing raw `buildGoPackageInitialContext` failures for real Go packages.
+- Resolution:
+  - Not actioned. From the product/user perspective, `implement` should still start for an existing target package directory even when the package has broken Go files and the rich package initial context cannot be built.
+  - The fallback context is intentionally broader than the empty-directory case: it keeps package-mode startup alive and includes the underlying load/init error text in the fallback context, instead of failing immediately.
+
+## Decisions
+
+- `implement` should tolerate package-context startup failures for an existing directory inside a Go module, including syntax/build-broken package states, by falling back to package-path context instead of aborting.
 
 ## Summary
