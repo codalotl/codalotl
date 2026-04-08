@@ -25,4 +25,9 @@ Testing:
 
 ## Review
 
+- Review status: changes requested.
+- Overall verdict: incorrect.
+- Action item:
+  - Restrict the new fallback package-context path to directories that genuinely do not yet load as Go packages because they are empty/SPEC-only. Do not swallow unrelated `buildGoPackageInitialContext` failures for real Go packages with parse/load errors; those should still surface their original error.
+
 ## Summary
