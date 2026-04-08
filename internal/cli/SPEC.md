@@ -86,7 +86,9 @@ Notes:
 - Prints iteration lifecycle metadata before and after each prompt step.
 	- Human-readable mode prints concise status lines.
 	- JSON mode emits newline-delimited iteration events in addition to the underlying noninteractive stream.
-- If the current step does not finish successfully, iterate may retry according to iteration policy; Ctrl-C exits the iterate command rather than starting another iteration.
+- If the current step does not finish successfully, iterate may retry according to iteration policy.
+- If iteration stops because retries are exhausted, the command exits non-zero.
+- Ctrl-C exits the iterate command rather than starting another iteration.
 
 ### codalotl version
 
