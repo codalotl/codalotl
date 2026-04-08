@@ -11,15 +11,16 @@ Testing:
 
 ## Plan
 
-### internal/agentbuilder
+### [DONE] internal/agentbuilder
 
 - Make package-mode default-context startup tolerate an existing target directory that does not yet load as a Go package.
 - Keep rich initial context for normal Go packages, but fall back to package-path/env context instead of failing subagent startup when the directory has no `.go` files.
 - Add coverage around the `package_mode_default_context` path so an `implement`-style subagent can target a SPEC-only or otherwise empty directory.
 
-### Verification
+### [DONE] Verification
 
 - Run focused `go test` coverage for `internal/agentbuilder`.
+- Run `go test ./...`.
 - Manually verify with `go run . exec` against a temp fixture repo/package directory that contains `SPEC.md` but no `.go` files, and confirm `implement` can start instead of erroring immediately.
 
 ## Review
