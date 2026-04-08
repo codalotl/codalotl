@@ -54,6 +54,28 @@ Enter package mode (the main mechanism Codalotl uses to build dedicated Go suppo
 
 From there, type your prompt (ex: `implement xyz feature`). The agent will automatically be supplied with context from your target package.
 
+### Using the CLI
+
+Run one noninteractive step:
+
+```bash
+codalotl exec -p ./internal/cli "fix the failing test"
+```
+
+Run a prompt repeatedly until iteration policy says stop:
+
+```bash
+codalotl iterate --max-steps=10 "keep working until done; reply STOP_ITERATION when finished"
+```
+
+`iterate` can start each step in a fresh session, resume the previous session, or choose automatically. It prints lifecycle lines before and after each step so you can see whether it continued because of explicit `CONTINUE_ITERATION` / `STOP_ITERATION` tokens, decision prompting, or a step limit.
+
+For the built-in PR orchestrator, use:
+
+```bash
+codalotl iterate --orchestrate "use .prs/2026-04-08_1_iterate.md"
+```
+
 ## Status and Limitations
 
 Codalotl is **usable** and **effective** as-is: I have replaced most of my other agent usage with it. There are some important limitations:
