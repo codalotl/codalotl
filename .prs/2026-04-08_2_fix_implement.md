@@ -37,3 +37,10 @@ Testing:
 - `implement` should tolerate package-context startup failures for an existing directory inside a Go module, including syntax/build-broken package states, by falling back to package-path context instead of aborting.
 
 ## Summary
+
+Allow `implement` package-mode startup to target an existing directory that does not yet load as a Go package.
+
+- Update `internal/agentbuilder` package-mode default context to fall back to package-path context when rich Go package initial context cannot be built.
+- Preserve useful startup context in the fallback path by including module/package path metadata, a directory listing, and explicit unknown-status blocks instead of failing immediately.
+- Cover the new behavior with focused tests for both direct package-mode initial-turn building and the `implement` tool prepare path.
+- Verify with focused `go test`, full `go test ./...`, and manual `go run . exec` against a temp SPEC-only package directory.
