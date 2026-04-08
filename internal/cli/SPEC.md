@@ -61,6 +61,33 @@ Notes:
 	- The slash-command name is user-facing; internal agent identifiers are not.
 	- If `<prompt>` is also provided, it is sent as the initial user message in that orchestrator session.
 
+### codalotl iterate [--prompt-file <path>] [--orchestrate] [--max-steps <n>] [--max-minutes <n>] [--decision-prompt <text>] [--continue-mode <mode>] [--yes] [--no-color] [--json] [--model <id>] [--slash-command <cmd>] [<prompt> ...]
+
+Runs repeated noninteractive agent steps until iteration policy says stop.
+
+Notes:
+- Prompt source:
+	- Use `<prompt> ...` when provided.
+	- Or load the initial prompt from `--prompt-file`.
+	- Exactly one prompt source is used, unless `--orchestrate` or `--slash-command` starts a session that can run without an initial message.
+- `--orchestrate` is a convenience mode for the built-in orchestrator flow.
+	- It behaves like starting an orchestrator session, matching `exec --slash-command=orchestrate`.
+	- It may be used with or without an explicit prompt.
+- `--max-steps` stops before starting a new prompt step once the limit is reached.
+- `--max-minutes` stops before starting a new prompt step once elapsed time reaches the limit.
+- `--decision-prompt` customizes the decision message used when the agent did not emit an explicit continue/stop token.
+	- Default is a built-in prompt that asks for `STOP_ITERATION` vs `CONTINUE_ITERATION`.
+	- `--decision-prompt=""` disables the extra decision step.
+- `--continue-mode` controls whether the next prompt step uses a fresh session, a resumed session, or auto selection. Allowed values:
+	- `fresh`
+	- `resume`
+	- `auto` (default)
+- Accepts the same relevant execution flags as `exec` for model selection, formatting, JSON output, auto-approval, and slash-command setup, except it does not support `--package`.
+- Prints iteration lifecycle metadata before and after each prompt step.
+	- Human-readable mode prints concise status lines.
+	- JSON mode emits newline-delimited iteration events in addition to the underlying noninteractive stream.
+- If the current step does not finish successfully, iterate may retry according to iteration policy; Ctrl-C exits the iterate command rather than starting another iteration.
+
 ### codalotl version
 
 Prints the codalotl version status, and the version itself, to stdout. The version must be by itself on the last line. If the latest version cannot be obtained in a timely fashion (250ms timeout), only the current version is displayed.
