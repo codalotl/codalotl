@@ -27,6 +27,7 @@ type runWithConfigFunc func(string, func(*qcli.Context, Config, *remotemonitor.M
 
 type iterateSession interface {
 	SendUserMessage(ctx context.Context, userPrompt string) (noninteractive.Result, error)
+	Close() error
 }
 
 var newNoninteractiveSession = func(opts noninteractive.Options) (iterateSession, error) {
@@ -135,11 +136,12 @@ func newIterateCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 			DecisionPrompt: decisionPromptValue,
 			ContinueMode:   mode,
 		})
+		err = errors.Join(err, runner.Close())
 		if metaErr := runner.lifecycle.Complete(result, err); metaErr != nil {
-			if err != nil {
-				return errors.Join(err, metaErr)
-			}
-			return metaErr
+			err = errors.Join(err, metaErr)
+		}
+		if err == nil && result.StopReason == iterate.StopReasonRetryExhausted {
+			return qcli.ExitError{Code: 1, Err: errors.New("iteration stopped after retry exhaustion")}
 		}
 		if err == nil {
 			return nil
@@ -238,7 +240,9 @@ func (r *iterateSessionRunner) RunStep(ctx context.Context, step iterate.Step) (
 		if err != nil {
 			return iterate.StepResult{}, err
 		}
-		r.session = session
+		if err := r.replaceSession(session); err != nil {
+			return iterate.StepResult{}, err
+		}
 	}
 
 	prompt := step.Prompt
@@ -271,6 +275,30 @@ func (r *iterateSessionRunner) RunStep(ctx context.Context, step iterate.Step) (
 		}
 	}
 	return stepResult, err
+}
+
+func (r *iterateSessionRunner) replaceSession(session iterateSession) error {
+	if r.session == nil {
+		r.session = session
+		return nil
+	}
+
+	oldSession := r.session
+	r.session = session
+	if err := oldSession.Close(); err != nil {
+		r.session = nil
+		return errors.Join(err, session.Close())
+	}
+	return nil
+}
+
+func (r *iterateSessionRunner) Close() error {
+	if r.session == nil {
+		return nil
+	}
+	session := r.session
+	r.session = nil
+	return session.Close()
 }
 
 type iterateLifecycleWriter struct {

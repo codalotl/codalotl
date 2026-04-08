@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/iterate"
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,12 +42,22 @@ func stubNoninteractiveIsPrinted(t *testing.T, fn func(error) bool) {
 	t.Cleanup(func() { noninteractiveIsPrinted = orig })
 }
 
+func stubRunIterateLoop(t *testing.T, fn func(context.Context, iterate.Runner, iterate.Options) (iterate.Result, error)) {
+	t.Helper()
+
+	orig := runIterateLoop
+	runIterateLoop = fn
+	t.Cleanup(func() { runIterateLoop = orig })
+}
+
 type fakeIterateSession struct {
-	t       *testing.T
-	results []noninteractive.Result
-	errs    []error
-	onSend  func(ctx context.Context, prompt string, call int)
-	sends   []string
+	t          *testing.T
+	results    []noninteractive.Result
+	errs       []error
+	onSend     func(ctx context.Context, prompt string, call int)
+	closeErr   error
+	sends      []string
+	closeCount int
 }
 
 func (s *fakeIterateSession) SendUserMessage(ctx context.Context, userPrompt string) (noninteractive.Result, error) {
@@ -63,6 +74,11 @@ func (s *fakeIterateSession) SendUserMessage(ctx context.Context, userPrompt str
 		err = s.errs[call]
 	}
 	return s.results[call], err
+}
+
+func (s *fakeIterateSession) Close() error {
+	s.closeCount++
+	return s.closeErr
 }
 
 func TestRun_Iterate_HelpMentionsFlags(t *testing.T) {
@@ -221,6 +237,7 @@ func TestRun_Iterate_FreshAndResumeSessions(t *testing.T) {
 		require.Equal(t, 0, code)
 		require.Len(t, sessions, 1)
 		require.Equal(t, []string{"fix it", iterateResumePrompt}, sessions[0].sends)
+		require.Equal(t, 1, sessions[0].closeCount)
 		require.Empty(t, errOut.String())
 	})
 
@@ -250,8 +267,92 @@ func TestRun_Iterate_FreshAndResumeSessions(t *testing.T) {
 		require.Len(t, sessions, 2)
 		require.Equal(t, []string{"fix it"}, sessions[0].sends)
 		require.Equal(t, []string{"fix it"}, sessions[1].sends)
+		require.Equal(t, 1, sessions[0].closeCount)
+		require.Equal(t, 1, sessions[1].closeCount)
 		require.Empty(t, errOut.String())
 	})
+}
+
+func TestRun_Iterate_RetryExhaustedReturnsNonZero(t *testing.T) {
+	isolateUserConfig(t)
+	chdirForTest(t, t.TempDir())
+
+	stubRunIterateLoop(t, func(ctx context.Context, runner iterate.Runner, opts iterate.Options) (iterate.Result, error) {
+		return iterate.Result{
+			Iterations: 3,
+			StopReason: iterate.StopReasonRetryExhausted,
+			LastStep: iterate.StepResult{
+				TerminalEventType:   agent.EventTypeError,
+				ContextUsagePercent: 42,
+			},
+		}, nil
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "iterate", "hello"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 1, code)
+	require.Contains(t, err.Error(), "retry exhaustion")
+	require.Contains(t, errOut.String(), "retry exhaustion")
+	require.Contains(t, out.String(), "iterate: stopped after 3 iteration(s) (reason=retry_exhausted, event=error)")
+}
+
+func TestRun_Iterate_FreshModeClosesReplacedAndFinalSessions(t *testing.T) {
+	isolateUserConfig(t)
+	chdirForTest(t, t.TempDir())
+
+	var sessions []*fakeIterateSession
+	stubNewNoninteractiveSession(t, func(opts noninteractive.Options) (iterateSession, error) {
+		session := &fakeIterateSession{
+			t: t,
+			results: []noninteractive.Result{{
+				TerminalEventType:   agent.EventTypeDoneSuccess,
+				FinalAssistantText:  "CONTINUE_ITERATION",
+				ContextUsagePercent: 10,
+			}},
+		}
+		if len(sessions) > 0 {
+			session.results[0].FinalAssistantText = "STOP_ITERATION"
+		}
+		sessions = append(sessions, session)
+		return session, nil
+	})
+	stubRunIterateLoop(t, func(ctx context.Context, runner iterate.Runner, opts iterate.Options) (iterate.Result, error) {
+		_, err := runner.RunStep(ctx, iterate.Step{
+			Iteration: 1,
+			Kind:      iterate.StepKindPrompt,
+			Mode:      iterate.ContinueModeFresh,
+			Prompt:    opts.Prompt,
+		})
+		require.NoError(t, err)
+
+		lastStep, err := runner.RunStep(ctx, iterate.Step{
+			Iteration: 2,
+			Kind:      iterate.StepKindPrompt,
+			Mode:      iterate.ContinueModeFresh,
+			Prompt:    opts.Prompt,
+		})
+		require.NoError(t, err)
+
+		return iterate.Result{
+			Iterations: 2,
+			StopReason: iterate.StopReasonDone,
+			LastStep:   lastStep,
+		}, nil
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "iterate", "--continue-mode=fresh", "hello"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Len(t, sessions, 2)
+	require.Equal(t, []string{"hello"}, sessions[0].sends)
+	require.Equal(t, []string{"hello"}, sessions[1].sends)
+	require.Equal(t, 1, sessions[0].closeCount)
+	require.Equal(t, 1, sessions[1].closeCount)
+	require.Empty(t, errOut.String())
 }
 
 func TestRun_Iterate_TextModeLifecycleMetadata(t *testing.T) {

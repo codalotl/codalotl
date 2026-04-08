@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentbuilder"
@@ -58,6 +59,10 @@ type Session struct {
 	addGrants                      grantsAdder
 	completedAssistantTurnsByAgent map[string][]llmstream.Turn
 	stepsSent                      int
+	mu                             sync.Mutex
+	closeOnce                      sync.Once
+	requestLoopWG                  sync.WaitGroup
+	closed                         bool
 }
 
 func buildSessionConfig(opts Options) (sessionConfig, error) {
@@ -129,10 +134,6 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 
-	if userRequests != nil {
-		go autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
-	}
-
 	agentStart := sessionStart{
 		agentName: config.agentName,
 		pkgMode:   config.pkgMode,
@@ -143,7 +144,7 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 
-	return &Session{
+	session := &Session{
 		opts:   opts,
 		config: config,
 		startInfo: stepStartOutput{
@@ -160,13 +161,54 @@ func NewSession(opts Options) (*Session, error) {
 		authorizer:                     authorizerForTools,
 		addGrants:                      authdomain.AddGrantsFromUserMessage,
 		completedAssistantTurnsByAgent: make(map[string][]llmstream.Turn),
-	}, nil
+	}
+	if userRequests != nil {
+		session.requestLoopWG.Add(1)
+		go func() {
+			defer session.requestLoopWG.Done()
+			autoRespondToUserRequests(userRequests, out, opts.AutoYes, jsonWriter, opts.OutputJSON)
+		}()
+	}
+
+	return session, nil
+}
+
+// Close releases any resources owned by the session. It is safe to call multiple times.
+func (s *Session) Close() error {
+	if s == nil {
+		return nil
+	}
+
+	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		s.closed = true
+		authorizer := s.authorizer
+		s.authorizer = nil
+		s.addGrants = nil
+		s.agent = nil
+		s.formatter = nil
+		s.jsonWriter = nil
+		s.out = nil
+		s.completedAssistantTurnsByAgent = nil
+		s.mu.Unlock()
+
+		if authorizer != nil {
+			authorizer.Close()
+		}
+		s.requestLoopWG.Wait()
+	})
+	return nil
 }
 
 // SendUserMessage runs one top-level user message on an existing session, writes output according to the session options, and returns structured step metadata.
 func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Result, error) {
 	if s == nil {
 		return Result{}, fmt.Errorf("nil session")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return Result{}, fmt.Errorf("session is closed")
 	}
 	if s.agent == nil {
 		return Result{}, fmt.Errorf("nil agent")
@@ -304,13 +346,6 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 		return result, &printedError{err: terminalErr}
 	}
 	return result, nil
-}
-
-func (s *Session) close() {
-	if s == nil || s.authorizer == nil {
-		return
-	}
-	s.authorizer.Close()
 }
 
 func writeStepStartOutput(out io.Writer, jsonWriter *jsonEventWriter, outputJSON bool, info stepStartOutput, visibleUserPrompt string) error {

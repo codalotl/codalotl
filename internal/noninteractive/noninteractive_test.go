@@ -696,6 +696,46 @@ func (a *fakeSessionAgent) Turns() []llmstream.Turn {
 	return a.sends[a.call-1].turns
 }
 
+type countingAuthorizer struct {
+	sandboxDir string
+	requests   chan authdomain.UserRequest
+	closeCount int
+	closed     bool
+}
+
+func (a *countingAuthorizer) SandboxDir() string {
+	if a == nil {
+		return ""
+	}
+	return a.sandboxDir
+}
+
+func (a *countingAuthorizer) CodeUnitDir() string { return "" }
+
+func (a *countingAuthorizer) IsCodeUnitDomain() bool { return false }
+
+func (a *countingAuthorizer) WithoutCodeUnit() authdomain.Authorizer { return a }
+
+func (a *countingAuthorizer) IsAuthorizedForRead(bool, string, string, ...string) error { return nil }
+
+func (a *countingAuthorizer) IsAuthorizedForWrite(bool, string, string, ...string) error { return nil }
+
+func (a *countingAuthorizer) IsShellAuthorized(bool, string, string, []string) error { return nil }
+
+func (a *countingAuthorizer) Close() {
+	if a == nil {
+		return
+	}
+	a.closeCount++
+	if a.closed {
+		return
+	}
+	a.closed = true
+	if a.requests != nil {
+		close(a.requests)
+	}
+}
+
 func newTestSession(opts Options, agent sessionAgent, buf *bytes.Buffer) *Session {
 	out := io.Writer(buf)
 	lockedOut := &lockedWriter{w: out}
@@ -732,6 +772,53 @@ func TestSessionSendUserMessageRequiresPromptOutsideInitialOrchestrateStep(t *te
 	_, err := session.SendUserMessage(context.Background(), "")
 	require.EqualError(t, err, "prompt is required")
 	require.Empty(t, buf.String())
+}
+
+func TestSessionCloseIsIdempotentAndPreventsFurtherUse(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	fake := &fakeSessionAgent{}
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+	authorizer := &countingAuthorizer{sandboxDir: t.TempDir()}
+	session.authorizer = authorizer
+
+	require.NoError(t, session.Close())
+	require.NoError(t, session.Close())
+	require.Equal(t, 1, authorizer.closeCount)
+
+	_, err := session.SendUserMessage(context.Background(), "after close")
+	require.EqualError(t, err, "session is closed")
+	require.Empty(t, fake.messages)
+}
+
+func TestSessionCloseWaitsForPermissionLoop(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	authorizer := &countingAuthorizer{
+		sandboxDir: t.TempDir(),
+		requests:   make(chan authdomain.UserRequest),
+	}
+	session := newTestSession(Options{}, &fakeSessionAgent{}, &buf)
+	session.authorizer = authorizer
+
+	exited := make(chan struct{})
+	session.requestLoopWG.Add(1)
+	go func() {
+		defer session.requestLoopWG.Done()
+		autoRespondToUserRequests(authorizer.requests, session.out, false, session.jsonWriter, false)
+		close(exited)
+	}()
+
+	require.NoError(t, session.Close())
+	require.Equal(t, 1, authorizer.closeCount)
+
+	select {
+	case <-exited:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("permission loop did not exit after Close")
+	}
 }
 
 func TestSessionSendUserMessageReusesConversationAcrossSteps(t *testing.T) {
@@ -921,12 +1008,15 @@ func TestExecUsesSessionAPIAndPreservesTextOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	authorizer := &countingAuthorizer{sandboxDir: t.TempDir()}
+	session.authorizer = authorizer
 	newSessionForExec = func(_ Options) (*Session, error) {
 		return session, nil
 	}
 
 	err := Exec("fix failing test", Options{NoFormatting: true})
 	require.NoError(t, err)
+	require.Equal(t, 1, authorizer.closeCount)
 	require.Equal(t, []string{"fix failing test"}, fake.messages)
 	require.Contains(t, buf.String(), "> fix failing test\n")
 	require.Contains(t, buf.String(), "• Agent finished the turn. Tokens: input=7 cached_input=0 output=3 total=10")

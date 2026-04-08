@@ -279,7 +279,9 @@ func Exec(userPrompt string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	defer session.close()
+	defer func() {
+		_ = session.Close()
+	}()
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
