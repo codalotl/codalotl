@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/iterate"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -31,6 +32,8 @@ type iterateSession interface {
 var newNoninteractiveSession = func(opts noninteractive.Options) (iterateSession, error) {
 	return noninteractive.NewSession(opts)
 }
+
+var noninteractiveIsPrinted = noninteractive.IsPrinted
 
 var runIterateLoop = iterate.Run
 
@@ -141,7 +144,7 @@ func newIterateCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 		if err == nil {
 			return nil
 		}
-		if noninteractive.IsPrinted(err) {
+		if noninteractiveIsPrinted(err) {
 			return qcli.ExitError{Code: 1, Err: errors.New("")}
 		}
 		if errors.Is(err, context.Canceled) {
@@ -252,6 +255,12 @@ func (r *iterateSessionRunner) RunStep(ctx context.Context, step iterate.Step) (
 		TerminalEventType:   res.TerminalEventType,
 		FinalAssistantText:  res.FinalAssistantText,
 		ContextUsagePercent: res.ContextUsagePercent,
+	}
+	if err != nil && noninteractiveIsPrinted(err) {
+		switch stepResult.TerminalEventType {
+		case agent.EventTypeError, agent.EventTypeCanceled:
+			err = nil
+		}
 	}
 	if err == nil || stepResult.TerminalEventType != "" {
 		if finishErr := r.lifecycle.StepFinish(step, stepResult); finishErr != nil {

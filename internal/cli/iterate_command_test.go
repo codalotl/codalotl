@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/noninteractive"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,6 +31,14 @@ func stubIterateInterruptContext(t *testing.T, fn func(context.Context) (context
 	orig := newIterateInterruptContext
 	newIterateInterruptContext = fn
 	t.Cleanup(func() { newIterateInterruptContext = orig })
+}
+
+func stubNoninteractiveIsPrinted(t *testing.T, fn func(error) bool) {
+	t.Helper()
+
+	orig := noninteractiveIsPrinted
+	noninteractiveIsPrinted = fn
+	t.Cleanup(func() { noninteractiveIsPrinted = orig })
 }
 
 type fakeIterateSession struct {
@@ -337,9 +347,59 @@ func TestRun_Iterate_JSONModeLifecycleMetadata(t *testing.T) {
 	require.Equal(t, "done_success", events[3]["terminal_event_type"])
 }
 
-func TestRun_Iterate_CanceledStepStopsWholeCommand(t *testing.T) {
+func TestRun_Iterate_PrintedTerminalErrorIsRetried(t *testing.T) {
 	isolateUserConfig(t)
 	chdirForTest(t, t.TempDir())
+
+	printedErr := errors.New("printed boom")
+	stubNoninteractiveIsPrinted(t, func(err error) bool {
+		return errors.Is(err, printedErr)
+	})
+
+	var sessions []*fakeIterateSession
+	stubNewNoninteractiveSession(t, func(opts noninteractive.Options) (iterateSession, error) {
+		session := &fakeIterateSession{
+			t: t,
+			results: []noninteractive.Result{{
+				TerminalEventType:   agent.EventTypeDoneSuccess,
+				FinalAssistantText:  "STOP_ITERATION",
+				ContextUsagePercent: 6,
+			}},
+		}
+		if len(sessions) == 0 {
+			session.results[0] = noninteractive.Result{
+				TerminalEventType:   agent.EventTypeError,
+				FinalAssistantText:  "partial output",
+				ContextUsagePercent: 11,
+			}
+			session.errs = []error{printedErr}
+		}
+		sessions = append(sessions, session)
+		return session, nil
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "iterate", "--continue-mode=fresh", "hello"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Len(t, sessions, 2)
+	assert.Equal(t, []string{"hello"}, sessions[0].sends)
+	assert.Equal(t, []string{"hello"}, sessions[1].sends)
+	assert.Contains(t, out.String(), "iterate: iteration 1 prompt finished (event=error, context=11%)")
+	assert.Contains(t, out.String(), "iterate: iteration 2 prompt finished (event=done_success, context=6%)")
+	assert.Contains(t, out.String(), "iterate: stopped after 2 iteration(s) (reason=done, event=done_success)")
+	assert.Empty(t, errOut.String())
+}
+
+func TestRun_Iterate_PrintedCanceledStepStopsWholeCommand(t *testing.T) {
+	isolateUserConfig(t)
+	chdirForTest(t, t.TempDir())
+
+	printedErr := errors.New("printed canceled")
+	stubNoninteractiveIsPrinted(t, func(err error) bool {
+		return errors.Is(err, printedErr)
+	})
 
 	var cancel context.CancelFunc
 	stubIterateInterruptContext(t, func(parent context.Context) (context.Context, context.CancelFunc) {
@@ -356,6 +416,7 @@ func TestRun_Iterate_CanceledStepStopsWholeCommand(t *testing.T) {
 				TerminalEventType:   agent.EventTypeCanceled,
 				ContextUsagePercent: 3,
 			}},
+			errs: []error{printedErr},
 			onSend: func(ctx context.Context, prompt string, call int) {
 				cancel()
 			},
@@ -369,9 +430,10 @@ func TestRun_Iterate_CanceledStepStopsWholeCommand(t *testing.T) {
 	code, err := Run([]string{"codalotl", "iterate", "hello"}, &RunOptions{Out: &out, Err: &errOut})
 	require.Error(t, err)
 	require.Equal(t, 1, code)
-	require.Contains(t, err.Error(), "interrupted")
+	assert.Contains(t, err.Error(), "interrupted")
 	require.Len(t, sessions, 1)
-	require.Equal(t, []string{"hello"}, sessions[0].sends)
-	require.Contains(t, out.String(), "iterate: iteration 1 prompt finished (event=canceled, context=3%)")
-	require.Contains(t, out.String(), "iterate: stopped after 1 iteration(s) (event=canceled, error=interrupted)")
+	assert.Equal(t, []string{"hello"}, sessions[0].sends)
+	assert.Contains(t, out.String(), "iterate: iteration 1 prompt finished (event=canceled, context=3%)")
+	assert.Contains(t, out.String(), "iterate: stopped after 1 iteration(s) (event=canceled, error=interrupted)")
+	assert.NotContains(t, out.String(), "iterate: iteration 2")
 }
