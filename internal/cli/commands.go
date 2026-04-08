@@ -211,6 +211,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		}
 		return err
 	})
+	iterateCmd := newIterateCommand(runWithConfig)
 
 	contextCmd := &qcli.Command{
 		Name:  "context",
@@ -562,7 +563,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, casCmd, panicCmd)
+	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, casCmd, panicCmd)
 	return root, runState
 }
 
