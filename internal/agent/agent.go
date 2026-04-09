@@ -453,9 +453,15 @@ func cloneTurn(t llmstream.Turn) llmstream.Turn {
 }
 
 func (a *Agent) meta() AgentMeta {
+	parentID := ""
+	if a.parent != nil {
+		parentID = a.parent.agentID
+	}
+
 	return AgentMeta{
-		ID:    a.agentID,
-		Depth: a.depth,
+		ID:     a.agentID,
+		Depth:  a.depth,
+		Parent: parentID,
 	}
 }
 

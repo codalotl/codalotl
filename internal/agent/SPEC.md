@@ -50,7 +50,6 @@ SubAgents can be constructed from an Agent (and SubAgents from SubAgents, etc), 
 - The primary purpose of a SubAgent is to share the Event channel, so that a TUI can see events from both the Agent and its SubAgents.
 - Tool authors request SubAgents by retrieving a `SubAgentCreator` from `ctx` during a tool's `Run` call.
 - Once the `Run` function returns, all running SubAgents are canceled and any outstanding `SubAgentCreator`s panic if invoked, so the `Run` function must wait for its SubAgents to complete.
-- FUTURE (not now): we may want to support an agent.SubAgentCloneFromContext, which keeps prompts, tools, and context/history.
 
 ```go
 type exploreTool struct{}
@@ -98,8 +97,9 @@ Every `Event` includes metadata describing the originator so TUIs can attribute 
 
 ```go
 type AgentMeta struct {
-	ID    string // stable, unique per Agent/SubAgent within a session
-	Depth int    // 0 == root agent
+	ID     string // stable, unique per Agent/SubAgent within a session
+	Depth  int    // 0 == root agent
+	Parent string // parent Agent/SubAgent ID; "" for root agent
 }
 
 type Event struct {

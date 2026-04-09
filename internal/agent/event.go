@@ -36,6 +36,7 @@ type Event struct {
 
 // AgentMeta carries metadata describing which agent produced an event.
 type AgentMeta struct {
-	ID    string
-	Depth int
+	ID     string
+	Depth  int
+	Parent string
 }
