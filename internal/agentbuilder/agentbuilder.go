@@ -429,7 +429,8 @@ func buildAgentsMDInitialTurn(sandboxAbsDir string, cwd string) (string, error) 
 
 	text, err := agentsmd.Read(sandboxAbsDir, cwd)
 	if err != nil {
-		return "", fmt.Errorf("read AGENTS.md: %w", err)
+		// Keep AGENTS.md injection best-effort so a bad or unreadable file does not block agent startup.
+		return "", nil
 	}
 	return strings.TrimSpace(text), nil
 }

@@ -683,6 +683,51 @@ description: test skill description
 	require.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", skillPath))
 }
 
+func TestBuildRegistry_PrepareGeneric_OmitsUnreadableAgentsMD(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(sandbox, "AGENTS.md"), 0o755))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		AgentGeneric,
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	)
+
+	assert.Empty(t, prepared.InitialTurns)
+}
+
+func TestBuildRegistry_PreparePackageDefaultContext_OmitsUnreadableAgentsMD(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	pkgDir := filepath.Join(sandbox, "pkg")
+	ensureGoPackageFixture(t, sandbox, pkgDir)
+	require.NoError(t, os.Mkdir(filepath.Join(pkgDir, "AGENTS.md"), 0o755))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		AgentPackageModeDefaultContext,
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		pkgDir,
+		nil,
+	)
+
+	require.Len(t, prepared.InitialTurns, 2)
+	assert.Equal(t, "<env>\nSandbox directory: "+sandbox+"\n</env>", prepared.InitialTurns[0])
+	assert.Contains(t, prepared.InitialTurns[1], "<current-package>")
+	assert.NotContains(t, prepared.InitialTurns[1], "AGENTS.md found at ")
+}
+
 func TestBuildPackageModeDefaultContextInitialTurns_BuildsEnvAndInitialContext(t *testing.T) {
 	sandbox := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
