@@ -35,7 +35,11 @@ Don't use this anywhere else. Update the integration tests if necessary.
 
 ## Review
 
-- Pending.
+- `codex review --base main` found no actionable correctness issues in the diff.
+- Review-side `go test ./internal/agent/...` passed.
+- Review-side `go test ./internal/noninteractive/...` hit local environment failures unrelated to this change:
+  - skill installer test could not remove a file under `/Users/jonathannovak/.codalotl/skills/.system/...` due to permissions
+  - integration test `TestAugmentReplayMockOpenAIErrorIncludesPrunedActualAndExpectedRequests` could not bind an `httptest` listener in this environment
 
 ## Summary
 
