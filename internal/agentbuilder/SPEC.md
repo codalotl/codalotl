@@ -44,6 +44,10 @@ Agents:
 - `include_package_mode_context` set to true includes package env and package initial context (optional; only valid if `mode` is `package`).
     - If the selected dir already exists but does not yet load as a Go package, include fallback package-path context instead of failing startup.
 - `skills` is an optional boolean (default true) that adds skill support to the prompt (passing appropriate shell tool). Requires the tool `shell` or `skill_shell` to be present.
+- `agentsmd` is an optional boolean (default true) that adds AGENTS.md initial-turn context when present.
+    - Generic-mode agents read AGENTS.md from sandbox context.
+    - Package-mode agents read AGENTS.md from target package context.
+    - When combined with `include_package_mode_context`, AGENTS.md text precedes generated package context.
 
 Tools:
 - A tool must have `name`, `description`, `parameters`, and then one of {`command`, `subagent`}.
