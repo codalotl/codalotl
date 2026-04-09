@@ -16,7 +16,6 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentbuilder"
-	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
@@ -748,14 +747,6 @@ func buildAgent(start sessionStart, sandboxDir string, pkgRelPath string, pkgAbs
 	}
 	prepared.InitialTurns = append(prepared.InitialTurns, envMsg)
 
-	// In generic mode we don't gather package initialcontext, so include AGENTS.md
-	// context up front if present.
-	if !start.pkgMode {
-		if agentsMsg := readAgentsMDContextBestEffort(sandboxDir, sandboxDir); agentsMsg != "" {
-			prepared.InitialTurns = append(prepared.InitialTurns, agentsMsg)
-		}
-	}
-
 	agentInstance, err := prepared.Create(agent.NewAgentCreator())
 	if err != nil {
 		return nil, fmt.Errorf("construct agent: %w", err)
@@ -844,21 +835,10 @@ func packagePathSection(pkgRelPath string, pkgAbsPath string, err error) string 
 	return b.String()
 }
 
-func readAgentsMDContextBestEffort(sandboxDir, cwd string) string {
-	msg, err := agentsmd.Read(sandboxDir, cwd)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(msg)
-}
-
 func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) (string, error) {
-	agentsMsg := readAgentsMDContextBestEffort(sandboxDir, pkgAbsPath)
-
 	pkg, err := loadGoPackage(pkgAbsPath)
 	if err != nil {
 		return joinContextBlocks(
-			agentsMsg,
 			packagePathSection(pkgRelPath, pkgAbsPath, err),
 		), err
 	}
@@ -866,15 +846,13 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 	pkgModeInfo, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return joinContextBlocks(
-			agentsMsg,
 			packagePathSection(pkgRelPath, pkgAbsPath, err),
 		), err
 	}
 
 	finalHint := fmt.Sprintf("Reminder: all file paths you send to tools **must be relative to the sandbox dir (%s)** - NOT relative to the package dir.", sandboxDir)
 
-	// Always place AGENTS.md guidance before the rest of the generated initial context.
-	return joinContextBlocks(agentsMsg, pkgModeInfo, finalHint), nil
+	return joinContextBlocks(pkgModeInfo, finalHint), nil
 }
 
 func joinContextBlocks(blocks ...string) string {

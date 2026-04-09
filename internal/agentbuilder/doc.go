@@ -18,6 +18,7 @@
 //   - `mode`: `generic` or `package`.
 //   - optional `include_package_mode_context`: only for package-mode agents; adds env plus initial package context.
 //   - optional `skills`: defaults to true; requires `shell` or `skill_shell`.
+//   - optional `agentsmd`: defaults to true; adds AGENTS.md initial-turn context from the sandbox or target package.
 //
 // Each `tools` entry includes:
 //   - `name`, `description`, and `parameters`.

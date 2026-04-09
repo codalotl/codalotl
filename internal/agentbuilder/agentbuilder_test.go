@@ -63,6 +63,7 @@ func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) 
 		"top-level `agents` and `tools` arrays",
 		"`prompts`",
 		"`edit_files`",
+		"`agentsmd`",
 		"`command`",
 		"`subagent`",
 		"`subagent.messages`",
@@ -90,7 +91,7 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, AgentPackageModeNoContext, packageModeDef.Name)
 	assert.Equal(t, agentregistry.AuthPolicyPackage, packageModeDef.AuthPolicy)
-	assert.Nil(t, packageModeDef.InitialTurnsBuilder)
+	assert.NotNil(t, packageModeDef.InitialTurnsBuilder)
 
 	defaultContextDef, ok := registry.Lookup(AgentPackageModeDefaultContext)
 	require.True(t, ok)
@@ -682,6 +683,51 @@ description: test skill description
 	require.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", skillPath))
 }
 
+func TestBuildRegistry_PrepareGeneric_OmitsUnreadableAgentsMD(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(sandbox, "AGENTS.md"), 0o755))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		AgentGeneric,
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	)
+
+	assert.Empty(t, prepared.InitialTurns)
+}
+
+func TestBuildRegistry_PreparePackageDefaultContext_OmitsUnreadableAgentsMD(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	sandbox := t.TempDir()
+	pkgDir := filepath.Join(sandbox, "pkg")
+	ensureGoPackageFixture(t, sandbox, pkgDir)
+	require.NoError(t, os.Mkdir(filepath.Join(pkgDir, "AGENTS.md"), 0o755))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		AgentPackageModeDefaultContext,
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		pkgDir,
+		nil,
+	)
+
+	require.Len(t, prepared.InitialTurns, 2)
+	assert.Equal(t, "<env>\nSandbox directory: "+sandbox+"\n</env>", prepared.InitialTurns[0])
+	assert.Contains(t, prepared.InitialTurns[1], "<current-package>")
+	assert.NotContains(t, prepared.InitialTurns[1], "AGENTS.md found at ")
+}
+
 func TestBuildPackageModeDefaultContextInitialTurns_BuildsEnvAndInitialContext(t *testing.T) {
 	sandbox := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
@@ -897,6 +943,42 @@ func invokeAgentForModelDetailed(t *testing.T, agentName string, model llmmodel.
 	require.ErrorContains(t, err, "stop")
 
 	return creator.lastSystemPrompt, creator.lastTools
+}
+
+func prepareAgentForModelWithRegistryDetailed(t *testing.T, registry *agentregistry.Registry, agentName string, model llmmodel.ModelID, sandbox string, goPkgAbsDir string, lintSteps []lints.Step) *agentregistry.PreparedAgent {
+	t.Helper()
+
+	def, ok := registry.Lookup(agentName)
+	require.True(t, ok)
+
+	if sandbox == "" {
+		sandbox = t.TempDir()
+	}
+	if def.AuthPolicy == agentregistry.AuthPolicyPackage && goPkgAbsDir == "" {
+		goPkgAbsDir = sandbox
+	}
+	if def.AuthPolicy == agentregistry.AuthPolicyPackage {
+		ensureGoPackageFixture(t, sandbox, goPkgAbsDir)
+	}
+
+	authorizer := authdomain.NewAutoApproveAuthorizer(sandbox)
+	if def.AuthPolicy == agentregistry.AuthPolicyPackage {
+		unit, err := codeunit.NewCodeUnit("package .", goPkgAbsDir)
+		require.NoError(t, err)
+		authorizer = authdomain.NewCodeUnitAuthorizer(unit, authorizer)
+	}
+
+	prepared, err := registry.Prepare(context.Background(), agentName, toolsetinterface.InvokeRequest{
+		ToolOptions: toolsetinterface.Options{
+			Model:       model,
+			Authorizer:  authorizer,
+			SandboxDir:  sandbox,
+			GoPkgAbsDir: goPkgAbsDir,
+			LintSteps:   lintSteps,
+		},
+	})
+	require.NoError(t, err)
+	return prepared
 }
 
 func ensureGoPackageFixture(t *testing.T, sandbox string, goPkgAbsDir string) {

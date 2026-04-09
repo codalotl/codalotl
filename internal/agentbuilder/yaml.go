@@ -59,6 +59,7 @@ type yamlAgentSpec struct {
 	Mode                      string          `yaml:"mode"`
 	IncludePackageModeContext bool            `yaml:"include_package_mode_context"`
 	Skills                    *bool           `yaml:"skills"`
+	AgentsMD                  *bool           `yaml:"agentsmd"`
 }
 
 type yamlPromptRef struct {
@@ -515,6 +516,7 @@ func prepareYAMLAgent(spec yamlAgentSpec, yamlFS fs.FS, yamlDir string, existing
 	if enableSkills && !yamlToolNamesContainSkillShell(resolvedToolNames) {
 		return yamlPreparedAgent{}, errors.New("skills require shell or skill_shell to be present")
 	}
+	enableAgentsMD := spec.AgentsMD == nil || *spec.AgentsMD
 
 	prepared := yamlPreparedAgent{}
 	prepared.Definition = agentregistry.Definition{
@@ -530,14 +532,29 @@ func prepareYAMLAgent(spec yamlAgentSpec, yamlFS fs.FS, yamlDir string, existing
 	if spec.Mode == yamlAgentModePackage {
 		prepared.Definition.AuthPolicy = agentregistry.AuthPolicyPackage
 	}
-	if spec.IncludePackageModeContext {
-		prepared.Definition.InitialTurnsBuilder = buildPackageModeDefaultContextInitialTurns
+	if initialTurnsBuilder := buildYAMLAgentInitialTurnsBuilder(spec.Mode, spec.IncludePackageModeContext, enableAgentsMD); initialTurnsBuilder != nil {
+		prepared.Definition.InitialTurnsBuilder = initialTurnsBuilder
 	}
 	if err := prepared.Definition.Validate(); err != nil {
 		return yamlPreparedAgent{}, err
 	}
 
 	return prepared, nil
+}
+
+func buildYAMLAgentInitialTurnsBuilder(mode string, includePackageModeContext bool, enableAgentsMD bool) agentregistry.InitialTurnsBuilder {
+	switch {
+	case mode == yamlAgentModePackage && includePackageModeContext:
+		return func(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
+			return buildPackageModeContextInitialTurns(ctx, options, enableAgentsMD)
+		}
+	case mode == yamlAgentModePackage && enableAgentsMD:
+		return buildPackageModeAgentsMDInitialTurns
+	case mode == yamlAgentModeGeneric && enableAgentsMD:
+		return buildGenericAgentsMDInitialTurns
+	default:
+		return nil
+	}
 }
 
 func resolveYAMLAgentPrompt(yamlFS fs.FS, yamlDir string, prompts []yamlPromptRef) (string, error) {
