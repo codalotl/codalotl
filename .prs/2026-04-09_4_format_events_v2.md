@@ -51,7 +51,7 @@ Out of scope:
 - Locate the current hard-coded "replace tool call with result vs print both" seam in `internal/tui`.
 - Confirm this PR will be design-first: write the Presenter/semantic-presentation design in this PR file before any Go implementation.
 
-### PR-file design
+### [DONE] PR-file design
 
 - Fully design the Presenter interface and the semantic presentation model in this PR file before touching implementation code.
 - Define how a tool call/result declares both:
@@ -103,6 +103,293 @@ Out of scope:
 
 - Semantic presentation should be structured tool-owned data, not pre-rendered text or ANSI output emitted by tools.
 - The "replace tool call with result vs show both" choice should come from tool presentation metadata, so built-in and YAML-defined tools can participate without hard-coded tool-name lists in `internal/tui`.
+
+### Presenter shape
+
+Add `Presenter() Presenter` to `llmstream.Tool`, but keep the actual semantic presentation data types out of `internal/llmstream` itself. `llmstream` should own the thin `Presenter` interface because it already owns `ToolCall` and `ToolResult`. The new shared package should only hold the semantic presentation data model. This avoids an import cycle.
+
+Proposed shape:
+
+```go
+type Tool interface {
+	Info() ToolInfo
+	Name() string
+	Presenter() Presenter
+	Run(ctx context.Context, params ToolCall) ToolResult
+}
+```
+
+```go
+type Presenter interface {
+	Present(call ToolCall, result *ToolResult) toolpresentation.Presentation
+}
+```
+
+- `result == nil` means "tool call in progress".
+- `result != nil` means "tool completed".
+- Presenter output must be deterministic from `ToolCall` and optional `ToolResult`.
+- Presenter output is semantic only: no ANSI, no width decisions, no direct terminal colors.
+
+Rationale:
+- A single `Present(call, result)` method keeps the pairing logic in one place and lets the presenter decide whether call and completion share structure.
+- The presenter sees both raw call input and raw tool result, plus `ToolResult.IsError` / `SourceErr`, which is enough to preserve current behavior.
+- Keeping the semantic data model in `toolpresentation`, but the interface in `llmstream`, preserves clean import direction:
+  - `llmstream` imports `toolpresentation`
+  - `toolpresentation` does not import `llmstream`
+- Keeping presentation off of `ToolCall` / `ToolResult` themselves preserves the raw conversation/tool payloads for provider I/O, JSON mode, and tests.
+
+### Semantic presentation model
+
+The presenter should return a line-oriented semantic tree that is rich enough for current formatting, but intentionally much simpler than a full document renderer.
+
+Proposed shape:
+
+```go
+package toolpresentation
+
+type CompletionBehavior string
+
+const (
+	CompletionBehaviorReplace CompletionBehavior = "replace"
+	CompletionBehaviorAppend  CompletionBehavior = "append"
+)
+
+type ExecutorKind string
+
+const (
+	ExecutorKindLocal    ExecutorKind = "local"
+	ExecutorKindSubagent ExecutorKind = "subagent"
+)
+
+type Presentation struct {
+	Behavior CompletionBehavior
+	Executor ExecutorKind
+	Summary  Line
+	Body     []Block
+}
+
+type Line struct {
+	Segments []Segment
+}
+
+type Segment struct {
+	Text string
+	Role SegmentRole
+}
+
+type SegmentRole string
+
+const (
+	RoleNormal   SegmentRole = "normal"
+	RoleAccent   SegmentRole = "accent"
+	RoleAction   SegmentRole = "action"
+	RoleSuccess  SegmentRole = "success"
+	RoleError    SegmentRole = "error"
+	RoleCode     SegmentRole = "code"
+	RoleEmphasis SegmentRole = "emphasis"
+)
+
+type Block interface{ isBlock() }
+
+type Paragraph struct {
+	Lines []Line
+}
+
+type Checklist struct {
+	Items []ChecklistItem
+}
+
+type ChecklistItem struct {
+	Status ChecklistStatus
+	Line   Line
+}
+
+type ChecklistStatus string
+
+const (
+	ChecklistDone       ChecklistStatus = "done"
+	ChecklistInProgress ChecklistStatus = "in_progress"
+	ChecklistPending    ChecklistStatus = "pending"
+)
+
+type Output struct {
+	Lines []OutputLine
+}
+
+type OutputLine struct {
+	Line Line
+	Role OutputRole
+}
+
+type OutputRole string
+
+const (
+	OutputRoleNormal  OutputRole = "normal"
+	OutputRoleSuccess OutputRole = "success"
+	OutputRoleError   OutputRole = "error"
+	OutputRoleAccent  OutputRole = "accent"
+)
+```
+
+Semantics:
+- `Summary` is the first bullet line. It corresponds to the current "Running go test .", "Read foo.go", "Clarifying API ...", etc.
+- `Body` holds the semantic continuation lines that today are printed under `└` / follow-on indentation.
+- `Behavior` tells consumers whether a completion replaces the earlier call line or appends as a new message.
+- `Executor` explicitly indicates local-vs-subagent execution. `internal/tui` should use `Behavior`, but `Executor` keeps subagent-ness visible in the event model for future UI or debugging.
+
+This is intentionally not a general-purpose markdown/HTML AST. It only models the structures we already render:
+- one summary line
+- explanatory paragraphs
+- checklist items
+- literal/summarized output lines
+
+### Why event-local presentation metadata
+
+The semantic presentation should be attached to `agent.Event`, not persisted into `llmstream.ToolCall` / `ToolResult`.
+
+Proposed `agent.Event` addition:
+
+```go
+type Event struct {
+	Agent AgentMeta
+	Type  EventType
+	// existing fields...
+
+	ToolPresentation *toolpresentation.Presentation
+}
+```
+
+Rationale:
+- The same raw `ToolCall` and `ToolResult` should stay reusable for conversation history, provider round-tripping, JSON output, and debug tools.
+- Presentation is local UI metadata, derived at event-dispatch time from the actual tool implementation.
+- This avoids polluting lower-level `llmstream` content parts with TUI/CLI concerns.
+
+### Agent behavior
+
+`internal/agent` should resolve presenters from the actual tool instances it already owns.
+
+Proposed dispatch behavior:
+- On `EventTypeToolCall`, look up the tool by `ToolCall.Name`.
+  - If found, call `tool.Presenter().Present(call, nil)`.
+  - If not found, use a shared generic fallback presenter.
+- On `EventTypeToolComplete`, use the same presenter and call `Present(call, &result)`.
+- Store the returned `Presentation` on `agent.Event.ToolPresentation`.
+
+If a tool is unknown:
+- behavior defaults to `CompletionBehaviorReplace`
+- executor defaults to `ExecutorKindLocal`
+- summary/body use the existing generic formatter semantics: `Tool <name> <raw input>` plus summarized result lines
+
+This keeps unknown tools working and gives user-defined tools a sane baseline even before they grow custom presenters.
+
+### Formatter responsibilities after v2
+
+After this change, `internal/agentformatter` should stop switching on tool names to decide what a tool "means". Its job becomes:
+- Render `Presentation.Summary` and `Presentation.Body`.
+- Apply palette, ANSI/plain-text styling, and wrapping.
+- Apply indentation for `ev.Agent.Depth`.
+- Preserve the current `└` continuation style for paragraphs/checklists/output blocks.
+- Keep small compatibility fallbacks for older events or temporary migration gaps.
+
+What stays in the formatter:
+- line wrapping
+- bullet/continuation glyph choices
+- mapping semantic roles like `RoleAction` or `OutputRoleError` into concrete colors/styles
+- special assistant-text handling unrelated to tool events, such as the existing narrow suppression of raw review JSON from subagent assistant text
+
+What moves out of the formatter:
+- tool-name switch statements
+- parsing tool-specific JSON/XML payloads solely to decide human-visible tool formatting
+- hard-coded knowledge that some tools are "special subagent tools"
+
+### TUI / noninteractive responsibilities after v2
+
+`internal/tui` should stop hard-coding tool names in `shouldReplaceToolCallWithResult`.
+
+Instead:
+- if `ev.ToolPresentation == nil`, preserve current fallback behavior
+- otherwise, use `ev.ToolPresentation.Behavior`
+  - `replace`: completion replaces the earlier tool call message
+  - `append`: completion is appended as a new message
+
+This is the key mechanism that removes the current hard-coded list of `change_api`, `update_usage`, `clarify_public_api`, `implement`, and `review`.
+
+`internal/noninteractive` does not currently do replace-in-place; it prints call and completion as they arrive. That behavior can stay. It should still render both through the same semantic `Presentation`, so human-readable CLI and TUI stay visually aligned.
+
+JSON output should stay raw/stable:
+- keep emitting `tool_call` with raw `tool.input`
+- keep emitting `tool_complete` with raw `result.output`
+- do not add presentation fields to JSON mode in this PR unless a later need is clear
+
+### Built-in presenter strategy
+
+Built-in Go tools should each own a small presenter implementation near the tool code.
+
+That means:
+- `shell`, `ls`, `read_file`, `edit`, `write`, `delete`, `apply_patch` keep the same user-visible summaries they already have
+- `diagnostics`, `fix_lints`, `run_tests`, `run_project_tests`, `module_info`, `get_public_api`, `get_usage`, `update_plan` move their tool-specific result parsing into presenter code owned by those tools (or adjacent helper files in their packages)
+- `clarify_public_api`, `update_usage`, `change_api`, `implement`, and `review` explicitly return:
+  - `Behavior: CompletionBehaviorAppend`
+  - `Executor: ExecutorKindSubagent`
+
+The last point is the concrete proof that subagent-ness is present in the semantic model rather than inferred from tool names.
+
+### YAML-backed tool strategy
+
+Do something pragmatic, not a new YAML presenter DSL.
+
+For `yamlCommandTool`:
+- default presenter should be generic-but-usable
+- `Behavior: CompletionBehaviorReplace`
+- `Executor: ExecutorKindLocal`
+- summary format:
+  - call: `Tool <name>`
+  - completion: `Tool <name>`
+- if the call input is short, include it similarly to the current generic formatter
+- completion body uses summarized output lines from the raw result, just as current generic formatting does
+
+For `yamlSubagentTool`:
+- default presenter should signal subagent semantics without needing YAML syntax changes
+- `Behavior: CompletionBehaviorAppend`
+- `Executor: ExecutorKindSubagent`
+- summary format remains generic (`Tool <name>` plus short input when practical)
+- completion body summarizes the final returned assistant text/result
+
+This gives user-defined tools correct lifecycle behavior immediately:
+- command-like tools replace
+- subagent-like tools append
+
+If we later want richer YAML presentation, that can be an additive follow-up on top of this event model.
+
+### Mental check against current tools
+
+Shell / file / edit tools:
+- `shell`, `ls`, `read_file`, `edit`, `write`, `delete`, `apply_patch` all fit `Summary + Output`.
+- success/failure bullet coloring is preserved by semantic roles and output roles.
+- `authdomain.ErrCodeUnitPathOutside` remains representable because the presenter sees `ToolResult.SourceErr`.
+
+Structured status tools:
+- `diagnostics`, `fix_lints`, `module_info`, `run_tests`, `run_project_tests`, `get_usage`, and `get_public_api` all fit `Summary + Paragraph/Output`.
+- `update_plan` naturally maps to `Summary + Paragraph + Checklist`.
+
+Subagent-backed tools:
+- `clarify_public_api`, `change_api`, `update_usage`, `implement`, and `review` all fit `Summary + Paragraph/Output` with `Behavior: Append`.
+- This is enough for `internal/tui` to stop hard-coding them.
+- `review` can still parse its structured JSON result into semantic blocks owned by the `review` presenter rather than by `internal/agentformatter`.
+
+YAML-defined tools:
+- command-backed tools get a no-surprises generic presenter
+- subagent-backed tools get append semantics by default, which is the missing generalization we want for user-defined tools
+
+### Compatibility notes
+
+User-visible behavior should remain unchanged in this PR except where a presenter-backed implementation reveals an obvious simplification that is clearly better and still consistent.
+
+Important compatibility constraints:
+- keep current raw JSON mode stable
+- keep details views based on raw call/result payloads, not the summarized presentation
+- keep current indentation rules based on `ev.Agent.Depth`
+- keep the existing narrow assistant-text suppression for raw review JSON unless this PR uncovers a cleaner general mechanism
 
 ## Review
 
