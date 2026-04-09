@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/agentregistry"
+	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/detectlang"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
@@ -309,7 +310,27 @@ func buildPackageModeSystemPrompt(options agentregistry.BuildOptions, promptKind
 	)
 }
 
-func buildPackageModeDefaultContextInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
+func buildGenericAgentsMDInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
+	sandboxAbsDir := strings.TrimSpace(options.ToolOptions.SandboxDir)
+	if sandboxAbsDir == "" {
+		return nil, errors.New("sandbox dir is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	agentsTurn, err := buildAgentsMDInitialTurn(sandboxAbsDir, sandboxAbsDir)
+	if err != nil {
+		return nil, err
+	}
+	if agentsTurn == "" {
+		return nil, nil
+	}
+
+	return []string{agentsTurn}, nil
+}
+
+func buildPackageModeAgentsMDInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
 	sandboxAbsDir := strings.TrimSpace(options.ToolOptions.SandboxDir)
 	if sandboxAbsDir == "" {
 		return nil, errors.New("sandbox dir is required")
@@ -324,26 +345,93 @@ func buildPackageModeDefaultContextInitialTurns(ctx context.Context, options age
 		return nil, err
 	}
 
-	lang, _ := detectlang.Detect(sandboxAbsDir, goPkgAbsDir)
-	initialContext, err := buildGoPackageInitialContext(goPkgAbsDir, options.ToolOptions.LintSteps)
+	agentsTurn, err := buildAgentsMDInitialTurn(sandboxAbsDir, goPkgAbsDir)
 	if err != nil {
-		fallbackContext, fallbackOK, fallbackErr := tryBuildGoPackageFallbackInitialContext(goPkgAbsDir, err)
-		if fallbackErr != nil {
-			return nil, fallbackErr
-		}
-		if !fallbackOK {
-			if lang != detectlang.LangGo {
-				return nil, errors.New("only go is supported right now")
-			}
-			return nil, err
-		}
-		initialContext = fallbackContext
+		return nil, err
+	}
+	if agentsTurn == "" {
+		return nil, nil
 	}
 
-	return []string{
-		buildClarifyPublicAPIEnvTurn(sandboxAbsDir),
-		initialContext,
-	}, nil
+	return []string{agentsTurn}, nil
+}
+
+func buildPackageModeDefaultContextInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
+	return buildPackageModeContextInitialTurns(ctx, options, true)
+}
+
+func buildPackageModeContextInitialTurns(ctx context.Context, options agentregistry.BuildOptions, includeAgentsMD bool) ([]string, error) {
+	sandboxAbsDir := strings.TrimSpace(options.ToolOptions.SandboxDir)
+	if sandboxAbsDir == "" {
+		return nil, errors.New("sandbox dir is required")
+	}
+
+	goPkgAbsDir := strings.TrimSpace(options.ToolOptions.GoPkgAbsDir)
+	if goPkgAbsDir == "" {
+		return nil, errors.New("go package dir is required")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	turns := []string{buildClarifyPublicAPIEnvTurn(sandboxAbsDir)}
+	if includeAgentsMD {
+		agentsTurn, err := buildAgentsMDInitialTurn(sandboxAbsDir, goPkgAbsDir)
+		if err != nil {
+			return nil, err
+		}
+		if agentsTurn != "" {
+			turns = append(turns, agentsTurn)
+		}
+	}
+
+	initialContext, err := buildPackageModeInitialContextTurn(ctx, sandboxAbsDir, goPkgAbsDir, options.ToolOptions.LintSteps)
+	if err != nil {
+		return nil, err
+	}
+	turns = append(turns, initialContext)
+
+	return turns, nil
+}
+
+func buildPackageModeInitialContextTurn(ctx context.Context, sandboxAbsDir string, goPkgAbsDir string, lintSteps []lints.Step) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	lang, _ := detectlang.Detect(sandboxAbsDir, goPkgAbsDir)
+	initialContext, err := buildGoPackageInitialContext(goPkgAbsDir, lintSteps)
+	if err == nil {
+		return initialContext, nil
+	}
+
+	fallbackContext, fallbackOK, fallbackErr := tryBuildGoPackageFallbackInitialContext(goPkgAbsDir, err)
+	if fallbackErr != nil {
+		return "", fallbackErr
+	}
+	if fallbackOK {
+		return fallbackContext, nil
+	}
+	if lang != detectlang.LangGo {
+		return "", errors.New("only go is supported right now")
+	}
+	return "", err
+}
+
+func buildAgentsMDInitialTurn(sandboxAbsDir string, cwd string) (string, error) {
+	if strings.TrimSpace(sandboxAbsDir) == "" {
+		return "", errors.New("sandbox dir is required")
+	}
+	if strings.TrimSpace(cwd) == "" {
+		return "", errors.New("cwd is required")
+	}
+
+	text, err := agentsmd.Read(sandboxAbsDir, cwd)
+	if err != nil {
+		return "", fmt.Errorf("read AGENTS.md: %w", err)
+	}
+	return strings.TrimSpace(text), nil
 }
 
 func buildGoPackageInitialContext(goPkgAbsDir string, lintSteps []lints.Step) (string, error) {

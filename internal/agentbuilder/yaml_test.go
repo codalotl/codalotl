@@ -5,10 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentregistry"
+	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -32,6 +34,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 
 	require.Contains(t, agentsByName, AgentGeneric)
 	assert.Equal(t, yamlAgentModeGeneric, agentsByName[AgentGeneric].Mode)
+	assert.Nil(t, agentsByName[AgentGeneric].AgentsMD)
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
@@ -42,6 +45,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 
 	require.Contains(t, agentsByName, AgentPackageModeDefaultContext)
 	assert.Equal(t, yamlAgentModePackage, agentsByName[AgentPackageModeDefaultContext].Mode)
+	assert.Nil(t, agentsByName[AgentPackageModeDefaultContext].AgentsMD)
 	assert.True(t, agentsByName[AgentPackageModeDefaultContext].IncludePackageModeContext)
 
 	require.Contains(t, agentsByName, AgentLimitedPackageMode)
@@ -82,6 +86,7 @@ agents:
       - edit_files
       - shell
     skills: false
+    agentsmd: false
   - name: yaml_package
     mode: package
     prompts:
@@ -148,6 +153,167 @@ tools: []
 	require.Len(t, turns, 2)
 	assert.Equal(t, "<env>\nSandbox directory: "+sandbox+"\n</env>", turns[0])
 	assert.Contains(t, turns[1], "<current-package>")
+}
+
+func TestAddYAMLToRegistry_AgentsMD_DefaultsEnabledForGenericAgents(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "agents.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: yaml_generic_agentsmd
+    mode: generic
+    prompts:
+      - text: generic agent
+    tools:
+      - read_file
+    skills: false
+tools: []
+`), 0o644))
+
+	require.NoError(t, AddYAMLToRegistry(registry, yamlPath))
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "AGENTS.md"), []byte("# Root AGENTS\nroot instructions\n"), 0o644))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		"yaml_generic_agentsmd",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	)
+
+	want, err := agentsmd.Read(sandbox, sandbox)
+	require.NoError(t, err)
+	assert.Equal(t, []string{strings.TrimSpace(want)}, prepared.InitialTurns)
+}
+
+func TestAddYAMLToRegistry_AgentsMD_ExplicitFalseDisablesInitialTurns(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "agents.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: yaml_generic_no_agentsmd
+    mode: generic
+    prompts:
+      - text: generic agent
+    tools:
+      - read_file
+    skills: false
+    agentsmd: false
+tools: []
+`), 0o644))
+
+	require.NoError(t, AddYAMLToRegistry(registry, yamlPath))
+
+	def, ok := registry.Lookup("yaml_generic_no_agentsmd")
+	require.True(t, ok)
+	assert.Nil(t, def.InitialTurnsBuilder)
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "AGENTS.md"), []byte("# Root AGENTS\nroot instructions\n"), 0o644))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		"yaml_generic_no_agentsmd",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	)
+	assert.Empty(t, prepared.InitialTurns)
+}
+
+func TestAddYAMLToRegistry_AgentsMD_PackageModeUsesTargetPackageContext(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "agents.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: yaml_package_agentsmd
+    mode: package
+    prompts:
+      - text: package agent
+    tools:
+      - read_file
+    skills: false
+tools: []
+`), 0o644))
+
+	require.NoError(t, AddYAMLToRegistry(registry, yamlPath))
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "AGENTS.md"), []byte("# Root AGENTS\nroot instructions\n"), 0o644))
+	pkgDir := filepath.Join(sandbox, "pkg")
+	ensureGoPackageFixture(t, sandbox, pkgDir)
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "AGENTS.md"), []byte("# Package AGENTS\npackage instructions\n"), 0o644))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		"yaml_package_agentsmd",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		pkgDir,
+		nil,
+	)
+
+	want, err := agentsmd.Read(sandbox, pkgDir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{strings.TrimSpace(want)}, prepared.InitialTurns)
+}
+
+func TestAddYAMLToRegistry_AgentsMD_PrecedesPackageModeContext(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "agents.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: yaml_package_agentsmd_context
+    mode: package
+    prompts:
+      - text: package agent
+    tools:
+      - read_file
+    skills: false
+    include_package_mode_context: true
+tools: []
+`), 0o644))
+
+	require.NoError(t, AddYAMLToRegistry(registry, yamlPath))
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "AGENTS.md"), []byte("# Root AGENTS\nroot instructions\n"), 0o644))
+	pkgDir := filepath.Join(sandbox, "pkg")
+	ensureGoPackageFixture(t, sandbox, pkgDir)
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "AGENTS.md"), []byte("# Package AGENTS\npackage instructions\n"), 0o644))
+
+	prepared := prepareAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		"yaml_package_agentsmd_context",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		pkgDir,
+		nil,
+	)
+
+	want, err := agentsmd.Read(sandbox, pkgDir)
+	require.NoError(t, err)
+	require.Len(t, prepared.InitialTurns, 3)
+	assert.Equal(t, "<env>\nSandbox directory: "+sandbox+"\n</env>", prepared.InitialTurns[0])
+	assert.Equal(t, strings.TrimSpace(want), prepared.InitialTurns[1])
+	assert.Contains(t, prepared.InitialTurns[2], "<current-package>")
+	assert.NotContains(t, prepared.InitialTurns[2], "AGENTS.md found at ")
 }
 
 func TestAddYAMLToRegistry_CommandToolRunsTemplatedCommand(t *testing.T) {

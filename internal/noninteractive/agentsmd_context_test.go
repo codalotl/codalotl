@@ -26,7 +26,14 @@ func TestReadAgentsMDContextBestEffort_WithAgentsMD_IncludesContent(t *testing.T
 	require.Contains(t, msg, "agentsmd-test-non-package")
 }
 
-func TestBuildPackageInitialContext_PrependsAgentsMDBeforeInitialContext(t *testing.T) {
+func TestSessionAgentsMDTurn_SkipsDuplicatePreparedTurn(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, sessionAgentsMDTurn([]string{"  agentsmd-test  "}, "agentsmd-test"))
+	require.Equal(t, "agentsmd-test", sessionAgentsMDTurn([]string{"other turn"}, "agentsmd-test"))
+}
+
+func TestBuildPackageInitialContext_DoesNotReadAgentsMDAutomatically(t *testing.T) {
 	t.Parallel()
 
 	tmp := t.TempDir()
@@ -38,12 +45,25 @@ func TestBuildPackageInitialContext_PrependsAgentsMDBeforeInitialContext(t *test
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nconst X = 1\n"), 0o600))
 
-	out, err := buildPackageInitialContext(tmp, "p", filepath.Join(tmp, "p"), nil)
+	out, err := buildPackageInitialContext(tmp, "p", filepath.Join(tmp, "p"), nil, "")
+	require.NoError(t, err)
+	require.NotContains(t, out, "agentsmd-test-package")
+	require.Contains(t, out, "<current-package>")
+}
+
+func TestBuildPackageInitialContext_PrependsProvidedAgentsMDBeforeInitialContext(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/agentsmdtest\n\ngo 1.22\n"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nconst X = 1\n"), 0o600))
+
+	out, err := buildPackageInitialContext(tmp, "p", filepath.Join(tmp, "p"), nil, "agentsmd-test-package")
 	require.NoError(t, err)
 	require.Contains(t, out, "agentsmd-test-package")
 
-	// initialcontext output is expected to include a <current-package> section; ensure our
-	// AGENTS.md text appears before it.
 	idxAgents := strings.Index(out, "agentsmd-test-package")
 	require.GreaterOrEqual(t, idxAgents, 0)
 	idxPkg := strings.Index(out, "<current-package>")

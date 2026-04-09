@@ -742,18 +742,23 @@ func buildAgent(start sessionStart, sandboxDir string, pkgRelPath string, pkgAbs
 		return nil, fmt.Errorf("prepare agent: %w", err)
 	}
 
+	agentsMsg := ""
+	if start.pkgMode {
+		agentsMsg = sessionAgentsMDTurn(prepared.InitialTurns, readAgentsMDContextBestEffort(sandboxDir, pkgAbsPath))
+	} else {
+		agentsMsg = sessionAgentsMDTurn(prepared.InitialTurns, readAgentsMDContextBestEffort(sandboxDir, sandboxDir))
+	}
+
 	envMsg := buildEnvironmentInfo(sandboxDir)
 	if start.pkgMode {
-		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
+		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps, agentsMsg)
 	}
 	prepared.InitialTurns = append(prepared.InitialTurns, envMsg)
 
-	// In generic mode we don't gather package initialcontext, so include AGENTS.md
-	// context up front if present.
-	if !start.pkgMode {
-		if agentsMsg := readAgentsMDContextBestEffort(sandboxDir, sandboxDir); agentsMsg != "" {
-			prepared.InitialTurns = append(prepared.InitialTurns, agentsMsg)
-		}
+	// In generic mode we don't gather package initialcontext, so append AGENTS.md
+	// separately when the prepared agent did not already add that turn.
+	if !start.pkgMode && agentsMsg != "" {
+		prepared.InitialTurns = append(prepared.InitialTurns, agentsMsg)
 	}
 
 	agentInstance, err := prepared.Create(agent.NewAgentCreator())
@@ -796,10 +801,10 @@ func codeUnitName(pkgPath string) string {
 	return "package " + pkgPath
 }
 
-func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) string {
+func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step, agentsMsg string) string {
 	baseInfo := buildEnvironmentInfo(sandboxDir)
 
-	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
+	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps, agentsMsg)
 	if err != nil {
 		return baseInfo + "\n\n" + initialContext
 	}
@@ -852,8 +857,21 @@ func readAgentsMDContextBestEffort(sandboxDir, cwd string) string {
 	return strings.TrimSpace(msg)
 }
 
-func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) (string, error) {
-	agentsMsg := readAgentsMDContextBestEffort(sandboxDir, pkgAbsPath)
+func sessionAgentsMDTurn(preparedTurns []string, agentsMsg string) string {
+	agentsMsg = strings.TrimSpace(agentsMsg)
+	if agentsMsg == "" {
+		return ""
+	}
+	for _, turn := range preparedTurns {
+		if strings.TrimSpace(turn) == agentsMsg {
+			return ""
+		}
+	}
+	return agentsMsg
+}
+
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step, agentsMsg string) (string, error) {
+	agentsMsg = strings.TrimSpace(agentsMsg)
 
 	pkg, err := loadGoPackage(pkgAbsPath)
 	if err != nil {
@@ -873,7 +891,6 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 
 	finalHint := fmt.Sprintf("Reminder: all file paths you send to tools **must be relative to the sandbox dir (%s)** - NOT relative to the package dir.", sandboxDir)
 
-	// Always place AGENTS.md guidance before the rest of the generated initial context.
 	return joinContextBlocks(agentsMsg, pkgModeInfo, finalHint), nil
 }
 
