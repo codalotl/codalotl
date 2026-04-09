@@ -43,3 +43,9 @@ This will result in AGENTS.md being included in our other agents (change_api, et
     - Added regression coverage proving generic and package default-context agents still prepare successfully when `AGENTS.md` cannot be read.
 
 ## Summary
+
+- Added YAML `agentsmd` support in `internal/agentbuilder`, defaulting to `true` like `skills`.
+- Moved AGENTS.md injection into registry-built agent initial turns so YAML-defined root agents and subagents receive AGENTS.md automatically.
+- Kept package-mode default context ordered as environment info, then AGENTS.md, then generated package context, without duplicating AGENTS.md in `internal/tui` or `internal/noninteractive`.
+- Preserved best-effort AGENTS.md behavior: unreadable AGENTS.md files are omitted instead of failing agent preparation.
+- Added regression coverage for YAML `agentsmd` behavior, package-mode context composition, deduped session handling, and unreadable AGENTS.md cases; verified with `go test ./...`.
