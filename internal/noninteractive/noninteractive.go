@@ -16,7 +16,6 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentbuilder"
-	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/initialcontext"
@@ -742,24 +741,11 @@ func buildAgent(start sessionStart, sandboxDir string, pkgRelPath string, pkgAbs
 		return nil, fmt.Errorf("prepare agent: %w", err)
 	}
 
-	agentsMsg := ""
-	if start.pkgMode {
-		agentsMsg = sessionAgentsMDTurn(prepared.InitialTurns, readAgentsMDContextBestEffort(sandboxDir, pkgAbsPath))
-	} else {
-		agentsMsg = sessionAgentsMDTurn(prepared.InitialTurns, readAgentsMDContextBestEffort(sandboxDir, sandboxDir))
-	}
-
 	envMsg := buildEnvironmentInfo(sandboxDir)
 	if start.pkgMode {
-		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps, agentsMsg)
+		envMsg = buildPackageEnvironmentInfo(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
 	}
 	prepared.InitialTurns = append(prepared.InitialTurns, envMsg)
-
-	// In generic mode we don't gather package initialcontext, so append AGENTS.md
-	// separately when the prepared agent did not already add that turn.
-	if !start.pkgMode && agentsMsg != "" {
-		prepared.InitialTurns = append(prepared.InitialTurns, agentsMsg)
-	}
 
 	agentInstance, err := prepared.Create(agent.NewAgentCreator())
 	if err != nil {
@@ -801,10 +787,10 @@ func codeUnitName(pkgPath string) string {
 	return "package " + pkgPath
 }
 
-func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step, agentsMsg string) string {
+func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) string {
 	baseInfo := buildEnvironmentInfo(sandboxDir)
 
-	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps, agentsMsg)
+	initialContext, err := buildPackageInitialContext(sandboxDir, pkgRelPath, pkgAbsPath, lintSteps)
 	if err != nil {
 		return baseInfo + "\n\n" + initialContext
 	}
@@ -849,34 +835,10 @@ func packagePathSection(pkgRelPath string, pkgAbsPath string, err error) string 
 	return b.String()
 }
 
-func readAgentsMDContextBestEffort(sandboxDir, cwd string) string {
-	msg, err := agentsmd.Read(sandboxDir, cwd)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(msg)
-}
-
-func sessionAgentsMDTurn(preparedTurns []string, agentsMsg string) string {
-	agentsMsg = strings.TrimSpace(agentsMsg)
-	if agentsMsg == "" {
-		return ""
-	}
-	for _, turn := range preparedTurns {
-		if strings.TrimSpace(turn) == agentsMsg {
-			return ""
-		}
-	}
-	return agentsMsg
-}
-
-func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step, agentsMsg string) (string, error) {
-	agentsMsg = strings.TrimSpace(agentsMsg)
-
+func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath string, lintSteps []lints.Step) (string, error) {
 	pkg, err := loadGoPackage(pkgAbsPath)
 	if err != nil {
 		return joinContextBlocks(
-			agentsMsg,
 			packagePathSection(pkgRelPath, pkgAbsPath, err),
 		), err
 	}
@@ -884,14 +846,13 @@ func buildPackageInitialContext(sandboxDir string, pkgRelPath string, pkgAbsPath
 	pkgModeInfo, err := initialcontext.Create(pkg, lintSteps, false)
 	if err != nil {
 		return joinContextBlocks(
-			agentsMsg,
 			packagePathSection(pkgRelPath, pkgAbsPath, err),
 		), err
 	}
 
 	finalHint := fmt.Sprintf("Reminder: all file paths you send to tools **must be relative to the sandbox dir (%s)** - NOT relative to the package dir.", sandboxDir)
 
-	return joinContextBlocks(agentsMsg, pkgModeInfo, finalHint), nil
+	return joinContextBlocks(pkgModeInfo, finalHint), nil
 }
 
 func joinContextBlocks(blocks ...string) string {
