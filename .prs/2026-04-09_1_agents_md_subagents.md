@@ -44,6 +44,10 @@ Human review:
   - [P2] `internal/agentbuilder`: keep AGENTS.md read failures best-effort.
     - `buildAgentsMDInitialTurn` now treats `agentsmd.Read(...)` failures as best-effort omission instead of failing `registry.Prepare`.
     - Added regression coverage proving generic and package default-context agents still prepare successfully when `AGENTS.md` cannot be read.
+- [DONE] Actioned human review follow-up:
+  - `internal/noninteractive`: removed the remaining session-layer AGENTS.md read/dedupe/append logic so AGENTS.md ownership now lives in `internal/agentbuilder`.
+  - Preserved package environment + initial-context behavior without having `buildPackageInitialContext` read AGENTS.md on its own.
+  - Re-verified with `go test ./internal/noninteractive` and `go test ./...`.
 
 ## Summary
 
@@ -51,4 +55,5 @@ Human review:
 - Moved AGENTS.md injection into registry-built agent initial turns so YAML-defined root agents and subagents receive AGENTS.md automatically.
 - Kept package-mode default context ordered as environment info, then AGENTS.md, then generated package context, without duplicating AGENTS.md in `internal/tui` or `internal/noninteractive`.
 - Preserved best-effort AGENTS.md behavior: unreadable AGENTS.md files are omitted instead of failing agent preparation.
+- Removed the remaining `internal/noninteractive` session-layer AGENTS.md handling so both `internal/tui` and `internal/noninteractive` now rely on `internal/agentbuilder` for AGENTS.md turns.
 - Added regression coverage for YAML `agentsmd` behavior, package-mode context composition, deduped session handling, and unreadable AGENTS.md cases; verified with `go test ./...`.
