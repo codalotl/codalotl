@@ -42,3 +42,72 @@ PR Requirements:
 
 Out of scope:
 - We don't necessarily need to invent a complicated new yaml language for presenter designs in config-based tool definitions. Do something pragmatic here.
+
+## Plan
+
+### [DONE] Planning and scoping
+
+- Locate the current hard-coded tool-formatting seam in `internal/agentformatter`.
+- Locate the current hard-coded "replace tool call with result vs print both" seam in `internal/tui`.
+- Confirm this PR will be design-first: write the Presenter/semantic-presentation design in this PR file before any Go implementation.
+
+### PR-file design
+
+- Fully design the Presenter interface and the semantic presentation model in this PR file before touching implementation code.
+- Define how a tool call/result declares both:
+  - the semantic content to render
+  - whether the result replaces the call or is shown in addition to it
+- Mentally check the design against the current built-in tool families:
+  - file/shell/edit tools
+  - package-analysis and package-update tools
+  - orchestrator `implement` / `review`
+  - YAML-backed command tools and YAML-backed subagent tools
+
+### `internal/llmstream` and shared presentation types
+
+- Extend `llmstream.Tool` with `Presenter() Presenter`.
+- Introduce a shared semantic-presentation package (likely a new `internal/toolpresentation` package) so tools, `internal/agent`, `internal/agentformatter`, and `internal/tui` can share presentation types without import cycles.
+- Keep provider-facing tool definitions and raw `ToolCall` / `ToolResult` payloads unchanged; this work is only about local event presentation.
+
+### `internal/agent`
+
+- Resolve each tool's presenter when dispatching `EventTypeToolCall` and `EventTypeToolComplete`.
+- Attach semantic presentation data to agent events so downstream consumers do not have to infer behavior from tool names.
+- Add focused tests covering event emission with presentation metadata for both root-agent and subagent tool activity.
+
+### `internal/tools/...` and `internal/agentbuilder`
+
+- Give built-in tools presenters that describe their own semantic display instead of relying on `internal/agentformatter` name switches.
+- Give YAML-backed command and subagent tools pragmatic default presenters so user-defined tools render sensibly without inventing a new YAML presenter DSL.
+- Ensure subagent-oriented tools can declare the non-replacing call/result behavior so `internal/tui` can drop its hard-coded subagent tool list.
+
+### `internal/agentformatter`
+
+- Refactor formatting to render semantic presentation data while keeping color, width, ANSI/plain-text, and TUI-vs-CLI concerns local to the formatter.
+- Preserve current user-visible output unless the final Presenter design reveals a clearly simpler and still-consistent representation.
+- Keep a narrow fallback path for tools/events that do not yet provide semantic presentation during the migration.
+
+### `internal/tui` and `internal/noninteractive`
+
+- Update `internal/tui` to use event presentation metadata, not tool-name special cases, when deciding whether a tool result replaces the prior call.
+- Keep noninteractive human-readable output driven by the same semantic presentation data.
+- Keep JSON output stable unless there is a deliberate reason to expose new presentation fields; if JSON changes, update replay fixtures intentionally.
+
+### Validation
+
+- Add or update focused tests in the packages touched by the design: `internal/agent`, `internal/agentformatter`, `internal/tui`, `internal/agentbuilder`, and tool packages that gain presenters.
+- Run focused package tests during implementation, then run broader regression coverage including noninteractive replay/integration tests and any manually patched fixtures required by intentional event-shape changes.
+- Manually verify that representative tool calls still look the same in both TUI and noninteractive output, especially subagent-backed tools.
+
+## Decisions
+
+- Semantic presentation should be structured tool-owned data, not pre-rendered text or ANSI output emitted by tools.
+- The "replace tool call with result vs show both" choice should come from tool presentation metadata, so built-in and YAML-defined tools can participate without hard-coded tool-name lists in `internal/tui`.
+
+## Review
+
+- Not run yet.
+
+## Summary
+
+- Planning step only. No implementation yet.
