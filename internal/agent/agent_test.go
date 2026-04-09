@@ -216,6 +216,37 @@ func TestSendUserMessageWithToolUse(t *testing.T) {
 	}
 }
 
+func TestSendUserMessageRootEventMetadata(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	textContent := llmstream.TextContent{ProviderID: "text-1", Content: "Hello"}
+	assistantTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{textContent},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt, &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeTextDelta, Text: &textContent, Delta: textContent.Content, Done: true},
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &assistantTurn},
+		},
+	})
+	overrideConversation(t, conv)
+
+	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for ev := range a.SendUserMessage(ctx, "Say hello") {
+		require.Equal(t, a.agentID, ev.Agent.ID)
+		require.Equal(t, 0, ev.Agent.Depth)
+		require.Empty(t, ev.Agent.Parent)
+	}
+}
+
 func TestContextUsagePercentTracksTurnUsage(t *testing.T) {
 	model := llmmodel.DefaultModel
 	info := llmmodel.GetModelInfo(model)
@@ -737,6 +768,9 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 		if ev.Agent.ID == "" {
 			t.Fatalf("sub event missing agent id")
 		}
+		if ev.Agent.Parent != a.agentID {
+			t.Fatalf("sub event parent = %q, want %q", ev.Agent.Parent, a.agentID)
+		}
 	}
 
 	var mirrored int
@@ -746,7 +780,13 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 			if ev.Agent.ID == "" {
 				t.Fatalf("root event missing agent id")
 			}
+			if ev.Agent.Parent != "" {
+				t.Fatalf("root event parent = %q, want empty", ev.Agent.Parent)
+			}
 		case 1:
+			if ev.Agent.Parent != a.agentID {
+				t.Fatalf("mirrored sub event parent = %q, want %q", ev.Agent.Parent, a.agentID)
+			}
 			mirrored++
 		default:
 			t.Fatalf("unexpected agent depth %d in root stream", ev.Agent.Depth)
@@ -980,6 +1020,8 @@ func TestSubAgentNestedDepth(t *testing.T) {
 	var rootAgent *Agent
 	var childAgent *Agent
 	var grandAgent *Agent
+	var childEvents []Event
+	var grandEvents []Event
 
 	outerTool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 		if got := SubAgentDepth(ctx); got != 0 {
@@ -1021,7 +1063,8 @@ func TestSubAgentNestedDepth(t *testing.T) {
 			}
 
 			grandCh := grand.SendUserMessage(innerCtx, "complete")
-			for range grandCh {
+			for ev := range grandCh {
+				grandEvents = append(grandEvents, ev)
 			}
 
 			return llmstream.ToolResult{
@@ -1033,7 +1076,8 @@ func TestSubAgentNestedDepth(t *testing.T) {
 		}
 
 		childCh := child.SendUserMessage(ctx, "invoke inner")
-		for range childCh {
+		for ev := range childCh {
+			childEvents = append(childEvents, ev)
 		}
 
 		return llmstream.ToolResult{
@@ -1082,14 +1126,76 @@ func TestSubAgentNestedDepth(t *testing.T) {
 	if grandAgent.Status() != StatusIdle {
 		t.Fatalf("grand status = %v, want idle", grandAgent.Status())
 	}
+	if len(childEvents) == 0 {
+		t.Fatalf("child agent produced no events")
+	}
+	if len(grandEvents) == 0 {
+		t.Fatalf("grand agent produced no events")
+	}
+
+	var childDepth1, childDepth2 int
+	for _, ev := range childEvents {
+		switch ev.Agent.Depth {
+		case 1:
+			childDepth1++
+			if ev.Agent.ID != childAgent.agentID {
+				t.Fatalf("child event id = %q, want %q", ev.Agent.ID, childAgent.agentID)
+			}
+			if ev.Agent.Parent != rootAgent.agentID {
+				t.Fatalf("child event parent = %q, want %q", ev.Agent.Parent, rootAgent.agentID)
+			}
+		case 2:
+			childDepth2++
+			if ev.Agent.ID != grandAgent.agentID {
+				t.Fatalf("mirrored grand event in child stream id = %q, want %q", ev.Agent.ID, grandAgent.agentID)
+			}
+			if ev.Agent.Parent != childAgent.agentID {
+				t.Fatalf("mirrored grand event in child stream parent = %q, want %q", ev.Agent.Parent, childAgent.agentID)
+			}
+		default:
+			t.Fatalf("unexpected depth %d in child stream", ev.Agent.Depth)
+		}
+	}
+	if childDepth1 == 0 {
+		t.Fatalf("child stream missing depth-1 events")
+	}
+	if childDepth2 == 0 {
+		t.Fatalf("child stream missing mirrored depth-2 events")
+	}
+	for _, ev := range grandEvents {
+		if ev.Agent.ID != grandAgent.agentID {
+			t.Fatalf("grand event id = %q, want %q", ev.Agent.ID, grandAgent.agentID)
+		}
+		if ev.Agent.Depth != 2 {
+			t.Fatalf("grand event depth = %d, want 2", ev.Agent.Depth)
+		}
+		if ev.Agent.Parent != childAgent.agentID {
+			t.Fatalf("grand event parent = %q, want %q", ev.Agent.Parent, childAgent.agentID)
+		}
+	}
 
 	var depth1, depth2 int
 	for _, ev := range events {
 		switch ev.Agent.Depth {
 		case 0:
+			if ev.Agent.Parent != "" {
+				t.Fatalf("root event parent = %q, want empty", ev.Agent.Parent)
+			}
 		case 1:
+			if ev.Agent.ID != childAgent.agentID {
+				t.Fatalf("mirrored child event id = %q, want %q", ev.Agent.ID, childAgent.agentID)
+			}
+			if ev.Agent.Parent != rootAgent.agentID {
+				t.Fatalf("mirrored child event parent = %q, want %q", ev.Agent.Parent, rootAgent.agentID)
+			}
 			depth1++
 		case 2:
+			if ev.Agent.ID != grandAgent.agentID {
+				t.Fatalf("mirrored grand event id = %q, want %q", ev.Agent.ID, grandAgent.agentID)
+			}
+			if ev.Agent.Parent != childAgent.agentID {
+				t.Fatalf("mirrored grand event parent = %q, want %q", ev.Agent.Parent, childAgent.agentID)
+			}
 			depth2++
 		default:
 			t.Fatalf("unexpected depth %d in events", ev.Agent.Depth)

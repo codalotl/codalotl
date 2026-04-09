@@ -97,8 +97,8 @@ Every `Event` includes metadata describing the originator so TUIs can attribute 
 
 ```go
 type AgentMeta struct {
-	ID    string // stable, unique per Agent/SubAgent within a session
-	Depth int    // 0 == root agent
+	ID     string // stable, unique per Agent/SubAgent within a session
+	Depth  int    // 0 == root agent
 	Parent string // parent Agent/SubAgent ID; "" for root agent
 }
 
