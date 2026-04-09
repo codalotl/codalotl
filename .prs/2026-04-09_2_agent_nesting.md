@@ -15,3 +15,26 @@ type AgentMeta struct {
 ```
 
 Don't use this anywhere else. Update the integration tests if necessary.
+
+## Plan
+
+### `internal/agent`
+
+- Add `Parent string` to `agent.AgentMeta`.
+- Root agent events should report `Parent == ""`.
+- SubAgent events should report the parent agent's ID.
+- Keep the change local to event metadata; no new behavior should consume `Parent`.
+- Update `internal/agent/SPEC.md` to match the public event shape.
+
+### Tests and fixtures
+
+- Add or update focused `internal/agent` tests covering root and nested agent metadata.
+- Update integration fixtures only if an existing serialized event shape now includes `Parent`.
+
+## Review
+
+- Pending.
+
+## Summary
+
+- Pending.
