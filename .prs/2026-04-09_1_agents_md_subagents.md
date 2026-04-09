@@ -37,11 +37,9 @@ This will result in AGENTS.md being included in our other agents (change_api, et
 
 ## Review
 
-- Actionable review feedback:
+- [DONE] Actioned review feedback:
   - [P2] `internal/agentbuilder`: keep AGENTS.md read failures best-effort.
-    - Current implementation routes AGENTS.md reads through agent-definition initial-turn builders.
-    - If `agentsmd.Read(...)` fails (for example unreadable `AGENTS.md`), `registry.Prepare` now fails for built-in generic/package agents and YAML-defined subagents.
-    - Previous TUI/noninteractive behavior treated AGENTS.md reads as best-effort and continued startup without that context.
-    - Follow-up needed: preserve best-effort AGENTS.md behavior while still injecting AGENTS.md turns through the registry path.
+    - `buildAgentsMDInitialTurn` now treats `agentsmd.Read(...)` failures as best-effort omission instead of failing `registry.Prepare`.
+    - Added regression coverage proving generic and package default-context agents still prepare successfully when `AGENTS.md` cannot be read.
 
 ## Summary
