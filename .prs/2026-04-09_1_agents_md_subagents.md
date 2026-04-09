@@ -9,7 +9,7 @@ This will result in AGENTS.md being included in our other agents (change_api, et
 
 ## Plan
 
-### `internal/agentbuilder`
+### [DONE] `internal/agentbuilder`
 
 - Extend YAML agent config with optional `agentsmd` boolean, defaulting to true like `skills`.
 - Move AGENTS.md injection into registry-built agent definitions so YAML-defined root agents and subagents get the same behavior.
@@ -19,12 +19,12 @@ This will result in AGENTS.md being included in our other agents (change_api, et
   - package default-context agents keep AGENTS.md ahead of generated package context without duplicating it
 - Update `SPEC.md` if the YAML config surface or prompt/initial-turn behavior needs documenting.
 
-### `internal/tui` and `internal/noninteractive`
+### [DONE] `internal/tui` and `internal/noninteractive`
 
 - Remove session-layer AGENTS.md injection that becomes redundant once agent definitions provide it.
 - Preserve existing environment info and package initial context ordering while avoiding duplicate AGENTS.md turns.
 
-### Tests and fixtures
+### [DONE] Tests and fixtures
 
 - Add focused `agentbuilder` coverage for:
   - default `agentsmd: true`
@@ -32,6 +32,8 @@ This will result in AGENTS.md being included in our other agents (change_api, et
   - generic vs package-mode initial turns
   - coexistence with `include_package_mode_context`
 - Run the relevant package tests and patch any affected integration `http.json` fixtures if prompt/turn snapshots change.
+  - Verified with `go test ./...`.
+  - No integration fixture patches were needed.
 
 ## Review
 
