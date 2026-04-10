@@ -63,17 +63,17 @@ Out of scope:
   - orchestrator `implement` / `review`
   - YAML-backed command tools and YAML-backed subagent tools
 
-### `internal/llmstream` and shared presentation types
+### `internal/llmstream`
 
 - Extend `llmstream.Tool` with `Presenter() Presenter`.
-- Introduce a shared semantic-presentation package (likely a new `internal/toolpresentation` package) so tools, `internal/agent`, `internal/agentformatter`, and `internal/tui` can share presentation types without import cycles.
+- Put the semantic presentation types directly in `internal/llmstream`; do not add a separate `internal/toolpresentation` package.
 - Keep provider-facing tool definitions and raw `ToolCall` / `ToolResult` payloads unchanged; this work is only about local event presentation.
 
 ### `internal/agent`
 
-- Resolve each tool's presenter when dispatching `EventTypeToolCall` and `EventTypeToolComplete`.
-- Attach semantic presentation data to agent events so downstream consumers do not have to infer behavior from tool names.
-- Add focused tests covering event emission with presentation metadata for both root-agent and subagent tool activity.
+- Attach the concrete `llmstream.Tool` to `EventTypeToolCall` and `EventTypeToolComplete` events.
+- Delete the existing `Event.Tool string` field and replace it with `Event.Tool llmstream.Tool`.
+- Add focused tests covering event emission with tool references for both root-agent and subagent tool activity.
 
 ### `internal/tools/...` and `internal/agentbuilder`
 
@@ -83,13 +83,13 @@ Out of scope:
 
 ### `internal/agentformatter`
 
-- Refactor formatting to render semantic presentation data while keeping color, width, ANSI/plain-text, and TUI-vs-CLI concerns local to the formatter.
+- Refactor formatting to ask the event's tool presenter for semantic presentation data while keeping color, width, ANSI/plain-text, and TUI-vs-CLI concerns local to the formatter.
 - Preserve current user-visible output unless the final Presenter design reveals a clearly simpler and still-consistent representation.
-- Keep a narrow fallback path for tools/events that do not yet provide semantic presentation during the migration.
+- Keep a narrow fallback path for tools/events that do not carry a tool or do not provide a presenter during the migration.
 
 ### `internal/tui` and `internal/noninteractive`
 
-- Update `internal/tui` to use event presentation metadata, not tool-name special cases, when deciding whether a tool result replaces the prior call.
+- Update `internal/tui` to use tool-owned presentation behavior, not tool-name special cases, when deciding whether a tool result replaces the prior call.
 - Keep noninteractive human-readable output driven by the same semantic presentation data.
 - Keep JSON output stable unless there is a deliberate reason to expose new presentation fields; if JSON changes, update replay fixtures intentionally.
 
@@ -102,11 +102,11 @@ Out of scope:
 ## Decisions
 
 - Semantic presentation should be structured tool-owned data, not pre-rendered text or ANSI output emitted by tools.
-- The "replace tool call with result vs show both" choice should come from tool presentation metadata, so built-in and YAML-defined tools can participate without hard-coded tool-name lists in `internal/tui`.
+- The "replace tool call with result vs show both" choice should come from tool-owned presentation behavior, so built-in and YAML-defined tools can participate without hard-coded tool-name lists in `internal/tui`.
 
 ### Presenter shape
 
-Add `Presenter() Presenter` to `llmstream.Tool`, but keep the actual semantic presentation data types out of `internal/llmstream` itself. `llmstream` should own the thin `Presenter` interface because it already owns `ToolCall` and `ToolResult`. The new shared package should only hold the semantic presentation data model. This avoids an import cycle.
+Add `Presenter() Presenter` to `llmstream.Tool`, and keep the semantic presentation data types in `internal/llmstream` too. This keeps the presentation API next to `ToolCall`, `ToolResult`, and `Tool`, and avoids inventing another package just to shuffle a few small types around.
 
 Proposed shape:
 
@@ -121,7 +121,7 @@ type Tool interface {
 
 ```go
 type Presenter interface {
-	Present(call ToolCall, result *ToolResult) toolpresentation.Presentation
+	Present(call ToolCall, result *ToolResult) Presentation
 }
 ```
 
@@ -133,9 +133,7 @@ type Presenter interface {
 Rationale:
 - A single `Present(call, result)` method keeps the pairing logic in one place and lets the presenter decide whether call and completion share structure.
 - The presenter sees both raw call input and raw tool result, plus `ToolResult.IsError` / `SourceErr`, which is enough to preserve current behavior.
-- Keeping the semantic data model in `toolpresentation`, but the interface in `llmstream`, preserves clean import direction:
-  - `llmstream` imports `toolpresentation`
-  - `toolpresentation` does not import `llmstream`
+- Keeping the semantic data model in `llmstream` keeps the import surface simple and matches where these types are actually consumed.
 - Keeping presentation off of `ToolCall` / `ToolResult` themselves preserves the raw conversation/tool payloads for provider I/O, JSON mode, and tests.
 
 ### Semantic presentation model
@@ -145,7 +143,7 @@ The presenter should return a line-oriented semantic tree that is rich enough fo
 Proposed shape:
 
 ```go
-package toolpresentation
+package llmstream
 
 type CompletionBehavior string
 
@@ -154,16 +152,8 @@ const (
 	CompletionBehaviorAppend  CompletionBehavior = "append"
 )
 
-type ExecutorKind string
-
-const (
-	ExecutorKindLocal    ExecutorKind = "local"
-	ExecutorKindSubagent ExecutorKind = "subagent"
-)
-
 type Presentation struct {
 	Behavior CompletionBehavior
-	Executor ExecutorKind
 	Summary  Line
 	Body     []Block
 }
@@ -189,12 +179,15 @@ const (
 	RoleEmphasis SegmentRole = "emphasis"
 )
 
+// Block is implemented by Paragraph, Checklist, and Output.
 type Block interface{ isBlock() }
 
+// Paragraph implements Block.
 type Paragraph struct {
 	Lines []Line
 }
 
+// Checklist implements Block.
 type Checklist struct {
 	Items []ChecklistItem
 }
@@ -212,6 +205,7 @@ const (
 	ChecklistPending    ChecklistStatus = "pending"
 )
 
+// Output implements Block.
 type Output struct {
 	Lines []OutputLine
 }
@@ -235,7 +229,6 @@ Semantics:
 - `Summary` is the first bullet line. It corresponds to the current "Running go test .", "Read foo.go", "Clarifying API ...", etc.
 - `Body` holds the semantic continuation lines that today are printed under `└` / follow-on indentation.
 - `Behavior` tells consumers whether a completion replaces the earlier call line or appends as a new message.
-- `Executor` explicitly indicates local-vs-subagent execution. `internal/tui` should use `Behavior`, but `Executor` keeps subagent-ness visible in the event model for future UI or debugging.
 
 This is intentionally not a general-purpose markdown/HTML AST. It only models the structures we already render:
 - one summary line
@@ -243,11 +236,11 @@ This is intentionally not a general-purpose markdown/HTML AST. It only models th
 - checklist items
 - literal/summarized output lines
 
-### Why event-local presentation metadata
+### Why put the tool on the event
 
-The semantic presentation should be attached to `agent.Event`, not persisted into `llmstream.ToolCall` / `ToolResult`.
+The semantic presentation should be derived from the event's tool, not persisted into `llmstream.ToolCall` / `ToolResult` and not precomputed onto `agent.Event`.
 
-Proposed `agent.Event` addition:
+Proposed `agent.Event` change:
 
 ```go
 type Event struct {
@@ -255,13 +248,14 @@ type Event struct {
 	Type  EventType
 	// existing fields...
 
-	ToolPresentation *toolpresentation.Presentation
+	Tool llmstream.Tool
 }
 ```
 
 Rationale:
 - The same raw `ToolCall` and `ToolResult` should stay reusable for conversation history, provider round-tripping, JSON output, and debug tools.
-- Presentation is local UI metadata, derived at event-dispatch time from the actual tool implementation.
+- Presentation is local UI metadata, derived on demand from the actual tool implementation.
+- Attaching the actual `llmstream.Tool` lets the formatter and TUI use the same presenter logic without duplicating a second event-only presentation cache.
 - This avoids polluting lower-level `llmstream` content parts with TUI/CLI concerns.
 
 ### Agent behavior
@@ -270,14 +264,13 @@ Rationale:
 
 Proposed dispatch behavior:
 - On `EventTypeToolCall`, look up the tool by `ToolCall.Name`.
-  - If found, call `tool.Presenter().Present(call, nil)`.
-  - If not found, use a shared generic fallback presenter.
-- On `EventTypeToolComplete`, use the same presenter and call `Present(call, &result)`.
-- Store the returned `Presentation` on `agent.Event.ToolPresentation`.
+  - If found, set `ev.Tool = tool`.
+  - If not found, leave `ev.Tool == nil`.
+- On `EventTypeToolComplete`, use the same lookup and set the same `ev.Tool`.
+- Downstream consumers derive `Presentation` from `ev.Tool.Presenter().Present(...)` when needed.
 
 If a tool is unknown:
 - behavior defaults to `CompletionBehaviorReplace`
-- executor defaults to `ExecutorKindLocal`
 - summary/body use the existing generic formatter semantics: `Tool <name> <raw input>` plus summarized result lines
 
 This keeps unknown tools working and gives user-defined tools a sane baseline even before they grow custom presenters.
@@ -285,7 +278,7 @@ This keeps unknown tools working and gives user-defined tools a sane baseline ev
 ### Formatter responsibilities after v2
 
 After this change, `internal/agentformatter` should stop switching on tool names to decide what a tool "means". Its job becomes:
-- Render `Presentation.Summary` and `Presentation.Body`.
+- Resolve the event presentation from `ev.Tool` when present, then render `Presentation.Summary` and `Presentation.Body`.
 - Apply palette, ANSI/plain-text styling, and wrapping.
 - Apply indentation for `ev.Agent.Depth`.
 - Preserve the current `└` continuation style for paragraphs/checklists/output blocks.
@@ -307,8 +300,8 @@ What moves out of the formatter:
 `internal/tui` should stop hard-coding tool names in `shouldReplaceToolCallWithResult`.
 
 Instead:
-- if `ev.ToolPresentation == nil`, preserve current fallback behavior
-- otherwise, use `ev.ToolPresentation.Behavior`
+- if `ev.Tool == nil`, preserve current fallback behavior
+- otherwise, derive a `Presentation` from `ev.Tool.Presenter()` and use `Presentation.Behavior`
   - `replace`: completion replaces the earlier tool call message
   - `append`: completion is appended as a new message
 
@@ -330,9 +323,8 @@ That means:
 - `diagnostics`, `fix_lints`, `run_tests`, `run_project_tests`, `module_info`, `get_public_api`, `get_usage`, `update_plan` move their tool-specific result parsing into presenter code owned by those tools (or adjacent helper files in their packages)
 - `clarify_public_api`, `update_usage`, `change_api`, `implement`, and `review` explicitly return:
   - `Behavior: CompletionBehaviorAppend`
-  - `Executor: ExecutorKindSubagent`
 
-The last point is the concrete proof that subagent-ness is present in the semantic model rather than inferred from tool names.
+The last point is the concrete proof that subagent-like lifecycle behavior is present in the tool-owned presentation rather than inferred from tool names.
 
 ### YAML-backed tool strategy
 
@@ -341,7 +333,6 @@ Do something pragmatic, not a new YAML presenter DSL.
 For `yamlCommandTool`:
 - default presenter should be generic-but-usable
 - `Behavior: CompletionBehaviorReplace`
-- `Executor: ExecutorKindLocal`
 - summary format:
   - call: `Tool <name>`
   - completion: `Tool <name>`
@@ -351,7 +342,6 @@ For `yamlCommandTool`:
 For `yamlSubagentTool`:
 - default presenter should signal subagent semantics without needing YAML syntax changes
 - `Behavior: CompletionBehaviorAppend`
-- `Executor: ExecutorKindSubagent`
 - summary format remains generic (`Tool <name>` plus short input when practical)
 - completion body summarizes the final returned assistant text/result
 
