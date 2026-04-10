@@ -84,6 +84,8 @@ Out of scope:
 ### `internal/tools/...` and `internal/agentbuilder`
 
 - Give built-in tools presenters that describe their own semantic display instead of relying on `internal/agentformatter` name switches.
+  - Start with `internal/tools/pkgtools`, since it covers several current formatter special cases with clear call/completion semantics.
+  - Follow with `internal/tools/coretools` and `internal/tools/exttools` once the formatter-facing semantic shapes are proven in tests.
 - [DONE] Give YAML-backed command and subagent tools pragmatic default presenters so user-defined tools render sensibly without inventing a new YAML presenter DSL.
 - [DONE] Ensure subagent-oriented tools can declare the non-replacing call/result behavior so `internal/tui` can drop its hard-coded subagent tool list.
 
@@ -437,6 +439,8 @@ Important compatibility constraints:
 - The `Event.Tool` type migration can be landed incrementally: formatter and TUI compatibility updates unblock compilation and downstream tests even before `internal/agentformatter` fully renders from semantic `Presentation` blocks.
 - `internal/tui`'s replace-vs-append policy cleanly depends only on presenter completion behavior; it does not need the larger formatter refactor to drop the hard-coded subagent list.
 - The YAML-backed tool behavior is a small isolated `internal/agentbuilder` step: command tools can keep the generic replace presenter, while subagent tools switch to the generic append presenter without changing their raw result payloads or YAML schema.
+- A delegated `codalotl exec --package internal/tools/pkgtools` run cannot read the PR file or `internal/agentformatter/SPEC.md` once the package jail is active, so future package-mode implementation prompts must inline the required presentation contract instead of relying on external context paths.
+- For presenter-only refactors, prompts need to state the exact semantic `Presentation` shape to implement; asking a package-scoped run to infer formatter behavior from surrounding docs led to tool/API over-exploration instead of code changes.
 
 ## Summary
 
@@ -458,4 +462,5 @@ Important compatibility constraints:
   - `yamlCommandTool` continues to use the generic replace-style presenter
   - `yamlSubagentTool` now uses the generic append-style presenter so YAML-defined subagent tools match the PR's presentation behavior design
   - added focused `internal/agentbuilder` tests covering both behaviors and verified `go test ./internal/agentbuilder` plus `go test ./...`
+- Attempted the next `internal/tools/pkgtools` presenter step, but discarded the result because the delegated package-mode runs produced no code changes; captured the package-jail/context learnings above and refined the plan so the next retry can inline the formatter contract instead of depending on unreadable external files.
 - The deeper `internal/agentformatter` refactor to render directly from semantic `Presentation` data is still pending, along with tool-owned concrete presenters beyond the current generic/default helpers.
