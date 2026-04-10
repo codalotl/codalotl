@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -22,6 +23,30 @@ type noopFormatter struct{}
 
 func (noopFormatter) FormatEvent(agent.Event, int) string {
 	return ""
+}
+
+type stubTool struct {
+	name      string
+	presenter llmstream.Presenter
+}
+
+func (t stubTool) Info() llmstream.ToolInfo {
+	return llmstream.ToolInfo{Name: t.name}
+}
+
+func (t stubTool) Name() string {
+	return t.name
+}
+
+func (t stubTool) Presenter() llmstream.Presenter {
+	if t.presenter != nil {
+		return t.presenter
+	}
+	return llmstream.NewDefaultToolPresenter()
+}
+
+func (t stubTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
+	return llmstream.ToolResult{}
 }
 
 type stubAuthorizer struct {
@@ -635,12 +660,13 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 	callID := "call-1"
 	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
 	result := &llmstream.ToolResult{CallID: callID, Name: "read_file"}
+	tool := stubTool{name: "read_file", presenter: llmstream.NewDefaultToolPresenter()}
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "read_file", ToolCall: call})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
 	require.Len(t, m.messages, 1)
 	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "read_file", ToolCall: call, ToolResult: result})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
 
 	// Default behavior: the tool call entry is replaced by the result entry.
 	require.Len(t, m.messages, 1)
@@ -649,27 +675,23 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 	require.Equal(t, callID, m.messages[0].event.ToolResult.CallID)
 }
 
-func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
-	for _, toolName := range []string{"change_api", "update_usage", "clarify_public_api", "implement", "review"} {
-		t.Run(toolName, func(t *testing.T) {
-			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+func TestToolResultAppendBehaviorDoesNotReplaceCall(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
-			callID := "call-2"
-			call := &llmstream.ToolCall{CallID: callID, Name: toolName}
-			result := &llmstream.ToolResult{CallID: callID, Name: toolName}
+	callID := "call-2"
+	call := &llmstream.ToolCall{CallID: callID, Name: "custom_subagent"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "custom_subagent"}
+	tool := stubTool{name: "custom_subagent", presenter: llmstream.NewAppendToolPresenter()}
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: toolName, ToolCall: call})
-			require.Len(t, m.messages, 1)
-			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: toolName, ToolCall: call, ToolResult: result})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
 
-			// Exception behavior: for SubAgent tools, keep the call and append the result.
-			require.Len(t, m.messages, 2)
-			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
-			require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
-		})
-	}
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 }
 
 func TestModelCommandListsAvailableModels(t *testing.T) {

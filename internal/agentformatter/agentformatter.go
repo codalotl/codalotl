@@ -287,8 +287,11 @@ func normalizedToolName(e agent.Event) string {
 		return name
 	}
 
-	if e.Tool != "" {
-		return normalize(e.Tool)
+	if e.Tool != nil && e.Tool.Name() != "" {
+		return normalize(e.Tool.Name())
+	}
+	if e.ToolResult != nil && e.ToolResult.Name != "" {
+		return normalize(e.ToolResult.Name)
 	}
 	if e.ToolCall != nil {
 		if e.ToolCall.Name != "" {
@@ -303,8 +306,10 @@ func normalizedToolName(e agent.Event) string {
 
 func toolDisplayName(e agent.Event) string {
 	var name string
-	if e.Tool != "" {
-		name = e.Tool
+	if e.Tool != nil && e.Tool.Name() != "" {
+		name = e.Tool.Name()
+	} else if e.ToolResult != nil && e.ToolResult.Name != "" {
+		name = e.ToolResult.Name
 	} else if e.ToolCall != nil {
 		if e.ToolCall.Name != "" {
 			name = e.ToolCall.Name

@@ -1771,19 +1771,32 @@ func eventToolCallID(ev agent.Event) string {
 }
 
 func toolName(ev agent.Event) string {
+	if ev.Tool != nil && ev.Tool.Name() != "" {
+		return ev.Tool.Name()
+	}
 	if ev.ToolResult != nil && ev.ToolResult.Name != "" {
 		return ev.ToolResult.Name
 	}
 	if ev.ToolCall != nil && ev.ToolCall.Name != "" {
 		return ev.ToolCall.Name
 	}
-	return ev.Tool
+	return ""
+}
+
+func toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
+	if ev.Tool == nil || ev.ToolCall == nil {
+		return ""
+	}
+	presenter := ev.Tool.Presenter()
+	if presenter == nil {
+		return ""
+	}
+	return presenter.Present(*ev.ToolCall, ev.ToolResult).Behavior
 }
 
 func shouldReplaceToolCallWithResult(ev agent.Event) bool {
-	switch toolName(ev) {
-	case "change_api", "update_usage", "clarify_public_api", "implement", "review":
-		// SubAgent tools: we want to show the call *and* the result as separate messages.
+	switch toolCompletionBehavior(ev) {
+	case llmstream.CompletionBehaviorAppend:
 		return false
 	default:
 		return true

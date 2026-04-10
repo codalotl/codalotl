@@ -140,7 +140,7 @@ func TestOverlayModeDetailsOpensDialogForToolMessage(t *testing.T) {
 	callID := "call-123"
 	call := &llmstream.ToolCall{CallID: callID, Name: "read_file", Type: "function", Input: `{"path":"main.go"}`}
 	result := &llmstream.ToolResult{CallID: callID, Name: "read_file", Type: "function", Result: `{"content":"hi"}`}
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "read_file", ToolCall: call, ToolResult: result})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, ToolCall: call, ToolResult: result})
 	m.refreshViewport(true)
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
