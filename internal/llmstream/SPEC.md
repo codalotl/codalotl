@@ -44,6 +44,16 @@ type DiagnosticHookReceiver interface {
 func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 ```
 
+## Tool Presentation
+
+Tools own semantic presentation of their call/completion lifecycle.
+
+- Presentation is structured data, not pre-rendered ANSI or width-specific text.
+- Formatter and TUI concerns stay outside `llmstream`.
+- Presenter output is deterministic from `ToolCall` and optional `ToolResult`.
+- `nil` result means tool call in progress.
+- Completion behavior indicates whether a completion replaces the earlier call entry or appends as a new entry.
+
 ## Public API
 
 ```go
@@ -128,8 +138,123 @@ type ToolResult struct {
 type Tool interface {
 	Info() ToolInfo
 	Name() string
+	Presenter() Presenter
 	Run(ctx context.Context, params ToolCall) ToolResult
 }
+
+type Presenter interface {
+	Present(call ToolCall, result *ToolResult) Presentation
+}
+
+type CompletionBehavior string
+
+const (
+	CompletionBehaviorReplace CompletionBehavior = "replace"
+	CompletionBehaviorAppend  CompletionBehavior = "append"
+)
+
+type Presentation struct {
+	Behavior CompletionBehavior
+	Summary  Line
+	Body     []Block
+}
+
+type Line struct {
+	Segments []Segment
+}
+
+type Segment struct {
+	Text string
+	Role SegmentRole
+}
+
+type SegmentRole string
+
+const (
+	RoleNormal   SegmentRole = "normal"
+	RoleAccent   SegmentRole = "accent"
+	RoleAction   SegmentRole = "action"
+	RoleSuccess  SegmentRole = "success"
+	RoleError    SegmentRole = "error"
+	RoleCode     SegmentRole = "code"
+	RoleEmphasis SegmentRole = "emphasis"
+)
+
+type Block interface{ isBlock() }
+
+type Paragraph struct {
+	Lines []Line
+}
+
+type Checklist struct {
+	Items []ChecklistItem
+}
+
+type ChecklistItem struct {
+	Status ChecklistStatus
+	Line   Line
+}
+
+type ChecklistStatus string
+
+const (
+	ChecklistDone       ChecklistStatus = "done"
+	ChecklistInProgress ChecklistStatus = "in_progress"
+	ChecklistPending    ChecklistStatus = "pending"
+)
+
+type Output struct {
+	Lines []OutputLine
+}
+
+type OutputLine struct {
+	Line Line
+	Role OutputRole
+}
+
+type OutputRole string
+
+const (
+	OutputRoleNormal  OutputRole = "normal"
+	OutputRoleSuccess OutputRole = "success"
+	OutputRoleError   OutputRole = "error"
+	OutputRoleAccent  OutputRole = "accent"
+)
+
+type Diff struct {
+	Files []DiffFile
+}
+
+type DiffFile struct {
+	Kind       DiffFileKind
+	Path       string
+	ToPath     string
+	ReplaceAll bool
+	Lines      []DiffLine
+}
+
+type DiffFileKind string
+
+const (
+	DiffFileAdd        DiffFileKind = "add"
+	DiffFileDelete     DiffFileKind = "delete"
+	DiffFileEdit       DiffFileKind = "edit"
+	DiffFileRenameOnly DiffFileKind = "rename_only"
+)
+
+type DiffLine struct {
+	Kind DiffLineKind
+	Text string
+}
+
+type DiffLineKind string
+
+const (
+	DiffLineContext DiffLineKind = "context"
+	DiffLineAdd     DiffLineKind = "add"
+	DiffLineRemove  DiffLineKind = "remove"
+	DiffLineGap     DiffLineKind = "gap"
+)
 
 type ToolInfo struct {
 	Name        string
