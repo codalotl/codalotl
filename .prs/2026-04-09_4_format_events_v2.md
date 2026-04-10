@@ -69,7 +69,7 @@ Out of scope:
 - Put the semantic presentation types directly in `internal/llmstream`; do not add a separate `internal/toolpresentation` package.
 - Keep provider-facing tool definitions and raw `ToolCall` / `ToolResult` payloads unchanged; this work is only about local event presentation.
 
-### `internal/agent`
+### [DONE] `internal/agent`
 
 - Attach the concrete `llmstream.Tool` to `EventTypeToolCall` and `EventTypeToolComplete` events.
 - Delete the existing `Event.Tool string` field and replace it with `Event.Tool llmstream.Tool`.
@@ -433,4 +433,8 @@ Important compatibility constraints:
   - extended `llmstream.Tool` with `Presenter() Presenter`
   - added generic default/append presenter helpers plus focused `internal/llmstream` tests
 - Added compile-safe `Presenter()` implementations across current concrete tool types and relevant test doubles so the repo builds and tests again.
-- Kept formatter/TUI/noninteractive behavior unchanged in this step. Tool-specific semantic presentation and event-plumbing work are still pending.
+- Implemented the `internal/agent` event-plumbing step:
+  - changed `agent.Event.Tool` from a string to the concrete `llmstream.Tool`
+  - tool-call and tool-complete events now attach the resolved tool instance when known, or `nil` when unknown
+  - added focused tests covering resolved-tool events for root-agent and subagent tool activity, plus the unknown-tool fallback
+- Kept formatter/TUI/noninteractive behavior unchanged in this step. Downstream packages still need to switch from tool-name strings to `llmstream.Tool` references before broader repo tests will pass again.
