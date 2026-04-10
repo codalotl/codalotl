@@ -84,8 +84,8 @@ Out of scope:
 ### `internal/tools/...` and `internal/agentbuilder`
 
 - Give built-in tools presenters that describe their own semantic display instead of relying on `internal/agentformatter` name switches.
-- Give YAML-backed command and subagent tools pragmatic default presenters so user-defined tools render sensibly without inventing a new YAML presenter DSL.
-- Ensure subagent-oriented tools can declare the non-replacing call/result behavior so `internal/tui` can drop its hard-coded subagent tool list.
+- [DONE] Give YAML-backed command and subagent tools pragmatic default presenters so user-defined tools render sensibly without inventing a new YAML presenter DSL.
+- [DONE] Ensure subagent-oriented tools can declare the non-replacing call/result behavior so `internal/tui` can drop its hard-coded subagent tool list.
 
 ### `internal/agentformatter`
 
@@ -436,6 +436,7 @@ Important compatibility constraints:
 
 - The `Event.Tool` type migration can be landed incrementally: formatter and TUI compatibility updates unblock compilation and downstream tests even before `internal/agentformatter` fully renders from semantic `Presentation` blocks.
 - `internal/tui`'s replace-vs-append policy cleanly depends only on presenter completion behavior; it does not need the larger formatter refactor to drop the hard-coded subagent list.
+- The YAML-backed tool behavior is a small isolated `internal/agentbuilder` step: command tools can keep the generic replace presenter, while subagent tools switch to the generic append presenter without changing their raw result payloads or YAML schema.
 
 ## Summary
 
@@ -453,4 +454,8 @@ Important compatibility constraints:
   - `internal/tui` now decides replace-vs-append from presenter completion behavior instead of a hard-coded subagent tool-name list
   - updated `internal/tui/SPEC.md` to describe the new presenter-behavior rule
   - verified `go test ./internal/agentformatter ./internal/tui` and `go test ./internal/noninteractive/...`
+- Implemented the `internal/agentbuilder` YAML presenter defaults:
+  - `yamlCommandTool` continues to use the generic replace-style presenter
+  - `yamlSubagentTool` now uses the generic append-style presenter so YAML-defined subagent tools match the PR's presentation behavior design
+  - added focused `internal/agentbuilder` tests covering both behaviors and verified `go test ./internal/agentbuilder` plus `go test ./...`
 - The deeper `internal/agentformatter` refactor to render directly from semantic `Presentation` data is still pending, along with tool-owned concrete presenters beyond the current generic/default helpers.
