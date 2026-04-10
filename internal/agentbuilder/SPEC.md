@@ -83,6 +83,10 @@ Tools:
         - `sandbox_dir`: the current sandbox dir
         - `package_dir`: the current package dir (relative to sandbox)
         - NOTE: we can add more things here as needed.
+- YAML-defined tools participate in human-readable tool presentation without extra YAML syntax:
+    - Command tools use replace-style completion behavior.
+    - Subagent tools use append-style completion behavior.
+    - Both use generic summary/body rendering derived from raw tool call/result content.
 
 ## Toolsets
 
