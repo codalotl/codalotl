@@ -216,6 +216,129 @@ func TestSendUserMessageWithToolUse(t *testing.T) {
 	}
 }
 
+func TestToolEventsCarryResolvedToolForRootAgent(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_123",
+		Name:       "stub_tool",
+		Type:       "function_call",
+		Input:      `{"query":"hi"}`,
+	}
+	toolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	finalText := llmstream.TextContent{ProviderID: "text-2", Content: "Done"}
+	finalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &toolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &finalText, Delta: finalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &finalTurn},
+			},
+		},
+	))
+
+	tool := newStubTool("stub_tool", llmstream.ToolResult{Result: "OK"})
+
+	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, []llmstream.Tool{tool})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := collectEvents(a.SendUserMessage(ctx, "Use the tool"))
+
+	callEvent := requireToolEvent(t, events, EventTypeToolCall, toolCall.CallID, 0)
+	completeEvent := requireToolEvent(t, events, EventTypeToolComplete, toolCall.CallID, 0)
+
+	require.Same(t, tool, callEvent.Tool)
+	require.Equal(t, toolCall, *callEvent.ToolCall)
+
+	require.Same(t, tool, completeEvent.Tool)
+	require.Equal(t, toolCall, *completeEvent.ToolCall)
+	require.NotNil(t, completeEvent.ToolResult)
+	require.Equal(t, toolCall.CallID, completeEvent.ToolResult.CallID)
+	require.Equal(t, toolCall.Name, completeEvent.ToolResult.Name)
+	require.Equal(t, toolCall.Type, completeEvent.ToolResult.Type)
+	require.Equal(t, "OK", completeEvent.ToolResult.Result)
+}
+
+func TestToolEventsLeaveUnknownToolNil(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_unknown",
+		Name:       "missing_tool",
+		Type:       "function_call",
+		Input:      `{"query":"hi"}`,
+	}
+	toolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	finalText := llmstream.TextContent{ProviderID: "text-2", Content: "Done"}
+	finalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &toolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &finalText, Delta: finalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &finalTurn},
+			},
+		},
+	))
+
+	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := collectEvents(a.SendUserMessage(ctx, "Use the missing tool"))
+
+	callEvent := requireToolEvent(t, events, EventTypeToolCall, toolCall.CallID, 0)
+	completeEvent := requireToolEvent(t, events, EventTypeToolComplete, toolCall.CallID, 0)
+
+	require.Nil(t, callEvent.Tool)
+	require.Equal(t, toolCall, *callEvent.ToolCall)
+
+	require.Nil(t, completeEvent.Tool)
+	require.Equal(t, toolCall, *completeEvent.ToolCall)
+	require.NotNil(t, completeEvent.ToolResult)
+	require.Equal(t, toolCall.CallID, completeEvent.ToolResult.CallID)
+	require.Equal(t, toolCall.Name, completeEvent.ToolResult.Name)
+	require.Equal(t, toolCall.Type, completeEvent.ToolResult.Type)
+	require.Equal(t, "unknown tool", completeEvent.ToolResult.Result)
+	require.True(t, completeEvent.ToolResult.IsError)
+}
+
 func TestSendUserMessageRootEventMetadata(t *testing.T) {
 	systemPrompt := "You are helpful."
 
@@ -825,6 +948,140 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 	if len(a.toolList) != 1 || a.toolList[0] == nil {
 		t.Fatalf("parent tool list unexpectedly mutated: %+v", a.toolList)
 	}
+}
+
+func TestToolEventsCarryResolvedToolForSubAgent(t *testing.T) {
+	rootPrompt := "Root system"
+	childPrompt := "Child system"
+
+	rootToolCall := llmstream.ToolCall{
+		ProviderID: "root-tool-1",
+		CallID:     "root_call",
+		Name:       "spawn_subagent",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	rootToolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{rootToolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	rootFinalText := llmstream.TextContent{ProviderID: "root-final", Content: "Root done"}
+	rootFinalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{rootFinalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	rootConv := newScriptedConversation(rootPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &rootToolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootToolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &rootFinalText, Delta: rootFinalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootFinalTurn},
+			},
+		},
+	)
+
+	childToolCall := llmstream.ToolCall{
+		ProviderID: "child-tool-1",
+		CallID:     "child_call",
+		Name:       "child_tool",
+		Type:       "function_call",
+		Input:      `{"query":"details"}`,
+	}
+	childToolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{childToolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	childFinalText := llmstream.TextContent{ProviderID: "child-final", Content: "Child done"}
+	childFinalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{childFinalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	childConv := newScriptedConversation(childPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &childToolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &childToolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &childFinalText, Delta: childFinalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &childFinalTurn},
+			},
+		},
+	)
+
+	prev := newConversation
+	convs := []llmstream.StreamingConversation{rootConv, childConv}
+	newConversation = func(model llmmodel.ModelID, systemPrompt string) llmstream.StreamingConversation {
+		if len(convs) == 0 {
+			return nil
+		}
+		conv := convs[0]
+		convs = convs[1:]
+		return conv
+	}
+	t.Cleanup(func() {
+		newConversation = prev
+	})
+
+	childTool := newStubTool("child_tool", llmstream.ToolResult{Result: "child ok"})
+	var childEvents []Event
+
+	rootTool := &funcTool{name: "spawn_subagent"}
+	rootTool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		creator := SubAgentCreatorFromContext(ctx)
+		childAgent, err := creator.NewWithDefaultModel(childPrompt, []llmstream.Tool{childTool})
+		require.NoError(t, err)
+
+		childEvents = collectEvents(childAgent.SendUserMessage(ctx, "Run child tool"))
+
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "spawned",
+		}
+	}
+
+	a, err := NewAgent(llmmodel.ModelID("model"), rootPrompt, []llmstream.Tool{rootTool})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	rootEvents := collectEvents(a.SendUserMessage(ctx, "Start"))
+
+	require.NotEmpty(t, childEvents)
+
+	childCallEvent := requireToolEvent(t, childEvents, EventTypeToolCall, childToolCall.CallID, 1)
+	childCompleteEvent := requireToolEvent(t, childEvents, EventTypeToolComplete, childToolCall.CallID, 1)
+
+	require.Same(t, childTool, childCallEvent.Tool)
+	require.Equal(t, childToolCall, *childCallEvent.ToolCall)
+
+	require.Same(t, childTool, childCompleteEvent.Tool)
+	require.Equal(t, childToolCall, *childCompleteEvent.ToolCall)
+	require.NotNil(t, childCompleteEvent.ToolResult)
+	require.Equal(t, childToolCall.CallID, childCompleteEvent.ToolResult.CallID)
+	require.Equal(t, childToolCall.Name, childCompleteEvent.ToolResult.Name)
+	require.Equal(t, childToolCall.Type, childCompleteEvent.ToolResult.Type)
+	require.Equal(t, "child ok", childCompleteEvent.ToolResult.Result)
+
+	mirroredCallEvent := requireToolEvent(t, rootEvents, EventTypeToolCall, childToolCall.CallID, 1)
+	mirroredCompleteEvent := requireToolEvent(t, rootEvents, EventTypeToolComplete, childToolCall.CallID, 1)
+
+	require.Same(t, childTool, mirroredCallEvent.Tool)
+	require.Same(t, childTool, mirroredCompleteEvent.Tool)
 }
 
 func TestSubAgentCreatorPanicsAfterRun(t *testing.T) {
@@ -1471,4 +1728,32 @@ func cloneTurnTest(t llmstream.Turn) llmstream.Turn {
 		cp.Parts = parts
 	}
 	return cp
+}
+
+func collectEvents(ch <-chan Event) []Event {
+	var events []Event
+	for ev := range ch {
+		events = append(events, ev)
+	}
+	return events
+}
+
+func requireToolEvent(t *testing.T, events []Event, eventType EventType, callID string, depth int) Event {
+	t.Helper()
+
+	for _, ev := range events {
+		if ev.Type != eventType {
+			continue
+		}
+		if ev.Agent.Depth != depth {
+			continue
+		}
+		if ev.ToolCall == nil || ev.ToolCall.CallID != callID {
+			continue
+		}
+		return ev
+	}
+
+	t.Fatalf("missing %s event for call %q at depth %d", eventType, callID, depth)
+	return Event{}
 }

@@ -28,7 +28,7 @@ type Event struct {
 	UserMessage      string
 	TextContent      llmstream.TextContent
 	ReasoningContent llmstream.ReasoningContent
-	Tool             string
+	Tool             llmstream.Tool
 	ToolCall         *llmstream.ToolCall
 	ToolResult       *llmstream.ToolResult
 	Turn             *llmstream.Turn
