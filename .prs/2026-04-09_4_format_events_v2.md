@@ -75,6 +75,12 @@ Out of scope:
 - Delete the existing `Event.Tool string` field and replace it with `Event.Tool llmstream.Tool`.
 - Add focused tests covering event emission with tool references for both root-agent and subagent tool activity.
 
+### [DONE] Compatibility follow-up for `internal/agentformatter`, `internal/tui`, and `internal/noninteractive`
+
+- Updated `internal/agentformatter` helpers and tests to stop treating `Event.Tool` as a string, while keeping the existing tool-specific rendering paths intact for now.
+- Updated `internal/tui` replace-vs-append behavior to consult `ev.Tool.Presenter().Present(...).Behavior` instead of a hard-coded subagent tool-name list.
+- Verified the mechanical `Event.Tool` migration through focused formatter/TUI tests and broader `internal/noninteractive/...` coverage so the branch compiles and downstream consumers keep working before the deeper presenter-rendering refactor.
+
 ### `internal/tools/...` and `internal/agentbuilder`
 
 - Give built-in tools presenters that describe their own semantic display instead of relying on `internal/agentformatter` name switches.
@@ -426,6 +432,11 @@ Important compatibility constraints:
 
 - Not run yet.
 
+## Learnings
+
+- The `Event.Tool` type migration can be landed incrementally: formatter and TUI compatibility updates unblock compilation and downstream tests even before `internal/agentformatter` fully renders from semantic `Presentation` blocks.
+- `internal/tui`'s replace-vs-append policy cleanly depends only on presenter completion behavior; it does not need the larger formatter refactor to drop the hard-coded subagent list.
+
 ## Summary
 
 - Implemented the `llmstream` presentation foundation:
@@ -437,4 +448,9 @@ Important compatibility constraints:
   - changed `agent.Event.Tool` from a string to the concrete `llmstream.Tool`
   - tool-call and tool-complete events now attach the resolved tool instance when known, or `nil` when unknown
   - added focused tests covering resolved-tool events for root-agent and subagent tool activity, plus the unknown-tool fallback
-- Kept formatter/TUI/noninteractive behavior unchanged in this step. Downstream packages still need to switch from tool-name strings to `llmstream.Tool` references before broader repo tests will pass again.
+- Landed the formatter/TUI compatibility follow-up:
+  - `internal/agentformatter` no longer assumes `Event.Tool` is a string, and its tests now rely on `ToolCall` / `ToolResult` names unless a concrete tool is required
+  - `internal/tui` now decides replace-vs-append from presenter completion behavior instead of a hard-coded subagent tool-name list
+  - updated `internal/tui/SPEC.md` to describe the new presenter-behavior rule
+  - verified `go test ./internal/agentformatter ./internal/tui` and `go test ./internal/noninteractive/...`
+- The deeper `internal/agentformatter` refactor to render directly from semantic `Presentation` data is still pending, along with tool-owned concrete presenters beyond the current generic/default helpers.
