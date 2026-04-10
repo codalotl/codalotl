@@ -42,6 +42,10 @@ func (t *toolApplyPatch) Name() string {
 	return ToolNameApplyPatch
 }
 
+func (t *toolApplyPatch) Presenter() llmstream.Presenter {
+	return llmstream.NewDefaultToolPresenter()
+}
+
 func (t *toolApplyPatch) Info() llmstream.ToolInfo {
 	if t.useFreeform {
 		// NOTE: custom tools don't currently support request_permission...

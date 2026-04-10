@@ -1395,6 +1395,10 @@ func (s *stubTool) Info() llmstream.ToolInfo { return s.info }
 
 func (s *stubTool) Name() string { return s.name }
 
+func (s *stubTool) Presenter() llmstream.Presenter {
+	return llmstream.NewDefaultToolPresenter()
+}
+
 func (s *stubTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	if s.runErr != nil {
 		res := llmstream.NewErrorToolResult(s.runErr.Error(), call)
@@ -1425,6 +1429,10 @@ func (t *funcTool) Info() llmstream.ToolInfo {
 }
 
 func (t *funcTool) Name() string { return t.name }
+
+func (t *funcTool) Presenter() llmstream.Presenter {
+	return llmstream.NewDefaultToolPresenter()
+}
 
 func (t *funcTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	if t.runFn == nil {

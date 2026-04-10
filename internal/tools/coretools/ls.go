@@ -42,6 +42,10 @@ func (t *toolLs) Name() string {
 	return ToolNameLS
 }
 
+func (t *toolLs) Presenter() llmstream.Presenter {
+	return llmstream.NewDefaultToolPresenter()
+}
+
 func (t *toolLs) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameLS,

@@ -30,17 +30,17 @@ Currently only supported for:
 - OpenAI responses
 
 ```go {api}
-
-// DiagnosticHookReceiver receives AddTurn calls with a request/response pair. The request is the JSON-ish into, for instance, OpenAI's /v1/responses. The response is the completed response object (or potentially, an error object).
-// Even though responses are streamed, the `response` here represents the completed object, as if there was no streaming (ex: `{"id": "resp_123", "object": "response", ...}`).
+// DiagnosticHookReceiver receives AddTurn calls with a request/response pair. The request is the JSON-ish into, for instance, OpenAI's /v1/responses. The response
+// is the completed response object (or potentially, an error object). Even though responses are streamed, the `response` here represents the completed object, as
+// if there was no streaming (ex: `{"id": "resp_123", "object": "response", ...}`).
 //
 // This method may be called eagerly as soon as we know the response object, but must be called before SendAsync returns.
 type DiagnosticHookReceiver interface {
 	AddTurn(request map[string]any, response map[string]any)
 }
 
-// AddDiagnosticHook adds recv to a list of hook receivers, which will be called when a turn is complete (we have a request/response pair).
-// It returns an unregister function that removes this hook. The unregister function is safe to call multiple times.
+// AddDiagnosticHook adds recv to a list of hook receivers, which will be called when a turn is complete (we have a request/response pair). It returns an unregister
+// function that removes this hook. The unregister function is safe to call multiple times.
 func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 ```
 

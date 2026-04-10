@@ -48,6 +48,10 @@ func (t *toolReadFile) Name() string {
 	return ToolNameReadFile
 }
 
+func (t *toolReadFile) Presenter() llmstream.Presenter {
+	return llmstream.NewDefaultToolPresenter()
+}
+
 func (t *toolReadFile) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameReadFile,

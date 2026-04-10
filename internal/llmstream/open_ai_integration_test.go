@@ -615,6 +615,8 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 // integrationTestTool implements Tool for integration testing.
 type integrationTestTool struct{ name string }
 
+func (integrationTestTool) Presenter() Presenter { return NewDefaultToolPresenter() }
+
 func (integrationTestTool) Run(ctx context.Context, params ToolCall) ToolResult {
 	return ToolResult{CallID: params.CallID, Name: params.Name, Type: params.Type, Result: "success"}
 }
@@ -641,6 +643,8 @@ type getWeatherTestTool struct {
 	fixedTemp string
 }
 
+func (getWeatherTestTool) Presenter() Presenter { return NewDefaultToolPresenter() }
+
 func (g getWeatherTestTool) Run(ctx context.Context, params ToolCall) ToolResult {
 	return ToolResult{CallID: params.CallID, Name: params.Name, Type: params.Type, Result: g.fixedTemp}
 }
@@ -662,6 +666,8 @@ func (g getWeatherTestTool) Info() ToolInfo {
 }
 
 type grammarTestTool struct{ name string }
+
+func (grammarTestTool) Presenter() Presenter { return NewDefaultToolPresenter() }
 
 func (grammarTestTool) Run(ctx context.Context, call ToolCall) ToolResult {
 	raw := strings.TrimSpace(call.Input)
@@ -696,6 +702,8 @@ func (g grammarTestTool) Info() ToolInfo {
 
 // twoParamTool has two string parameters where only one is required. This exercises strict=true behavior with an optional nullable param.
 type twoParamTool struct{ name string }
+
+func (twoParamTool) Presenter() Presenter { return NewDefaultToolPresenter() }
 
 func (t twoParamTool) Run(ctx context.Context, call ToolCall) ToolResult {
 	return ToolResult{CallID: call.CallID, Name: call.Name, Type: call.Type, Result: "ok"}
@@ -779,6 +787,8 @@ Do not include any assistant text outside of the tool call.`
 
 // noParamTool exposes a function tool with no parameters.
 type noParamTool struct{ name string }
+
+func (noParamTool) Presenter() Presenter { return NewDefaultToolPresenter() }
 
 func (n noParamTool) Run(ctx context.Context, call ToolCall) ToolResult {
 	return ToolResult{CallID: call.CallID, Name: call.Name, Type: call.Type, Result: "ok"}

@@ -41,6 +41,10 @@ func (t *toolFixLints) Name() string {
 	return ToolNameFixLints
 }
 
+func (t *toolFixLints) Presenter() llmstream.Presenter {
+	return llmstream.NewDefaultToolPresenter()
+}
+
 func (t *toolFixLints) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameFixLints,

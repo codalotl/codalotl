@@ -35,6 +35,9 @@ func NewDeleteTool(authorizer authdomain.Authorizer) llmstream.Tool {
 func (t *toolDelete) Name() string {
 	return ToolNameDelete
 }
+func (t *toolDelete) Presenter() llmstream.Presenter {
+	return llmstream.NewDefaultToolPresenter()
+}
 func (t *toolDelete) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameDelete,
