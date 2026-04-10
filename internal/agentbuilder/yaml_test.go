@@ -362,6 +362,29 @@ tools:
 	assert.Contains(t, result.Result, "hello|"+sandbox+"|")
 }
 
+func TestYAMLCommandToolPresenter_UsesReplaceStyleGenericPresentation(t *testing.T) {
+	call := llmstream.ToolCall{
+		CallID: "echo-call",
+		Name:   "echo_value",
+		Type:   "function_call",
+		Input:  `{"value":"hello"}`,
+	}
+	result := &llmstream.ToolResult{
+		CallID: "echo-call",
+		Name:   "echo_value",
+		Type:   "function_call",
+		Result: "<command>hello</command>",
+	}
+
+	tool := &yamlCommandTool{
+		info: llmstream.ToolInfo{Name: "echo_value"},
+	}
+
+	presentation := tool.Presenter().Present(call, result)
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, llmstream.NewDefaultToolPresenter().Present(call, result), presentation)
+}
+
 func TestYAMLSubagentToolRun_RendersMessagesFromTextFileAndCommand(t *testing.T) {
 	registry, err := BuildRegistry()
 	require.NoError(t, err)
@@ -446,6 +469,29 @@ tools:
 		"file=hello|sandbox=" + sandbox + "|pkg=pkg\n",
 		"command=hello|sandbox=" + sandbox + "|pkg=pkg",
 	}, invoker.lastRequest.Messages)
+}
+
+func TestYAMLSubagentToolPresenter_UsesAppendStyleGenericPresentation(t *testing.T) {
+	call := llmstream.ToolCall{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Input:  `{"base":"main"}`,
+	}
+	result := &llmstream.ToolResult{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Result: `{"ok":true}`,
+	}
+
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{Name: "review"},
+	}
+
+	presentation := tool.Presenter().Present(call, result)
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, presentation.Behavior)
+	assert.Equal(t, llmstream.NewAppendToolPresenter().Present(call, result), presentation)
 }
 
 func TestAddYAMLToRegistry_RejectsInvalidSubagentMessageConfiguration(t *testing.T) {

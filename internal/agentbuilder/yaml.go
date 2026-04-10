@@ -904,7 +904,7 @@ func (t *yamlSubagentTool) Name() string {
 }
 
 func (t *yamlSubagentTool) Presenter() llmstream.Presenter {
-	return llmstream.NewDefaultToolPresenter()
+	return llmstream.NewAppendToolPresenter()
 }
 
 func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
