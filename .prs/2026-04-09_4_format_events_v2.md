@@ -63,7 +63,7 @@ Out of scope:
   - orchestrator `implement` / `review`
   - YAML-backed command tools and YAML-backed subagent tools
 
-### `internal/llmstream`
+### [DONE] `internal/llmstream`
 
 - Extend `llmstream.Tool` with `Presenter() Presenter`.
 - Put the semantic presentation types directly in `internal/llmstream`; do not add a separate `internal/toolpresentation` package.
@@ -428,4 +428,9 @@ Important compatibility constraints:
 
 ## Summary
 
-- Planning step only. No implementation yet.
+- Implemented the `llmstream` presentation foundation:
+  - added `Presenter`, `Presentation`, block/line/segment types, and completion behavior in `internal/llmstream`
+  - extended `llmstream.Tool` with `Presenter() Presenter`
+  - added generic default/append presenter helpers plus focused `internal/llmstream` tests
+- Added compile-safe `Presenter()` implementations across current concrete tool types and relevant test doubles so the repo builds and tests again.
+- Kept formatter/TUI/noninteractive behavior unchanged in this step. Tool-specific semantic presentation and event-plumbing work are still pending.
