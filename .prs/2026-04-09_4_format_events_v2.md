@@ -179,7 +179,7 @@ const (
 	RoleEmphasis SegmentRole = "emphasis"
 )
 
-// Block is implemented by Paragraph, Checklist, and Output.
+// Block is implemented by Paragraph, Checklist, Output, and Diff.
 type Block interface{ isBlock() }
 
 // Paragraph implements Block.
@@ -223,6 +223,42 @@ const (
 	OutputRoleError   OutputRole = "error"
 	OutputRoleAccent  OutputRole = "accent"
 )
+
+// Diff implements Block.
+type Diff struct {
+	Files []DiffFile
+}
+
+type DiffFile struct {
+	Kind       DiffFileKind
+	Path       string
+	ToPath     string
+	ReplaceAll bool
+	Lines      []DiffLine
+}
+
+type DiffFileKind string
+
+const (
+	DiffFileAdd        DiffFileKind = "add"
+	DiffFileDelete     DiffFileKind = "delete"
+	DiffFileEdit       DiffFileKind = "edit"
+	DiffFileRenameOnly DiffFileKind = "rename_only"
+)
+
+type DiffLine struct {
+	Kind DiffLineKind
+	Text string
+}
+
+type DiffLineKind string
+
+const (
+	DiffLineContext DiffLineKind = "context"
+	DiffLineAdd     DiffLineKind = "add"
+	DiffLineRemove  DiffLineKind = "remove"
+	DiffLineGap     DiffLineKind = "gap"
+)
 ```
 
 Semantics:
@@ -235,6 +271,7 @@ This is intentionally not a general-purpose markdown/HTML AST. It only models th
 - explanatory paragraphs
 - checklist items
 - literal/summarized output lines
+- compact file-change diffs
 
 ### Why put the tool on the event
 
@@ -319,7 +356,8 @@ JSON output should stay raw/stable:
 Built-in Go tools should each own a small presenter implementation near the tool code.
 
 That means:
-- `shell`, `ls`, `read_file`, `edit`, `write`, `delete`, `apply_patch` keep the same user-visible summaries they already have
+- `shell`, `ls`, `read_file` keep the same user-visible summaries they already have
+- `edit`, `write`, `delete`, and `apply_patch` should present as `Summary + Diff`, with one `DiffFile` per changed file
 - `diagnostics`, `fix_lints`, `run_tests`, `run_project_tests`, `module_info`, `get_public_api`, `get_usage`, `update_plan` move their tool-specific result parsing into presenter code owned by those tools (or adjacent helper files in their packages)
 - `clarify_public_api`, `update_usage`, `change_api`, `implement`, and `review` explicitly return:
   - `Behavior: CompletionBehaviorAppend`
@@ -354,7 +392,10 @@ If we later want richer YAML presentation, that can be an additive follow-up on 
 ### Mental check against current tools
 
 Shell / file / edit tools:
-- `shell`, `ls`, `read_file`, `edit`, `write`, `delete`, `apply_patch` all fit `Summary + Output`.
+- `shell`, `ls`, and `read_file` fit `Summary + Output`.
+- `edit`, `write`, `delete`, and `apply_patch` need `Summary + Diff`, not generic `Output`.
+- This is important for multi-file `apply_patch`: one event can render multiple file-level changes, each with its own header and diff lines.
+- `DiffLineGap` covers the current rendered `⋮` between hunks; hunk headers like `@@` remain omitted from semantic presentation.
 - success/failure bullet coloring is preserved by semantic roles and output roles.
 - `authdomain.ErrCodeUnitPathOutside` remains representable because the presenter sees `ToolResult.SourceErr`.
 
