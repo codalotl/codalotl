@@ -175,7 +175,7 @@ Phase 5: tbd, don't plan here yet
 - Add or update focused tests in `internal/tools/coretools`, `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` as needed to cover the new event payload and read-file presenter path.
 - Run targeted package tests while implementing each phase; keep a final broader test pass for after the consumer and formatter changes settle.
 
-### Phase 4 - internal/tools/coretools: ls
+### [DONE] Phase 4 - internal/tools/coretools: ls
 
 - Move `ls` formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add a replace-style `Presenter` for `ls` that preserves the current `List <path>` summary and current formatter-owned error handling.
