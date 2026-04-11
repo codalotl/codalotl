@@ -144,6 +144,27 @@ Phase 4: tbd, don't plan here yet
 - Keep `Presentation.Body` as `[]Block` unless implementation reality shows a blocker; add missing block/value types such as diff- and output-oriented structures.
 - Add focused tests around new presentation primitives and any parsing/rendering assumptions moved into shared types.
 
+### Phase 2 - internal/agent
+
+- Change `agent.Event.Tool` from tool name string to `llmstream.Tool`, and have agent-emitted tool events carry the concrete tool object that produced the call/result.
+- Update `internal/agent/SPEC.md` and focused agent tests for the public API change while keeping non-tool events unchanged.
+
+### Phase 2 - Event consumers and helpers
+
+- Update `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` to compile against `Event.Tool llmstream.Tool` while preserving current human-readable output, JSON output, and timer/replace behavior.
+- Update fakes, fixtures, and targeted tests that currently construct tool events with only a tool name string.
+
+### Phase 3 - internal/tools/coretools and internal/agentformatter
+
+- Implement a `Presenter` for `read_file` in `internal/tools/coretools`, keeping the underlying tool result payload unchanged.
+- Update `internal/agentformatter` to prefer tool-owned presentation when `Event.Tool` exposes a non-nil presenter, and remove the dedicated `read_file` formatter path.
+- Preserve existing replace-style completion semantics for `read_file`; defer broader presenter adoption and append-style subagent behavior to later phases.
+
+### Phase 3 - validation
+
+- Add or update focused tests in `internal/tools/coretools`, `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` as needed to cover the new event payload and read-file presenter path.
+- Run targeted package tests while implementing each phase; keep a final broader test pass for after the consumer and formatter changes settle.
+
 ## Decisions
 
 - Phase 0 is API plumbing only. Tool-owned rendering and completion-behavior changes stay out of scope until phase 1.
