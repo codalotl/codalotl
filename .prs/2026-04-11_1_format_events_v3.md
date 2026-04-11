@@ -181,7 +181,7 @@ Phase 5: tbd, don't plan here yet
 - Add a replace-style `Presenter` for `ls` that preserves the current `List <path>` summary and current formatter-owned error handling.
 - Add focused `internal/tools/coretools` coverage for the presenter shape and fallback behavior.
 
-### Phase 4 - internal/tools/coretools: shell
+### [DONE] Phase 4 - internal/tools/coretools: shell
 
 - Move `shell` formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add a presenter that renders `Running <command>` while in progress and `Ran <command>` on completion, while preserving current shared output/error handling.
