@@ -25,6 +25,10 @@ Some LLMs are trained to use specific tools, and will do so better than other LL
 
 Presentation: `Read path/to/file.go`
 
+### ls
+
+Presentation: `List some/path`
+
 ### edit
 
 The `edit` tool edits files by find and replace. Applies it with `applypatch.Replace`.

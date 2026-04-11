@@ -175,6 +175,23 @@ Phase 5: tbd, don't plan here yet
 - Add or update focused tests in `internal/tools/coretools`, `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` as needed to cover the new event payload and read-file presenter path.
 - Run targeted package tests while implementing each phase; keep a final broader test pass for after the consumer and formatter changes settle.
 
+### Phase 4 - internal/tools/coretools: ls
+
+- Move `ls` formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add a replace-style `Presenter` for `ls` that preserves the current `List <path>` summary and current formatter-owned error handling.
+- Add focused `internal/tools/coretools` coverage for the presenter shape and fallback behavior.
+
+### Phase 4 - internal/tools/coretools: remaining core tools
+
+- Migrate `shell`, `skill_shell`, `update_plan`, `apply_patch`, `edit`, `write`, and `delete` one tool at a time, with one implementation commit per tool.
+- Move each migrated tool's formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add focused presenter coverage per migrated tool; keep formatter cleanup separate.
+
+### Phase 4 - internal/agentformatter
+
+- Remove explicit formatter branches for migrated coretools once presenter coverage is in place.
+- Preserve generic fallback behavior, out-of-package errors, and shared completion/error rendering that presenter-owned summaries still rely on.
+
 ## Learnings
 
 - `implement` targeted at `internal/tools/coretools` could not also modify `internal/agentformatter`, so Phase 3 needs separate implementation steps for the tool package and the formatter package.
