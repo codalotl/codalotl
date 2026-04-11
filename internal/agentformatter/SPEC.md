@@ -165,8 +165,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 
 ### Presenter-driven tool formatting
 
-- If `Event.Tool` exposes a non-nil `Presenter`, formatter may render from that semantic presentation instead of a hard-coded tool-name branch.
-- Presenter-driven rendering must preserve the documented visible output shape for tools with dedicated sections here.
+- If `Event.Tool` exposes a non-nil `Presenter`, formatter must render from that semantic presentation.
 
 ### EventTypeToolCall and EventTypeToolComplete - ls
 
