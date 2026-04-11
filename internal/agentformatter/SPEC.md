@@ -166,15 +166,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 ### Presenter-driven tool formatting
 
 - If `Event.Tool` exposes a non-nil `Presenter`, formatter must render from that semantic presentation.
-
-### EventTypeToolCall and EventTypeToolComplete - ls
-
-```
-• List some/path 
-```
-
-- Bullet indicates status (Accent -> Red or Green). Green shows no output.
-- List is Bold, Colorful. some/path is normal.
+- Do not keep parallel per-tool formatting specs here once a tool package owns its presentation.
 
 ### EventTypeToolCall and EventTypeToolComplete - read_file
 

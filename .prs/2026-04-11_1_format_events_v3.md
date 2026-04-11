@@ -187,7 +187,12 @@ Phase 5: tbd, don't plan here yet
 - Move each migrated tool's formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add focused presenter coverage per migrated tool; keep formatter cleanup separate.
 
-### Phase 4 - internal/agentformatter
+### Phase 4 - internal/agentformatter: ls
+
+- Remove explicit `ls` formatter branches now that `internal/tools/coretools` owns the replace-style presenter.
+- Update focused formatter tests so `ls` coverage exercises presenter-driven rendering rather than formatter-owned path parsing.
+
+### Phase 4 - internal/agentformatter: remaining migrated coretools
 
 - Remove explicit formatter branches for migrated coretools once presenter coverage is in place.
 - Preserve generic fallback behavior, out-of-package errors, and shared completion/error rendering that presenter-owned summaries still rely on.
