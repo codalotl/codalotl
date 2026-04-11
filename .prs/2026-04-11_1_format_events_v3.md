@@ -102,21 +102,21 @@ Phase 1: tbd, do not add to plan yet
 
 ## Plan
 
-### internal/llmstream
+### [DONE] internal/llmstream
 
 - Add the phase-0 presentation types and extend `Tool` with `Presenter() Presenter`.
 - Keep phase-0 behavior inert: `nil` presenters are allowed and should preserve current tool execution semantics.
 - Update the package spec for the public API change and add focused coverage around the expanded tool contract.
 
-### Tool implementations and test doubles
+### [DONE] Tool implementations and test doubles
 
 - Update concrete tool implementations in `internal/tools/coretools`, `internal/tools/exttools`, `internal/tools/pkgtools`, and dynamic tools in `internal/agentbuilder` to satisfy the new interface by returning `nil`.
 - Update test helper tools and stubs across affected packages so the repo builds and tests with the new interface.
 
-### Event consumers
+### [DONE] Event consumers
 
 - Keep `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` behavior unchanged in phase 0; they should compile against the new interface but not consume presenters yet.
-- Run targeted package tests covering the interface change and unchanged tool-event formatting paths.
+- Verify the phase-0 plumbing and unchanged consumers with `go test ./...`.
 
 ## Decisions
 
