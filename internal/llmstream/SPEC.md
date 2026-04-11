@@ -151,8 +151,9 @@ type ToolInfo struct {
 // A Presenter can present a tool call (and optional result) in a "semantic" way - a tree representation that can be further styled for different modalities. As
 // an analogy, it's the HTML (but not the CSS) of underlying data.
 type Presenter interface {
-	// Present presents call and result in a semantic way (no width decisions, no assumptions about ANSI terminals, colors). Result == nil means the tool call is in
-	// progress; otherwise its complete.
+	// Present presents call and result in a semantic way (no width decisions, no assumptions about ANSI terminals, colors). To present a tool call (no result yet),
+	// call Present(call, nil). To present a call with result, call Present(call, result). For instance, for a read file tool, the call might return the equivalent of
+	// "Reading file.go". The result might return the equivalent of "Read file.go (123 bytes)".
 	Present(call ToolCall, result *ToolResult) Presentation
 }
 
