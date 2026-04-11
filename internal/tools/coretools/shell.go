@@ -214,3 +214,50 @@ func (t *toolShell) normalizeCwd(cwd string) (string, error) {
 
 	return absPath, nil
 }
+
+var shellPresenterInstance llmstream.Presenter = shellPresenter{}
+
+type shellPresenter struct{}
+
+func (p shellPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Running"
+	if result != nil {
+		action = "Ran"
+	}
+
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: action, Role: llmstream.RoleAction},
+				{Text: shellPresenterCommand(call), Role: llmstream.RoleNormal},
+			},
+		},
+	}
+}
+
+func shellPresenterCommand(call llmstream.ToolCall) string {
+	var params shellParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err == nil {
+		if command, ok := joinShellCommand(params.Command); ok {
+			return command
+		}
+	}
+
+	name := strings.TrimSpace(call.Name)
+	if name == "" {
+		name = ToolNameShell
+	}
+	return name
+}
+
+func joinShellCommand(argv []string) (string, bool) {
+	if len(argv) == 0 {
+		return "", false
+	}
+	if strings.TrimSpace(argv[0]) == "" {
+		return "", false
+	}
+	return strings.Join(argv, " "), true
+}
