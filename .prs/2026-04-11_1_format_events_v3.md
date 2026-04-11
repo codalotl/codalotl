@@ -154,9 +154,13 @@ Phase 4: tbd, don't plan here yet
 - Update `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` to compile against `Event.Tool llmstream.Tool` while preserving current human-readable output, JSON output, and timer/replace behavior.
 - Update fakes, fixtures, and targeted tests that currently construct tool events with only a tool name string.
 
-### Phase 3 - internal/tools/coretools and internal/agentformatter
+### [DONE] Phase 3 - internal/tools/coretools
 
 - Implement a `Presenter` for `read_file` in `internal/tools/coretools`, keeping the underlying tool result payload unchanged.
+- Add focused `internal/tools/coretools` coverage for the new presenter shape and replace behavior.
+
+### Phase 3 - internal/agentformatter
+
 - Update `internal/agentformatter` to prefer tool-owned presentation when `Event.Tool` exposes a non-nil presenter, and remove the dedicated `read_file` formatter path.
 - Preserve existing replace-style completion semantics for `read_file`; defer broader presenter adoption and append-style subagent behavior to later phases.
 
@@ -164,6 +168,10 @@ Phase 4: tbd, don't plan here yet
 
 - Add or update focused tests in `internal/tools/coretools`, `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` as needed to cover the new event payload and read-file presenter path.
 - Run targeted package tests while implementing each phase; keep a final broader test pass for after the consumer and formatter changes settle.
+
+## Learnings
+
+- `implement` targeted at `internal/tools/coretools` could not also modify `internal/agentformatter`, so Phase 3 needs separate implementation steps for the tool package and the formatter package.
 
 ## Decisions
 
