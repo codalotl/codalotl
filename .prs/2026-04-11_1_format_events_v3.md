@@ -98,7 +98,16 @@ Phase 0:
 - Add the Presenter interface to llmstream and tool definition.
 - Each Tool in the codebase can just return a nil presenter
 
-Phase 1: tbd, do not add to plan yet
+Phase 1:
+- Refine Presenter interface.
+- Go through each tool in agentformatter and make sure it's representable by a Presentation.
+    - For instance, we probably need type Diff struct
+    - need a way to display command output
+    - etc
+- Evaluate whehter we need `Body     []Block` vs just `Body     Block`
+- Don't edit the SPEC.md of llmstream unless we change existing stuff there (ex: if we change Body to non-array). If you add a Diff type for instance, don't add it to spec.md. The SPEC.md isn't meant to be exhaustive.
+
+Phase 2: tbd, don't start/plan yet
 
 ## Plan
 
