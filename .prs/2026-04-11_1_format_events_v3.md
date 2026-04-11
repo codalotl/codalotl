@@ -111,21 +111,47 @@ Phase 2: tbd, don't start/plan yet
 
 ## Plan
 
-### [DONE] internal/llmstream
+### [DONE] Phase 0 - internal/llmstream
 
 - Add the phase-0 presentation types and extend `Tool` with `Presenter() Presenter`.
 - Keep phase-0 behavior inert: `nil` presenters are allowed and should preserve current tool execution semantics.
 - Update the package spec for the public API change and add focused coverage around the expanded tool contract.
 
-### [DONE] Tool implementations and test doubles
+### [DONE] Phase 0 - Tool implementations and test doubles
 
 - Update concrete tool implementations in `internal/tools/coretools`, `internal/tools/exttools`, `internal/tools/pkgtools`, and dynamic tools in `internal/agentbuilder` to satisfy the new interface by returning `nil`.
 - Update test helper tools and stubs across affected packages so the repo builds and tests with the new interface.
 
-### [DONE] Event consumers
+### [DONE] Phase 0 - Event consumers
 
 - Keep `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` behavior unchanged in phase 0; they should compile against the new interface but not consume presenters yet.
 - Verify the phase-0 plumbing and unchanged consumers with `go test ./...`.
+
+### Phase 1 - internal/llmstream
+
+- Refine the presentation tree so every current tool shape in `internal/agentformatter` is representable semantically.
+- Keep `Presentation.Body` as `[]Block` unless implementation reality shows a blocker; add missing block/value types such as diff- and output-oriented structures.
+- Add focused tests around new presentation primitives and any parsing/rendering assumptions moved into shared types.
+
+### Phase 1 - internal/tools/coretools
+
+- Implement presenters for `shell`, `skill_shell`, `ls`, `read_file`, `update_plan`, `apply_patch`, `edit`, `write`, and `delete`.
+- Preserve current event semantics, including replace-vs-append behavior and concise error presentations.
+
+### Phase 1 - internal/tools/exttools
+
+- Implement presenters for `diagnostics`, `fix_lints`, `run_tests`, and `run_project_tests`.
+- Encode their special summary/result shapes semantically rather than relying on `agentformatter`-specific parsing.
+
+### Phase 1 - internal/tools/pkgtools and internal/agentbuilder
+
+- Implement presenters for package/orchestrator tools (`get_public_api`, `clarify_public_api`, `get_usage`, `module_info`, `update_usage`, `change_api`, `review`, `implement`) plus dynamic subagent tooling.
+- Keep raw tool results unchanged while making concise summaries available through presentations.
+
+### Phase 1 - validation
+
+- Add or update targeted tests in the touched packages.
+- Defer consumer-side rendering changes to a later phase unless required to keep Phase 1 coherent.
 
 ## Decisions
 
