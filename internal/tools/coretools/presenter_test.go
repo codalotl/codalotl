@@ -6,6 +6,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestToolsPresenterIsNil(t *testing.T) {
@@ -18,7 +19,6 @@ func TestToolsPresenterIsNil(t *testing.T) {
 		NewDeleteTool(auth),
 		NewEditTool(auth),
 		NewLsTool(auth),
-		NewReadFileTool(auth),
 		NewShellTool(auth),
 		NewSkillShellTool(auth),
 		NewUpdatePlanTool(auth),
@@ -28,4 +28,44 @@ func TestToolsPresenterIsNil(t *testing.T) {
 	for _, tool := range tools {
 		assert.Nil(t, tool.Presenter())
 	}
+}
+
+func TestReadFilePresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameReadFile,
+		Input: `{"path":"some/file.txt","line_numbers":true}`,
+	}
+	result := &llmstream.ToolResult{Name: ToolNameReadFile, Result: "<file>ignored</file>"}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
+	assert.Equal(t, callPresentation, resultPresentation)
+	require.Len(t, callPresentation.Summary.Segments, 2)
+	assert.Equal(t, llmstream.RoleAction, callPresentation.Summary.Segments[0].Role)
+	assert.Equal(t, "Read", callPresentation.Summary.Segments[0].Text)
+	assert.Equal(t, llmstream.RoleNormal, callPresentation.Summary.Segments[1].Role)
+	assert.Equal(t, " some/file.txt", callPresentation.Summary.Segments[1].Text)
+	assert.Empty(t, callPresentation.Body)
+}
+
+func TestReadFilePresenter_FallsBackToToolName(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewReadFileTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	presentation := presenter.Present(llmstream.ToolCall{Name: ToolNameReadFile, Input: `{"path":"   "}`}, nil)
+	require.Len(t, presentation.Summary.Segments, 2)
+	assert.Equal(t, " read_file", presentation.Summary.Segments[1].Text)
 }
