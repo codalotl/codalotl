@@ -107,7 +107,18 @@ Phase 1:
 - Evaluate whehter we need `Body     []Block` vs just `Body     Block`
 - Don't edit the SPEC.md of llmstream unless we change existing stuff there (ex: if we change Body to non-array). If you add a Diff type for instance, don't add it to spec.md. The SPEC.md isn't meant to be exhaustive.
 
-Phase 2: tbd, don't start/plan yet
+Phase 2:
+- Update internal/agent: change Event's `Tool             string` to `Tool             llmstream.Tool`
+- Update callsites
+
+Phase 3:
+- Use this for a single tool. Let's just pick read_file.
+- The read_file tool should define its presenter.
+- update agentformatter as follows:
+    - Remove explicit handling of read_file
+    - If the event's tool has a presenter, use that.
+
+Phase 4: tbd, don't plan here yet
 
 ## Plan
 
@@ -132,26 +143,6 @@ Phase 2: tbd, don't start/plan yet
 - Refine the presentation tree so every current tool shape in `internal/agentformatter` is representable semantically.
 - Keep `Presentation.Body` as `[]Block` unless implementation reality shows a blocker; add missing block/value types such as diff- and output-oriented structures.
 - Add focused tests around new presentation primitives and any parsing/rendering assumptions moved into shared types.
-
-### Phase 1 - internal/tools/coretools
-
-- Implement presenters for `shell`, `skill_shell`, `ls`, `read_file`, `update_plan`, `apply_patch`, `edit`, `write`, and `delete`.
-- Preserve current event semantics, including replace-vs-append behavior and concise error presentations.
-
-### Phase 1 - internal/tools/exttools
-
-- Implement presenters for `diagnostics`, `fix_lints`, `run_tests`, and `run_project_tests`.
-- Encode their special summary/result shapes semantically rather than relying on `agentformatter`-specific parsing.
-
-### Phase 1 - internal/tools/pkgtools and internal/agentbuilder
-
-- Implement presenters for package/orchestrator tools (`get_public_api`, `clarify_public_api`, `get_usage`, `module_info`, `update_usage`, `change_api`, `review`, `implement`) plus dynamic subagent tooling.
-- Keep raw tool results unchanged while making concise summaries available through presentations.
-
-### Phase 1 - validation
-
-- Add or update targeted tests in the touched packages.
-- Defer consumer-side rendering changes to a later phase unless required to keep Phase 1 coherent.
 
 ## Decisions
 
