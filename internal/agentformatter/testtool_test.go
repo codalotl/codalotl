@@ -7,7 +7,8 @@ import (
 )
 
 type fakeTool struct {
-	name string
+	name      string
+	presenter llmstream.Presenter
 }
 
 func (t fakeTool) Info() llmstream.ToolInfo {
@@ -19,7 +20,7 @@ func (t fakeTool) Name() string {
 }
 
 func (t fakeTool) Presenter() llmstream.Presenter {
-	return nil
+	return t.presenter
 }
 
 func (t fakeTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
@@ -28,4 +29,8 @@ func (t fakeTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult 
 
 func testTool(name string) llmstream.Tool {
 	return fakeTool{name: name}
+}
+
+func testToolWithPresenter(name string, presenter llmstream.Presenter) llmstream.Tool {
+	return fakeTool{name: name, presenter: presenter}
 }

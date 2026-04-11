@@ -311,14 +311,87 @@ func toolDisplayName(e agent.Event) string {
 	return sanitizeText(name)
 }
 
+func presenterReplacePresentation(e agent.Event) (llmstream.Presentation, bool) {
+	if e.Tool == nil || e.ToolCall == nil {
+		return llmstream.Presentation{}, false
+	}
+
+	presenter := e.Tool.Presenter()
+	if presenter == nil {
+		return llmstream.Presentation{}, false
+	}
+
+	var result *llmstream.ToolResult
+	if e.Type == agent.EventTypeToolComplete {
+		result = e.ToolResult
+	}
+
+	presentation := presenter.Present(*e.ToolCall, result)
+	if presentation.Behavior != llmstream.CompletionBehaviorReplace {
+		return llmstream.Presentation{}, false
+	}
+	if len(presentation.Summary.Segments) == 0 {
+		return llmstream.Presentation{}, false
+	}
+
+	return presentation, true
+}
+
+func presentationSegmentStyle(role llmstream.SegmentRole) runeStyle {
+	switch role {
+	case llmstream.RoleAccent:
+		return runeStyle{color: colorAccent}
+	case llmstream.RoleAction:
+		return runeStyle{color: colorColorful, bold: true}
+	case llmstream.RoleSuccess:
+		return runeStyle{color: colorGreen}
+	case llmstream.RoleError:
+		return runeStyle{color: colorRed}
+	case llmstream.RoleCode:
+		return runeStyle{color: colorAccent}
+	case llmstream.RoleEmphasis:
+		return runeStyle{color: colorNormal, italic: true}
+	default:
+		return runeStyle{color: colorNormal}
+	}
+}
+
+func presentationLineSegments(line llmstream.Line) []textSegment {
+	if len(line.Segments) == 0 {
+		return nil
+	}
+
+	segments := make([]textSegment, 0, len(line.Segments))
+	for _, segment := range line.Segments {
+		if segment.Text == "" {
+			continue
+		}
+		segments = append(segments, textSegment{
+			text:  segment.Text,
+			style: presentationSegmentStyle(segment.Role),
+		})
+	}
+	return segments
+}
+
+func (f *textTUIFormatter) tuiPresentedToolSummary(width int, bullet colorRole, presentation llmstream.Presentation) string {
+	return f.tuiBulletLine(width, bullet, presentationLineSegments(presentation.Summary)...)
+}
+
+func (f *textTUIFormatter) cliPresentedToolSummary(bullet colorRole, presentation llmstream.Presentation) string {
+	return f.cliBulletLine(bullet, presentationLineSegments(presentation.Summary)...)
+}
+
 func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
+	if presentation, ok := presenterReplacePresentation(e); ok {
+		return f.tuiPresentedToolSummary(width, colorAccent, presentation)
+	}
+
 	switch normalizedToolName(e) {
 	case "shell":
 		return f.tuiShellToolCall(e, width)
 	case "ls":
 		return f.tuiLsToolCall(e, width)
-	case "read_file":
-		return f.tuiReadFileToolCall(e, width)
 	case "diagnostics":
 		return f.tuiDiagnosticsToolCall(e, width)
 	case "fix_lints":
@@ -359,13 +432,15 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 }
 
 func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
+	if presentation, ok := presenterReplacePresentation(e); ok {
+		return f.cliPresentedToolSummary(colorAccent, presentation)
+	}
+
 	switch normalizedToolName(e) {
 	case "shell":
 		return f.cliShellToolCall(e)
 	case "ls":
 		return f.cliLsToolCall(e)
-	case "read_file":
-		return f.cliReadFileToolCall(e)
 	case "diagnostics":
 		return f.cliDiagnosticsToolCall(e)
 	case "fix_lints":
@@ -465,36 +540,6 @@ func (f *textTUIFormatter) cliLsToolCall(e agent.Event) string {
 	return f.cliBulletLine(colorAccent, segments...)
 }
 
-func (f *textTUIFormatter) tuiReadFileToolCall(e agent.Event, width int) string {
-	path, ok := extractReadFilePath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "Read", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	return f.tuiBulletLine(width, colorAccent, segments...)
-}
-
-func (f *textTUIFormatter) cliReadFileToolCall(e agent.Event) string {
-	path, ok := extractReadFilePath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "Read", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	return f.cliBulletLine(colorAccent, segments...)
-}
-
 func (f *textTUIFormatter) tuiGenericToolCall(e agent.Event, width int) string {
 	name := toolDisplayName(e)
 	segments := []textSegment{
@@ -531,6 +576,22 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 	if f.isSillyAgentOutsidePackage(e) {
 		return f.tuiSillyAgentOutsidePackage(e, width)
 	}
+
+	if presentation, ok := presenterReplacePresentation(e); ok {
+		success, _, outputLines := f.parseToolResult(e)
+		bullet := colorGreen
+		if !success {
+			bullet = colorRed
+		}
+
+		var builder strings.Builder
+		builder.WriteString(f.tuiPresentedToolSummary(width, bullet, presentation))
+		if !success && len(outputLines) > 0 {
+			f.appendTUIToolOutput(&builder, width, outputLines)
+		}
+		return builder.String()
+	}
+
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
 	case "apply_patch":
@@ -545,8 +606,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiShellToolComplete(e, width, success, cmd, outputLines)
 	case "ls":
 		return f.tuiLsToolComplete(e, width, success, cmd, outputLines)
-	case "read_file":
-		return f.tuiReadFileToolComplete(e, width, success, cmd, outputLines)
 	case "diagnostics":
 		return f.tuiDiagnosticsToolComplete(e, width, success)
 	case "fix_lints":
@@ -582,6 +641,23 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 	if f.isSillyAgentOutsidePackage(e) {
 		return f.cliSillyAgentOutsidePackage(e)
 	}
+
+	if presentation, ok := presenterReplacePresentation(e); ok {
+		success, _, outputLines := f.parseToolResult(e)
+		bullet := colorGreen
+		if !success {
+			bullet = colorRed
+		}
+
+		lines := []string{f.cliPresentedToolSummary(bullet, presentation)}
+		if !success {
+			if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
+				lines = append(lines, rest...)
+			}
+		}
+		return strings.Join(lines, "\n")
+	}
+
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
 	case "apply_patch":
@@ -596,8 +672,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliShellToolComplete(e, success, cmd, outputLines)
 	case "ls":
 		return f.cliLsToolComplete(e, success, cmd, outputLines)
-	case "read_file":
-		return f.cliReadFileToolComplete(e, success, cmd, outputLines)
 	case "diagnostics":
 		return f.cliDiagnosticsToolComplete(e, success)
 	case "fix_lints":
@@ -816,55 +890,6 @@ func (f *textTUIFormatter) cliLsToolComplete(e agent.Event, success bool, _ stri
 	}
 	segments := []textSegment{
 		{text: "List", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	lines := []string{f.cliBulletLine(bullet, segments...)}
-	if !success {
-		if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
-			lines = append(lines, rest...)
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (f *textTUIFormatter) tuiReadFileToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
-	path, ok := extractReadFilePath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "Read", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
-	if !success && len(outputLines) > 0 {
-		f.appendTUIToolOutput(&builder, width, outputLines)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliReadFileToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
-	path, ok := extractReadFilePath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "Read", style: runeStyle{color: colorColorful, bold: true}},
 	}
 	if target != "" {
 		segments = append(segments, textSegment{text: " " + target})
@@ -1224,23 +1249,6 @@ func extractShellCommand(call *llmstream.ToolCall) (string, bool) {
 }
 
 func extractLsPath(call *llmstream.ToolCall) (string, bool) {
-	if call == nil {
-		return "", false
-	}
-	var payload struct {
-		Path string `json:"path"`
-	}
-	if err := json.Unmarshal([]byte(call.Input), &payload); err != nil {
-		return "", false
-	}
-	path := strings.TrimSpace(payload.Path)
-	if path == "" {
-		return "", false
-	}
-	return sanitizeText(path), true
-}
-
-func extractReadFilePath(call *llmstream.ToolCall) (string, bool) {
 	if call == nil {
 		return "", false
 	}

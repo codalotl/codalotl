@@ -29,6 +29,37 @@ func ansiWrap(text string, pal palette, c colorRole, italics bool, bold bool) st
 	return style.Wrap(text)
 }
 
+type staticPresenter struct {
+	call     llmstream.Presentation
+	complete llmstream.Presentation
+}
+
+func (p staticPresenter) Present(_ llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	if result == nil {
+		return p.call
+	}
+	return p.complete
+}
+
+func presentedReplaceSummary(action, target string) llmstream.Presentation {
+	segments := []llmstream.Segment{{
+		Text: action,
+		Role: llmstream.RoleAction,
+	}}
+	if target != "" {
+		segments = append(segments, llmstream.Segment{
+			Text: " " + target,
+			Role: llmstream.RoleNormal,
+		})
+	}
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			Segments: segments,
+		},
+	}
+}
+
 func TestAgentMessageTableDriven(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -436,14 +467,18 @@ func TestToolCallReadFileVerbColor(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(240, 240, 240),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+		complete: presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "read_file",
-		Input: `{"path":"codeai/tools/shell.go"}`,
+		Input: `{"path":"ignored/by/presenter.go"}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("read_file"),
+		Tool:     testToolWithPresenter("read_file", presenter),
 		ToolCall: &call,
 	}
 
@@ -465,10 +500,14 @@ func TestReadFileCompleteSuccessNoOutput(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+		complete: presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "read_file",
-		Input: `{"path":"codeai/tools/shell.go"}`,
+		Input: `{"path":"ignored/by/presenter.go"}`,
 	}
 	result := llmstream.ToolResult{
 		Result: `<file name="codeai/tools/shell.go" line-count="2" byte-count="20" truncated="false">
@@ -480,7 +519,7 @@ line 2
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("read_file"),
+		Tool:       testToolWithPresenter("read_file", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -500,10 +539,14 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("Read", "missing.txt"),
+		complete: presentedReplaceSummary("Read", "missing.txt"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "read_file",
-		Input: `{"path":"missing.txt"}`,
+		Input: `{"path":"ignored/by/presenter.txt"}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  "path does not exist",
@@ -511,7 +554,7 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("read_file"),
+		Tool:       testToolWithPresenter("read_file", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -524,6 +567,47 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 		"  └ Error: path does not exist",
 	}, lines)
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+}
+
+func TestAppendPresenterDoesNotOverrideDedicatedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	presenter := staticPresenter{
+		call: llmstream.Presentation{
+			Behavior: llmstream.CompletionBehaviorAppend,
+			Summary: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: "Presented", Role: llmstream.RoleAction},
+					{Text: " by presenter", Role: llmstream.RoleNormal},
+				},
+			},
+		},
+		complete: llmstream.Presentation{
+			Behavior: llmstream.CompletionBehaviorAppend,
+			Summary: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: "Presented", Role: llmstream.RoleAction},
+					{Text: " by presenter", Role: llmstream.RoleNormal},
+				},
+			},
+		},
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "ls",
+		Input: `{"path":"codeai"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     testToolWithPresenter("ls", presenter),
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
+	require.NotEmpty(t, out)
+	assert.Equal(t, "• List codeai", stripANSI(out))
 }
 
 func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {
