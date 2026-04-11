@@ -15,7 +15,7 @@ func (t *toolEdit) Presenter() llmstream.Presenter {
 }
 
 func (t *toolLs) Presenter() llmstream.Presenter {
-	return nil
+	return lsPresenterInstance
 }
 
 func (t *toolReadFile) Presenter() llmstream.Presenter {
