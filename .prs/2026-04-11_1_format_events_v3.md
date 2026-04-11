@@ -187,7 +187,7 @@ Phase 5: tbd, don't plan here yet
 - Add a presenter that renders `Running <command>` while in progress and `Ran <command>` on completion, while preserving current shared output/error handling.
 - Add focused `internal/tools/coretools` coverage for command extraction and fallback behavior.
 
-### Phase 4 - internal/tools/coretools: skill_shell
+### [DONE] Phase 4 - internal/tools/coretools: skill_shell
 
 - Move `skill_shell` formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add a presenter that matches `shell` summary behavior and intentionally omits skill metadata from the summary line.
