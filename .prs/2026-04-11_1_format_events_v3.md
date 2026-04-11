@@ -198,6 +198,12 @@ Phase 5: tbd, don't plan here yet
 - Add a presenter that matches `shell` summary behavior and intentionally omits skill metadata from the summary line.
 - Add focused `internal/tools/coretools` coverage for command extraction and fallback behavior.
 
+### Phase 4 - internal/agentformatter: presenter bodies
+
+- Render presenter-provided body blocks for replace-style tool completions instead of only showing the summary line.
+- Preserve existing bullet/status behavior and shared output formatting conventions so `shell`/`skill_shell` show command output via their presenter bodies.
+- Add focused formatter coverage for presenter-driven completion bodies in both success and error cases.
+
 ### Phase 4 - internal/tools/coretools: remaining core tools
 
 - Migrate `update_plan`, `apply_patch`, `edit`, `write`, and `delete` one tool at a time, with one implementation commit per tool.
