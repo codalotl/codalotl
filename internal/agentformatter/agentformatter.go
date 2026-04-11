@@ -277,6 +277,19 @@ func extractReasoningSummary(content string) (string, bool) {
 	return sanitizeText(summary), true
 }
 
+func eventToolName(e agent.Event) string {
+	if e.Tool != nil {
+		return e.Tool.Name()
+	}
+	if e.ToolCall != nil {
+		return e.ToolCall.Name
+	}
+	if e.ToolResult != nil {
+		return e.ToolResult.Name
+	}
+	return ""
+}
+
 func normalizedToolName(e agent.Event) string {
 	normalize := func(name string) string {
 		name = strings.ToLower(strings.TrimSpace(name))
@@ -287,31 +300,11 @@ func normalizedToolName(e agent.Event) string {
 		return name
 	}
 
-	if e.Tool != "" {
-		return normalize(e.Tool)
-	}
-	if e.ToolCall != nil {
-		if e.ToolCall.Name != "" {
-			return normalize(e.ToolCall.Name)
-		}
-		if e.ToolCall.Type != "" {
-			return normalize(e.ToolCall.Type)
-		}
-	}
-	return ""
+	return normalize(eventToolName(e))
 }
 
 func toolDisplayName(e agent.Event) string {
-	var name string
-	if e.Tool != "" {
-		name = e.Tool
-	} else if e.ToolCall != nil {
-		if e.ToolCall.Name != "" {
-			name = e.ToolCall.Name
-		} else if e.ToolCall.Type != "" {
-			name = e.ToolCall.Type
-		}
-	}
+	name := eventToolName(e)
 	if name == "" {
 		return "tool call"
 	}

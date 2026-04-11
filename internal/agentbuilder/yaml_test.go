@@ -580,6 +580,132 @@ func TestYAMLSubagentToolRun_InvalidJSONResultReturnsToolError(t *testing.T) {
 	assert.Contains(t, result.Result, "parse subagent result as json")
 }
 
+func TestYAMLSubagentToolRun_AcceptsToolEventsWithNamedToolObject(t *testing.T) {
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeToolCall,
+				Tool: fakeNamedTool{name: "review"},
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+			},
+			{
+				Type: agent.EventTypeToolComplete,
+				Tool: fakeNamedTool{name: "review"},
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+				ToolResult: &llmstream.ToolResult{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Result: "ok",
+				},
+			},
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{Name: "review"},
+		spec: &yamlNormalizedSubagentSpec{
+			Name:         "generic",
+			Messages:     []yamlNormalizedSubagentMessageSpec{{Text: "review this"}},
+			ResultFormat: yamlResultFormatText,
+		},
+		params: map[string]yamlNormalizedParameter{},
+		opts: toolsetinterface.Options{
+			AgentInvoker: invoker,
+		},
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Input:  `{}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "done", result.Result)
+}
+
+func TestYAMLSubagentToolRun_AcceptsToolEventsWithoutToolObject(t *testing.T) {
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeToolCall,
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+			},
+			{
+				Type: agent.EventTypeToolComplete,
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+				ToolResult: &llmstream.ToolResult{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Result: "ok",
+				},
+			},
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{Name: "review"},
+		spec: &yamlNormalizedSubagentSpec{
+			Name:         "generic",
+			Messages:     []yamlNormalizedSubagentMessageSpec{{Text: "review this"}},
+			ResultFormat: yamlResultFormatText,
+		},
+		params: map[string]yamlNormalizedParameter{},
+		opts: toolsetinterface.Options{
+			AgentInvoker: invoker,
+		},
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Input:  `{}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "done", result.Result)
+}
+
 func TestAddYAMLToRegistry_DuplicateToolDoesNotMutateRegistry(t *testing.T) {
 	registry, err := BuildRegistry()
 	require.NoError(t, err)
@@ -1037,3 +1163,25 @@ func (c *captureAgentInvoker) Invoke(ctx context.Context, agentName string, req 
 }
 
 var _ toolsetinterface.AgentInvoker = (*captureAgentInvoker)(nil)
+
+type fakeNamedTool struct {
+	name string
+}
+
+func (t fakeNamedTool) Info() llmstream.ToolInfo {
+	return llmstream.ToolInfo{Name: t.name}
+}
+
+func (t fakeNamedTool) Name() string {
+	return t.name
+}
+
+func (t fakeNamedTool) Presenter() llmstream.Presenter {
+	return nil
+}
+
+func (t fakeNamedTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
+	return llmstream.ToolResult{Name: t.name}
+}
+
+var _ llmstream.Tool = fakeNamedTool{}

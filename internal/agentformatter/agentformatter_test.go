@@ -284,7 +284,7 @@ func TestToolCallShellFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "shell",
+		Tool:     testTool("shell"),
 		ToolCall: &call,
 	}
 
@@ -311,7 +311,7 @@ func TestToolCallSkillShellFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "skill_shell",
+		Tool:     testTool("skill_shell"),
 		ToolCall: &call,
 	}
 
@@ -356,7 +356,7 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "shell",
+		Tool:       testTool("shell"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -410,7 +410,7 @@ func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "skill_shell",
+		Tool:       testTool("skill_shell"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -443,7 +443,7 @@ func TestToolCallReadFileVerbColor(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "read_file",
+		Tool:     testTool("read_file"),
 		ToolCall: &call,
 	}
 
@@ -480,7 +480,7 @@ line 2
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testTool("read_file"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -511,7 +511,7 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testTool("read_file"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -544,7 +544,7 @@ func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testTool("read_file"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -575,7 +575,7 @@ func TestToolCompleteSillyLLMOutsidePackageReadFileCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testTool("read_file"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -602,7 +602,7 @@ func TestToolCompleteSillyLLMOutsidePackageNoPath(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "apply_patch",
+		Tool:       testTool("apply_patch"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -624,7 +624,7 @@ func TestDiagnosticsToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "diagnostics",
+		Tool:     testTool("diagnostics"),
 		ToolCall: &call,
 	}
 
@@ -652,7 +652,7 @@ func TestDiagnosticsToolCompleteSuccessNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       testTool("diagnostics"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -682,7 +682,7 @@ func TestDiagnosticsToolCompleteFailureNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       testTool("diagnostics"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -715,7 +715,7 @@ agentformatter.go:1:1: some error
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       testTool("diagnostics"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -746,7 +746,7 @@ $ go build -o /dev/null ./internal/agentformatter
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       testTool("diagnostics"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -773,7 +773,7 @@ func TestDiagnosticsToolCompleteCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       testTool("diagnostics"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -795,7 +795,7 @@ func TestFixLintsToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "fix_lints",
+		Tool:     testTool("fix_lints"),
 		ToolCall: &call,
 	}
 
@@ -831,7 +831,7 @@ internal/agentformatter/agentformatter.go
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "fix_lints",
+		Tool:       testTool("fix_lints"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -867,7 +867,7 @@ func TestFixLintsToolCompleteCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "fix_lints",
+		Tool:       testTool("fix_lints"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -898,7 +898,7 @@ func TestLsCompleteSuccessNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "ls",
+		Tool:       testTool("ls"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -928,7 +928,7 @@ func TestLsCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "ls",
+		Tool:       testTool("ls"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -962,7 +962,7 @@ func TestApplyPatchCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "apply_patch",
+		Tool:     testTool("apply_patch"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 80)
@@ -1001,7 +1001,7 @@ func TestApplyPatchContextLinesAreNormalColor(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "apply_patch",
+		Tool:     testTool("apply_patch"),
 		ToolCall: &call,
 	}
 
@@ -1023,7 +1023,7 @@ func TestApplyPatchLinesSanitized(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "apply_patch",
+		Tool:     testTool("apply_patch"),
 		ToolCall: &call,
 	}
 	ctrlC := string([]byte{0x03})
@@ -1060,7 +1060,7 @@ func TestEditToolCallFormattingReplaceAll(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "edit",
+		Tool:     testTool("edit"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
@@ -1086,7 +1086,7 @@ func TestWriteToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "write",
+		Tool:     testTool("write"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
@@ -1111,7 +1111,7 @@ func TestDeleteToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "delete",
+		Tool:     testTool("delete"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
@@ -1135,7 +1135,7 @@ func TestEditToolCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "edit",
+		Tool:       testTool("edit"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1173,7 +1173,7 @@ func TestApplyPatchCompleteWithError(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "apply_patch",
+		Tool:       testTool("apply_patch"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1221,7 +1221,7 @@ func TestApplyPatchCompleteInvalidPatchIsConcise(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "apply_patch",
+		Tool:       testTool("apply_patch"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1273,7 +1273,7 @@ func TestUpdatePlanCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "update_plan",
+		Tool:     testTool("update_plan"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 400)
@@ -1320,7 +1320,7 @@ func TestUpdatePlanCompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "update_plan",
+		Tool:       testTool("update_plan"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1351,7 +1351,7 @@ func TestUpdatePlanNoExplanationStartsWithFirstItem(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "update_plan",
+		Tool:     testTool("update_plan"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 80)
@@ -1378,7 +1378,7 @@ func TestUpdateUsageCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "update_usage",
+		Tool:     testTool("update_usage"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
@@ -1414,7 +1414,7 @@ func TestUpdateUsageCompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "update_usage",
+		Tool:       testTool("update_usage"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1448,7 +1448,7 @@ func TestUpdateUsageCompleteErrorShowsOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "update_usage",
+		Tool:       testTool("update_usage"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1478,7 +1478,7 @@ func TestChangeAPICallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "change_api",
+		Tool:     testTool("change_api"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
@@ -1513,7 +1513,7 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "change_api",
+		Tool:       testTool("change_api"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1547,7 +1547,7 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "change_api",
+		Tool:       testTool("change_api"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1576,7 +1576,7 @@ func TestReviewToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "review",
+		Tool:     testTool("review"),
 		ToolCall: &call,
 	}
 
@@ -1649,7 +1649,7 @@ func TestSubagentReviewJSONAssistantTextIsSuppressed(t *testing.T) {
 	}
 	reviewEvent := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "review",
+		Tool:       testTool("review"),
 		ToolCall:   &reviewCall,
 		ToolResult: &reviewResult,
 	}
@@ -1823,7 +1823,7 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
+			Tool:       testTool("review"),
 			ToolCall:   &call,
 			ToolResult: &result,
 		}
@@ -1861,7 +1861,7 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
+			Tool:       testTool("review"),
 			ToolCall:   &call,
 			ToolResult: &result,
 		}
@@ -1893,7 +1893,7 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
+			Tool:       testTool("review"),
 			ToolCall:   &call,
 			ToolResult: &result,
 		}
@@ -1912,7 +1912,7 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
+			Tool:       testTool("review"),
 			ToolCall:   &call,
 			ToolResult: &result,
 		}
@@ -1950,7 +1950,7 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 				}
 				event := agent.Event{
 					Type:       agent.EventTypeToolComplete,
-					Tool:       "review",
+					Tool:       testTool("review"),
 					ToolCall:   &call,
 					ToolResult: &result,
 				}
@@ -1979,7 +1979,7 @@ func TestImplementToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "implement",
+		Tool:     testTool("implement"),
 		ToolCall: &call,
 	}
 
@@ -2027,7 +2027,7 @@ func TestImplementToolCompleteFormatting(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:       agent.EventTypeToolComplete,
-			Tool:       "implement",
+			Tool:       testTool("implement"),
 			ToolCall:   &call,
 			ToolResult: &result,
 		}
@@ -2062,7 +2062,7 @@ func TestImplementToolCompleteFormatting(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:       agent.EventTypeToolComplete,
-			Tool:       "implement",
+			Tool:       testTool("implement"),
 			ToolCall:   &call,
 			ToolResult: &result,
 		}
@@ -2107,7 +2107,7 @@ func TestImplementToolCompleteDoesNotTruncateOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "implement",
+		Tool:       testTool("implement"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2150,7 +2150,7 @@ func TestModuleInfoToolCallNoOptions(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "module_info",
+		Tool:     testTool("module_info"),
 		ToolCall: &call,
 	}
 
@@ -2175,7 +2175,7 @@ func TestModuleInfoToolCallWithOptions(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "module_info",
+		Tool:     testTool("module_info"),
 		ToolCall: &call,
 	}
 
@@ -2204,7 +2204,7 @@ func TestModuleInfoToolCompleteSuccessMirrorsCall(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "module_info",
+		Tool:       testTool("module_info"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2235,7 +2235,7 @@ func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "module_info",
+		Tool:       testTool("module_info"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2263,7 +2263,7 @@ func TestGetPublicAPICallWithIdentifiers(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "get_public_api",
+		Tool:     testTool("get_public_api"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 100)
@@ -2294,7 +2294,7 @@ func TestGetPublicAPICompleteSuccessWithIdentifiers(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "get_public_api",
+		Tool:       testTool("get_public_api"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2325,7 +2325,7 @@ func TestGetPublicAPICompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "get_public_api",
+		Tool:       testTool("get_public_api"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2352,7 +2352,7 @@ func TestClarifyPublicAPICallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "clarify_public_api",
+		Tool:     testTool("clarify_public_api"),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
@@ -2388,7 +2388,7 @@ func TestClarifyPublicAPICompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "clarify_public_api",
+		Tool:       testTool("clarify_public_api"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2418,7 +2418,7 @@ func TestClarifyPublicAPICompleteError(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "clarify_public_api",
+		Tool:       testTool("clarify_public_api"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2444,7 +2444,7 @@ func TestGetUsageToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "get_usage",
+		Tool:     testTool("get_usage"),
 		ToolCall: &call,
 	}
 
@@ -2478,7 +2478,7 @@ func TestGetUsageToolCompleteSuccessCountsResults(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "get_usage",
+		Tool:       testTool("get_usage"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2508,7 +2508,6 @@ func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:     agent.EventTypeToolCall,
-			Tool:     "get_usage",
 			ToolCall: &call,
 		}
 
@@ -2524,13 +2523,54 @@ func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:     agent.EventTypeToolCall,
-			Tool:     "get_usage",
 			ToolCall: &call,
 		}
 
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
 		assert.Equal(t, "• Read Usage get_usage *SomeType.SomeFunc", stripANSI(out))
+	})
+}
+
+func TestToolNamePrecedence(t *testing.T) {
+	t.Run("prefers tool object name", func(t *testing.T) {
+		event := agent.Event{
+			Tool: testTool("skill_shell"),
+			ToolCall: &llmstream.ToolCall{
+				Name: "read_file",
+			},
+			ToolResult: &llmstream.ToolResult{
+				Name: "ls",
+			},
+		}
+
+		assert.Equal(t, "shell", normalizedToolName(event))
+		assert.Equal(t, "skill_shell", toolDisplayName(event))
+	})
+
+	t.Run("falls back to tool call name", func(t *testing.T) {
+		event := agent.Event{
+			ToolCall: &llmstream.ToolCall{
+				Name: "read_file",
+			},
+			ToolResult: &llmstream.ToolResult{
+				Name: "ls",
+			},
+		}
+
+		assert.Equal(t, "read_file", normalizedToolName(event))
+		assert.Equal(t, "read_file", toolDisplayName(event))
+	})
+
+	t.Run("falls back to tool result name", func(t *testing.T) {
+		event := agent.Event{
+			ToolResult: &llmstream.ToolResult{
+				Name: "diagnostics",
+			},
+		}
+
+		assert.Equal(t, "diagnostics", normalizedToolName(event))
+		assert.Equal(t, "diagnostics", toolDisplayName(event))
 	})
 }
 
@@ -2574,7 +2614,7 @@ $ staticcheck ./internal/tools/toolsets
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       testTool("run_tests"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2634,7 +2674,7 @@ file6.go
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       testTool("run_tests"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2676,7 +2716,7 @@ ok  	github.com/codalotl/codalotl/internal/tools/toolsets	(cached)
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       testTool("run_tests"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2698,7 +2738,7 @@ func TestRunProjectTestsCallFormatting(t *testing.T) {
 	pal := newPalette(cfg)
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
-	event := agent.Event{Type: agent.EventTypeToolCall, Tool: "run_project_tests", ToolCall: &call}
+	event := agent.Event{Type: agent.EventTypeToolCall, Tool: testTool("run_project_tests"), ToolCall: &call}
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
@@ -2721,7 +2761,7 @@ func TestRunProjectTestsCompleteSuccessShowsPassed(t *testing.T) {
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
 	result := llmstream.ToolResult{Result: `{"success":true,"content":"(elided)"}`, IsError: false}
-	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: "run_project_tests", ToolCall: &call, ToolResult: &result}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: testTool("run_project_tests"), ToolCall: &call, ToolResult: &result}
 	out := formatter.FormatEvent(event, 120)
 	require.NotEmpty(t, out)
 	lines := strings.Split(stripANSI(out), "\n")
@@ -2740,7 +2780,7 @@ func TestRunProjectTestsCompleteFailureShowsPackages(t *testing.T) {
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
 	result := llmstream.ToolResult{Result: `{"success":false,"content":"Failed:\nsome/pkg1\nother/pkg2\n"}`, IsError: false}
-	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: "run_project_tests", ToolCall: &call, ToolResult: &result}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: testTool("run_project_tests"), ToolCall: &call, ToolResult: &result}
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
@@ -2859,7 +2899,7 @@ $ gofmt -l -w internal/agentformatter
 	event := agent.Event{
 		Agent:      agent.AgentMeta{Depth: 1},
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       testTool("run_tests"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2898,7 +2938,7 @@ $ gofmt -l -w internal/agentformatter
 	event := agent.Event{
 		Agent:      agent.AgentMeta{Depth: 2},
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       testTool("run_tests"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}

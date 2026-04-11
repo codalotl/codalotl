@@ -696,6 +696,49 @@ func (a *fakeSessionAgent) Turns() []llmstream.Turn {
 	return a.sends[a.call-1].turns
 }
 
+type namedTestTool struct {
+	name string
+}
+
+func (t namedTestTool) Info() llmstream.ToolInfo {
+	return llmstream.ToolInfo{Name: t.name}
+}
+
+func (t namedTestTool) Name() string {
+	return t.name
+}
+
+func (t namedTestTool) Presenter() llmstream.Presenter {
+	return nil
+}
+
+func (t namedTestTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
+	return llmstream.ToolResult{}
+}
+
+type recordingFormatter struct {
+	events []agent.Event
+}
+
+func (f *recordingFormatter) FormatEvent(e agent.Event, _ int) string {
+	f.events = append(f.events, e)
+
+	switch e.Type {
+	case agent.EventTypeToolCall:
+		if e.ToolCall == nil {
+			return "CALL"
+		}
+		return "CALL " + e.ToolCall.Name
+	case agent.EventTypeToolComplete:
+		if e.ToolResult == nil {
+			return "DONE"
+		}
+		return "DONE " + e.ToolResult.Name
+	default:
+		return ""
+	}
+}
+
 type countingAuthorizer struct {
 	sandboxDir string
 	requests   chan authdomain.UserRequest
@@ -761,6 +804,39 @@ func textAssistantTurn(text string) *llmstream.Turn {
 			llmstream.TextContent{Content: text},
 		},
 	}
+}
+
+func TestToolNameFromEvent(t *testing.T) {
+	t.Parallel()
+
+	tool := namedTestTool{name: "tool_name"}
+
+	require.Equal(t, "tool_name", toolNameFromEvent(agent.Event{
+		Tool: &tool,
+		ToolCall: &llmstream.ToolCall{
+			Name: "call_name",
+		},
+		ToolResult: &llmstream.ToolResult{
+			Name: "result_name",
+		},
+	}))
+
+	require.Equal(t, "call_name", toolNameFromEvent(agent.Event{
+		ToolCall: &llmstream.ToolCall{
+			Name: "call_name",
+		},
+		ToolResult: &llmstream.ToolResult{
+			Name: "result_name",
+		},
+	}))
+
+	require.Equal(t, "result_name", toolNameFromEvent(agent.Event{
+		ToolResult: &llmstream.ToolResult{
+			Name: "result_name",
+		},
+	}))
+
+	require.Empty(t, toolNameFromEvent(agent.Event{}))
 }
 
 func TestSessionSendUserMessageRequiresPromptOutsideInitialOrchestrateStep(t *testing.T) {
@@ -976,6 +1052,72 @@ func TestSessionSendUserMessageReturnsPrintedErrorAndPartialAssistantText(t *tes
 		TotalOutputTokens: 1,
 	}, step.TokenUsage)
 	require.Equal(t, 9, step.ContextUsagePercent)
+}
+
+func TestSessionSendUserMessageUsesLegacyToolFormattingWithToolObjectName(t *testing.T) {
+	t.Parallel()
+
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	tool := namedTestTool{name: "read_file"}
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_1",
+							Name:   "ignored_call_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_1",
+							Name:   "ignored_result_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  7,
+					TotalOutputTokens: 3,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	formatter := &recordingFormatter{}
+	session.formatter = formatter
+
+	step, err := session.SendUserMessage(context.Background(), "fix failing test")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	require.Contains(t, buf.String(), "CALL read_file\n")
+	require.Contains(t, buf.String(), "DONE read_file\n")
+	require.NotContains(t, buf.String(), "ignored_call_name")
+	require.NotContains(t, buf.String(), "ignored_result_name")
+
+	require.Len(t, formatter.events, 2)
+	require.Nil(t, formatter.events[0].Tool)
+	require.Equal(t, "read_file", formatter.events[0].ToolCall.Name)
+	require.Nil(t, formatter.events[1].Tool)
+	require.Equal(t, "read_file", formatter.events[1].ToolResult.Name)
 }
 
 func TestExecUsesSessionAPIAndPreservesTextOutput(t *testing.T) {

@@ -307,7 +307,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 			if ev.ToolCall != nil {
 				callCopy := *ev.ToolCall
 				seenToolCallIDs[callCopy.CallID] = struct{}{}
-				a.dispatchEvent(out, Event{Type: EventTypeToolCall, Tool: callCopy.Name, ToolCall: &callCopy})
+				a.dispatchEvent(out, Event{Type: EventTypeToolCall, Tool: a.tools[callCopy.Name], ToolCall: &callCopy})
 			}
 		case llmstream.EventTypeCompletedSuccess:
 			completedTurn = ev.Turn
@@ -357,11 +357,11 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 		}
 
 		callCopy := call
+		tool := a.tools[call.Name]
 		if _, already := seen[call.CallID]; !already {
-			a.dispatchEvent(out, Event{Type: EventTypeToolCall, Tool: callCopy.Name, ToolCall: &callCopy})
+			a.dispatchEvent(out, Event{Type: EventTypeToolCall, Tool: tool, ToolCall: &callCopy})
 		}
 
-		tool := a.tools[call.Name]
 		var result llmstream.ToolResult
 
 		if tool == nil {
@@ -391,7 +391,7 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 		}
 
 		resultCopy := result
-		a.dispatchEvent(out, Event{Type: EventTypeToolComplete, Tool: call.Name, ToolCall: &callCopy, ToolResult: &resultCopy})
+		a.dispatchEvent(out, Event{Type: EventTypeToolComplete, Tool: tool, ToolCall: &callCopy, ToolResult: &resultCopy})
 
 		results = append(results, result)
 	}

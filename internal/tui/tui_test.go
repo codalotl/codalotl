@@ -636,11 +636,11 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
 	result := &llmstream.ToolResult{CallID: callID, Name: "read_file"}
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "read_file", ToolCall: call})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: call})
 	require.Len(t, m.messages, 1)
 	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "read_file", ToolCall: call, ToolResult: result})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: call, ToolResult: result})
 
 	// Default behavior: the tool call entry is replaced by the result entry.
 	require.Len(t, m.messages, 1)
@@ -658,11 +658,11 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 			call := &llmstream.ToolCall{CallID: callID, Name: toolName}
 			result := &llmstream.ToolResult{CallID: callID, Name: toolName}
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: toolName, ToolCall: call})
+			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, ToolCall: call})
 			require.Len(t, m.messages, 1)
 			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: toolName, ToolCall: call, ToolResult: result})
+			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, ToolCall: call, ToolResult: result})
 
 			// Exception behavior: for SubAgent tools, keep the call and append the result.
 			require.Len(t, m.messages, 2)
@@ -670,6 +670,39 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 			require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 		})
 	}
+}
+
+func TestToolNamePrecedence(t *testing.T) {
+	t.Run("prefers event tool object", func(t *testing.T) {
+		ev := agent.Event{
+			Tool:       newNamedTool("from-tool"),
+			ToolCall:   &llmstream.ToolCall{Name: "from-call"},
+			ToolResult: &llmstream.ToolResult{Name: "from-result"},
+		}
+
+		require.Equal(t, "from-tool", toolName(ev))
+	})
+
+	t.Run("falls back to tool call name", func(t *testing.T) {
+		ev := agent.Event{
+			ToolCall:   &llmstream.ToolCall{Name: "from-call"},
+			ToolResult: &llmstream.ToolResult{Name: "from-result"},
+		}
+
+		require.Equal(t, "from-call", toolName(ev))
+	})
+
+	t.Run("falls back to tool result name", func(t *testing.T) {
+		ev := agent.Event{
+			ToolResult: &llmstream.ToolResult{Name: "from-result"},
+		}
+
+		require.Equal(t, "from-result", toolName(ev))
+	})
+
+	t.Run("returns empty when unnamed", func(t *testing.T) {
+		require.Empty(t, toolName(agent.Event{}))
+	})
 }
 
 func TestModelCommandListsAvailableModels(t *testing.T) {

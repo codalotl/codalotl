@@ -293,7 +293,7 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 
 		switch ev.Type {
 		case agent.EventTypeToolCall:
-			formatted := s.formatter.FormatEvent(ev, s.terminalWidth)
+			formatted := s.formatter.FormatEvent(legacyFormattedToolEvent(ev), s.terminalWidth)
 			if shouldSuppressFormattedOutput(formatted) || formatted == "" {
 				continue
 			}
@@ -313,7 +313,7 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 			if ev.ToolResult != nil && strings.TrimSpace(ev.ToolResult.CallID) != "" {
 				toolCallPrinter.Cancel(ev.ToolResult.CallID)
 			}
-			formatted := s.formatter.FormatEvent(ev, s.terminalWidth)
+			formatted := s.formatter.FormatEvent(legacyFormattedToolEvent(ev), s.terminalWidth)
 			if shouldSuppressFormattedOutput(formatted) || formatted == "" {
 				continue
 			}

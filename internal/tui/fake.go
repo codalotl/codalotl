@@ -98,13 +98,13 @@ func fakeUpdatePlanEvents(meta agent.AgentMeta, callID, explanation string, plan
 		{
 			Agent:    meta,
 			Type:     agent.EventTypeToolCall,
-			Tool:     "update_plan",
+			Tool:     newNamedTool("update_plan"),
 			ToolCall: call,
 		},
 		{
 			Agent:    meta,
 			Type:     agent.EventTypeToolComplete,
-			Tool:     "update_plan",
+			Tool:     newNamedTool("update_plan"),
 			ToolCall: call,
 			ToolResult: &llmstream.ToolResult{
 				CallID:  callID,
@@ -126,13 +126,13 @@ func fakeToolEvents(meta agent.AgentMeta, name, callID string, inputPayload any,
 		{
 			Agent:    meta,
 			Type:     agent.EventTypeToolCall,
-			Tool:     name,
+			Tool:     newNamedTool(name),
 			ToolCall: call,
 		},
 		{
 			Agent:    meta,
 			Type:     agent.EventTypeToolComplete,
-			Tool:     name,
+			Tool:     newNamedTool(name),
 			ToolCall: call,
 			ToolResult: &llmstream.ToolResult{
 				CallID:  callID,

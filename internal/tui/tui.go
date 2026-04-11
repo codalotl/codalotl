@@ -1771,13 +1771,16 @@ func eventToolCallID(ev agent.Event) string {
 }
 
 func toolName(ev agent.Event) string {
-	if ev.ToolResult != nil && ev.ToolResult.Name != "" {
-		return ev.ToolResult.Name
+	if ev.Tool != nil {
+		return ev.Tool.Name()
 	}
-	if ev.ToolCall != nil && ev.ToolCall.Name != "" {
+	if ev.ToolCall != nil {
 		return ev.ToolCall.Name
 	}
-	return ev.Tool
+	if ev.ToolResult != nil {
+		return ev.ToolResult.Name
+	}
+	return ""
 }
 
 func shouldReplaceToolCallWithResult(ev agent.Event) bool {

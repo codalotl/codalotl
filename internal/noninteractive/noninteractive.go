@@ -257,6 +257,63 @@ func (p *delayedToolCallPrinter) fire(callID string) {
 	_, _ = io.WriteString(p.out, line)
 }
 
+func toolNameFromEvent(ev agent.Event) string {
+	if ev.Tool != nil {
+		return ev.Tool.Name()
+	}
+	if ev.ToolCall != nil {
+		return ev.ToolCall.Name
+	}
+	if ev.ToolResult != nil {
+		return ev.ToolResult.Name
+	}
+	return ""
+}
+
+func legacyFormattedToolEvent(ev agent.Event) agent.Event {
+	name := toolNameFromEvent(ev)
+	if ev.Type != agent.EventTypeToolCall && ev.Type != agent.EventTypeToolComplete {
+		return ev
+	}
+
+	ev.Tool = nil
+
+	switch ev.Type {
+	case agent.EventTypeToolCall:
+		if ev.ToolCall != nil {
+			call := *ev.ToolCall
+			call.Name = name
+			ev.ToolCall = &call
+			return ev
+		}
+		if ev.ToolResult != nil || name != "" {
+			call := &llmstream.ToolCall{Name: name}
+			if ev.ToolResult != nil {
+				call.CallID = ev.ToolResult.CallID
+				call.Type = ev.ToolResult.Type
+			}
+			ev.ToolCall = call
+		}
+	case agent.EventTypeToolComplete:
+		if ev.ToolResult != nil {
+			result := *ev.ToolResult
+			result.Name = name
+			ev.ToolResult = &result
+			return ev
+		}
+		if ev.ToolCall != nil || name != "" {
+			result := &llmstream.ToolResult{Name: name}
+			if ev.ToolCall != nil {
+				result.CallID = ev.ToolCall.CallID
+				result.Type = ev.ToolCall.Type
+			}
+			ev.ToolResult = result
+		}
+	}
+
+	return ev
+}
+
 func shouldTrackTerminalError(ev agent.Event) bool {
 	if ev.Agent.Depth != 0 {
 		return false

@@ -140,13 +140,13 @@ func (w *jsonEventWriter) WriteAgentEvent(ev agent.Event) error {
 		return w.writeLine(jsonToolCallEvent{
 			Type:  "tool_call",
 			Agent: jsonAgentFromMeta(ev.Agent),
-			Tool:  jsonToolFromCall(ev.ToolCall),
+			Tool:  jsonToolFromEvent(ev),
 		})
 	case agent.EventTypeToolComplete:
 		return w.writeLine(jsonToolCompleteEvent{
 			Type:   "tool_complete",
 			Agent:  jsonAgentFromMeta(ev.Agent),
-			Tool:   jsonToolFromResult(ev.ToolResult),
+			Tool:   jsonToolFromEvent(ev),
 			Result: jsonResultFromToolResult(ev.ToolResult),
 		})
 	case agent.EventTypeWarning, agent.EventTypeRetry, agent.EventTypeError, agent.EventTypeCanceled:
@@ -158,6 +158,44 @@ func (w *jsonEventWriter) WriteAgentEvent(ev agent.Event) error {
 	default:
 		return nil
 	}
+}
+
+func jsonToolFromEvent(ev agent.Event) jsonTool {
+	name := toolNameFromEvent(ev)
+
+	switch ev.Type {
+	case agent.EventTypeToolCall:
+		if ev.ToolCall != nil {
+			tool := jsonToolFromCall(ev.ToolCall)
+			tool.Name = name
+			return tool
+		}
+		if ev.ToolResult != nil {
+			return jsonTool{
+				CallID: ev.ToolResult.CallID,
+				Name:   name,
+				Type:   ev.ToolResult.Type,
+			}
+		}
+	case agent.EventTypeToolComplete:
+		if ev.ToolResult != nil {
+			tool := jsonToolFromResult(ev.ToolResult)
+			tool.Name = name
+			return tool
+		}
+		if ev.ToolCall != nil {
+			return jsonTool{
+				CallID: ev.ToolCall.CallID,
+				Name:   name,
+				Type:   ev.ToolCall.Type,
+			}
+		}
+	}
+
+	if name == "" {
+		return jsonTool{}
+	}
+	return jsonTool{Name: name}
 }
 
 func (w *jsonEventWriter) WriteDone(actualUsage llmstream.TokenUsage, idealUsage *llmstream.TokenUsage) error {
