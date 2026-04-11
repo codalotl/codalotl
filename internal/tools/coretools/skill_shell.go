@@ -202,3 +202,40 @@ func (t *toolSkillShell) normalizeCwd(cwd string) (string, error) {
 
 	return absPath, nil
 }
+
+var skillShellPresenterInstance llmstream.Presenter = skillShellPresenter{}
+
+type skillShellPresenter struct{}
+
+func (p skillShellPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Running"
+	if result != nil {
+		action = "Ran"
+	}
+
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: action, Role: llmstream.RoleAction},
+				{Text: skillShellPresenterCommand(call), Role: llmstream.RoleNormal},
+			},
+		},
+	}
+}
+
+func skillShellPresenterCommand(call llmstream.ToolCall) string {
+	var params skillShellParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err == nil {
+		if command, ok := joinShellCommand(params.Command); ok {
+			return command
+		}
+	}
+
+	name := strings.TrimSpace(call.Name)
+	if name == "" {
+		name = ToolNameSkillShell
+	}
+	return name
+}
