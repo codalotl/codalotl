@@ -144,12 +144,12 @@ Phase 4: tbd, don't plan here yet
 - Keep `Presentation.Body` as `[]Block` unless implementation reality shows a blocker; add missing block/value types such as diff- and output-oriented structures.
 - Add focused tests around new presentation primitives and any parsing/rendering assumptions moved into shared types.
 
-### Phase 2 - internal/agent
+### [DONE] Phase 2 - internal/agent
 
 - Change `agent.Event.Tool` from tool name string to `llmstream.Tool`, and have agent-emitted tool events carry the concrete tool object that produced the call/result.
 - Update `internal/agent/SPEC.md` and focused agent tests for the public API change while keeping non-tool events unchanged.
 
-### Phase 2 - Event consumers and helpers
+### [DONE] Phase 2 - Event consumers and helpers
 
 - Update `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` to compile against `Event.Tool llmstream.Tool` while preserving current human-readable output, JSON output, and timer/replace behavior.
 - Update fakes, fixtures, and targeted tests that currently construct tool events with only a tool name string.
