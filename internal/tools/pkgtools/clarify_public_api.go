@@ -61,6 +61,10 @@ func (t *toolClarifyPublicAPI) Name() string {
 	return ToolNameClarifyPublicAPI
 }
 
+func (t *toolClarifyPublicAPI) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t *toolClarifyPublicAPI) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameClarifyPublicAPI,

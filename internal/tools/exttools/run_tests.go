@@ -45,6 +45,10 @@ func (t *toolRunTests) Name() string {
 	return ToolNameRunTests
 }
 
+func (t *toolRunTests) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t *toolRunTests) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameRunTests,

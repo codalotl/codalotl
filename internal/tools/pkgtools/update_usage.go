@@ -73,6 +73,10 @@ func (t *toolUpdateUsage) Name() string {
 	return ToolNameUpdateUsage
 }
 
+func (t *toolUpdateUsage) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t *toolUpdateUsage) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameUpdateUsage,

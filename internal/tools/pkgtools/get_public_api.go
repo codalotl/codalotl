@@ -41,6 +41,10 @@ func (t *toolGetPublicAPI) Name() string {
 	return ToolNameGetPublicAPI
 }
 
+func (t *toolGetPublicAPI) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t *toolGetPublicAPI) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameGetPublicAPI,

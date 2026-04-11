@@ -219,6 +219,10 @@ func (t stubTool) Name() string {
 	return t.name
 }
 
+func (t stubTool) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t stubTool) Run(ctx context.Context, params llmstream.ToolCall) llmstream.ToolResult {
 	return llmstream.ToolResult{
 		CallID: params.CallID,

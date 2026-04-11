@@ -158,6 +158,9 @@ type yamlSubagentTool struct {
 	targetPackageMode bool
 }
 
+var _ llmstream.Tool = (*yamlCommandTool)(nil)
+var _ llmstream.Tool = (*yamlSubagentTool)(nil)
+
 type resolvedPackageTarget struct {
 	AbsDir        string
 	ImportPath    string
@@ -866,6 +869,10 @@ func (t *yamlCommandTool) Name() string {
 	return t.info.Name
 }
 
+func (t *yamlCommandTool) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t *yamlCommandTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	params, err := parseYAMLToolCallParams(call.Input, t.params)
 	if err != nil {
@@ -897,6 +904,10 @@ func (t *yamlSubagentTool) Info() llmstream.ToolInfo {
 
 func (t *yamlSubagentTool) Name() string {
 	return t.info.Name
+}
+
+func (t *yamlSubagentTool) Presenter() llmstream.Presenter {
+	return nil
 }
 
 func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {

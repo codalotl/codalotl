@@ -75,6 +75,10 @@ func (t *toolChangeAPI) Name() string {
 	return ToolNameChangeAPI
 }
 
+func (t *toolChangeAPI) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t *toolChangeAPI) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameChangeAPI,
