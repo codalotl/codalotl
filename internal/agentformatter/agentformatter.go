@@ -395,8 +395,6 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 	switch normalizedToolName(e) {
 	case "shell":
 		return f.tuiShellToolCall(e, width)
-	case "ls":
-		return f.tuiLsToolCall(e, width)
 	case "diagnostics":
 		return f.tuiDiagnosticsToolCall(e, width)
 	case "fix_lints":
@@ -444,8 +442,6 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 	switch normalizedToolName(e) {
 	case "shell":
 		return f.cliShellToolCall(e)
-	case "ls":
-		return f.cliLsToolCall(e)
 	case "diagnostics":
 		return f.cliDiagnosticsToolCall(e)
 	case "fix_lints":
@@ -508,36 +504,6 @@ func (f *textTUIFormatter) cliShellToolCall(e agent.Event) string {
 	}
 	segments := []textSegment{
 		{text: "Running", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	return f.cliBulletLine(colorAccent, segments...)
-}
-
-func (f *textTUIFormatter) tuiLsToolCall(e agent.Event, width int) string {
-	path, ok := extractLsPath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "List", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	return f.tuiBulletLine(width, colorAccent, segments...)
-}
-
-func (f *textTUIFormatter) cliLsToolCall(e agent.Event) string {
-	path, ok := extractLsPath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "List", style: runeStyle{color: colorColorful, bold: true}},
 	}
 	if target != "" {
 		segments = append(segments, textSegment{text: " " + target})
@@ -609,8 +575,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiDeleteToolComplete(e, width, success, cmd, outputLines)
 	case "shell":
 		return f.tuiShellToolComplete(e, width, success, cmd, outputLines)
-	case "ls":
-		return f.tuiLsToolComplete(e, width, success, cmd, outputLines)
 	case "diagnostics":
 		return f.tuiDiagnosticsToolComplete(e, width, success)
 	case "fix_lints":
@@ -675,8 +639,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliDeleteToolComplete(e, success, cmd, outputLines)
 	case "shell":
 		return f.cliShellToolComplete(e, success, cmd, outputLines)
-	case "ls":
-		return f.cliLsToolComplete(e, success, cmd, outputLines)
 	case "diagnostics":
 		return f.cliDiagnosticsToolComplete(e, success)
 	case "fix_lints":
@@ -859,55 +821,6 @@ func (f *textTUIFormatter) cliShellToolComplete(e agent.Event, success bool, cmd
 	lines := []string{f.cliBulletLine(bullet, segments...)}
 	if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
 		lines = append(lines, rest...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (f *textTUIFormatter) tuiLsToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
-	path, ok := extractLsPath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "List", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
-	if !success && len(outputLines) > 0 {
-		f.appendTUIToolOutput(&builder, width, outputLines)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliLsToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
-	path, ok := extractLsPath(e.ToolCall)
-	target := strings.TrimSpace(path)
-	if !ok || target == "" {
-		target = toolDisplayName(e)
-	}
-	segments := []textSegment{
-		{text: "List", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	if target != "" {
-		segments = append(segments, textSegment{text: " " + target})
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	lines := []string{f.cliBulletLine(bullet, segments...)}
-	if !success {
-		if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
-			lines = append(lines, rest...)
-		}
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1251,23 +1164,6 @@ func extractShellCommand(call *llmstream.ToolCall) (string, bool) {
 		return "", false
 	}
 	return sanitizeText(strings.Join(payload.Command, " ")), true
-}
-
-func extractLsPath(call *llmstream.ToolCall) (string, bool) {
-	if call == nil {
-		return "", false
-	}
-	var payload struct {
-		Path string `json:"path"`
-	}
-	if err := json.Unmarshal([]byte(call.Input), &payload); err != nil {
-		return "", false
-	}
-	path := strings.TrimSpace(payload.Path)
-	if path == "" {
-		return "", false
-	}
-	return sanitizeText(path), true
 }
 
 func extractDiagnosticsPath(call *llmstream.ToolCall) (string, bool) {

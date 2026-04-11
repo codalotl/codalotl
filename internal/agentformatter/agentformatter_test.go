@@ -263,50 +263,56 @@ func TestAgentReasoningTableDriven(t *testing.T) {
 	}
 }
 
-func TestToolCallTableDriven(t *testing.T) {
+func TestLsToolCallUsesPresenter(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	formatter := NewTUIFormatter(cfg)
 	pal := newPalette(cfg)
-
-	testCases := []struct {
-		name     string
-		call     llmstream.ToolCall
-		tuiWidth int
-		expected string
-	}{
-		{
-			name: "ls",
-			call: llmstream.ToolCall{
-				Name:  "ls",
-				Input: `{"path":"codeai"}`,
-			},
-			tuiWidth: 60,
-			expected: "• " + ansiWrap("List", pal, colorColorful, false, true) + " codeai",
-		},
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("List", "codeai"),
+		complete: presentedReplaceSummary("List", "codeai"),
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Convert only the bullet of the message to be ANSI escaped (so the test case looks nicer, without stuff like \x1b[38;5;153m in there).
-			// Other things that need escaping will need to include it in the expected test case.
-			expected := strings.Replace(tc.expected, "•", ansiWrap("•", pal, colorAccent, false, false), 1)
-
-			event := agent.Event{
-				Type:     agent.EventTypeToolCall,
-				ToolCall: &tc.call,
-			}
-			out := formatter.FormatEvent(event, tc.tuiWidth)
-			if !assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(out)) {
-				fmt.Println("EXPECTED:")
-				fmt.Println(strings.TrimSpace(expected))
-				fmt.Println("ACTUAL:")
-				fmt.Println(strings.TrimSpace(out))
-			}
-		})
+	call := llmstream.ToolCall{
+		Name:  "ls",
+		Input: `{"path":"ignored/by/presenter"}`,
 	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     testToolWithPresenter("ls", presenter),
+		ToolCall: &call,
+	}
+
+	out := formatter.FormatEvent(event, 60)
+	require.NotEmpty(t, out)
+
+	expected := "• " + ansiWrap("List", pal, colorColorful, false, true) + " codeai"
+	expected = strings.Replace(expected, "•", ansiWrap("•", pal, colorAccent, false, false), 1)
+	assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(out))
+}
+
+func TestLsToolCallWithoutPresenterFallsBackToGenericFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "ls",
+		Input: `{"path":"codeai"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     testTool("ls"),
+		ToolCall: &call,
+	}
+
+	out := formatter.FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	assert.Equal(t, `• Tool ls {"path":"codeai"}`, stripANSI(out))
 }
 
 func TestToolCallShellFormatting(t *testing.T) {
@@ -576,7 +582,7 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
 }
 
-func TestAppendPresenterDoesNotOverrideDedicatedFormatting(t *testing.T) {
+func TestAppendPresenterDoesNotOverrideDedicatedShellFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -603,18 +609,18 @@ func TestAppendPresenterDoesNotOverrideDedicatedFormatting(t *testing.T) {
 	}
 
 	call := llmstream.ToolCall{
-		Name:  "ls",
-		Input: `{"path":"codeai"}`,
+		Name:  "shell",
+		Input: `{"command":["go","test","."]}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testToolWithPresenter("ls", presenter),
+		Tool:     testToolWithPresenter("shell", presenter),
 		ToolCall: &call,
 	}
 
 	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
 	require.NotEmpty(t, out)
-	assert.Equal(t, "• List codeai", stripANSI(out))
+	assert.Equal(t, "• Running go test .", stripANSI(out))
 }
 
 func TestPresentedToolSummaryJoinWithSpace(t *testing.T) {
@@ -1041,16 +1047,20 @@ func TestFixLintsToolCompleteCLI(t *testing.T) {
 	}, lines)
 }
 
-func TestLsCompleteSuccessNoOutput(t *testing.T) {
+func TestLsPresenterCompleteSuccessNoOutput(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("List", "."),
+		complete: presentedReplaceSummary("List", "."),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "ls",
-		Input: `{"path":"."}`,
+		Input: `{"path":"ignored/by/presenter"}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  `{"success":true,"content":"- file1\n- file2"}`,
@@ -1058,7 +1068,7 @@ func TestLsCompleteSuccessNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("ls"),
+		Tool:       testToolWithPresenter("ls", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1071,16 +1081,20 @@ func TestLsCompleteSuccessNoOutput(t *testing.T) {
 	assert.NotContains(t, out, "└")
 }
 
-func TestLsCompleteErrorShowsMessage(t *testing.T) {
+func TestLsPresenterCompleteErrorShowsMessage(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("List", "/tmp/unknown"),
+		complete: presentedReplaceSummary("List", "/tmp/unknown"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "ls",
-		Input: `{"path":"/tmp/unknown"}`,
+		Input: `{"path":"ignored/by/presenter"}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  "path does not exist",
@@ -1088,7 +1102,7 @@ func TestLsCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("ls"),
+		Tool:       testToolWithPresenter("ls", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
