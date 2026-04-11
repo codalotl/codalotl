@@ -29,6 +29,13 @@ Presentation: `Read path/to/file.go`
 
 Presentation: `List some/path`
 
+### shell
+
+Presentation:
+- In progress: `Running go test .`
+- Complete: `Ran go test .`
+- Summary uses command argv, not cwd/timeout/request-permission metadata.
+
 ### edit
 
 The `edit` tool edits files by find and replace. Applies it with `applypatch.Replace`.

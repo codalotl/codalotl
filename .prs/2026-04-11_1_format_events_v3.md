@@ -181,9 +181,15 @@ Phase 5: tbd, don't plan here yet
 - Add a replace-style `Presenter` for `ls` that preserves the current `List <path>` summary and current formatter-owned error handling.
 - Add focused `internal/tools/coretools` coverage for the presenter shape and fallback behavior.
 
+### Phase 4 - internal/tools/coretools: shell
+
+- Move `shell` formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add a presenter that renders `Running <command>` while in progress and `Ran <command>` on completion, while preserving current shared output/error handling.
+- Add focused `internal/tools/coretools` coverage for command extraction and fallback behavior.
+
 ### Phase 4 - internal/tools/coretools: remaining core tools
 
-- Migrate `shell`, `skill_shell`, `update_plan`, `apply_patch`, `edit`, `write`, and `delete` one tool at a time, with one implementation commit per tool.
+- Migrate `skill_shell`, `update_plan`, `apply_patch`, `edit`, `write`, and `delete` one tool at a time, with one implementation commit per tool.
 - Move each migrated tool's formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add focused presenter coverage per migrated tool; keep formatter cleanup separate.
 
@@ -205,6 +211,7 @@ Phase 5: tbd, don't plan here yet
 
 - Phase 0 is API plumbing only. Tool-owned rendering and completion-behavior changes stay out of scope until phase 1.
 - Phase 1 keeps `Presentation.Body` as `[]Block`. Current tool shapes need mixed bodies such as paragraph + checklist, and diff/output blocks fit naturally without collapsing to a single block.
+- `shell` and `skill_shell` currently share formatter behavior via normalized tool names. Their formatter cleanup likely needs to land together, or keep a temporary explicit `skill_shell` path.
 
 ## Review
 
