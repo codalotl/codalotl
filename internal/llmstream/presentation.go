@@ -75,3 +75,63 @@ type ChecklistItem struct {
 }
 
 type ChecklistStatus string
+
+const (
+	ChecklistStatusPending    ChecklistStatus = "pending"
+	ChecklistStatusInProgress ChecklistStatus = "in_progress"
+	ChecklistStatusCompleted  ChecklistStatus = "completed"
+)
+
+// Output is verbatim, line-oriented tool output such as shell command output or a pretty-printed raw payload.
+type Output struct {
+	Kind             OutputKind
+	Lines            []string // Lines are the visible output lines in display order.
+	OmittedLineCount int      // OmittedLineCount records how many additional lines were intentionally omitted from the presentation.
+}
+
+func (Output) isBlock() {}
+
+type OutputKind string
+
+const (
+	OutputKindText    OutputKind = "text"
+	OutputKindCommand OutputKind = "command"
+	OutputKindJSON    OutputKind = "json"
+)
+
+// Diff is a diff-like edit block, potentially spanning multiple file edits.
+type Diff struct {
+	Edits []DiffEdit
+}
+
+func (Diff) isBlock() {}
+
+type DiffEdit struct {
+	Kind    DiffEditKind
+	OldPath string     // OldPath is the source path for edits, deletes, and renames. It may be empty for newly added files.
+	NewPath string     // NewPath is the destination path for adds and renames. It may be empty for deleted files.
+	Lines   []DiffLine // Lines are the visible diff lines. Presentations that suppress hunk anchors can still model the changed lines semantically here.
+}
+
+type DiffEditKind string
+
+const (
+	DiffEditKindEdit   DiffEditKind = "edit"
+	DiffEditKindAdd    DiffEditKind = "add"
+	DiffEditKindDelete DiffEditKind = "delete"
+	DiffEditKindRename DiffEditKind = "rename"
+)
+
+type DiffLine struct {
+	Kind DiffLineKind
+	Text string // Text is the line content without the leading diff marker. For omitted lines, Text may be empty.
+}
+
+type DiffLineKind string
+
+const (
+	DiffLineKindContext DiffLineKind = "context"
+	DiffLineKindAdd     DiffLineKind = "add"
+	DiffLineKindDelete  DiffLineKind = "delete"
+	DiffLineKindOmitted DiffLineKind = "omitted"
+)
