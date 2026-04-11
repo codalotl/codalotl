@@ -118,7 +118,13 @@ Phase 3:
     - Remove explicit handling of read_file
     - If the event's tool has a presenter, use that.
 
-Phase 4: tbd, don't plan here yet
+Phase 4:
+- In this phase, we go tool by tool, starting with tools in core tools.
+- Move the tool formatting specification from agentformatter to the tool packge's SPEC (i did an example with read_file).
+- Each tool in coretools needs a separate implementation commit
+- Then a separate commmit in agentformatter to remove explicit support
+
+Phase 5: tbd, don't plan here yet
 
 ## Plan
 
