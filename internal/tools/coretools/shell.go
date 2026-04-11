@@ -225,7 +225,7 @@ func (p shellPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolR
 		action = "Ran"
 	}
 
-	return llmstream.Presentation{
+	presentation := llmstream.Presentation{
 		Behavior: llmstream.CompletionBehaviorReplace,
 		Summary: llmstream.Line{
 			JoinWithSpace: true,
@@ -235,6 +235,11 @@ func (p shellPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolR
 			},
 		},
 	}
+	if result != nil {
+		presentation.Body = shellPresenterBody(*result)
+	}
+
+	return presentation
 }
 
 func shellPresenterCommand(call llmstream.ToolCall) string {
@@ -260,4 +265,80 @@ func joinShellCommand(argv []string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(argv, " "), true
+}
+
+func shellPresenterBody(result llmstream.ToolResult) []llmstream.Block {
+	lines, omittedLineCount := summarizeShellPresenterResult(result)
+	if len(lines) == 0 && omittedLineCount == 0 {
+		return nil
+	}
+
+	return []llmstream.Block{
+		llmstream.Output{
+			Kind:             llmstream.OutputKindCommand,
+			Lines:            lines,
+			OmittedLineCount: omittedLineCount,
+		},
+	}
+}
+
+func summarizeShellPresenterResult(result llmstream.ToolResult) ([]string, int) {
+	trimmed := strings.TrimSpace(result.Result)
+	if trimmed == "" {
+		return nil, 0
+	}
+
+	var payload struct {
+		Content string `json:"content"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+		if strings.TrimSpace(payload.Error) != "" {
+			return []string{"Error: " + strings.TrimSpace(payload.Error)}, 0
+		}
+		if payload.Content != "" {
+			return summarizeShellPresenterOutput(payload.Content, 5)
+		}
+	}
+
+	if result.IsError {
+		return []string{"Error: " + trimmed}, 0
+	}
+	return summarizeShellPresenterOutput(trimmed, 5)
+}
+
+func summarizeShellPresenterOutput(content string, maxLines int) ([]string, int) {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+
+	start := 0
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "Output:" {
+			start = i + 1
+			break
+		}
+	}
+
+	lines = trimEmptyShellPresenterLines(lines[start:])
+	if len(lines) == 0 {
+		return nil, 0
+	}
+
+	omittedLineCount := 0
+	if maxLines > 0 && len(lines) > maxLines {
+		omittedLineCount = len(lines) - maxLines
+		lines = lines[:maxLines]
+	}
+
+	return lines, omittedLineCount
+}
+
+func trimEmptyShellPresenterLines(lines []string) []string {
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }

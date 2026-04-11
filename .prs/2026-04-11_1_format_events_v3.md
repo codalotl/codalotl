@@ -123,6 +123,11 @@ Phase 4:
 - Move the tool formatting specification from agentformatter to the tool packge's SPEC (i did an example with read_file).
 - Each tool in coretools needs a separate implementation commit
 - Then a separate commmit in agentformatter to remove explicit support
+- A tool is migrated to the new system if:
+	- it is NOT referenced explicitely in agentformatter (whether it be SPEC.md or implementation)
+		- HOWEVER, KEEP tests for tools in agentformatter, assuming they're still reasonable. We can deal with them later. For now, it's nice to have extra validation.
+	- it IS specified in a corresponding tools/* package's SPEC.md
+	- The presenter is implemented on the tool, which MATCHES the impl of the original
 
 Phase 5: tbd, don't plan here yet
 

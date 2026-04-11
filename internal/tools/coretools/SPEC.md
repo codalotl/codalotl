@@ -35,12 +35,12 @@ Presentation:
 - In progress: `Running go test .`
 - Complete: `Ran go test .`
 - Summary uses command argv, not cwd/timeout/request-permission metadata.
+- The command's output is the body. If there is no output, There is no body.
+- If the output is more than 5 lines, show the first five, followed by `… +13 lines` (for example).
 
 ### skill_shell
 
-Presentation:
-- Same summary behavior as `shell`
-- Skill metadata is not shown in summary
+Presentation: same behvior as shell.
 
 ### edit
 

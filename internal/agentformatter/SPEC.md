@@ -168,16 +168,6 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - If `Event.Tool` exposes a non-nil `Presenter`, formatter must render from that semantic presentation.
 - Do not keep parallel per-tool formatting specs here once a tool package owns its presentation.
 
-### EventTypeToolCall and EventTypeToolComplete - read_file
-
-```
-• Read some/file.go
-```
-
-- Bullet indicates status (Accent -> Red or Green). Green shows no output.
-- Read is Bold, Colorful. some/file.go is normal.
-- `read_file` may reach this output via the tool's presenter rather than dedicated formatter logic.
-
 ### EventTypeToolCall and EventTypeToolComplete - update_plan
 
 ```

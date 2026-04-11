@@ -91,7 +91,7 @@ func TestSkillShell_Presenter_FallbacksToToolName(t *testing.T) {
 			call: llmstream.ToolCall{
 				Input: `{"command":[],"skill":"git-commit"}`,
 			},
-			expected: ToolNameSkillShell,
+			expected: ToolNameShell,
 		},
 		{
 			name: "blank executable",

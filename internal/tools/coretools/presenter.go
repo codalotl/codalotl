@@ -27,7 +27,7 @@ func (t *toolShell) Presenter() llmstream.Presenter {
 }
 
 func (t *toolSkillShell) Presenter() llmstream.Presenter {
-	return skillShellPresenterInstance
+	return shellPresenterInstance
 }
 
 func (t *toolUpdatePlan) Presenter() llmstream.Presenter {
