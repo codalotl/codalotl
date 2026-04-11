@@ -49,11 +49,12 @@ func TestReadFilePresenter(t *testing.T) {
 
 	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
 	assert.Equal(t, callPresentation, resultPresentation)
+	assert.True(t, callPresentation.Summary.JoinWithSpace)
 	require.Len(t, callPresentation.Summary.Segments, 2)
 	assert.Equal(t, llmstream.RoleAction, callPresentation.Summary.Segments[0].Role)
 	assert.Equal(t, "Read", callPresentation.Summary.Segments[0].Text)
 	assert.Equal(t, llmstream.RoleNormal, callPresentation.Summary.Segments[1].Role)
-	assert.Equal(t, " some/file.txt", callPresentation.Summary.Segments[1].Text)
+	assert.Equal(t, "some/file.txt", callPresentation.Summary.Segments[1].Text)
 	assert.Empty(t, callPresentation.Body)
 }
 
@@ -66,6 +67,7 @@ func TestReadFilePresenter_FallsBackToToolName(t *testing.T) {
 	require.NotNil(t, presenter)
 
 	presentation := presenter.Present(llmstream.ToolCall{Name: ToolNameReadFile, Input: `{"path":"   "}`}, nil)
+	assert.True(t, presentation.Summary.JoinWithSpace)
 	require.Len(t, presentation.Summary.Segments, 2)
-	assert.Equal(t, " read_file", presentation.Summary.Segments[1].Text)
+	assert.Equal(t, "read_file", presentation.Summary.Segments[1].Text)
 }

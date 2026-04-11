@@ -361,15 +361,20 @@ func presentationLineSegments(line llmstream.Line) []textSegment {
 		return nil
 	}
 
-	segments := make([]textSegment, 0, len(line.Segments))
+	segments := make([]textSegment, 0, len(line.Segments)*2-1)
+	hasContent := false
 	for _, segment := range line.Segments {
 		if segment.Text == "" {
 			continue
+		}
+		if line.JoinWithSpace && hasContent {
+			segments = append(segments, textSegment{text: " "})
 		}
 		segments = append(segments, textSegment{
 			text:  segment.Text,
 			style: presentationSegmentStyle(segment.Role),
 		})
+		hasContent = true
 	}
 	return segments
 }

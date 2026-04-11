@@ -8,9 +8,22 @@ Some LLMs are trained to use specific tools, and will do so better than other LL
 - OpenAI models should use `apply_patch` (which supports editing, deleting, and moving files).
 - Other models should use `write`, `edit`, and `delete`.
 
+## Presentations
+
+- Each tool should have a `Presenter`.
+- This SPEC.md specifies them in a concise, ambiguous way. Example:
+    - A read_file tool that presents as
+        - `{Behavior: Replace, Summary: {JoinWithSpace: true, Segments: [{Text: "Read", Role: Action}, {Text: "path/to/file.go", Role: Normal}]}}` (NOTE: this is pseudo-code)
+    - Can just be specified here as:
+        - `Read path/to/file.go`
+
 ## Tools
 
 (not all tools are reflected here yet)
+
+### read_file
+
+Presentation: `Read path/to/file.go`
 
 ### edit
 

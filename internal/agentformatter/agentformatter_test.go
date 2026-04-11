@@ -60,6 +60,13 @@ func presentedReplaceSummary(action, target string) llmstream.Presentation {
 	}
 }
 
+func presentedReplaceLine(line llmstream.Line) llmstream.Presentation {
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary:  line,
+	}
+}
+
 func TestAgentMessageTableDriven(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -608,6 +615,75 @@ func TestAppendPresenterDoesNotOverrideDedicatedFormatting(t *testing.T) {
 	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
 	require.NotEmpty(t, out)
 	assert.Equal(t, "• List codeai", stripANSI(out))
+}
+
+func TestPresentedToolSummaryJoinWithSpace(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	testCases := []struct {
+		name     string
+		line     llmstream.Line
+		expected string
+	}{
+		{
+			name: "false preserves adjacent text",
+			line: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: "foo", Role: llmstream.RoleAction},
+					{Text: "(bar)", Role: llmstream.RoleNormal},
+				},
+			},
+			expected: "• foo(bar)",
+		},
+		{
+			name: "true inserts single space",
+			line: llmstream.Line{
+				JoinWithSpace: true,
+				Segments: []llmstream.Segment{
+					{Text: "foo", Role: llmstream.RoleAction},
+					{Text: "bar", Role: llmstream.RoleNormal},
+				},
+			},
+			expected: "• foo bar",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			presenter := staticPresenter{
+				call:     presentedReplaceLine(tc.line),
+				complete: presentedReplaceLine(tc.line),
+			}
+			call := llmstream.ToolCall{
+				Name:  "read_file",
+				Input: `{"path":"ignored/by/presenter.go"}`,
+			}
+
+			callEvent := agent.Event{
+				Type:     agent.EventTypeToolCall,
+				Tool:     testToolWithPresenter("read_file", presenter),
+				ToolCall: &call,
+			}
+			completeEvent := agent.Event{
+				Type:     agent.EventTypeToolComplete,
+				Tool:     testToolWithPresenter("read_file", presenter),
+				ToolCall: &call,
+				ToolResult: &llmstream.ToolResult{
+					Result:  `{"success":true}`,
+					IsError: false,
+				},
+			}
+
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(callEvent, 120)))
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(completeEvent, 120)))
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)))
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)))
+		})
+	}
 }
 
 func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {

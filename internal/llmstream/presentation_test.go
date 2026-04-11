@@ -174,3 +174,32 @@ func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {
 		{Kind: DiffLineKindAdd, Text: "package some"},
 	}, diff.Edits[1].Lines)
 }
+
+func TestPresentationModel_LineJoinModes(t *testing.T) {
+	joined := Line{
+		JoinWithSpace: true,
+		Segments: []Segment{
+			{Text: "Read", Role: RoleAction},
+			{Text: "file.go", Role: RoleCode},
+		},
+	}
+
+	assert.True(t, joined.JoinWithSpace)
+	assert.Equal(t, []Segment{
+		{Text: "Read", Role: RoleAction},
+		{Text: "file.go", Role: RoleCode},
+	}, joined.Segments)
+
+	manual := Line{
+		Segments: []Segment{
+			{Text: "foo", Role: RoleAccent},
+			{Text: "(bar)", Role: RoleCode},
+		},
+	}
+
+	assert.False(t, manual.JoinWithSpace)
+	assert.Equal(t, []Segment{
+		{Text: "foo", Role: RoleAccent},
+		{Text: "(bar)", Role: RoleCode},
+	}, manual.Segments)
+}

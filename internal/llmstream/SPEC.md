@@ -180,7 +180,12 @@ type Presentation struct {
 	Body     []Block // Tool details (ex: diff body; command output; checklist items)
 }
 
+// Line is a single rendered line made of styled segments. If JoinWithSpace is true, consumers should join adjacent segments with a single space. Otherwise, Segment.Text
+// owns any needed leading or trailing whitespace explicitly.
 type Line struct {
+	// JoinWithSpace indicates whether consumers should insert a single space between segments. When false, Segment.Text owns any needed leading or trailing whitespace.
+	JoinWithSpace bool
+
 	Segments []Segment
 }
 
