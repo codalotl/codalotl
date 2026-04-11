@@ -127,7 +127,7 @@ Phase 2: tbd, don't start/plan yet
 - Keep `internal/agentformatter`, `internal/tui`, and `internal/noninteractive` behavior unchanged in phase 0; they should compile against the new interface but not consume presenters yet.
 - Verify the phase-0 plumbing and unchanged consumers with `go test ./...`.
 
-### Phase 1 - internal/llmstream
+### [DONE] Phase 1 - internal/llmstream
 
 - Refine the presentation tree so every current tool shape in `internal/agentformatter` is representable semantically.
 - Keep `Presentation.Body` as `[]Block` unless implementation reality shows a blocker; add missing block/value types such as diff- and output-oriented structures.
@@ -156,6 +156,7 @@ Phase 2: tbd, don't start/plan yet
 ## Decisions
 
 - Phase 0 is API plumbing only. Tool-owned rendering and completion-behavior changes stay out of scope until phase 1.
+- Phase 1 keeps `Presentation.Body` as `[]Block`. Current tool shapes need mixed bodies such as paragraph + checklist, and diff/output blocks fit naturally without collapsing to a single block.
 
 ## Review
 
