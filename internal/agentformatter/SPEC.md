@@ -163,6 +163,11 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - It is fine to just print the tool name (ex: read_file, ls, apply_patch).
 - The only data displayed is the tool name, and if present, the `path` argument. If no path, it reads (for instance): `Silly LLM tried apply_patch outside of package`.
 
+### Presenter-driven tool formatting
+
+- If `Event.Tool` exposes a non-nil `Presenter`, formatter may render from that semantic presentation instead of a hard-coded tool-name branch.
+- Presenter-driven rendering must preserve the documented visible output shape for tools with dedicated sections here.
+
 ### EventTypeToolCall and EventTypeToolComplete - ls
 
 ```
@@ -180,6 +185,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 
 - Bullet indicates status (Accent -> Red or Green). Green shows no output.
 - Read is Bold, Colorful. some/file.go is normal.
+- `read_file` may reach this output via the tool's presenter rather than dedicated formatter logic.
 
 ### EventTypeToolCall and EventTypeToolComplete - update_plan
 
