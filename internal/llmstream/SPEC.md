@@ -44,6 +44,13 @@ type DiagnosticHookReceiver interface {
 func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 ```
 
+## Tool presentation
+
+- A tool may expose semantic display metadata via `Presenter() Presenter`.
+- `nil` presenter is valid and means the tool has no custom presentation.
+- `Presenter.Present(call, nil)` represents an in-progress tool call.
+- Presentation is semantic only: no width decisions, terminal styling, or ANSI concerns.
+
 ## Public API
 
 ```go
@@ -128,6 +135,7 @@ type ToolResult struct {
 type Tool interface {
 	Info() ToolInfo
 	Name() string
+	Presenter() Presenter
 	Run(ctx context.Context, params ToolCall) ToolResult
 }
 
@@ -139,4 +147,44 @@ type ToolInfo struct {
 	Kind        ToolKind
 	Grammar     *ToolGrammar
 }
+
+type Presenter interface {
+	Present(call ToolCall, result *ToolResult) Presentation
+}
+
+type CompletionBehavior string
+
+const (
+	CompletionBehaviorReplace CompletionBehavior = "replace"
+	CompletionBehaviorAppend  CompletionBehavior = "append"
+)
+
+type Presentation struct {
+	Behavior CompletionBehavior
+	Summary  Line
+	Body     []Block
+}
+
+type Line struct {
+	Segments []Segment
+}
+
+type Segment struct {
+	Text string
+	Role SegmentRole
+}
+
+type SegmentRole string
+
+const (
+	RoleNormal   SegmentRole = "normal"
+	RoleAccent   SegmentRole = "accent"
+	RoleAction   SegmentRole = "action"
+	RoleSuccess  SegmentRole = "success"
+	RoleError    SegmentRole = "error"
+	RoleCode     SegmentRole = "code"
+	RoleEmphasis SegmentRole = "emphasis"
+)
+
+type Block interface{ isBlock() }
 ```
