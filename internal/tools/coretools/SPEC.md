@@ -36,6 +36,12 @@ Presentation:
 - Complete: `Ran go test .`
 - Summary uses command argv, not cwd/timeout/request-permission metadata.
 
+### skill_shell
+
+Presentation:
+- Same summary behavior as `shell`
+- Skill metadata is not shown in summary
+
 ### edit
 
 The `edit` tool edits files by find and replace. Applies it with `applypatch.Replace`.
