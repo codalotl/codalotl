@@ -204,9 +204,15 @@ Phase 5: tbd, don't plan here yet
 - Preserve existing bullet/status behavior and shared output formatting conventions so `shell`/`skill_shell` show command output via their presenter bodies.
 - Add focused formatter coverage for presenter-driven completion bodies in both success and error cases.
 
+### Phase 4 - internal/tools/coretools: update_plan
+
+- Move `update_plan` formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add a replace-style presenter for `update_plan` that preserves the current `Update Plan` summary plus explanation/plan-item body rendering.
+- Keep shared formatter-owned bullet/status and error handling intact; add focused `internal/tools/coretools` coverage for explanation and plan-item emphasis semantics.
+
 ### Phase 4 - internal/tools/coretools: remaining core tools
 
-- Migrate `update_plan`, `apply_patch`, `edit`, `write`, and `delete` one tool at a time, with one implementation commit per tool.
+- Migrate `apply_patch`, `edit`, `write`, and `delete` one tool at a time, with one implementation commit per tool.
 - Move each migrated tool's formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add focused presenter coverage per migrated tool; keep formatter cleanup separate.
 

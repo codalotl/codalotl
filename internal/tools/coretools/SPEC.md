@@ -42,6 +42,21 @@ Presentation:
 
 Presentation: same behvior as shell.
 
+### update_plan
+
+Presentation:
+- Summary: `Update Plan`
+- Body:
+    - Optional explanation line first, when non-empty
+    - Then plan items in order, one per line
+- Plan items:
+    - Completed: `✔ Some step`
+    - Pending: `□ Some step`
+    - In progress: `□ Some step`
+- The first uncompleted item is highlighted as next-up work.
+- Explicit `in_progress` items are also emphasized.
+- Shared formatter error handling still owns tool errors.
+
 ### edit
 
 The `edit` tool edits files by find and replace. Applies it with `applypatch.Replace`.
