@@ -67,6 +67,12 @@ func presentedReplaceLine(line llmstream.Line) llmstream.Presentation {
 	}
 }
 
+func presentedReplaceSummaryWithOutput(action, target string, output llmstream.Output) llmstream.Presentation {
+	presentation := presentedReplaceSummary(action, target)
+	presentation.Body = []llmstream.Block{output}
+	return presentation
+}
+
 func TestAgentMessageTableDriven(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -472,6 +478,114 @@ func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
 	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
 	assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
 	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false))
+}
+
+func TestPresentedToolCompleteSuccessShowsOutputBody(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test .", llmstream.Output{
+			Kind:             llmstream.OutputKindCommand,
+			Lines:            []string{"first output line wraps around cleanly", "second output line"},
+			OmittedLineCount: 2,
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true,"content":"ignored because presenter body owns display"}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 34)
+		require.NotEmpty(t, out)
+		assert.Equal(t, []string{
+			"• Ran go test .",
+			"  └ first output line wraps around",
+			"    cleanly",
+			"    second output line",
+			"    … +2 lines",
+		}, strings.Split(stripANSI(out), "\n"))
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+		assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, []string{
+			"• Ran go test .",
+			"  └ first output line wraps around cleanly",
+			"    second output line",
+			"    … +2 lines",
+		}, strings.Split(stripANSI(out), "\n"))
+	})
+}
+
+func TestPresentedToolCompleteErrorStillUsesSharedErrorFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test .", llmstream.Output{
+			Kind:  llmstream.OutputKindCommand,
+			Lines: []string{"presenter body should not override tool errors"},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "exec: go: not found",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	expected := []string{
+		"• Ran go test .",
+		"  └ Error: exec: go: not found",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 80)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+		assert.NotContains(t, stripANSI(out), "presenter body should not override tool errors")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "presenter body should not override tool errors")
+	})
 }
 
 func TestToolCallReadFileVerbColor(t *testing.T) {

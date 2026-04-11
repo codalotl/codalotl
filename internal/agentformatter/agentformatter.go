@@ -387,6 +387,65 @@ func (f *textTUIFormatter) cliPresentedToolSummary(bullet colorRole, presentatio
 	return f.cliBulletLine(bullet, presentationLineSegments(presentation.Summary)...)
 }
 
+func presenterCompletionErrorOutput(result *llmstream.ToolResult) ([]toolOutputLine, bool) {
+	if result == nil {
+		return nil, false
+	}
+	if result.IsError {
+		return summarizeToolResult(*result), true
+	}
+
+	trimmed := strings.TrimSpace(result.Result)
+	if trimmed == "" {
+		return nil, false
+	}
+
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return nil, false
+	}
+	if strings.TrimSpace(payload.Error) == "" {
+		return nil, false
+	}
+	return summarizeToolResult(*result), true
+}
+
+func presenterCompletionBodyLines(presentation llmstream.Presentation) []toolOutputLine {
+	var lines []toolOutputLine
+	for _, block := range presentation.Body {
+		switch body := block.(type) {
+		case llmstream.Output:
+			lines = append(lines, presenterOutputBlockLines(body)...)
+		case *llmstream.Output:
+			if body != nil {
+				lines = append(lines, presenterOutputBlockLines(*body)...)
+			}
+		}
+	}
+	return lines
+}
+
+func presenterOutputBlockLines(output llmstream.Output) []toolOutputLine {
+	lines := make([]toolOutputLine, 0, len(output.Lines)+1)
+	for _, line := range output.Lines {
+		lines = append(lines, toolOutputLine{
+			text:          line,
+			style:         runeStyle{color: colorAccent},
+			highlightCode: true,
+		})
+	}
+	if output.OmittedLineCount > 0 {
+		lines = append(lines, toolOutputLine{
+			text:          fmt.Sprintf("… +%d lines", output.OmittedLineCount),
+			style:         runeStyle{color: colorAccent},
+			highlightCode: false,
+		})
+	}
+	return lines
+}
+
 func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 	if presentation, ok := presenterReplacePresentation(e); ok {
 		return f.tuiPresentedToolSummary(width, colorAccent, presentation)
@@ -557,7 +616,13 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 
 		var builder strings.Builder
 		builder.WriteString(f.tuiPresentedToolSummary(width, bullet, presentation))
-		if !success && len(outputLines) > 0 {
+		if errorLines, ok := presenterCompletionErrorOutput(e.ToolResult); ok {
+			f.appendTUIToolOutput(&builder, width, errorLines)
+			return builder.String()
+		}
+		if bodyLines := presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
+			f.appendTUIToolOutput(&builder, width, bodyLines)
+		} else if !success && len(outputLines) > 0 {
 			f.appendTUIToolOutput(&builder, width, outputLines)
 		}
 		return builder.String()
@@ -619,7 +684,17 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		}
 
 		lines := []string{f.cliPresentedToolSummary(bullet, presentation)}
-		if !success {
+		if errorLines, ok := presenterCompletionErrorOutput(e.ToolResult); ok {
+			if rest := f.cliToolOutputLines(errorLines); len(rest) > 0 {
+				lines = append(lines, rest...)
+			}
+			return strings.Join(lines, "\n")
+		}
+		if bodyLines := presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
+			if rest := f.cliToolOutputLines(bodyLines); len(rest) > 0 {
+				lines = append(lines, rest...)
+			}
+		} else if !success {
 			if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
 				lines = append(lines, rest...)
 			}
