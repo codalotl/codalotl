@@ -47,7 +47,8 @@ Presentation: same behvior as shell.
 Presentation:
 - Summary: `Update Plan`
 - Body:
-    - Optional explanation line first, when non-empty
+    - A single checklist block
+    - Optional checklist overview line first, when non-empty
     - Then plan items in order, one per line
 - Plan items:
     - Completed: `✔ Some step`

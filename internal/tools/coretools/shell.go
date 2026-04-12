@@ -269,18 +269,16 @@ func joinShellCommand(argv []string) (string, bool) {
 	return strings.Join(argv, " "), true
 }
 
-func shellPresenterBody(result llmstream.ToolResult) []llmstream.Block {
+func shellPresenterBody(result llmstream.ToolResult) llmstream.Block {
 	lines, omittedLineCount := summarizeShellPresenterResult(result)
 	if len(lines) == 0 && omittedLineCount == 0 {
 		return nil
 	}
 
-	return []llmstream.Block{
-		llmstream.Output{
-			Kind:             llmstream.OutputKindCommand,
-			Lines:            lines,
-			OmittedLineCount: omittedLineCount,
-		},
+	return llmstream.Output{
+		Kind:             llmstream.OutputKindCommand,
+		Lines:            lines,
+		OmittedLineCount: omittedLineCount,
 	}
 }
 

@@ -103,19 +103,7 @@ func (p updatePlanPresenter) Present(call llmstream.ToolCall, result *llmstream.
 	return presentation
 }
 
-func updatePlanPresenterBody(params updatePlanParams) []llmstream.Block {
-	body := make([]llmstream.Block, 0, 2)
-
-	if strings.TrimSpace(params.Explanation) != "" {
-		body = append(body, llmstream.Paragraph{
-			Lines: []llmstream.Line{{
-				Segments: []llmstream.Segment{
-					{Text: params.Explanation, Role: llmstream.RoleAccent},
-				},
-			}},
-		})
-	}
-
+func updatePlanPresenterBody(params updatePlanParams) llmstream.Block {
 	items := make([]llmstream.ChecklistItem, 0, len(params.Plan))
 	nextUpIndex := updatePlanNextUpIndex(params.Plan)
 	for i, item := range params.Plan {
@@ -133,11 +121,22 @@ func updatePlanPresenterBody(params updatePlanParams) []llmstream.Block {
 			},
 		})
 	}
-	if len(items) > 0 {
-		body = append(body, llmstream.Checklist{Items: items})
+
+	checklist := llmstream.Checklist{
+		Items: items,
+	}
+	if strings.TrimSpace(params.Explanation) != "" {
+		checklist.Overview = llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: params.Explanation, Role: llmstream.RoleAccent},
+			},
+		}
+	}
+	if len(checklist.Overview.Segments) == 0 && len(checklist.Items) == 0 {
+		return nil
 	}
 
-	return body
+	return checklist
 }
 
 func updatePlanNextUpIndex(plan []updatePlanItem) int {

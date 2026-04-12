@@ -284,13 +284,11 @@ func TestShell_Presenter_CompleteIncludesSummarizedOutput(t *testing.T) {
 				{Text: "go test .", Role: llmstream.RoleNormal},
 			},
 		},
-		Body: []llmstream.Block{
-			llmstream.Output{
-				Kind: llmstream.OutputKindCommand,
-				Lines: []string{
-					"ok   github.com/codalotl/codalotl/internal/tools/coretools\t0.123s",
-					"?    github.com/codalotl/codalotl/internal/tools/coretools/testdata\t[no test files]",
-				},
+		Body: llmstream.Output{
+			Kind: llmstream.OutputKindCommand,
+			Lines: []string{
+				"ok   github.com/codalotl/codalotl/internal/tools/coretools\t0.123s",
+				"?    github.com/codalotl/codalotl/internal/tools/coretools/testdata\t[no test files]",
 			},
 		},
 	}, presenter.Present(call, result))
@@ -318,18 +316,16 @@ func TestShell_Presenter_CompleteSummarizesLongOutput(t *testing.T) {
 				{Text: "go test ./...", Role: llmstream.RoleNormal},
 			},
 		},
-		Body: []llmstream.Block{
-			llmstream.Output{
-				Kind: llmstream.OutputKindCommand,
-				Lines: []string{
-					"line 1",
-					"line 2",
-					"line 3",
-					"line 4",
-					"line 5",
-				},
-				OmittedLineCount: 2,
+		Body: llmstream.Output{
+			Kind: llmstream.OutputKindCommand,
+			Lines: []string{
+				"line 1",
+				"line 2",
+				"line 3",
+				"line 4",
+				"line 5",
 			},
+			OmittedLineCount: 2,
 		},
 	}, presenter.Present(call, result))
 }
@@ -357,11 +353,9 @@ func TestShell_Presenter_CompleteShowsStructuredError(t *testing.T) {
 				{Text: "go test .", Role: llmstream.RoleNormal},
 			},
 		},
-		Body: []llmstream.Block{
-			llmstream.Output{
-				Kind:  llmstream.OutputKindCommand,
-				Lines: []string{"Error: shell authorization denied"},
-			},
+		Body: llmstream.Output{
+			Kind:  llmstream.OutputKindCommand,
+			Lines: []string{"Error: shell authorization denied"},
 		},
 	}, presenter.Present(call, result))
 }

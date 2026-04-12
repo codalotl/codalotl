@@ -381,6 +381,13 @@ func patchChangeFromPresentedDiffEdit(edit llmstream.DiffEdit) patchChange {
 	return change
 }
 
+func patchChangeFromPresentedDiffSummary(diff llmstream.Diff) patchChange {
+	if len(diff.Edits) == 0 {
+		return patchChange{}
+	}
+	return patchChangeFromPresentedDiffEdit(diff.Edits[0])
+}
+
 func patchLinesFromPresentedDiff(lines []llmstream.DiffLine) []patchLine {
 	patchLines := make([]patchLine, 0, len(lines))
 	for _, line := range lines {

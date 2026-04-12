@@ -176,8 +176,8 @@ const (
 //   - Do not worry about line width.
 type Presentation struct {
 	Behavior CompletionBehavior
-	Summary  Line    // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
-	Body     []Block // Tool details (ex: diff body; command output; checklist items)
+	Summary  Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
+	Body     Block // Tool details (ex: diff body; command output; checklist items)
 }
 
 // Line is a single rendered line made of styled segments. If JoinWithSpace is true, consumers should join adjacent segments with a single space. Otherwise, Segment.Text

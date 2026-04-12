@@ -70,12 +70,16 @@ func presentedReplaceLine(line llmstream.Line) llmstream.Presentation {
 
 func presentedReplaceSummaryWithOutput(action, target string, output llmstream.Output) llmstream.Presentation {
 	presentation := presentedReplaceSummary(action, target)
-	presentation.Body = []llmstream.Block{output}
+	presentation.Body = output
 	return presentation
 }
 
-func presentedReplaceSummaryWithBody(action, target string, body ...llmstream.Block) llmstream.Presentation {
+func presentedReplaceSummaryWithBody(action, target string, body llmstream.Block) llmstream.Presentation {
 	presentation := presentedReplaceSummary(action, target)
+	switch body.(type) {
+	case llmstream.Diff, *llmstream.Diff:
+		presentation.Summary = llmstream.Line{}
+	}
 	presentation.Body = body
 	return presentation
 }
@@ -88,6 +92,11 @@ func newUpdatePlanTool(t *testing.T) llmstream.Tool {
 func newDeleteTool(t *testing.T) llmstream.Tool {
 	t.Helper()
 	return coretools.NewDeleteTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newApplyPatchTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewApplyPatchTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), true, nil)
 }
 
 func TestAgentMessageTableDriven(t *testing.T) {
@@ -898,7 +907,7 @@ func TestPresentedToolCompleteDiffBodyMatchesApplyPatchStyle(t *testing.T) {
 	}
 	explicitEvent := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("apply_patch"),
+		Tool:       newApplyPatchTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -910,10 +919,7 @@ func TestPresentedToolCompleteDiffBodyMatchesApplyPatchStyle(t *testing.T) {
 		explicitLines := strings.Split(stripANSI(formatter.FormatEvent(explicitEvent, width)), "\n")
 		require.NotEmpty(t, presentedLines)
 		require.NotEmpty(t, explicitLines)
-		require.Equal(t, "• Apply Patch", presentedLines[0])
-
-		expectedBody := append([]string{"  └ " + strings.TrimPrefix(explicitLines[0], "• ")}, explicitLines[1:]...)
-		assert.Equal(t, expectedBody, presentedLines[1:])
+		assert.Equal(t, explicitLines, presentedLines)
 	}
 
 	t.Run("tui", func(t *testing.T) {
@@ -926,13 +932,45 @@ func TestPresentedToolCompleteDiffBodyMatchesApplyPatchStyle(t *testing.T) {
 
 	t.Run("minimum tui width", func(t *testing.T) {
 		out := formatter.FormatEvent(presentedEvent, MinTerminalWidth)
+		explicitOut := formatter.FormatEvent(explicitEvent, MinTerminalWidth)
 		lines := strings.Split(out, "\n")
 		require.NotEmpty(t, lines)
-		require.Equal(t, "• Apply Patch", stripANSI(lines[0]))
-		for _, line := range lines {
-			assert.LessOrEqual(t, termformat.TextWidthWithANSICodes(line), MinTerminalWidth)
-		}
+		require.Equal(t, stripANSI(explicitOut), stripANSI(out))
 	})
+}
+
+func TestPresentedDiffBodyRejectsExplicitSummary(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	event := agent.Event{
+		Type: agent.EventTypeToolComplete,
+		Tool: testToolWithPresenter("apply_patch", staticPresenter{
+			complete: llmstream.Presentation{
+				Behavior: llmstream.CompletionBehaviorReplace,
+				Summary: llmstream.Line{
+					Segments: []llmstream.Segment{
+						{Text: "Apply Patch", Role: llmstream.RoleAction},
+					},
+				},
+				Body: llmstream.Diff{
+					Edits: []llmstream.DiffEdit{{
+						Kind:    llmstream.DiffEditKindEdit,
+						OldPath: "foo/bar.go",
+					}},
+				},
+			},
+		}),
+		ToolCall:   &llmstream.ToolCall{Name: "apply_patch"},
+		ToolResult: &llmstream.ToolResult{Name: "apply_patch", Result: `{"success":true}`},
+	}
+
+	out := formatter.FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	assert.Equal(t, "• Error presenter diff bodies must leave Summary.Segments nil", stripANSI(out))
 }
 
 func TestPresentedToolCompleteSemanticBodyErrorStillOverridesBody(t *testing.T) {
@@ -951,16 +989,6 @@ func TestPresentedToolCompleteSemanticBodyErrorStillOverridesBody(t *testing.T) 
 				Lines: []llmstream.Line{{
 					Segments: []llmstream.Segment{{Text: "This body should be suppressed on error.", Role: llmstream.RoleAccent}},
 				}},
-			},
-			llmstream.Checklist{
-				Items: []llmstream.ChecklistItem{
-					{
-						Status: llmstream.ChecklistStatusInProgress,
-						Line: llmstream.Line{
-							Segments: []llmstream.Segment{{Text: "Do the thing", Role: llmstream.RoleAction}},
-						},
-					},
-				},
 			},
 		),
 	}
@@ -1328,6 +1356,37 @@ func TestPresentedToolTUIWidthLimit(t *testing.T) {
 		assertWidthLimit(t, 36, out)
 	})
 
+	t.Run("checklist overview renders before items", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Checklist{
+				Overview: llmstream.Line{
+					Segments: []llmstream.Segment{{
+						Text: "Need to align tool rendering with presenter output.",
+						Role: llmstream.RoleAccent,
+					}},
+				},
+				Items: []llmstream.ChecklistItem{{
+					Status: llmstream.ChecklistStatusInProgress,
+					Line: llmstream.Line{
+						Segments: []llmstream.Segment{{
+							Text: "Keep the visible plan output unchanged.",
+							Role: llmstream.RoleAction,
+						}},
+					},
+				}},
+			},
+		))
+
+		out := formatter.FormatEvent(event, 100)
+		assert.Equal(t, []string{
+			"• Update Plan",
+			"  └ Need to align tool rendering with presenter output.",
+			"    □ Keep the visible plan output unchanged.",
+		}, strings.Split(stripANSI(out), "\n"))
+	})
+
 	t.Run("checklist body wraps at minimum tui width", func(t *testing.T) {
 		event := makeEvent(presentedReplaceSummaryWithBody(
 			"Update Plan",
@@ -1426,7 +1485,7 @@ func TestToolCompleteSillyLLMOutsidePackageNoPath(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("apply_patch"),
+		Tool:       newApplyPatchTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1794,7 +1853,7 @@ func TestApplyPatchCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("apply_patch"),
+		Tool:     newApplyPatchTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 80)
@@ -1810,6 +1869,46 @@ func TestApplyPatchCallFormatting(t *testing.T) {
 	assert.NotContains(t, stripped, "└")
 	assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
 	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
+}
+
+func TestApplyPatchMultiEditCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	patch := `*** Begin Patch
+*** Add File: foo/new.txt
++first line
+*** Delete File: foo/old.txt
+*** Update File: foo/bar.go
+*** Move to: foo/baz.go
+@@
+-old line
++new line
+*** End Patch
+`
+	call := llmstream.ToolCall{
+		Name:  "apply_patch",
+		Input: patch,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     newApplyPatchTool(t),
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, []string{
+		"• Add foo/new.txt",
+		"     + first line",
+		"• Delete foo/old.txt",
+		"• Edit foo/bar.go → foo/baz.go",
+		"     - old line",
+		"     + new line",
+	}, strings.Split(stripANSI(out), "\n"))
+	assert.NotContains(t, stripANSI(out), "Apply Patch")
+	assert.NotContains(t, stripANSI(out), "└ Delete")
 }
 
 func TestApplyPatchContextLinesAreNormalColor(t *testing.T) {
@@ -1833,7 +1932,7 @@ func TestApplyPatchContextLinesAreNormalColor(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("apply_patch"),
+		Tool:     newApplyPatchTool(t),
 		ToolCall: &call,
 	}
 
@@ -1855,7 +1954,7 @@ func TestApplyPatchLinesSanitized(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("apply_patch"),
+		Tool:     newApplyPatchTool(t),
 		ToolCall: &call,
 	}
 	ctrlC := string([]byte{0x03})
@@ -2098,7 +2197,7 @@ func TestApplyPatchCompleteWithError(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("apply_patch"),
+		Tool:       newApplyPatchTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2146,7 +2245,7 @@ func TestApplyPatchCompleteInvalidPatchIsConcise(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("apply_patch"),
+		Tool:       newApplyPatchTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}

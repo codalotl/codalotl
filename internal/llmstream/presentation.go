@@ -25,12 +25,26 @@ const (
 //   - Do not include "•" (leading bullets typical in TUI event streams).
 //   - Do not include "└" (common in Body blocks).
 //   - Do not assume/include indentation.
-//   - Do not worry about line width.
+//   - Do not worry about line width - a semantic `Line` will be split into multiple lines by the final formatter if necessary.
+//
+// By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr. To override this,
+// set ErrorBehavior to ErrorBehaviorPresenterOwned.
 type Presentation struct {
-	Behavior CompletionBehavior
-	Summary  Line    // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
-	Body     []Block // Tool details (ex: diff body; command output; checklist items)
+	Behavior      CompletionBehavior
+	ErrorBehavior ErrorBehavior
+	Summary       Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
+	Body          Block // Tool details (ex: diff body; command output; checklist items)
 }
+
+// ErrorBehavior indicates whether shared formatter-owned error rendering should still override presenter body content.
+type ErrorBehavior string
+
+const (
+	// ErrorBehaviorDefault means the formatter should keep using shared default tool error rendering when the tool result is an error.
+	ErrorBehaviorDefault ErrorBehavior = ""
+	// ErrorBehaviorPresenterOwned means the presenter body already models the desired error presentation.
+	ErrorBehaviorPresenterOwned ErrorBehavior = "presenter_owned"
+)
 
 // Line is a single rendered line made of styled segments. If JoinWithSpace is true, consumers should join adjacent segments with a single space. Otherwise, Segment.Text
 // owns any needed leading or trailing whitespace explicitly.
@@ -58,6 +72,11 @@ const (
 	RoleEmphasis SegmentRole = "emphasis"
 )
 
+// Block is an interface with a private method, to lock down possible Block implementors to the following:
+//   - Paragraph
+//   - Checklist
+//   - Output
+//   - Diff
 type Block interface {
 	isBlock()
 }
@@ -69,7 +88,8 @@ type Paragraph struct {
 func (Paragraph) isBlock() {}
 
 type Checklist struct {
-	Items []ChecklistItem
+	Overview Line
+	Items    []ChecklistItem
 }
 
 func (Checklist) isBlock() {}
@@ -116,6 +136,7 @@ type DiffEdit struct {
 	OldPath string     // OldPath is the source path for edits, deletes, and renames. It may be empty for newly added files.
 	NewPath string     // NewPath is the destination path for adds and renames. It may be empty for deleted files.
 	Lines   []DiffLine // Lines are the visible diff lines. Presentations that suppress hunk anchors can still model the changed lines semantically here.
+	Error   *Line      // If this edit resulted in an error, Error should be set and describe the error.
 }
 
 type DiffEditKind string

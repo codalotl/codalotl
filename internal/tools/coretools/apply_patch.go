@@ -6,11 +6,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strings"
+
 	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
-	"path/filepath"
-	"strings"
 )
 
 //go:embed apply_patch_freeform.md
@@ -233,19 +234,38 @@ var applyPatchPresenterInstance llmstream.Presenter = applyPatchPresenter{}
 type applyPatchPresenter struct{}
 
 func (p applyPatchPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
-	_ = result
-
+	diff, _ := applyPatchPresenterDiff(call)
 	presentation := llmstream.Presentation{
-		Behavior: llmstream.CompletionBehaviorReplace,
-		Summary: llmstream.Line{
-			Segments: []llmstream.Segment{
-				{Text: "Apply Patch", Role: llmstream.RoleAction},
-			},
-		},
+		Behavior:      llmstream.CompletionBehaviorReplace,
+		ErrorBehavior: llmstream.ErrorBehaviorDefault,
 	}
 
-	if diff, ok := applyPatchPresenterDiff(call); ok {
-		presentation.Body = []llmstream.Block{diff}
+	if len(diff.Edits) > 0 {
+		presentation.Body = diff
+	} else {
+		presentation.Summary = applyPatchPresenterSummary(diff)
+	}
+
+	if !applyPatchPresenterFailed(result) {
+		return presentation
+	}
+
+	presentation.ErrorBehavior = llmstream.ErrorBehaviorPresenterOwned
+
+	if result != nil && applypatch.IsInvalidPatch(result.SourceErr) {
+		if bestEffortDiff, ok := applyPatchPresenterBestEffortDiff(call); ok {
+			presentation.Summary = llmstream.Line{}
+			if len(bestEffortDiff.Edits) > 0 {
+				presentation.Body = bestEffortDiff
+			}
+		}
+	}
+
+	if line, ok := applyPatchPresenterErrorLine(result); ok && presentation.Body != nil {
+		if diff, ok := presentation.Body.(llmstream.Diff); ok && len(diff.Edits) > 0 {
+			diff.Edits[len(diff.Edits)-1].Error = &line
+			presentation.Body = diff
+		}
 	}
 
 	return presentation
@@ -262,7 +282,9 @@ func applyPatchPresenterDiff(call llmstream.ToolCall) (llmstream.Diff, bool) {
 		return llmstream.Diff{}, false
 	}
 
-	return llmstream.Diff{Edits: edits}, true
+	return llmstream.Diff{
+		Edits: edits,
+	}, true
 }
 
 func applyPatchPresenterSource(call llmstream.ToolCall) (string, bool) {
@@ -322,7 +344,7 @@ func parseApplyPatchPresenterEdits(input string) ([]llmstream.DiffEdit, error) {
 					diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindContext, Text: ""})
 					i++
 				case cur[0] == '+':
-					diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindAdd, Text: cur[1:]})
+					diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindAdd, Text: applyPatchPresenterNormalizeDiffText(cur[1:])})
 					i++
 				default:
 					break forAdd
@@ -371,11 +393,11 @@ func parseApplyPatchPresenterEdits(input string) ([]llmstream.DiffEdit, error) {
 				default:
 					switch cur[0] {
 					case '+':
-						diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindAdd, Text: cur[1:]})
+						diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindAdd, Text: applyPatchPresenterNormalizeDiffText(cur[1:])})
 					case '-':
-						diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindDelete, Text: cur[1:]})
+						diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindDelete, Text: applyPatchPresenterNormalizeDiffText(cur[1:])})
 					case ' ':
-						diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindContext, Text: cur[1:]})
+						diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindContext, Text: applyPatchPresenterNormalizeDiffText(cur[1:])})
 					default:
 						diffLines = append(diffLines, llmstream.DiffLine{Kind: llmstream.DiffLineKindContext, Text: cur})
 					}
@@ -405,6 +427,205 @@ func parseApplyPatchPresenterEdits(input string) ([]llmstream.DiffEdit, error) {
 	}
 
 	return edits, nil
+}
+
+func applyPatchPresenterBestEffortDiff(call llmstream.ToolCall) (llmstream.Diff, bool) {
+	source, ok := applyPatchPresenterSource(call)
+	if !ok {
+		return llmstream.Diff{}, false
+	}
+
+	source = strings.ReplaceAll(source, "\r\n", "\n")
+	lines := strings.Split(source, "\n")
+
+	edits := make([]llmstream.DiffEdit, 0, 4)
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		switch {
+		case strings.HasPrefix(line, "*** Add File: "):
+			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Add File: "))
+			if path == "" {
+				continue
+			}
+			edits = append(edits, llmstream.DiffEdit{
+				Kind:    llmstream.DiffEditKindAdd,
+				NewPath: path,
+			})
+		case strings.HasPrefix(line, "*** Delete File: "):
+			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Delete File: "))
+			if path == "" {
+				continue
+			}
+			edits = append(edits, llmstream.DiffEdit{
+				Kind:    llmstream.DiffEditKindDelete,
+				OldPath: path,
+			})
+		case strings.HasPrefix(line, "*** Update File: "):
+			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Update File: "))
+			if path == "" {
+				continue
+			}
+			edit := llmstream.DiffEdit{
+				Kind:    llmstream.DiffEditKindEdit,
+				OldPath: path,
+			}
+			if i+1 < len(lines) && strings.HasPrefix(lines[i+1], "*** Move to: ") {
+				toPath := strings.TrimSpace(strings.TrimPrefix(lines[i+1], "*** Move to: "))
+				if toPath != "" {
+					edit.Kind = llmstream.DiffEditKindRename
+					edit.NewPath = toPath
+				}
+			}
+			edits = append(edits, edit)
+		}
+	}
+
+	if len(edits) == 0 {
+		return llmstream.Diff{}, false
+	}
+
+	return llmstream.Diff{
+		Edits: edits,
+	}, true
+}
+
+func applyPatchPresenterSummary(diff llmstream.Diff) llmstream.Line {
+	if len(diff.Edits) == 0 {
+		return llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Apply Patch", Role: llmstream.RoleAction},
+			},
+		}
+	}
+
+	edit := diff.Edits[0]
+	path := applyPatchPresenterFirstNonEmpty(edit.OldPath, edit.NewPath)
+	toPath := applyPatchPresenterFirstNonEmpty(edit.NewPath, edit.OldPath)
+
+	switch edit.Kind {
+	case llmstream.DiffEditKindAdd:
+		return llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Add", Role: llmstream.RoleAction},
+				{Text: " " + applyPatchPresenterFirstNonEmpty(edit.NewPath, edit.OldPath), Role: llmstream.RoleNormal},
+			},
+		}
+	case llmstream.DiffEditKindDelete:
+		return llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Delete", Role: llmstream.RoleAction},
+				{Text: " " + applyPatchPresenterFirstNonEmpty(edit.OldPath, edit.NewPath), Role: llmstream.RoleNormal},
+			},
+		}
+	case llmstream.DiffEditKindRename:
+		action := "Edit"
+		if len(edit.Lines) == 0 {
+			action = "Rename"
+		}
+		return llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: action, Role: llmstream.RoleAction},
+				{Text: " " + path, Role: llmstream.RoleNormal},
+				{Text: " → " + toPath, Role: llmstream.RoleAccent},
+			},
+		}
+	default:
+		summary := llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Edit", Role: llmstream.RoleAction},
+				{Text: " " + path, Role: llmstream.RoleNormal},
+			},
+		}
+		if edit.NewPath != "" && edit.NewPath != edit.OldPath {
+			summary.Segments = append(summary.Segments, llmstream.Segment{
+				Text: " → " + edit.NewPath,
+				Role: llmstream.RoleAccent,
+			})
+		}
+		return summary
+	}
+}
+
+func applyPatchPresenterFailed(result *llmstream.ToolResult) bool {
+	if result == nil {
+		return false
+	}
+	if result.IsError {
+		return true
+	}
+
+	trimmed := strings.TrimSpace(result.Result)
+	if trimmed == "" {
+		return false
+	}
+
+	var payload struct {
+		Success *bool  `json:"success"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return false
+	}
+	if payload.Success != nil {
+		return !*payload.Success
+	}
+	return strings.TrimSpace(payload.Error) != ""
+}
+
+func applyPatchPresenterErrorLine(result *llmstream.ToolResult) (llmstream.Line, bool) {
+	if result == nil {
+		return llmstream.Line{}, false
+	}
+	if applypatch.IsInvalidPatch(result.SourceErr) {
+		return llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Failed: LLM supplied an invalid patch.", Role: llmstream.RoleAccent},
+			},
+		}, true
+	}
+
+	trimmed := strings.TrimSpace(result.Result)
+	if trimmed == "" {
+		return llmstream.Line{}, false
+	}
+
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil && strings.TrimSpace(payload.Error) != "" {
+		return llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Error: " + payload.Error, Role: llmstream.RoleError},
+			},
+		}, true
+	}
+
+	if result.IsError {
+		return llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Error: " + trimmed, Role: llmstream.RoleError},
+			},
+		}, true
+	}
+
+	return llmstream.Line{}, false
+}
+
+func applyPatchPresenterFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func applyPatchPresenterNormalizeDiffText(text string) string {
+	if strings.HasPrefix(text, " ") {
+		return text[1:]
+	}
+	return text
 }
 
 func cleanApplyPatchPresenterLines(lines []llmstream.DiffLine) []llmstream.DiffLine {

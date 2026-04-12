@@ -9,94 +9,73 @@ import (
 
 func TestPresentationModel_CanRepresentUpdatePlanChecklist(t *testing.T) {
 	presentation := Presentation{
-		Behavior: CompletionBehaviorReplace,
+		Behavior:      CompletionBehaviorReplace,
+		ErrorBehavior: ErrorBehaviorDefault,
 		Summary: Line{
 			Segments: []Segment{
 				{Text: "Update Plan", Role: RoleAction},
 			},
 		},
-		Body: []Block{
-			Paragraph{
-				Lines: []Line{
-					{
-						Segments: []Segment{
-							{Text: "Need to align tool rendering with presenter output.", Role: RoleAccent},
-						},
-					},
+		Body: Checklist{
+			Overview: Line{
+				Segments: []Segment{
+					{Text: "Need to align tool rendering with presenter output.", Role: RoleAccent},
 				},
 			},
-			Checklist{
-				Items: []ChecklistItem{
-					{
-						Status: ChecklistStatusCompleted,
-						Line: Line{Segments: []Segment{
-							{Text: "Review the existing formatting shapes", Role: RoleAccent},
-						}},
-					},
-					{
-						Status: ChecklistStatusInProgress,
-						Line: Line{Segments: []Segment{
-							{Text: "Add semantic block types for diffs and raw output", Role: RoleAction},
-						}},
-					},
-					{
-						Status: ChecklistStatusPending,
-						Line: Line{Segments: []Segment{
-							{Text: "Update consumers in a later phase", Role: RoleAccent},
-						}},
-					},
+			Items: []ChecklistItem{
+				{
+					Status: ChecklistStatusCompleted,
+					Line: Line{Segments: []Segment{
+						{Text: "Review the existing formatting shapes", Role: RoleAccent},
+					}},
+				},
+				{
+					Status: ChecklistStatusInProgress,
+					Line: Line{Segments: []Segment{
+						{Text: "Add semantic block types for diffs and raw output", Role: RoleAction},
+					}},
+				},
+				{
+					Status: ChecklistStatusPending,
+					Line: Line{Segments: []Segment{
+						{Text: "Update consumers in a later phase", Role: RoleAccent},
+					}},
 				},
 			},
 		},
 	}
 
-	require.Len(t, presentation.Body, 2)
-
-	message, ok := presentation.Body[0].(Paragraph)
+	checklist, ok := presentation.Body.(Checklist)
 	require.True(t, ok)
-	require.Len(t, message.Lines, 1)
-	assert.Equal(t, "Need to align tool rendering with presenter output.", message.Lines[0].Segments[0].Text)
-
-	checklist, ok := presentation.Body[1].(Checklist)
-	require.True(t, ok)
+	require.Len(t, checklist.Overview.Segments, 1)
+	assert.Equal(t, "Need to align tool rendering with presenter output.", checklist.Overview.Segments[0].Text)
 	require.Len(t, checklist.Items, 3)
 	assert.Equal(t, ChecklistStatusCompleted, checklist.Items[0].Status)
 	assert.Equal(t, ChecklistStatusInProgress, checklist.Items[1].Status)
 	assert.Equal(t, ChecklistStatusPending, checklist.Items[2].Status)
 }
 
-func TestPresentationModel_CanRepresentOutputBlocks(t *testing.T) {
+func TestPresentationModel_CanRepresentOutputBlock(t *testing.T) {
 	presentation := Presentation{
-		Behavior: CompletionBehaviorReplace,
+		Behavior:      CompletionBehaviorReplace,
+		ErrorBehavior: ErrorBehaviorDefault,
 		Summary: Line{
 			Segments: []Segment{
 				{Text: "Ran Tests", Role: RoleAction},
 				{Text: " ./internal/llmstream", Role: RoleNormal},
 			},
 		},
-		Body: []Block{
-			Output{
-				Kind: OutputKindCommand,
-				Lines: []string{
-					"$ go test ./internal/llmstream",
-					"ok  \tgithub.com/codalotl/codalotl/internal/llmstream\t0.123s",
-				},
-				OmittedLineCount: 4,
+		Body: Output{
+			Kind: OutputKindCommand,
+			Lines: []string{
+				"$ go test ./internal/llmstream",
+				"ok  \tgithub.com/codalotl/codalotl/internal/llmstream\t0.123s",
 			},
-			Output{
-				Kind: OutputKindJSON,
-				Lines: []string{
-					"{",
-					`  "field": "value"`,
-					"}",
-				},
-			},
+			OmittedLineCount: 4,
 		},
 	}
 
-	require.Len(t, presentation.Body, 2)
-
-	commandOutput, ok := presentation.Body[0].(Output)
+	commandOutput, ok := presentation.Body.(Output)
 	require.True(t, ok)
 	assert.Equal(t, OutputKindCommand, commandOutput.Kind)
 	assert.Equal(t, []string{
@@ -104,8 +83,29 @@ func TestPresentationModel_CanRepresentOutputBlocks(t *testing.T) {
 		"ok  \tgithub.com/codalotl/codalotl/internal/llmstream\t0.123s",
 	}, commandOutput.Lines)
 	assert.Equal(t, 4, commandOutput.OmittedLineCount)
+}
 
-	jsonOutput, ok := presentation.Body[1].(Output)
+func TestPresentationModel_CanRepresentJSONOutputBlock(t *testing.T) {
+	presentation := Presentation{
+		Behavior:      CompletionBehaviorReplace,
+		ErrorBehavior: ErrorBehaviorDefault,
+		Summary: Line{
+			Segments: []Segment{
+				{Text: "Render", Role: RoleAction},
+				{Text: " payload", Role: RoleNormal},
+			},
+		},
+		Body: Output{
+			Kind: OutputKindJSON,
+			Lines: []string{
+				"{",
+				`  "field": "value"`,
+				"}",
+			},
+		},
+	}
+
+	jsonOutput, ok := presentation.Body.(Output)
 	require.True(t, ok)
 	assert.Equal(t, OutputKindJSON, jsonOutput.Kind)
 	assert.Equal(t, []string{
@@ -117,43 +117,40 @@ func TestPresentationModel_CanRepresentOutputBlocks(t *testing.T) {
 }
 
 func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {
-	presentation := Presentation{
-		Behavior: CompletionBehaviorReplace,
-		Summary: Line{
-			Segments: []Segment{
-				{Text: "Edit", Role: RoleAction},
-				{Text: " some/file.go", Role: RoleNormal},
-			},
+	errorLine := Line{
+		Segments: []Segment{
+			{Text: "Error: patch failed", Role: RoleError},
 		},
-		Body: []Block{
-			Diff{
-				Edits: []DiffEdit{
-					{
-						Kind:    DiffEditKindRename,
-						OldPath: "some/file.go",
-						NewPath: "some/other.go",
-						Lines: []DiffLine{
-							{Kind: DiffLineKindDelete, Text: "old line"},
-							{Kind: DiffLineKindAdd, Text: "new line"},
-							{Kind: DiffLineKindOmitted},
-							{Kind: DiffLineKindContext, Text: "shared context"},
-						},
+	}
+	presentation := Presentation{
+		Behavior:      CompletionBehaviorReplace,
+		ErrorBehavior: ErrorBehaviorDefault,
+		Body: Diff{
+			Edits: []DiffEdit{
+				{
+					Kind:    DiffEditKindRename,
+					OldPath: "some/file.go",
+					NewPath: "some/other.go",
+					Lines: []DiffLine{
+						{Kind: DiffLineKindDelete, Text: "old line"},
+						{Kind: DiffLineKindAdd, Text: "new line"},
+						{Kind: DiffLineKindOmitted},
+						{Kind: DiffLineKindContext, Text: "shared context"},
 					},
-					{
-						Kind:    DiffEditKindAdd,
-						NewPath: "some/new_file.go",
-						Lines: []DiffLine{
-							{Kind: DiffLineKindAdd, Text: "package some"},
-						},
+				},
+				{
+					Kind:    DiffEditKindAdd,
+					NewPath: "some/new_file.go",
+					Lines: []DiffLine{
+						{Kind: DiffLineKindAdd, Text: "package some"},
 					},
+					Error: &errorLine,
 				},
 			},
 		},
 	}
 
-	require.Len(t, presentation.Body, 1)
-
-	diff, ok := presentation.Body[0].(Diff)
+	diff, ok := presentation.Body.(Diff)
 	require.True(t, ok)
 	require.Len(t, diff.Edits, 2)
 
@@ -173,6 +170,8 @@ func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {
 	assert.Equal(t, []DiffLine{
 		{Kind: DiffLineKindAdd, Text: "package some"},
 	}, diff.Edits[1].Lines)
+	require.NotNil(t, diff.Edits[1].Error)
+	assert.Equal(t, errorLine, *diff.Edits[1].Error)
 }
 
 func TestPresentationModel_LineJoinModes(t *testing.T) {
@@ -202,4 +201,17 @@ func TestPresentationModel_LineJoinModes(t *testing.T) {
 		{Text: "foo", Role: RoleAccent},
 		{Text: "(bar)", Role: RoleCode},
 	}, manual.Segments)
+}
+
+func TestPresentationModel_ErrorBehavior(t *testing.T) {
+	presentation := Presentation{
+		Behavior:      CompletionBehaviorReplace,
+		ErrorBehavior: ErrorBehaviorPresenterOwned,
+		Summary: Line{
+			Segments: []Segment{{Text: "Apply Patch", Role: RoleAction}},
+		},
+	}
+
+	assert.Equal(t, CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, ErrorBehaviorPresenterOwned, presentation.ErrorBehavior)
 }

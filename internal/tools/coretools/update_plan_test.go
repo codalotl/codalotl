@@ -115,7 +115,7 @@ func TestUpdatePlanRunInvalidStatus(t *testing.T) {
 	assert.Contains(t, res.Result, "must be one of")
 }
 
-func TestUpdatePlanPresenter_CallRendersExplanationAndChecklist(t *testing.T) {
+func TestUpdatePlanPresenter_CallRendersOverviewAndChecklist(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 	tool := NewUpdatePlanTool(auth)
@@ -134,19 +134,14 @@ func TestUpdatePlanPresenter_CallRendersExplanationAndChecklist(t *testing.T) {
 			{Text: "Update Plan", Role: llmstream.RoleAction},
 		},
 	}, presentation.Summary)
-	require.Len(t, presentation.Body, 2)
 
-	explanation, ok := presentation.Body[0].(llmstream.Paragraph)
+	checklist, ok := presentation.Body.(llmstream.Checklist)
 	require.True(t, ok)
-	require.Len(t, explanation.Lines, 1)
 	assert.Equal(t, llmstream.Line{
 		Segments: []llmstream.Segment{
 			{Text: "Doing work", Role: llmstream.RoleAccent},
 		},
-	}, explanation.Lines[0])
-
-	checklist, ok := presentation.Body[1].(llmstream.Checklist)
-	require.True(t, ok)
+	}, checklist.Overview)
 	require.Len(t, checklist.Items, 1)
 	assert.Equal(t, llmstream.ChecklistItem{
 		Status: llmstream.ChecklistStatusInProgress,
@@ -158,7 +153,7 @@ func TestUpdatePlanPresenter_CallRendersExplanationAndChecklist(t *testing.T) {
 	}, checklist.Items[0])
 }
 
-func TestUpdatePlanPresenter_CompleteRendersExplanationAndChecklistEmphasis(t *testing.T) {
+func TestUpdatePlanPresenter_CompleteRendersOverviewAndChecklistEmphasis(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 	tool := NewUpdatePlanTool(auth)
@@ -188,19 +183,13 @@ func TestUpdatePlanPresenter_CompleteRendersExplanationAndChecklistEmphasis(t *t
 		},
 	}, presentation.Summary)
 
-	require.Len(t, presentation.Body, 2)
-
-	explanation, ok := presentation.Body[0].(llmstream.Paragraph)
+	checklist, ok := presentation.Body.(llmstream.Checklist)
 	require.True(t, ok)
-	require.Len(t, explanation.Lines, 1)
 	assert.Equal(t, llmstream.Line{
 		Segments: []llmstream.Segment{
 			{Text: "Need to align tool rendering with presenter output.", Role: llmstream.RoleAccent},
 		},
-	}, explanation.Lines[0])
-
-	checklist, ok := presentation.Body[1].(llmstream.Checklist)
-	require.True(t, ok)
+	}, checklist.Overview)
 	require.Len(t, checklist.Items, 4)
 
 	assert.Equal(t, llmstream.ChecklistItem{
@@ -235,4 +224,27 @@ func TestUpdatePlanPresenter_CompleteRendersExplanationAndChecklistEmphasis(t *t
 			},
 		},
 	}, checklist.Items[3])
+}
+
+func TestUpdatePlanPresenter_ExplanationOnlyRendersChecklistOverview(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	presentation := presenter.Present(llmstream.ToolCall{
+		Name:  ToolNameUpdatePlan,
+		Input: `{"explanation":"Doing work","plan":[]}`,
+	}, nil)
+
+	checklist, ok := presentation.Body.(llmstream.Checklist)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Line{
+		Segments: []llmstream.Segment{
+			{Text: "Doing work", Role: llmstream.RoleAccent},
+		},
+	}, checklist.Overview)
+	assert.Empty(t, checklist.Items)
 }

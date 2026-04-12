@@ -99,8 +99,14 @@ func (f *textTUIFormatter) FormatEvent(e agent.Event, terminalWidth int) string 
 
 // Replace presenters describe fixed-width TUI output, so an explicit width still wins at the narrow boundary.
 func presenterWidthConstrainedTUI(e agent.Event) bool {
-	_, ok := presenterReplacePresentation(e)
-	return ok
+	presentation, ok := presenterReplacePresentation(e)
+	if !ok {
+		return false
+	}
+	if _, ok := presentationDiffBody(presentation); ok {
+		return false
+	}
+	return true
 }
 
 func indentLines(content string, indentWidth int) string {
@@ -322,6 +328,7 @@ type presentedBodyLineKind int
 
 const (
 	presentedBodyLineStandard presentedBodyLineKind = iota + 1
+	presentedBodyLineSection
 	presentedBodyLinePatch
 )
 
@@ -350,11 +357,44 @@ func presenterReplacePresentation(e agent.Event) (llmstream.Presentation, bool) 
 	if presentation.Behavior != llmstream.CompletionBehaviorReplace {
 		return llmstream.Presentation{}, false
 	}
+	if err := validatePresentedToolSummary(presentation); err != nil {
+		return llmstream.Presentation{
+			Behavior: llmstream.CompletionBehaviorReplace,
+			Summary: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: "Error", Role: llmstream.RoleError},
+					{Text: " " + err.Error(), Role: llmstream.RoleNormal},
+				},
+			},
+		}, true
+	}
+	if _, ok := presentationDiffBody(presentation); ok {
+		return presentation, true
+	}
 	if len(presentation.Summary.Segments) == 0 {
 		return llmstream.Presentation{}, false
 	}
 
 	return presentation, true
+}
+
+func validatePresentedToolSummary(presentation llmstream.Presentation) error {
+	if _, ok := presentationDiffBody(presentation); ok && presentation.Summary.Segments != nil {
+		return fmt.Errorf("presenter diff bodies must leave Summary.Segments nil")
+	}
+	return nil
+}
+
+func presentationDiffBody(presentation llmstream.Presentation) (llmstream.Diff, bool) {
+	switch body := presentation.Body.(type) {
+	case llmstream.Diff:
+		return body, true
+	case *llmstream.Diff:
+		if body != nil {
+			return *body, true
+		}
+	}
+	return llmstream.Diff{}, false
 }
 
 func presentationSegmentStyle(role llmstream.SegmentRole) runeStyle {
@@ -408,10 +448,16 @@ func presentationLineSegmentsWithTransform(line llmstream.Line, transform func(r
 }
 
 func (f *textTUIFormatter) tuiPresentedToolSummary(width int, bullet colorRole, presentation llmstream.Presentation) string {
+	if diff, ok := presentationDiffBody(presentation); ok && len(diff.Edits) > 0 {
+		return f.tuiBulletLine(width, bullet, applyPatchHeaderSegments(patchChangeFromPresentedDiffSummary(diff))...)
+	}
 	return f.tuiBulletLine(width, bullet, presentationLineSegments(presentation.Summary)...)
 }
 
 func (f *textTUIFormatter) cliPresentedToolSummary(bullet colorRole, presentation llmstream.Presentation) string {
+	if diff, ok := presentationDiffBody(presentation); ok && len(diff.Edits) > 0 {
+		return f.cliBulletLine(bullet, applyPatchHeaderSegments(patchChangeFromPresentedDiffSummary(diff))...)
+	}
 	return f.cliBulletLine(bullet, presentationLineSegments(presentation.Summary)...)
 }
 
@@ -441,36 +487,33 @@ func presenterCompletionErrorOutput(result *llmstream.ToolResult) ([]toolOutputL
 }
 
 func (f *textTUIFormatter) presenterBodyLines(presentation llmstream.Presentation) []presentedBodyLine {
-	var lines []presentedBodyLine
-	for _, block := range presentation.Body {
-		switch body := block.(type) {
-		case llmstream.Paragraph:
-			lines = append(lines, f.presenterParagraphBlockLines(body)...)
-		case *llmstream.Paragraph:
-			if body != nil {
-				lines = append(lines, f.presenterParagraphBlockLines(*body)...)
-			}
-		case llmstream.Checklist:
-			lines = append(lines, f.presenterChecklistBlockLines(body)...)
-		case *llmstream.Checklist:
-			if body != nil {
-				lines = append(lines, f.presenterChecklistBlockLines(*body)...)
-			}
-		case llmstream.Diff:
-			lines = append(lines, f.presenterDiffBlockLines(body)...)
-		case *llmstream.Diff:
-			if body != nil {
-				lines = append(lines, f.presenterDiffBlockLines(*body)...)
-			}
-		case llmstream.Output:
-			lines = append(lines, f.presenterOutputBlockLines(body)...)
-		case *llmstream.Output:
-			if body != nil {
-				lines = append(lines, f.presenterOutputBlockLines(*body)...)
-			}
+	switch body := presentation.Body.(type) {
+	case llmstream.Paragraph:
+		return f.presenterParagraphBlockLines(body)
+	case *llmstream.Paragraph:
+		if body != nil {
+			return f.presenterParagraphBlockLines(*body)
+		}
+	case llmstream.Checklist:
+		return f.presenterChecklistBlockLines(body)
+	case *llmstream.Checklist:
+		if body != nil {
+			return f.presenterChecklistBlockLines(*body)
+		}
+	case llmstream.Diff:
+		return f.presenterDiffBlockLines(body)
+	case *llmstream.Diff:
+		if body != nil {
+			return f.presenterDiffBlockLines(*body)
+		}
+	case llmstream.Output:
+		return f.presenterOutputBlockLines(body)
+	case *llmstream.Output:
+		if body != nil {
+			return f.presenterOutputBlockLines(*body)
 		}
 	}
-	return lines
+	return nil
 }
 
 func (f *textTUIFormatter) presenterParagraphBlockLines(paragraph llmstream.Paragraph) []presentedBodyLine {
@@ -494,7 +537,13 @@ func checklistMarkerStyle(segments []textSegment, fallback runeStyle) runeStyle 
 }
 
 func (f *textTUIFormatter) presenterChecklistBlockLines(checklist llmstream.Checklist) []presentedBodyLine {
-	lines := make([]presentedBodyLine, 0, len(checklist.Items))
+	lines := make([]presentedBodyLine, 0, len(checklist.Items)+1)
+	if overview := presentationLineSegments(checklist.Overview); len(overview) > 0 {
+		lines = append(lines, presentedBodyLine{
+			kind:  presentedBodyLineStandard,
+			runes: f.runesFromSegments(overview...),
+		})
+	}
 	for _, item := range checklist.Items {
 		status := item.Status
 		emphasize := func(style runeStyle) runeStyle {
@@ -521,16 +570,27 @@ func (f *textTUIFormatter) presenterChecklistBlockLines(checklist llmstream.Chec
 
 func (f *textTUIFormatter) presenterDiffBlockLines(diff llmstream.Diff) []presentedBodyLine {
 	var lines []presentedBodyLine
-	for _, edit := range diff.Edits {
+	for idx, edit := range diff.Edits {
 		change := patchChangeFromPresentedDiffEdit(edit)
-		lines = append(lines, presentedBodyLine{
-			kind:  presentedBodyLineStandard,
-			runes: f.runesFromSegments(applyPatchHeaderSegments(change)...),
-		})
+		switch idx {
+		case 0:
+			// The summary already owns the first edit header.
+		default:
+			lines = append(lines, presentedBodyLine{
+				kind:  presentedBodyLineSection,
+				runes: f.runesFromSegments(applyPatchHeaderSegments(change)...),
+			})
+		}
 		for _, patchLine := range change.lines {
 			lines = append(lines, presentedBodyLine{
 				kind:  presentedBodyLinePatch,
 				patch: patchLine,
+			})
+		}
+		if edit.Error != nil {
+			lines = append(lines, presentedBodyLine{
+				kind:  presentedBodyLineStandard,
+				runes: f.runesFromSegments(presentationLineSegments(*edit.Error)...),
 			})
 		}
 	}
@@ -556,11 +616,17 @@ func (f *textTUIFormatter) presenterOutputBlockLines(output llmstream.Output) []
 	return lines
 }
 
-func (f *textTUIFormatter) appendPresentedBodyTUI(builder *strings.Builder, width int, lines []presentedBodyLine) {
+func (f *textTUIFormatter) appendPresentedBodyTUI(builder *strings.Builder, width int, bullet colorRole, lines []presentedBodyLine) {
 	wroteStandard := false
 	for _, line := range lines {
 		builder.WriteByte('\n')
 		switch line.kind {
+		case presentedBodyLineSection:
+			if len(line.runes) == 0 {
+				builder.WriteString(f.bulletPrefix(bullet))
+				continue
+			}
+			builder.WriteString(f.wrapStyledText(line.runes, width, f.bulletPrefix(bullet), "  "))
 		case presentedBodyLinePatch:
 			firstPrefix := "     "
 			restPrefix := "       "
@@ -588,7 +654,7 @@ func (f *textTUIFormatter) appendPresentedBodyTUI(builder *strings.Builder, widt
 	}
 }
 
-func (f *textTUIFormatter) presentedBodyCLILines(lines []presentedBodyLine) []string {
+func (f *textTUIFormatter) presentedBodyCLILines(bullet colorRole, lines []presentedBodyLine) []string {
 	if len(lines) == 0 {
 		return nil
 	}
@@ -596,6 +662,8 @@ func (f *textTUIFormatter) presentedBodyCLILines(lines []presentedBodyLine) []st
 	wroteStandard := false
 	for _, line := range lines {
 		switch line.kind {
+		case presentedBodyLineSection:
+			result = append(result, f.cliSimpleLine(line.runes, bullet))
 		case presentedBodyLinePatch:
 			runes := f.buildStyledRunes("     ", runeStyle{}, nil)
 			runes = append(runes, f.buildPatchStyledRunes(line.patch)...)
@@ -616,7 +684,7 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		var builder strings.Builder
 		builder.WriteString(f.tuiPresentedToolSummary(width, colorAccent, presentation))
 		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
-			f.appendPresentedBodyTUI(&builder, width, bodyLines)
+			f.appendPresentedBodyTUI(&builder, width, colorAccent, bodyLines)
 		}
 		return builder.String()
 	}
@@ -640,8 +708,6 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiRunTestsToolCall(e, width)
 	case "run_project_tests":
 		return f.tuiRunProjectTestsToolCall(e, width)
-	case "apply_patch":
-		return f.tuiApplyPatchToolCall(e, width)
 	case "edit":
 		return f.tuiEditToolCall(e, width)
 	case "write":
@@ -663,7 +729,7 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 	if presentation, ok := presenterReplacePresentation(e); ok {
 		lines := []string{f.cliPresentedToolSummary(colorAccent, presentation)}
 		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
-			if rest := f.presentedBodyCLILines(bodyLines); len(rest) > 0 {
+			if rest := f.presentedBodyCLILines(colorAccent, bodyLines); len(rest) > 0 {
 				lines = append(lines, rest...)
 			}
 		}
@@ -689,8 +755,6 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliRunTestsToolCall(e)
 	case "run_project_tests":
 		return f.cliRunProjectTestsToolCall(e)
-	case "apply_patch":
-		return f.cliApplyPatchToolCall(e)
 	case "edit":
 		return f.cliEditToolCall(e)
 	case "write":
@@ -784,12 +848,14 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 
 		var builder strings.Builder
 		builder.WriteString(f.tuiPresentedToolSummary(width, bullet, presentation))
-		if errorLines, ok := presenterCompletionErrorOutput(e.ToolResult); ok {
-			f.appendTUIToolOutput(&builder, width, errorLines)
-			return builder.String()
+		if presentation.ErrorBehavior != llmstream.ErrorBehaviorPresenterOwned {
+			if errorLines, ok := presenterCompletionErrorOutput(e.ToolResult); ok {
+				f.appendTUIToolOutput(&builder, width, errorLines)
+				return builder.String()
+			}
 		}
 		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
-			f.appendPresentedBodyTUI(&builder, width, bodyLines)
+			f.appendPresentedBodyTUI(&builder, width, bullet, bodyLines)
 		} else if !success && len(outputLines) > 0 {
 			f.appendTUIToolOutput(&builder, width, outputLines)
 		}
@@ -798,8 +864,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
-	case "apply_patch":
-		return f.tuiApplyPatchToolComplete(e, width, success, cmd, outputLines)
 	case "edit":
 		return f.tuiEditToolComplete(e, width, success, cmd, outputLines)
 	case "write":
@@ -848,14 +912,16 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		}
 
 		lines := []string{f.cliPresentedToolSummary(bullet, presentation)}
-		if errorLines, ok := presenterCompletionErrorOutput(e.ToolResult); ok {
-			if rest := f.cliToolOutputLines(errorLines); len(rest) > 0 {
-				lines = append(lines, rest...)
+		if presentation.ErrorBehavior != llmstream.ErrorBehaviorPresenterOwned {
+			if errorLines, ok := presenterCompletionErrorOutput(e.ToolResult); ok {
+				if rest := f.cliToolOutputLines(errorLines); len(rest) > 0 {
+					lines = append(lines, rest...)
+				}
+				return strings.Join(lines, "\n")
 			}
-			return strings.Join(lines, "\n")
 		}
 		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
-			if rest := f.presentedBodyCLILines(bodyLines); len(rest) > 0 {
+			if rest := f.presentedBodyCLILines(bullet, bodyLines); len(rest) > 0 {
 				lines = append(lines, rest...)
 			}
 		} else if !success {
@@ -868,8 +934,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
-	case "apply_patch":
-		return f.cliApplyPatchToolComplete(e, success, cmd, outputLines)
 	case "edit":
 		return f.cliEditToolComplete(e, success, cmd, outputLines)
 	case "write":

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/stretchr/testify/assert"
@@ -108,14 +109,11 @@ func TestApplyPatchPresenter(t *testing.T) {
 			resultPresentation := presenter.Present(call, result)
 
 			assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
+			assert.Equal(t, llmstream.ErrorBehaviorDefault, callPresentation.ErrorBehavior)
 			assert.Equal(t, callPresentation, resultPresentation)
-			assert.False(t, callPresentation.Summary.JoinWithSpace)
-			require.Len(t, callPresentation.Summary.Segments, 1)
-			assert.Equal(t, llmstream.RoleAction, callPresentation.Summary.Segments[0].Role)
-			assert.Equal(t, "Apply Patch", callPresentation.Summary.Segments[0].Text)
-			require.Len(t, callPresentation.Body, 1)
+			assert.Nil(t, callPresentation.Summary.Segments)
 
-			diff, ok := callPresentation.Body[0].(llmstream.Diff)
+			diff, ok := callPresentation.Body.(llmstream.Diff)
 			require.True(t, ok)
 			assert.Equal(t, expectedDiff, diff)
 		})
@@ -134,9 +132,84 @@ func TestApplyPatchPresenter_InvalidPatchHasSummaryOnly(t *testing.T) {
 	}, nil)
 
 	assert.Equal(t, llmstream.CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, llmstream.ErrorBehaviorDefault, presentation.ErrorBehavior)
 	require.Len(t, presentation.Summary.Segments, 1)
 	assert.Equal(t, "Apply Patch", presentation.Summary.Segments[0].Text)
-	assert.Empty(t, presentation.Body)
+	assert.Nil(t, presentation.Body)
+}
+
+func TestApplyPatchPresenter_ErrorOwnsPresentation(t *testing.T) {
+	tool := NewApplyPatchTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), true, nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	patch := `*** Begin Patch
+*** Update File: foo/bar.go
+@@
+- old line
++ new line
+*** End Patch
+`
+
+	presentation := presenter.Present(llmstream.ToolCall{
+		Name:  ToolNameApplyPatch,
+		Input: patch,
+	}, &llmstream.ToolResult{
+		Name:    ToolNameApplyPatch,
+		Result:  "patch failed",
+		IsError: true,
+	})
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, llmstream.ErrorBehaviorPresenterOwned, presentation.ErrorBehavior)
+	assert.Nil(t, presentation.Summary.Segments)
+
+	diff, ok := presentation.Body.(llmstream.Diff)
+	require.True(t, ok)
+	require.Len(t, diff.Edits, 1)
+	require.NotNil(t, diff.Edits[0].Error)
+	require.Len(t, diff.Edits[0].Error.Segments, 1)
+	assert.Equal(t, llmstream.RoleError, diff.Edits[0].Error.Segments[0].Role)
+	assert.Equal(t, "Error: patch failed", diff.Edits[0].Error.Segments[0].Text)
+}
+
+func TestApplyPatchPresenter_InvalidPatchUsesBestEffortSummary(t *testing.T) {
+	tool := NewApplyPatchTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), true, nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	patch := `*** Update File: foo/bar.go
+@@
+- old line
++ new line
+*** End Patch
+`
+	_, err := applypatch.ApplyPatch(t.TempDir(), patch)
+	require.Error(t, err)
+	require.True(t, applypatch.IsInvalidPatch(err))
+
+	presentation := presenter.Present(llmstream.ToolCall{
+		Name:  ToolNameApplyPatch,
+		Input: patch,
+	}, &llmstream.ToolResult{
+		Name:      ToolNameApplyPatch,
+		Result:    "invalid patch",
+		IsError:   true,
+		SourceErr: err,
+	})
+
+	assert.Equal(t, llmstream.ErrorBehaviorPresenterOwned, presentation.ErrorBehavior)
+	assert.Nil(t, presentation.Summary.Segments)
+
+	diff, ok := presentation.Body.(llmstream.Diff)
+	require.True(t, ok)
+	require.Len(t, diff.Edits, 1)
+	assert.Empty(t, diff.Edits[0].Lines)
+	require.NotNil(t, diff.Edits[0].Error)
+	require.Len(t, diff.Edits[0].Error.Segments, 1)
+	assert.Equal(t, "Failed: LLM supplied an invalid patch.", diff.Edits[0].Error.Segments[0].Text)
 }
 
 func TestDeletePresenter(t *testing.T) {
@@ -164,7 +237,7 @@ func TestDeletePresenter(t *testing.T) {
 	assert.Equal(t, "Delete", callPresentation.Summary.Segments[0].Text)
 	assert.Equal(t, llmstream.RoleNormal, callPresentation.Summary.Segments[1].Role)
 	assert.Equal(t, "some/file.txt", callPresentation.Summary.Segments[1].Text)
-	assert.Empty(t, callPresentation.Body)
+	assert.Nil(t, callPresentation.Body)
 }
 
 func TestDeletePresenter_FallsBackToToolName(t *testing.T) {
@@ -211,7 +284,7 @@ func TestLsPresenter(t *testing.T) {
 	assert.Equal(t, "List", callPresentation.Summary.Segments[0].Text)
 	assert.Equal(t, llmstream.RoleNormal, callPresentation.Summary.Segments[1].Role)
 	assert.Equal(t, "some/dir", callPresentation.Summary.Segments[1].Text)
-	assert.Empty(t, callPresentation.Body)
+	assert.Nil(t, callPresentation.Body)
 }
 
 func TestLsPresenter_FallsBackToToolName(t *testing.T) {
@@ -253,7 +326,7 @@ func TestReadFilePresenter(t *testing.T) {
 	assert.Equal(t, "Read", callPresentation.Summary.Segments[0].Text)
 	assert.Equal(t, llmstream.RoleNormal, callPresentation.Summary.Segments[1].Role)
 	assert.Equal(t, "some/file.txt", callPresentation.Summary.Segments[1].Text)
-	assert.Empty(t, callPresentation.Body)
+	assert.Nil(t, callPresentation.Body)
 }
 
 func TestReadFilePresenter_FallsBackToToolName(t *testing.T) {

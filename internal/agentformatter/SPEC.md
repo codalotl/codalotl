@@ -171,6 +171,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - If a presenter returns `Body` blocks, render them beneath the summary using the same `└`/continuation structure used elsewhere in this package.
 - `Paragraph` blocks render their lines in order using line/segment roles, sharing the same body indentation rules.
 - `Checklist` blocks render one item per line:
+    - If `Overview` is non-empty, render it first as a normal body line
     - Completed items use `✔`
     - Pending and in-progress items use `□`
     - In-progress items add emphasis on top of any segment roles
