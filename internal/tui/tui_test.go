@@ -13,6 +13,7 @@ import (
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -650,7 +651,33 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 }
 
 func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
-	for _, toolName := range []string{"change_api", "update_usage", "clarify_public_api", "implement", "review"} {
+	t.Run("change_api presenter append behavior", func(t *testing.T) {
+		m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+		callID := "call-change-api"
+		call := &llmstream.ToolCall{CallID: callID, Name: "change_api", Input: `{"path":"upstream","instructions":"Change it."}`}
+		result := &llmstream.ToolResult{CallID: callID, Name: "change_api"}
+		sandbox := t.TempDir()
+		tool := newNamedToolWithPresenter("change_api", pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		).Presenter())
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+		require.Len(t, m.messages, 1)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+		require.Len(t, m.messages, 2)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	})
+
+	for _, toolName := range []string{"update_usage", "clarify_public_api", "implement", "review"} {
 		t.Run(toolName, func(t *testing.T) {
 			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 

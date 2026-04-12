@@ -99,8 +99,11 @@ func (f *textTUIFormatter) FormatEvent(e agent.Event, terminalWidth int) string 
 
 // Replace presenters describe fixed-width TUI output, so an explicit width still wins at the narrow boundary.
 func presenterWidthConstrainedTUI(e agent.Event) bool {
-	presentation, ok := presenterReplacePresentation(e)
+	presentation, ok := presenterPresentation(e)
 	if !ok {
+		return false
+	}
+	if presentation.Behavior != llmstream.CompletionBehaviorReplace {
 		return false
 	}
 	if presentation.NarrowBehavior == llmstream.PresentationNarrowBehaviorPreferCLI {
@@ -341,7 +344,7 @@ type presentedBodyLine struct {
 	patch patchLine
 }
 
-func presenterReplacePresentation(e agent.Event) (llmstream.Presentation, bool) {
+func presenterPresentation(e agent.Event) (llmstream.Presentation, bool) {
 	if e.Tool == nil || e.ToolCall == nil {
 		return llmstream.Presentation{}, false
 	}
@@ -357,12 +360,12 @@ func presenterReplacePresentation(e agent.Event) (llmstream.Presentation, bool) 
 	}
 
 	presentation := presenter.Present(*e.ToolCall, result)
-	if presentation.Behavior != llmstream.CompletionBehaviorReplace {
+	if presentation.Behavior == "" {
 		return llmstream.Presentation{}, false
 	}
 	if err := validatePresentedToolSummary(presentation); err != nil {
 		return llmstream.Presentation{
-			Behavior: llmstream.CompletionBehaviorReplace,
+			Behavior: presentation.Behavior,
 			Summary: llmstream.Line{
 				Segments: []llmstream.Segment{
 					{Text: "Error", Role: llmstream.RoleError},
@@ -694,7 +697,7 @@ func (f *textTUIFormatter) presentedBodyCLILines(bullet colorRole, lines []prese
 }
 
 func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
-	if presentation, ok := presenterReplacePresentation(e); ok {
+	if presentation, ok := presenterPresentation(e); ok {
 		var builder strings.Builder
 		builder.WriteString(f.tuiPresentedToolSummary(width, colorAccent, presentation))
 		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
@@ -714,8 +717,6 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiModuleInfoToolCall(e, width)
 	case "update_usage":
 		return f.tuiUpdateUsageToolCall(e, width)
-	case "change_api":
-		return f.tuiChangeAPIToolCall(e, width)
 	case "review":
 		return f.tuiReviewToolCall(e, width)
 	case "implement":
@@ -726,7 +727,7 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 }
 
 func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
-	if presentation, ok := presenterReplacePresentation(e); ok {
+	if presentation, ok := presenterPresentation(e); ok {
 		lines := []string{f.cliPresentedToolSummary(colorAccent, presentation)}
 		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
 			if rest := f.presentedBodyCLILines(colorAccent, bodyLines); len(rest) > 0 {
@@ -747,8 +748,6 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliModuleInfoToolCall(e)
 	case "update_usage":
 		return f.cliUpdateUsageToolCall(e)
-	case "change_api":
-		return f.cliChangeAPIToolCall(e)
 	case "review":
 		return f.cliReviewToolCall(e)
 	case "implement":
@@ -795,7 +794,7 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiSillyAgentOutsidePackage(e, width)
 	}
 
-	if presentation, ok := presenterReplacePresentation(e); ok {
+	if presentation, ok := presenterPresentation(e); ok {
 		success, outputLines := presenterCompletionSuccess(e, presentation)
 		bullet := colorGreen
 		if !success {
@@ -830,8 +829,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiModuleInfoToolComplete(e, width, success)
 	case "update_usage":
 		return f.tuiUpdateUsageToolComplete(e, width, success, outputLines)
-	case "change_api":
-		return f.tuiChangeAPIToolComplete(e, width, success, outputLines)
 	case "review":
 		return f.tuiReviewToolComplete(e, width, success, outputLines)
 	case "implement":
@@ -846,7 +843,7 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliSillyAgentOutsidePackage(e)
 	}
 
-	if presentation, ok := presenterReplacePresentation(e); ok {
+	if presentation, ok := presenterPresentation(e); ok {
 		success, outputLines := presenterCompletionSuccess(e, presentation)
 		bullet := colorGreen
 		if !success {
@@ -886,8 +883,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliModuleInfoToolComplete(e, success)
 	case "update_usage":
 		return f.cliUpdateUsageToolComplete(e, success, outputLines)
-	case "change_api":
-		return f.cliChangeAPIToolComplete(e, success, outputLines)
 	case "review":
 		return f.cliReviewToolComplete(e, success, outputLines)
 	case "implement":
@@ -1902,25 +1897,6 @@ func extractUpdateUsage(call *llmstream.ToolCall) (instructions string, paths []
 	return instructions, paths, true
 }
 
-func extractChangeAPI(call *llmstream.ToolCall) (path string, instructions string, ok bool) {
-	if call == nil {
-		return "", "", false
-	}
-	var payload struct {
-		Path         string `json:"path"`
-		Instructions string `json:"instructions"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
-		return "", "", false
-	}
-	path = sanitizeText(strings.TrimSpace(payload.Path))
-	instructions = sanitizeText(strings.TrimSpace(payload.Instructions))
-	if path == "" {
-		return "", "", false
-	}
-	return path, instructions, true
-}
-
 func extractReview(call *llmstream.ToolCall) (base string, ok bool) {
 	if call == nil {
 		return "", false
@@ -2055,93 +2031,6 @@ func (f *textTUIFormatter) cliUpdateUsageToolComplete(e agent.Event, success boo
 		bullet = colorRed
 	}
 	segments := f.updateUsageHeaderSegments("Updated Usage", paths)
-	lines := []string{f.cliBulletLine(bullet, segments...)}
-	if !success {
-		if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
-			lines = append(lines, rest...)
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (f *textTUIFormatter) changeAPIHeaderSegments(verb string, importPath string) []textSegment {
-	segments := []textSegment{
-		{text: verb, style: runeStyle{color: colorColorful, bold: true}},
-	}
-	importPath = strings.TrimSpace(importPath)
-	if importPath == "" {
-		return segments
-	}
-	segments = append(segments, textSegment{text: " in", style: runeStyle{color: colorAccent}})
-	segments = append(segments, textSegment{text: " " + importPath})
-	return segments
-}
-
-func (f *textTUIFormatter) tuiChangeAPIToolCall(e agent.Event, width int) string {
-	importPath, instructions, ok := extractChangeAPI(e.ToolCall)
-	if !ok {
-		return f.tuiGenericToolCall(e, width)
-	}
-	segments := f.changeAPIHeaderSegments("Changing API", importPath)
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, colorAccent, segments...))
-	instructions = strings.TrimSpace(instructions)
-	if instructions != "" {
-		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
-			text:          instructions,
-			style:         runeStyle{color: colorAccent},
-			highlightCode: true,
-		}})
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliChangeAPIToolCall(e agent.Event) string {
-	importPath, instructions, ok := extractChangeAPI(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolCall(e)
-	}
-	segments := f.changeAPIHeaderSegments("Changing API", importPath)
-	lines := []string{f.cliBulletLine(colorAccent, segments...)}
-	instructions = strings.TrimSpace(instructions)
-	if instructions != "" {
-		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
-			text:          instructions,
-			style:         runeStyle{color: colorAccent},
-			highlightCode: true,
-		}})...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (f *textTUIFormatter) tuiChangeAPIToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
-	importPath, _, ok := extractChangeAPI(e.ToolCall)
-	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, outputLines)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	segments := f.changeAPIHeaderSegments("Changed API", importPath)
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
-	if !success && len(outputLines) > 0 {
-		f.appendTUIToolOutput(&builder, width, outputLines)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliChangeAPIToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
-	importPath, _, ok := extractChangeAPI(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolComplete(e, success, outputLines)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	segments := f.changeAPIHeaderSegments("Changed API", importPath)
 	lines := []string{f.cliBulletLine(bullet, segments...)}
 	if !success {
 		if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {

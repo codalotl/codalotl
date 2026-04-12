@@ -195,6 +195,11 @@ func TestPresentationModel_Status(t *testing.T) {
 	assert.Equal(t, PresentationStatusFailure, Presentation{Status: PresentationStatusFailure}.Status)
 }
 
+func TestPresentationModel_Behavior(t *testing.T) {
+	assert.Equal(t, CompletionBehaviorReplace, Presentation{Behavior: CompletionBehaviorReplace}.Behavior)
+	assert.Equal(t, CompletionBehaviorAppend, Presentation{Behavior: CompletionBehaviorAppend}.Behavior)
+}
+
 func TestPresentationModel_NarrowBehavior(t *testing.T) {
 	assert.Equal(t, PresentationNarrowBehaviorDefault, Presentation{}.NarrowBehavior)
 	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, Presentation{NarrowBehavior: PresentationNarrowBehaviorPreferCLI}.NarrowBehavior)

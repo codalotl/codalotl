@@ -7,11 +7,16 @@ import (
 )
 
 type namedTool struct {
-	name string
+	name      string
+	presenter llmstream.Presenter
 }
 
 func newNamedTool(name string) llmstream.Tool {
 	return namedTool{name: name}
+}
+
+func newNamedToolWithPresenter(name string, presenter llmstream.Presenter) llmstream.Tool {
+	return namedTool{name: name, presenter: presenter}
 }
 
 func (t namedTool) Info() llmstream.ToolInfo {
@@ -23,7 +28,7 @@ func (t namedTool) Name() string {
 }
 
 func (t namedTool) Presenter() llmstream.Presenter {
-	return nil
+	return t.presenter
 }
 
 func (t namedTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {

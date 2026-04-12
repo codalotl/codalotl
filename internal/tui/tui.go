@@ -1784,12 +1784,33 @@ func toolName(ev agent.Event) string {
 }
 
 func shouldReplaceToolCallWithResult(ev agent.Event) bool {
-	switch toolName(ev) {
-	case "change_api", "update_usage", "clarify_public_api", "implement", "review":
-		// SubAgent tools: we want to show the call *and* the result as separate messages.
+	switch toolCompletionBehavior(ev) {
+	case llmstream.CompletionBehaviorAppend:
 		return false
 	default:
 		return true
+	}
+}
+
+func toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
+	if ev.Tool != nil && ev.ToolCall != nil {
+		if presenter := ev.Tool.Presenter(); presenter != nil {
+			var result *llmstream.ToolResult
+			if ev.Type == agent.EventTypeToolComplete {
+				result = ev.ToolResult
+			}
+			if behavior := presenter.Present(*ev.ToolCall, result).Behavior; behavior != "" {
+				return behavior
+			}
+		}
+	}
+
+	switch toolName(ev) {
+	case "update_usage", "clarify_public_api", "implement", "review":
+		// SubAgent tools: we want to show the call *and* the result as separate messages.
+		return llmstream.CompletionBehaviorAppend
+	default:
+		return llmstream.CompletionBehaviorReplace
 	}
 }
 

@@ -167,7 +167,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 
 - If `Event.Tool` exposes a non-nil `Presenter`, formatter must render from that semantic presentation.
 - Do not keep parallel per-tool formatting specs here once a tool package owns its presentation.
-- `Replace` presentations still use the tool event bullet/status behavior from this package: Accent while running, Green/Red on completion.
+- Presenter summaries still use the tool event bullet/status behavior from this package: Accent while running, Green/Red on completion.
 - If a presenter sets an explicit `Status`, use that status for completion bullet color instead of inferring from the raw tool result.
 - If a presenter opts into CLI narrow behavior, keep using the formatter's CLI fallback at the minimum width boundary instead of forcing wrapped presenter TUI output.
 - If a presenter returns `Body` blocks, render them beneath the summary using the same `└`/continuation structure used elsewhere in this package.
@@ -293,28 +293,6 @@ The EventTypeToolComplete looks like this:
 
 ```
 • Updated Usage in some/path, other/path, third/path (4 more)
-```
-
-- NOTE: no body (i.e., no └ below the line). Might change later.
-
-### EventTypeToolCall and EventTypeToolComplete - change_api
-
-The EventTypeToolCall looks like this:
-
-```
-• Changing API in axi/some/pkg
-  └ Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic...
-```
-
-- Changing API is Bold, Colorful
-- "in" is Accent.
-- axi/some/pkg is normal
-- The instructions is Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Changed API in axi/some/pkg
 ```
 
 - NOTE: no body (i.e., no └ below the line). Might change later.

@@ -10,11 +10,13 @@ import (
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
+	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1144,7 +1146,7 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
 }
 
-func TestAppendPresenterDoesNotOverrideGenericShellFormatting(t *testing.T) {
+func TestAppendPresenterFormatsToolCall(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -1182,7 +1184,7 @@ func TestAppendPresenterDoesNotOverrideGenericShellFormatting(t *testing.T) {
 
 	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
 	require.NotEmpty(t, out)
-	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, stripANSI(out))
+	assert.Equal(t, "• Presented by presenter", stripANSI(out))
 }
 
 func TestPresentedToolSummaryJoinWithSpace(t *testing.T) {
@@ -2501,6 +2503,7 @@ func TestChangeAPICallFormatting(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	sandbox := t.TempDir()
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
@@ -2509,8 +2512,14 @@ func TestChangeAPICallFormatting(t *testing.T) {
 }`,
 	}
 	event := agent.Event{
-		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("change_api"),
+		Type: agent.EventTypeToolCall,
+		Tool: extToolWithPresenter(t, pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
@@ -2532,6 +2541,7 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	sandbox := t.TempDir()
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
@@ -2544,8 +2554,14 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 		IsError: false,
 	}
 	event := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("change_api"),
+		Type: agent.EventTypeToolComplete,
+		Tool: extToolWithPresenter(t, pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2566,6 +2582,7 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	sandbox := t.TempDir()
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
@@ -2578,8 +2595,14 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 		IsError: true,
 	}
 	event := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("change_api"),
+		Type: agent.EventTypeToolComplete,
+		Tool: extToolWithPresenter(t, pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
