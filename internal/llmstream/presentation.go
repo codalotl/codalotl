@@ -30,11 +30,35 @@ const (
 // By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr. To override this,
 // set ErrorBehavior to ErrorBehaviorPresenterOwned.
 type Presentation struct {
-	Behavior      CompletionBehavior
-	ErrorBehavior ErrorBehavior
-	Summary       Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
-	Body          Block // Tool details (ex: diff body; command output; checklist items)
+	Behavior       CompletionBehavior
+	ErrorBehavior  ErrorBehavior
+	NarrowBehavior PresentationNarrowBehavior
+	Status         PresentationStatus
+	Summary        Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
+	Body           Block // Tool details (ex: diff body; command output; checklist items)
 }
+
+// PresentationStatus indicates whether a presenter explicitly owns the visible success/failure state for completion rendering.
+type PresentationStatus string
+
+const (
+	// PresentationStatusDefault means consumers should infer success/failure from the underlying ToolResult.
+	PresentationStatusDefault PresentationStatus = ""
+	// PresentationStatusSuccess means consumers should treat the presentation as successful.
+	PresentationStatusSuccess PresentationStatus = "success"
+	// PresentationStatusFailure means consumers should treat the presentation as failed.
+	PresentationStatusFailure PresentationStatus = "failure"
+)
+
+// PresentationNarrowBehavior indicates whether a presenter wants the formatter's narrow-width fallback behavior adjusted.
+type PresentationNarrowBehavior string
+
+const (
+	// PresentationNarrowBehaviorDefault keeps the formatter's default minimum-width TUI behavior for presenters.
+	PresentationNarrowBehaviorDefault PresentationNarrowBehavior = ""
+	// PresentationNarrowBehaviorPreferCLI asks consumers to keep using the formatter's CLI fallback at the minimum width boundary.
+	PresentationNarrowBehaviorPreferCLI PresentationNarrowBehavior = "prefer_cli"
+)
 
 // ErrorBehavior indicates whether shared formatter-owned error rendering should still override presenter body content.
 type ErrorBehavior string

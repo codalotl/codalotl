@@ -175,10 +175,38 @@ const (
 //   - Do not assume/include indentation.
 //   - Do not worry about line width.
 type Presentation struct {
-	Behavior CompletionBehavior
-	Summary  Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
-	Body     Block // Tool details (ex: diff body; command output; checklist items)
+	Behavior      CompletionBehavior
+	ErrorBehavior ErrorBehavior
+	NarrowBehavior PresentationNarrowBehavior
+	Status        PresentationStatus
+	Summary       Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
+	Body          Block // Tool details (ex: diff body; command output; checklist items)
 }
+
+// ErrorBehavior indicates whether shared formatter-owned error rendering should still override presenter body content.
+type ErrorBehavior string
+
+const (
+	ErrorBehaviorDefault        ErrorBehavior = ""
+	ErrorBehaviorPresenterOwned ErrorBehavior = "presenter_owned"
+)
+
+// PresentationStatus indicates whether a presenter explicitly owns the visible success/failure state.
+type PresentationStatus string
+
+const (
+	PresentationStatusDefault PresentationStatus = ""
+	PresentationStatusSuccess PresentationStatus = "success"
+	PresentationStatusFailure PresentationStatus = "failure"
+)
+
+// PresentationNarrowBehavior lets a presenter opt out of the formatter's minimum-width TUI wrapping when needed.
+type PresentationNarrowBehavior string
+
+const (
+	PresentationNarrowBehaviorDefault   PresentationNarrowBehavior = ""
+	PresentationNarrowBehaviorPreferCLI PresentationNarrowBehavior = "prefer_cli"
+)
 
 // Line is a single rendered line made of styled segments. If JoinWithSpace is true, consumers should join adjacent segments with a single space. Otherwise, Segment.Text
 // owns any needed leading or trailing whitespace explicitly.

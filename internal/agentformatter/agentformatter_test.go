@@ -14,12 +14,19 @@ import (
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
+	"github.com/codalotl/codalotl/internal/tools/exttools"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var dedent = gocodetesting.Dedent
+
+func extToolWithPresenter(t *testing.T, tool llmstream.Tool) llmstream.Tool {
+	t.Helper()
+	require.NotNil(t, tool.Presenter())
+	return testToolWithPresenter(tool.Name(), tool.Presenter())
+}
 
 func ansiWrap(text string, pal palette, c colorRole, italics bool, bold bool) string {
 	style := pal.style(runeStyle{
@@ -1508,7 +1515,7 @@ func TestDiagnosticsToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("diagnostics"),
+		Tool:     extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall: &call,
 	}
 
@@ -1536,7 +1543,7 @@ func TestDiagnosticsToolCompleteSuccessNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("diagnostics"),
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1566,7 +1573,7 @@ func TestDiagnosticsToolCompleteFailureNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("diagnostics"),
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1599,7 +1606,7 @@ agentformatter.go:1:1: some error
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("diagnostics"),
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1630,7 +1637,7 @@ $ go build -o /dev/null ./internal/agentformatter
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("diagnostics"),
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1657,7 +1664,7 @@ func TestDiagnosticsToolCompleteCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("diagnostics"),
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1679,7 +1686,7 @@ func TestFixLintsToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("fix_lints"),
+		Tool:     extToolWithPresenter(t, exttools.NewFixLintsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall: &call,
 	}
 
@@ -1715,7 +1722,7 @@ internal/agentformatter/agentformatter.go
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("fix_lints"),
+		Tool:       extToolWithPresenter(t, exttools.NewFixLintsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1751,7 +1758,7 @@ func TestFixLintsToolCompleteCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("fix_lints"),
+		Tool:       extToolWithPresenter(t, exttools.NewFixLintsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3639,7 +3646,7 @@ $ staticcheck ./internal/tools/toolsets
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("run_tests"),
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3699,7 +3706,7 @@ file6.go
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("run_tests"),
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3741,7 +3748,7 @@ ok  	github.com/codalotl/codalotl/internal/tools/toolsets	(cached)
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("run_tests"),
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3763,7 +3770,7 @@ func TestRunProjectTestsCallFormatting(t *testing.T) {
 	pal := newPalette(cfg)
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
-	event := agent.Event{Type: agent.EventTypeToolCall, Tool: testTool("run_project_tests"), ToolCall: &call}
+	event := agent.Event{Type: agent.EventTypeToolCall, Tool: extToolWithPresenter(t, exttools.NewRunProjectTestsTool("", authdomain.NewAutoApproveAuthorizer(t.TempDir()))), ToolCall: &call}
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
@@ -3786,7 +3793,7 @@ func TestRunProjectTestsCompleteSuccessShowsPassed(t *testing.T) {
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
 	result := llmstream.ToolResult{Result: `{"success":true,"content":"(elided)"}`, IsError: false}
-	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: testTool("run_project_tests"), ToolCall: &call, ToolResult: &result}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: extToolWithPresenter(t, exttools.NewRunProjectTestsTool("", authdomain.NewAutoApproveAuthorizer(t.TempDir()))), ToolCall: &call, ToolResult: &result}
 	out := formatter.FormatEvent(event, 120)
 	require.NotEmpty(t, out)
 	lines := strings.Split(stripANSI(out), "\n")
@@ -3805,7 +3812,7 @@ func TestRunProjectTestsCompleteFailureShowsPackages(t *testing.T) {
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
 	result := llmstream.ToolResult{Result: `{"success":false,"content":"Failed:\nsome/pkg1\nother/pkg2\n"}`, IsError: false}
-	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: testTool("run_project_tests"), ToolCall: &call, ToolResult: &result}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: extToolWithPresenter(t, exttools.NewRunProjectTestsTool("", authdomain.NewAutoApproveAuthorizer(t.TempDir()))), ToolCall: &call, ToolResult: &result}
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
@@ -3924,7 +3931,7 @@ $ gofmt -l -w internal/agentformatter
 	event := agent.Event{
 		Agent:      agent.AgentMeta{Depth: 1},
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("run_tests"),
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3963,7 +3970,7 @@ $ gofmt -l -w internal/agentformatter
 	event := agent.Event{
 		Agent:      agent.AgentMeta{Depth: 2},
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("run_tests"),
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}

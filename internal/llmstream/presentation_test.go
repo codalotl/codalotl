@@ -174,8 +174,10 @@ func TestPresentationModel_LineJoinModes(t *testing.T) {
 
 func TestPresentationModel_ErrorBehavior(t *testing.T) {
 	presentation := Presentation{
-		Behavior:      CompletionBehaviorReplace,
-		ErrorBehavior: ErrorBehaviorPresenterOwned,
+		Behavior:       CompletionBehaviorReplace,
+		ErrorBehavior:  ErrorBehaviorPresenterOwned,
+		NarrowBehavior: PresentationNarrowBehaviorPreferCLI,
+		Status:         PresentationStatusFailure,
 		Summary: Line{
 			Segments: []Segment{{Text: "Apply Patch", Role: RoleAction}},
 		},
@@ -183,4 +185,17 @@ func TestPresentationModel_ErrorBehavior(t *testing.T) {
 
 	assert.Equal(t, CompletionBehaviorReplace, presentation.Behavior)
 	assert.Equal(t, ErrorBehaviorPresenterOwned, presentation.ErrorBehavior)
+	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, presentation.NarrowBehavior)
+	assert.Equal(t, PresentationStatusFailure, presentation.Status)
+}
+
+func TestPresentationModel_Status(t *testing.T) {
+	assert.Equal(t, PresentationStatusDefault, Presentation{}.Status)
+	assert.Equal(t, PresentationStatusSuccess, Presentation{Status: PresentationStatusSuccess}.Status)
+	assert.Equal(t, PresentationStatusFailure, Presentation{Status: PresentationStatusFailure}.Status)
+}
+
+func TestPresentationModel_NarrowBehavior(t *testing.T) {
+	assert.Equal(t, PresentationNarrowBehaviorDefault, Presentation{}.NarrowBehavior)
+	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, Presentation{NarrowBehavior: PresentationNarrowBehaviorPreferCLI}.NarrowBehavior)
 }

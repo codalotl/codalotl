@@ -17,6 +17,8 @@ var descriptionDiagnostics string
 
 const ToolNameDiagnostics = "diagnostics"
 
+var diagnosticsPresenterInstance llmstream.Presenter = diagnosticsPresenter{}
+
 type toolDiagnostics struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
@@ -39,7 +41,24 @@ func (t *toolDiagnostics) Name() string {
 }
 
 func (t *toolDiagnostics) Presenter() llmstream.Presenter {
-	return nil
+	return diagnosticsPresenterInstance
+}
+
+type diagnosticsPresenter struct{}
+
+func (p diagnosticsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Run Diagnostics"
+	if result != nil {
+		action = "Ran Diagnostics"
+	}
+
+	presentation := extToolSummaryPresentation(action, diagnosticsPresenterTarget(call))
+	if result != nil {
+		if success, ok := extToolResultSuccess(*result); ok && !success {
+			presentation.ErrorBehavior = llmstream.ErrorBehaviorPresenterOwned
+		}
+	}
+	return presentation
 }
 
 func (t *toolDiagnostics) Info() llmstream.ToolInfo {
@@ -128,4 +147,17 @@ func newGoDiagnosticsRunner() *cmdrunner.Runner {
 		MessageIfNoOutput: successMessage,
 	})
 	return runner
+}
+
+func diagnosticsPresenterTarget(call llmstream.ToolCall) string {
+	var params diagnosticsParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err == nil {
+		if path := strings.TrimSpace(params.Path); path != "" {
+			return path
+		}
+	}
+	if name := strings.TrimSpace(call.Name); name != "" {
+		return name
+	}
+	return ToolNameDiagnostics
 }

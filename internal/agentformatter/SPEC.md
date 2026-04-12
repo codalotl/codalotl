@@ -168,6 +168,8 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - If `Event.Tool` exposes a non-nil `Presenter`, formatter must render from that semantic presentation.
 - Do not keep parallel per-tool formatting specs here once a tool package owns its presentation.
 - `Replace` presentations still use the tool event bullet/status behavior from this package: Accent while running, Green/Red on completion.
+- If a presenter sets an explicit `Status`, use that status for completion bullet color instead of inferring from the raw tool result.
+- If a presenter opts into CLI narrow behavior, keep using the formatter's CLI fallback at the minimum width boundary instead of forcing wrapped presenter TUI output.
 - If a presenter returns `Body` blocks, render them beneath the summary using the same `└`/continuation structure used elsewhere in this package.
 - `Paragraph` blocks render their lines in order using line/segment roles, sharing the same body indentation rules.
 - `Checklist` blocks render one item per line:
@@ -177,7 +179,7 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
     - In-progress items add emphasis on top of any segment roles
 - `Diff` blocks render using the shared diff rules below.
 - For `Output` blocks, print the provided visible lines in order, and if `OmittedLineCount > 0`, append `… +N lines`.
-- Shared tool-error rendering still wins over presenter body content when the tool result is an error.
+- Shared tool-error rendering still wins over presenter body content when the tool result is an error, unless `ErrorBehavior` is presenter-owned.
 
 #### Rendering `Diff` blocks
 
@@ -399,57 +401,6 @@ If either option is provided and non-zero-value, print a single Accent line unde
 - EventTypeToolComplete is the same as the Call (except it resolves to a status).
 - Bullet indicates status (Green on success; Red on error).
 
-### EventTypeToolCall and EventTypeToolComplete - diagnostics
-
-The EventTypeToolComplete looks like this (Call is the same, except with `Run`):
-
-```
-• Ran Diagnostics some/path
-```
-
-- Run Diagnostics / Ran Diagnostics is Bold, Colorful; some/path is normal
-- There is no output line. Status indicated by bullet color (Red or Green).
-
-### EventTypeToolCall and EventTypeToolComplete - fix_lints
-
-Call:
-
-```
-• Fix Lints some/path
-```
-
-Complete:
-
-```
-• Fixed Lints some/path
-  └ $ gofmt -l -w some/path
-```
-
-- Fix Lints / Fixed Lints is Bold, Colorful; some/path is normal
-- Output is summarized like other tools (max 5 lines).
-
-### EventTypeToolCall and EventTypeToolComplete - run_tests
-
-Complete:
-
-```
-• Ran Tests ./internal/tools/toolsets
-  └ Tests: pass | Lints: pass
-```
-
-- Ran Tests is Bold, Colorful.
-- some/pkg is normal
-- Bullet is Red or Green based on the overall outcome (tests AND lints).
-- If a section is missing, the status is `-`.
-
-### EventTypeToolCall and EventTypeToolComplete - run_project_tests
-
-Complete:
-
-```
-• Ran Tests ./...
-  └ Passed
-```
 
 or
 

@@ -19,6 +19,8 @@ var descriptionRunTests string
 
 const ToolNameRunTests = "run_tests"
 
+var runTestsPresenterInstance llmstream.Presenter = runTestsPresenter{}
+
 type toolRunTests struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
@@ -46,7 +48,45 @@ func (t *toolRunTests) Name() string {
 }
 
 func (t *toolRunTests) Presenter() llmstream.Presenter {
-	return nil
+	return runTestsPresenterInstance
+}
+
+type runTestsPresenter struct{}
+
+func (p runTestsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Run Tests"
+	if result != nil {
+		action = "Ran Tests"
+	}
+
+	presentation := extToolSummaryPresentation(action, runTestsPresenterTarget(call))
+	if result == nil {
+		return presentation
+	}
+
+	content, payload, ok := extToolResultPayloadContent(*result)
+	if !ok {
+		return presentation
+	}
+
+	content = strings.ReplaceAll(strings.TrimSpace(content), "\r\n", "\n")
+	if summary, ok := summarizeRunTestsSections(content); ok {
+		presentation.Status = runTestsPresenterStatus(*result, payload, summary)
+		presentation.Body = llmstream.Paragraph{
+			Lines: []llmstream.Line{{
+				Segments: []llmstream.Segment{
+					{Text: summary.line, Role: llmstream.RoleAccent},
+				},
+			}},
+		}
+		return presentation
+	}
+
+	content = stripOuterXMLTag(content)
+	if output, ok := summarizePresenterOutput(content, 5); ok {
+		presentation.Body = output
+	}
+	return presentation
 }
 
 func (t *toolRunTests) Info() llmstream.ToolInfo {
@@ -205,4 +245,118 @@ func isValidEnvKey(key string) bool {
 		return false
 	}
 	return true
+}
+
+func runTestsPresenterTarget(call llmstream.ToolCall) string {
+	var params runTestsParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err == nil {
+		if path := strings.TrimSpace(params.Path); path != "" {
+			return path
+		}
+	}
+	if name := strings.TrimSpace(call.Name); name != "" {
+		return name
+	}
+	return ToolNameRunTests
+}
+
+type runTestsXMLSection struct {
+	found   bool
+	okFound bool
+	ok      bool
+}
+
+type runTestsSectionsSummary struct {
+	tests runTestsXMLSection
+	lints runTestsXMLSection
+	line  string
+}
+
+func extractRunTestsXMLSection(content string, tagName string) runTestsXMLSection {
+	needle := "<" + tagName
+	openStart := strings.Index(content, needle)
+	if openStart < 0 {
+		return runTestsXMLSection{}
+	}
+
+	gtRel := strings.IndexByte(content[openStart:], '>')
+	if gtRel < 0 {
+		return runTestsXMLSection{}
+	}
+
+	openTag := content[openStart : openStart+gtRel+1]
+	section := runTestsXMLSection{found: true}
+	if ok, found := extractXMLishOK(openTag); found {
+		section.ok = ok
+		section.okFound = true
+	}
+	return section
+}
+
+func runTestsStatusWord(section runTestsXMLSection) string {
+	if !section.okFound {
+		return "unknown"
+	}
+	if section.ok {
+		return "pass"
+	}
+	return "fail"
+}
+
+func summarizeRunTestsSections(content string) (runTestsSectionsSummary, bool) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return runTestsSectionsSummary{}, false
+	}
+
+	summary := runTestsSectionsSummary{
+		tests: extractRunTestsXMLSection(content, "test-status"),
+		lints: extractRunTestsXMLSection(content, "lint-status"),
+	}
+	if !summary.tests.found && !summary.lints.found {
+		return runTestsSectionsSummary{}, false
+	}
+
+	testsWord := "-"
+	if summary.tests.found {
+		testsWord = runTestsStatusWord(summary.tests)
+	}
+	lintsWord := "-"
+	if summary.lints.found {
+		lintsWord = runTestsStatusWord(summary.lints)
+	}
+	summary.line = "Tests: " + testsWord + " | Lints: " + lintsWord
+	return summary, true
+}
+
+func runTestsPresenterStatus(result llmstream.ToolResult, payload extToolPayload, summary runTestsSectionsSummary) llmstream.PresentationStatus {
+	if payload.Success != nil {
+		if *payload.Success {
+			return llmstream.PresentationStatusSuccess
+		}
+		return llmstream.PresentationStatusFailure
+	}
+
+	if summary.tests.found && summary.lints.found && summary.tests.okFound && summary.lints.okFound {
+		if summary.tests.ok && summary.lints.ok {
+			return llmstream.PresentationStatusSuccess
+		}
+		return llmstream.PresentationStatusFailure
+	}
+	if summary.tests.found && summary.tests.okFound {
+		if summary.tests.ok {
+			return llmstream.PresentationStatusSuccess
+		}
+		return llmstream.PresentationStatusFailure
+	}
+	if summary.lints.found && summary.lints.okFound {
+		if summary.lints.ok {
+			return llmstream.PresentationStatusSuccess
+		}
+		return llmstream.PresentationStatusFailure
+	}
+	if result.IsError {
+		return llmstream.PresentationStatusFailure
+	}
+	return llmstream.PresentationStatusSuccess
 }
