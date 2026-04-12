@@ -211,12 +211,17 @@ Phase 5: tbd, don't plan here yet
 - Keep shared bullet/status and shared error handling unchanged.
 - Use this as the prerequisite for wiring `update_plan`, `apply_patch`, `edit`, `write`, and `delete` presenters.
 
-### Phase 4 - internal/tools/coretools: update_plan
+### [DONE] Phase 4 - internal/tools/coretools: update_plan
 
 - Move `update_plan` formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add a replace-style presenter for `update_plan` that preserves the current `Update Plan` summary plus explanation/plan-item body rendering.
 - Keep shared formatter-owned bullet/status and error handling intact; add focused `internal/tools/coretools` coverage for explanation and plan-item emphasis semantics.
-- Do not wire the presenter until `internal/agentformatter` renders semantic presenter body blocks used by `update_plan`.
+
+### [DONE] Phase 4 - internal/agentformatter: update_plan
+
+- Remove explicit `update_plan` formatter branches now that `internal/tools/coretools` owns the replace-style presenter.
+- Keep presenter-driven explanation/checklist rendering on the shared semantic block path, including next-up and in-progress emphasis.
+- Preserve shared tool-error rendering over presenter bodies and keep focused formatter coverage on the presenter path.
 
 ### Phase 4 - internal/tools/coretools: remaining core tools
 
