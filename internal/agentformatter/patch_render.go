@@ -102,22 +102,6 @@ func (f *textTUIFormatter) cliWriteToolCall(e agent.Event) string {
 	}
 	return f.renderApplyPatchChangeCLI(colorAccent, change, nil)
 }
-func (f *textTUIFormatter) tuiDeleteToolCall(e agent.Event, width int) string {
-	change, err := extractDeleteChange(e.ToolCall)
-	if err != nil {
-		return f.tuiGenericToolCall(e, width)
-	}
-	var builder strings.Builder
-	f.renderApplyPatchChangeTUI(&builder, width, colorAccent, change, nil)
-	return builder.String()
-}
-func (f *textTUIFormatter) cliDeleteToolCall(e agent.Event) string {
-	change, err := extractDeleteChange(e.ToolCall)
-	if err != nil {
-		return f.cliGenericToolCall(e)
-	}
-	return f.renderApplyPatchChangeCLI(colorAccent, change, nil)
-}
 
 func (f *textTUIFormatter) tuiApplyPatchToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
 	if e.ToolResult != nil && applypatch.IsInvalidPatch(e.ToolResult.SourceErr) {
@@ -220,38 +204,6 @@ func (f *textTUIFormatter) tuiWriteToolComplete(e agent.Event, width int, succes
 }
 func (f *textTUIFormatter) cliWriteToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
 	change, err := extractWriteChange(e.ToolCall)
-	if err != nil {
-		return f.cliGenericToolComplete(e, success, "", output)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var tail []toolOutputLine
-	if !success {
-		tail = output
-	}
-	return f.renderApplyPatchChangeCLI(bullet, change, tail)
-}
-func (f *textTUIFormatter) tuiDeleteToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
-	change, err := extractDeleteChange(e.ToolCall)
-	if err != nil {
-		return f.tuiGenericToolComplete(e, width, success, "", output)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var tail []toolOutputLine
-	if !success {
-		tail = output
-	}
-	var builder strings.Builder
-	f.renderApplyPatchChangeTUI(&builder, width, bullet, change, tail)
-	return builder.String()
-}
-func (f *textTUIFormatter) cliDeleteToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
-	change, err := extractDeleteChange(e.ToolCall)
 	if err != nil {
 		return f.cliGenericToolComplete(e, success, "", output)
 	}
@@ -678,26 +630,6 @@ func extractWriteChange(call *llmstream.ToolCall) (patchChange, error) {
 		kind:  patchChangeAdd,
 		path:  sanitizeText(path),
 		lines: lines,
-	}, nil
-}
-func extractDeleteChange(call *llmstream.ToolCall) (patchChange, error) {
-	if call == nil {
-		return patchChange{}, fmt.Errorf("missing tool call")
-	}
-	var payload struct {
-		Path     string `json:"path"`
-		FilePath string `json:"file_path"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
-		return patchChange{}, err
-	}
-	path := firstNonEmpty(payload.Path, payload.FilePath)
-	if path == "" {
-		return patchChange{}, fmt.Errorf("missing path")
-	}
-	return patchChange{
-		kind: patchChangeDelete,
-		path: sanitizeText(path),
 	}, nil
 }
 func parseApplyPatch(input string) ([]patchChange, error) {

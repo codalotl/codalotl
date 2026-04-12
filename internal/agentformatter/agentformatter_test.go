@@ -85,6 +85,11 @@ func newUpdatePlanTool(t *testing.T) llmstream.Tool {
 	return coretools.NewUpdatePlanTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
 }
 
+func newDeleteTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewDeleteTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
 func TestAgentMessageTableDriven(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -1926,25 +1931,118 @@ func TestWriteToolCallFormatting(t *testing.T) {
 	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
 	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
 }
-func TestDeleteToolCallFormatting(t *testing.T) {
+func TestDeleteToolCallUsesPresenter(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	tool := newDeleteTool(t)
+	require.NotNil(t, tool.Presenter())
+
 	call := llmstream.ToolCall{
 		Name:  "delete",
 		Input: `{"path":"foo/old.txt"}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("delete"),
+		Tool:     tool,
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
 	require.NotEmpty(t, out)
 	require.Equal(t, "• Delete foo/old.txt", stripANSI(out))
 	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+	assert.Contains(t, out, ansiWrap("Delete", pal, colorColorful, false, true))
+}
+
+func TestDeleteToolCompleteSuccessUsesPresenter(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "delete",
+		Input: `{"path":"foo/old.txt"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       newDeleteTool(t),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Delete foo/old.txt", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
+	assert.NotContains(t, stripANSI(out), "└")
+}
+
+func TestDeleteToolCompleteErrorUsesSharedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "delete",
+		Input: `{"path":"foo/old.txt"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "delete failed",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       newDeleteTool(t),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, []string{
+		"• Delete foo/old.txt",
+		"  └ Error: delete failed",
+	}, strings.Split(stripANSI(out), "\n"))
+	assert.Contains(t, out, ansiWrap("•", pal, colorRed, false, false))
+}
+
+func TestDeleteToolCompleteOutsidePackageUsesSharedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "delete",
+		Input: `{"path":"foo/old.txt"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:    "denied",
+		IsError:   true,
+		SourceErr: authdomain.ErrCodeUnitPathOutside,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       newDeleteTool(t),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Silly LLM tried delete on foo/old.txt outside of package.", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorRed, false, false))
 }
 func TestEditToolCompleteErrorShowsMessage(t *testing.T) {
 	cfg := Config{

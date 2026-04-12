@@ -646,8 +646,6 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiEditToolCall(e, width)
 	case "write":
 		return f.tuiWriteToolCall(e, width)
-	case "delete":
-		return f.tuiDeleteToolCall(e, width)
 	case "update_usage":
 		return f.tuiUpdateUsageToolCall(e, width)
 	case "change_api":
@@ -697,8 +695,6 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliEditToolCall(e)
 	case "write":
 		return f.cliWriteToolCall(e)
-	case "delete":
-		return f.cliDeleteToolCall(e)
 	case "update_usage":
 		return f.cliUpdateUsageToolCall(e)
 	case "change_api":
@@ -808,8 +804,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiEditToolComplete(e, width, success, cmd, outputLines)
 	case "write":
 		return f.tuiWriteToolComplete(e, width, success, cmd, outputLines)
-	case "delete":
-		return f.tuiDeleteToolComplete(e, width, success, cmd, outputLines)
 	case "shell":
 		return f.tuiShellToolComplete(e, width, success, cmd, outputLines)
 	case "diagnostics":
@@ -880,8 +874,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliEditToolComplete(e, success, cmd, outputLines)
 	case "write":
 		return f.cliWriteToolComplete(e, success, cmd, outputLines)
-	case "delete":
-		return f.cliDeleteToolComplete(e, success, cmd, outputLines)
 	case "shell":
 		return f.cliShellToolComplete(e, success, cmd, outputLines)
 	case "diagnostics":
