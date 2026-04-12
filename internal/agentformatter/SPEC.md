@@ -169,7 +169,14 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - Do not keep parallel per-tool formatting specs here once a tool package owns its presentation.
 - `Replace` presentations still use the tool event bullet/status behavior from this package: Accent while running, Green/Red on completion.
 - If a presenter returns `Body` blocks on completion, render them beneath the summary using the same `└`/continuation structure used elsewhere in this package.
+- `Paragraph` blocks render their lines in order using line/segment roles, sharing the same body indentation rules.
+- `Checklist` blocks render one item per line:
+    - Completed items use `✔`
+    - Pending and in-progress items use `□`
+    - In-progress items add emphasis on top of any segment roles
+- `Diff` blocks render with the same verbs, rename notation, diff-line colors, omission markers, and wrapping rules already used for patch/edit tool formatting in this package.
 - For `Output` blocks, print the provided visible lines in order, and if `OmittedLineCount > 0`, append `… +N lines`.
+- Shared tool-error rendering still wins over presenter body content when the tool result is an error.
 
 ### EventTypeToolCall and EventTypeToolComplete - update_plan
 

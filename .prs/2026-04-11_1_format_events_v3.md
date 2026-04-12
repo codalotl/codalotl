@@ -209,6 +209,7 @@ Phase 5: tbd, don't plan here yet
 - Add presenter-body rendering for `Paragraph`, `Checklist`, and `Diff`.
 - Preserve current `update_plan` explanation/checklist emphasis semantics and current patch/edit diff styling.
 - Keep shared bullet/status and shared error handling unchanged.
+- Use this as the prerequisite for wiring `update_plan`, `apply_patch`, `edit`, `write`, and `delete` presenters.
 
 ### Phase 4 - internal/tools/coretools: update_plan
 
