@@ -129,7 +129,10 @@ Phase 4:
 	- it IS specified in a corresponding tools/* package's SPEC.md
 	- The presenter is implemented on the tool, which MATCHES the impl of the original
 
-Phase 5: tbd, don't plan here yet
+Phase 5: assess
+- NOTE to orchestrator: I did phase 4 out of band, not updating the pr file. So your task here is to do an overall assessment of where we are in the process and update plan.
+
+phase 6: tbd, don't start yet
 
 ## Plan
 
