@@ -247,56 +247,6 @@ If a line exceeds the tuiWidth in TUI width mode, wrap it:
 
 - If get_public_api is called with specific identifiers, list them underneath in Accent, comma separated.
 
-### EventTypeToolCall and EventTypeToolComplete - clarify_public_api
-
-The EventTypeToolCall looks like this:
-
-```
-• Clarifying API someIdentifier in /path/to/something
-  └ What does someIdentifier return in its second parameter? Give an example.
-```
-
-- Clarifying API is Bold, Colorful
-- someIdentifier is normal; /path/to/something is normal
-- "in" is Accent.
-- The question is Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Clarified API someIdentifier in /path/to/something
-  └ The someIdentifier returns a description in the 2nd parameter. For example, ...
-```
-
-- Clarified API is Bold, Colorful
-- someIdentifier is normal; /path/to/something is normal
-- "in" is Accent.
-- The answer is Accent.
-- The question is not repeated.
-
-### EventTypeToolCall and EventTypeToolComplete - update_usage
-
-The EventTypeToolCall looks like this:
-
-```
-• Updating Usage in some/path, other/path, third/path (4 more)
-  └ Update the callsites to conform to this new API...
-```
-
-- Updating Usage is Bold, Colorful
-- "in" is Accent.
-- some/path (et al) is normal; (4 more) is Accent
-- If there are more than 3 paths, add a parenthetical for how many more there are. Otherwise, don't show the parenthetical.
-- The instructions is Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Updated Usage in some/path, other/path, third/path (4 more)
-```
-
-- NOTE: no body (i.e., no └ below the line). Might change later.
-
 ### EventTypeToolCall and EventTypeToolComplete - review
 
 The EventTypeToolCall looks like this:

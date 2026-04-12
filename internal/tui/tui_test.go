@@ -677,7 +677,56 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 	})
 
-	for _, toolName := range []string{"update_usage", "clarify_public_api", "implement", "review"} {
+	t.Run("update_usage presenter append behavior", func(t *testing.T) {
+		m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+		callID := "call-update-usage"
+		call := &llmstream.ToolCall{CallID: callID, Name: "update_usage", Input: `{"instructions":"Update callers.","paths":["consumer"]}`}
+		result := &llmstream.ToolResult{CallID: callID, Name: "update_usage"}
+		sandbox := t.TempDir()
+		tool := newNamedToolWithPresenter("update_usage", pkgtools.NewUpdateUsageTool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		).Presenter())
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+		require.Len(t, m.messages, 1)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+		require.Len(t, m.messages, 2)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	})
+
+	t.Run("clarify_public_api presenter append behavior", func(t *testing.T) {
+		m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+		callID := "call-clarify-public-api"
+		call := &llmstream.ToolCall{CallID: callID, Name: "clarify_public_api", Input: `{"path":"some/pkg","identifier":"Thing","question":"What does Thing do?"}`}
+		result := &llmstream.ToolResult{CallID: callID, Name: "clarify_public_api"}
+		sandbox := t.TempDir()
+		tool := newNamedToolWithPresenter("clarify_public_api", pkgtools.NewClarifyPublicAPITool(
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+		).Presenter())
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+		require.Len(t, m.messages, 1)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+		require.Len(t, m.messages, 2)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	})
+
+	for _, toolName := range []string{"implement", "review"} {
 		t.Run(toolName, func(t *testing.T) {
 			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 

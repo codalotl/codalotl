@@ -118,19 +118,7 @@ func changeAPIPresenterSummary(action string, call llmstream.ToolCall, path stri
 		}
 	}
 
-	segments := []llmstream.Segment{
-		{Text: "Tool", Role: llmstream.RoleAction},
-	}
-	if name := strings.TrimSpace(call.Name); name != "" {
-		segments = append(segments, llmstream.Segment{Text: name, Role: llmstream.RoleNormal})
-	}
-	if input := strings.TrimSpace(call.Input); input != "" {
-		segments = append(segments, llmstream.Segment{Text: input, Role: llmstream.RoleNormal})
-	}
-	return llmstream.Line{
-		JoinWithSpace: true,
-		Segments:      segments,
-	}
+	return pkgToolPresenterFallbackSummary(call)
 }
 
 func changeAPIPresenterParamsFromCall(call llmstream.ToolCall) (path string, instructions string, ok bool) {

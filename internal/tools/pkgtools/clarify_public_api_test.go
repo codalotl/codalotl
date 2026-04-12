@@ -2,6 +2,7 @@ package pkgtools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -21,6 +22,65 @@ import (
 type denyReadAuthorizer struct {
 	sandboxDir string
 	readCalls  []string
+}
+
+func TestClarifyPublicAPITool_ExposesPresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewClarifyPublicAPITool(authdomain.NewAutoApproveAuthorizer(sandbox), nil)
+
+	assert.NotNil(t, tool.Presenter())
+}
+
+func TestClarifyPublicAPIPresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewClarifyPublicAPITool(authdomain.NewAutoApproveAuthorizer(sandbox), nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameClarifyPublicAPI,
+		Input: `{"path":"axi/some/pkg","identifier":"SomeIdentifier","question":"What does SomeIdentifier return?"}`,
+	}
+	payload, err := json.Marshal(map[string]any{
+		"success": true,
+		"content": "SomeIdentifier returns a description and a nil error.",
+	})
+	require.NoError(t, err)
+	result := &llmstream.ToolResult{
+		Name:   ToolNameClarifyPublicAPI,
+		Result: string(payload),
+	}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Clarifying API", Role: llmstream.RoleAction},
+			{Text: "SomeIdentifier", Role: llmstream.RoleNormal},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "axi/some/pkg", Role: llmstream.RoleNormal},
+		},
+	}, callPresentation.Summary)
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Clarified API", Role: llmstream.RoleAction},
+			{Text: "SomeIdentifier", Role: llmstream.RoleNormal},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "axi/some/pkg", Role: llmstream.RoleNormal},
+		},
+	}, resultPresentation.Summary)
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{"What does SomeIdentifier return?"},
+	}, callPresentation.Body)
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{"SomeIdentifier returns a description and a nil error."},
+	}, resultPresentation.Body)
 }
 
 func (a *denyReadAuthorizer) SandboxDir() string { return a.sandboxDir }

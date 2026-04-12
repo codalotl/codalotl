@@ -83,6 +83,39 @@ func TestPresentationModel_CanRepresentOutputBlock(t *testing.T) {
 	assert.Equal(t, 4, commandOutput.OmittedLineCount)
 }
 
+func TestPresentationModel_CanRepresentAppendPresentationWithOutputBody(t *testing.T) {
+	presentation := Presentation{
+		Behavior: CompletionBehaviorAppend,
+		Summary: Line{
+			JoinWithSpace: true,
+			Segments: []Segment{
+				{Text: "Clarifying API", Role: RoleAction},
+				{Text: "SomeIdentifier", Role: RoleNormal},
+				{Text: "in", Role: RoleAccent},
+				{Text: "axi/some/pkg", Role: RoleNormal},
+			},
+		},
+		Body: Output{
+			Lines: []string{"What does SomeIdentifier return?"},
+		},
+	}
+
+	assert.Equal(t, CompletionBehaviorAppend, presentation.Behavior)
+	assert.Equal(t, Line{
+		JoinWithSpace: true,
+		Segments: []Segment{
+			{Text: "Clarifying API", Role: RoleAction},
+			{Text: "SomeIdentifier", Role: RoleNormal},
+			{Text: "in", Role: RoleAccent},
+			{Text: "axi/some/pkg", Role: RoleNormal},
+		},
+	}, presentation.Summary)
+
+	output, ok := presentation.Body.(Output)
+	require.True(t, ok)
+	assert.Equal(t, []string{"What does SomeIdentifier return?"}, output.Lines)
+}
+
 func TestPresentationModel_CanRepresentDiffEditsWithoutSummary(t *testing.T) {
 	errorLine := Line{
 		Segments: []Segment{

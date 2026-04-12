@@ -30,6 +30,12 @@ func extToolWithPresenter(t *testing.T, tool llmstream.Tool) llmstream.Tool {
 	return testToolWithPresenter(tool.Name(), tool.Presenter())
 }
 
+func pkgToolWithPresenter(t *testing.T, tool llmstream.Tool) llmstream.Tool {
+	t.Helper()
+	require.NotNil(t, tool.Presenter())
+	return testToolWithPresenter(tool.Name(), tool.Presenter())
+}
+
 func ansiWrap(text string, pal palette, c colorRole, italics bool, bold bool) string {
 	style := pal.style(runeStyle{
 		color:  c,
@@ -116,6 +122,17 @@ func newWriteTool(t *testing.T) llmstream.Tool {
 func newApplyPatchTool(t *testing.T) llmstream.Tool {
 	t.Helper()
 	return coretools.NewApplyPatchTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), true, nil)
+}
+
+func newClarifyPublicAPITool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewClarifyPublicAPITool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)
+}
+
+func newUpdateUsageTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	sandbox := t.TempDir()
+	return pkgtools.NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), nil, llmmodel.DefaultModel, nil)
 }
 
 func TestAgentMessageTableDriven(t *testing.T) {
@@ -2412,7 +2429,7 @@ func TestUpdateUsageCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("update_usage"),
+		Tool:     pkgToolWithPresenter(t, newUpdateUsageTool(t)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
@@ -2448,7 +2465,7 @@ func TestUpdateUsageCompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("update_usage"),
+		Tool:       pkgToolWithPresenter(t, newUpdateUsageTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2482,7 +2499,7 @@ func TestUpdateUsageCompleteErrorShowsOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("update_usage"),
+		Tool:       pkgToolWithPresenter(t, newUpdateUsageTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3407,7 +3424,7 @@ func TestClarifyPublicAPICallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("clarify_public_api"),
+		Tool:     pkgToolWithPresenter(t, newClarifyPublicAPITool(t)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
@@ -3443,7 +3460,7 @@ func TestClarifyPublicAPICompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("clarify_public_api"),
+		Tool:       pkgToolWithPresenter(t, newClarifyPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3473,7 +3490,7 @@ func TestClarifyPublicAPICompleteError(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("clarify_public_api"),
+		Tool:       pkgToolWithPresenter(t, newClarifyPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}

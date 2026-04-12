@@ -1806,7 +1806,7 @@ func toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
 	}
 
 	switch toolName(ev) {
-	case "update_usage", "clarify_public_api", "implement", "review":
+	case "implement", "review":
 		// SubAgent tools: we want to show the call *and* the result as separate messages.
 		return llmstream.CompletionBehaviorAppend
 	default:
