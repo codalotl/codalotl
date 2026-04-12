@@ -26,16 +26,22 @@ const (
 //   - Do not include "└" (common in Body blocks).
 //   - Do not assume/include indentation.
 //   - Do not worry about line width - a semantic `Line` will be split into multiple lines by the final formatter if necessary.
+//   - Summary is usually the visible 1-line tool header. When Body is a Diff, Summary must be left empty; consumers should derive the header from Diff.Edits instead.
 //
-// By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr. To override this,
-// set ErrorBehavior to ErrorBehaviorPresenterOwned.
+// By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr.
+// To override this, set ErrorBehavior to ErrorBehaviorPresenterOwned.
 type Presentation struct {
 	Behavior       CompletionBehavior
 	ErrorBehavior  ErrorBehavior
 	NarrowBehavior PresentationNarrowBehavior
 	Status         PresentationStatus
-	Summary        Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
-	Body           Block // Tool details (ex: diff body; command output; checklist items)
+
+	// Summary is usually a 1-line tool header (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./..."). When Body is a Diff, leave Summary empty and let
+	// consumers derive the header from the diff body.
+	Summary Line
+
+	// Tool details (ex: diff body; command output; checklist items). Diff bodies include enough metadata for consumers to synthesize their own header.
+	Body Block
 }
 
 // PresentationStatus indicates whether a presenter explicitly owns the visible success/failure state for completion rendering.
@@ -44,8 +50,10 @@ type PresentationStatus string
 const (
 	// PresentationStatusDefault means consumers should infer success/failure from the underlying ToolResult.
 	PresentationStatusDefault PresentationStatus = ""
+
 	// PresentationStatusSuccess means consumers should treat the presentation as successful.
 	PresentationStatusSuccess PresentationStatus = "success"
+
 	// PresentationStatusFailure means consumers should treat the presentation as failed.
 	PresentationStatusFailure PresentationStatus = "failure"
 )
@@ -56,6 +64,7 @@ type PresentationNarrowBehavior string
 const (
 	// PresentationNarrowBehaviorDefault keeps the formatter's default minimum-width TUI behavior for presenters.
 	PresentationNarrowBehaviorDefault PresentationNarrowBehavior = ""
+
 	// PresentationNarrowBehaviorPreferCLI asks consumers to keep using the formatter's CLI fallback at the minimum width boundary.
 	PresentationNarrowBehaviorPreferCLI PresentationNarrowBehavior = "prefer_cli"
 )
@@ -66,6 +75,7 @@ type ErrorBehavior string
 const (
 	// ErrorBehaviorDefault means the formatter should keep using shared default tool error rendering when the tool result is an error.
 	ErrorBehaviorDefault ErrorBehavior = ""
+
 	// ErrorBehaviorPresenterOwned means the presenter body already models the desired error presentation.
 	ErrorBehaviorPresenterOwned ErrorBehavior = "presenter_owned"
 )
@@ -139,9 +149,10 @@ type Output struct {
 
 func (Output) isBlock() {}
 
-// Diff is a diff-like edit block, potentially spanning multiple file edits.
+// Diff is a diff-like edit block, potentially spanning multiple file edits. For a Presentation whose Body is a Diff, presenters must leave Presentation.Summary
+// empty. Consumers that need a 1-line visible header should derive it from the first edit in Edits.
 type Diff struct {
-	Edits []DiffEdit
+	Edits []DiffEdit // Edits are in display order. The first edit is the lead edit for consumers that synthesize a diff header.
 }
 
 func (Diff) isBlock() {}

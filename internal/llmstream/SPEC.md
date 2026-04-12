@@ -49,6 +49,10 @@ func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 - A tool may expose semantic display metadata via `Presenter() Presenter`.
 - `nil` presenter is valid and means the tool has no custom presentation.
 - This package itself does not know or care about any tool's presenter. These types are in this package as a convenience for tool implementers to build to a common spec.
+- `Presentation.Summary` is usually the tool-level 1-line header.
+- If `Presentation.Body` is `Diff`, presenters must leave `Summary` empty.
+- Consumers that need a visible 1-line diff header should derive it from `Diff.Edits[0]`.
+- `Diff.Edits` are in display order; first edit is the lead edit/header source.
 - A **partial** `Presentation` type tree is below in Public API.
 
 ## Public API
@@ -173,38 +177,58 @@ const (
 //   - Do not include "•" (leading bullets typical in TUI event streams).
 //   - Do not include "└" (common in Body blocks).
 //   - Do not assume/include indentation.
-//   - Do not worry about line width.
+//   - Do not worry about line width - a semantic `Line` will be split into multiple lines by the final formatter if necessary.
+//   - Summary is usually the visible 1-line tool header. When Body is a Diff, Summary must be left empty; consumers should derive the header from Diff.Edits instead.
+//
+// By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr.
+// To override this, set ErrorBehavior to ErrorBehaviorPresenterOwned.
 type Presentation struct {
-	Behavior      CompletionBehavior
-	ErrorBehavior ErrorBehavior
+	Behavior       CompletionBehavior
+	ErrorBehavior  ErrorBehavior
 	NarrowBehavior PresentationNarrowBehavior
-	Status        PresentationStatus
-	Summary       Line  // Summary is a 1-liner indicating what the tool even is (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./...")
-	Body          Block // Tool details (ex: diff body; command output; checklist items)
+	Status         PresentationStatus
+
+	// Summary is usually a 1-line tool header (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./..."). When Body is a Diff, leave Summary empty and let
+	// consumers derive the header from the diff body.
+	Summary Line
+
+	// Tool details (ex: diff body; command output; checklist items). Diff bodies include enough metadata for consumers to synthesize their own header.
+	Body Block
 }
 
 // ErrorBehavior indicates whether shared formatter-owned error rendering should still override presenter body content.
 type ErrorBehavior string
 
 const (
-	ErrorBehaviorDefault        ErrorBehavior = ""
+	// ErrorBehaviorDefault means the formatter should keep using shared default tool error rendering when the tool result is an error.
+	ErrorBehaviorDefault ErrorBehavior = ""
+
+	// ErrorBehaviorPresenterOwned means the presenter body already models the desired error presentation.
 	ErrorBehaviorPresenterOwned ErrorBehavior = "presenter_owned"
 )
 
-// PresentationStatus indicates whether a presenter explicitly owns the visible success/failure state.
+// PresentationStatus indicates whether a presenter explicitly owns the visible success/failure state for completion rendering.
 type PresentationStatus string
 
 const (
+	// PresentationStatusDefault means consumers should infer success/failure from the underlying ToolResult.
 	PresentationStatusDefault PresentationStatus = ""
+
+	// PresentationStatusSuccess means consumers should treat the presentation as successful.
 	PresentationStatusSuccess PresentationStatus = "success"
+
+	// PresentationStatusFailure means consumers should treat the presentation as failed.
 	PresentationStatusFailure PresentationStatus = "failure"
 )
 
-// PresentationNarrowBehavior lets a presenter opt out of the formatter's minimum-width TUI wrapping when needed.
+// PresentationNarrowBehavior indicates whether a presenter wants the formatter's narrow-width fallback behavior adjusted.
 type PresentationNarrowBehavior string
 
 const (
-	PresentationNarrowBehaviorDefault   PresentationNarrowBehavior = ""
+	// PresentationNarrowBehaviorDefault keeps the formatter's default minimum-width TUI behavior for presenters.
+	PresentationNarrowBehaviorDefault PresentationNarrowBehavior = ""
+
+	// PresentationNarrowBehaviorPreferCLI asks consumers to keep using the formatter's CLI fallback at the minimum width boundary.
 	PresentationNarrowBehaviorPreferCLI PresentationNarrowBehavior = "prefer_cli"
 )
 
@@ -220,5 +244,14 @@ type Line struct {
 type Segment struct {
 	Text string
 	Role SegmentRole
+}
+
+// Block is an interface with a private method, to lock down possible Block implementors to the following:
+//   - Paragraph
+//   - Checklist
+//   - Output
+//   - Diff
+type Block interface {
+	isBlock()
 }
 ```

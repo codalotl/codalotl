@@ -83,7 +83,7 @@ func TestPresentationModel_CanRepresentOutputBlock(t *testing.T) {
 	assert.Equal(t, 4, commandOutput.OmittedLineCount)
 }
 
-func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {
+func TestPresentationModel_CanRepresentDiffEditsWithoutSummary(t *testing.T) {
 	errorLine := Line{
 		Segments: []Segment{
 			{Text: "Error: patch failed", Role: RoleError},
@@ -117,6 +117,8 @@ func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {
 			},
 		},
 	}
+
+	assert.Empty(t, presentation.Summary.Segments)
 
 	diff, ok := presentation.Body.(Diff)
 	require.True(t, ok)

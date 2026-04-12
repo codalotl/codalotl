@@ -56,15 +56,18 @@ func (ToolCall) isPart() {}
 
 // ToolResult is the result of a ToolCall. CallID/Name/Type should match the call.
 type ToolResult struct {
-	CallID  string `json:"call_id"`
-	Name    string `json:"name"`
-	Type    string `json:"type"`     // Matches type of corresponding ToolCall (ex: "function_call").
-	Result  string `json:"result"`   // Can either be raw string (ex: markdown; some text; a bulleted list) or JSON-serialized string; depends on Tool.
-	IsError bool   `json:"is_error"` // Did the tool call fail? NOTE: IsError should be false for things like failed tests, or shell commands which returned a non-zero error code (but which were otherwise successfully attempted).
+	CallID string `json:"call_id"`
+	Name   string `json:"name"`
+	Type   string `json:"type"`   // Matches type of corresponding ToolCall (ex: "function_call").
+	Result string `json:"result"` // Can either be raw string (ex: markdown; some text; a bulleted list) or JSON-serialized string; depends on Tool.
+
+	// Did the tool call fail? NOTE: IsError should be false for things like failed tests, or shell commands which returned a non-zero error code (but which were otherwise
+	// successfully attempted).
+	IsError bool `json:"is_error"`
 
 	// If IsError, SourceError may optionally be set if the error was due to a Go-ism that returned an error. For instance, if os.Open fails to open a file and returns
-	// an error, we can store the error here. On the other hand, if a `read_file` tool call's path is a directory (instead of a file), we could detect it with IsDir and return
-	// an error result, but no SourceErr would exist.
+	// an error, we can store the error here. On the other hand, if a `read_file` tool call's path is a directory (instead of a file), we could detect it with IsDir
+	// and return an error result, but no SourceErr would exist.
 	SourceErr error `json:"-"`
 }
 
