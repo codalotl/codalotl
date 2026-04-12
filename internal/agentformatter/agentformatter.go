@@ -630,7 +630,7 @@ func (f *textTUIFormatter) appendPresentedBodyTUI(builder *strings.Builder, widt
 		case presentedBodyLinePatch:
 			firstPrefix := "     "
 			restPrefix := "       "
-			if line.patch.kind == patchLineGap || line.patch.kind == patchLineSummary {
+			if line.patch.kind == patchLineGap {
 				restPrefix = firstPrefix
 			}
 			runes := f.buildPatchStyledRunes(line.patch)
@@ -827,27 +827,27 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 	case "fix_lints":
 		return f.tuiFixLintsToolComplete(e, width, success)
 	case "get_public_api":
-		return f.tuiGetPublicAPIToolComplete(e, width, success, "", outputLines)
+		return f.tuiGetPublicAPIToolComplete(e, width, success, outputLines)
 	case "clarify_public_api":
-		return f.tuiClarifyPublicAPIToolComplete(e, width, success, "", outputLines)
+		return f.tuiClarifyPublicAPIToolComplete(e, width, success, outputLines)
 	case "get_usage":
-		return f.tuiGetUsageToolComplete(e, width, success, "", outputLines)
+		return f.tuiGetUsageToolComplete(e, width, success, outputLines)
 	case "module_info":
-		return f.tuiModuleInfoToolComplete(e, width, success, "", outputLines)
+		return f.tuiModuleInfoToolComplete(e, width, success)
 	case "run_tests":
-		return f.tuiRunTestsToolComplete(e, width, success, "", outputLines)
+		return f.tuiRunTestsToolComplete(e, width)
 	case "run_project_tests":
-		return f.tuiRunProjectTestsToolComplete(e, width, success, "", outputLines)
+		return f.tuiRunProjectTestsToolComplete(e, width)
 	case "update_usage":
-		return f.tuiUpdateUsageToolComplete(e, width, success, "", outputLines)
+		return f.tuiUpdateUsageToolComplete(e, width, success, outputLines)
 	case "change_api":
-		return f.tuiChangeAPIToolComplete(e, width, success, "", outputLines)
+		return f.tuiChangeAPIToolComplete(e, width, success, outputLines)
 	case "review":
-		return f.tuiReviewToolComplete(e, width, success, "", outputLines)
+		return f.tuiReviewToolComplete(e, width, success, outputLines)
 	case "implement":
-		return f.tuiImplementToolComplete(e, width, success, "", outputLines)
+		return f.tuiImplementToolComplete(e, width, success)
 	default:
-		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+		return f.tuiGenericToolComplete(e, width, success, outputLines)
 	}
 }
 
@@ -891,27 +891,27 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 	case "fix_lints":
 		return f.cliFixLintsToolComplete(e, success)
 	case "get_public_api":
-		return f.cliGetPublicAPIToolComplete(e, success, "", outputLines)
+		return f.cliGetPublicAPIToolComplete(e, success, outputLines)
 	case "clarify_public_api":
-		return f.cliClarifyPublicAPIToolComplete(e, success, "", outputLines)
+		return f.cliClarifyPublicAPIToolComplete(e, success, outputLines)
 	case "get_usage":
-		return f.cliGetUsageToolComplete(e, success, "", outputLines)
+		return f.cliGetUsageToolComplete(e, success, outputLines)
 	case "module_info":
-		return f.cliModuleInfoToolComplete(e, success, "", outputLines)
+		return f.cliModuleInfoToolComplete(e, success)
 	case "run_tests":
-		return f.cliRunTestsToolComplete(e, success, "", outputLines)
+		return f.cliRunTestsToolComplete(e)
 	case "run_project_tests":
-		return f.cliRunProjectTestsToolComplete(e, success, "", outputLines)
+		return f.cliRunProjectTestsToolComplete(e)
 	case "update_usage":
-		return f.cliUpdateUsageToolComplete(e, success, "", outputLines)
+		return f.cliUpdateUsageToolComplete(e, success, outputLines)
 	case "change_api":
-		return f.cliChangeAPIToolComplete(e, success, "", outputLines)
+		return f.cliChangeAPIToolComplete(e, success, outputLines)
 	case "review":
-		return f.cliReviewToolComplete(e, success, "", outputLines)
+		return f.cliReviewToolComplete(e, success, outputLines)
 	case "implement":
-		return f.cliImplementToolComplete(e, success, "", outputLines)
+		return f.cliImplementToolComplete(e, success)
 	default:
-		return f.cliGenericToolComplete(e, success, "", outputLines)
+		return f.cliGenericToolComplete(e, success, outputLines)
 	}
 }
 
@@ -1027,7 +1027,7 @@ func (f *textTUIFormatter) cliToolOutputLines(lines []toolOutputLine) []string {
 	return result
 }
 
-func (f *textTUIFormatter) tuiGenericToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiGenericToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	name := toolDisplayName(e)
 	segments := []textSegment{
 		{text: "Tool", style: runeStyle{color: colorColorful, bold: true}},
@@ -1050,7 +1050,7 @@ func (f *textTUIFormatter) tuiGenericToolComplete(e agent.Event, width int, succ
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliGenericToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliGenericToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	name := toolDisplayName(e)
 	segments := []textSegment{
 		{text: "Tool", style: runeStyle{color: colorColorful, bold: true}},
@@ -1695,7 +1695,7 @@ func (f *textTUIFormatter) cliClarifyPublicAPIToolCall(e agent.Event) string {
 	return strings.Join(lines, "\n")
 }
 
-func (f *textTUIFormatter) tuiGetPublicAPIToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiGetPublicAPIToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	path, identifiers, ok := extractGetPublicAPI(e.ToolCall)
 	target := strings.TrimSpace(path)
 	if !ok || target == "" {
@@ -1727,7 +1727,7 @@ func (f *textTUIFormatter) tuiGetPublicAPIToolComplete(e agent.Event, width int,
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliGetPublicAPIToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliGetPublicAPIToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	path, identifiers, ok := extractGetPublicAPI(e.ToolCall)
 	target := strings.TrimSpace(path)
 	if !ok || target == "" {
@@ -1758,10 +1758,10 @@ func (f *textTUIFormatter) cliGetPublicAPIToolComplete(e agent.Event, success bo
 	return strings.Join(lines, "\n")
 }
 
-func (f *textTUIFormatter) tuiClarifyPublicAPIToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiClarifyPublicAPIToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	identifier, path, _, ok := extractClarifyPublicAPI(e.ToolCall)
 	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+		return f.tuiGenericToolComplete(e, width, success, outputLines)
 	}
 	bullet := colorGreen
 	if !success {
@@ -1785,10 +1785,10 @@ func (f *textTUIFormatter) tuiClarifyPublicAPIToolComplete(e agent.Event, width 
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliClarifyPublicAPIToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliClarifyPublicAPIToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	identifier, path, _, ok := extractClarifyPublicAPI(e.ToolCall)
 	if !ok {
-		return f.cliGenericToolComplete(e, success, "", outputLines)
+		return f.cliGenericToolComplete(e, success, outputLines)
 	}
 	bullet := colorGreen
 	if !success {
@@ -1916,7 +1916,7 @@ func (f *textTUIFormatter) cliModuleInfoToolCall(e agent.Event) string {
 	return strings.Join(lines, "\n")
 }
 
-func (f *textTUIFormatter) tuiModuleInfoToolComplete(e agent.Event, width int, success bool, _ string, _ []toolOutputLine) string {
+func (f *textTUIFormatter) tuiModuleInfoToolComplete(e agent.Event, width int, success bool) string {
 	bullet := colorGreen
 	if !success {
 		bullet = colorRed
@@ -1937,7 +1937,7 @@ func (f *textTUIFormatter) tuiModuleInfoToolComplete(e agent.Event, width int, s
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliModuleInfoToolComplete(e agent.Event, success bool, _ string, _ []toolOutputLine) string {
+func (f *textTUIFormatter) cliModuleInfoToolComplete(e agent.Event, success bool) string {
 	bullet := colorGreen
 	if !success {
 		bullet = colorRed
@@ -1957,7 +1957,7 @@ func (f *textTUIFormatter) cliModuleInfoToolComplete(e agent.Event, success bool
 	return strings.Join(lines, "\n")
 }
 
-func (f *textTUIFormatter) tuiGetUsageToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiGetUsageToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	pkg, identifier, ok := extractGetUsage(e.ToolCall)
 	target := strings.TrimSpace(pkg)
 	id := strings.TrimSpace(identifier)
@@ -1996,7 +1996,7 @@ func (f *textTUIFormatter) tuiGetUsageToolComplete(e agent.Event, width int, suc
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliGetUsageToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliGetUsageToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	pkg, identifier, ok := extractGetUsage(e.ToolCall)
 	target := strings.TrimSpace(pkg)
 	id := strings.TrimSpace(identifier)
@@ -2075,46 +2075,39 @@ func usageResultContent(result llmstream.ToolResult) string {
 
 // -------- run_tests formatting --------
 
-// extractRunTests parses the run_tests tool input. Expected JSON shape (fields are optional):
-//
-//	{"path":"./pkg","test_name":"SomeTest","verbose":true}
-func extractRunTests(call *llmstream.ToolCall) (path string, testName string, verbose bool, ok bool) {
+// extractRunTests parses the run_tests tool input. Extra fields are ignored.
+func extractRunTests(call *llmstream.ToolCall) (path string, ok bool) {
 	if call == nil {
-		return "", "", false, false
+		return "", false
 	}
 	// Allow either Name or Type to identify the tool, but don't require it.
 	if !strings.EqualFold(call.Name, "run_tests") && !strings.EqualFold(call.Type, "run_tests") {
 		// fallthrough; still try to parse
 	}
 	var payload struct {
-		Path     string `json:"path"`
-		TestName string `json:"test_name"`
-		Verbose  bool   `json:"verbose"`
+		Path string `json:"path"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
-		return "", "", false, false
+		return "", false
 	}
 	rawPath := strings.TrimSpace(payload.Path)
-	rawTestName := strings.TrimSpace(payload.TestName)
-	sanitizedTestName := sanitizeText(rawTestName)
 	if rawPath == "" {
-		return "", sanitizedTestName, payload.Verbose, false
+		return "", false
 	}
-	return sanitizeText(rawPath), sanitizedTestName, payload.Verbose, true
+	return sanitizeText(rawPath), true
 }
 
-func buildRunTestsHeader(path, testName string, verbose bool) string {
+func buildRunTestsHeader(path string) string {
 	// Per SPEC, the header after "Run Tests"/"Ran Tests" should only show the path.
-	// Any flags (e.g., -v, -run) are already echoed in the tool output (`$ go test ...`).
+	// Any flags are already echoed in the tool output (`$ go test ...`).
 	return strings.TrimSpace(path)
 }
 
 func (f *textTUIFormatter) tuiRunTestsToolCall(e agent.Event, width int) string {
-	path, testName, verbose, ok := extractRunTests(e.ToolCall)
+	path, ok := extractRunTests(e.ToolCall)
 	target := ""
 	if ok {
-		// The path after Run Tests ... is just the 'path' param printed as-is, plus any flags in header.
-		target = buildRunTestsHeader(path, testName, verbose)
+		target = buildRunTestsHeader(path)
 	} else {
 		target = toolDisplayName(e)
 	}
@@ -2128,10 +2121,10 @@ func (f *textTUIFormatter) tuiRunTestsToolCall(e agent.Event, width int) string 
 }
 
 func (f *textTUIFormatter) cliRunTestsToolCall(e agent.Event) string {
-	path, testName, verbose, ok := extractRunTests(e.ToolCall)
+	path, ok := extractRunTests(e.ToolCall)
 	target := ""
 	if ok {
-		target = buildRunTestsHeader(path, testName, verbose)
+		target = buildRunTestsHeader(path)
 	} else {
 		target = toolDisplayName(e)
 	}
@@ -2265,7 +2258,7 @@ func overallSuccessFromRunTestsSummary(s runTestsSectionsSummary) (bool, bool) {
 }
 
 // summarizeRunTests builds output lines for run_tests, preferring a concise status line when the tool output includes separate <test-status> and <lint-status> wrappers.
-func (f *textTUIFormatter) summarizeRunTests(e agent.Event, path string) (success bool, lines []toolOutputLine) {
+func (f *textTUIFormatter) summarizeRunTests(e agent.Event) (success bool, lines []toolOutputLine) {
 	success = true
 	var content string
 	var explicitSuccess *bool
@@ -2337,15 +2330,15 @@ func (f *textTUIFormatter) summarizeRunTests(e agent.Event, path string) (succes
 	return success, lines
 }
 
-func (f *textTUIFormatter) tuiRunTestsToolComplete(e agent.Event, width int, _ bool, _ string, _ []toolOutputLine) string {
-	path, testName, verbose, ok := extractRunTests(e.ToolCall)
+func (f *textTUIFormatter) tuiRunTestsToolComplete(e agent.Event, width int) string {
+	path, ok := extractRunTests(e.ToolCall)
 	var header string
 	if ok {
-		header = buildRunTestsHeader(path, testName, verbose)
+		header = buildRunTestsHeader(path)
 	} else {
 		header = toolDisplayName(e)
 	}
-	success, lines := f.summarizeRunTests(e, path)
+	success, lines := f.summarizeRunTests(e)
 	bullet := colorGreen
 	if !success {
 		bullet = colorRed
@@ -2362,15 +2355,15 @@ func (f *textTUIFormatter) tuiRunTestsToolComplete(e agent.Event, width int, _ b
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliRunTestsToolComplete(e agent.Event, _ bool, _ string, _ []toolOutputLine) string {
-	path, testName, verbose, ok := extractRunTests(e.ToolCall)
+func (f *textTUIFormatter) cliRunTestsToolComplete(e agent.Event) string {
+	path, ok := extractRunTests(e.ToolCall)
 	var header string
 	if ok {
-		header = buildRunTestsHeader(path, testName, verbose)
+		header = buildRunTestsHeader(path)
 	} else {
 		header = toolDisplayName(e)
 	}
-	success, lines := f.summarizeRunTests(e, path)
+	success, lines := f.summarizeRunTests(e)
 	bullet := colorGreen
 	if !success {
 		bullet = colorRed
@@ -2525,7 +2518,7 @@ func (f *textTUIFormatter) cliRunProjectTestsToolCall(e agent.Event) string {
 	return f.cliBulletLine(colorAccent, segments...)
 }
 
-func (f *textTUIFormatter) tuiRunProjectTestsToolComplete(e agent.Event, width int, _ bool, _ string, _ []toolOutputLine) string {
+func (f *textTUIFormatter) tuiRunProjectTestsToolComplete(e agent.Event, width int) string {
 	success, lines := f.summarizeRunProjectTests(e)
 	bullet := colorGreen
 	if !success {
@@ -2541,7 +2534,7 @@ func (f *textTUIFormatter) tuiRunProjectTestsToolComplete(e agent.Event, width i
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliRunProjectTestsToolComplete(e agent.Event, _ bool, _ string, _ []toolOutputLine) string {
+func (f *textTUIFormatter) cliRunProjectTestsToolComplete(e agent.Event) string {
 	success, lines := f.summarizeRunProjectTests(e)
 	bullet := colorGreen
 	if !success {
@@ -2780,10 +2773,10 @@ func (f *textTUIFormatter) cliUpdateUsageToolCall(e agent.Event) string {
 	return strings.Join(lines, "\n")
 }
 
-func (f *textTUIFormatter) tuiUpdateUsageToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiUpdateUsageToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	_, paths, ok := extractUpdateUsage(e.ToolCall)
 	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+		return f.tuiGenericToolComplete(e, width, success, outputLines)
 	}
 	bullet := colorGreen
 	if !success {
@@ -2798,10 +2791,10 @@ func (f *textTUIFormatter) tuiUpdateUsageToolComplete(e agent.Event, width int, 
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliUpdateUsageToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliUpdateUsageToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	_, paths, ok := extractUpdateUsage(e.ToolCall)
 	if !ok {
-		return f.cliGenericToolComplete(e, success, "", outputLines)
+		return f.cliGenericToolComplete(e, success, outputLines)
 	}
 	bullet := colorGreen
 	if !success {
@@ -2867,10 +2860,10 @@ func (f *textTUIFormatter) cliChangeAPIToolCall(e agent.Event) string {
 	return strings.Join(lines, "\n")
 }
 
-func (f *textTUIFormatter) tuiChangeAPIToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiChangeAPIToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	importPath, _, ok := extractChangeAPI(e.ToolCall)
 	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+		return f.tuiGenericToolComplete(e, width, success, outputLines)
 	}
 	bullet := colorGreen
 	if !success {
@@ -2885,10 +2878,10 @@ func (f *textTUIFormatter) tuiChangeAPIToolComplete(e agent.Event, width int, su
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliChangeAPIToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliChangeAPIToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	importPath, _, ok := extractChangeAPI(e.ToolCall)
 	if !ok {
-		return f.cliGenericToolComplete(e, success, "", outputLines)
+		return f.cliGenericToolComplete(e, success, outputLines)
 	}
 	bullet := colorGreen
 	if !success {
@@ -3099,10 +3092,10 @@ func (f *textTUIFormatter) cliReviewToolCall(e agent.Event) string {
 	return f.cliBulletLine(colorAccent, reviewHeaderSegments("Reviewing", base)...)
 }
 
-func (f *textTUIFormatter) tuiReviewToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiReviewToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	base, ok := extractReview(e.ToolCall)
 	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+		return f.tuiGenericToolComplete(e, width, success, outputLines)
 	}
 	if reviewSuccess, ok := reviewToolResultSuccess(e.ToolResult); ok {
 		success = reviewSuccess
@@ -3124,10 +3117,10 @@ func (f *textTUIFormatter) tuiReviewToolComplete(e agent.Event, width int, succe
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliReviewToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliReviewToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	base, ok := extractReview(e.ToolCall)
 	if !ok {
-		return f.cliGenericToolComplete(e, success, "", outputLines)
+		return f.cliGenericToolComplete(e, success, outputLines)
 	}
 	if reviewSuccess, ok := reviewToolResultSuccess(e.ToolResult); ok {
 		success = reviewSuccess
@@ -3181,10 +3174,10 @@ func (f *textTUIFormatter) cliImplementToolCall(e agent.Event) string {
 	return strings.Join(lines, "\n")
 }
 
-func (f *textTUIFormatter) tuiImplementToolComplete(e agent.Event, width int, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) tuiImplementToolComplete(e agent.Event, width int, success bool) string {
 	path, _, ok := extractImplement(e.ToolCall)
 	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, "", outputLines)
+		return f.tuiGenericToolComplete(e, width, success, nil)
 	}
 	bullet := colorGreen
 	if !success {
@@ -3198,10 +3191,10 @@ func (f *textTUIFormatter) tuiImplementToolComplete(e agent.Event, width int, su
 	return builder.String()
 }
 
-func (f *textTUIFormatter) cliImplementToolComplete(e agent.Event, success bool, _ string, outputLines []toolOutputLine) string {
+func (f *textTUIFormatter) cliImplementToolComplete(e agent.Event, success bool) string {
 	path, _, ok := extractImplement(e.ToolCall)
 	if !ok {
-		return f.cliGenericToolComplete(e, success, "", outputLines)
+		return f.cliGenericToolComplete(e, success, nil)
 	}
 	bullet := colorGreen
 	if !success {

@@ -23,7 +23,6 @@ const (
 	patchLineAdd
 	patchLineRemove
 	patchLineGap
-	patchLineSummary
 )
 
 type patchChange struct {
@@ -162,13 +161,13 @@ func (f *textTUIFormatter) buildPatchStyledRunes(line patchLine) []styledRune {
 		base.color = colorGreen
 	case patchLineRemove:
 		base.color = colorRed
-	case patchLineGap, patchLineSummary:
+	case patchLineGap:
 		base.color = colorAccent
 	}
 	sanitized := sanitizeText(line.text)
 	text := line.prefix + sanitized
 	runes := f.buildStyledRunes(text, base, nil)
-	if line.kind != patchLineGap && line.kind != patchLineSummary {
+	if line.kind != patchLineGap {
 		accentLineNumbers(runes)
 	}
 	return runes
