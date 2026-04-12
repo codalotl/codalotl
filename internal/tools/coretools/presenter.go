@@ -7,7 +7,7 @@ func (t *toolApplyPatch) Presenter() llmstream.Presenter {
 }
 
 func (t *toolDelete) Presenter() llmstream.Presenter {
-	return nil
+	return deletePresenterInstance
 }
 
 func (t *toolEdit) Presenter() llmstream.Presenter {

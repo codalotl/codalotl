@@ -84,3 +84,37 @@ func (t *toolDelete) Run(ctx context.Context, call llmstream.ToolCall) llmstream
 		Result: fmt.Sprintf("Deleted file: %s", displayPath),
 	}
 }
+
+var deletePresenterInstance llmstream.Presenter = deletePresenter{}
+
+type deletePresenter struct{}
+
+func (p deletePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	_ = result
+
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Delete", Role: llmstream.RoleAction},
+				{Text: deletePresenterTarget(call), Role: llmstream.RoleNormal},
+			},
+		},
+	}
+}
+
+func deletePresenterTarget(call llmstream.ToolCall) string {
+	var params ParamsDelete
+	if err := json.Unmarshal([]byte(call.Input), &params); err == nil {
+		if path := strings.TrimSpace(params.Path); path != "" {
+			return path
+		}
+	}
+
+	name := strings.TrimSpace(call.Name)
+	if name == "" {
+		name = ToolNameDelete
+	}
+	return name
+}

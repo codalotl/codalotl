@@ -16,7 +16,6 @@ func TestToolsWithoutPresentersReturnNil(t *testing.T) {
 	tools := []llmstream.Tool{
 		NewApplyPatchTool(auth, false, nil),
 		NewApplyPatchTool(auth, true, nil),
-		NewDeleteTool(auth),
 		NewEditTool(auth),
 		NewWriteTool(auth),
 	}
@@ -24,6 +23,53 @@ func TestToolsWithoutPresentersReturnNil(t *testing.T) {
 	for _, tool := range tools {
 		assert.Nil(t, tool.Presenter())
 	}
+}
+
+func TestDeletePresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewDeleteTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameDelete,
+		Input: `{"path":"some/file.txt"}`,
+	}
+	result := &llmstream.ToolResult{Name: ToolNameDelete, Result: "Deleted file: some/file.txt"}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
+	assert.Equal(t, callPresentation, resultPresentation)
+	assert.True(t, callPresentation.Summary.JoinWithSpace)
+	require.Len(t, callPresentation.Summary.Segments, 2)
+	assert.Equal(t, llmstream.RoleAction, callPresentation.Summary.Segments[0].Role)
+	assert.Equal(t, "Delete", callPresentation.Summary.Segments[0].Text)
+	assert.Equal(t, llmstream.RoleNormal, callPresentation.Summary.Segments[1].Role)
+	assert.Equal(t, "some/file.txt", callPresentation.Summary.Segments[1].Text)
+	assert.Empty(t, callPresentation.Body)
+}
+
+func TestDeletePresenter_FallsBackToToolName(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewDeleteTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	presentation := presenter.Present(llmstream.ToolCall{Name: ToolNameDelete, Input: `{"path":"   "}`}, nil)
+	assert.True(t, presentation.Summary.JoinWithSpace)
+	require.Len(t, presentation.Summary.Segments, 2)
+	assert.Equal(t, "delete", presentation.Summary.Segments[1].Text)
+
+	presentation = presenter.Present(llmstream.ToolCall{Input: `{"path":`}, nil)
+	assert.True(t, presentation.Summary.JoinWithSpace)
+	require.Len(t, presentation.Summary.Segments, 2)
+	assert.Equal(t, "delete", presentation.Summary.Segments[1].Text)
 }
 
 func TestLsPresenter(t *testing.T) {
