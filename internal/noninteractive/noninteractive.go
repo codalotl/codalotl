@@ -276,8 +276,6 @@ func legacyFormattedToolEvent(ev agent.Event) agent.Event {
 		return ev
 	}
 
-	ev.Tool = nil
-
 	switch ev.Type {
 	case agent.EventTypeToolCall:
 		if ev.ToolCall != nil {
@@ -299,6 +297,13 @@ func legacyFormattedToolEvent(ev agent.Event) agent.Event {
 			result := *ev.ToolResult
 			result.Name = name
 			ev.ToolResult = &result
+			if ev.ToolCall == nil {
+				ev.ToolCall = &llmstream.ToolCall{
+					CallID: result.CallID,
+					Name:   name,
+					Type:   result.Type,
+				}
+			}
 			return ev
 		}
 		if ev.ToolCall != nil || name != "" {
