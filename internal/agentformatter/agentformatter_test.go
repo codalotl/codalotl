@@ -2649,12 +2649,11 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure should use red bullet")
 }
 
-func TestReviewToolCallFormatting(t *testing.T) {
+func TestReviewToolCallUsesGenericFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
-	pal := newPalette(cfg)
 	formatter := NewTUIFormatter(cfg)
 
 	call := llmstream.ToolCall{
@@ -2670,51 +2669,31 @@ func TestReviewToolCallFormatting(t *testing.T) {
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
-		require.Equal(t, "• Reviewing origin/main", stripANSI(out))
-		assert.Contains(t, out, ansiWrap("Reviewing", pal, colorColorful, false, true))
-		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
-		assert.NotContains(t, stripANSI(out), "└")
+		require.Equal(t, `• Tool review {"base":"origin/main"}`, stripANSI(out))
+		assert.NotContains(t, stripANSI(out), "Reviewing")
 	})
 
 	t.Run("cli", func(t *testing.T) {
 		out := formatter.FormatEvent(event, MinTerminalWidth)
 		require.NotEmpty(t, out)
-		require.Equal(t, "• Reviewing origin/main", stripANSI(out))
-		assert.NotContains(t, stripANSI(out), "review {")
+		require.Equal(t, `• Tool review {"base":"origin/main"}`, stripANSI(out))
+		assert.NotContains(t, stripANSI(out), "Reviewing")
 	})
 }
 
-func builtInReviewToolPayload() map[string]any {
-	return map[string]any{
-		"findings": []map[string]any{
-			{
-				"title":            "[P2] Return JSON payload",
-				"body":             "The orchestrator expects JSON back from review so this must stay machine-readable.",
-				"confidence_score": 0.81,
-				"priority":         2,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/pkg.go",
-					"line_range": map[string]any{
-						"start": 1,
-						"end":   1,
-					},
-				},
-			},
-		},
-		"overall_correctness":      "patch is incorrect",
-		"overall_explanation":      "The patch still has one actionable issue.",
-		"overall_confidence_score": 0.81,
-	}
-}
-
-func TestSubagentReviewJSONAssistantTextIsSuppressed(t *testing.T) {
+func TestSubagentReviewJSONAssistantTextStillRenders(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	formatter := NewTUIFormatter(cfg)
 
-	payload := builtInReviewToolPayload()
+	payload := map[string]any{
+		"findings":                 []map[string]any{},
+		"overall_correctness":      "patch is correct",
+		"overall_explanation":      "Looks good.",
+		"overall_confidence_score": 0.88,
+	}
 	data, err := json.Marshal(payload)
 	require.NoError(t, err)
 
@@ -2726,42 +2705,16 @@ func TestSubagentReviewJSONAssistantTextIsSuppressed(t *testing.T) {
 		},
 	}
 
-	reviewCall := llmstream.ToolCall{
-		Name:  "review",
-		Input: `{"base":"origin/main"}`,
-	}
-	reviewResult := llmstream.ToolResult{
-		Result:  string(data),
-		IsError: false,
-	}
-	reviewEvent := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("review"),
-		ToolCall:   &reviewCall,
-		ToolResult: &reviewResult,
-	}
-
-	expectedReviewLines := []string{
-		"• Reviewed origin/main",
-		"  └ [P2] Return JSON payload",
-	}
-
 	t.Run("tui", func(t *testing.T) {
 		assistantOut := formatter.FormatEvent(assistantEvent, 200)
-		require.Empty(t, stripANSI(assistantOut))
-
-		reviewOut := formatter.FormatEvent(reviewEvent, 200)
-		require.Equal(t, expectedReviewLines, strings.Split(stripANSI(reviewOut), "\n"))
-		assert.NotContains(t, stripANSI(reviewOut), `"overall_correctness"`)
+		require.NotEmpty(t, assistantOut)
+		assert.Contains(t, stripANSI(assistantOut), string(data))
 	})
 
 	t.Run("cli", func(t *testing.T) {
 		assistantOut := formatter.FormatEvent(assistantEvent, MinTerminalWidth)
-		require.Empty(t, stripANSI(assistantOut))
-
-		reviewOut := formatter.FormatEvent(reviewEvent, MinTerminalWidth)
-		require.Equal(t, expectedReviewLines, strings.Split(stripANSI(reviewOut), "\n"))
-		assert.NotContains(t, stripANSI(reviewOut), `"overall_correctness"`)
+		require.NotEmpty(t, assistantOut)
+		assert.Contains(t, stripANSI(assistantOut), string(data))
 	})
 }
 
@@ -2793,12 +2746,11 @@ func TestSubagentNonReviewAssistantTextStillRenders(t *testing.T) {
 	})
 }
 
-func TestReviewToolCompleteFormatting(t *testing.T) {
+func TestReviewToolCompleteUsesGenericFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
-	pal := newPalette(cfg)
 	formatter := NewTUIFormatter(cfg)
 
 	call := llmstream.ToolCall{
@@ -2806,249 +2758,43 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		Input: `{"base":"origin/main"}`,
 	}
 
-	assertBothModes := func(t *testing.T, event agent.Event, tuiExpected []string, cliExpected []string) {
-		t.Helper()
+	payload := map[string]any{
+		"findings":                 []map[string]any{},
+		"overall_correctness":      "patch is correct",
+		"overall_explanation":      "Looks good.",
+		"overall_confidence_score": 0.88,
+	}
+	data, err := json.Marshal(payload)
+	require.NoError(t, err)
 
-		t.Run("tui", func(t *testing.T) {
-			out := formatter.FormatEvent(event, 200)
-			require.NotEmpty(t, out)
-			require.Equal(t, tuiExpected, strings.Split(stripANSI(out), "\n"))
-		})
-
-		t.Run("cli", func(t *testing.T) {
-			out := formatter.FormatEvent(event, MinTerminalWidth)
-			require.NotEmpty(t, out)
-			require.Equal(t, cliExpected, strings.Split(stripANSI(out), "\n"))
-		})
+	result := llmstream.ToolResult{
+		Result:  string(data),
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testTool("review"),
+		ToolCall:   &call,
+		ToolResult: &result,
 	}
 
-	t.Run("success with findings", func(t *testing.T) {
-		payload := builtInReviewToolPayload()
-		findings := append(payload["findings"].([]map[string]any), []map[string]any{
-			{
-				"title":            "[P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
-				"body":             "Detailed explanation that should not be shown.",
-				"confidence_score": 0.9,
-				"priority":         1,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/agentbuilder/config.go",
-					"line_range": map[string]any{
-						"start": 41,
-						"end":   41,
-					},
-				},
-			},
-			{
-				"title":            "[P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
-				"body":             "Another body that should be ignored.",
-				"confidence_score": 0.92,
-				"priority":         1,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/agentformatter/agentformatter.go",
-					"line_range": map[string]any{
-						"start": 2964,
-						"end":   2986,
-					},
-				},
-			},
-			{
-				"title":            "[P2] internal/agentbuilder: review prompt file path is not validated before read.",
-				"confidence_score": 0.73,
-				"priority":         2,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/agentbuilder/prompt.go",
-					"line_range": map[string]any{
-						"start": 10,
-						"end":   10,
-					},
-				},
-			},
-			{
-				"title":            "[P2] internal/orchestrate: review errors are swallowed on retry.",
-				"confidence_score": 0.72,
-				"priority":         2,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/orchestrate/retry.go",
-					"line_range": map[string]any{
-						"start": 22,
-						"end":   22,
-					},
-				},
-			},
-			{
-				"title":            "[P3] internal/tui: completion banner wraps awkwardly for narrow terminals.",
-				"confidence_score": 0.66,
-				"priority":         3,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/tui/banner.go",
-					"line_range": map[string]any{
-						"start": 8,
-						"end":   8,
-					},
-				},
-			},
-			{
-				"title":            "[P3] internal/noninteractive: status line omits review summary.",
-				"confidence_score": 0.61,
-				"priority":         3,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/noninteractive/output.go",
-					"line_range": map[string]any{
-						"start": 17,
-						"end":   17,
-					},
-				},
-			},
-		}...)
-		payload["findings"] = findings
-		data, err := json.Marshal(payload)
-		require.NoError(t, err)
+	expected := []string{
+		`• Tool review {"base":"origin/main"}`,
+		"  └ " + string(data),
+	}
 
-		result := llmstream.ToolResult{
-			Result:  string(data),
-			IsError: false,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       testTool("review"),
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ [P2] Return JSON payload",
-			"    [P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
-			"    [P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
-			"    [P2] internal/agentbuilder: review prompt file path is not validated before read.",
-			"    [P2] internal/orchestrate: review errors are swallowed on retry.",
-			"    … +2 findings",
-		}
-		assertBothModes(t, event, expected, expected)
-
+	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 200)
-		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
-		assert.Contains(t, out, ansiWrap("Reviewed", pal, colorColorful, false, true))
-		assert.NotContains(t, stripANSI(out), "Detailed explanation that should not be shown.")
-		assert.NotContains(t, stripANSI(out), "overall_correctness")
+		require.NotEmpty(t, out)
+		require.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "Reviewed origin/main")
 	})
 
-	t.Run("success with wrapped built-in findings payload", func(t *testing.T) {
-		payload := builtInReviewToolPayload()
-		resultPayload := map[string]any{
-			"success": true,
-			"content": payload,
-		}
-		data, err := json.Marshal(resultPayload)
-		require.NoError(t, err)
-
-		result := llmstream.ToolResult{
-			Result:  string(data),
-			IsError: false,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       testTool("review"),
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ [P2] Return JSON payload",
-		}
-		assertBothModes(t, event, expected, expected)
-
-		out := formatter.FormatEvent(event, 200)
-		assert.NotContains(t, stripANSI(out), `"findings"`)
-		assert.NotContains(t, stripANSI(out), `"overall_correctness"`)
-	})
-
-	t.Run("success with no findings", func(t *testing.T) {
-		payload := map[string]any{
-			"findings":                 []map[string]any{},
-			"overall_correctness":      "patch is correct",
-			"overall_explanation":      "The patch looks correct and no actionable findings were identified.",
-			"overall_confidence_score": 0.88,
-		}
-		data, err := json.Marshal(payload)
-		require.NoError(t, err)
-
-		result := llmstream.ToolResult{
-			Result:  string(data),
-			IsError: false,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       testTool("review"),
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ No findings. Patch is correct.",
-		}
-		assertBothModes(t, event, expected, expected)
-	})
-
-	t.Run("error shows message", func(t *testing.T) {
-		result := llmstream.ToolResult{
-			Result:  "review failed",
-			IsError: true,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       testTool("review"),
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ Error: review failed",
-		}
-		assertBothModes(t, event, expected, expected)
-
-		out := formatter.FormatEvent(event, 120)
-		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
-	})
-
-	t.Run("malformed or non-review json falls back", func(t *testing.T) {
-		testCases := []struct {
-			name    string
-			payload string
-		}{
-			{
-				name:    "non-review json",
-				payload: `{"hello":"world"}`,
-			},
-			{
-				name:    "malformed json",
-				payload: `{"hello"`,
-			},
-		}
-
-		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
-				result := llmstream.ToolResult{
-					Result:  tc.payload,
-					IsError: false,
-				}
-				event := agent.Event{
-					Type:       agent.EventTypeToolComplete,
-					Tool:       testTool("review"),
-					ToolCall:   &call,
-					ToolResult: &result,
-				}
-
-				expected := []string{
-					"• Reviewed origin/main",
-					"  └ " + tc.payload,
-				}
-				assertBothModes(t, event, expected, expected)
-			})
-		}
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		require.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "Reviewed origin/main")
 	})
 }
 

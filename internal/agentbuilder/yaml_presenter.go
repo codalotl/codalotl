@@ -1,8 +1,11 @@
 package agentbuilder
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/llmstream"
@@ -10,8 +13,12 @@ import (
 
 const (
 	yamlPresenterPresetSubagentQA = "subagent_q_and_a"
+	yamlPresenterPresetReview     = "review"
 	yamlPresenterBodyNone         = "-"
 	yamlPresenterBodyResult       = "result"
+	yamlReviewBodyNoFindings      = "No actionable findings."
+	yamlReviewMaxFindings         = 10
+	yamlReviewBodyMoreFormat      = "... +%d findings"
 )
 
 type yamlPresenterSpec struct {
@@ -34,6 +41,7 @@ type yamlPresenterSummaryItemSpec struct {
 
 type yamlNormalizedPresenterSpec struct {
 	SubagentQA *yamlNormalizedSubagentQAPresenterSpec
+	Review     *yamlNormalizedReviewPresenterSpec
 }
 
 type yamlNormalizedSubagentQAPresenterSpec struct {
@@ -49,12 +57,44 @@ type yamlNormalizedPresenterSummaryItem struct {
 	Param string
 }
 
+type yamlNormalizedReviewPresenterSpec struct{}
+
 type yamlSubagentQAPresenter struct {
 	paramSpecs map[string]yamlNormalizedParameter
 	spec       yamlNormalizedSubagentQAPresenterSpec
 }
 
+type yamlReviewPresenter struct {
+	paramSpecs map[string]yamlNormalizedParameter
+}
+
 var _ llmstream.Presenter = (*yamlSubagentQAPresenter)(nil)
+var _ llmstream.Presenter = (*yamlReviewPresenter)(nil)
+
+type yamlReviewResult struct {
+	Findings               *[]yamlReviewFinding `json:"findings"`
+	OverallCorrectness     string               `json:"overall_correctness"`
+	OverallExplanation     string               `json:"overall_explanation"`
+	OverallConfidenceScore *float64             `json:"overall_confidence_score"`
+}
+
+type yamlReviewFinding struct {
+	Title           string                  `json:"title"`
+	Body            string                  `json:"body"`
+	ConfidenceScore *float64                `json:"confidence_score"`
+	Priority        *int                    `json:"priority,omitempty"`
+	CodeLocation    *yamlReviewCodeLocation `json:"code_location"`
+}
+
+type yamlReviewCodeLocation struct {
+	AbsoluteFilePath string               `json:"absolute_file_path"`
+	LineRange        *yamlReviewLineRange `json:"line_range"`
+}
+
+type yamlReviewLineRange struct {
+	Start *int `json:"start"`
+	End   *int `json:"end"`
+}
 
 func normalizeYAMLPresenterSpec(spec *yamlPresenterSpec, params map[string]yamlNormalizedParameter) (*yamlNormalizedPresenterSpec, error) {
 	if spec == nil {
@@ -73,6 +113,14 @@ func normalizeYAMLPresenterSpec(spec *yamlPresenterSpec, params map[string]yamlN
 		}
 		return &yamlNormalizedPresenterSpec{
 			SubagentQA: &normalized,
+		}, nil
+	case yamlPresenterPresetReview:
+		normalized, err := normalizeYAMLReviewPresenterSpec(spec.Preset, params)
+		if err != nil {
+			return nil, err
+		}
+		return &yamlNormalizedPresenterSpec{
+			Review: &normalized,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported presenter preset %q", spec.Preset.Name)
@@ -129,6 +177,30 @@ func normalizeYAMLSubagentQAPresenterSpec(spec *yamlPresenterPresetSpec, params 
 	}, nil
 }
 
+func normalizeYAMLReviewPresenterSpec(spec *yamlPresenterPresetSpec, params map[string]yamlNormalizedParameter) (yamlNormalizedReviewPresenterSpec, error) {
+	if _, ok := params["base"]; !ok {
+		return yamlNormalizedReviewPresenterSpec{}, errors.New(`presenter.preset.name "review" requires parameter "base"`)
+	}
+
+	if strings.TrimSpace(spec.CallAction) != "" {
+		return yamlNormalizedReviewPresenterSpec{}, errors.New(`presenter.preset.name "review" does not support call_action`)
+	}
+	if strings.TrimSpace(spec.ResultAction) != "" {
+		return yamlNormalizedReviewPresenterSpec{}, errors.New(`presenter.preset.name "review" does not support result_action`)
+	}
+	if len(spec.SummaryItems) > 0 {
+		return yamlNormalizedReviewPresenterSpec{}, errors.New(`presenter.preset.name "review" does not support summary_items`)
+	}
+	if strings.TrimSpace(spec.CallBody) != "" {
+		return yamlNormalizedReviewPresenterSpec{}, errors.New(`presenter.preset.name "review" does not support call_body`)
+	}
+	if strings.TrimSpace(spec.ResultBody) != "" {
+		return yamlNormalizedReviewPresenterSpec{}, errors.New(`presenter.preset.name "review" does not support result_body`)
+	}
+
+	return yamlNormalizedReviewPresenterSpec{}, nil
+}
+
 func normalizeYAMLPresenterSummaryItem(spec yamlPresenterSummaryItemSpec, params map[string]yamlNormalizedParameter) (yamlNormalizedPresenterSummaryItem, error) {
 	text := strings.TrimSpace(spec.Text)
 	param := strings.TrimSpace(spec.Param)
@@ -156,6 +228,11 @@ func buildYAMLPresenter(spec *yamlNormalizedPresenterSpec, paramSpecs map[string
 		return &yamlSubagentQAPresenter{
 			paramSpecs: paramSpecs,
 			spec:       *spec.SubagentQA,
+		}
+	}
+	if spec.Review != nil {
+		return &yamlReviewPresenter{
+			paramSpecs: paramSpecs,
 		}
 	}
 	return nil
@@ -235,6 +312,80 @@ func (p *yamlSubagentQAPresenter) resultBody(result llmstream.ToolResult) (llmst
 	return yamlPresenterOutput(result.Result)
 }
 
+func (p *yamlReviewPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	params, err := parseYAMLToolCallParams(call.Input, p.paramSpecs)
+	if err != nil {
+		params = nil
+	}
+
+	presentation := llmstream.Presentation{
+		Behavior:      llmstream.CompletionBehaviorAppend,
+		ErrorBehavior: llmstream.ErrorBehaviorDefault,
+		Summary:       yamlReviewSummary(params, result != nil),
+	}
+
+	if result == nil {
+		return presentation
+	}
+
+	if body, ok := yamlReviewResultBody(result.Result); ok {
+		presentation.Body = body
+	}
+	return presentation
+}
+
+func yamlReviewSummary(params map[string]any, isResult bool) llmstream.Line {
+	action := "Reviewing"
+	if isResult {
+		action = "Reviewed"
+	}
+
+	segments := []llmstream.Segment{{
+		Text: action,
+		Role: llmstream.RoleAction,
+	}}
+	if base := yamlPresenterParamText(params, "base"); base != "" {
+		segments = append(segments, llmstream.Segment{
+			Text: base,
+			Role: llmstream.RoleNormal,
+		})
+	}
+
+	return llmstream.Line{
+		JoinWithSpace: true,
+		Segments:      segments,
+	}
+}
+
+func yamlReviewResultBody(raw string) (llmstream.Output, bool) {
+	review, ok := parseYAMLReviewResult(raw)
+	if !ok {
+		return yamlPresenterOutput(raw)
+	}
+
+	findings := *review.Findings
+	if len(findings) == 0 {
+		return llmstream.Output{
+			Lines: []string{yamlReviewBodyNoFindings},
+		}, true
+	}
+
+	limit := len(findings)
+	if limit > yamlReviewMaxFindings {
+		limit = yamlReviewMaxFindings
+	}
+
+	lines := make([]string, 0, limit+1)
+	for _, finding := range findings[:limit] {
+		lines = append(lines, finding.Title)
+	}
+	if remaining := len(findings) - limit; remaining > 0 {
+		lines = append(lines, fmt.Sprintf(yamlReviewBodyMoreFormat, remaining))
+	}
+
+	return llmstream.Output{Lines: lines}, true
+}
+
 func yamlPresenterParamText(params map[string]any, name string) string {
 	if params == nil || name == "" {
 		return ""
@@ -263,4 +414,80 @@ func yamlPresenterOutput(content string) (llmstream.Output, bool) {
 	return llmstream.Output{
 		Lines: strings.Split(content, "\n"),
 	}, true
+}
+
+func parseYAMLReviewResult(raw string) (yamlReviewResult, bool) {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+
+	var parsed yamlReviewResult
+	if err := decoder.Decode(&parsed); err != nil {
+		return yamlReviewResult{}, false
+	}
+
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return yamlReviewResult{}, false
+	}
+
+	if !validateYAMLReviewResult(parsed) {
+		return yamlReviewResult{}, false
+	}
+	return parsed, true
+}
+
+func validateYAMLReviewResult(result yamlReviewResult) bool {
+	if result.Findings == nil {
+		return false
+	}
+	switch result.OverallCorrectness {
+	case "patch is correct", "patch is incorrect":
+	default:
+		return false
+	}
+	if strings.TrimSpace(result.OverallExplanation) == "" {
+		return false
+	}
+	if !yamlReviewScoreValid(result.OverallConfidenceScore) {
+		return false
+	}
+
+	for _, finding := range *result.Findings {
+		if !validateYAMLReviewFinding(finding) {
+			return false
+		}
+	}
+	return true
+}
+
+func validateYAMLReviewFinding(finding yamlReviewFinding) bool {
+	if strings.TrimSpace(finding.Title) == "" || strings.TrimSpace(finding.Body) == "" {
+		return false
+	}
+	if !yamlReviewScoreValid(finding.ConfidenceScore) {
+		return false
+	}
+	if finding.Priority != nil && (*finding.Priority < 0 || *finding.Priority > 3) {
+		return false
+	}
+	if finding.CodeLocation == nil {
+		return false
+	}
+	if !filepath.IsAbs(finding.CodeLocation.AbsoluteFilePath) {
+		return false
+	}
+	if finding.CodeLocation.LineRange == nil {
+		return false
+	}
+	if finding.CodeLocation.LineRange.Start == nil || finding.CodeLocation.LineRange.End == nil {
+		return false
+	}
+	if *finding.CodeLocation.LineRange.Start <= 0 || *finding.CodeLocation.LineRange.End < *finding.CodeLocation.LineRange.Start {
+		return false
+	}
+	return true
+}
+
+func yamlReviewScoreValid(score *float64) bool {
+	return score != nil && *score >= 0 && *score <= 1
 }

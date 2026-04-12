@@ -64,12 +64,21 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	assert.False(t, *agentsByName["pr-review"].Skills)
 
 	var implementSpec *yamlToolSpec
+	var reviewSpec *yamlToolSpec
 	for i := range spec.Tools {
-		if spec.Tools[i].Name == "implement" {
+		switch spec.Tools[i].Name {
+		case "implement":
 			implementSpec = &spec.Tools[i]
-			break
+		case "review":
+			reviewSpec = &spec.Tools[i]
 		}
 	}
+
+	require.NotNil(t, reviewSpec)
+	require.NotNil(t, reviewSpec.Presenter)
+	require.NotNil(t, reviewSpec.Presenter.Preset)
+	assert.Equal(t, yamlPresenterPresetReview, reviewSpec.Presenter.Preset.Name)
+
 	require.NotNil(t, implementSpec)
 	require.NotNil(t, implementSpec.Presenter)
 	require.NotNil(t, implementSpec.Presenter.Preset)

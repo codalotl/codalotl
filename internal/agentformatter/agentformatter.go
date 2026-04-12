@@ -1,7 +1,6 @@
 package agentformatter
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -134,9 +133,6 @@ func (f *textTUIFormatter) formatCLI(e agent.Event) string {
 	case agent.EventTypeQueuedUserMessageSent:
 		return f.cliUserMessage(e.UserMessage, false)
 	case agent.EventTypeAssistantText:
-		if shouldSuppressAssistantText(e) {
-			return ""
-		}
 		return f.cliAssistantText(e.TextContent.Content)
 	case agent.EventTypeAssistantReasoning:
 		return f.cliAssistantReasoning(e.ReasoningContent.Content)
@@ -168,9 +164,6 @@ func (f *textTUIFormatter) formatTUI(e agent.Event, terminalWidth int) string {
 	case agent.EventTypeQueuedUserMessageSent:
 		return f.tuiUserMessage(e.UserMessage, terminalWidth, false)
 	case agent.EventTypeAssistantText:
-		if shouldSuppressAssistantText(e) {
-			return ""
-		}
 		return f.tuiAssistantText(e.TextContent.Content, terminalWidth)
 	case agent.EventTypeAssistantReasoning:
 		return f.tuiAssistantReasoning(e.ReasoningContent.Content, terminalWidth)
@@ -211,14 +204,6 @@ func (f *textTUIFormatter) tuiAssistantText(content string, width int) string {
 	}
 	runes := f.buildStyledRunes(content, runeStyle{color: colorNormal}, f.codeRanges(content))
 	return f.wrapStyledText(runes, width, f.bulletPrefix(colorAccent), "  ")
-}
-
-func shouldSuppressAssistantText(e agent.Event) bool {
-	if e.Type != agent.EventTypeAssistantText || e.Agent.Depth <= 0 {
-		return false
-	}
-	_, ok := parseReviewToolPayload(e.TextContent.Content)
-	return ok
 }
 
 func (f *textTUIFormatter) cliUserMessage(message string, queued bool) string {
@@ -704,13 +689,7 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		}
 		return builder.String()
 	}
-
-	switch normalizedToolName(e) {
-	case "review":
-		return f.tuiReviewToolCall(e, width)
-	default:
-		return f.tuiGenericToolCall(e, width)
-	}
+	return f.tuiGenericToolCall(e, width)
 }
 
 func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
@@ -723,13 +702,7 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		}
 		return strings.Join(lines, "\n")
 	}
-
-	switch normalizedToolName(e) {
-	case "review":
-		return f.cliReviewToolCall(e)
-	default:
-		return f.cliGenericToolCall(e)
-	}
+	return f.cliGenericToolCall(e)
 }
 
 func (f *textTUIFormatter) tuiGenericToolCall(e agent.Event, width int) string {
@@ -793,12 +766,7 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 	}
 
 	success, outputLines := parseToolResult(e)
-	switch normalizedToolName(e) {
-	case "review":
-		return f.tuiReviewToolComplete(e, width, success, outputLines)
-	default:
-		return f.tuiGenericToolComplete(e, width, success, outputLines)
-	}
+	return f.tuiGenericToolComplete(e, width, success, outputLines)
 }
 
 func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
@@ -835,12 +803,7 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 	}
 
 	success, outputLines := parseToolResult(e)
-	switch normalizedToolName(e) {
-	case "review":
-		return f.cliReviewToolComplete(e, success, outputLines)
-	default:
-		return f.cliGenericToolComplete(e, success, outputLines)
-	}
+	return f.cliGenericToolComplete(e, success, outputLines)
 }
 
 func (f *textTUIFormatter) isSillyAgentOutsidePackage(e agent.Event) bool {
@@ -1258,256 +1221,6 @@ func trimEmpty(lines []string) []string {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
-}
-
-func extractReview(call *llmstream.ToolCall) (base string, ok bool) {
-	if call == nil {
-		return "", false
-	}
-	var payload struct {
-		Base string `json:"base"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
-		return "", false
-	}
-	base = sanitizeText(strings.TrimSpace(payload.Base))
-	if base == "" {
-		return "", false
-	}
-	return base, true
-}
-
-func reviewHeaderSegments(verb string, base string) []textSegment {
-	segments := []textSegment{
-		{text: verb, style: runeStyle{color: colorColorful, bold: true}},
-	}
-	base = strings.TrimSpace(base)
-	if base != "" {
-		segments = append(segments, textSegment{text: " " + base})
-	}
-	return segments
-}
-
-const maxDisplayedReviewFindings = 5
-
-type reviewToolFinding struct {
-	Title *string `json:"title"`
-}
-
-type reviewToolPayload struct {
-	Findings               *[]reviewToolFinding `json:"findings"`
-	OverallCorrectness     *string              `json:"overall_correctness"`
-	OverallExplanation     *string              `json:"overall_explanation"`
-	OverallConfidenceScore *float64             `json:"overall_confidence_score"`
-}
-
-func reviewToolPayloadValid(payload reviewToolPayload) bool {
-	if payload.Findings == nil || payload.OverallCorrectness == nil || payload.OverallExplanation == nil || payload.OverallConfidenceScore == nil {
-		return false
-	}
-
-	overallCorrectness := strings.TrimSpace(*payload.OverallCorrectness)
-	if overallCorrectness != "patch is correct" && overallCorrectness != "patch is incorrect" {
-		return false
-	}
-	if strings.TrimSpace(*payload.OverallExplanation) == "" {
-		return false
-	}
-	if *payload.OverallConfidenceScore < 0 || *payload.OverallConfidenceScore > 1 {
-		return false
-	}
-	for _, finding := range *payload.Findings {
-		if finding.Title == nil || strings.TrimSpace(*finding.Title) == "" {
-			return false
-		}
-	}
-
-	return true
-}
-
-func parseReviewToolPayload(content string) (reviewToolPayload, bool) {
-	return parseReviewToolPayloadRaw([]byte(strings.TrimSpace(content)))
-}
-
-func parseReviewToolPayloadRaw(raw []byte) (reviewToolPayload, bool) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 {
-		return reviewToolPayload{}, false
-	}
-
-	var payload reviewToolPayload
-	if err := json.Unmarshal(raw, &payload); err == nil && reviewToolPayloadValid(payload) {
-		return payload, true
-	}
-
-	var wrappedString string
-	if err := json.Unmarshal(raw, &wrappedString); err == nil {
-		return parseReviewToolPayload(wrappedString)
-	}
-
-	var wrapper struct {
-		Content json.RawMessage `json:"content"`
-		Error   string          `json:"error"`
-		Success *bool           `json:"success"`
-	}
-	if err := json.Unmarshal(raw, &wrapper); err != nil {
-		return reviewToolPayload{}, false
-	}
-	if wrapper.Success != nil && !*wrapper.Success {
-		return reviewToolPayload{}, false
-	}
-	if strings.TrimSpace(wrapper.Error) != "" {
-		return reviewToolPayload{}, false
-	}
-	if len(bytes.TrimSpace(wrapper.Content)) == 0 {
-		return reviewToolPayload{}, false
-	}
-
-	return parseReviewToolPayloadRaw(wrapper.Content)
-}
-
-func reviewToolResultSuccess(result *llmstream.ToolResult) (bool, bool) {
-	if result == nil {
-		return false, false
-	}
-	if result.IsError {
-		return false, true
-	}
-
-	trimmed := strings.TrimSpace(result.Result)
-	if trimmed == "" {
-		return true, true
-	}
-
-	var wrapper struct {
-		Error   string `json:"error"`
-		Success *bool  `json:"success"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &wrapper); err == nil {
-		if wrapper.Success != nil {
-			return *wrapper.Success, true
-		}
-		if strings.TrimSpace(wrapper.Error) != "" {
-			return false, true
-		}
-		return true, true
-	}
-
-	return true, true
-}
-
-func reviewToolPayloadLines(payload reviewToolPayload) []toolOutputLine {
-	findings := *payload.Findings
-	if len(findings) == 0 {
-		text := "No findings."
-		if payload.OverallCorrectness != nil && strings.TrimSpace(*payload.OverallCorrectness) == "patch is correct" {
-			text = "No findings. Patch is correct."
-		}
-		return []toolOutputLine{{
-			text:          text,
-			style:         runeStyle{color: colorAccent},
-			highlightCode: false,
-		}}
-	}
-
-	limit := len(findings)
-	if limit > maxDisplayedReviewFindings {
-		limit = maxDisplayedReviewFindings
-	}
-
-	lines := make([]toolOutputLine, 0, limit+1)
-	for _, finding := range findings[:limit] {
-		lines = append(lines, toolOutputLine{
-			text:          strings.TrimSpace(*finding.Title),
-			style:         runeStyle{color: colorAccent},
-			highlightCode: true,
-		})
-	}
-	if remaining := len(findings) - limit; remaining > 0 {
-		lines = append(lines, toolOutputLine{
-			text:          fmt.Sprintf("… +%d findings", remaining),
-			style:         runeStyle{color: colorAccent},
-			highlightCode: false,
-		})
-	}
-	return lines
-}
-
-func summarizeReviewToolResult(result *llmstream.ToolResult) ([]toolOutputLine, bool) {
-	if result == nil || result.IsError {
-		return nil, false
-	}
-
-	trimmed := strings.TrimSpace(result.Result)
-	if payload, ok := parseReviewToolPayload(trimmed); ok {
-		return reviewToolPayloadLines(payload), true
-	}
-	return nil, false
-}
-
-func (f *textTUIFormatter) tuiReviewToolCall(e agent.Event, width int) string {
-	base, ok := extractReview(e.ToolCall)
-	if !ok {
-		return f.tuiGenericToolCall(e, width)
-	}
-	return f.tuiBulletLine(width, colorAccent, reviewHeaderSegments("Reviewing", base)...)
-}
-
-func (f *textTUIFormatter) cliReviewToolCall(e agent.Event) string {
-	base, ok := extractReview(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolCall(e)
-	}
-	return f.cliBulletLine(colorAccent, reviewHeaderSegments("Reviewing", base)...)
-}
-
-func (f *textTUIFormatter) tuiReviewToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
-	base, ok := extractReview(e.ToolCall)
-	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, outputLines)
-	}
-	if reviewSuccess, ok := reviewToolResultSuccess(e.ToolResult); ok {
-		success = reviewSuccess
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, bullet, reviewHeaderSegments("Reviewed", base)...))
-	if success {
-		if reviewLines, ok := summarizeReviewToolResult(e.ToolResult); ok {
-			outputLines = reviewLines
-		}
-	}
-	if len(outputLines) > 0 {
-		f.appendTUIToolOutput(&builder, width, outputLines)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliReviewToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
-	base, ok := extractReview(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolComplete(e, success, outputLines)
-	}
-	if reviewSuccess, ok := reviewToolResultSuccess(e.ToolResult); ok {
-		success = reviewSuccess
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	if success {
-		if reviewLines, ok := summarizeReviewToolResult(e.ToolResult); ok {
-			outputLines = reviewLines
-		}
-	}
-	lines := []string{f.cliBulletLine(bullet, reviewHeaderSegments("Reviewed", base)...)}
-	if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
-		lines = append(lines, rest...)
-	}
-	return strings.Join(lines, "\n")
 }
 
 type byteRange struct {

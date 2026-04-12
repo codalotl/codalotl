@@ -129,6 +129,37 @@ Notes:
 - `call_body` is required. Value must either be a named parameter, or `-` for no body.
 - `result_body` is required. Value must be one of `result` (which displays `ToolResult.Result`), or `-` for no body.
 
+#### Preset: review
+
+This preset is for the `review` tool. It is intentionally narrow rather than a general-purpose presenter abstraction.
+
+It displays the call/result like:
+
+```
+• Reviewing origin/main
+• Reviewed origin/main
+  └ [P2] Some finding title
+    [P1] Another finding title
+```
+
+Example YAML config:
+
+```yaml
+presenter:
+  preset:
+    name: review
+```
+
+Notes:
+- Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
+- This preset has no tunable fields beyond `name`.
+- The tool must define a `base` parameter. The call/result summary line is fixed to `Reviewing {{ .base }}` and `Reviewed {{ .base }}`.
+- The call has no body.
+- The completion body:
+    - If the tool result matches the review JSON schema (in `data/review.prompt.md`), show concise human-readable review output instead of raw JSON.
+    - With findings, show finding titles only (max 10; then `… +N findings`).
+    - With no findings, show a concise success line instead of raw JSON.
+
 ## Toolsets
 
 Toolsets are just a device used in this SPEC.md to factor the file (and may be used in non-exported code), not intended to be a public part of the API.

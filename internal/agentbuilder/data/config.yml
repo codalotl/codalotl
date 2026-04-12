@@ -103,6 +103,9 @@ tools:
         type: string
         description: Branch to review against, often main or master.
         required: true
+    presenter:
+      preset:
+        name: review
     subagent:
       name: pr-review
       result_format: json

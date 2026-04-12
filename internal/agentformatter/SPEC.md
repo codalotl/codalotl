@@ -231,43 +231,6 @@ If a line exceeds the tuiWidth in TUI width mode, wrap it:
        lly.
 ```
 
-### EventTypeToolCall and EventTypeToolComplete - review
-
-The EventTypeToolCall looks like this:
-
-```
-• Reviewing origin/main
-```
-
-- Reviewing is Bold, Colorful.
-- origin/main is normal.
-- No body on the call.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Reviewed origin/main
-  └ [P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.
-    [P1] internal/agentformatter: review JSON is still rendered as raw payload text.
-```
-
-- Reviewed is Bold, Colorful.
-- origin/main is normal.
-- If the result is JSON in the review schema, render concise human-readable findings from it while leaving the underlying tool result unchanged.
-- With findings, show finding titles only (max 5; then `… +N findings`).
-- With no findings, show a concise success line rather than raw JSON.
-- If parsing fails, fall back to normal summarized tool output/error formatting.
-- If a subagent emits assistant text that parses as the same review JSON schema, do not print that raw JSON as a separate assistant-text line; the enclosing `review` tool completion is the user-visible representation.
-
-```
-• Ran Tests ./...
-  └ Failed:
-    some/pkg1
-    other/pkg2
-```
-
-- NOTE: lints are not run in project tests.
-
 ### EventTypeToolCall and EventTypeToolComplete - other unhandled tools
 
 If a tool isn't especially handled, here's example output:
