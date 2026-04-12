@@ -284,6 +284,11 @@ phase 6: tbd, don't start yet
 - Keep the new package specs presentation-only: describe how the tools present, not the overall tool behavior.
 - Backfill missing presentation entries in `internal/tools/coretools/SPEC.md` for already-migrated file-edit presenters.
 
+### Review follow-up - internal/noninteractive
+
+- Preserve presenter-backed human-readable formatting in noninteractive mode when adapting events for legacy formatting paths.
+- Keep JSON output unchanged.
+
 ## Learnings
 
 - `implement` targeted at `internal/tools/coretools` could not also modify `internal/agentformatter`, so Phase 3 needs separate implementation steps for the tool package and the formatter package.
@@ -300,5 +305,12 @@ phase 6: tbd, don't start yet
 - Backfilled non-core tool specs should stay terse and presentation-focused; full tool behavior remains out of scope for those new spec files.
 
 ## Review
+
+- Review base: `origin/main`
+- Verdict: patch is incorrect
+- Actionable:
+  - `internal/noninteractive/noninteractive.go` clears `ev.Tool` in `legacyFormattedToolEvent`, which causes presenter-backed human-readable tool events to fall back to generic `Tool <name> {json}` output in noninteractive mode.
+- Not actioning in this PR unless explicitly requested:
+  - `internal/skills/install_default.go` executable-bit freshness drift appears unrelated to the format-events/presenter migration scope.
 
 ## Summary
