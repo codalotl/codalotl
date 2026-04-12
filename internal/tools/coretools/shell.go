@@ -50,6 +50,8 @@ func NewShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
 
 func (t *toolShell) Name() string { return ToolNameShell }
 
+func (t *toolShell) Presenter() llmstream.Presenter { return shellPresenterInstance }
+
 func (t *toolShell) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameShell,

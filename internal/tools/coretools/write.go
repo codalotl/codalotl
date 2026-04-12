@@ -43,6 +43,11 @@ func NewWriteTool(authorizer authdomain.Authorizer, postChecks ...*WritePostChec
 func (t *toolWrite) Name() string {
 	return ToolNameWrite
 }
+
+func (t *toolWrite) Presenter() llmstream.Presenter {
+	return nil
+}
+
 func (t *toolWrite) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameWrite,

@@ -29,6 +29,10 @@ func (t *toolUpdatePlan) Name() string {
 	return ToolNameUpdatePlan
 }
 
+func (t *toolUpdatePlan) Presenter() llmstream.Presenter {
+	return updatePlanPresenterInstance
+}
+
 func (t *toolUpdatePlan) Info() llmstream.ToolInfo {
 	// The schema mirrors the desired plan format. Do not load or embed external schema files.
 	return llmstream.ToolInfo{
