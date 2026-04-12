@@ -392,6 +392,80 @@ func applyPatchHeaderSegments(change patchChange) []textSegment {
 	}
 }
 
+func patchChangeFromPresentedDiffEdit(edit llmstream.DiffEdit) patchChange {
+	change := patchChange{
+		path:   sanitizeText(firstNonEmpty(edit.OldPath, edit.NewPath)),
+		toPath: sanitizeText(edit.NewPath),
+		lines:  patchLinesFromPresentedDiff(edit.Lines),
+	}
+
+	switch edit.Kind {
+	case llmstream.DiffEditKindAdd:
+		change.kind = patchChangeAdd
+		change.path = sanitizeText(firstNonEmpty(edit.NewPath, edit.OldPath))
+		change.toPath = ""
+	case llmstream.DiffEditKindDelete:
+		change.kind = patchChangeDelete
+		change.path = sanitizeText(firstNonEmpty(edit.OldPath, edit.NewPath))
+		change.toPath = ""
+	case llmstream.DiffEditKindRename:
+		change.path = sanitizeText(firstNonEmpty(edit.OldPath, edit.NewPath))
+		change.toPath = sanitizeText(firstNonEmpty(edit.NewPath, edit.OldPath))
+		if len(change.lines) == 0 {
+			change.kind = patchChangeRenameOnly
+			change.toPath = sanitizeText(edit.NewPath)
+		} else {
+			change.kind = patchChangeEdit
+		}
+	default:
+		change.kind = patchChangeEdit
+		if edit.NewPath != "" && edit.NewPath != edit.OldPath {
+			change.toPath = sanitizeText(edit.NewPath)
+		} else {
+			change.toPath = ""
+		}
+	}
+
+	return change
+}
+
+func patchLinesFromPresentedDiff(lines []llmstream.DiffLine) []patchLine {
+	patchLines := make([]patchLine, 0, len(lines))
+	for _, line := range lines {
+		switch line.Kind {
+		case llmstream.DiffLineKindAdd:
+			patchLines = append(patchLines, patchLine{
+				kind:   patchLineAdd,
+				prefix: "+ ",
+				text:   line.Text,
+			})
+		case llmstream.DiffLineKindDelete:
+			patchLines = append(patchLines, patchLine{
+				kind:   patchLineRemove,
+				prefix: "- ",
+				text:   line.Text,
+			})
+		case llmstream.DiffLineKindOmitted:
+			text := line.Text
+			if strings.TrimSpace(text) == "" {
+				text = "⋮"
+			}
+			patchLines = append(patchLines, patchLine{
+				kind: patchLineGap,
+				text: text,
+			})
+		default:
+			patchLines = append(patchLines, patchLine{
+				kind:   patchLineContext,
+				prefix: " ",
+				text:   line.Text,
+			})
+		}
+	}
+
+	return cleanPatchLines(patchLines)
+}
+
 func (f *textTUIFormatter) appendPatchLinesTUI(builder *strings.Builder, width int, lines []patchLine) {
 	for _, line := range lines {
 		builder.WriteByte('\n')

@@ -311,6 +311,19 @@ func toolDisplayName(e agent.Event) string {
 	return sanitizeText(name)
 }
 
+type presentedBodyLineKind int
+
+const (
+	presentedBodyLineStandard presentedBodyLineKind = iota + 1
+	presentedBodyLinePatch
+)
+
+type presentedBodyLine struct {
+	kind  presentedBodyLineKind
+	runes []styledRune
+	patch patchLine
+}
+
 func presenterReplacePresentation(e agent.Event) (llmstream.Presentation, bool) {
 	if e.Tool == nil || e.ToolCall == nil {
 		return llmstream.Presentation{}, false
@@ -357,6 +370,10 @@ func presentationSegmentStyle(role llmstream.SegmentRole) runeStyle {
 }
 
 func presentationLineSegments(line llmstream.Line) []textSegment {
+	return presentationLineSegmentsWithTransform(line, nil)
+}
+
+func presentationLineSegmentsWithTransform(line llmstream.Line, transform func(runeStyle) runeStyle) []textSegment {
 	if len(line.Segments) == 0 {
 		return nil
 	}
@@ -370,9 +387,13 @@ func presentationLineSegments(line llmstream.Line) []textSegment {
 		if line.JoinWithSpace && hasContent {
 			segments = append(segments, textSegment{text: " "})
 		}
+		style := presentationSegmentStyle(segment.Role)
+		if transform != nil {
+			style = transform(style)
+		}
 		segments = append(segments, textSegment{
 			text:  segment.Text,
-			style: presentationSegmentStyle(segment.Role),
+			style: style,
 		})
 		hasContent = true
 	}
@@ -412,38 +433,174 @@ func presenterCompletionErrorOutput(result *llmstream.ToolResult) ([]toolOutputL
 	return summarizeToolResult(*result), true
 }
 
-func presenterCompletionBodyLines(presentation llmstream.Presentation) []toolOutputLine {
-	var lines []toolOutputLine
+func (f *textTUIFormatter) presenterCompletionBodyLines(presentation llmstream.Presentation) []presentedBodyLine {
+	var lines []presentedBodyLine
 	for _, block := range presentation.Body {
 		switch body := block.(type) {
+		case llmstream.Paragraph:
+			lines = append(lines, f.presenterParagraphBlockLines(body)...)
+		case *llmstream.Paragraph:
+			if body != nil {
+				lines = append(lines, f.presenterParagraphBlockLines(*body)...)
+			}
+		case llmstream.Checklist:
+			lines = append(lines, f.presenterChecklistBlockLines(body)...)
+		case *llmstream.Checklist:
+			if body != nil {
+				lines = append(lines, f.presenterChecklistBlockLines(*body)...)
+			}
+		case llmstream.Diff:
+			lines = append(lines, f.presenterDiffBlockLines(body)...)
+		case *llmstream.Diff:
+			if body != nil {
+				lines = append(lines, f.presenterDiffBlockLines(*body)...)
+			}
 		case llmstream.Output:
-			lines = append(lines, presenterOutputBlockLines(body)...)
+			lines = append(lines, f.presenterOutputBlockLines(body)...)
 		case *llmstream.Output:
 			if body != nil {
-				lines = append(lines, presenterOutputBlockLines(*body)...)
+				lines = append(lines, f.presenterOutputBlockLines(*body)...)
 			}
 		}
 	}
 	return lines
 }
 
-func presenterOutputBlockLines(output llmstream.Output) []toolOutputLine {
-	lines := make([]toolOutputLine, 0, len(output.Lines)+1)
-	for _, line := range output.Lines {
-		lines = append(lines, toolOutputLine{
-			text:          line,
-			style:         runeStyle{color: colorAccent},
-			highlightCode: true,
-		})
-	}
-	if output.OmittedLineCount > 0 {
-		lines = append(lines, toolOutputLine{
-			text:          fmt.Sprintf("… +%d lines", output.OmittedLineCount),
-			style:         runeStyle{color: colorAccent},
-			highlightCode: false,
+func (f *textTUIFormatter) presenterParagraphBlockLines(paragraph llmstream.Paragraph) []presentedBodyLine {
+	lines := make([]presentedBodyLine, 0, len(paragraph.Lines))
+	for _, line := range paragraph.Lines {
+		lines = append(lines, presentedBodyLine{
+			kind:  presentedBodyLineStandard,
+			runes: f.runesFromSegments(presentationLineSegments(line)...),
 		})
 	}
 	return lines
+}
+
+func checklistMarkerStyle(segments []textSegment, fallback runeStyle) runeStyle {
+	for _, segment := range segments {
+		if segment.text != "" {
+			return segment.style
+		}
+	}
+	return fallback
+}
+
+func (f *textTUIFormatter) presenterChecklistBlockLines(checklist llmstream.Checklist) []presentedBodyLine {
+	lines := make([]presentedBodyLine, 0, len(checklist.Items))
+	for _, item := range checklist.Items {
+		status := item.Status
+		emphasize := func(style runeStyle) runeStyle {
+			if status == llmstream.ChecklistStatusInProgress {
+				style.bold = true
+			}
+			return style
+		}
+
+		lineSegments := presentationLineSegmentsWithTransform(item.Line, emphasize)
+		markerStyle := checklistMarkerStyle(lineSegments, emphasize(runeStyle{color: colorAccent}))
+		marker := "□ "
+		if status == llmstream.ChecklistStatusCompleted {
+			marker = "✔ "
+		}
+		segments := append([]textSegment{{text: marker, style: markerStyle}}, lineSegments...)
+		lines = append(lines, presentedBodyLine{
+			kind:  presentedBodyLineStandard,
+			runes: f.runesFromSegments(segments...),
+		})
+	}
+	return lines
+}
+
+func (f *textTUIFormatter) presenterDiffBlockLines(diff llmstream.Diff) []presentedBodyLine {
+	var lines []presentedBodyLine
+	for _, edit := range diff.Edits {
+		change := patchChangeFromPresentedDiffEdit(edit)
+		lines = append(lines, presentedBodyLine{
+			kind:  presentedBodyLineStandard,
+			runes: f.runesFromSegments(applyPatchHeaderSegments(change)...),
+		})
+		for _, patchLine := range change.lines {
+			lines = append(lines, presentedBodyLine{
+				kind:  presentedBodyLinePatch,
+				patch: patchLine,
+			})
+		}
+	}
+	return lines
+}
+
+func (f *textTUIFormatter) presenterOutputBlockLines(output llmstream.Output) []presentedBodyLine {
+	lines := make([]presentedBodyLine, 0, len(output.Lines)+1)
+	for _, line := range output.Lines {
+		runes := f.buildStyledRunes(line, runeStyle{color: colorAccent}, f.codeRanges(line))
+		lines = append(lines, presentedBodyLine{
+			kind:  presentedBodyLineStandard,
+			runes: runes,
+		})
+	}
+	if output.OmittedLineCount > 0 {
+		lines = append(lines, presentedBodyLine{
+			kind:  presentedBodyLineStandard,
+			runes: f.buildStyledRunes(fmt.Sprintf("… +%d lines", output.OmittedLineCount), runeStyle{color: colorAccent}, nil),
+		})
+	}
+	return lines
+}
+
+func (f *textTUIFormatter) appendPresentedBodyTUI(builder *strings.Builder, width int, lines []presentedBodyLine) {
+	wroteStandard := false
+	for _, line := range lines {
+		builder.WriteByte('\n')
+		switch line.kind {
+		case presentedBodyLinePatch:
+			firstPrefix := "     "
+			restPrefix := "       "
+			if line.patch.kind == patchLineGap || line.patch.kind == patchLineSummary {
+				restPrefix = firstPrefix
+			}
+			runes := f.buildPatchStyledRunes(line.patch)
+			if len(runes) == 0 {
+				builder.WriteString(firstPrefix)
+				continue
+			}
+			builder.WriteString(f.wrapStyledText(runes, width, firstPrefix, restPrefix))
+		default:
+			firstPrefix := "    "
+			if !wroteStandard {
+				firstPrefix = f.toolOutputFirstPrefix()
+				wroteStandard = true
+			}
+			if len(line.runes) == 0 {
+				builder.WriteString(firstPrefix)
+				continue
+			}
+			builder.WriteString(f.wrapStyledText(line.runes, width, firstPrefix, "    "))
+		}
+	}
+}
+
+func (f *textTUIFormatter) presentedBodyCLILines(lines []presentedBodyLine) []string {
+	if len(lines) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(lines))
+	wroteStandard := false
+	for _, line := range lines {
+		switch line.kind {
+		case presentedBodyLinePatch:
+			runes := f.buildStyledRunes("     ", runeStyle{}, nil)
+			runes = append(runes, f.buildPatchStyledRunes(line.patch)...)
+			result = append(result, f.styledString(runes))
+		default:
+			prefix := f.cliToolOutputPrefix(!wroteStandard)
+			wroteStandard = true
+			runes := append([]styledRune{}, prefix...)
+			runes = append(runes, line.runes...)
+			result = append(result, f.styledString(runes))
+		}
+	}
+	return result
 }
 
 func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
@@ -620,8 +777,8 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 			f.appendTUIToolOutput(&builder, width, errorLines)
 			return builder.String()
 		}
-		if bodyLines := presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
-			f.appendTUIToolOutput(&builder, width, bodyLines)
+		if bodyLines := f.presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
+			f.appendPresentedBodyTUI(&builder, width, bodyLines)
 		} else if !success && len(outputLines) > 0 {
 			f.appendTUIToolOutput(&builder, width, outputLines)
 		}
@@ -690,8 +847,8 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 			}
 			return strings.Join(lines, "\n")
 		}
-		if bodyLines := presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
-			if rest := f.cliToolOutputLines(bodyLines); len(rest) > 0 {
+		if bodyLines := f.presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
+			if rest := f.presentedBodyCLILines(bodyLines); len(rest) > 0 {
 				lines = append(lines, rest...)
 			}
 		} else if !success {

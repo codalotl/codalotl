@@ -73,6 +73,12 @@ func presentedReplaceSummaryWithOutput(action, target string, output llmstream.O
 	return presentation
 }
 
+func presentedReplaceSummaryWithBody(action, target string, body ...llmstream.Block) llmstream.Presentation {
+	presentation := presentedReplaceSummary(action, target)
+	presentation.Body = body
+	return presentation
+}
+
 func TestAgentMessageTableDriven(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -585,6 +591,246 @@ func TestPresentedToolCompleteErrorStillUsesSharedErrorFormatting(t *testing.T) 
 		require.NotEmpty(t, out)
 		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
 		assert.NotContains(t, stripANSI(out), "presenter body should not override tool errors")
+	})
+}
+
+func TestPresentedToolCompleteSemanticUpdatePlanBodyMatchesDedicatedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	explanation := "Need to align CodeUnit authorizer with updated SPEC behavior for read-only restrictions and adjust tests accordingly."
+	stepDone := "Inspect SPEC changes and current CodeUnit authorizer implementation"
+	stepDoing := "Update codeunit authorizer logic to apply read restrictions only to read_file tool and keep write restrictions for all tools"
+	stepTodo := "Revise tests to cover new behavior and run go test for package"
+	input := `{
+  "explanation": "` + explanation + `",
+  "plan": [
+    {"step":"` + stepDone + `","status":"completed"},
+    {"step":"` + stepDoing + `","status":"in_progress"},
+    {"step":"` + stepTodo + `","status":"pending"}
+  ]
+}`
+
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Update Plan", ""),
+		complete: presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{{Text: explanation, Role: llmstream.RoleAccent}},
+				}},
+			},
+			llmstream.Checklist{
+				Items: []llmstream.ChecklistItem{
+					{
+						Status: llmstream.ChecklistStatusCompleted,
+						Line: llmstream.Line{
+							Segments: []llmstream.Segment{{Text: stepDone, Role: llmstream.RoleAccent}},
+						},
+					},
+					{
+						Status: llmstream.ChecklistStatusInProgress,
+						Line: llmstream.Line{
+							Segments: []llmstream.Segment{{Text: stepDoing, Role: llmstream.RoleAction}},
+						},
+					},
+					{
+						Status: llmstream.ChecklistStatusPending,
+						Line: llmstream.Line{
+							Segments: []llmstream.Segment{{Text: stepTodo, Role: llmstream.RoleAccent}},
+						},
+					},
+				},
+			},
+		),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "update_plan",
+		Input: input,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+
+	presentedEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("update_plan", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+	explicitEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testTool("update_plan"),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		assert.Equal(t, formatter.FormatEvent(explicitEvent, 400), formatter.FormatEvent(presentedEvent, 400))
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		assert.Equal(t, formatter.FormatEvent(explicitEvent, MinTerminalWidth), formatter.FormatEvent(presentedEvent, MinTerminalWidth))
+	})
+}
+
+func TestPresentedToolCompleteDiffBodyMatchesApplyPatchStyle(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	patch := `*** Begin Patch
+*** Update File: foo/bar.go
+*** Move to: foo/baz.go
+@@
+- old line
++ replacement line that wraps across multiple words in the presenter diff renderer
+@@
++ final line
+*** End Patch
+`
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Apply Patch", ""),
+		complete: presentedReplaceSummaryWithBody(
+			"Apply Patch",
+			"",
+			llmstream.Diff{
+				Edits: []llmstream.DiffEdit{
+					{
+						Kind:    llmstream.DiffEditKindRename,
+						OldPath: "foo/bar.go",
+						NewPath: "foo/baz.go",
+						Lines: []llmstream.DiffLine{
+							{Kind: llmstream.DiffLineKindDelete, Text: "old line"},
+							{Kind: llmstream.DiffLineKindAdd, Text: "replacement line that wraps across multiple words in the presenter diff renderer"},
+							{Kind: llmstream.DiffLineKindOmitted},
+							{Kind: llmstream.DiffLineKindAdd, Text: "final line"},
+						},
+					},
+				},
+			},
+		),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "apply_patch",
+		Input: patch,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+
+	presentedEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("apply_patch", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+	explicitEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testTool("apply_patch"),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	assertBodyMatches := func(t *testing.T, width int) {
+		t.Helper()
+
+		presentedLines := strings.Split(stripANSI(formatter.FormatEvent(presentedEvent, width)), "\n")
+		explicitLines := strings.Split(stripANSI(formatter.FormatEvent(explicitEvent, width)), "\n")
+		require.NotEmpty(t, presentedLines)
+		require.NotEmpty(t, explicitLines)
+		require.Equal(t, "• Apply Patch", presentedLines[0])
+
+		expectedBody := append([]string{"  └ " + strings.TrimPrefix(explicitLines[0], "• ")}, explicitLines[1:]...)
+		assert.Equal(t, expectedBody, presentedLines[1:])
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(presentedEvent, 58)
+		assertBodyMatches(t, 58)
+		assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
+		assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
+		assert.Contains(t, out, ansiWrap("⋮", pal, colorAccent, false, false))
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		assertBodyMatches(t, MinTerminalWidth)
+	})
+}
+
+func TestPresentedToolCompleteSemanticBodyErrorStillOverridesBody(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Update Plan", ""),
+		complete: presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{{Text: "This body should be suppressed on error.", Role: llmstream.RoleAccent}},
+				}},
+			},
+			llmstream.Checklist{
+				Items: []llmstream.ChecklistItem{
+					{
+						Status: llmstream.ChecklistStatusInProgress,
+						Line: llmstream.Line{
+							Segments: []llmstream.Segment{{Text: "Do the thing", Role: llmstream.RoleAction}},
+						},
+					},
+				},
+			},
+		),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "update_plan",
+		Input: `{"explanation":"ignored by presenter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "update failed",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("update_plan", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	expected := []string{
+		"• Update Plan",
+		"  └ Error: update failed",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 100)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "This body should be suppressed on error.")
+		assert.NotContains(t, stripANSI(out), "Do the thing")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "This body should be suppressed on error.")
+		assert.NotContains(t, stripANSI(out), "Do the thing")
 	})
 }
 
