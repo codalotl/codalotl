@@ -374,14 +374,12 @@ func TestToolCallShellFormatting(t *testing.T) {
 		ToolCall: &call,
 	}
 
-	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
 	require.NotEmpty(t, out)
 
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "), "bullet should use accent palette")
-	runningSeq := ansiWrap("Running", pal, colorColorful, false, true)
-	assert.Contains(t, out, runningSeq, "verb should be bold and colorful")
-	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false), "command should not be italicized")
-	assert.Contains(t, stripANSI(out), "Running go test .", "full command should be present")
+	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true), "verb should be bold and colorful")
+	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, stripANSI(out))
 }
 
 func TestToolCallSkillShellFormatting(t *testing.T) {
@@ -401,11 +399,11 @@ func TestToolCallSkillShellFormatting(t *testing.T) {
 		ToolCall: &call,
 	}
 
-	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
+	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
 	require.NotEmpty(t, out)
 
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
-	assert.Contains(t, stripANSI(out), "Running go test .")
+	assert.Equal(t, `• Tool skill_shell {"command":["go","test","."],"skill":"spec-md","timeout_ms":120000}`, stripANSI(out))
 }
 
 func TestToolCompleteOutputSummarization(t *testing.T) {
@@ -453,13 +451,12 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 
 	linesOut := strings.Split(stripped, "\n")
 	require.GreaterOrEqual(t, len(linesOut), 3)
-	assert.Equal(t, "• Ran go test .", linesOut[0])
+	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, linesOut[0])
 	assert.Equal(t, "  └ "+termformat.Sanitize(lines[0], 4), linesOut[1])
 	assert.Contains(t, linesOut, "    … +2 lines")
 
 	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
-	assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
-	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false))
+	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true))
 }
 
 func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
@@ -501,19 +498,18 @@ func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
 		ToolResult: &result,
 	}
 
-	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
 	stripped := stripANSI(out)
 	require.NotEmpty(t, stripped)
 
 	linesOut := strings.Split(stripped, "\n")
 	require.GreaterOrEqual(t, len(linesOut), 3)
-	assert.Equal(t, "• Ran go test .", linesOut[0])
+	assert.Equal(t, `• Tool skill_shell {"command":["go","test","."],"skill":"spec-md"}`, linesOut[0])
 	assert.Equal(t, "  └ "+termformat.Sanitize(lines[0], 4), linesOut[1])
 	assert.Contains(t, linesOut, "    … +2 lines")
 
 	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
-	assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
-	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false))
+	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true))
 }
 
 func TestPresentedToolCompleteSuccessShowsOutputBody(t *testing.T) {
@@ -1141,7 +1137,7 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
 }
 
-func TestAppendPresenterDoesNotOverrideDedicatedShellFormatting(t *testing.T) {
+func TestAppendPresenterDoesNotOverrideGenericShellFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -1179,7 +1175,7 @@ func TestAppendPresenterDoesNotOverrideDedicatedShellFormatting(t *testing.T) {
 
 	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
 	require.NotEmpty(t, out)
-	assert.Equal(t, "• Running go test .", stripANSI(out))
+	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, stripANSI(out))
 }
 
 func TestPresentedToolSummaryJoinWithSpace(t *testing.T) {

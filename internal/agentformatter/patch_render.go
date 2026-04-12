@@ -155,33 +155,6 @@ func patchLinesFromPresentedDiff(lines []llmstream.DiffLine) []patchLine {
 	return cleanPatchLines(patchLines)
 }
 
-func (f *textTUIFormatter) appendPatchLinesTUI(builder *strings.Builder, width int, lines []patchLine) {
-	for _, line := range lines {
-		builder.WriteByte('\n')
-		firstPrefix := "     "
-		restPrefix := "       "
-		if line.kind == patchLineGap || line.kind == patchLineSummary {
-			restPrefix = firstPrefix
-		}
-		runes := f.buildPatchStyledRunes(line)
-		builder.WriteString(f.wrapStyledText(runes, width, firstPrefix, restPrefix))
-	}
-}
-
-func (f *textTUIFormatter) cliPatchLines(lines []patchLine) []string {
-	if len(lines) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(lines))
-	for _, line := range lines {
-		var runes []styledRune
-		runes = append(runes, f.buildStyledRunes("     ", runeStyle{}, nil)...)
-		runes = append(runes, f.buildPatchStyledRunes(line)...)
-		result = append(result, f.styledString(runes))
-	}
-	return result
-}
-
 func (f *textTUIFormatter) buildPatchStyledRunes(line patchLine) []styledRune {
 	base := runeStyle{color: colorNormal}
 	switch line.kind {
