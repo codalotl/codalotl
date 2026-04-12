@@ -223,9 +223,15 @@ Phase 5: tbd, don't plan here yet
 - Keep presenter-driven explanation/checklist rendering on the shared semantic block path, including next-up and in-progress emphasis.
 - Preserve shared tool-error rendering over presenter bodies and keep focused formatter coverage on the presenter path.
 
+### [DONE] Phase 4 - internal/tools/coretools: delete
+
+- Move `delete` formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add a replace-style presenter for `delete` that preserves the current `Delete <path>` summary and shared formatter-owned error handling.
+- Add focused `internal/tools/coretools` coverage for presenter and fallback behavior.
+
 ### Phase 4 - internal/tools/coretools: remaining core tools
 
-- Migrate `apply_patch`, `edit`, `write`, and `delete` one tool at a time, with one implementation commit per tool.
+- Migrate `apply_patch`, `edit`, and `write` one tool at a time, with one implementation commit per tool.
 - Move each migrated tool's formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add focused presenter coverage per migrated tool; keep formatter cleanup separate.
 
