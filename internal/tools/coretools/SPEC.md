@@ -58,7 +58,13 @@ Presentation:
 - Explicit `in_progress` items are also emphasized.
 - Shared formatter error handling still owns tool errors.
 
+### apply_patch
+
+Presentation: semantic `Diff`
+
 ### edit
+
+Presentation: semantic `Diff`
 
 The `edit` tool edits files by find and replace. Applies it with `applypatch.Replace`.
 - Afterwards, runs diagnostics (checks for build errors) and configured lints.
@@ -70,6 +76,8 @@ Params:
 - `replace_all`: bool (default: false) - replace all occurances of old_text with new_text.
 
 ### write
+
+Presentation: semantic `Diff`
 
 The `write` tool creates a new file with content, or replaces it with content if it already exists.
 - Afterwards, runs diagnostics (checks for build errors) and configured lints.
