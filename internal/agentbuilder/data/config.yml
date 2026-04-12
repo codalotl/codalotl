@@ -152,6 +152,15 @@ tools:
         type: string
         description: What to change and why. Include enough context for a new agent to update the package.
         required: true
+    presenter:
+      preset:
+        name: subagent_q_and_a
+        call_action: Implementing
+        result_action: Implemented
+        summary_items:
+          - param: path
+        call_body: instructions
+        result_body: result
     subagent:
       name: package_mode_default_context
       package: path

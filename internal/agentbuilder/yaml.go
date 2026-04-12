@@ -72,6 +72,7 @@ type yamlToolSpec struct {
 	Name        string                       `yaml:"name"`
 	Description string                       `yaml:"description"`
 	Parameters  map[string]yamlToolParameter `yaml:"parameters"`
+	Presenter   *yamlPresenterSpec           `yaml:"presenter"`
 	Command     *yamlCommandSpec             `yaml:"command"`
 	Subagent    *yamlSubagentSpec            `yaml:"subagent"`
 }
@@ -115,6 +116,7 @@ type yamlNormalizedToolSpec struct {
 	Name              string
 	Description       string
 	Parameters        map[string]yamlNormalizedParameter
+	Presenter         *yamlNormalizedPresenterSpec
 	Command           *yamlCommandSpec
 	Subagent          *yamlNormalizedSubagentSpec
 	TargetPackageMode bool
@@ -144,14 +146,16 @@ type yamlPreparedAgent struct {
 }
 
 type yamlCommandTool struct {
-	info   llmstream.ToolInfo
-	spec   *yamlCommandSpec
-	params map[string]yamlNormalizedParameter
-	opts   toolsetinterface.Options
+	info      llmstream.ToolInfo
+	presenter llmstream.Presenter
+	spec      *yamlCommandSpec
+	params    map[string]yamlNormalizedParameter
+	opts      toolsetinterface.Options
 }
 
 type yamlSubagentTool struct {
 	info              llmstream.ToolInfo
+	presenter         llmstream.Presenter
 	spec              *yamlNormalizedSubagentSpec
 	params            map[string]yamlNormalizedParameter
 	opts              toolsetinterface.Options
@@ -337,6 +341,11 @@ func normalizeYAMLToolSpec(spec yamlToolSpec, yamlFS fs.FS, yamlDir string, exis
 		}
 	}
 
+	normalizedPresenter, err := normalizeYAMLPresenterSpec(spec.Presenter, normalizedParams)
+	if err != nil {
+		return yamlNormalizedToolSpec{}, err
+	}
+
 	if (spec.Command == nil) == (spec.Subagent == nil) {
 		return yamlNormalizedToolSpec{}, errors.New("exactly one of command or subagent is required")
 	}
@@ -349,6 +358,7 @@ func normalizeYAMLToolSpec(spec yamlToolSpec, yamlFS fs.FS, yamlDir string, exis
 			Name:        spec.Name,
 			Description: spec.Description,
 			Parameters:  normalizedParams,
+			Presenter:   normalizedPresenter,
 			Command:     spec.Command,
 		}, nil
 	}
@@ -399,6 +409,7 @@ func normalizeYAMLToolSpec(spec yamlToolSpec, yamlFS fs.FS, yamlDir string, exis
 		Name:              spec.Name,
 		Description:       spec.Description,
 		Parameters:        normalizedParams,
+		Presenter:         normalizedPresenter,
 		Subagent:          &normalizedSubagent,
 		TargetPackageMode: targetMode == yamlAgentModePackage,
 	}, nil
@@ -698,18 +709,21 @@ func buildYAMLToolBuilder(spec yamlNormalizedToolSpec) toolsetinterface.Tool {
 				"description": param.Description,
 			}
 		}
+		presenter := buildYAMLPresenter(spec.Presenter, spec.Parameters)
 
 		if spec.Command != nil {
 			return &yamlCommandTool{
-				info:   info,
-				spec:   spec.Command,
-				params: spec.Parameters,
-				opts:   opts,
+				info:      info,
+				presenter: presenter,
+				spec:      spec.Command,
+				params:    spec.Parameters,
+				opts:      opts,
 			}, nil
 		}
 
 		return &yamlSubagentTool{
 			info:              info,
+			presenter:         presenter,
 			spec:              spec.Subagent,
 			params:            spec.Parameters,
 			opts:              opts,
@@ -870,7 +884,7 @@ func (t *yamlCommandTool) Name() string {
 }
 
 func (t *yamlCommandTool) Presenter() llmstream.Presenter {
-	return nil
+	return t.presenter
 }
 
 func (t *yamlCommandTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
@@ -907,7 +921,7 @@ func (t *yamlSubagentTool) Name() string {
 }
 
 func (t *yamlSubagentTool) Presenter() llmstream.Presenter {
-	return nil
+	return t.presenter
 }
 
 func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {

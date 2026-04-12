@@ -64,10 +64,12 @@ func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) 
 		"`prompts`",
 		"`edit_files`",
 		"`agentsmd`",
+		"`presenter`",
 		"`command`",
 		"`subagent`",
 		"`subagent.messages`",
 		"`result_format`",
+		"`subagent_q_and_a`",
 		"`sandbox_dir`",
 		"`package_dir`",
 	} {
