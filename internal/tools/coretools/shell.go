@@ -276,7 +276,6 @@ func shellPresenterBody(result llmstream.ToolResult) llmstream.Block {
 	}
 
 	return llmstream.Output{
-		Kind:             llmstream.OutputKindCommand,
 		Lines:            lines,
 		OmittedLineCount: omittedLineCount,
 	}

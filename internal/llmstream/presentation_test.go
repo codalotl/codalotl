@@ -66,7 +66,6 @@ func TestPresentationModel_CanRepresentOutputBlock(t *testing.T) {
 			},
 		},
 		Body: Output{
-			Kind: OutputKindCommand,
 			Lines: []string{
 				"$ go test ./internal/llmstream",
 				"ok  \tgithub.com/codalotl/codalotl/internal/llmstream\t0.123s",
@@ -77,43 +76,11 @@ func TestPresentationModel_CanRepresentOutputBlock(t *testing.T) {
 
 	commandOutput, ok := presentation.Body.(Output)
 	require.True(t, ok)
-	assert.Equal(t, OutputKindCommand, commandOutput.Kind)
 	assert.Equal(t, []string{
 		"$ go test ./internal/llmstream",
 		"ok  \tgithub.com/codalotl/codalotl/internal/llmstream\t0.123s",
 	}, commandOutput.Lines)
 	assert.Equal(t, 4, commandOutput.OmittedLineCount)
-}
-
-func TestPresentationModel_CanRepresentJSONOutputBlock(t *testing.T) {
-	presentation := Presentation{
-		Behavior:      CompletionBehaviorReplace,
-		ErrorBehavior: ErrorBehaviorDefault,
-		Summary: Line{
-			Segments: []Segment{
-				{Text: "Render", Role: RoleAction},
-				{Text: " payload", Role: RoleNormal},
-			},
-		},
-		Body: Output{
-			Kind: OutputKindJSON,
-			Lines: []string{
-				"{",
-				`  "field": "value"`,
-				"}",
-			},
-		},
-	}
-
-	jsonOutput, ok := presentation.Body.(Output)
-	require.True(t, ok)
-	assert.Equal(t, OutputKindJSON, jsonOutput.Kind)
-	assert.Equal(t, []string{
-		"{",
-		`  "field": "value"`,
-		"}",
-	}, jsonOutput.Lines)
-	assert.Zero(t, jsonOutput.OmittedLineCount)
 }
 
 func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {

@@ -109,20 +109,11 @@ const (
 
 // Output is verbatim, line-oriented tool output such as shell command output or a pretty-printed raw payload.
 type Output struct {
-	Kind             OutputKind
 	Lines            []string // Lines are the visible output lines in display order.
 	OmittedLineCount int      // OmittedLineCount records how many additional lines were intentionally omitted from the presentation.
 }
 
 func (Output) isBlock() {}
-
-type OutputKind string
-
-const (
-	OutputKindText    OutputKind = "text"
-	OutputKindCommand OutputKind = "command"
-	OutputKindJSON    OutputKind = "json"
-)
 
 // Diff is a diff-like edit block, potentially spanning multiple file edits.
 type Diff struct {

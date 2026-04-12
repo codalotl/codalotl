@@ -516,7 +516,6 @@ func TestPresentedToolCompleteSuccessShowsOutputBody(t *testing.T) {
 	presenter := staticPresenter{
 		call: presentedReplaceSummary("Running", "go test ."),
 		complete: presentedReplaceSummaryWithOutput("Ran", "go test .", llmstream.Output{
-			Kind:             llmstream.OutputKindCommand,
 			Lines:            []string{"first output line wraps around cleanly", "second output line"},
 			OmittedLineCount: 2,
 		}),
@@ -573,7 +572,6 @@ func TestPresentedToolCompleteOutputBodyWrapsIndentedLinesWithoutBlankLine(t *te
 	presenter := staticPresenter{
 		call: presentedReplaceSummary("Running", "sh"),
 		complete: presentedReplaceSummaryWithOutput("Ran", "sh", llmstream.Output{
-			Kind:  llmstream.OutputKindCommand,
 			Lines: []string{"    abcdefghijklmnopqrstuvwxyz"},
 		}),
 	}
@@ -613,7 +611,6 @@ func TestPresentedToolCompleteOutputBodySanitizesTabs(t *testing.T) {
 	presenter := staticPresenter{
 		call: presentedReplaceSummary("Running", "go test ./..."),
 		complete: presentedReplaceSummaryWithOutput("Ran", "go test ./...", llmstream.Output{
-			Kind:  llmstream.OutputKindCommand,
 			Lines: []string{rawLine},
 		}),
 	}
@@ -664,7 +661,6 @@ func TestPresentedToolCompleteOutputBodyWithTabsRespectsTUIWidth(t *testing.T) {
 	presenter := staticPresenter{
 		call: presentedReplaceSummary("Running", "go test ./..."),
 		complete: presentedReplaceSummaryWithOutput("Ran", "go test ./...", llmstream.Output{
-			Kind:  llmstream.OutputKindCommand,
 			Lines: []string{rawLine},
 		}),
 	}
@@ -707,7 +703,6 @@ func TestPresentedToolCompleteErrorStillUsesSharedErrorFormatting(t *testing.T) 
 	presenter := staticPresenter{
 		call: presentedReplaceSummary("Running", "go test ."),
 		complete: presentedReplaceSummaryWithOutput("Ran", "go test .", llmstream.Output{
-			Kind:  llmstream.OutputKindCommand,
 			Lines: []string{"presenter body should not override tool errors"},
 		}),
 	}

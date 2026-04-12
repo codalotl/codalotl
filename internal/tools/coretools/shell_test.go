@@ -285,7 +285,6 @@ func TestShell_Presenter_CompleteIncludesSummarizedOutput(t *testing.T) {
 			},
 		},
 		Body: llmstream.Output{
-			Kind: llmstream.OutputKindCommand,
 			Lines: []string{
 				"ok   github.com/codalotl/codalotl/internal/tools/coretools\t0.123s",
 				"?    github.com/codalotl/codalotl/internal/tools/coretools/testdata\t[no test files]",
@@ -317,7 +316,6 @@ func TestShell_Presenter_CompleteSummarizesLongOutput(t *testing.T) {
 			},
 		},
 		Body: llmstream.Output{
-			Kind: llmstream.OutputKindCommand,
 			Lines: []string{
 				"line 1",
 				"line 2",
@@ -354,7 +352,6 @@ func TestShell_Presenter_CompleteShowsStructuredError(t *testing.T) {
 			},
 		},
 		Body: llmstream.Output{
-			Kind:  llmstream.OutputKindCommand,
 			Lines: []string{"Error: shell authorization denied"},
 		},
 	}, presenter.Present(call, result))
