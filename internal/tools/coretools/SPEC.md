@@ -79,6 +79,8 @@ Params:
 
 ### delete
 
+Presentation: `Delete path/to/file.go`
+
 The `delete` tool deletes the file.
 
 Params:
