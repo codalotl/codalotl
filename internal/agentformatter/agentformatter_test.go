@@ -542,11 +542,145 @@ func TestPresentedToolCompleteSuccessShowsOutputBody(t *testing.T) {
 		require.NotEmpty(t, out)
 		assert.Equal(t, []string{
 			"• Ran go test .",
-			"  └ first output line wraps around cleanly",
+			"  └ first output line wraps",
+			"    around cleanly",
 			"    second output line",
 			"    … +2 lines",
 		}, strings.Split(stripANSI(out), "\n"))
 	})
+}
+
+func TestPresentedToolCompleteOutputBodyWrapsIndentedLinesWithoutBlankLine(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "sh"),
+		complete: presentedReplaceSummaryWithOutput("Ran", "sh", llmstream.Output{
+			Kind:  llmstream.OutputKindCommand,
+			Lines: []string{"    abcdefghijklmnopqrstuvwxyz"},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["sh"]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := formatter.FormatEvent(event, 32)
+	require.NotEmpty(t, out)
+	assert.Equal(t, []string{
+		"• Ran sh",
+		"  └     abcdefghijklmnopqrstuvwx",
+		"        yz",
+	}, strings.Split(stripANSI(out), "\n"))
+}
+
+func TestPresentedToolCompleteOutputBodySanitizesTabs(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	rawLine := "ok\tpkg\t1s"
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ./..."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test ./...", llmstream.Output{
+			Kind:  llmstream.OutputKindCommand,
+			Lines: []string{rawLine},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","./..."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	expected := []string{
+		"• Ran go test ./...",
+		"  └ " + termformat.Sanitize(rawLine, 4),
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "\t")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "\t")
+	})
+}
+
+func TestPresentedToolCompleteOutputBodyWithTabsRespectsTUIWidth(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	rawLine := "ok\tgithub.com/codalotl/codalotl/internal/agentformatter\t(cached)"
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ./..."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test ./...", llmstream.Output{
+			Kind:  llmstream.OutputKindCommand,
+			Lines: []string{rawLine},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","./..."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := formatter.FormatEvent(event, 44)
+	require.NotEmpty(t, out)
+
+	stripped := stripANSI(out)
+	assert.NotContains(t, stripped, "\t")
+	for _, line := range strings.Split(out, "\n") {
+		assert.LessOrEqual(t, termformat.TextWidthWithANSICodes(line), 44)
+	}
+	assert.Contains(t, stripped, "• Ran go test ./...")
+	assert.Contains(t, stripped, "  └ ok")
+	assert.Contains(t, stripped, "(cached)")
 }
 
 func TestPresentedToolCompleteErrorStillUsesSharedErrorFormatting(t *testing.T) {
@@ -651,7 +785,26 @@ func TestPresentedUpdatePlanMatchesExpectedFormatting(t *testing.T) {
 	})
 
 	t.Run("call cli", func(t *testing.T) {
-		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)), "\n"))
+		assert.Equal(t, []string{
+			"• Update Plan",
+			"  └ Need to align CodeUnit",
+			"    authorizer with updated",
+			"    SPEC behavior for",
+			"    read-only restrictions and",
+			"    adjust tests accordingly.",
+			"    ✔ Inspect SPEC changes and",
+			"    current CodeUnit",
+			"    authorizer implementation",
+			"    □ Update codeunit",
+			"    authorizer logic to apply",
+			"    read restrictions only to",
+			"    read_file tool and keep",
+			"    write restrictions for all",
+			"    tools",
+			"    □ Revise tests to cover",
+			"    new behavior and run go",
+			"    test for package",
+		}, strings.Split(stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)), "\n"))
 	})
 
 	t.Run("complete tui", func(t *testing.T) {
@@ -659,7 +812,26 @@ func TestPresentedUpdatePlanMatchesExpectedFormatting(t *testing.T) {
 	})
 
 	t.Run("complete cli", func(t *testing.T) {
-		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)), "\n"))
+		assert.Equal(t, []string{
+			"• Update Plan",
+			"  └ Need to align CodeUnit",
+			"    authorizer with updated",
+			"    SPEC behavior for",
+			"    read-only restrictions and",
+			"    adjust tests accordingly.",
+			"    ✔ Inspect SPEC changes and",
+			"    current CodeUnit",
+			"    authorizer implementation",
+			"    □ Update codeunit",
+			"    authorizer logic to apply",
+			"    read restrictions only to",
+			"    read_file tool and keep",
+			"    write restrictions for all",
+			"    tools",
+			"    □ Revise tests to cover",
+			"    new behavior and run go",
+			"    test for package",
+		}, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)), "\n"))
 	})
 }
 
@@ -747,8 +919,14 @@ func TestPresentedToolCompleteDiffBodyMatchesApplyPatchStyle(t *testing.T) {
 		assert.Contains(t, out, ansiWrap("⋮", pal, colorAccent, false, false))
 	})
 
-	t.Run("cli", func(t *testing.T) {
-		assertBodyMatches(t, MinTerminalWidth)
+	t.Run("minimum tui width", func(t *testing.T) {
+		out := formatter.FormatEvent(presentedEvent, MinTerminalWidth)
+		lines := strings.Split(out, "\n")
+		require.NotEmpty(t, lines)
+		require.Equal(t, "• Apply Patch", stripANSI(lines[0]))
+		for _, line := range lines {
+			assert.LessOrEqual(t, termformat.TextWidthWithANSICodes(line), MinTerminalWidth)
+		}
 	})
 }
 
@@ -1033,6 +1211,138 @@ func TestPresentedToolSummaryJoinWithSpace(t *testing.T) {
 			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)))
 		})
 	}
+}
+
+func TestPresentedToolTUIWidthLimit(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	makeEvent := func(presentation llmstream.Presentation) agent.Event {
+		call := llmstream.ToolCall{
+			Name:  "read_file",
+			Input: `{"path":"ignored/by/presenter.go"}`,
+		}
+		result := llmstream.ToolResult{
+			Result:  `{"success":true}`,
+			IsError: false,
+		}
+		return agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       testToolWithPresenter("read_file", staticPresenter{complete: presentation}),
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+	}
+
+	assertWidthLimit := func(t *testing.T, width int, out string) {
+		t.Helper()
+		for _, line := range strings.Split(out, "\n") {
+			assert.LessOrEqual(t, termformat.TextWidthWithANSICodes(line), width)
+		}
+	}
+
+	t.Run("summary wraps", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummary("Read", "some/really/long/path/that/needs/to/wrap/in/the/tui/output.go"))
+		out := formatter.FormatEvent(event, 36)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, 36, out)
+	})
+
+	t.Run("summary wraps at minimum tui width", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummary("Read", "some/really/long/path/that/needs/to/wrap/in/the/tui/output.go"))
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, MinTerminalWidth, out)
+	})
+
+	t.Run("zero width still uses cli fallback", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummary("Read", "some/really/long/path/that/needs/to/wrap/in/the/tui/output.go"))
+		out := formatter.FormatEvent(event, 0)
+		require.NotEmpty(t, out)
+		assert.Greater(t, termformat.TextWidthWithANSICodes(out), MinTerminalWidth)
+		assert.NotContains(t, out, "\n")
+	})
+
+	t.Run("paragraph body wraps", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{{
+						Text: "This presenter paragraph line is intentionally long enough to require wrapping inside a narrow TUI.",
+						Role: llmstream.RoleAccent,
+					}},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, 36)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, 36, out)
+	})
+
+	t.Run("paragraph body wraps at minimum tui width", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{{
+						Text: "This presenter paragraph line is intentionally long enough to require wrapping inside a narrow TUI.",
+						Role: llmstream.RoleAccent,
+					}},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, MinTerminalWidth, out)
+	})
+
+	t.Run("checklist body wraps", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Checklist{
+				Items: []llmstream.ChecklistItem{{
+					Status: llmstream.ChecklistStatusInProgress,
+					Line: llmstream.Line{
+						Segments: []llmstream.Segment{{
+							Text: "Check that an in-progress presenter checklist item still respects the requested width.",
+							Role: llmstream.RoleAction,
+						}},
+					},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, 36)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, 36, out)
+	})
+
+	t.Run("checklist body wraps at minimum tui width", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Checklist{
+				Items: []llmstream.ChecklistItem{{
+					Status: llmstream.ChecklistStatusInProgress,
+					Line: llmstream.Line{
+						Segments: []llmstream.Segment{{
+							Text: "Check that an in-progress presenter checklist item still respects the requested width.",
+							Role: llmstream.RoleAction,
+						}},
+					},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, MinTerminalWidth, out)
+	})
 }
 
 func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {

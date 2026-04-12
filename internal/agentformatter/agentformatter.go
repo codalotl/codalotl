@@ -70,13 +70,14 @@ func NewTUIFormatter(c Config) Formatter {
 }
 
 func (f *textTUIFormatter) FormatEvent(e agent.Event, terminalWidth int) string {
+	requestedWidth := terminalWidth
 	if terminalWidth <= 0 {
 		terminalWidth = MinTerminalWidth
 	}
 
 	indentWidth := e.Agent.Depth * 2
 
-	if terminalWidth <= MinTerminalWidth {
+	if requestedWidth <= 0 || (terminalWidth <= MinTerminalWidth && !presenterWidthConstrainedTUI(e)) {
 		out := f.formatCLI(e)
 		if indentWidth > 0 && out != "" {
 			return indentLines(out, indentWidth)
@@ -94,6 +95,12 @@ func (f *textTUIFormatter) FormatEvent(e agent.Event, terminalWidth int) string 
 		return indentLines(out, indentWidth)
 	}
 	return out
+}
+
+// Replace presenters describe fixed-width TUI output, so an explicit width still wins at the narrow boundary.
+func presenterWidthConstrainedTUI(e agent.Event) bool {
+	_, ok := presenterReplacePresentation(e)
+	return ok
 }
 
 func indentLines(content string, indentWidth int) string {
@@ -533,6 +540,7 @@ func (f *textTUIFormatter) presenterDiffBlockLines(diff llmstream.Diff) []presen
 func (f *textTUIFormatter) presenterOutputBlockLines(output llmstream.Output) []presentedBodyLine {
 	lines := make([]presentedBodyLine, 0, len(output.Lines)+1)
 	for _, line := range output.Lines {
+		line = sanitizeText(line)
 		runes := f.buildStyledRunes(line, runeStyle{color: colorAccent}, f.codeRanges(line))
 		lines = append(lines, presentedBodyLine{
 			kind:  presentedBodyLineStandard,
@@ -3590,10 +3598,30 @@ func (f *textTUIFormatter) wrapStyledText(content []styledRune, width int, first
 
 		if currentWidth > currentLimit && currentLimit > 0 {
 			breakIndex := lastSpace
-			if breakIndex < 0 {
-				breakIndex = len(buffer) - 1
+			useSpaceBreak := breakIndex > 0
+			var firstPart []styledRune
+			if useSpaceBreak {
+				firstPart = trimTrailingSpaces(buffer[:breakIndex])
+				if len(firstPart) == 0 {
+					useSpaceBreak = false
+				}
 			}
-			firstPart := trimTrailingSpaces(buffer[:breakIndex])
+			if !useSpaceBreak {
+				breakIndex = len(buffer) - 1
+				if breakIndex <= 0 {
+					firstPart = append([]styledRune(nil), buffer...)
+					emitLine(firstPart)
+					if pad := continuationPaddingForLine(firstPart); pad != "" || continuationPadding == "" {
+						continuationPadding = pad
+					}
+					buffer = nil
+					currentWidth = 0
+					lastSpace = -1
+					updateLimit()
+					continue
+				}
+				firstPart = append([]styledRune(nil), buffer[:breakIndex]...)
+			}
 			emitLine(firstPart)
 			if pad := continuationPaddingForLine(firstPart); pad != "" || continuationPadding == "" {
 				continuationPadding = pad
@@ -3601,7 +3629,9 @@ func (f *textTUIFormatter) wrapStyledText(content []styledRune, width int, first
 			updateLimit()
 
 			remainder := append([]styledRune(nil), buffer[breakIndex:]...)
-			remainder = trimLeadingSpaces(remainder)
+			if useSpaceBreak {
+				remainder = trimLeadingSpaces(remainder)
+			}
 
 			buffer = remainder
 			currentWidth = runesWidth(buffer)
