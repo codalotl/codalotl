@@ -175,9 +175,58 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
     - Completed items use `✔`
     - Pending and in-progress items use `□`
     - In-progress items add emphasis on top of any segment roles
-- `Diff` blocks render with the same verbs, rename notation, diff-line colors, omission markers, and wrapping rules already used for patch/edit tool formatting in this package.
+- `Diff` blocks render using the shared diff rules below.
 - For `Output` blocks, print the provided visible lines in order, and if `OmittedLineCount > 0`, append `… +N lines`.
 - Shared tool-error rendering still wins over presenter body content when the tool result is an error.
+
+#### Rendering `Diff` blocks
+
+`Diff` blocks are the shared presentation for file edits. They are rendered beneath the presenter summary line and are not specific to any one tool.
+
+- For presenter-owned `Diff` bodies, `Summary.Segments` must be nil. The formatter derives the visible summary/header from the first diff edit instead of from `Summary`.
+
+Example:
+
+```
+• Edit some/file.go
+     - old line
+     + new line
+```
+
+- Use change verbs like `Add`, `Delete`, `Rename`, and `Edit` based on the semantic diff summary.
+- Line numbers are not shown.
+- `⋮` is accent-colored.
+- Context lines (` `) are normal; `+` lines are green; `-` lines are red.
+
+Delete example:
+
+```
+• Delete some/file.go
+```
+
+Rename example (no line changes):
+
+```
+• Rename some/file.go → some/other.go
+```
+
+- `→` is accent.
+
+Rename example (with line changes):
+
+```
+• Edit some/file.go → some/other.go
+     - old line
+     + new line
+```
+
+If a line exceeds the tuiWidth in TUI width mode, wrap it:
+
+```
+• Edit some/file.go
+     +This line is very long. It will wrap eventua
+       lly.
+```
 
 ### EventTypeToolCall and EventTypeToolComplete - get_public_api
 
@@ -412,65 +461,15 @@ or
 
 - NOTE: lints are not run in project tests.
 
-### EventTypeToolCall and EventTypeToolComplete - apply_patch
-
-Example:
-
-```
-• Edit some/file.go
-     - old line
-     + new line
-```
-
-- No hunks anchors are shown (eg, `@@ func SomeAnchor() {`).
-- Line numbers are not shown.
-- `⋮` is accent-colored.
-- Context lines (` `) are normal; `+` lines are green; `-` lines are red.
-
-Delete example:
-
-```
-• Delete some/file.go
-```
-
-Rename example (no hunks are changed):
-```
-• Rename some/file.go → some/other.go
-```
-
-- `→` is accent.
-
-Rename example (hunks are changed):
-```
-• Edit some/file.go → some/other.go
-     - old line
-     + new line
-```
-
-If a line exceeds the tuiWidth in TUI width mode, it will be wrapped:
-
-```
-• Edit some/file.go
-     +This line is very long. It will wrap eventua
-       lly.
-```
-
-If the underlying error `applypatch.IsInvalidPatch`, don't print out the whole invalid patch. Instead, for instance:
-
-```
-• Edit some/file.go
-  └ Failed: LLM supplied an invalid patch.
-```
-
 ### EventTypeToolCall and EventTypeToolComplete - edit, write
 
-The `edit`/`write` tools are a variant of `apply_patch` used by certain models. `edit` uses a find/replace methodology.
+The `edit`/`write` tools produce file-change output using the shared `Diff` rendering rules above. `edit` uses a find/replace methodology.
 
-An edit should be formatted very similarly to an equivalent `apply_patch`. Notes:
+A few tool-specific notes:
 - The formatted string must be derived from the tool call struct only, not from file contents on disk.
 - Because context lines are not present in the tool call, do not display context lines.
 - `replace_all` does not show multiple diffs in the same file. Instead, show one diff and a note in the first line (`• Edit some/file.go (replace all)`).
-- `write` formatting is the same as with `apply_patch` (display as `• Add some/file.go`, along with the added lines).
+- `write` displays as `• Add some/file.go`, along with the added lines.
 
 ### EventTypeToolCall and EventTypeToolComplete - other unhandled tools
 
