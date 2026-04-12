@@ -123,11 +123,12 @@ type Diff struct {
 func (Diff) isBlock() {}
 
 type DiffEdit struct {
-	Kind    DiffEditKind
-	OldPath string     // OldPath is the source path for edits, deletes, and renames. It may be empty for newly added files.
-	NewPath string     // NewPath is the destination path for adds and renames. It may be empty for deleted files.
-	Lines   []DiffLine // Lines are the visible diff lines. Presentations that suppress hunk anchors can still model the changed lines semantically here.
-	Error   *Line      // If this edit resulted in an error, Error should be set and describe the error.
+	Kind       DiffEditKind
+	OldPath    string     // OldPath is the source path for edits, deletes, and renames. It may be empty for newly added files.
+	NewPath    string     // NewPath is the destination path for adds and renames. It may be empty for deleted files.
+	ReplaceAll bool       // ReplaceAll indicates the edit semantically applies to all matches in the file, for UIs that surface that distinction in the header.
+	Lines      []DiffLine // Lines are the visible diff lines. Presentations that suppress hunk anchors can still model the changed lines semantically here.
+	Error      *Line      // If this edit resulted in an error, Error should be set and describe the error.
 }
 
 type DiffEditKind string

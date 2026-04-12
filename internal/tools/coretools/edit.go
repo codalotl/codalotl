@@ -48,7 +48,7 @@ func (t *toolEdit) Name() string {
 }
 
 func (t *toolEdit) Presenter() llmstream.Presenter {
-	return nil
+	return editPresenterInstance
 }
 
 func (t *toolEdit) Info() llmstream.ToolInfo {

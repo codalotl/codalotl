@@ -194,6 +194,7 @@ Example:
 ```
 
 - Use change verbs like `Add`, `Delete`, `Rename`, and `Edit` based on the semantic diff summary.
+- If a diff edit is marked `ReplaceAll`, append ` (replace all)` to the first-line header.
 - Line numbers are not shown.
 - `⋮` is accent-colored.
 - Context lines (` `) are normal; `+` lines are green; `-` lines are red.
@@ -460,16 +461,6 @@ or
 ```
 
 - NOTE: lints are not run in project tests.
-
-### EventTypeToolCall and EventTypeToolComplete - edit, write
-
-The `edit`/`write` tools produce file-change output using the shared `Diff` rendering rules above. `edit` uses a find/replace methodology.
-
-A few tool-specific notes:
-- The formatted string must be derived from the tool call struct only, not from file contents on disk.
-- Because context lines are not present in the tool call, do not display context lines.
-- `replace_all` does not show multiple diffs in the same file. Instead, show one diff and a note in the first line (`• Edit some/file.go (replace all)`).
-- `write` displays as `• Add some/file.go`, along with the added lines.
 
 ### EventTypeToolCall and EventTypeToolComplete - other unhandled tools
 

@@ -95,9 +95,10 @@ func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {
 		Body: Diff{
 			Edits: []DiffEdit{
 				{
-					Kind:    DiffEditKindRename,
-					OldPath: "some/file.go",
-					NewPath: "some/other.go",
+					Kind:       DiffEditKindRename,
+					OldPath:    "some/file.go",
+					NewPath:    "some/other.go",
+					ReplaceAll: true,
 					Lines: []DiffLine{
 						{Kind: DiffLineKindDelete, Text: "old line"},
 						{Kind: DiffLineKindAdd, Text: "new line"},
@@ -124,6 +125,7 @@ func TestPresentationModel_CanRepresentDiffEdits(t *testing.T) {
 	assert.Equal(t, DiffEditKindRename, diff.Edits[0].Kind)
 	assert.Equal(t, "some/file.go", diff.Edits[0].OldPath)
 	assert.Equal(t, "some/other.go", diff.Edits[0].NewPath)
+	assert.True(t, diff.Edits[0].ReplaceAll)
 	assert.Equal(t, []DiffLine{
 		{Kind: DiffLineKindDelete, Text: "old line"},
 		{Kind: DiffLineKindAdd, Text: "new line"},

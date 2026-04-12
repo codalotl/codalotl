@@ -94,6 +94,16 @@ func newDeleteTool(t *testing.T) llmstream.Tool {
 	return coretools.NewDeleteTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
 }
 
+func newEditTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewEditTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newWriteTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewWriteTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
 func newApplyPatchTool(t *testing.T) llmstream.Tool {
 	t.Helper()
 	return coretools.NewApplyPatchTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), true, nil)
@@ -325,7 +335,7 @@ func TestLsToolCallUsesPresenter(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(out))
 }
 
-func TestLsToolCallWithoutPresenterFallsBackToGenericFormatting(t *testing.T) {
+func TestGenericToolCallFallsBackToGenericFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -333,18 +343,18 @@ func TestLsToolCallWithoutPresenterFallsBackToGenericFormatting(t *testing.T) {
 	formatter := NewTUIFormatter(cfg)
 
 	call := llmstream.ToolCall{
-		Name:  "ls",
+		Name:  "some_tool",
 		Input: `{"path":"codeai"}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("ls"),
+		Tool:     testTool("some_tool"),
 		ToolCall: &call,
 	}
 
 	out := formatter.FormatEvent(event, 120)
 	require.NotEmpty(t, out)
-	assert.Equal(t, `• Tool ls {"path":"codeai"}`, stripANSI(out))
+	assert.Equal(t, `• Tool some_tool {"path":"codeai"}`, stripANSI(out))
 }
 
 func TestToolCallShellFormatting(t *testing.T) {
@@ -1974,7 +1984,7 @@ func TestApplyPatchLinesSanitized(t *testing.T) {
 	assert.NotContains(t, cliOut, "\t")
 	assert.NotContains(t, cliOut, ctrlC)
 }
-func TestEditToolCallFormattingReplaceAll(t *testing.T) {
+func TestEditToolCallUsesPresenterAndKeepsReplaceAllUX(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -1986,7 +1996,7 @@ func TestEditToolCallFormattingReplaceAll(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("edit"),
+		Tool:     newEditTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
@@ -2000,7 +2010,7 @@ func TestEditToolCallFormattingReplaceAll(t *testing.T) {
 	assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
 	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
 }
-func TestWriteToolCallFormatting(t *testing.T) {
+func TestWriteToolCallUsesPresenterAndKeepsUX(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -2012,7 +2022,7 @@ func TestWriteToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("write"),
+		Tool:     newWriteTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
@@ -2154,7 +2164,7 @@ func TestEditToolCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("edit"),
+		Tool:       newEditTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}

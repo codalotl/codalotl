@@ -45,7 +45,7 @@ func (t *toolWrite) Name() string {
 }
 
 func (t *toolWrite) Presenter() llmstream.Presenter {
-	return nil
+	return writePresenterInstance
 }
 
 func (t *toolWrite) Info() llmstream.ToolInfo {

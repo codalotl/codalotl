@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestToolsWithoutPresentersReturnNil(t *testing.T) {
+func TestEditAndWriteToolsExposePresenters(t *testing.T) {
 	sandbox := t.TempDir()
 	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
 
@@ -21,8 +21,107 @@ func TestToolsWithoutPresentersReturnNil(t *testing.T) {
 	}
 
 	for _, tool := range tools {
-		assert.Nil(t, tool.Presenter())
+		assert.NotNil(t, tool.Presenter())
 	}
+}
+
+func TestEditPresenter(t *testing.T) {
+	tool := NewEditTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameEdit,
+		Input: `{"file_path":"foo/bar.go","old_string":"old line","new_string":"new line","replace_all":true}`,
+	}
+	result := &llmstream.ToolResult{Name: ToolNameEdit, Result: "Edited file: foo/bar.go"}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
+	assert.Equal(t, llmstream.ErrorBehaviorDefault, callPresentation.ErrorBehavior)
+	assert.Equal(t, callPresentation, resultPresentation)
+	assert.Nil(t, callPresentation.Summary.Segments)
+
+	diff, ok := callPresentation.Body.(llmstream.Diff)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Diff{
+		Edits: []llmstream.DiffEdit{{
+			Kind:       llmstream.DiffEditKindEdit,
+			OldPath:    "foo/bar.go",
+			ReplaceAll: true,
+			Lines: []llmstream.DiffLine{
+				{Kind: llmstream.DiffLineKindDelete, Text: "old line"},
+				{Kind: llmstream.DiffLineKindAdd, Text: "new line"},
+			},
+		}},
+	}, diff)
+}
+
+func TestEditPresenter_ErrorOwnsErrorLine(t *testing.T) {
+	tool := NewEditTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	presentation := presenter.Present(llmstream.ToolCall{
+		Name:  ToolNameEdit,
+		Input: `{"path":"foo/bar.go","old_text":"old line","new_text":"new line"}`,
+	}, &llmstream.ToolResult{
+		Name:    ToolNameEdit,
+		Result:  "replace failed",
+		IsError: true,
+	})
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, llmstream.ErrorBehaviorPresenterOwned, presentation.ErrorBehavior)
+	assert.Nil(t, presentation.Summary.Segments)
+
+	diff, ok := presentation.Body.(llmstream.Diff)
+	require.True(t, ok)
+	require.Len(t, diff.Edits, 1)
+	require.NotNil(t, diff.Edits[0].Error)
+	assert.Equal(t, llmstream.Line{
+		Segments: []llmstream.Segment{
+			{Text: "Error: replace failed", Role: llmstream.RoleError},
+		},
+	}, *diff.Edits[0].Error)
+}
+
+func TestWritePresenter(t *testing.T) {
+	tool := NewWriteTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameWrite,
+		Input: `{"path":"foo/new.txt","content":"first line\nsecond line"}`,
+	}
+	result := &llmstream.ToolResult{Name: ToolNameWrite, Result: "Wrote file: foo/new.txt"}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
+	assert.Equal(t, llmstream.ErrorBehaviorDefault, callPresentation.ErrorBehavior)
+	assert.Equal(t, callPresentation, resultPresentation)
+	assert.Nil(t, callPresentation.Summary.Segments)
+
+	diff, ok := callPresentation.Body.(llmstream.Diff)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Diff{
+		Edits: []llmstream.DiffEdit{{
+			Kind:    llmstream.DiffEditKindAdd,
+			NewPath: "foo/new.txt",
+			Lines: []llmstream.DiffLine{
+				{Kind: llmstream.DiffLineKindAdd, Text: "first line"},
+				{Kind: llmstream.DiffLineKindAdd, Text: "second line"},
+			},
+		}},
+	}, diff)
 }
 
 func TestApplyPatchPresenter(t *testing.T) {

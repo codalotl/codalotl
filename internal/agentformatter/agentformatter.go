@@ -708,10 +708,6 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiRunTestsToolCall(e, width)
 	case "run_project_tests":
 		return f.tuiRunProjectTestsToolCall(e, width)
-	case "edit":
-		return f.tuiEditToolCall(e, width)
-	case "write":
-		return f.tuiWriteToolCall(e, width)
 	case "update_usage":
 		return f.tuiUpdateUsageToolCall(e, width)
 	case "change_api":
@@ -755,10 +751,6 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliRunTestsToolCall(e)
 	case "run_project_tests":
 		return f.cliRunProjectTestsToolCall(e)
-	case "edit":
-		return f.cliEditToolCall(e)
-	case "write":
-		return f.cliWriteToolCall(e)
 	case "update_usage":
 		return f.cliUpdateUsageToolCall(e)
 	case "change_api":
@@ -864,10 +856,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
-	case "edit":
-		return f.tuiEditToolComplete(e, width, success, cmd, outputLines)
-	case "write":
-		return f.tuiWriteToolComplete(e, width, success, cmd, outputLines)
 	case "shell":
 		return f.tuiShellToolComplete(e, width, success, cmd, outputLines)
 	case "diagnostics":
@@ -934,10 +922,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 
 	success, cmd, outputLines := f.parseToolResult(e)
 	switch normalizedToolName(e) {
-	case "edit":
-		return f.cliEditToolComplete(e, success, cmd, outputLines)
-	case "write":
-		return f.cliWriteToolComplete(e, success, cmd, outputLines)
 	case "shell":
 		return f.cliShellToolComplete(e, success, cmd, outputLines)
 	case "diagnostics":
