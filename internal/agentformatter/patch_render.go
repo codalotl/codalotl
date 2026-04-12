@@ -7,7 +7,6 @@ import (
 	"unicode"
 
 	"github.com/codalotl/codalotl/internal/agent"
-	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
@@ -44,32 +43,6 @@ type patchLine struct {
 	text   string
 }
 
-func (f *textTUIFormatter) tuiApplyPatchToolCall(e agent.Event, width int) string {
-	changes, err := extractApplyPatchChanges(e.ToolCall)
-	if err != nil || len(changes) == 0 {
-		return f.tuiGenericToolCall(e, width)
-	}
-	var builder strings.Builder
-	for idx, change := range changes {
-		if idx > 0 {
-			builder.WriteByte('\n')
-		}
-		f.renderApplyPatchChangeTUI(&builder, width, colorAccent, change, nil)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliApplyPatchToolCall(e agent.Event) string {
-	changes, err := extractApplyPatchChanges(e.ToolCall)
-	if err != nil || len(changes) == 0 {
-		return f.cliGenericToolCall(e)
-	}
-	var sections []string
-	for _, change := range changes {
-		sections = append(sections, f.renderApplyPatchChangeCLI(colorAccent, change, nil))
-	}
-	return strings.Join(sections, "\n")
-}
 func (f *textTUIFormatter) tuiEditToolCall(e agent.Event, width int) string {
 	change, err := extractEditChange(e.ToolCall)
 	if err != nil {
@@ -103,56 +76,6 @@ func (f *textTUIFormatter) cliWriteToolCall(e agent.Event) string {
 	return f.renderApplyPatchChangeCLI(colorAccent, change, nil)
 }
 
-func (f *textTUIFormatter) tuiApplyPatchToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
-	if e.ToolResult != nil && applypatch.IsInvalidPatch(e.ToolResult.SourceErr) {
-		return f.tuiApplyPatchToolCompleteInvalidPatch(e, width)
-	}
-
-	changes, err := extractApplyPatchChanges(e.ToolCall)
-	if err != nil || len(changes) == 0 {
-		return f.tuiGenericToolComplete(e, width, success, "", output)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var builder strings.Builder
-	for idx, change := range changes {
-		if idx > 0 {
-			builder.WriteByte('\n')
-		}
-		var tail []toolOutputLine
-		if !success && idx == len(changes)-1 {
-			tail = output
-		}
-		f.renderApplyPatchChangeTUI(&builder, width, bullet, change, tail)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliApplyPatchToolComplete(e agent.Event, success bool, _ string, output []toolOutputLine) string {
-	if e.ToolResult != nil && applypatch.IsInvalidPatch(e.ToolResult.SourceErr) {
-		return f.cliApplyPatchToolCompleteInvalidPatch(e)
-	}
-
-	changes, err := extractApplyPatchChanges(e.ToolCall)
-	if err != nil || len(changes) == 0 {
-		return f.cliGenericToolComplete(e, success, "", output)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var sections []string
-	for idx, change := range changes {
-		var tail []toolOutputLine
-		if !success && idx == len(changes)-1 {
-			tail = output
-		}
-		sections = append(sections, f.renderApplyPatchChangeCLI(bullet, change, tail))
-	}
-	return strings.Join(sections, "\n")
-}
 func (f *textTUIFormatter) tuiEditToolComplete(e agent.Event, width int, success bool, _ string, output []toolOutputLine) string {
 	change, err := extractEditChange(e.ToolCall)
 	if err != nil {
@@ -216,76 +139,6 @@ func (f *textTUIFormatter) cliWriteToolComplete(e agent.Event, success bool, _ s
 		tail = output
 	}
 	return f.renderApplyPatchChangeCLI(bullet, change, tail)
-}
-
-func (f *textTUIFormatter) tuiApplyPatchToolCompleteInvalidPatch(e agent.Event, width int) string {
-	changes := bestEffortApplyPatchChanges(e.ToolCall)
-	if len(changes) == 0 {
-		var builder strings.Builder
-		builder.WriteString(f.tuiBulletLine(width, colorRed,
-			textSegment{text: "Apply Patch", style: runeStyle{color: colorColorful, bold: true}},
-		))
-		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
-			text:          "Failed: LLM supplied an invalid patch.",
-			style:         runeStyle{color: colorAccent},
-			highlightCode: false,
-		}})
-		return builder.String()
-	}
-
-	for i := range changes {
-		changes[i].lines = nil
-	}
-
-	var builder strings.Builder
-	for idx, change := range changes {
-		if idx > 0 {
-			builder.WriteByte('\n')
-		}
-		var tail []toolOutputLine
-		if idx == len(changes)-1 {
-			tail = []toolOutputLine{{
-				text:          "Failed: LLM supplied an invalid patch.",
-				style:         runeStyle{color: colorAccent},
-				highlightCode: false,
-			}}
-		}
-		f.renderApplyPatchChangeTUI(&builder, width, colorRed, change, tail)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliApplyPatchToolCompleteInvalidPatch(e agent.Event) string {
-	changes := bestEffortApplyPatchChanges(e.ToolCall)
-	if len(changes) == 0 {
-		lines := []string{
-			f.cliBulletLine(colorRed, textSegment{text: "Apply Patch", style: runeStyle{color: colorColorful, bold: true}}),
-		}
-		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
-			text:          "Failed: LLM supplied an invalid patch.",
-			style:         runeStyle{color: colorAccent},
-			highlightCode: false,
-		}})...)
-		return strings.Join(lines, "\n")
-	}
-
-	for i := range changes {
-		changes[i].lines = nil
-	}
-
-	var sections []string
-	for idx, change := range changes {
-		var tail []toolOutputLine
-		if idx == len(changes)-1 {
-			tail = []toolOutputLine{{
-				text:          "Failed: LLM supplied an invalid patch.",
-				style:         runeStyle{color: colorAccent},
-				highlightCode: false,
-			}}
-		}
-		sections = append(sections, f.renderApplyPatchChangeCLI(colorRed, change, tail))
-	}
-	return strings.Join(sections, "\n")
 }
 
 func (f *textTUIFormatter) renderApplyPatchChangeTUI(builder *strings.Builder, width int, bullet colorRole, change patchChange, extra []toolOutputLine) {
@@ -486,73 +339,6 @@ func accentLineNumbers(runes []styledRune) {
 	}
 }
 
-func extractApplyPatchChanges(call *llmstream.ToolCall) ([]patchChange, error) {
-	source, ok := extractApplyPatchSource(call)
-	if !ok {
-		return nil, fmt.Errorf("no patch input")
-	}
-	return parseApplyPatch(source)
-}
-
-func extractApplyPatchSource(call *llmstream.ToolCall) (string, bool) {
-	if call == nil {
-		return "", false
-	}
-	input := strings.TrimSpace(call.Input)
-	if input == "" {
-		return "", false
-	}
-
-	var payload struct {
-		Patch string `json:"patch"`
-	}
-	if err := json.Unmarshal([]byte(input), &payload); err == nil {
-		if patch := strings.TrimSpace(payload.Patch); patch != "" {
-			return patch, true
-		}
-	}
-	return input, true
-}
-
-func bestEffortApplyPatchChanges(call *llmstream.ToolCall) []patchChange {
-	source, ok := extractApplyPatchSource(call)
-	if !ok {
-		return nil
-	}
-	source = strings.ReplaceAll(source, "\r\n", "\n")
-	lines := strings.Split(source, "\n")
-
-	var changes []patchChange
-	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-		switch {
-		case strings.HasPrefix(line, "*** Add File: "):
-			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Add File: "))
-			if path == "" {
-				continue
-			}
-			changes = append(changes, patchChange{kind: patchChangeAdd, path: path})
-		case strings.HasPrefix(line, "*** Delete File: "):
-			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Delete File: "))
-			if path == "" {
-				continue
-			}
-			changes = append(changes, patchChange{kind: patchChangeDelete, path: path})
-		case strings.HasPrefix(line, "*** Update File: "):
-			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Update File: "))
-			if path == "" {
-				continue
-			}
-			toPath := ""
-			if i+1 < len(lines) && strings.HasPrefix(lines[i+1], "*** Move to: ") {
-				toPath = strings.TrimSpace(strings.TrimPrefix(lines[i+1], "*** Move to: "))
-			}
-			changes = append(changes, patchChange{kind: patchChangeEdit, path: path, toPath: toPath})
-		}
-	}
-	return changes
-}
-
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -638,138 +424,6 @@ func extractWriteChange(call *llmstream.ToolCall) (patchChange, error) {
 		path:  sanitizeText(path),
 		lines: lines,
 	}, nil
-}
-func parseApplyPatch(input string) ([]patchChange, error) {
-	normalized := strings.ReplaceAll(input, "\r\n", "\n")
-	lines := strings.Split(normalized, "\n")
-	i := 0
-	for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
-		i++
-	}
-	if i >= len(lines) || strings.TrimSpace(lines[i]) != "*** Begin Patch" {
-		return nil, fmt.Errorf("missing begin marker")
-	}
-	i++
-
-	var changes []patchChange
-
-	for i < len(lines) {
-		line := lines[i]
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			i++
-			continue
-		}
-		if trimmed == "*** End Patch" {
-			break
-		}
-
-		switch {
-		case strings.HasPrefix(line, "*** Add File: "):
-			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Add File: "))
-			i++
-			var patchLines []patchLine
-			// Treat all following lines as additions until we hit another header.
-			// Per grammar, add hunks are '+' lines; we also tolerate blank lines.
-			newLine := 1
-		forAdd:
-			for i < len(lines) {
-				cur := lines[i]
-				if strings.HasPrefix(cur, "***") {
-					break
-				}
-				switch {
-				case cur == "":
-					patchLines = append(patchLines, patchLine{kind: patchLineContext, prefix: " ", text: ""})
-					newLine++
-					i++
-				case cur[0] == '+':
-					patchLines = append(patchLines, patchLine{kind: patchLineAdd, prefix: "+", text: cur[1:]})
-					newLine++
-					i++
-				default:
-					// Stop if we encounter a non-add line (defensive).
-					break forAdd
-				}
-			}
-			patchLines = cleanPatchLines(patchLines)
-			changes = append(changes, patchChange{
-				kind:  patchChangeAdd,
-				path:  path,
-				lines: patchLines,
-			})
-		case strings.HasPrefix(line, "*** Delete File: "):
-			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Delete File: "))
-			changes = append(changes, patchChange{
-				kind: patchChangeDelete,
-				path: path,
-			})
-			i++
-		case strings.HasPrefix(line, "*** Update File: "):
-			path := strings.TrimSpace(strings.TrimPrefix(line, "*** Update File: "))
-			i++
-			moveTo := ""
-			if i < len(lines) && strings.HasPrefix(lines[i], "*** Move to: ") {
-				moveTo = strings.TrimSpace(strings.TrimPrefix(lines[i], "*** Move to: "))
-				i++
-			}
-			var patchLines []patchLine
-			// We hide hunk headers (lines starting with @@). Track them only to
-			// insert a visual gap between hunks (⋮), but never at the very start.
-			havePrintedLines := false
-			for i < len(lines) {
-				cur := lines[i]
-				switch {
-				case strings.HasPrefix(cur, "***"):
-					goto finishUpdate
-				case strings.HasPrefix(cur, "@@"):
-					// Only add a gap if we already showed lines from a previous hunk.
-					if havePrintedLines && (len(patchLines) == 0 || patchLines[len(patchLines)-1].kind != patchLineGap) {
-						patchLines = append(patchLines, patchLine{kind: patchLineGap, text: "⋮"})
-					}
-					i++
-				case strings.TrimSpace(cur) == "*** End of File":
-					i++
-				case cur == "":
-					patchLines = append(patchLines, patchLine{kind: patchLineContext, prefix: " ", text: ""})
-					havePrintedLines = true
-					i++
-				default:
-					switch cur[0] {
-					case '+':
-						patchLines = append(patchLines, patchLine{kind: patchLineAdd, prefix: "+", text: cur[1:]})
-					case '-':
-						patchLines = append(patchLines, patchLine{kind: patchLineRemove, prefix: "-", text: cur[1:]})
-					case ' ':
-						patchLines = append(patchLines, patchLine{kind: patchLineContext, prefix: " ", text: cur[1:]})
-					default:
-						patchLines = append(patchLines, patchLine{kind: patchLineContext, prefix: " ", text: cur})
-					}
-					havePrintedLines = true
-					i++
-				}
-			}
-		finishUpdate:
-			patchLines = cleanPatchLines(patchLines)
-			kind := patchChangeEdit
-			if moveTo != "" && len(patchLines) == 0 {
-				kind = patchChangeRenameOnly
-			}
-			changes = append(changes, patchChange{
-				kind:   kind,
-				path:   path,
-				toPath: moveTo,
-				lines:  patchLines,
-			})
-		default:
-			i++
-		}
-	}
-
-	if len(changes) == 0 {
-		return nil, fmt.Errorf("no patch hunks")
-	}
-	return changes, nil
 }
 
 func cleanPatchLines(lines []patchLine) []patchLine {
