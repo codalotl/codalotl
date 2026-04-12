@@ -94,12 +94,12 @@ Currently, only "presets" are supported (in the future, we can add a more genera
 This preset is used for Q and A calls, where a subagent is invoked with a "question" and returns an "answer". It might be displayed in the TUI as:
 
 ```
-• Implementing in path/to/pkg
-  └ Add a feature that...
+• Investigating in path/to/pkg
+  └ Find out..
     Also don't forget to...
   • (... various subagent events ...)
-• Implemented in path/to/pkg
-  └ I finished adding the..
+• Investigated in path/to/pkg
+  └ I found...
     I did not forget to...
 ```
 
@@ -109,17 +109,17 @@ Example YAML config:
 presenter:
   preset:
     name: subagent_q_and_a
-    call_action: Implementing
-    result_action: Implemented
+    call_action: Investigating
+    result_action: Investigated
     summary_items:
       - text: in
       - param: path
     call_body: instructions
-    result_body: result.last_message
+    result_body: result
 ```
 
 Notes:
-- Behavior is always `CompletionBehaviorAppend`.
+- Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
 - The summary line is always joined with spaces.
 - `call_action` and `result_action` are required. The verb used in the summary line (`RoleAction`).
 - `summary_items` is an optional array of objects. Added after the verb.
