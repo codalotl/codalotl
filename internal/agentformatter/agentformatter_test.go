@@ -13,6 +13,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/coretools"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,6 +78,11 @@ func presentedReplaceSummaryWithBody(action, target string, body ...llmstream.Bl
 	presentation := presentedReplaceSummary(action, target)
 	presentation.Body = body
 	return presentation
+}
+
+func newUpdatePlanTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewUpdatePlanTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
 }
 
 func TestAgentMessageTableDriven(t *testing.T) {
@@ -594,12 +600,13 @@ func TestPresentedToolCompleteErrorStillUsesSharedErrorFormatting(t *testing.T) 
 	})
 }
 
-func TestPresentedToolCompleteSemanticUpdatePlanBodyMatchesDedicatedFormatting(t *testing.T) {
+func TestPresentedUpdatePlanMatchesExpectedFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	formatter := NewTUIFormatter(cfg)
+	tool := newUpdatePlanTool(t)
 
 	explanation := "Need to align CodeUnit authorizer with updated SPEC behavior for read-only restrictions and adjust tests accordingly."
 	stepDone := "Inspect SPEC changes and current CodeUnit authorizer implementation"
@@ -614,69 +621,45 @@ func TestPresentedToolCompleteSemanticUpdatePlanBodyMatchesDedicatedFormatting(t
   ]
 }`
 
-	presenter := staticPresenter{
-		call: presentedReplaceSummary("Update Plan", ""),
-		complete: presentedReplaceSummaryWithBody(
-			"Update Plan",
-			"",
-			llmstream.Paragraph{
-				Lines: []llmstream.Line{{
-					Segments: []llmstream.Segment{{Text: explanation, Role: llmstream.RoleAccent}},
-				}},
-			},
-			llmstream.Checklist{
-				Items: []llmstream.ChecklistItem{
-					{
-						Status: llmstream.ChecklistStatusCompleted,
-						Line: llmstream.Line{
-							Segments: []llmstream.Segment{{Text: stepDone, Role: llmstream.RoleAccent}},
-						},
-					},
-					{
-						Status: llmstream.ChecklistStatusInProgress,
-						Line: llmstream.Line{
-							Segments: []llmstream.Segment{{Text: stepDoing, Role: llmstream.RoleAction}},
-						},
-					},
-					{
-						Status: llmstream.ChecklistStatusPending,
-						Line: llmstream.Line{
-							Segments: []llmstream.Segment{{Text: stepTodo, Role: llmstream.RoleAccent}},
-						},
-					},
-				},
-			},
-		),
-	}
-
 	call := llmstream.ToolCall{
 		Name:  "update_plan",
 		Input: input,
 	}
-	result := llmstream.ToolResult{
-		Result:  `{"success":true}`,
-		IsError: false,
+
+	callEvent := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     tool,
+		ToolCall: &call,
+	}
+	completeEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       tool,
+		ToolCall:   &call,
+		ToolResult: &llmstream.ToolResult{Result: `{"success":true}`},
 	}
 
-	presentedEvent := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       testToolWithPresenter("update_plan", presenter),
-		ToolCall:   &call,
-		ToolResult: &result,
-	}
-	explicitEvent := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("update_plan"),
-		ToolCall:   &call,
-		ToolResult: &result,
+	expected := []string{
+		"• Update Plan",
+		"  └ " + explanation,
+		"    ✔ " + stepDone,
+		"    □ " + stepDoing,
+		"    □ " + stepTodo,
 	}
 
-	t.Run("tui", func(t *testing.T) {
-		assert.Equal(t, formatter.FormatEvent(explicitEvent, 400), formatter.FormatEvent(presentedEvent, 400))
+	t.Run("call tui", func(t *testing.T) {
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(callEvent, 400)), "\n"))
 	})
 
-	t.Run("cli", func(t *testing.T) {
-		assert.Equal(t, formatter.FormatEvent(explicitEvent, MinTerminalWidth), formatter.FormatEvent(presentedEvent, MinTerminalWidth))
+	t.Run("call cli", func(t *testing.T) {
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)), "\n"))
+	})
+
+	t.Run("complete tui", func(t *testing.T) {
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, 400)), "\n"))
+	})
+
+	t.Run("complete cli", func(t *testing.T) {
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)), "\n"))
 	})
 }
 
@@ -1807,7 +1790,7 @@ func TestUpdatePlanCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("update_plan"),
+		Tool:     newUpdatePlanTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 400)
@@ -1854,7 +1837,7 @@ func TestUpdatePlanCompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("update_plan"),
+		Tool:       newUpdatePlanTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1885,7 +1868,7 @@ func TestUpdatePlanNoExplanationStartsWithFirstItem(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("update_plan"),
+		Tool:     newUpdatePlanTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 80)

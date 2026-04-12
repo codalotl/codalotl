@@ -72,6 +72,90 @@ type updatePlanParams struct {
 	Plan        []updatePlanItem `json:"plan"`
 }
 
+var updatePlanPresenterInstance llmstream.Presenter = updatePlanPresenter{}
+
+type updatePlanPresenter struct{}
+
+func (p updatePlanPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	presentation := llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Update Plan", Role: llmstream.RoleAction},
+			},
+		},
+	}
+
+	var params updatePlanParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
+		return presentation
+	}
+
+	presentation.Body = updatePlanPresenterBody(params)
+	if result == nil {
+		return presentation
+	}
+
+	return presentation
+}
+
+func updatePlanPresenterBody(params updatePlanParams) []llmstream.Block {
+	body := make([]llmstream.Block, 0, 2)
+
+	if strings.TrimSpace(params.Explanation) != "" {
+		body = append(body, llmstream.Paragraph{
+			Lines: []llmstream.Line{{
+				Segments: []llmstream.Segment{
+					{Text: params.Explanation, Role: llmstream.RoleAccent},
+				},
+			}},
+		})
+	}
+
+	items := make([]llmstream.ChecklistItem, 0, len(params.Plan))
+	nextUpIndex := updatePlanNextUpIndex(params.Plan)
+	for i, item := range params.Plan {
+		role := llmstream.RoleAccent
+		if i == nextUpIndex || item.Status == "in_progress" {
+			role = llmstream.RoleAction
+		}
+
+		items = append(items, llmstream.ChecklistItem{
+			Status: updatePlanChecklistStatus(item.Status),
+			Line: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: item.Step, Role: role},
+				},
+			},
+		})
+	}
+	if len(items) > 0 {
+		body = append(body, llmstream.Checklist{Items: items})
+	}
+
+	return body
+}
+
+func updatePlanNextUpIndex(plan []updatePlanItem) int {
+	for i, item := range plan {
+		if item.Status != "completed" {
+			return i
+		}
+	}
+	return -1
+}
+
+func updatePlanChecklistStatus(status string) llmstream.ChecklistStatus {
+	switch status {
+	case "completed":
+		return llmstream.ChecklistStatusCompleted
+	case "in_progress":
+		return llmstream.ChecklistStatusInProgress
+	default:
+		return llmstream.ChecklistStatusPending
+	}
+}
+
 func (t *toolUpdatePlan) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params updatePlanParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {

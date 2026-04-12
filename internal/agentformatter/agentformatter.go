@@ -433,7 +433,7 @@ func presenterCompletionErrorOutput(result *llmstream.ToolResult) ([]toolOutputL
 	return summarizeToolResult(*result), true
 }
 
-func (f *textTUIFormatter) presenterCompletionBodyLines(presentation llmstream.Presentation) []presentedBodyLine {
+func (f *textTUIFormatter) presenterBodyLines(presentation llmstream.Presentation) []presentedBodyLine {
 	var lines []presentedBodyLine
 	for _, block := range presentation.Body {
 		switch body := block.(type) {
@@ -605,7 +605,12 @@ func (f *textTUIFormatter) presentedBodyCLILines(lines []presentedBodyLine) []st
 
 func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 	if presentation, ok := presenterReplacePresentation(e); ok {
-		return f.tuiPresentedToolSummary(width, colorAccent, presentation)
+		var builder strings.Builder
+		builder.WriteString(f.tuiPresentedToolSummary(width, colorAccent, presentation))
+		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
+			f.appendPresentedBodyTUI(&builder, width, bodyLines)
+		}
+		return builder.String()
 	}
 
 	switch normalizedToolName(e) {
@@ -635,8 +640,6 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 		return f.tuiWriteToolCall(e, width)
 	case "delete":
 		return f.tuiDeleteToolCall(e, width)
-	case "update_plan":
-		return f.tuiUpdatePlanToolCall(e, width)
 	case "update_usage":
 		return f.tuiUpdateUsageToolCall(e, width)
 	case "change_api":
@@ -652,7 +655,13 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 
 func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 	if presentation, ok := presenterReplacePresentation(e); ok {
-		return f.cliPresentedToolSummary(colorAccent, presentation)
+		lines := []string{f.cliPresentedToolSummary(colorAccent, presentation)}
+		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
+			if rest := f.presentedBodyCLILines(bodyLines); len(rest) > 0 {
+				lines = append(lines, rest...)
+			}
+		}
+		return strings.Join(lines, "\n")
 	}
 
 	switch normalizedToolName(e) {
@@ -682,8 +691,6 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 		return f.cliWriteToolCall(e)
 	case "delete":
 		return f.cliDeleteToolCall(e)
-	case "update_plan":
-		return f.cliUpdatePlanToolCall(e)
 	case "update_usage":
 		return f.cliUpdateUsageToolCall(e)
 	case "change_api":
@@ -777,7 +784,7 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 			f.appendTUIToolOutput(&builder, width, errorLines)
 			return builder.String()
 		}
-		if bodyLines := f.presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
+		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
 			f.appendPresentedBodyTUI(&builder, width, bodyLines)
 		} else if !success && len(outputLines) > 0 {
 			f.appendTUIToolOutput(&builder, width, outputLines)
@@ -813,8 +820,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 		return f.tuiRunTestsToolComplete(e, width, success, cmd, outputLines)
 	case "run_project_tests":
 		return f.tuiRunProjectTestsToolComplete(e, width, success, cmd, outputLines)
-	case "update_plan":
-		return f.tuiUpdatePlanToolComplete(e, width, success, cmd, outputLines)
 	case "update_usage":
 		return f.tuiUpdateUsageToolComplete(e, width, success, cmd, outputLines)
 	case "change_api":
@@ -847,7 +852,7 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 			}
 			return strings.Join(lines, "\n")
 		}
-		if bodyLines := f.presenterCompletionBodyLines(presentation); len(bodyLines) > 0 {
+		if bodyLines := f.presenterBodyLines(presentation); len(bodyLines) > 0 {
 			if rest := f.presentedBodyCLILines(bodyLines); len(rest) > 0 {
 				lines = append(lines, rest...)
 			}
@@ -887,8 +892,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 		return f.cliRunTestsToolComplete(e, success, cmd, outputLines)
 	case "run_project_tests":
 		return f.cliRunProjectTestsToolComplete(e, success, cmd, outputLines)
-	case "update_plan":
-		return f.cliUpdatePlanToolComplete(e, success, cmd, outputLines)
 	case "update_usage":
 		return f.cliUpdateUsageToolComplete(e, success, cmd, outputLines)
 	case "change_api":
@@ -3265,153 +3268,6 @@ func (f *textTUIFormatter) cliImplementToolComplete(e agent.Event, success bool,
 	lines := []string{f.cliBulletLine(bullet, implementHeaderSegments("Implemented", path)...)}
 	if rest := f.cliToolOutputLines(summarizeImplementToolResult(e.ToolResult)); len(rest) > 0 {
 		lines = append(lines, rest...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// updatePlanItem mirrors the structure returned by the update_plan tool.
-type updatePlanItem struct {
-	Step   string `json:"step"`
-	Status string `json:"status"` // "pending", "in_progress", "completed"
-}
-
-// extractUpdatePlan extracts the explanation and plan items from an update_plan ToolCall.
-func extractUpdatePlan(call *llmstream.ToolCall) (string, []updatePlanItem, bool) {
-	if call == nil {
-		return "", nil, false
-	}
-	// Accept either direct JSON or other content; we only handle JSON shape here.
-	var payload struct {
-		Explanation string           `json:"explanation"`
-		Plan        []updatePlanItem `json:"plan"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
-		return "", nil, false
-	}
-	// It's ok if explanation is blank; as long as we have a plan.
-	if len(payload.Plan) == 0 && strings.TrimSpace(payload.Explanation) == "" {
-		return "", nil, false
-	}
-	return strings.TrimSpace(payload.Explanation), payload.Plan, true
-}
-
-// updatePlanLines converts explanation/plan into toolOutputLine rows suitable for TUI/CLI append functions.
-func (f *textTUIFormatter) updatePlanLines(explanation string, plan []updatePlanItem) []toolOutputLine {
-	lines := make([]toolOutputLine, 0, 1+len(plan))
-	exp := strings.TrimSpace(explanation)
-	if exp != "" {
-		lines = append(lines, toolOutputLine{
-			text:          exp,
-			style:         runeStyle{color: colorAccent},
-			highlightCode: true,
-		})
-	}
-	// Identify first uncompleted index.
-	firstUncompleted := -1
-	for i, it := range plan {
-		if strings.ToLower(strings.TrimSpace(it.Status)) != "completed" {
-			firstUncompleted = i
-			break
-		}
-	}
-	for i, it := range plan {
-		label := strings.TrimSpace(it.Step)
-		if label == "" {
-			continue
-		}
-		box := "□"
-		status := strings.ToLower(strings.TrimSpace(it.Status))
-		if status == "completed" {
-			box = "✔"
-		}
-		text := box + " " + label
-		// Default styling for plan items.
-		style := runeStyle{color: colorAccent}
-		// Highlight the next step (first uncompleted) using Colorful.
-		if firstUncompleted == i {
-			style.color = colorColorful
-		}
-		// If this step is explicitly in progress, make it bold and colorful.
-		if status == "in_progress" {
-			style.color = colorColorful
-			style.bold = true
-		}
-		lines = append(lines, toolOutputLine{
-			text:          text,
-			style:         style,
-			highlightCode: true,
-		})
-	}
-	return lines
-}
-
-func (f *textTUIFormatter) tuiUpdatePlanToolCall(e agent.Event, width int) string {
-	expl, plan, ok := extractUpdatePlan(e.ToolCall)
-	if !ok {
-		// Fallback
-		return f.tuiGenericToolCall(e, width)
-	}
-	segments := []textSegment{
-		{text: "Update Plan", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, colorAccent, segments...))
-	lines := f.updatePlanLines(expl, plan)
-	f.appendTUIToolOutput(&builder, width, lines)
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliUpdatePlanToolCall(e agent.Event) string {
-	expl, plan, ok := extractUpdatePlan(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolCall(e)
-	}
-	segments := []textSegment{
-		{text: "Update Plan", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	lines := []string{f.cliBulletLine(colorAccent, segments...)}
-	output := f.cliToolOutputLines(f.updatePlanLines(expl, plan))
-	if len(output) > 0 {
-		lines = append(lines, output...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (f *textTUIFormatter) tuiUpdatePlanToolComplete(e agent.Event, width int, success bool, _ string, _ []toolOutputLine) string {
-	expl, plan, ok := extractUpdatePlan(e.ToolCall)
-	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, "", nil)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	segments := []textSegment{
-		{text: "Update Plan", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, bullet, segments...))
-	lines := f.updatePlanLines(expl, plan)
-	f.appendTUIToolOutput(&builder, width, lines)
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliUpdatePlanToolComplete(e agent.Event, success bool, _ string, _ []toolOutputLine) string {
-	expl, plan, ok := extractUpdatePlan(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolComplete(e, success, "", nil)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	segments := []textSegment{
-		{text: "Update Plan", style: runeStyle{color: colorColorful, bold: true}},
-	}
-	lines := []string{f.cliBulletLine(bullet, segments...)}
-	output := f.cliToolOutputLines(f.updatePlanLines(expl, plan))
-	if len(output) > 0 {
-		lines = append(lines, output...)
 	}
 	return strings.Join(lines, "\n")
 }

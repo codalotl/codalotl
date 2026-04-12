@@ -18,7 +18,6 @@ func TestToolsWithoutPresentersReturnNil(t *testing.T) {
 		NewApplyPatchTool(auth, true, nil),
 		NewDeleteTool(auth),
 		NewEditTool(auth),
-		NewUpdatePlanTool(auth),
 		NewWriteTool(auth),
 	}
 
