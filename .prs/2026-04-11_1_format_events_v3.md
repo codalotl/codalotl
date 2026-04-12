@@ -232,11 +232,23 @@ phase 6: tbd, don't start yet
 - Add a replace-style presenter for `delete` that preserves the current `Delete <path>` summary and shared formatter-owned error handling.
 - Add focused `internal/tools/coretools` coverage for presenter and fallback behavior.
 
-### Phase 4 - internal/tools/coretools: remaining core tools
+### [DONE] Phase 4 - internal/tools/coretools: apply_patch
 
-- Migrate `apply_patch`, `edit`, and `write` one tool at a time, with one implementation commit per tool.
-- Move each migrated tool's formatting contract into `internal/tools/coretools/SPEC.md`.
-- Add focused presenter coverage per migrated tool; keep formatter cleanup separate.
+- Move `apply_patch` formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add a replace-style presenter that renders semantic `Diff` bodies so formatter-owned diff rendering drives add/edit/delete/rename headers and hunks.
+- Keep shared formatter ownership of out-of-package handling and shared tool-error rendering; add focused presenter coverage around patch parsing and fallback behavior.
+
+### [DONE] Phase 4 - internal/tools/coretools: edit
+
+- Move `edit` formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add a replace-style presenter that renders the requested file edit as a semantic `Diff`, including replace-all and post-edit error details.
+- Keep shared formatter-owned diff rendering and shared tool-error/out-of-package behavior; add focused presenter coverage.
+
+### [DONE] Phase 4 - internal/tools/coretools: write
+
+- Move `write` formatting contract into `internal/tools/coretools/SPEC.md`.
+- Add a replace-style presenter that renders file creation/replacement as a semantic `Diff`, including post-write error details.
+- Keep shared formatter-owned diff rendering and shared tool-error/out-of-package behavior; add focused presenter coverage.
 
 ### [DONE] Phase 4 - internal/agentformatter: ls
 
@@ -249,21 +261,41 @@ phase 6: tbd, don't start yet
 - Keep focused formatter coverage for `delete`, but exercise the presenter-driven path rather than formatter-owned special casing.
 - Preserve shared tool-error and out-of-package rendering for `delete`.
 
-### Phase 4 - internal/agentformatter: remaining migrated coretools
+### [DONE] Phase 4 - internal/agentformatter: remaining migrated coretools
 
 - Remove explicit formatter branches for migrated coretools once presenter coverage is in place.
 - Preserve generic fallback behavior, out-of-package errors, and shared completion/error rendering that presenter-owned summaries still rely on.
+
+### [DONE] Phase 4 - internal/tools/exttools and internal/tools/pkgtools
+
+- Presenter adoption has expanded beyond coretools: current `exttools` and `pkgtools` tool implementations also expose non-nil presenters and formatter coverage exercises those presenter-driven summaries and bodies.
+- `internal/agentformatter` is now operating primarily as a renderer of semantic presentations rather than a registry of per-tool formatting branches.
+- Targeted validation currently passes for `internal/agentformatter`, `internal/tools/coretools`, `internal/tools/exttools`, `internal/tools/pkgtools`, and `internal/agentbuilder`.
+
+### [DONE] Phase 5 - assessment
+
+- The codebase is ahead of the PR file: all current concrete tools under `internal/tools/*` now expose presenters, and `internal/agentformatter` no longer contains explicit formatter branches for the migrated built-in tools.
+- Functional migration is effectively complete for the current built-in tool set, with presenter-owned formatting exercised by targeted tests.
+- Remaining documentation gap to decide later: `internal/tools/exttools` and `internal/tools/pkgtools` do not yet have package `SPEC.md` files, so their presenter ownership is implemented but not yet documented where the tools live.
+
+### Phase 6 - package spec follow-up (do not start yet)
+
+- Decide whether this PR should backfill terse `SPEC.md` files for `internal/tools/exttools` and `internal/tools/pkgtools` so presenter ownership is documented consistently outside `internal/agentformatter`.
+- If kept in scope, add only concise presentation guidance that matches the already-landed behavior; no implementation changes should be needed unless spec review finds mismatches.
+- Otherwise, treat the current code/test state as the end of the presenter migration for built-in tools and leave package-spec backfill to a follow-up PR.
 
 ## Learnings
 
 - `implement` targeted at `internal/tools/coretools` could not also modify `internal/agentformatter`, so Phase 3 needs separate implementation steps for the tool package and the formatter package.
 - A tool-only `update_plan` presenter pass is not usable: `internal/agentformatter` prefers presenter-owned rendering before tool-specific branches, but presenter bodies currently only render `Output` blocks. `update_plan` needs `Paragraph`/`Checklist` support first.
+- The repository has moved ahead of the PR notes: presenter implementations now exist across `coretools`, `exttools`, and `pkgtools`, so the main remaining assessment question is documentation scope rather than formatter plumbing.
 
 ## Decisions
 
 - Phase 0 is API plumbing only. Tool-owned rendering and completion-behavior changes stay out of scope until phase 1.
 - Phase 1 keeps `Presentation.Body` as `[]Block`. Current tool shapes need mixed bodies such as paragraph + checklist, and diff/output blocks fit naturally without collapsing to a single block.
 - `shell` and `skill_shell` currently share formatter behavior via normalized tool names. Their formatter cleanup likely needs to land together, or keep a temporary explicit `skill_shell` path.
+- Treat the current presenter migration as functionally complete for built-in tools even though `internal/tools/exttools` and `internal/tools/pkgtools` still lack package `SPEC.md` files; whether to backfill those specs is a separate scope decision.
 
 ## Review
 
