@@ -204,11 +204,18 @@ Phase 5: tbd, don't plan here yet
 - Preserve existing bullet/status behavior and shared output formatting conventions so `shell`/`skill_shell` show command output via their presenter bodies.
 - Add focused formatter coverage for presenter-driven completion bodies in both success and error cases.
 
+### Phase 4 - internal/agentformatter: semantic body blocks
+
+- Add presenter-body rendering for `Paragraph`, `Checklist`, and `Diff`.
+- Preserve current `update_plan` explanation/checklist emphasis semantics and current patch/edit diff styling.
+- Keep shared bullet/status and shared error handling unchanged.
+
 ### Phase 4 - internal/tools/coretools: update_plan
 
 - Move `update_plan` formatting contract into `internal/tools/coretools/SPEC.md`.
 - Add a replace-style presenter for `update_plan` that preserves the current `Update Plan` summary plus explanation/plan-item body rendering.
 - Keep shared formatter-owned bullet/status and error handling intact; add focused `internal/tools/coretools` coverage for explanation and plan-item emphasis semantics.
+- Do not wire the presenter until `internal/agentformatter` renders semantic presenter body blocks used by `update_plan`.
 
 ### Phase 4 - internal/tools/coretools: remaining core tools
 
@@ -229,6 +236,7 @@ Phase 5: tbd, don't plan here yet
 ## Learnings
 
 - `implement` targeted at `internal/tools/coretools` could not also modify `internal/agentformatter`, so Phase 3 needs separate implementation steps for the tool package and the formatter package.
+- A tool-only `update_plan` presenter pass is not usable: `internal/agentformatter` prefers presenter-owned rendering before tool-specific branches, but presenter bodies currently only render `Output` blocks. `update_plan` needs `Paragraph`/`Checklist` support first.
 
 ## Decisions
 
