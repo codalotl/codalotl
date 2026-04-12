@@ -259,30 +259,6 @@ The EventTypeToolComplete looks like this:
 - If parsing fails, fall back to normal summarized tool output/error formatting.
 - If a subagent emits assistant text that parses as the same review JSON schema, do not print that raw JSON as a separate assistant-text line; the enclosing `review` tool completion is the user-visible representation.
 
-### EventTypeToolCall and EventTypeToolComplete - implement
-
-The EventTypeToolCall looks like this:
-
-```
-• Implementing internal/agentformatter
-  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.
-```
-
-- Implementing is Bold, Colorful.
-- internal/agentformatter is normal.
-- Instructions are Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Implemented internal/agentformatter
-  └ Added focused coverage for orchestrator tool-event formatting.
-```
-
-- Implemented is Bold, Colorful.
-- internal/agentformatter is normal.
-- If the tool returns text, print it underneath in Accent.
-
 ```
 • Ran Tests ./...
   └ Failed:

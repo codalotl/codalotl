@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/agentregistry"
 	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
@@ -1045,6 +1046,50 @@ func TestBuildRegistry_PROrchestratorImplementTool_ExposesPresenter(t *testing.T
 			Lines: []string{"Added focused coverage for orchestrator tool-event formatting."},
 		},
 	}, resultPresentation)
+}
+
+func TestBuildRegistry_PROrchestratorImplementTool_FormatsWithAgentformatter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	implementTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		t.TempDir(),
+		"",
+		nil,
+	), "implement")
+	require.NotNil(t, implementTool.Presenter())
+
+	formatter := agentformatter.NewTUIFormatter(agentformatter.Config{PlainText: true})
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentformatter","instructions":"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."}`,
+	}
+
+	t.Run("tool call", func(t *testing.T) {
+		out := formatter.FormatEvent(agent.Event{
+			Type:     agent.EventTypeToolCall,
+			Tool:     implementTool,
+			ToolCall: &call,
+		}, 160)
+
+		assert.Equal(t, "• Implementing internal/agentformatter\n  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.", out)
+	})
+
+	t.Run("tool complete", func(t *testing.T) {
+		out := formatter.FormatEvent(agent.Event{
+			Type:     agent.EventTypeToolComplete,
+			Tool:     implementTool,
+			ToolCall: &call,
+			ToolResult: &llmstream.ToolResult{
+				Name:   "implement",
+				Result: "Added focused coverage for orchestrator tool-event formatting.",
+			},
+		}, 160)
+
+		assert.Equal(t, "• Implemented internal/agentformatter\n  └ Added focused coverage for orchestrator tool-event formatting.", out)
+	})
 }
 
 func TestBuildRegistry_PROrchestratorImplementTool_GenericModeImportPathResolvesTargetPackage(t *testing.T) {

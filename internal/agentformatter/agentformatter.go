@@ -708,8 +708,6 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 	switch normalizedToolName(e) {
 	case "review":
 		return f.tuiReviewToolCall(e, width)
-	case "implement":
-		return f.tuiImplementToolCall(e, width)
 	default:
 		return f.tuiGenericToolCall(e, width)
 	}
@@ -729,8 +727,6 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 	switch normalizedToolName(e) {
 	case "review":
 		return f.cliReviewToolCall(e)
-	case "implement":
-		return f.cliImplementToolCall(e)
 	default:
 		return f.cliGenericToolCall(e)
 	}
@@ -800,8 +796,6 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 	switch normalizedToolName(e) {
 	case "review":
 		return f.tuiReviewToolComplete(e, width, success, outputLines)
-	case "implement":
-		return f.tuiImplementToolComplete(e, width, success)
 	default:
 		return f.tuiGenericToolComplete(e, width, success, outputLines)
 	}
@@ -844,8 +838,6 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 	switch normalizedToolName(e) {
 	case "review":
 		return f.cliReviewToolComplete(e, success, outputLines)
-	case "implement":
-		return f.cliImplementToolComplete(e, success)
 	default:
 		return f.cliGenericToolComplete(e, success, outputLines)
 	}
@@ -1258,13 +1250,6 @@ func summarizeToolContentWithMaxLines(content string, maxLines int) []toolOutput
 	return output
 }
 
-func summarizeImplementToolResult(result *llmstream.ToolResult) []toolOutputLine {
-	if result == nil {
-		return nil
-	}
-	return summarizeToolResultWithMaxLines(*result, 0)
-}
-
 func trimEmpty(lines []string) []string {
 	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
 		lines = lines[1:]
@@ -1290,25 +1275,6 @@ func extractReview(call *llmstream.ToolCall) (base string, ok bool) {
 		return "", false
 	}
 	return base, true
-}
-
-func extractImplement(call *llmstream.ToolCall) (path string, instructions string, ok bool) {
-	if call == nil {
-		return "", "", false
-	}
-	var payload struct {
-		Path         string `json:"path"`
-		Instructions string `json:"instructions"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(call.Input)), &payload); err != nil {
-		return "", "", false
-	}
-	path = sanitizeText(strings.TrimSpace(payload.Path))
-	instructions = sanitizeText(strings.TrimSpace(payload.Instructions))
-	if path == "" {
-		return "", "", false
-	}
-	return path, instructions, true
 }
 
 func reviewHeaderSegments(verb string, base string) []textSegment {
@@ -1479,17 +1445,6 @@ func summarizeReviewToolResult(result *llmstream.ToolResult) ([]toolOutputLine, 
 	return nil, false
 }
 
-func implementHeaderSegments(verb string, path string) []textSegment {
-	segments := []textSegment{
-		{text: verb, style: runeStyle{color: colorColorful, bold: true}},
-	}
-	path = strings.TrimSpace(path)
-	if path != "" {
-		segments = append(segments, textSegment{text: " " + path})
-	}
-	return segments
-}
-
 func (f *textTUIFormatter) tuiReviewToolCall(e agent.Event, width int) string {
 	base, ok := extractReview(e.ToolCall)
 	if !ok {
@@ -1550,72 +1505,6 @@ func (f *textTUIFormatter) cliReviewToolComplete(e agent.Event, success bool, ou
 	}
 	lines := []string{f.cliBulletLine(bullet, reviewHeaderSegments("Reviewed", base)...)}
 	if rest := f.cliToolOutputLines(outputLines); len(rest) > 0 {
-		lines = append(lines, rest...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (f *textTUIFormatter) tuiImplementToolCall(e agent.Event, width int) string {
-	path, instructions, ok := extractImplement(e.ToolCall)
-	if !ok {
-		return f.tuiGenericToolCall(e, width)
-	}
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, colorAccent, implementHeaderSegments("Implementing", path)...))
-	if instructions != "" {
-		f.appendTUIToolOutput(&builder, width, []toolOutputLine{{
-			text:          instructions,
-			style:         runeStyle{color: colorAccent},
-			highlightCode: true,
-		}})
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliImplementToolCall(e agent.Event) string {
-	path, instructions, ok := extractImplement(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolCall(e)
-	}
-	lines := []string{f.cliBulletLine(colorAccent, implementHeaderSegments("Implementing", path)...)}
-	if instructions != "" {
-		lines = append(lines, f.cliToolOutputLines([]toolOutputLine{{
-			text:          instructions,
-			style:         runeStyle{color: colorAccent},
-			highlightCode: true,
-		}})...)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (f *textTUIFormatter) tuiImplementToolComplete(e agent.Event, width int, success bool) string {
-	path, _, ok := extractImplement(e.ToolCall)
-	if !ok {
-		return f.tuiGenericToolComplete(e, width, success, nil)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	var builder strings.Builder
-	builder.WriteString(f.tuiBulletLine(width, bullet, implementHeaderSegments("Implemented", path)...))
-	if lines := summarizeImplementToolResult(e.ToolResult); len(lines) > 0 {
-		f.appendTUIToolOutput(&builder, width, lines)
-	}
-	return builder.String()
-}
-
-func (f *textTUIFormatter) cliImplementToolComplete(e agent.Event, success bool) string {
-	path, _, ok := extractImplement(e.ToolCall)
-	if !ok {
-		return f.cliGenericToolComplete(e, success, nil)
-	}
-	bullet := colorGreen
-	if !success {
-		bullet = colorRed
-	}
-	lines := []string{f.cliBulletLine(bullet, implementHeaderSegments("Implemented", path)...)}
-	if rest := f.cliToolOutputLines(summarizeImplementToolResult(e.ToolResult)); len(rest) > 0 {
 		lines = append(lines, rest...)
 	}
 	return strings.Join(lines, "\n")
