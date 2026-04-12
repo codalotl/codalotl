@@ -204,7 +204,7 @@ Phase 5: tbd, don't plan here yet
 - Preserve existing bullet/status behavior and shared output formatting conventions so `shell`/`skill_shell` show command output via their presenter bodies.
 - Add focused formatter coverage for presenter-driven completion bodies in both success and error cases.
 
-### Phase 4 - internal/agentformatter: semantic body blocks
+### [DONE] Phase 4 - internal/agentformatter: semantic body blocks
 
 - Add presenter-body rendering for `Paragraph`, `Checklist`, and `Diff`.
 - Preserve current `update_plan` explanation/checklist emphasis semantics and current patch/edit diff styling.
