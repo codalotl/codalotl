@@ -29,6 +29,10 @@ type getUsageParams struct {
 	Identifier          string `json:"identifier"`
 }
 
+var getUsagePresenterInstance llmstream.Presenter = getUsagePresenter{}
+
+type getUsagePresenter struct{}
+
 func NewGetUsageTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolGetUsage{
@@ -42,7 +46,55 @@ func (t *toolGetUsage) Name() string {
 }
 
 func (t *toolGetUsage) Presenter() llmstream.Presenter {
-	return nil
+	return getUsagePresenterInstance
+}
+
+func (p getUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	presentation := pkgToolReplaceSummaryPresentation(getUsagePresenterSummary(call))
+	if result == nil {
+		return presentation
+	}
+
+	count, ok := pkgToolUsageResultCount(*result)
+	if !ok {
+		return presentation
+	}
+
+	presentation.Body = pkgToolUsageSummaryLine(count)
+	return presentation
+}
+
+func getUsagePresenterSummary(call llmstream.ToolCall) llmstream.Line {
+	pkg, identifier, ok := getUsagePresenterParams(call)
+	target := pkg
+	if !ok || target == "" {
+		target = strings.TrimSpace(call.Name)
+	}
+
+	segments := []llmstream.Segment{
+		{Text: "Read Usage", Role: llmstream.RoleAction},
+	}
+	if target != "" {
+		segments = append(segments, llmstream.Segment{Text: target, Role: llmstream.RoleNormal})
+	}
+	if identifier != "" {
+		segments = append(segments, llmstream.Segment{Text: identifier, Role: llmstream.RoleNormal})
+	}
+	return llmstream.Line{
+		JoinWithSpace: true,
+		Segments:      segments,
+	}
+}
+
+func getUsagePresenterParams(call llmstream.ToolCall) (string, string, bool) {
+	var params getUsageParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
+		return "", "", false
+	}
+
+	pkg := strings.TrimSpace(params.DefiningPackagePath)
+	identifier := strings.TrimSpace(params.Identifier)
+	return pkg, identifier, pkg != "" || identifier != ""
 }
 
 func (t *toolGetUsage) Info() llmstream.ToolInfo {

@@ -116,6 +116,46 @@ func TestPresentationModel_CanRepresentAppendPresentationWithOutputBody(t *testi
 	assert.Equal(t, []string{"What does SomeIdentifier return?"}, output.Lines)
 }
 
+func TestPresentationModel_CanRepresentReplacePresentationWithParagraphBodyAndDefaultErrorBehavior(t *testing.T) {
+	presentation := Presentation{
+		Behavior:       CompletionBehaviorReplace,
+		NarrowBehavior: PresentationNarrowBehaviorPreferCLI,
+		Summary: Line{
+			JoinWithSpace: true,
+			Segments: []Segment{
+				{Text: "Read Module Info", Role: RoleAction},
+			},
+		},
+		Body: Paragraph{
+			Lines: []Line{{
+				Segments: []Segment{
+					{Text: "Search: agentformatter; Deps: true", Role: RoleAccent},
+				},
+			}},
+		},
+	}
+
+	assert.Equal(t, CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, ErrorBehaviorDefault, presentation.ErrorBehavior)
+	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, presentation.NarrowBehavior)
+	assert.Equal(t, Line{
+		JoinWithSpace: true,
+		Segments: []Segment{
+			{Text: "Read Module Info", Role: RoleAction},
+		},
+	}, presentation.Summary)
+
+	body, ok := presentation.Body.(Paragraph)
+	require.True(t, ok)
+	assert.Equal(t, Paragraph{
+		Lines: []Line{{
+			Segments: []Segment{
+				{Text: "Search: agentformatter; Deps: true", Role: RoleAccent},
+			},
+		}},
+	}, body)
+}
+
 func TestPresentationModel_CanRepresentDiffEditsWithoutSummary(t *testing.T) {
 	errorLine := Line{
 		Segments: []Segment{

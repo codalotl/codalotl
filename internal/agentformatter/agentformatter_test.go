@@ -129,6 +129,21 @@ func newClarifyPublicAPITool(t *testing.T) llmstream.Tool {
 	return pkgtools.NewClarifyPublicAPITool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)
 }
 
+func newGetPublicAPITool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewGetPublicAPITool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newGetUsageTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewGetUsageTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newModuleInfoTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewModuleInfoTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
 func newUpdateUsageTool(t *testing.T) llmstream.Tool {
 	t.Helper()
 	sandbox := t.TempDir()
@@ -3222,7 +3237,7 @@ func TestModuleInfoToolCallNoOptions(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("module_info"),
+		Tool:     pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall: &call,
 	}
 
@@ -3247,7 +3262,7 @@ func TestModuleInfoToolCallWithOptions(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("module_info"),
+		Tool:     pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall: &call,
 	}
 
@@ -3276,7 +3291,7 @@ func TestModuleInfoToolCompleteSuccessMirrorsCall(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("module_info"),
+		Tool:       pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3291,7 +3306,7 @@ func TestModuleInfoToolCompleteSuccessMirrorsCall(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "success bullet should be green")
 }
 
-func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
+func TestModuleInfoToolCompleteErrorShowsToolError(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -3307,7 +3322,7 @@ func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("module_info"),
+		Tool:       pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3317,9 +3332,8 @@ func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
 	lines := strings.Split(stripANSI(out), "\n")
 	require.Equal(t, []string{
 		"• Read Module Info",
-		"  └ Search: agentformatter",
+		"  └ Error: go mod parse error",
 	}, lines)
-	assert.NotContains(t, stripANSI(out), "Error:", "module_info completion should not include tool output per SPEC")
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure bullet should be red")
 }
 
@@ -3335,7 +3349,7 @@ func TestGetPublicAPICallWithIdentifiers(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("get_public_api"),
+		Tool:     pkgToolWithPresenter(t, newGetPublicAPITool(t)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 100)
@@ -3366,7 +3380,7 @@ func TestGetPublicAPICompleteSuccessWithIdentifiers(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("get_public_api"),
+		Tool:       pkgToolWithPresenter(t, newGetPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3397,7 +3411,7 @@ func TestGetPublicAPICompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("get_public_api"),
+		Tool:       pkgToolWithPresenter(t, newGetPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3516,7 +3530,7 @@ func TestGetUsageToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("get_usage"),
+		Tool:     pkgToolWithPresenter(t, newGetUsageTool(t)),
 		ToolCall: &call,
 	}
 
@@ -3550,7 +3564,7 @@ func TestGetUsageToolCompleteSuccessCountsResults(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("get_usage"),
+		Tool:       pkgToolWithPresenter(t, newGetUsageTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -3580,6 +3594,7 @@ func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:     agent.EventTypeToolCall,
+			Tool:     pkgToolWithPresenter(t, newGetUsageTool(t)),
 			ToolCall: &call,
 		}
 
@@ -3595,6 +3610,7 @@ func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:     agent.EventTypeToolCall,
+			Tool:     pkgToolWithPresenter(t, newGetUsageTool(t)),
 			ToolCall: &call,
 		}
 

@@ -231,22 +231,6 @@ If a line exceeds the tuiWidth in TUI width mode, wrap it:
        lly.
 ```
 
-### EventTypeToolCall and EventTypeToolComplete - get_public_api
-
-```
-• Read Public API axi/some/pkg
-```
-
-- Read Public API is Bold, Colorful.
-- axi/some/pkg is normal
-
-```
-• Read Public API axi/some/pkg
-  └ SomeType, DoThingFunc
-```
-
-- If get_public_api is called with specific identifiers, list them underneath in Accent, comma separated.
-
 ### EventTypeToolCall and EventTypeToolComplete - review
 
 The EventTypeToolCall looks like this:
@@ -298,39 +282,6 @@ The EventTypeToolComplete looks like this:
 - Implemented is Bold, Colorful.
 - internal/agentformatter is normal.
 - If the tool returns text, print it underneath in Accent.
-
-### EventTypeToolCall and EventTypeToolComplete - get_usage
-
-```
-• Read Usage axi/some/pkg *SomeType.SomeFunc
-  └ Found 12 results.
-```
-- The number of results is determined by counting the number of matches of this regexp: /^\d+:/ (beginning of line, number followed by colon)
-
-### EventTypeToolCall and EventTypeToolComplete - module_info
-
-The EventTypeToolCall looks like this:
-
-```
-• Read Module Info
-```
-
-- Read Module Info is Bold, Colorful.
-
-If either option is provided and non-zero-value, print a single Accent line underneath with the selected options:
-
-```
-• Read Module Info
-  └ Search: agentformatter; Deps: true
-```
-
-- The `└` and the entire options line are Accent.
-- Only show a Search if it's present and non empty. Only show Deps if it's true.
-- EventTypeToolComplete is the same as the Call (except it resolves to a status).
-- Bullet indicates status (Green on success; Red on error).
-
-
-or
 
 ```
 • Ran Tests ./...
