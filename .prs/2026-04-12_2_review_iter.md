@@ -114,7 +114,20 @@ Based on that:
 
 ## Review
 
-Not run yet.
+Review run against `origin/main`.
+
+Overall verdict: patch is incorrect.
+
+Actionable findings:
+
+1. `internal/tui/tui.go`
+   - `HideFinalMessage` currently hides only the last `AssistantText` chunk.
+   - If the hidden descendant's final reply is split across multiple `AssistantText` events in one turn, earlier chunks can still be shown before the final chunk arrives.
+   - Follow-up: buffer the whole hidden descendant assistant turn and decide visibility on `AssistantTurnComplete`.
+
+2. `internal/tui/tui.go`
+   - When a hidden descendant emits assistant text and then ends with `error` or `canceled`, buffered text is currently flushed before the terminal event.
+   - Follow-up: suppress the buffered final assistant text for hidden descendants on terminal error/cancel paths too.
 
 ## Summary
 
@@ -125,3 +138,4 @@ Not run yet.
 - `internal/agentbuilder/data/config.yml` defines the `review` tool as a JSON-returning subagent.
 - `internal/tui/tui.go` now tracks active tool display scopes and buffers descendant assistant text so `HideFinalMessage` can drop only the final subagent message while still showing earlier descendant activity.
 - `internal/noninteractive/session.go` now applies the same policy for human-readable and JSON output, buffering descendant assistant text and dropping only the final hidden subagent message.
+- Review found two TUI follow-ups: whole-turn buffering for chunked final assistant replies, and suppression of buffered hidden text on descendant error/cancel termination.
