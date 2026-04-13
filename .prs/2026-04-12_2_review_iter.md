@@ -64,3 +64,58 @@ Based on that:
 - make review tool return SubagentEventPolicyHideFinalMessage
 - Update TUI to handle
 - Update noninteractive to handle
+
+## Plan
+
+### [DONE] Design / spec updates
+
+- Treat this as a display concern, not an agent-event suppression change.
+- Presenter owns the display policy for descendant subagent events.
+- Updated package specs in `internal/llmstream`, `internal/agentbuilder`, `internal/tui`, and `internal/noninteractive`.
+
+### Implement presenter-owned subagent visibility policy
+
+#### Package `internal/llmstream`
+- Extend `Presenter` with `SubagentEventPolicy(call ToolCall) SubagentEventPolicy`.
+- Add `SubagentEventPolicyDefault` and `SubagentEventPolicyHideFinalMessage`.
+- Keep the underlying agent event stream unchanged; this API is for display consumers.
+
+#### Package `internal/agentbuilder`
+- Make the built-in `review` presenter return `SubagentEventPolicyHideFinalMessage`.
+- Keep other YAML presenter presets at the default policy.
+- Update presenter coverage accordingly.
+
+#### Package `internal/tui`
+- Respect the presenter policy when deciding which descendant subagent events become visible messages.
+- For `hide_final_message`, suppress only the descendant subagent's terminal assistant-text presentation while keeping descendant tool activity and the outer tool result visible.
+- Add regression coverage around the `review` tool flow.
+
+#### Package `internal/noninteractive`
+- Apply the same policy in human-readable output.
+- Apply the same policy in JSON output, since it is also a user-facing display stream rather than a raw internal event dump.
+- Keep outer tool call/result behavior unchanged.
+- Add regression coverage for both modes.
+
+#### Validation
+- Run focused tests for `internal/agentbuilder`, `internal/tui`, and `internal/noninteractive`.
+- Run targeted package tests for `internal/llmstream`, `internal/agentbuilder`, `internal/tui`, and `internal/noninteractive`.
+
+## Decisions
+
+- Follow the user's presenter-interface design rather than a tool-specific UI hack.
+- Scope is one policy only: `hide_final_message`.
+- Hidden events remain available on the underlying agent event stream; only display consumers omit them.
+
+## Review
+
+Not run yet.
+
+## Summary
+
+## State
+
+- `internal/llmstream/presentation.go` owns the presenter interface. No subagent visibility hook yet.
+- `internal/agentbuilder/yaml_presenter.go` contains the built-in `review` and `subagent_q_and_a` presenter implementations.
+- `internal/agentbuilder/data/config.yml` defines the `review` tool as a JSON-returning subagent.
+- `internal/tui/tui.go` decides whether tool call/result messages replace or append, but does not yet filter descendant events.
+- `internal/noninteractive/session.go` writes human-readable output per event; `internal/noninteractive/json_output.go` emits user-facing JSON events. Neither currently hides review subagent final text.

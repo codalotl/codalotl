@@ -10,6 +10,8 @@ To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, firs
 - Upon getting a tool call, start a 3 second timer.
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
 - If the three seconds elapses without getting the result, print the tool call. When the result comes in, print that as well.
+- Human-readable output also respects `llmstream.Presenter.SubagentEventPolicy` for descendant subagent display.
+- `SubagentEventPolicyHideFinalMessage` hides the descendant subagent's terminal assistant-text display while keeping descendant tool activity and the outer tool result visible.
 
 ## Finishing a session
 
@@ -32,6 +34,7 @@ If `Options.OutputJSON` is true, output is newline-delimited JSON: one object pe
 JSON mode is a structured log, not a 1:1 dump of every internal `agent.Event`. It emits a small stable event set for external consumers.
 
 - Tool calls do not have any delay. Emit call and result as they happen.
+- Presenter-owned subagent visibility policies apply here too. Hidden descendant events are omitted from JSON output even though the internal agent event stream still contains them.
 - Every object has a `"type"` field.
 - `start` is first event.
 - `done`, `error`, or `canceled` is terminal event.

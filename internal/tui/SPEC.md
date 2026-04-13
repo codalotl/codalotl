@@ -43,6 +43,8 @@ Basic controls:
     - When a Call comes in, we print it.
     - When a paired Result in, we replace the Call message with the Result.
     - Exception: tools whose presenter uses `Append`, plus the legacy SubAgent calls `implement` and `review`, should NOT replace the Call with Result (they print both).
+- Presenter-owned subagent event policies affect only visible rendering in the Messages Area; they do not change the underlying agent event stream.
+- `SubagentEventPolicyHideFinalMessage` hides the descendant subagent's terminal assistant-text display while keeping descendant tool activity and the outer tool result visible.
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.
 - The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").
