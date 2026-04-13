@@ -35,13 +35,19 @@ It should be:
 ## Plan
 
 ### `internal/agentbuilder`
-- Update `subagent_q_and_a` presenter behavior so result events for implement-style subagent tools can omit the completion summary while still showing result body output.
+- Keep the implement tool's completion summary (`Implemented <path>`) but stop repeating the nested subagent answer in the completion body.
 - Keep YAML normalization and presenter behavior aligned with `SPEC.md`; no public API changes expected.
-- Add or update package tests covering call presentation vs. result presentation for the preset.
+- Add or update package tests covering implement-tool call presentation vs. completion presentation.
 
 ### Validation
 - Run focused `internal/agentbuilder` tests.
-- If presentation fixtures outside the package fail because the event shape changed, update them in a follow-up implementation step.
+- Run broader formatter-facing tests if the changed presenter output affects existing expectations.
+
+## Learnings
+
+- A first attempt to omit the presenter summary by leaving `result_action` empty was not useful.
+- `internal/agentformatter` treats presenter outputs with empty `Summary.Segments` as unpresented and falls back to the generic `Tool implement {...}` header.
+- The requested output keeps the completion summary line and removes the duplicated completion body, so the next implementation step should target repeated result-body rendering rather than blanking the summary.
 
 ## Review
 
