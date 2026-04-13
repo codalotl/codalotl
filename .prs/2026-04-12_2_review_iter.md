@@ -112,7 +112,7 @@ Based on that:
 - Scope is one policy only: `hide_final_message`.
 - Hidden events remain available on the underlying agent event stream; only display consumers omit them.
 
-## Review
+## Review [DONE]
 
 Review run against `origin/main`.
 
@@ -129,6 +129,11 @@ Actionable findings:
    - When a hidden descendant emits assistant text and then ends with `error` or `canceled`, buffered text is currently flushed before the terminal event.
    - Follow-up: suppress the buffered final assistant text for hidden descendants on terminal error/cancel paths too.
 
+Addressed in `4d30e66`:
+- TUI now buffers whole descendant assistant turns for `HideFinalMessage`, so chunked final replies do not leak partial text.
+- Hidden descendant buffered assistant text is dropped on `done_success`, `error`, and `canceled`.
+- Regression coverage now includes chunked final replies, earlier visible descendant turns through `AssistantTurnComplete`, and descendant `error` / `canceled` termination paths.
+
 ## Summary
 
 ## State
@@ -137,5 +142,5 @@ Actionable findings:
 - `internal/agentbuilder/yaml_presenter.go` now makes `review` return `HideFinalMessage`; other YAML presenter presets return `Default`.
 - `internal/agentbuilder/data/config.yml` defines the `review` tool as a JSON-returning subagent.
 - `internal/tui/tui.go` now tracks active tool display scopes and buffers descendant assistant text so `HideFinalMessage` can drop only the final subagent message while still showing earlier descendant activity.
+- `internal/tui/tui.go` now buffers whole descendant assistant turns so chunked hidden final replies are fully suppressed, including on descendant `error` / `canceled` termination.
 - `internal/noninteractive/session.go` now applies the same policy for human-readable and JSON output, buffering descendant assistant text and dropping only the final hidden subagent message.
-- Review found two TUI follow-ups: whole-turn buffering for chunked final assistant replies, and suppression of buffered hidden text on descendant error/cancel termination.
