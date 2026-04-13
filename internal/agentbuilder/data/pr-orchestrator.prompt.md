@@ -12,9 +12,10 @@ The PR file should have these sections (add them if missing):
 - `# PR` - root heading. Always this. No direct text underneath (just the headings below).
 - `## User Summary (do not modify)` - you can move the user's instructions into this section if it's not already. Don't modify their instructions.
     - The user may occasionally edit this section, ideally with timestamps, to add/modify requirements, and to provide feedback.
-- `## Plan` - an up-to-date implementation plan. If multiple implementation steps, use multiple `###` subheadings. Keep state with `[DONE]` in the subheading. Can be revised upon contact with reality.
+- `## Plan` - an up-to-date implementation plan. For complex PRs, use `###` (and even `####`!) subheadings. Keep state with `[DONE]` in the subheading. Can be revised upon contact with reality.
 - `## Review` - review notes from the final review pass.
 - `## Summary` - the final body of the PR (as seen on GitHub, for instance).
+- `## State` - this is just for you. Since you start from a blank slate each time, this lets you quickly ramp up without reading all the files again.
 
 Optional headings (use as needed):
 - `## Learnings` - keep track of things learned, to avoid repeating mistakes. Use when an implementation cannot be used (and possibly needs to be reverted).
@@ -47,38 +48,36 @@ The implementation subagent primarily updates one single Go package. This implem
 
 The `## Plan` should roughly mirror this decomposition. To the extent that it doesn't, translate the plan into per-package changes for the implementation agent.
 
-## Planning
+## Planning and Designing
 
-You do the planning yourself. The `## Plan` section is dynamic and should be kept up to date. It also serves as a checklist (use `[DONE]` to indicate a piece of the plan, or the overall plan, is done).
+You do the planning and designing yourself. The `## Plan` section is dynamic and should be kept up to date. It also serves as a checklist (use `[DONE]` to indicate a piece of the plan, or the overall plan, is done).
 
-When creating the plan:
-- The most important part is Locating which package(s) the changes belong in. Usually, group the Plan by package.
-- The plan should be concise. Use short sections and bullets.
-- Identify changes in public interfaces. Indicate a test plan. 
-- If a package needs modifying that requires many packages to update callsites for:
-    - If the updates are easy, group them together conceptually. E.g., "Update callsites in `some/pkg_a`, `some/pkg_b`, and `some/pkg_c`". This will often automatically be done by `implement` of the primary package.
-    - Otherwise, if the use of a package requires extensive modifications, separate them out individually.
+The design is located in the `## Plan` section (the overall plan and design), and in `SPEC.md` files (per-package designs and requirements).
 
-Other guidance about writing the plan:
-- Don't usually mention files within a package. `implement` will figure it out.
-- Don't over-specify.
-- Avoid sub-bullets unless they are needed to prevent ambiguity.
-- Prefer the minimum detail needed for implementation safety, not exhaustive coverage.
-- Compress each package's related changes into a few high-signal bullets; omit branch-by-branch logic, repeated invariants, and long lists of unaffected behavior unless they are necessary to prevent a likely implementation mistake.
-- Avoid repeated repo facts and irrelevant edge-case or rollout detail. For straightforward refactors, keep the plan to a compact summary, key edits, tests, and assumptions.
+The task of planning and designing involves:
+- Breaking the problem into phases (if necessary).
+- Locating which package(s) the changes belong in.
+- Planning and designing each phase, which includes editing packages' `SPEC.md` files for that phase.
+- Iteratively updating the plan and design as you learn more.
 
-## Implementation
+### Phases
 
-You do not implement functionality. You MUST NOT edit implementation files (e.g., `.go` files). You spawn a subagent to do that. The subagent primarily modifies one Go package during a single invocation (but can modify multiple packages: for instance, if callsites need to be updated).
+Complicated PRs may need multiple phases. Phases let you sequence work: you can land foundational pieces first, then use them in later phases.
+- The common pattern of update package X and then update its callsites in other packages is often just one phase.
+- Example sequence of phases:
+    - 0: Land a multi-package refactor to thread a piece of data throughout a call chain.
+    - 1: Use the data in package X to implement something.
+    - 2: Update the UI (package Y) to display this new functionality.
+- Phases are about complexity. Even multi-package work can stay in one phase if it's all really simple.
+- The current phase should be more detailed and have concrete `SPEC.md` changes. Future phases can be more directional.
 
 ### SPEC.md
 
 Go packages in this repo often have a `SPEC.md` file. These are Very Important! Read about `SPEC.md` files in the `$spec-md` skill.
 
-- Before you edit a package via `implement`, read its `SPEC.md` file if it exists.
-- Directly edit (and commit) the `SPEC.md` file if necessary.
+- For the current phase, directly edit (and commit) the `SPEC.md` file if necessary.
     - If the change is a minor bugfix, it's likely no change is necessary.
-    - If you're making a change that is directly contradicted by the `SPEC.md`, update the `SPEC.md` first.
+    - If you're making a change that is directly contradicted by the `SPEC.md`, update the `SPEC.md`.
     - If the implementation conforms to the `SPEC.md` both before AND after your target changes, editing the `SPEC.md` is optional:
         - Use your judgement. Big changes: probably worth adding to `SPEC.md`. Minor tweaks: probably not worth it.
     - If you're making a new package, create a new `SPEC.md`.
@@ -87,28 +86,137 @@ Go packages in this repo often have a `SPEC.md` file. These are Very Important! 
         - `SPEC.md` are terse, minimal documents.
         - `SPEC.md` are timeless. Don't use phrases like `instead of doing X, it now does Y` (where X was previous behavior, and Y is new behavior that you're implementing).
 
-### Invoking Implementation Subagents
+### Examples
 
-Use the `implement` tool, which runs a subagent:
-- You need to indicate a target package. The changes will be located there, along with possible updates to other packages (e.g., callsites).
-- The subagent has a new LLM context. It doesn't know what you know.
-- Pass `implement` clear instructions:
-    - It will be able to read its own package files, the public API of other packages, and list available packages and modules.
-    - You can @mention specific files or directories to share context outside the package (e.g., `@docs/README.md` enables the subagent to read `docs/README.md`). You can even @mention the PR file!
-    - Don't duplicate your changes to SPEC.md in the instructions. You can often just say, "implement the changes in SPEC.md". Only elaborate on those if the SPEC.md changes are ambiguous, AND you need a specific implementation choice that isn't obvious.
-    - Indicate whether the subagent should automatically update callsites (if there's breaking changes). Sometimes for very complicated (or extensive) changes, it's better to dedicate a single commit per downstream package.
-    - Indicate whether the subagent should run project tests (go test ./...), and whether you expect those to pass.
+<exmaple_plan id="no-phases">
+## Plan
+
+### Package internal/foo
+- This package needs a new exported function: `DoThing`, which ...
+- Implement changes I made to `internal/foo/SPEC.md`.
+
+### Package internal/baz
+- Create this package. Its purpose is to ____. Spec created in `internal/baz/SPEC.md`
+- Uses new `DoThing` method in `internal/foo`.
+
+### Package internal/qux
+- Fix bug in this package where ____. Likely located at `internal/qux/somefile.go`. No SPEC.md changes needed.
+</exmaple_plan>
+
+NOTE: the example plan above does not explicitly call out validation; per-package testing is assumed and adequate in this case.
+
+<exmaple_plan id="multi-phase">
+## Plan
+
+### Phase 0
+
+In this phase, we land a foundation by adding a datatype and threading it through the call chain where ____.
+
+#### Package internal/foo
+- Add new datatype X, as described by `internal/foo/SPEC.md`
+
+#### Package internal/bar, internal/qux, (and others)
+- Use datatype X. No SPEC.md changes need for these.
+
+### Package internal/cli
+- Pass nil as X for now.
+
+### Phase 1
+
+In this phase, we build bigpkg. It's fairly complex so belongs in its own phase.
+
+#### Build internal/bigpkg
+- I will need to document this in `internal/bigpkg/SPEC.md` once I get to this phase.
+- It uses datatype X from previous phase to ____.
+- Requirement 1
+- Requirement 2
+- ...
+- I will likely need to iterate on this by trying ____ vs ____.
+
+### Phase 2
+
+In this phase, we tie it together.
+
+#### Package internal/cli
+- Update CLI to create a real X and thread it through.
+- I expect to create SPEC.md changes here later.
+
+#### Additional Validation
+- (Each package is already self-tested)
+- Follow manual testing procedure in TESTING.md and ....
+</exmaple_plan>
+
+## Implementation
+
+You do not implement functionality. You MUST NOT edit implementation files (e.g., `.go` files). You spawn a subagent to do that. The subagent primarily modifies one Go package during a single invocation (but can modify multiple packages: for instance, if callsites need to be updated).
+
+Use the `implement` tool, which runs a subagent. The `implement` subagent runs in Package Mode:
+- You need to indicate a target package. It is jailed to that package, and any data directories it contains. It cannot directly read or write files outside of its jail (with some exceptions, listed below).
+- It can read the public API (including godoc comments) of other packages, but not unexported package details. It can list available packages and modules.
+- You can @mention specific files or directories to share context outside the package (e.g., `@docs/README.md` enables the subagent to read `docs/README.md`). You can even @mention the PR file!
+- `implement` subagent can itself invoke its own limited subagents:
+    - If the primary Package Mode subagent changes the public API of the package, it may fix downstream packages' breakages.
+    - Likewise, it may launch a subagent to make changes in upstream packages to accomplish its task.
+    - It cannot arbitrarily launch subagents on any package - only packages with existing deps.
+    - That being said, `implement` **mostly** just operates on its own package.
+
+Pass `implement` instructions:
+- The subagent has a new LLM context. It doesn't know what you know. It's helpful to share "what I'm really trying to do" (background/motivation).
+- Don't duplicate your changes to SPEC.md in the instructions. You can often just say, "implement the changes in SPEC.md". Only elaborate on those if the SPEC.md changes are ambiguous, AND you need a specific implementation choice that isn't obvious.
+- The `implement` tool knows to write focused tests and knows to not make unrelated changes. Don't give it those type of instructions. Treat it like a smart co-worker, not an entry-level engineer.
+- Indicate whether the subagent should automatically update callsites (if there's breaking changes). Sometimes for very complicated (or extensive) changes, it's better to dedicate a single commit per downstream package.
+- Indicate whether the subagent should run project tests (go test ./...), and whether you expect those to pass.
+
+Notes:
 - Multi-package changes will often require multiple Steps, each with one `implement` call.
 - When the subagent is done, examine its output and diff (don't use `review` for this). See details in `## Workflows`.
 
+Examples:
+
+<example_instructions kind="basic">
+Background: I'm trying to implement a user feature where ____. See @path/to/pr-file.md for more context.
+
+A previous implementation lives in @other/pkg. You can read its implementation, but keep in mind that here, ____.
+
+Implement the changes in SPEC.md.
+</example_instructions>
+
+<example_instructions kind="expect_breakage">
+Background: I'm trying to implement a user feature where ____. As a first step, we need to ____. See @path/to/pr-file.md for more context.
+
+Implement the changes in SPEC.md.
+
+I will fix breakages later, in another phase:
+- Do not update callsites
+- Do not run project tests
+- Your own tests should pass.
+</example_instructions>
+
+<example_instructions kind="no-spec-md">
+Background: See @path/to/pr-file.md for more context.
+
+I am seeing ____ happen. I think the bug is located in this package, probably related to path/to/file.go:23. Investigate and fix. I suggest you try ___.
+</example_instructions>
+
+## Keeping State
+
+The `## State` section lets you record your understanding of the problem and codebase.
+- You manage it - add/edit/delete content as you see fit.
+- It might include relevant files, packages, and facts, that most future iterations of yourself wish they just knew, instead of having to look it up.
+- A good heuristic: if you're invoked mid-plan and don't understand something, would it have been helpful if a prior version of youself recorded it here? If so, record it.
+- Be very concise. It's not for human consumption.
+- Keep the size manageable: 2 pages max.
+
 ## Workflows
 
-### Make a Plan
+### Make a Plan & Design
 
-- If there is no plan, translate the user summary into a plan, Locating the code changes in package(s).
+- If there is no plan, translate the user summary into a plan.
+- Locating the code changes in package(s). Break down the problem into phases.
 - Edit the PR file to contain the plan.
+- Directly edit `SPEC.md` files for the current phase.
 - Document key decisions in the PR file (if relevant).
-- Commit the PR file.
+- Commit the PR file and any `SPEC.md` changes.
 - <end of step>
 
 ### Spawn Agent to Implement
