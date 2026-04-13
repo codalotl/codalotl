@@ -63,7 +63,7 @@ The task of planning and designing involves:
 ### Phases
 
 Complicated PRs may need multiple phases. Phases let you sequence work: you can land foundational pieces first, then use them in later phases.
-- The common pattern of update package X and then update its callsites in other packages is often just one phase.
+- The common pattern of updating package X and then updating its callsites in other packages is often just one phase.
 - Example sequence of phases:
     - 0: Land a multi-package refactor to thread a piece of data throughout a call chain.
     - 1: Use the data in package X to implement something.
@@ -88,7 +88,7 @@ Go packages in this repo often have a `SPEC.md` file. These are Very Important! 
 
 ### Examples
 
-<exmaple_plan id="no-phases">
+<example_plan id="no-phases">
 ## Plan
 
 ### Package internal/foo
@@ -101,11 +101,11 @@ Go packages in this repo often have a `SPEC.md` file. These are Very Important! 
 
 ### Package internal/qux
 - Fix bug in this package where ____. Likely located at `internal/qux/somefile.go`. No SPEC.md changes needed.
-</exmaple_plan>
+</example_plan>
 
 NOTE: the example plan above does not explicitly call out validation; per-package testing is assumed and adequate in this case.
 
-<exmaple_plan id="multi-phase">
+<example_plan id="multi-phase">
 ## Plan
 
 ### Phase 0
@@ -116,14 +116,14 @@ In this phase, we land a foundation by adding a datatype and threading it throug
 - Add new datatype X, as described by `internal/foo/SPEC.md`
 
 #### Package internal/bar, internal/qux, (and others)
-- Use datatype X. No SPEC.md changes need for these.
+- Use datatype X. No SPEC.md changes are needed for these.
 
-### Package internal/cli
+#### Package internal/cli
 - Pass nil as X for now.
 
 ### Phase 1
 
-In this phase, we build bigpkg. It's fairly complex so belongs in its own phase.
+In this phase, we build bigpkg. It's fairly complex, so it belongs in its own phase.
 
 #### Build internal/bigpkg
 - I will need to document this in `internal/bigpkg/SPEC.md` once I get to this phase.
@@ -144,7 +144,7 @@ In this phase, we tie it together.
 #### Additional Validation
 - (Each package is already self-tested)
 - Follow manual testing procedure in TESTING.md and ....
-</exmaple_plan>
+</example_plan>
 
 ## Implementation
 
@@ -163,7 +163,7 @@ Use the `implement` tool, which runs a subagent. The `implement` subagent runs i
 Pass `implement` instructions:
 - The subagent has a new LLM context. It doesn't know what you know. It's helpful to share "what I'm really trying to do" (background/motivation).
 - Don't duplicate your changes to SPEC.md in the instructions. You can often just say, "implement the changes in SPEC.md". Only elaborate on those if the SPEC.md changes are ambiguous, AND you need a specific implementation choice that isn't obvious.
-- The `implement` tool knows to write focused tests and knows to not make unrelated changes. Don't give it those type of instructions. Treat it like a smart co-worker, not an entry-level engineer.
+- The `implement` tool knows to write focused tests and knows not to make unrelated changes. Don't give it those types of instructions. Treat it like a smart co-worker, not an entry-level engineer.
 - Indicate whether the subagent should automatically update callsites (if there's breaking changes). Sometimes for very complicated (or extensive) changes, it's better to dedicate a single commit per downstream package.
 - Indicate whether the subagent should run project tests (go test ./...), and whether you expect those to pass.
 
@@ -202,8 +202,8 @@ I am seeing ____ happen. I think the bug is located in this package, probably re
 
 The `## State` section lets you record your understanding of the problem and codebase.
 - You manage it - add/edit/delete content as you see fit.
-- It might include relevant files, packages, and facts, that most future iterations of yourself wish they just knew, instead of having to look it up.
-- A good heuristic: if you're invoked mid-plan and don't understand something, would it have been helpful if a prior version of youself recorded it here? If so, record it.
+- It might include relevant files, packages, and facts that future iterations of you would wish they already knew instead of having to look them up.
+- A good heuristic: if you're invoked mid-plan and don't understand something, would it have been helpful if a prior version of yourself recorded it here? If so, record it.
 - Be very concise. It's not for human consumption.
 - Keep the size manageable: 2 pages max.
 
@@ -212,7 +212,7 @@ The `## State` section lets you record your understanding of the problem and cod
 ### Make a Plan & Design
 
 - If there is no plan, translate the user summary into a plan.
-- Locating the code changes in package(s). Break down the problem into phases.
+- Locate the code changes in package(s). Break down the problem into phases.
 - Edit the PR file to contain the plan.
 - Directly edit `SPEC.md` files for the current phase.
 - Document key decisions in the PR file (if relevant).
