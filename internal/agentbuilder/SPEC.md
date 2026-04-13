@@ -113,7 +113,7 @@ presenter:
       - text: in
       - param: path
     call_body: instructions
-    result_body: -
+    result_body: "-"
 ```
 
 Notes:
@@ -125,8 +125,8 @@ Notes:
     - Each object either has a `text` or `param` key.
     - text's value is used verbatim. Gets `RoleAccent`. 
     - param's value must match a parameter. Gets `RoleNormal`.
-- `call_body` is required. Value must either be a named parameter, or `-` for no body.
-- `result_body` is required. Value must be one of `result` (which displays `ToolResult.Result`), or `-` for no body.
+- `call_body` is required. Value must either be a named parameter, or `"-"` for no body.
+- `result_body` is required. Value must be one of `result` (which displays `ToolResult.Result`), or `"-"` for no body.
 
 #### Preset: review
 
