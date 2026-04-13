@@ -161,8 +161,7 @@ type Presenter interface {
 	// "Reading file.go". The result might return the equivalent of "Read file.go (123 bytes)".
 	Present(call ToolCall, result *ToolResult) Presentation
 
-	// SubagentEventPolicy defines how descendant subagent events are displayed by consumers. Tools that do not launch subagents can return
-	// SubagentEventPolicyDefault.
+	// SubagentEventPolicy defines how descendant subagent events are displayed by consumers. Tools that do not launch subagents can return SubagentEventPolicyDefault.
 	SubagentEventPolicy(call ToolCall) SubagentEventPolicy
 }
 

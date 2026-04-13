@@ -279,3 +279,8 @@ func TestPresentationModel_NarrowBehavior(t *testing.T) {
 	assert.Equal(t, PresentationNarrowBehaviorDefault, Presentation{}.NarrowBehavior)
 	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, Presentation{NarrowBehavior: PresentationNarrowBehaviorPreferCLI}.NarrowBehavior)
 }
+
+func TestPresentationModel_SubagentEventPolicy(t *testing.T) {
+	assert.Equal(t, SubagentEventPolicyDefault, SubagentEventPolicy(""))
+	assert.Equal(t, SubagentEventPolicyHideFinalMessage, SubagentEventPolicy("hide_final_message"))
+}

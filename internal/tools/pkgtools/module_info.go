@@ -49,6 +49,10 @@ func (t *toolModuleInfo) Presenter() llmstream.Presenter {
 	return moduleInfoPresenterInstance
 }
 
+func (t moduleInfoPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (t moduleInfoPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	presentation := pkgToolReplaceSummaryPresentation(pkgToolActionSummary("Read Module Info"))
 	if body, ok := moduleInfoPresenterBody(call); ok {

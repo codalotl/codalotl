@@ -754,6 +754,10 @@ func (presenterBackedTestPresenter) Present(call llmstream.ToolCall, result *llm
 	}
 }
 
+func (presenterBackedTestPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 type recordingFormatter struct {
 	events []agent.Event
 }
@@ -1350,6 +1354,16 @@ func TestSessionSendUserMessageJSONToolEventsRemainUnchanged(t *testing.T) {
 			"is_error": false,
 		},
 	}, toolComplete)
+}
+
+func TestPresenterBackedTestPresenterSubagentEventPolicyDefaults(t *testing.T) {
+	t.Parallel()
+
+	presenter := presenterBackedTestPresenter{}
+
+	require.Equal(t, llmstream.SubagentEventPolicyDefault, presenter.SubagentEventPolicy(llmstream.ToolCall{
+		Name: "read_file",
+	}))
 }
 
 func TestExecUsesSessionAPIAndPreservesTextOutput(t *testing.T) {

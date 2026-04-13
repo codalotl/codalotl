@@ -263,6 +263,10 @@ func (p *yamlSubagentQAPresenter) Present(call llmstream.ToolCall, result *llmst
 	return presentation
 }
 
+func (p *yamlSubagentQAPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (p *yamlSubagentQAPresenter) summary(params map[string]any, isResult bool) llmstream.Line {
 	action := p.spec.CallAction
 	if isResult {
@@ -332,6 +336,10 @@ func (p *yamlReviewPresenter) Present(call llmstream.ToolCall, result *llmstream
 		presentation.Body = body
 	}
 	return presentation
+}
+
+func (p *yamlReviewPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyHideFinalMessage
 }
 
 func yamlReviewSummary(params map[string]any, isResult bool) llmstream.Line {

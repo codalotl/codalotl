@@ -14,13 +14,34 @@ func TestReadOnlyTools_ExposePresenters(t *testing.T) {
 	auth := authdomain.NewAutoApproveAuthorizer(t.TempDir())
 
 	tools := []llmstream.Tool{
+		NewChangeAPITool(".", auth, nil, "", nil),
+		NewClarifyPublicAPITool(auth, nil),
 		NewGetPublicAPITool(auth),
 		NewGetUsageTool(auth),
 		NewModuleInfoTool(auth),
+		NewUpdateUsageTool(".", auth, nil, "", nil),
 	}
 
 	for _, tool := range tools {
 		assert.NotNil(t, tool.Presenter())
+	}
+}
+
+func TestPresenters_DefaultSubagentEventPolicy(t *testing.T) {
+	auth := authdomain.NewAutoApproveAuthorizer(t.TempDir())
+	call := llmstream.ToolCall{Name: "test"}
+
+	tools := []llmstream.Tool{
+		NewChangeAPITool(".", auth, nil, "", nil),
+		NewClarifyPublicAPITool(auth, nil),
+		NewGetPublicAPITool(auth),
+		NewGetUsageTool(auth),
+		NewModuleInfoTool(auth),
+		NewUpdateUsageTool(".", auth, nil, "", nil),
+	}
+
+	for _, tool := range tools {
+		assert.Equal(t, llmstream.SubagentEventPolicyDefault, tool.Presenter().SubagentEventPolicy(call))
 	}
 }
 

@@ -69,6 +69,10 @@ func (t *toolClarifyPublicAPI) Presenter() llmstream.Presenter {
 	return clarifyPublicAPIPresenterInstance
 }
 
+func (p clarifyPublicAPIPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (p clarifyPublicAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Clarifying API"
 	if result != nil {

@@ -61,6 +61,10 @@ func (p diagnosticsPresenter) Present(call llmstream.ToolCall, result *llmstream
 	return presentation
 }
 
+func (p diagnosticsPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (t *toolDiagnostics) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameDiagnostics,

@@ -81,6 +81,10 @@ func (t *toolUpdateUsage) Presenter() llmstream.Presenter {
 	return updateUsagePresenterInstance
 }
 
+func (p updateUsagePresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (p updateUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Updating Usage"
 	if result != nil {

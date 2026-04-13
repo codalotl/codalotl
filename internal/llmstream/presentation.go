@@ -7,7 +7,17 @@ type Presenter interface {
 	// call Present(call, nil). To present a call with result, call Present(call, result). For instance, for a read file tool, the call might return the equivalent of
 	// "Reading file.go". The result might return the equivalent of "Read file.go (123 bytes)".
 	Present(call ToolCall, result *ToolResult) Presentation
+
+	// SubagentEventPolicy defines how descendant subagent events are displayed by consumers. Tools that do not launch subagents can return SubagentEventPolicyDefault.
+	SubagentEventPolicy(call ToolCall) SubagentEventPolicy
 }
+
+type SubagentEventPolicy string
+
+const (
+	SubagentEventPolicyDefault          SubagentEventPolicy = ""
+	SubagentEventPolicyHideFinalMessage SubagentEventPolicy = "hide_final_message"
+)
 
 // CompletionBehavior indicates what happens when the tool completes. For instance, imagine a TUI:
 //   - With Replace, the tool call presentation is replaced by the result presentation (ideal for quick and/or atomic operations like reading a file).
@@ -30,9 +40,6 @@ const (
 //
 // By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr.
 // To override this, set ErrorBehavior to ErrorBehaviorPresenterOwned.
-//
-// NOTE: other than defining these types and offering these doc comments, the llmstream package has no unexported knowledge of how these types are used, as they are NOT used
-// within this package, other than being part of the Tool interface. Clarification can be gotten from `internal/agentformatter` and various tool packages.
 type Presentation struct {
 	Behavior       CompletionBehavior
 	ErrorBehavior  ErrorBehavior
