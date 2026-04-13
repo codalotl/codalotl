@@ -86,7 +86,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	assert.Equal(t, "Implementing", implementSpec.Presenter.Preset.CallAction)
 	assert.Equal(t, "Implemented", implementSpec.Presenter.Preset.ResultAction)
 	assert.Equal(t, "instructions", implementSpec.Presenter.Preset.CallBody)
-	assert.Equal(t, yamlPresenterBodyResult, implementSpec.Presenter.Preset.ResultBody)
+	assert.Equal(t, yamlPresenterBodyNone, implementSpec.Presenter.Preset.ResultBody)
 	require.Len(t, implementSpec.Presenter.Preset.SummaryItems, 1)
 	assert.Equal(t, "path", implementSpec.Presenter.Preset.SummaryItems[0].Param)
 }
@@ -1051,9 +1051,6 @@ func TestBuildRegistry_PROrchestratorImplementTool_ExposesPresenter(t *testing.T
 				{Text: "internal/agentformatter", Role: llmstream.RoleNormal},
 			},
 		},
-		Body: llmstream.Output{
-			Lines: []string{"Added focused coverage for orchestrator tool-event formatting."},
-		},
 	}, resultPresentation)
 }
 
@@ -1097,7 +1094,7 @@ func TestBuildRegistry_PROrchestratorImplementTool_FormatsWithAgentformatter(t *
 			},
 		}, 160)
 
-		assert.Equal(t, "• Implemented internal/agentformatter\n  └ Added focused coverage for orchestrator tool-event formatting.", out)
+		assert.Equal(t, "• Implemented internal/agentformatter", out)
 	})
 }
 

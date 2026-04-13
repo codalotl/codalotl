@@ -34,6 +34,49 @@ func TestNormalizeYAMLPresenterSpec_ReviewRejectsTunableFields(t *testing.T) {
 	require.ErrorContains(t, err, `presenter.preset.name "review" does not support call_action`)
 }
 
+func TestYAMLSubagentQAPresenterPresent_ResultBodyNoneOmitsCompletionBody(t *testing.T) {
+	presenter := requireYAMLSubagentQAPresenter(t, yamlPresenterBodyNone)
+
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentbuilder","instructions":"Refine the built-in implement presenter."}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   "implement",
+		Result: "Implemented the requested presenter refinement.",
+	}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior:      llmstream.CompletionBehaviorAppend,
+		ErrorBehavior: llmstream.ErrorBehaviorDefault,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Implementing", Role: llmstream.RoleAction},
+				{Text: "internal/agentbuilder", Role: llmstream.RoleNormal},
+			},
+		},
+		Body: llmstream.Output{
+			Lines: []string{"Refine the built-in implement presenter."},
+		},
+	}, callPresentation)
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior:      llmstream.CompletionBehaviorAppend,
+		ErrorBehavior: llmstream.ErrorBehaviorDefault,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Implemented", Role: llmstream.RoleAction},
+				{Text: "internal/agentbuilder", Role: llmstream.RoleNormal},
+			},
+		},
+	}, resultPresentation)
+}
+
 func TestYAMLReviewPresenterPresent_FormatsFindingsAndTruncates(t *testing.T) {
 	presenter := requireYAMLReviewPresenter(t)
 
@@ -125,6 +168,31 @@ func TestYAMLReviewPresenterPresent_InvalidReviewJSONFallsBackToRawOutput(t *tes
 	assert.Equal(t, llmstream.Output{
 		Lines: []string{"{", `  "unexpected": true`, "}"},
 	}, presentation.Body)
+}
+
+func requireYAMLSubagentQAPresenter(t *testing.T, resultBody string) llmstream.Presenter {
+	t.Helper()
+
+	params := map[string]yamlNormalizedParameter{
+		"path":         {Type: "string"},
+		"instructions": {Type: "string"},
+	}
+
+	normalized, err := normalizeYAMLPresenterSpec(&yamlPresenterSpec{
+		Preset: &yamlPresenterPresetSpec{
+			Name:         yamlPresenterPresetSubagentQA,
+			CallAction:   "Implementing",
+			ResultAction: "Implemented",
+			SummaryItems: []yamlPresenterSummaryItemSpec{{Param: "path"}},
+			CallBody:     "instructions",
+			ResultBody:   resultBody,
+		},
+	}, params)
+	require.NoError(t, err)
+
+	presenter := buildYAMLPresenter(normalized, params)
+	require.NotNil(t, presenter)
+	return presenter
 }
 
 func requireYAMLReviewPresenter(t *testing.T) llmstream.Presenter {

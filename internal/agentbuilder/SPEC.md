@@ -91,7 +91,7 @@ Currently, only "presets" are supported (in the future, we can add a more genera
 
 #### Preset: subagent_q_and_a
 
-This preset is used for Q and A calls, where a subagent is invoked with a "question" and returns an "answer". It might be displayed in the TUI as:
+This preset is used for Q and A calls, where a subagent is invoked with a "question" and returns an "answer". The outer tool call shows the question up front; completion may keep its own summary while omitting the nested subagent answer from the body. It might be displayed in the TUI as:
 
 ```
 • Investigating in path/to/pkg
@@ -99,8 +99,6 @@ This preset is used for Q and A calls, where a subagent is invoked with a "quest
     Also don't forget to...
   • (... various subagent events ...)
 • Investigated in path/to/pkg
-  └ I found...
-    I did not forget to...
 ```
 
 Example YAML config:
@@ -115,19 +113,20 @@ presenter:
       - text: in
       - param: path
     call_body: instructions
-    result_body: result
+    result_body: "-"
 ```
 
 Notes:
 - Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
 - The summary line is always joined with spaces.
-- `call_action` and `result_action` are required. The verb used in the summary line (`RoleAction`).
+- `call_action` is required. Used in the call summary line (`RoleAction`).
+- `result_action` is required. Used in the completion summary line (`RoleAction`).
 - `summary_items` is an optional array of objects. Added after the verb.
     - Each object either has a `text` or `param` key.
     - text's value is used verbatim. Gets `RoleAccent`. 
     - param's value must match a parameter. Gets `RoleNormal`.
-- `call_body` is required. Value must either be a named parameter, or `-` for no body.
-- `result_body` is required. Value must be one of `result` (which displays `ToolResult.Result`), or `-` for no body.
+- `call_body` is required. Value must either be a named parameter, or `"-"` for no body.
+- `result_body` is required. Value must be one of `result` (which displays `ToolResult.Result`), or `"-"` for no body.
 
 #### Preset: review
 

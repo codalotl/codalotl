@@ -30,6 +30,9 @@ const (
 //
 // By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr.
 // To override this, set ErrorBehavior to ErrorBehaviorPresenterOwned.
+//
+// NOTE: other than defining these types and offering these doc comments, the llmstream package has no unexported knowledge of how these types are used, as they are NOT used
+// within this package, other than being part of the Tool interface. Clarification can be gotten from `internal/agentformatter` and various tool packages.
 type Presentation struct {
 	Behavior       CompletionBehavior
 	ErrorBehavior  ErrorBehavior
