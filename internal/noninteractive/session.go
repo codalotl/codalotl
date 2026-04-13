@@ -65,6 +65,211 @@ type Session struct {
 	closed                         bool
 }
 
+type activeToolDisplayState struct {
+	callID string
+	policy llmstream.SubagentEventPolicy
+}
+
+type agentDisplayScope struct {
+	policy           llmstream.SubagentEventPolicy
+	launcherAgentID  string
+	launcherToolCall string
+}
+
+type pendingAssistantEvents struct {
+	events       []agent.Event
+	turnComplete bool
+}
+
+type subagentDisplayFilter struct {
+	activeTools      map[string]activeToolDisplayState
+	agentScopes      map[string]agentDisplayScope
+	pendingAssistant map[string]*pendingAssistantEvents
+}
+
+func newSubagentDisplayFilter() *subagentDisplayFilter {
+	return &subagentDisplayFilter{
+		activeTools:      make(map[string]activeToolDisplayState),
+		agentScopes:      make(map[string]agentDisplayScope),
+		pendingAssistant: make(map[string]*pendingAssistantEvents),
+	}
+}
+
+func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
+	if f == nil {
+		return nil, false
+	}
+
+	scope := f.scopeForAgent(ev.Agent)
+	if scope.policy != llmstream.SubagentEventPolicyHideFinalMessage {
+		f.updateToolState(ev)
+		return nil, false
+	}
+
+	if ev.Agent.Depth > 0 && isAgentTerminalEvent(ev.Type) {
+		delete(f.pendingAssistant, ev.Agent.ID)
+		f.updateToolState(ev)
+		return nil, false
+	}
+
+	flush := f.pendingEventsToFlushBefore(ev)
+	if ev.Type == agent.EventTypeAssistantText {
+		f.bufferAssistantEvent(ev)
+		return flush, true
+	}
+	if ev.Type == agent.EventTypeAssistantTurnComplete {
+		f.markAssistantTurnComplete(ev.Agent.ID)
+		return flush, true
+	}
+
+	f.updateToolState(ev)
+	return flush, false
+}
+
+func (f *subagentDisplayFilter) scopeForAgent(meta agent.AgentMeta) agentDisplayScope {
+	if f == nil || strings.TrimSpace(meta.ID) == "" || meta.Depth == 0 {
+		return agentDisplayScope{}
+	}
+
+	if scope, ok := f.agentScopes[meta.ID]; ok {
+		return scope
+	}
+
+	scope := agentDisplayScope{}
+	parentID := strings.TrimSpace(meta.Parent)
+	if parentID != "" {
+		if active, ok := f.activeTools[parentID]; ok {
+			scope = agentDisplayScope{
+				policy:           active.policy,
+				launcherAgentID:  parentID,
+				launcherToolCall: active.callID,
+			}
+		}
+	}
+
+	f.agentScopes[meta.ID] = scope
+	return scope
+}
+
+func (f *subagentDisplayFilter) pendingEventsToFlushBefore(ev agent.Event) []agent.Event {
+	if f == nil {
+		return nil
+	}
+
+	pending := f.pendingAssistant[ev.Agent.ID]
+	if pending == nil || len(pending.events) == 0 {
+		return nil
+	}
+
+	switch ev.Type {
+	case agent.EventTypeAssistantText:
+		if !pending.turnComplete {
+			return nil
+		}
+	case agent.EventTypeAssistantTurnComplete:
+		return nil
+	}
+
+	events := pending.events
+	delete(f.pendingAssistant, ev.Agent.ID)
+	return events
+}
+
+func (f *subagentDisplayFilter) bufferAssistantEvent(ev agent.Event) {
+	if f == nil {
+		return
+	}
+	pending := f.pendingAssistant[ev.Agent.ID]
+	if pending == nil {
+		pending = &pendingAssistantEvents{}
+		f.pendingAssistant[ev.Agent.ID] = pending
+	}
+	pending.events = append(pending.events, ev)
+}
+
+func (f *subagentDisplayFilter) markAssistantTurnComplete(agentID string) {
+	if f == nil {
+		return
+	}
+	pending := f.pendingAssistant[agentID]
+	if pending == nil {
+		return
+	}
+	pending.turnComplete = true
+}
+
+func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
+	if f == nil {
+		return
+	}
+
+	switch ev.Type {
+	case agent.EventTypeToolCall:
+		f.activeTools[ev.Agent.ID] = activeToolDisplayState{
+			callID: toolCallIDFromEvent(ev),
+			policy: subagentEventPolicyFromToolEvent(ev),
+		}
+	case agent.EventTypeToolComplete:
+		callID := toolCallIDFromEvent(ev)
+		if callID == "" {
+			callID = f.activeTools[ev.Agent.ID].callID
+		}
+		delete(f.activeTools, ev.Agent.ID)
+		f.discardFinalAssistantEventsForScope(ev.Agent.ID, callID)
+	}
+}
+
+func (f *subagentDisplayFilter) discardFinalAssistantEventsForScope(agentID string, callID string) {
+	if f == nil || strings.TrimSpace(agentID) == "" {
+		return
+	}
+
+	for childID, scope := range f.agentScopes {
+		if scope.launcherAgentID != agentID {
+			continue
+		}
+		if callID != "" && scope.launcherToolCall != "" && scope.launcherToolCall != callID {
+			continue
+		}
+		delete(f.pendingAssistant, childID)
+	}
+}
+
+func subagentEventPolicyFromToolEvent(ev agent.Event) llmstream.SubagentEventPolicy {
+	if ev.Tool == nil || ev.Tool.Presenter() == nil {
+		return llmstream.SubagentEventPolicyDefault
+	}
+
+	call := llmstream.ToolCall{}
+	if ev.ToolCall != nil {
+		call = *ev.ToolCall
+	} else if ev.ToolResult != nil {
+		call.CallID = ev.ToolResult.CallID
+		call.Name = ev.ToolResult.Name
+		call.Type = ev.ToolResult.Type
+	}
+
+	if name := toolNameFromEvent(ev); name != "" {
+		call.Name = name
+	}
+
+	return ev.Tool.Presenter().SubagentEventPolicy(call)
+}
+
+func toolCallIDFromEvent(ev agent.Event) string {
+	if ev.ToolCall != nil && strings.TrimSpace(ev.ToolCall.CallID) != "" {
+		return ev.ToolCall.CallID
+	}
+	if ev.ToolResult != nil {
+		return strings.TrimSpace(ev.ToolResult.CallID)
+	}
+	return ""
+}
+
+func isAgentTerminalEvent(eventType agent.EventType) bool {
+	return eventType == agent.EventTypeDoneSuccess || eventType == agent.EventTypeError || eventType == agent.EventTypeCanceled
+}
+
 func buildSessionConfig(opts Options) (sessionConfig, error) {
 	slashCommand, err := normalizeSlashCommand(opts.SlashCommand)
 	if err != nil {
@@ -240,8 +445,14 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 	result := Result{}
 	var terminalErr error
 	var partialAssistantText strings.Builder
+	displayFilter := newSubagentDisplayFilter()
 
 	for ev := range s.agent.SendUserMessage(ctx, userPrompt) {
+		flush, hide := displayFilter.Prepare(ev)
+		if err := s.writeFilteredEvents(flush); err != nil {
+			return result, err
+		}
+
 		switch ev.Type {
 		case agent.EventTypeAssistantText:
 			if ev.Agent.Depth == 0 {
@@ -277,6 +488,10 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 			if err := writeDoneSuccessReport(s.out, report); err != nil {
 				return result, err
 			}
+			continue
+		}
+
+		if hide {
 			continue
 		}
 
@@ -346,6 +561,26 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 		return result, &printedError{err: terminalErr}
 	}
 	return result, nil
+}
+
+func (s *Session) writeFilteredEvents(events []agent.Event) error {
+	for _, ev := range events {
+		if s.opts.OutputJSON {
+			if err := s.jsonWriter.WriteAgentEvent(ev); err != nil {
+				return err
+			}
+			continue
+		}
+
+		formatted := s.formatter.FormatEvent(ev, s.terminalWidth)
+		if shouldSuppressFormattedOutput(formatted) || formatted == "" {
+			continue
+		}
+		if err := writeOutputLine(s.out, formatted); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeStepStartOutput(out io.Writer, jsonWriter *jsonEventWriter, outputJSON bool, info stepStartOutput, visibleUserPrompt string) error {
