@@ -34,9 +34,10 @@ It should be:
 
 ## Plan
 
-### `internal/agentbuilder`
+### [DONE] `internal/agentbuilder`
 - Change SPEC.md.
 - Keep the implement tool's completion summary (`Implemented <path>`) but stop repeating the nested subagent answer in the completion body.
+- Update built-in presenter coverage so completion stays summary-only.
 
 ## Review
 
