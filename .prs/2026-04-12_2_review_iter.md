@@ -85,7 +85,7 @@ Based on that:
 - Keep other YAML presenter presets at the default policy.
 - Update presenter coverage accordingly.
 
-#### Package `internal/tui`
+#### [DONE] Package `internal/tui`
 - Respect the presenter policy when deciding which descendant subagent events become visible messages.
 - For `hide_final_message`, suppress only the descendant subagent's terminal assistant-text presentation while keeping descendant tool activity and the outer tool result visible.
 - Add regression coverage around the `review` tool flow.
@@ -101,6 +101,8 @@ Based on that:
 - Run targeted package tests for `internal/llmstream`, `internal/agentbuilder`, `internal/tui`, and `internal/noninteractive`.
 - Completed after interface rollout:
   - `go test ./internal/llmstream ./internal/agentbuilder ./internal/tools/coretools ./internal/tools/exttools ./internal/tools/pkgtools ./internal/agentformatter ./internal/noninteractive ./internal/tui`
+- Completed after TUI implementation:
+  - `go test ./internal/tui`
 
 ## Decisions
 
@@ -119,5 +121,5 @@ Not run yet.
 - `internal/llmstream/presentation.go` now exposes `Presenter.SubagentEventPolicy` plus `Default` and `HideFinalMessage`.
 - `internal/agentbuilder/yaml_presenter.go` now makes `review` return `HideFinalMessage`; other YAML presenter presets return `Default`.
 - `internal/agentbuilder/data/config.yml` defines the `review` tool as a JSON-returning subagent.
-- `internal/tui/tui.go` decides whether tool call/result messages replace or append, but does not yet filter descendant events.
+- `internal/tui/tui.go` now tracks active tool display scopes and buffers descendant assistant text so `HideFinalMessage` can drop only the final subagent message while still showing earlier descendant activity.
 - `internal/noninteractive/session.go` writes human-readable output per event; `internal/noninteractive/json_output.go` emits user-facing JSON events. Neither currently hides review subagent final text.
