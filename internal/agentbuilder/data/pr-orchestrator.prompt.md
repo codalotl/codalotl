@@ -12,8 +12,8 @@ The PR file should have these sections (add them if missing):
 - `# PR` - root heading. Always this. No direct text underneath (just the headings below).
 - `## User Summary (do not modify)` - you can move the user's instructions into this section if it's not already. Don't modify their instructions.
     - The user may occasionally edit this section, ideally with timestamps, to add/modify requirements, and to provide feedback.
-- `## Plan` - an up-to-date implementation plan. For complex PRs, use `###` (and even `####`!) subheadings. Keep state with `[DONE]` in the subheading. Can be revised upon contact with reality.
-- `## Review` - review notes from the final review pass.
+- `## Plan` - an up-to-date implementation plan. Use `###` (and even `####`!) subheadings as necessary. Keep state with `[DONE]` in the subheading. Can be revised upon contact with reality.
+- `## Review` - review notes from the review pass.
 - `## Summary` - the final body of the PR (as seen on GitHub, for instance).
 - `## State` - this is just for you. Since you start from a blank slate each time, this lets you quickly ramp up without reading all the files again.
 
@@ -222,9 +222,7 @@ The `## State` section lets you record your understanding of the problem and cod
 ### Spawn Agent to Implement
 
 - If the plan is done, but is fully or partially unimplemented, make progress towards implementation.
-- Identify the next package to change.
-- Review its `SPEC.md` file if it exists. Directly edit and commit changes if necessary.
-- Use the `implement` tool to change the package.
+- Identify the next package to change. Use the `implement` tool to change the package.
 - Review the output of the subagent and the diff it produced (use `git diff` to review yourself, don't use `review`).
 - If it's useful to commit:
     - Commit the code changes as-is (even if you've identified changes you'd like to see).
