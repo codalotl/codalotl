@@ -136,6 +136,16 @@ Addressed in `4d30e66`:
 
 ## Summary
 
+- Added presenter-owned subagent display policy in `internal/llmstream` via `Presenter.SubagentEventPolicy(call)` plus `SubagentEventPolicyDefault` and `SubagentEventPolicyHideFinalMessage`.
+- Updated `internal/agentbuilder` so the built-in `review` tool opts into `HideFinalMessage`, while other presenter presets remain on the default policy.
+- Updated `internal/tui` and `internal/noninteractive` to treat this as a display-only concern: descendant tool activity and the outer tool result stay visible, while the descendant subagent's terminal assistant-text message is hidden from user-facing output.
+- Tightened TUI handling so chunked final descendant replies are hidden as a whole turn, including descendant `error` and `canceled` terminal paths.
+- Added regression coverage for the TUI and noninteractive flows around hidden final subagent messages.
+- Validation:
+  - `go test ./internal/llmstream ./internal/agentbuilder ./internal/tools/coretools ./internal/tools/exttools ./internal/tools/pkgtools ./internal/agentformatter ./internal/noninteractive ./internal/tui`
+  - `go test ./internal/tui`
+  - `go test ./internal/noninteractive`
+
 ## State
 
 - `internal/llmstream/presentation.go` now exposes `Presenter.SubagentEventPolicy` plus `Default` and `HideFinalMessage`.
