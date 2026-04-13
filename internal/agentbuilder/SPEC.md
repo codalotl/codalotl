@@ -91,16 +91,13 @@ Currently, only "presets" are supported (in the future, we can add a more genera
 
 #### Preset: subagent_q_and_a
 
-This preset is used for Q and A calls, where a subagent is invoked with a "question" and returns an "answer". It might be displayed in the TUI as:
+This preset is used for Q and A calls, where a subagent is invoked with a "question" and returns an "answer". The outer tool call shows the question up front; completion may omit its own summary so the nested subagent answer is not repeated. It might be displayed in the TUI as:
 
 ```
 • Investigating in path/to/pkg
   └ Find out..
     Also don't forget to...
   • (... various subagent events ...)
-• Investigated in path/to/pkg
-  └ I found...
-    I did not forget to...
 ```
 
 Example YAML config:
@@ -121,7 +118,8 @@ presenter:
 Notes:
 - Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
 - The summary line is always joined with spaces.
-- `call_action` and `result_action` are required. The verb used in the summary line (`RoleAction`).
+- `call_action` is required. Used in the call summary line (`RoleAction`).
+- `result_action` is optional. If a consumer chooses to render a completion summary, this is the verb used there.
 - `summary_items` is an optional array of objects. Added after the verb.
     - Each object either has a `text` or `param` key.
     - text's value is used verbatim. Gets `RoleAccent`. 
