@@ -75,12 +75,12 @@ Based on that:
 
 ### Implement presenter-owned subagent visibility policy
 
-#### Package `internal/llmstream`
+#### [DONE] Package `internal/llmstream`
 - Extend `Presenter` with `SubagentEventPolicy(call ToolCall) SubagentEventPolicy`.
 - Add `SubagentEventPolicyDefault` and `SubagentEventPolicyHideFinalMessage`.
 - Keep the underlying agent event stream unchanged; this API is for display consumers.
 
-#### Package `internal/agentbuilder`
+#### [DONE] Package `internal/agentbuilder`
 - Make the built-in `review` presenter return `SubagentEventPolicyHideFinalMessage`.
 - Keep other YAML presenter presets at the default policy.
 - Update presenter coverage accordingly.
@@ -99,6 +99,8 @@ Based on that:
 #### Validation
 - Run focused tests for `internal/agentbuilder`, `internal/tui`, and `internal/noninteractive`.
 - Run targeted package tests for `internal/llmstream`, `internal/agentbuilder`, `internal/tui`, and `internal/noninteractive`.
+- Completed after interface rollout:
+  - `go test ./internal/llmstream ./internal/agentbuilder ./internal/tools/coretools ./internal/tools/exttools ./internal/tools/pkgtools ./internal/agentformatter ./internal/noninteractive ./internal/tui`
 
 ## Decisions
 
@@ -114,8 +116,8 @@ Not run yet.
 
 ## State
 
-- `internal/llmstream/presentation.go` owns the presenter interface. No subagent visibility hook yet.
-- `internal/agentbuilder/yaml_presenter.go` contains the built-in `review` and `subagent_q_and_a` presenter implementations.
+- `internal/llmstream/presentation.go` now exposes `Presenter.SubagentEventPolicy` plus `Default` and `HideFinalMessage`.
+- `internal/agentbuilder/yaml_presenter.go` now makes `review` return `HideFinalMessage`; other YAML presenter presets return `Default`.
 - `internal/agentbuilder/data/config.yml` defines the `review` tool as a JSON-returning subagent.
 - `internal/tui/tui.go` decides whether tool call/result messages replace or append, but does not yet filter descendant events.
 - `internal/noninteractive/session.go` writes human-readable output per event; `internal/noninteractive/json_output.go` emits user-facing JSON events. Neither currently hides review subagent final text.
