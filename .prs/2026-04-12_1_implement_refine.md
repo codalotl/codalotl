@@ -41,4 +41,10 @@ It should be:
 
 ## Review
 
+- Reviewed against `main`.
+- Overall: patch is correct.
+- Follow-ups:
+  - [P3] `internal/agentbuilder/SPEC.md` says completion may omit its summary, but runtime behavior here is summary-only completion, not summary-less completion.
+  - [P3] The `subagent_q_and_a` example still uses `result_body: result`; it should reflect the summary-only completion shape.
+
 ## Summary
