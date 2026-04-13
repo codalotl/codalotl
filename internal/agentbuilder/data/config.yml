@@ -163,7 +163,7 @@ tools:
         summary_items:
           - param: path
         call_body: instructions
-        result_body: result
+        result_body: "-"
     subagent:
       name: package_mode_default_context
       package: path
