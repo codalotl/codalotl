@@ -32,6 +32,66 @@ func TestNewChangeAPITool_StoresLintSteps(t *testing.T) {
 	assert.Equal(t, invoker, changeTool.agentInvoker)
 }
 
+func TestChangeAPITool_ExposesPresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewChangeAPITool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), llmmodel.DefaultModel, nil)
+
+	assert.NotNil(t, tool.Presenter())
+}
+
+func TestChangeAPIPresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewChangeAPITool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), llmmodel.DefaultModel, nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name: ToolNameChangeAPI,
+		Input: `{
+  "path": "axi/some/pkg",
+  "instructions": "Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic."
+}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   ToolNameChangeAPI,
+		Result: `{"success":true}`,
+	}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Changing API", Role: llmstream.RoleAction},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "axi/some/pkg", Role: llmstream.RoleNormal},
+		},
+	}, callPresentation.Summary)
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Changed API", Role: llmstream.RoleAction},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "axi/some/pkg", Role: llmstream.RoleNormal},
+		},
+	}, resultPresentation.Summary)
+
+	paragraph, ok := callPresentation.Body.(llmstream.Paragraph)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Paragraph{
+		Lines: []llmstream.Line{{
+			Segments: []llmstream.Segment{
+				{Text: "Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic.", Role: llmstream.RoleAccent},
+			},
+		}},
+	}, paragraph)
+	assert.Nil(t, resultPresentation.Body)
+}
+
 func TestChangeAPI_MissingImportPath(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)

@@ -50,10 +50,11 @@ Agents:
     - When combined with `include_package_mode_context`, AGENTS.md text precedes generated package context.
 
 Tools:
-- A tool must have `name`, `description`, `parameters`, and then one of {`command`, `subagent`}.
+- A tool must have `name`, `description`, `parameters`, `presenter`, and then one of {`command`, `subagent`}.
 - `name` is the tool name.
 - `description` is the tool description (this is sent to the LLM as the tool description).
 - `parameters` is an object, which has fields that map to parameters. Each parameter must have `type` (ex: `string`), `description` (sent to LLM), and `required` (true or false). This maps to the construction of an `llmstream.ToolInfo`.
+- `presenter` is an object which configures an `llmstream.Presenter` (used to format the tool call/response in the TUI). See `### Presenters` below.
 - `command` is used to map the tool to the execution of a shell command. Subfields:
     - `cmd`: the actual command to run (not including args).
     - `args`: array of strings. Each string can use Go templating.
@@ -83,6 +84,81 @@ Tools:
         - `sandbox_dir`: the current sandbox dir
         - `package_dir`: the current package dir (relative to sandbox)
         - NOTE: we can add more things here as needed.
+
+### Presenters
+
+Currently, only "presets" are supported (in the future, we can add a more generalized solution if we want to). A preset has a name, and then each preset defines its own "arguments" that apply to it. For instance, if you use `name: subagent_q_and_a`, you must supply a `call_action` field indicating the action verb (among other arguments).
+
+#### Preset: subagent_q_and_a
+
+This preset is used for Q and A calls, where a subagent is invoked with a "question" and returns an "answer". It might be displayed in the TUI as:
+
+```
+• Investigating in path/to/pkg
+  └ Find out..
+    Also don't forget to...
+  • (... various subagent events ...)
+• Investigated in path/to/pkg
+  └ I found...
+    I did not forget to...
+```
+
+Example YAML config:
+
+```yaml
+presenter:
+  preset:
+    name: subagent_q_and_a
+    call_action: Investigating
+    result_action: Investigated
+    summary_items:
+      - text: in
+      - param: path
+    call_body: instructions
+    result_body: result
+```
+
+Notes:
+- Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
+- The summary line is always joined with spaces.
+- `call_action` and `result_action` are required. The verb used in the summary line (`RoleAction`).
+- `summary_items` is an optional array of objects. Added after the verb.
+    - Each object either has a `text` or `param` key.
+    - text's value is used verbatim. Gets `RoleAccent`. 
+    - param's value must match a parameter. Gets `RoleNormal`.
+- `call_body` is required. Value must either be a named parameter, or `-` for no body.
+- `result_body` is required. Value must be one of `result` (which displays `ToolResult.Result`), or `-` for no body.
+
+#### Preset: review
+
+This preset is for the `review` tool. It is intentionally narrow rather than a general-purpose presenter abstraction.
+
+It displays the call/result like:
+
+```
+• Reviewing origin/main
+• Reviewed origin/main
+  └ [P2] Some finding title
+    [P1] Another finding title
+```
+
+Example YAML config:
+
+```yaml
+presenter:
+  preset:
+    name: review
+```
+
+Notes:
+- Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
+- This preset has no tunable fields beyond `name`.
+- The tool must define a `base` parameter. The call/result summary line is fixed to `Reviewing {{ .base }}` and `Reviewed {{ .base }}`.
+- The call has no body.
+- The completion body:
+    - If the tool result matches the review JSON schema (in `data/review.prompt.md`), show concise human-readable review output instead of raw JSON.
+    - With findings, show finding titles only (max 10; then `… +N findings`).
+    - With no findings, show a concise success line instead of raw JSON.
 
 ## Toolsets
 

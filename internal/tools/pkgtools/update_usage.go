@@ -47,6 +47,10 @@ type UpdateUsageToolOptions struct {
 	AgentInvoker toolsetinterface.AgentInvoker
 }
 
+var updateUsagePresenterInstance llmstream.Presenter = updateUsagePresenter{}
+
+type updateUsagePresenter struct{}
+
 // authorizer should be the "sandbox" authorizer, not a package-jailed authorizer.
 //
 // pkgDirAbsPath is the package dir that NewUpdateUsageTool is built to serve (i.e., update packages that depend on it).
@@ -71,6 +75,71 @@ func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, 
 
 func (t *toolUpdateUsage) Name() string {
 	return ToolNameUpdateUsage
+}
+
+func (t *toolUpdateUsage) Presenter() llmstream.Presenter {
+	return updateUsagePresenterInstance
+}
+
+func (p updateUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Updating Usage"
+	if result != nil {
+		action = "Updated Usage"
+	}
+
+	instructions, paths, ok := updateUsagePresenterParamsFromCall(call)
+	presentation := llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorAppend,
+		Summary:  updateUsagePresenterSummary(action, call, paths, ok),
+	}
+	if result == nil {
+		if body, ok := pkgToolPresenterOutput(instructions); ok {
+			presentation.Body = body
+		}
+	}
+	return presentation
+}
+
+func updateUsagePresenterSummary(action string, call llmstream.ToolCall, paths []string, ok bool) llmstream.Line {
+	if !ok {
+		return pkgToolPresenterFallbackSummary(call)
+	}
+
+	segments := []llmstream.Segment{
+		{Text: action, Role: llmstream.RoleAction},
+	}
+	if summary, extra := summarizeUpdateUsagePaths(paths); summary != "" {
+		segments = append(segments,
+			llmstream.Segment{Text: "in", Role: llmstream.RoleAccent},
+			llmstream.Segment{Text: summary, Role: llmstream.RoleNormal},
+		)
+		if extra > 0 {
+			segments = append(segments, llmstream.Segment{Text: fmt.Sprintf("(%d more)", extra), Role: llmstream.RoleAccent})
+		}
+	}
+	return llmstream.Line{
+		JoinWithSpace: true,
+		Segments:      segments,
+	}
+}
+
+func updateUsagePresenterParamsFromCall(call llmstream.ToolCall) (instructions string, paths []string, ok bool) {
+	var params updateUsageParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
+		return "", nil, false
+	}
+
+	instructions = strings.TrimSpace(params.Instructions)
+	for _, path := range params.Paths {
+		path = strings.TrimSpace(path)
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	if instructions == "" && len(paths) == 0 {
+		return "", nil, false
+	}
+	return instructions, paths, true
 }
 
 func (t *toolUpdateUsage) Info() llmstream.ToolInfo {

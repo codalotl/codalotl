@@ -169,8 +169,12 @@ func TestSendUserMessageWithToolUse(t *testing.T) {
 		switch ev.Type {
 		case EventTypeToolCall:
 			sawToolCall = true
+			require.Same(t, tool, ev.Tool)
+			require.NotNil(t, ev.ToolCall)
+			require.Equal(t, toolCall.CallID, ev.ToolCall.CallID)
 		case EventTypeToolComplete:
 			sawToolComplete = true
+			require.Same(t, tool, ev.Tool)
 			if ev.ToolResult == nil || ev.ToolResult.Result != "OK" {
 				t.Fatalf("unexpected tool result event: %+v", ev)
 			}
@@ -214,6 +218,70 @@ func TestSendUserMessageWithToolUse(t *testing.T) {
 	if turns[4].FinishReason != llmstream.FinishReasonEndTurn {
 		t.Fatalf("turn[4] finish reason = %s, want end_turn", turns[4].FinishReason)
 	}
+}
+
+func TestSendUserMessageUnknownToolEventsHaveNilTool(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_unknown",
+		Name:       "missing_tool",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	turnTool := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	finalText := llmstream.TextContent{ProviderID: "text-2", Content: "Done"}
+	turnFinal := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnTool},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &finalText, Delta: finalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnFinal},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var toolEvents []Event
+	for ev := range a.SendUserMessage(ctx, "Use the tool") {
+		if ev.Type == EventTypeToolCall || ev.Type == EventTypeToolComplete {
+			toolEvents = append(toolEvents, ev)
+		}
+	}
+
+	require.Len(t, toolEvents, 2)
+	require.Nil(t, toolEvents[0].Tool)
+	require.Equal(t, EventTypeToolCall, toolEvents[0].Type)
+	require.NotNil(t, toolEvents[0].ToolCall)
+	require.Equal(t, toolCall.Name, toolEvents[0].ToolCall.Name)
+
+	require.Nil(t, toolEvents[1].Tool)
+	require.Equal(t, EventTypeToolComplete, toolEvents[1].Type)
+	require.NotNil(t, toolEvents[1].ToolResult)
+	require.True(t, toolEvents[1].ToolResult.IsError)
+	require.Equal(t, "unknown tool", toolEvents[1].ToolResult.Result)
 }
 
 func TestSendUserMessageRootEventMetadata(t *testing.T) {
@@ -1395,6 +1463,8 @@ func (s *stubTool) Info() llmstream.ToolInfo { return s.info }
 
 func (s *stubTool) Name() string { return s.name }
 
+func (s *stubTool) Presenter() llmstream.Presenter { return nil }
+
 func (s *stubTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	if s.runErr != nil {
 		res := llmstream.NewErrorToolResult(s.runErr.Error(), call)
@@ -1425,6 +1495,8 @@ func (t *funcTool) Info() llmstream.ToolInfo {
 }
 
 func (t *funcTool) Name() string { return t.name }
+
+func (t *funcTool) Presenter() llmstream.Presenter { return nil }
 
 func (t *funcTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	if t.runFn == nil {
@@ -1464,3 +1536,6 @@ func cloneTurnTest(t llmstream.Turn) llmstream.Turn {
 	}
 	return cp
 }
+
+var _ llmstream.Tool = (*stubTool)(nil)
+var _ llmstream.Tool = (*funcTool)(nil)

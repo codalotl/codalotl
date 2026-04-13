@@ -27,6 +27,8 @@ const ToolNameChangeAPI = "change_api"
 // This mirrors internal/agentbuilder.AgentPackageModeDefaultContext without importing that package and creating an import cycle.
 const changeAPIAgentName = "package_mode_default_context"
 
+var changeAPIPresenterInstance llmstream.Presenter = changeAPIPresenter{}
+
 type toolChangeAPI struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
@@ -48,6 +50,8 @@ type changeAPIParams struct {
 type ChangeAPIToolOptions struct {
 	AgentInvoker toolsetinterface.AgentInvoker
 }
+
+type changeAPIPresenter struct{}
 
 // NewChangeAPITool creates a tool that can update upstream packages that the current package directly imports.
 //
@@ -73,6 +77,62 @@ func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, to
 
 func (t *toolChangeAPI) Name() string {
 	return ToolNameChangeAPI
+}
+
+func (t *toolChangeAPI) Presenter() llmstream.Presenter {
+	return changeAPIPresenterInstance
+}
+
+func (p changeAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Changing API"
+	if result != nil {
+		action = "Changed API"
+	}
+
+	path, instructions, ok := changeAPIPresenterParamsFromCall(call)
+	presentation := llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorAppend,
+		Summary:  changeAPIPresenterSummary(action, call, path, ok),
+	}
+	if result == nil && strings.TrimSpace(instructions) != "" && ok {
+		presentation.Body = llmstream.Paragraph{
+			Lines: []llmstream.Line{{
+				Segments: []llmstream.Segment{
+					{Text: instructions, Role: llmstream.RoleAccent},
+				},
+			}},
+		}
+	}
+	return presentation
+}
+
+func changeAPIPresenterSummary(action string, call llmstream.ToolCall, path string, ok bool) llmstream.Line {
+	if ok {
+		return llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: action, Role: llmstream.RoleAction},
+				{Text: "in", Role: llmstream.RoleAccent},
+				{Text: path, Role: llmstream.RoleNormal},
+			},
+		}
+	}
+
+	return pkgToolPresenterFallbackSummary(call)
+}
+
+func changeAPIPresenterParamsFromCall(call llmstream.ToolCall) (path string, instructions string, ok bool) {
+	var params changeAPIParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
+		return "", "", false
+	}
+
+	path = strings.TrimSpace(params.Path)
+	instructions = strings.TrimSpace(params.Instructions)
+	if path == "" {
+		return "", "", false
+	}
+	return path, instructions, true
 }
 
 func (t *toolChangeAPI) Info() llmstream.ToolInfo {

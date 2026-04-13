@@ -13,6 +13,7 @@ import (
 	qtui "github.com/codalotl/codalotl/internal/q/tui"
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -636,11 +637,11 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
 	result := &llmstream.ToolResult{CallID: callID, Name: "read_file"}
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: "read_file", ToolCall: call})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: call})
 	require.Len(t, m.messages, 1)
 	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 
-	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: "read_file", ToolCall: call, ToolResult: result})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: call, ToolResult: result})
 
 	// Default behavior: the tool call entry is replaced by the result entry.
 	require.Len(t, m.messages, 1)
@@ -650,7 +651,82 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 }
 
 func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
-	for _, toolName := range []string{"change_api", "update_usage", "clarify_public_api", "implement", "review"} {
+	t.Run("change_api presenter append behavior", func(t *testing.T) {
+		m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+		callID := "call-change-api"
+		call := &llmstream.ToolCall{CallID: callID, Name: "change_api", Input: `{"path":"upstream","instructions":"Change it."}`}
+		result := &llmstream.ToolResult{CallID: callID, Name: "change_api"}
+		sandbox := t.TempDir()
+		tool := newNamedToolWithPresenter("change_api", pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		).Presenter())
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+		require.Len(t, m.messages, 1)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+		require.Len(t, m.messages, 2)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	})
+
+	t.Run("update_usage presenter append behavior", func(t *testing.T) {
+		m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+		callID := "call-update-usage"
+		call := &llmstream.ToolCall{CallID: callID, Name: "update_usage", Input: `{"instructions":"Update callers.","paths":["consumer"]}`}
+		result := &llmstream.ToolResult{CallID: callID, Name: "update_usage"}
+		sandbox := t.TempDir()
+		tool := newNamedToolWithPresenter("update_usage", pkgtools.NewUpdateUsageTool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		).Presenter())
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+		require.Len(t, m.messages, 1)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+		require.Len(t, m.messages, 2)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	})
+
+	t.Run("clarify_public_api presenter append behavior", func(t *testing.T) {
+		m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+		callID := "call-clarify-public-api"
+		call := &llmstream.ToolCall{CallID: callID, Name: "clarify_public_api", Input: `{"path":"some/pkg","identifier":"Thing","question":"What does Thing do?"}`}
+		result := &llmstream.ToolResult{CallID: callID, Name: "clarify_public_api"}
+		sandbox := t.TempDir()
+		tool := newNamedToolWithPresenter("clarify_public_api", pkgtools.NewClarifyPublicAPITool(
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+		).Presenter())
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+		require.Len(t, m.messages, 1)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+		require.Len(t, m.messages, 2)
+		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	})
+
+	for _, toolName := range []string{"implement", "review"} {
 		t.Run(toolName, func(t *testing.T) {
 			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
@@ -658,11 +734,11 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 			call := &llmstream.ToolCall{CallID: callID, Name: toolName}
 			result := &llmstream.ToolResult{CallID: callID, Name: toolName}
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: toolName, ToolCall: call})
+			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, ToolCall: call})
 			require.Len(t, m.messages, 1)
 			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: toolName, ToolCall: call, ToolResult: result})
+			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, ToolCall: call, ToolResult: result})
 
 			// Exception behavior: for SubAgent tools, keep the call and append the result.
 			require.Len(t, m.messages, 2)
@@ -670,6 +746,39 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 			require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 		})
 	}
+}
+
+func TestToolNamePrecedence(t *testing.T) {
+	t.Run("prefers event tool object", func(t *testing.T) {
+		ev := agent.Event{
+			Tool:       newNamedTool("from-tool"),
+			ToolCall:   &llmstream.ToolCall{Name: "from-call"},
+			ToolResult: &llmstream.ToolResult{Name: "from-result"},
+		}
+
+		require.Equal(t, "from-tool", toolName(ev))
+	})
+
+	t.Run("falls back to tool call name", func(t *testing.T) {
+		ev := agent.Event{
+			ToolCall:   &llmstream.ToolCall{Name: "from-call"},
+			ToolResult: &llmstream.ToolResult{Name: "from-result"},
+		}
+
+		require.Equal(t, "from-call", toolName(ev))
+	})
+
+	t.Run("falls back to tool result name", func(t *testing.T) {
+		ev := agent.Event{
+			ToolResult: &llmstream.ToolResult{Name: "from-result"},
+		}
+
+		require.Equal(t, "from-result", toolName(ev))
+	})
+
+	t.Run("returns empty when unnamed", func(t *testing.T) {
+		require.Empty(t, toolName(agent.Event{}))
+	})
 }
 
 func TestModelCommandListsAvailableModels(t *testing.T) {

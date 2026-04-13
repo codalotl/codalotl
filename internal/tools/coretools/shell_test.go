@@ -228,3 +228,183 @@ func TestShell_Run_Authorization(t *testing.T) {
 		})
 	}
 }
+
+func TestShell_Presenter_CommandSummary(t *testing.T) {
+	tool := NewShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameShell,
+		Input: `{"command":["go","test","."]}`,
+	}
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Running", Role: llmstream.RoleAction},
+				{Text: "go test .", Role: llmstream.RoleNormal},
+			},
+		},
+	}, presenter.Present(call, nil))
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Ran", Role: llmstream.RoleAction},
+				{Text: "go test .", Role: llmstream.RoleNormal},
+			},
+		},
+	}, presenter.Present(call, &llmstream.ToolResult{}))
+}
+
+func TestShell_Presenter_CompleteIncludesSummarizedOutput(t *testing.T) {
+	tool := NewShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameShell,
+		Input: `{"command":["go","test","."]}`,
+	}
+	result := &llmstream.ToolResult{
+		Result: `{"success":true,"content":"Command: go test .\nProcess State: exit status 0\nTimeout: false\nDuration: 10ms\nOutput:\nok   github.com/codalotl/codalotl/internal/tools/coretools\t0.123s\n?    github.com/codalotl/codalotl/internal/tools/coretools/testdata\t[no test files]\n"}`,
+	}
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Ran", Role: llmstream.RoleAction},
+				{Text: "go test .", Role: llmstream.RoleNormal},
+			},
+		},
+		Body: llmstream.Output{
+			Lines: []string{
+				"ok   github.com/codalotl/codalotl/internal/tools/coretools\t0.123s",
+				"?    github.com/codalotl/codalotl/internal/tools/coretools/testdata\t[no test files]",
+			},
+		},
+	}, presenter.Present(call, result))
+}
+
+func TestShell_Presenter_CompleteSummarizesLongOutput(t *testing.T) {
+	tool := NewShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameShell,
+		Input: `{"command":["go","test","./..."]}`,
+	}
+	result := &llmstream.ToolResult{
+		Result: `{"success":true,"content":"Command: go test ./...\nProcess State: exit status 0\nTimeout: false\nDuration: 10ms\nOutput:\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n"}`,
+	}
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Ran", Role: llmstream.RoleAction},
+				{Text: "go test ./...", Role: llmstream.RoleNormal},
+			},
+		},
+		Body: llmstream.Output{
+			Lines: []string{
+				"line 1",
+				"line 2",
+				"line 3",
+				"line 4",
+				"line 5",
+			},
+			OmittedLineCount: 2,
+		},
+	}, presenter.Present(call, result))
+}
+
+func TestShell_Presenter_CompleteShowsStructuredError(t *testing.T) {
+	tool := NewShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameShell,
+		Input: `{"command":["go","test","."]}`,
+	}
+	result := &llmstream.ToolResult{
+		IsError: true,
+		Result:  `{"error":"shell authorization denied"}`,
+	}
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Ran", Role: llmstream.RoleAction},
+				{Text: "go test .", Role: llmstream.RoleNormal},
+			},
+		},
+		Body: llmstream.Output{
+			Lines: []string{"Error: shell authorization denied"},
+		},
+	}, presenter.Present(call, result))
+}
+
+func TestShell_Presenter_FallbacksToToolName(t *testing.T) {
+	tool := NewShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+	presenter := tool.Presenter()
+	require.NotNil(t, presenter)
+
+	tests := []struct {
+		name     string
+		call     llmstream.ToolCall
+		expected string
+	}{
+		{
+			name: "invalid json",
+			call: llmstream.ToolCall{
+				Name:  ToolNameShell,
+				Input: `{`,
+			},
+			expected: ToolNameShell,
+		},
+		{
+			name: "empty command and empty call name",
+			call: llmstream.ToolCall{
+				Input: `{"command":[]}`,
+			},
+			expected: ToolNameShell,
+		},
+		{
+			name: "blank executable",
+			call: llmstream.ToolCall{
+				Name:  ToolNameShell,
+				Input: `{"command":["","test"]}`,
+			},
+			expected: ToolNameShell,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			presentation := presenter.Present(tc.call, nil)
+			assert.Equal(t, llmstream.Presentation{
+				Behavior: llmstream.CompletionBehaviorReplace,
+				Summary: llmstream.Line{
+					JoinWithSpace: true,
+					Segments: []llmstream.Segment{
+						{Text: "Running", Role: llmstream.RoleAction},
+						{Text: tc.expected, Role: llmstream.RoleNormal},
+					},
+				},
+			}, presentation)
+		})
+	}
+}

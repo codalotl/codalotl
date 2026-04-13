@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/agentregistry"
 	"github.com/codalotl/codalotl/internal/agentsmd"
 	"github.com/codalotl/codalotl/internal/codeunit"
@@ -61,6 +62,33 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	}, agentsByName["pr-review"].Tools)
 	require.NotNil(t, agentsByName["pr-review"].Skills)
 	assert.False(t, *agentsByName["pr-review"].Skills)
+
+	var implementSpec *yamlToolSpec
+	var reviewSpec *yamlToolSpec
+	for i := range spec.Tools {
+		switch spec.Tools[i].Name {
+		case "implement":
+			implementSpec = &spec.Tools[i]
+		case "review":
+			reviewSpec = &spec.Tools[i]
+		}
+	}
+
+	require.NotNil(t, reviewSpec)
+	require.NotNil(t, reviewSpec.Presenter)
+	require.NotNil(t, reviewSpec.Presenter.Preset)
+	assert.Equal(t, yamlPresenterPresetReview, reviewSpec.Presenter.Preset.Name)
+
+	require.NotNil(t, implementSpec)
+	require.NotNil(t, implementSpec.Presenter)
+	require.NotNil(t, implementSpec.Presenter.Preset)
+	assert.Equal(t, yamlPresenterPresetSubagentQA, implementSpec.Presenter.Preset.Name)
+	assert.Equal(t, "Implementing", implementSpec.Presenter.Preset.CallAction)
+	assert.Equal(t, "Implemented", implementSpec.Presenter.Preset.ResultAction)
+	assert.Equal(t, "instructions", implementSpec.Presenter.Preset.CallBody)
+	assert.Equal(t, yamlPresenterBodyResult, implementSpec.Presenter.Preset.ResultBody)
+	require.Len(t, implementSpec.Presenter.Preset.SummaryItems, 1)
+	assert.Equal(t, "path", implementSpec.Presenter.Preset.SummaryItems[0].Param)
 }
 
 func TestAddYAMLToRegistry_AddsAgentsAndTools(t *testing.T) {
@@ -505,6 +533,46 @@ tools:
 	require.ErrorContains(t, err, `unsupported subagent.result_format "xml"`)
 }
 
+func TestAddYAMLToRegistry_RejectsInvalidPresenterConfig(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "bad.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: bad_presenter_agent
+    mode: generic
+    prompts:
+      - text: bad
+    tools:
+      - broken
+    skills: false
+tools:
+  - name: broken
+    description: broken
+    parameters:
+      path:
+        type: string
+        description: target package
+        required: true
+    presenter:
+      preset:
+        name: subagent_q_and_a
+        call_action: Implementing
+        result_action: Implemented
+        summary_items:
+          - param: missing
+        call_body: path
+        result_body: result
+    subagent:
+      name: generic
+      message: hi
+`), 0o644))
+
+	err = AddYAMLToRegistry(registry, yamlPath)
+	require.ErrorContains(t, err, `presenter.preset.summary_items[0]: param "missing" is not defined`)
+}
+
 func TestYAMLSubagentToolRun_JSONResultHandling(t *testing.T) {
 	invoker := &captureAgentInvoker{
 		events: []agent.Event{
@@ -578,6 +646,132 @@ func TestYAMLSubagentToolRun_InvalidJSONResultReturnsToolError(t *testing.T) {
 
 	require.True(t, result.IsError)
 	assert.Contains(t, result.Result, "parse subagent result as json")
+}
+
+func TestYAMLSubagentToolRun_AcceptsToolEventsWithNamedToolObject(t *testing.T) {
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeToolCall,
+				Tool: fakeNamedTool{name: "review"},
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+			},
+			{
+				Type: agent.EventTypeToolComplete,
+				Tool: fakeNamedTool{name: "review"},
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+				ToolResult: &llmstream.ToolResult{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Result: "ok",
+				},
+			},
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{Name: "review"},
+		spec: &yamlNormalizedSubagentSpec{
+			Name:         "generic",
+			Messages:     []yamlNormalizedSubagentMessageSpec{{Text: "review this"}},
+			ResultFormat: yamlResultFormatText,
+		},
+		params: map[string]yamlNormalizedParameter{},
+		opts: toolsetinterface.Options{
+			AgentInvoker: invoker,
+		},
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Input:  `{}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "done", result.Result)
+}
+
+func TestYAMLSubagentToolRun_AcceptsToolEventsWithoutToolObject(t *testing.T) {
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeToolCall,
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+			},
+			{
+				Type: agent.EventTypeToolComplete,
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Input:  `{}`,
+				},
+				ToolResult: &llmstream.ToolResult{
+					CallID: "call-review",
+					Name:   "review",
+					Type:   "function_call",
+					Result: "ok",
+				},
+			},
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	tool := &yamlSubagentTool{
+		info: llmstream.ToolInfo{Name: "review"},
+		spec: &yamlNormalizedSubagentSpec{
+			Name:         "generic",
+			Messages:     []yamlNormalizedSubagentMessageSpec{{Text: "review this"}},
+			ResultFormat: yamlResultFormatText,
+		},
+		params: map[string]yamlNormalizedParameter{},
+		opts: toolsetinterface.Options{
+			AgentInvoker: invoker,
+		},
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "review-call",
+		Name:   "review",
+		Type:   "function_call",
+		Input:  `{}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "done", result.Result)
 }
 
 func TestAddYAMLToRegistry_DuplicateToolDoesNotMutateRegistry(t *testing.T) {
@@ -803,6 +997,108 @@ func TestBuildRegistry_PROrchestratorImplementTool_InvokesPackageModeSubagent(t 
 	assert.True(t, invoker.lastRequest.ToolOptions.Authorizer.IsCodeUnitDomain())
 	assert.Equal(t, targetPkgDir, invoker.lastRequest.ToolOptions.Authorizer.CodeUnitDir())
 	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.Authorizer.SandboxDir())
+}
+
+func TestBuildRegistry_PROrchestratorImplementTool_ExposesPresenter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	implementTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		t.TempDir(),
+		"",
+		nil,
+	), "implement")
+
+	presenter := implementTool.Presenter()
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentformatter","instructions":"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   "implement",
+		Result: "Added focused coverage for orchestrator tool-event formatting.",
+	}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior:      llmstream.CompletionBehaviorAppend,
+		ErrorBehavior: llmstream.ErrorBehaviorDefault,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Implementing", Role: llmstream.RoleAction},
+				{Text: "internal/agentformatter", Role: llmstream.RoleNormal},
+			},
+		},
+		Body: llmstream.Output{
+			Lines: []string{"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."},
+		},
+	}, callPresentation)
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior:      llmstream.CompletionBehaviorAppend,
+		ErrorBehavior: llmstream.ErrorBehaviorDefault,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Implemented", Role: llmstream.RoleAction},
+				{Text: "internal/agentformatter", Role: llmstream.RoleNormal},
+			},
+		},
+		Body: llmstream.Output{
+			Lines: []string{"Added focused coverage for orchestrator tool-event formatting."},
+		},
+	}, resultPresentation)
+}
+
+func TestBuildRegistry_PROrchestratorImplementTool_FormatsWithAgentformatter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	implementTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		t.TempDir(),
+		"",
+		nil,
+	), "implement")
+	require.NotNil(t, implementTool.Presenter())
+
+	formatter := agentformatter.NewTUIFormatter(agentformatter.Config{PlainText: true})
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentformatter","instructions":"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."}`,
+	}
+
+	t.Run("tool call", func(t *testing.T) {
+		out := formatter.FormatEvent(agent.Event{
+			Type:     agent.EventTypeToolCall,
+			Tool:     implementTool,
+			ToolCall: &call,
+		}, 160)
+
+		assert.Equal(t, "• Implementing internal/agentformatter\n  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.", out)
+	})
+
+	t.Run("tool complete", func(t *testing.T) {
+		out := formatter.FormatEvent(agent.Event{
+			Type:     agent.EventTypeToolComplete,
+			Tool:     implementTool,
+			ToolCall: &call,
+			ToolResult: &llmstream.ToolResult{
+				Name:   "implement",
+				Result: "Added focused coverage for orchestrator tool-event formatting.",
+			},
+		}, 160)
+
+		assert.Equal(t, "• Implemented internal/agentformatter\n  └ Added focused coverage for orchestrator tool-event formatting.", out)
+	})
 }
 
 func TestBuildRegistry_PROrchestratorImplementTool_GenericModeImportPathResolvesTargetPackage(t *testing.T) {
@@ -1037,3 +1333,25 @@ func (c *captureAgentInvoker) Invoke(ctx context.Context, agentName string, req 
 }
 
 var _ toolsetinterface.AgentInvoker = (*captureAgentInvoker)(nil)
+
+type fakeNamedTool struct {
+	name string
+}
+
+func (t fakeNamedTool) Info() llmstream.ToolInfo {
+	return llmstream.ToolInfo{Name: t.name}
+}
+
+func (t fakeNamedTool) Name() string {
+	return t.name
+}
+
+func (t fakeNamedTool) Presenter() llmstream.Presenter {
+	return nil
+}
+
+func (t fakeNamedTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
+	return llmstream.ToolResult{Name: t.name}
+}
+
+var _ llmstream.Tool = fakeNamedTool{}

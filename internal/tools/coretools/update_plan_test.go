@@ -114,3 +114,137 @@ func TestUpdatePlanRunInvalidStatus(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Result, "must be one of")
 }
+
+func TestUpdatePlanPresenter_CallRendersOverviewAndChecklist(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	presentation := presenter.Present(llmstream.ToolCall{
+		Name:  ToolNameUpdatePlan,
+		Input: `{"explanation":"Doing work","plan":[{"step":"Write code","status":"in_progress"}]}`,
+	}, nil)
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, llmstream.Line{
+		Segments: []llmstream.Segment{
+			{Text: "Update Plan", Role: llmstream.RoleAction},
+		},
+	}, presentation.Summary)
+
+	checklist, ok := presentation.Body.(llmstream.Checklist)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Line{
+		Segments: []llmstream.Segment{
+			{Text: "Doing work", Role: llmstream.RoleAccent},
+		},
+	}, checklist.Overview)
+	require.Len(t, checklist.Items, 1)
+	assert.Equal(t, llmstream.ChecklistItem{
+		Status: llmstream.ChecklistStatusInProgress,
+		Line: llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Write code", Role: llmstream.RoleAction},
+			},
+		},
+	}, checklist.Items[0])
+}
+
+func TestUpdatePlanPresenter_CompleteRendersOverviewAndChecklistEmphasis(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name: ToolNameUpdatePlan,
+		Input: `{
+  "explanation": "Need to align tool rendering with presenter output.",
+  "plan": [
+    {"step":"Review the existing formatting shapes","status":"completed"},
+    {"step":"Highlight the first pending task as next-up work","status":"pending"},
+    {"step":"Keep explicit in-progress items emphasized too","status":"in_progress"},
+    {"step":"Follow up with cleanup later","status":"pending"}
+  ]
+}`,
+	}
+
+	presentation := presenter.Present(call, &llmstream.ToolResult{Name: ToolNameUpdatePlan, Result: "Plan updated"})
+
+	assert.Equal(t, llmstream.CompletionBehaviorReplace, presentation.Behavior)
+	assert.Equal(t, llmstream.Line{
+		Segments: []llmstream.Segment{
+			{Text: "Update Plan", Role: llmstream.RoleAction},
+		},
+	}, presentation.Summary)
+
+	checklist, ok := presentation.Body.(llmstream.Checklist)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Line{
+		Segments: []llmstream.Segment{
+			{Text: "Need to align tool rendering with presenter output.", Role: llmstream.RoleAccent},
+		},
+	}, checklist.Overview)
+	require.Len(t, checklist.Items, 4)
+
+	assert.Equal(t, llmstream.ChecklistItem{
+		Status: llmstream.ChecklistStatusCompleted,
+		Line: llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Review the existing formatting shapes", Role: llmstream.RoleAccent},
+			},
+		},
+	}, checklist.Items[0])
+	assert.Equal(t, llmstream.ChecklistItem{
+		Status: llmstream.ChecklistStatusPending,
+		Line: llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Highlight the first pending task as next-up work", Role: llmstream.RoleAction},
+			},
+		},
+	}, checklist.Items[1])
+	assert.Equal(t, llmstream.ChecklistItem{
+		Status: llmstream.ChecklistStatusInProgress,
+		Line: llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Keep explicit in-progress items emphasized too", Role: llmstream.RoleAction},
+			},
+		},
+	}, checklist.Items[2])
+	assert.Equal(t, llmstream.ChecklistItem{
+		Status: llmstream.ChecklistStatusPending,
+		Line: llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: "Follow up with cleanup later", Role: llmstream.RoleAccent},
+			},
+		},
+	}, checklist.Items[3])
+}
+
+func TestUpdatePlanPresenter_ExplanationOnlyRendersChecklistOverview(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewUpdatePlanTool(auth)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	presentation := presenter.Present(llmstream.ToolCall{
+		Name:  ToolNameUpdatePlan,
+		Input: `{"explanation":"Doing work","plan":[]}`,
+	}, nil)
+
+	checklist, ok := presentation.Body.(llmstream.Checklist)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Line{
+		Segments: []llmstream.Segment{
+			{Text: "Doing work", Role: llmstream.RoleAccent},
+		},
+	}, checklist.Overview)
+	assert.Empty(t, checklist.Items)
+}

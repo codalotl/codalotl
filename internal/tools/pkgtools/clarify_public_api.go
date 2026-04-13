@@ -42,6 +42,10 @@ type ClarifyPublicAPIToolOptions struct {
 	Model        llmmodel.ModelID
 }
 
+var clarifyPublicAPIPresenterInstance llmstream.Presenter = clarifyPublicAPIPresenter{}
+
+type clarifyPublicAPIPresenter struct{}
+
 // authorizer is the fallback authorizer the clarify subagent should use underneath its target-package jail.
 func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, options ...ClarifyPublicAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
@@ -59,6 +63,103 @@ func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetin
 
 func (t *toolClarifyPublicAPI) Name() string {
 	return ToolNameClarifyPublicAPI
+}
+
+func (t *toolClarifyPublicAPI) Presenter() llmstream.Presenter {
+	return clarifyPublicAPIPresenterInstance
+}
+
+func (p clarifyPublicAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Clarifying API"
+	if result != nil {
+		action = "Clarified API"
+	}
+
+	identifier, path, question, ok := clarifyPublicAPIPresenterParamsFromCall(call)
+	presentation := llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorAppend,
+		Summary:  clarifyPublicAPIPresenterSummary(action, call, identifier, path, ok),
+	}
+
+	if result == nil {
+		if body, ok := pkgToolPresenterOutput(question); ok {
+			presentation.Body = body
+		}
+		return presentation
+	}
+
+	if content, ok := clarifyPublicAPIPresenterResultContent(*result); ok {
+		if body, ok := pkgToolPresenterOutput(content); ok {
+			presentation.Body = body
+		}
+	}
+	return presentation
+}
+
+func clarifyPublicAPIPresenterSummary(action string, call llmstream.ToolCall, identifier string, path string, ok bool) llmstream.Line {
+	if !ok {
+		return pkgToolPresenterFallbackSummary(call)
+	}
+
+	segments := []llmstream.Segment{
+		{Text: action, Role: llmstream.RoleAction},
+	}
+	if identifier != "" {
+		segments = append(segments, llmstream.Segment{Text: identifier, Role: llmstream.RoleNormal})
+	}
+	if path != "" {
+		segments = append(segments,
+			llmstream.Segment{Text: "in", Role: llmstream.RoleAccent},
+			llmstream.Segment{Text: path, Role: llmstream.RoleNormal},
+		)
+	}
+	return llmstream.Line{
+		JoinWithSpace: true,
+		Segments:      segments,
+	}
+}
+
+func clarifyPublicAPIPresenterParamsFromCall(call llmstream.ToolCall) (identifier string, path string, question string, ok bool) {
+	var params clarifyPublicAPIParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
+		return "", "", "", false
+	}
+
+	identifier = strings.TrimSpace(params.Identifier)
+	path = strings.TrimSpace(params.Path)
+	question = strings.TrimSpace(params.Question)
+	if identifier == "" && path == "" && question == "" {
+		return "", "", "", false
+	}
+	return identifier, path, question, true
+}
+
+func clarifyPublicAPIPresenterResultContent(result llmstream.ToolResult) (string, bool) {
+	if result.IsError {
+		return "", false
+	}
+
+	trimmed := strings.TrimSpace(result.Result)
+	if trimmed == "" {
+		return "", false
+	}
+
+	var payload struct {
+		Content string `json:"content"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+		if strings.TrimSpace(payload.Error) != "" {
+			return "", false
+		}
+		content := strings.TrimSpace(payload.Content)
+		if content == "" {
+			return "", false
+		}
+		return content, true
+	}
+
+	return trimmed, true
 }
 
 func (t *toolClarifyPublicAPI) Info() llmstream.ToolInfo {

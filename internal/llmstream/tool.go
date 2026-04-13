@@ -49,6 +49,7 @@ type ToolInfo struct {
 type Tool interface {
 	Info() ToolInfo
 	Name() string
+	Presenter() Presenter
 
 	// Run runs the tool. If the tool call results in an error of any kind, the result.IsError will be true, with result.Result containing a message for the LLM. result.SourceErr
 	// may optionally be set for internal use, but won't be passed along to the LLM.

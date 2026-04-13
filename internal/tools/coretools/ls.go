@@ -42,6 +42,10 @@ func (t *toolLs) Name() string {
 	return ToolNameLS
 }
 
+func (t *toolLs) Presenter() llmstream.Presenter {
+	return lsPresenterInstance
+}
+
 func (t *toolLs) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameLS,
@@ -162,4 +166,38 @@ func RunLs(ctx context.Context, absPath string) (string, error) {
 		},
 	}
 	return res.ToXML("ls"), nil
+}
+
+var lsPresenterInstance llmstream.Presenter = lsPresenter{}
+
+type lsPresenter struct{}
+
+func (p lsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	_ = result
+
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "List", Role: llmstream.RoleAction},
+				{Text: lsPresenterTarget(call), Role: llmstream.RoleNormal},
+			},
+		},
+	}
+}
+
+func lsPresenterTarget(call llmstream.ToolCall) string {
+	var params ParamsLS
+	if err := json.Unmarshal([]byte(call.Input), &params); err == nil {
+		if path := strings.TrimSpace(params.Path); path != "" {
+			return path
+		}
+	}
+
+	name := strings.TrimSpace(call.Name)
+	if name == "" {
+		name = ToolNameLS
+	}
+	return name
 }

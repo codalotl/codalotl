@@ -95,6 +95,9 @@ Use the `implement` tool, which runs a subagent:
 - Pass `implement` clear instructions:
     - It will be able to read its own package files, the public API of other packages, and list available packages and modules.
     - You can @mention specific files or directories to share context outside the package (e.g., `@docs/README.md` enables the subagent to read `docs/README.md`). You can even @mention the PR file!
+    - Don't duplicate your changes to SPEC.md in the instructions. You can often just say, "implement the changes in SPEC.md". Only elaborate on those if the SPEC.md changes are ambiguous, AND you need a specific implementation choice that isn't obvious.
+    - Indicate whether the subagent should automatically update callsites (if there's breaking changes). Sometimes for very complicated (or extensive) changes, it's better to dedicate a single commit per downstream package.
+    - Indicate whether the subagent should run project tests (go test ./...), and whether you expect those to pass.
 - Multi-package changes will often require multiple Steps, each with one `implement` call.
 - When the subagent is done, examine its output and diff (don't use `review` for this). See details in `## Workflows`.
 
@@ -168,4 +171,4 @@ Remember:
 - If the review found nothing, or we finished actioning the review feedback, complete the PR.
 - Analyze the commits to aggregate changes.
 - Write `## Summary` in PR file. Commit.
-- <end-of-step> and <end-of-skill>
+- <end-of-step> and <end-of-workflow>

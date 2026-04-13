@@ -181,8 +181,13 @@ func geminiIsRetryableStreamError(err error) bool {
 	}
 
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return netErr.Timeout() || netErr.Temporary()
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	var tempErr interface{ Temporary() bool }
+	if errors.As(err, &tempErr) && tempErr.Temporary() {
+		return true
 	}
 
 	return errors.Is(err, io.ErrUnexpectedEOF)

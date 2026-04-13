@@ -621,6 +621,8 @@ func (integrationTestTool) Run(ctx context.Context, params ToolCall) ToolResult 
 
 func (itt integrationTestTool) Name() string { return itt.name }
 
+func (integrationTestTool) Presenter() Presenter { return nil }
+
 func (itt integrationTestTool) Info() ToolInfo {
 	return ToolInfo{
 		Name:        itt.name,
@@ -646,6 +648,8 @@ func (g getWeatherTestTool) Run(ctx context.Context, params ToolCall) ToolResult
 }
 
 func (g getWeatherTestTool) Name() string { return g.name }
+
+func (getWeatherTestTool) Presenter() Presenter { return nil }
 
 func (g getWeatherTestTool) Info() ToolInfo {
 	return ToolInfo{
@@ -682,6 +686,8 @@ func (grammarTestTool) Run(ctx context.Context, call ToolCall) ToolResult {
 
 func (g grammarTestTool) Name() string { return g.name }
 
+func (grammarTestTool) Presenter() Presenter { return nil }
+
 func (g grammarTestTool) Info() ToolInfo {
 	return ToolInfo{
 		Name:        g.name,
@@ -702,6 +708,8 @@ func (t twoParamTool) Run(ctx context.Context, call ToolCall) ToolResult {
 }
 
 func (t twoParamTool) Name() string { return t.name }
+
+func (twoParamTool) Presenter() Presenter { return nil }
 
 func (t twoParamTool) Info() ToolInfo {
 	return ToolInfo{
@@ -783,7 +791,8 @@ type noParamTool struct{ name string }
 func (n noParamTool) Run(ctx context.Context, call ToolCall) ToolResult {
 	return ToolResult{CallID: call.CallID, Name: call.Name, Type: call.Type, Result: "ok"}
 }
-func (n noParamTool) Name() string { return n.name }
+func (n noParamTool) Name() string       { return n.name }
+func (noParamTool) Presenter() Presenter { return nil }
 func (n noParamTool) Info() ToolInfo {
 	return ToolInfo{
 		Name:        n.name,

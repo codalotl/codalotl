@@ -29,6 +29,10 @@ type moduleInfoParams struct {
 	IncludeDependencyPackages bool   `json:"include_dependency_packages"`
 }
 
+var moduleInfoPresenterInstance llmstream.Presenter = moduleInfoPresenter{}
+
+type moduleInfoPresenter struct{}
+
 func NewModuleInfoTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolModuleInfo{
@@ -39,6 +43,51 @@ func NewModuleInfoTool(authorizer authdomain.Authorizer) llmstream.Tool {
 
 func (t *toolModuleInfo) Name() string {
 	return ToolNameModuleInfo
+}
+
+func (t *toolModuleInfo) Presenter() llmstream.Presenter {
+	return moduleInfoPresenterInstance
+}
+
+func (t moduleInfoPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	presentation := pkgToolReplaceSummaryPresentation(pkgToolActionSummary("Read Module Info"))
+	if body, ok := moduleInfoPresenterBody(call); ok {
+		presentation.Body = body
+	}
+	return presentation
+}
+
+func moduleInfoPresenterBody(call llmstream.ToolCall) (llmstream.Paragraph, bool) {
+	options, ok := moduleInfoPresenterOptionsText(call)
+	if !ok {
+		return llmstream.Paragraph{}, false
+	}
+	return pkgToolAccentParagraph(options)
+}
+
+func moduleInfoPresenterOptionsText(call llmstream.ToolCall) (string, bool) {
+	input := call.Input
+	if strings.TrimSpace(input) == "" {
+		input = "{}"
+	}
+
+	var params moduleInfoParams
+	if err := json.Unmarshal([]byte(input), &params); err != nil {
+		return "", false
+	}
+
+	parts := make([]string, 0, 2)
+	search := strings.TrimSpace(params.PackageSearch)
+	if search != "" {
+		parts = append(parts, "Search: "+search)
+	}
+	if params.IncludeDependencyPackages {
+		parts = append(parts, "Deps: true")
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "; "), true
 }
 
 func (t *toolModuleInfo) Info() llmstream.ToolInfo {

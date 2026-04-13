@@ -31,6 +31,61 @@ func TestNewUpdateUsageTool_StoresLintSteps(t *testing.T) {
 	assert.Equal(t, invoker, updateTool.agentInvoker)
 }
 
+func TestUpdateUsageTool_ExposesPresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), llmmodel.DefaultModel, nil)
+
+	assert.NotNil(t, tool.Presenter())
+}
+
+func TestUpdateUsagePresenter(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), llmmodel.DefaultModel, nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name: ToolNameUpdateUsage,
+		Input: `{
+  "instructions": "Update the callsites to conform to this new API.",
+  "paths": ["some/path", "other/path", "third/path", "fourth/path", "fifth/path", "sixth/path", "seventh/path"]
+}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   ToolNameUpdateUsage,
+		Result: `{"success":true}`,
+	}
+
+	callPresentation := presenter.Present(call, nil)
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Updating Usage", Role: llmstream.RoleAction},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "some/path, other/path, third/path", Role: llmstream.RoleNormal},
+			{Text: "(4 more)", Role: llmstream.RoleAccent},
+		},
+	}, callPresentation.Summary)
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Updated Usage", Role: llmstream.RoleAction},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "some/path, other/path, third/path", Role: llmstream.RoleNormal},
+			{Text: "(4 more)", Role: llmstream.RoleAccent},
+		},
+	}, resultPresentation.Summary)
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{"Update the callsites to conform to this new API."},
+	}, callPresentation.Body)
+	assert.Nil(t, resultPresentation.Body)
+}
+
 func TestUpdateUsage_Run_DownstreamPackagePath_ReachesSubagentCheck(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
 		err := gocodetesting.AddPackage(t, pkg.Module, "consumer", map[string]string{

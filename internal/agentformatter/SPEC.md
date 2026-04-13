@@ -163,275 +163,29 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - It is fine to just print the tool name (ex: read_file, ls, apply_patch).
 - The only data displayed is the tool name, and if present, the `path` argument. If no path, it reads (for instance): `Silly LLM tried apply_patch outside of package`.
 
-### EventTypeToolCall and EventTypeToolComplete - ls
-
-```
-• List some/path 
-```
-
-- Bullet indicates status (Accent -> Red or Green). Green shows no output.
-- List is Bold, Colorful. some/path is normal.
-
-### EventTypeToolCall and EventTypeToolComplete - read_file
-
-```
-• Read some/file.go
-```
-
-- Bullet indicates status (Accent -> Red or Green). Green shows no output.
-- Read is Bold, Colorful. some/file.go is normal.
-
-### EventTypeToolCall and EventTypeToolComplete - update_plan
-
-```
-• Update Plan
-  └ Need to align CodeUnit authorizer with updated SPEC behavior for read-only restrictions and adjust tests accordingly.
-    ✔ Inspect SPEC changes and current CodeUnit authorizer implementation
-    □ Update codeunit authorizer logic to apply read restrictions only to read_file tool and keep write restrictions for all tools
-    □ Revise tests to cover new behavior and run go test for package
-```
-
-- Update Plan is Bold, Colorful.
-- The `└` and the message afterwards is always Accent.
-- If the message is blank, start printing the bullets right after the `└` (the └ shouldn't be on a line all by itself).
-- In progress items are bold.
-- The FIRST uncompleted todo is Colorful.
-- All other bulleted lines are Accent (all completed todos are always Accent; uncompleted todos are Accent unless they're the first uncompleted todo).
-
-### EventTypeToolCall and EventTypeToolComplete - get_public_api
-
-```
-• Read Public API axi/some/pkg
-```
-
-- Read Public API is Bold, Colorful.
-- axi/some/pkg is normal
-
-```
-• Read Public API axi/some/pkg
-  └ SomeType, DoThingFunc
-```
-
-- If get_public_api is called with specific identifiers, list them underneath in Accent, comma separated.
-
-### EventTypeToolCall and EventTypeToolComplete - clarify_public_api
-
-The EventTypeToolCall looks like this:
-
-```
-• Clarifying API someIdentifier in /path/to/something
-  └ What does someIdentifier return in its second parameter? Give an example.
-```
-
-- Clarifying API is Bold, Colorful
-- someIdentifier is normal; /path/to/something is normal
-- "in" is Accent.
-- The question is Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Clarified API someIdentifier in /path/to/something
-  └ The someIdentifier returns a description in the 2nd parameter. For example, ...
-```
-
-- Clarified API is Bold, Colorful
-- someIdentifier is normal; /path/to/something is normal
-- "in" is Accent.
-- The answer is Accent.
-- The question is not repeated.
-
-### EventTypeToolCall and EventTypeToolComplete - update_usage
-
-The EventTypeToolCall looks like this:
-
-```
-• Updating Usage in some/path, other/path, third/path (4 more)
-  └ Update the callsites to conform to this new API...
-```
-
-- Updating Usage is Bold, Colorful
-- "in" is Accent.
-- some/path (et al) is normal; (4 more) is Accent
-- If there are more than 3 paths, add a parenthetical for how many more there are. Otherwise, don't show the parenthetical.
-- The instructions is Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Updated Usage in some/path, other/path, third/path (4 more)
-```
-
-- NOTE: no body (i.e., no └ below the line). Might change later.
-
-### EventTypeToolCall and EventTypeToolComplete - change_api
-
-The EventTypeToolCall looks like this:
-
-```
-• Changing API in axi/some/pkg
-  └ Add a new method SomeType.DoThing so downstream callers can avoid duplicating this logic...
-```
-
-- Changing API is Bold, Colorful
-- "in" is Accent.
-- axi/some/pkg is normal
-- The instructions is Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Changed API in axi/some/pkg
-```
-
-- NOTE: no body (i.e., no └ below the line). Might change later.
-
-### EventTypeToolCall and EventTypeToolComplete - review
-
-The EventTypeToolCall looks like this:
-
-```
-• Reviewing origin/main
-```
-
-- Reviewing is Bold, Colorful.
-- origin/main is normal.
-- No body on the call.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Reviewed origin/main
-  └ [P2] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.
-    [P1] internal/agentformatter: review JSON is still rendered as raw payload text.
-```
-
-- Reviewed is Bold, Colorful.
-- origin/main is normal.
-- If the result is JSON in the review schema, render concise human-readable findings from it while leaving the underlying tool result unchanged.
-- With findings, show finding titles only (max 5; then `… +N findings`).
-- With no findings, show a concise success line rather than raw JSON.
-- If parsing fails, fall back to normal summarized tool output/error formatting.
-- If a subagent emits assistant text that parses as the same review JSON schema, do not print that raw JSON as a separate assistant-text line; the enclosing `review` tool completion is the user-visible representation.
-
-### EventTypeToolCall and EventTypeToolComplete - implement
-
-The EventTypeToolCall looks like this:
-
-```
-• Implementing internal/agentformatter
-  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.
-```
-
-- Implementing is Bold, Colorful.
-- internal/agentformatter is normal.
-- Instructions are Accent.
-
-The EventTypeToolComplete looks like this:
-
-```
-• Implemented internal/agentformatter
-  └ Added focused coverage for orchestrator tool-event formatting.
-```
-
-- Implemented is Bold, Colorful.
-- internal/agentformatter is normal.
-- If the tool returns text, print it underneath in Accent.
-
-### EventTypeToolCall and EventTypeToolComplete - get_usage
-
-```
-• Read Usage axi/some/pkg *SomeType.SomeFunc
-  └ Found 12 results.
-```
-- The number of results is determined by counting the number of matches of this regexp: /^\d+:/ (beginning of line, number followed by colon)
-
-### EventTypeToolCall and EventTypeToolComplete - module_info
-
-The EventTypeToolCall looks like this:
-
-```
-• Read Module Info
-```
-
-- Read Module Info is Bold, Colorful.
-
-If either option is provided and non-zero-value, print a single Accent line underneath with the selected options:
-
-```
-• Read Module Info
-  └ Search: agentformatter; Deps: true
-```
-
-- The `└` and the entire options line are Accent.
-- Only show a Search if it's present and non empty. Only show Deps if it's true.
-- EventTypeToolComplete is the same as the Call (except it resolves to a status).
-- Bullet indicates status (Green on success; Red on error).
-
-### EventTypeToolCall and EventTypeToolComplete - diagnostics
-
-The EventTypeToolComplete looks like this (Call is the same, except with `Run`):
-
-```
-• Ran Diagnostics some/path
-```
-
-- Run Diagnostics / Ran Diagnostics is Bold, Colorful; some/path is normal
-- There is no output line. Status indicated by bullet color (Red or Green).
-
-### EventTypeToolCall and EventTypeToolComplete - fix_lints
-
-Call:
-
-```
-• Fix Lints some/path
-```
-
-Complete:
-
-```
-• Fixed Lints some/path
-  └ $ gofmt -l -w some/path
-```
-
-- Fix Lints / Fixed Lints is Bold, Colorful; some/path is normal
-- Output is summarized like other tools (max 5 lines).
-
-### EventTypeToolCall and EventTypeToolComplete - run_tests
-
-Complete:
-
-```
-• Ran Tests ./internal/tools/toolsets
-  └ Tests: pass | Lints: pass
-```
-
-- Ran Tests is Bold, Colorful.
-- some/pkg is normal
-- Bullet is Red or Green based on the overall outcome (tests AND lints).
-- If a section is missing, the status is `-`.
-
-### EventTypeToolCall and EventTypeToolComplete - run_project_tests
-
-Complete:
-
-```
-• Ran Tests ./...
-  └ Passed
-```
-
-or
-
-```
-• Ran Tests ./...
-  └ Failed:
-    some/pkg1
-    other/pkg2
-```
-
-- NOTE: lints are not run in project tests.
-
-### EventTypeToolCall and EventTypeToolComplete - apply_patch
+### Presenter-driven tool formatting
+
+- If `Event.Tool` exposes a non-nil `Presenter`, formatter must render from that semantic presentation.
+- Do not keep parallel per-tool formatting specs here once a tool package owns its presentation.
+- Presenter summaries still use the tool event bullet/status behavior from this package: Accent while running, Green/Red on completion.
+- If a presenter sets an explicit `Status`, use that status for completion bullet color instead of inferring from the raw tool result.
+- If a presenter opts into CLI narrow behavior, keep using the formatter's CLI fallback at the minimum width boundary instead of forcing wrapped presenter TUI output.
+- If a presenter returns `Body` blocks, render them beneath the summary using the same `└`/continuation structure used elsewhere in this package.
+- `Paragraph` blocks render their lines in order using line/segment roles, sharing the same body indentation rules.
+- `Checklist` blocks render one item per line:
+    - If `Overview` is non-empty, render it first as a normal body line
+    - Completed items use `✔`
+    - Pending and in-progress items use `□`
+    - In-progress items add emphasis on top of any segment roles
+- `Diff` blocks render using the shared diff rules below.
+- For `Output` blocks, print the provided visible lines in order, and if `OmittedLineCount > 0`, append `… +N lines`.
+- Shared tool-error rendering still wins over presenter body content when the tool result is an error, unless `ErrorBehavior` is presenter-owned.
+
+#### Rendering `Diff` blocks
+
+`Diff` blocks are the shared presentation for file edits. They are rendered beneath the presenter summary line and are not specific to any one tool.
+
+- For presenter-owned `Diff` bodies, `Summary.Segments` must be nil. The formatter derives the visible summary/header from the first diff edit instead of from `Summary`.
 
 Example:
 
@@ -441,7 +195,8 @@ Example:
      + new line
 ```
 
-- No hunks anchors are shown (eg, `@@ func SomeAnchor() {`).
+- Use change verbs like `Add`, `Delete`, `Rename`, and `Edit` based on the semantic diff summary.
+- If a diff edit is marked `ReplaceAll`, append ` (replace all)` to the first-line header.
 - Line numbers are not shown.
 - `⋮` is accent-colored.
 - Context lines (` `) are normal; `+` lines are green; `-` lines are red.
@@ -452,45 +207,29 @@ Delete example:
 • Delete some/file.go
 ```
 
-Rename example (no hunks are changed):
+Rename example (no line changes):
+
 ```
 • Rename some/file.go → some/other.go
 ```
 
 - `→` is accent.
 
-Rename example (hunks are changed):
+Rename example (with line changes):
+
 ```
 • Edit some/file.go → some/other.go
      - old line
      + new line
 ```
 
-If a line exceeds the tuiWidth in TUI width mode, it will be wrapped:
+If a line exceeds the tuiWidth in TUI width mode, wrap it:
 
 ```
 • Edit some/file.go
      +This line is very long. It will wrap eventua
        lly.
 ```
-
-If the underlying error `applypatch.IsInvalidPatch`, don't print out the whole invalid patch. Instead, for instance:
-
-```
-• Edit some/file.go
-  └ Failed: LLM supplied an invalid patch.
-```
-
-### EventTypeToolCall and EventTypeToolComplete - edit, write, delete
-
-The `edit`/`write`/`delete` tools are a variant of `apply_patch` used by certain models. `edit` uses a find/replace methodology.
-
-An edit should be formatted very similarly to an equivalent `apply_patch`. Notes:
-- The formatted string must be derived from the tool call struct only, not from file contents on disk.
-- Because context lines are not present in the tool call, do not display context lines.
-- `replace_all` does not show multiple diffs in the same file. Instead, show one diff and a note in the first line (`• Edit some/file.go (replace all)`).
-- `delete` formatting is the same as with `apply_patch`.
-- `write` formatting is the same as with `apply_patch` (display as `• Add some/file.go`, along with the added lines).
 
 ### EventTypeToolCall and EventTypeToolComplete - other unhandled tools
 

@@ -170,3 +170,31 @@ func TestMakeRetryable_DoesNotChangeErrorText(t *testing.T) {
 	assert.Equal(t, "provider rate limit exceeded", retryErr.Error())
 	assert.True(t, isRetryable(retryErr))
 }
+
+type nilPresenterTool struct {
+	name string
+}
+
+func (t nilPresenterTool) Info() ToolInfo {
+	return ToolInfo{Name: t.name}
+}
+
+func (t nilPresenterTool) Name() string { return t.name }
+
+func (nilPresenterTool) Presenter() Presenter { return nil }
+
+func (nilPresenterTool) Run(context.Context, ToolCall) ToolResult {
+	return ToolResult{}
+}
+
+func TestAddTools_AllowsNilPresenter(t *testing.T) {
+	t.Parallel()
+
+	sc := NewConversation(llmmodel.ModelIDUnknown, "sys").(*streamingConversation)
+	tool := nilPresenterTool{name: "noop"}
+
+	require.NoError(t, sc.AddTools([]Tool{tool}))
+	require.Len(t, sc.tools, 1)
+	assert.Equal(t, "noop", sc.tools[0].Name())
+	assert.Nil(t, sc.tools[0].Presenter())
+}

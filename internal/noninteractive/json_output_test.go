@@ -80,9 +80,10 @@ func TestJSONEventWriterWriteAgentEvent(t *testing.T) {
 			event: agent.Event{
 				Type:  agent.EventTypeToolCall,
 				Agent: agent.AgentMeta{ID: "root", Depth: 0},
+				Tool:  namedTestTool{name: "read_file"},
 				ToolCall: &llmstream.ToolCall{
 					CallID: "call_1",
-					Name:   "read_file",
+					Name:   "ignored_call_name",
 					Type:   "function_call",
 					Input:  `{"path":"foo.go"}`,
 				},
@@ -107,9 +108,10 @@ func TestJSONEventWriterWriteAgentEvent(t *testing.T) {
 			event: agent.Event{
 				Type:  agent.EventTypeToolComplete,
 				Agent: agent.AgentMeta{ID: "root", Depth: 0},
+				Tool:  namedTestTool{name: "read_file"},
 				ToolResult: &llmstream.ToolResult{
 					CallID:  "call_1",
-					Name:    "read_file",
+					Name:    "ignored_result_name",
 					Type:    "function_call",
 					Result:  "package foo\n",
 					IsError: false,
@@ -128,6 +130,60 @@ func TestJSONEventWriterWriteAgentEvent(t *testing.T) {
 				},
 				"result": map[string]any{
 					"output":   "package foo\n",
+					"is_error": false,
+				},
+			},
+			wantOut: true,
+		},
+		{
+			name: "tool call falls back to tool result name when tool call missing",
+			event: agent.Event{
+				Type:  agent.EventTypeToolCall,
+				Agent: agent.AgentMeta{ID: "root", Depth: 0},
+				ToolResult: &llmstream.ToolResult{
+					CallID: "call_2",
+					Name:   "read_file",
+					Type:   "function_call",
+				},
+			},
+			want: map[string]any{
+				"type": "tool_call",
+				"agent": map[string]any{
+					"id":    "root",
+					"depth": float64(0),
+				},
+				"tool": map[string]any{
+					"call_id": "call_2",
+					"name":    "read_file",
+					"type":    "function_call",
+				},
+			},
+			wantOut: true,
+		},
+		{
+			name: "tool complete falls back to tool call name when tool result missing",
+			event: agent.Event{
+				Type:  agent.EventTypeToolComplete,
+				Agent: agent.AgentMeta{ID: "root", Depth: 0},
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call_2",
+					Name:   "read_file",
+					Type:   "function_call",
+				},
+			},
+			want: map[string]any{
+				"type": "tool_complete",
+				"agent": map[string]any{
+					"id":    "root",
+					"depth": float64(0),
+				},
+				"tool": map[string]any{
+					"call_id": "call_2",
+					"name":    "read_file",
+					"type":    "function_call",
+				},
+				"result": map[string]any{
+					"output":   "",
 					"is_error": false,
 				},
 			},

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -702,4 +703,51 @@ func TestInstallDefault_OverwritesSameNameOnly(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(systemDir, defaultSkillName, "extra.txt"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestWithDefaultInstallLock_SerializesConcurrentCallers(t *testing.T) {
+	skillsRootDir := t.TempDir()
+
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstErr := make(chan error, 1)
+	go func() {
+		firstErr <- withDefaultInstallLock(skillsRootDir, func() error {
+			close(firstEntered)
+			<-releaseFirst
+			return nil
+		})
+	}()
+
+	select {
+	case <-firstEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first caller never acquired lock")
+	}
+
+	secondEntered := make(chan struct{})
+	secondErr := make(chan error, 1)
+	go func() {
+		secondErr <- withDefaultInstallLock(skillsRootDir, func() error {
+			close(secondEntered)
+			return nil
+		})
+	}()
+
+	select {
+	case <-secondEntered:
+		t.Fatal("second caller acquired lock before first released it")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+
+	select {
+	case <-secondEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second caller never acquired lock after release")
+	}
+
+	require.NoError(t, <-firstErr)
+	require.NoError(t, <-secondErr)
 }

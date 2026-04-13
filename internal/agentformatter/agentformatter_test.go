@@ -10,15 +10,31 @@ import (
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/applypatch"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/coretools"
+	"github.com/codalotl/codalotl/internal/tools/exttools"
+	"github.com/codalotl/codalotl/internal/tools/pkgtools"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var dedent = gocodetesting.Dedent
+
+func extToolWithPresenter(t *testing.T, tool llmstream.Tool) llmstream.Tool {
+	t.Helper()
+	require.NotNil(t, tool.Presenter())
+	return testToolWithPresenter(tool.Name(), tool.Presenter())
+}
+
+func pkgToolWithPresenter(t *testing.T, tool llmstream.Tool) llmstream.Tool {
+	t.Helper()
+	require.NotNil(t, tool.Presenter())
+	return testToolWithPresenter(tool.Name(), tool.Presenter())
+}
 
 func ansiWrap(text string, pal palette, c colorRole, italics bool, bold bool) string {
 	style := pal.style(runeStyle{
@@ -27,6 +43,111 @@ func ansiWrap(text string, pal palette, c colorRole, italics bool, bold bool) st
 		bold:   bold,
 	})
 	return style.Wrap(text)
+}
+
+type staticPresenter struct {
+	call     llmstream.Presentation
+	complete llmstream.Presentation
+}
+
+func (p staticPresenter) Present(_ llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	if result == nil {
+		return p.call
+	}
+	return p.complete
+}
+
+func presentedReplaceSummary(action, target string) llmstream.Presentation {
+	segments := []llmstream.Segment{{
+		Text: action,
+		Role: llmstream.RoleAction,
+	}}
+	if target != "" {
+		segments = append(segments, llmstream.Segment{
+			Text: " " + target,
+			Role: llmstream.RoleNormal,
+		})
+	}
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			Segments: segments,
+		},
+	}
+}
+
+func presentedReplaceLine(line llmstream.Line) llmstream.Presentation {
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary:  line,
+	}
+}
+
+func presentedReplaceSummaryWithOutput(action, target string, output llmstream.Output) llmstream.Presentation {
+	presentation := presentedReplaceSummary(action, target)
+	presentation.Body = output
+	return presentation
+}
+
+func presentedReplaceSummaryWithBody(action, target string, body llmstream.Block) llmstream.Presentation {
+	presentation := presentedReplaceSummary(action, target)
+	switch body.(type) {
+	case llmstream.Diff, *llmstream.Diff:
+		presentation.Summary = llmstream.Line{}
+	}
+	presentation.Body = body
+	return presentation
+}
+
+func newUpdatePlanTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewUpdatePlanTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newDeleteTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewDeleteTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newEditTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewEditTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newWriteTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewWriteTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newApplyPatchTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return coretools.NewApplyPatchTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), true, nil)
+}
+
+func newClarifyPublicAPITool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewClarifyPublicAPITool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)
+}
+
+func newGetPublicAPITool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewGetPublicAPITool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newGetUsageTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewGetUsageTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newModuleInfoTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	return pkgtools.NewModuleInfoTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+}
+
+func newUpdateUsageTool(t *testing.T) llmstream.Tool {
+	t.Helper()
+	sandbox := t.TempDir()
+	return pkgtools.NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), nil, llmmodel.DefaultModel, nil)
 }
 
 func TestAgentMessageTableDriven(t *testing.T) {
@@ -225,50 +346,56 @@ func TestAgentReasoningTableDriven(t *testing.T) {
 	}
 }
 
-func TestToolCallTableDriven(t *testing.T) {
+func TestLsToolCallUsesPresenter(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	formatter := NewTUIFormatter(cfg)
 	pal := newPalette(cfg)
-
-	testCases := []struct {
-		name     string
-		call     llmstream.ToolCall
-		tuiWidth int
-		expected string
-	}{
-		{
-			name: "ls",
-			call: llmstream.ToolCall{
-				Name:  "ls",
-				Input: `{"path":"codeai"}`,
-			},
-			tuiWidth: 60,
-			expected: "• " + ansiWrap("List", pal, colorColorful, false, true) + " codeai",
-		},
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("List", "codeai"),
+		complete: presentedReplaceSummary("List", "codeai"),
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Convert only the bullet of the message to be ANSI escaped (so the test case looks nicer, without stuff like \x1b[38;5;153m in there).
-			// Other things that need escaping will need to include it in the expected test case.
-			expected := strings.Replace(tc.expected, "•", ansiWrap("•", pal, colorAccent, false, false), 1)
-
-			event := agent.Event{
-				Type:     agent.EventTypeToolCall,
-				ToolCall: &tc.call,
-			}
-			out := formatter.FormatEvent(event, tc.tuiWidth)
-			if !assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(out)) {
-				fmt.Println("EXPECTED:")
-				fmt.Println(strings.TrimSpace(expected))
-				fmt.Println("ACTUAL:")
-				fmt.Println(strings.TrimSpace(out))
-			}
-		})
+	call := llmstream.ToolCall{
+		Name:  "ls",
+		Input: `{"path":"ignored/by/presenter"}`,
 	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     testToolWithPresenter("ls", presenter),
+		ToolCall: &call,
+	}
+
+	out := formatter.FormatEvent(event, 60)
+	require.NotEmpty(t, out)
+
+	expected := "• " + ansiWrap("List", pal, colorColorful, false, true) + " codeai"
+	expected = strings.Replace(expected, "•", ansiWrap("•", pal, colorAccent, false, false), 1)
+	assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(out))
+}
+
+func TestGenericToolCallFallsBackToGenericFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "some_tool",
+		Input: `{"path":"codeai"}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     testTool("some_tool"),
+		ToolCall: &call,
+	}
+
+	out := formatter.FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	assert.Equal(t, `• Tool some_tool {"path":"codeai"}`, stripANSI(out))
 }
 
 func TestToolCallShellFormatting(t *testing.T) {
@@ -284,18 +411,16 @@ func TestToolCallShellFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "shell",
+		Tool:     testTool("shell"),
 		ToolCall: &call,
 	}
 
-	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
+	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
 	require.NotEmpty(t, out)
 
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "), "bullet should use accent palette")
-	runningSeq := ansiWrap("Running", pal, colorColorful, false, true)
-	assert.Contains(t, out, runningSeq, "verb should be bold and colorful")
-	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false), "command should not be italicized")
-	assert.Contains(t, stripANSI(out), "Running go test .", "full command should be present")
+	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true), "verb should be bold and colorful")
+	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, stripANSI(out))
 }
 
 func TestToolCallSkillShellFormatting(t *testing.T) {
@@ -311,15 +436,15 @@ func TestToolCallSkillShellFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "skill_shell",
+		Tool:     testTool("skill_shell"),
 		ToolCall: &call,
 	}
 
-	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
+	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
 	require.NotEmpty(t, out)
 
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
-	assert.Contains(t, stripANSI(out), "Running go test .")
+	assert.Equal(t, `• Tool skill_shell {"command":["go","test","."],"skill":"spec-md","timeout_ms":120000}`, stripANSI(out))
 }
 
 func TestToolCompleteOutputSummarization(t *testing.T) {
@@ -356,7 +481,7 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "shell",
+		Tool:       testTool("shell"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -367,13 +492,12 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 
 	linesOut := strings.Split(stripped, "\n")
 	require.GreaterOrEqual(t, len(linesOut), 3)
-	assert.Equal(t, "• Ran go test .", linesOut[0])
+	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, linesOut[0])
 	assert.Equal(t, "  └ "+termformat.Sanitize(lines[0], 4), linesOut[1])
 	assert.Contains(t, linesOut, "    … +2 lines")
 
 	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
-	assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
-	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false))
+	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true))
 }
 
 func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
@@ -410,24 +534,540 @@ func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "skill_shell",
+		Tool:       testTool("skill_shell"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
 
-	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
 	stripped := stripANSI(out)
 	require.NotEmpty(t, stripped)
 
 	linesOut := strings.Split(stripped, "\n")
 	require.GreaterOrEqual(t, len(linesOut), 3)
-	assert.Equal(t, "• Ran go test .", linesOut[0])
+	assert.Equal(t, `• Tool skill_shell {"command":["go","test","."],"skill":"spec-md"}`, linesOut[0])
 	assert.Equal(t, "  └ "+termformat.Sanitize(lines[0], 4), linesOut[1])
 	assert.Contains(t, linesOut, "    … +2 lines")
 
 	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
-	assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
-	assert.NotContains(t, out, ansiWrap("go test .", pal, colorNone, true, false))
+	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true))
+}
+
+func TestPresentedToolCompleteSuccessShowsOutputBody(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test .", llmstream.Output{
+			Lines:            []string{"first output line wraps around cleanly", "second output line"},
+			OmittedLineCount: 2,
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true,"content":"ignored because presenter body owns display"}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 34)
+		require.NotEmpty(t, out)
+		assert.Equal(t, []string{
+			"• Ran go test .",
+			"  └ first output line wraps around",
+			"    cleanly",
+			"    second output line",
+			"    … +2 lines",
+		}, strings.Split(stripANSI(out), "\n"))
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
+		assert.Contains(t, out, ansiWrap("Ran", pal, colorColorful, false, true))
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, []string{
+			"• Ran go test .",
+			"  └ first output line wraps",
+			"    around cleanly",
+			"    second output line",
+			"    … +2 lines",
+		}, strings.Split(stripANSI(out), "\n"))
+	})
+}
+
+func TestPresentedToolCompleteOutputBodyWrapsIndentedLinesWithoutBlankLine(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "sh"),
+		complete: presentedReplaceSummaryWithOutput("Ran", "sh", llmstream.Output{
+			Lines: []string{"    abcdefghijklmnopqrstuvwxyz"},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["sh"]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := formatter.FormatEvent(event, 32)
+	require.NotEmpty(t, out)
+	assert.Equal(t, []string{
+		"• Ran sh",
+		"  └     abcdefghijklmnopqrstuvwx",
+		"        yz",
+	}, strings.Split(stripANSI(out), "\n"))
+}
+
+func TestPresentedToolCompleteOutputBodySanitizesTabs(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	rawLine := "ok\tpkg\t1s"
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ./..."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test ./...", llmstream.Output{
+			Lines: []string{rawLine},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","./..."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	expected := []string{
+		"• Ran go test ./...",
+		"  └ " + termformat.Sanitize(rawLine, 4),
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "\t")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "\t")
+	})
+}
+
+func TestPresentedToolCompleteOutputBodyWithTabsRespectsTUIWidth(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	rawLine := "ok\tgithub.com/codalotl/codalotl/internal/agentformatter\t(cached)"
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ./..."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test ./...", llmstream.Output{
+			Lines: []string{rawLine},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","./..."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := formatter.FormatEvent(event, 44)
+	require.NotEmpty(t, out)
+
+	stripped := stripANSI(out)
+	assert.NotContains(t, stripped, "\t")
+	for _, line := range strings.Split(out, "\n") {
+		assert.LessOrEqual(t, termformat.TextWidthWithANSICodes(line), 44)
+	}
+	assert.Contains(t, stripped, "• Ran go test ./...")
+	assert.Contains(t, stripped, "  └ ok")
+	assert.Contains(t, stripped, "(cached)")
+}
+
+func TestPresentedToolCompleteErrorStillUsesSharedErrorFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Running", "go test ."),
+		complete: presentedReplaceSummaryWithOutput("Ran", "go test .", llmstream.Output{
+			Lines: []string{"presenter body should not override tool errors"},
+		}),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","."]}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "exec: go: not found",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("shell", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	expected := []string{
+		"• Ran go test .",
+		"  └ Error: exec: go: not found",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 80)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+		assert.NotContains(t, stripANSI(out), "presenter body should not override tool errors")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "presenter body should not override tool errors")
+	})
+}
+
+func TestPresentedUpdatePlanMatchesExpectedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+	tool := newUpdatePlanTool(t)
+
+	explanation := "Need to align CodeUnit authorizer with updated SPEC behavior for read-only restrictions and adjust tests accordingly."
+	stepDone := "Inspect SPEC changes and current CodeUnit authorizer implementation"
+	stepDoing := "Update codeunit authorizer logic to apply read restrictions only to read_file tool and keep write restrictions for all tools"
+	stepTodo := "Revise tests to cover new behavior and run go test for package"
+	input := `{
+  "explanation": "` + explanation + `",
+  "plan": [
+    {"step":"` + stepDone + `","status":"completed"},
+    {"step":"` + stepDoing + `","status":"in_progress"},
+    {"step":"` + stepTodo + `","status":"pending"}
+  ]
+}`
+
+	call := llmstream.ToolCall{
+		Name:  "update_plan",
+		Input: input,
+	}
+
+	callEvent := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     tool,
+		ToolCall: &call,
+	}
+	completeEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       tool,
+		ToolCall:   &call,
+		ToolResult: &llmstream.ToolResult{Result: `{"success":true}`},
+	}
+
+	expected := []string{
+		"• Update Plan",
+		"  └ " + explanation,
+		"    ✔ " + stepDone,
+		"    □ " + stepDoing,
+		"    □ " + stepTodo,
+	}
+
+	t.Run("call tui", func(t *testing.T) {
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(callEvent, 400)), "\n"))
+	})
+
+	t.Run("call cli", func(t *testing.T) {
+		assert.Equal(t, []string{
+			"• Update Plan",
+			"  └ Need to align CodeUnit",
+			"    authorizer with updated",
+			"    SPEC behavior for",
+			"    read-only restrictions and",
+			"    adjust tests accordingly.",
+			"    ✔ Inspect SPEC changes and",
+			"    current CodeUnit",
+			"    authorizer implementation",
+			"    □ Update codeunit",
+			"    authorizer logic to apply",
+			"    read restrictions only to",
+			"    read_file tool and keep",
+			"    write restrictions for all",
+			"    tools",
+			"    □ Revise tests to cover",
+			"    new behavior and run go",
+			"    test for package",
+		}, strings.Split(stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)), "\n"))
+	})
+
+	t.Run("complete tui", func(t *testing.T) {
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, 400)), "\n"))
+	})
+
+	t.Run("complete cli", func(t *testing.T) {
+		assert.Equal(t, []string{
+			"• Update Plan",
+			"  └ Need to align CodeUnit",
+			"    authorizer with updated",
+			"    SPEC behavior for",
+			"    read-only restrictions and",
+			"    adjust tests accordingly.",
+			"    ✔ Inspect SPEC changes and",
+			"    current CodeUnit",
+			"    authorizer implementation",
+			"    □ Update codeunit",
+			"    authorizer logic to apply",
+			"    read restrictions only to",
+			"    read_file tool and keep",
+			"    write restrictions for all",
+			"    tools",
+			"    □ Revise tests to cover",
+			"    new behavior and run go",
+			"    test for package",
+		}, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)), "\n"))
+	})
+}
+
+func TestPresentedToolCompleteDiffBodyMatchesApplyPatchStyle(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+
+	patch := `*** Begin Patch
+*** Update File: foo/bar.go
+*** Move to: foo/baz.go
+@@
+- old line
++ replacement line that wraps across multiple words in the presenter diff renderer
+@@
++ final line
+*** End Patch
+`
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Apply Patch", ""),
+		complete: presentedReplaceSummaryWithBody(
+			"Apply Patch",
+			"",
+			llmstream.Diff{
+				Edits: []llmstream.DiffEdit{
+					{
+						Kind:    llmstream.DiffEditKindRename,
+						OldPath: "foo/bar.go",
+						NewPath: "foo/baz.go",
+						Lines: []llmstream.DiffLine{
+							{Kind: llmstream.DiffLineKindDelete, Text: "old line"},
+							{Kind: llmstream.DiffLineKindAdd, Text: "replacement line that wraps across multiple words in the presenter diff renderer"},
+							{Kind: llmstream.DiffLineKindOmitted},
+							{Kind: llmstream.DiffLineKindAdd, Text: "final line"},
+						},
+					},
+				},
+			},
+		),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "apply_patch",
+		Input: patch,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+
+	presentedEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("apply_patch", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+	explicitEvent := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       newApplyPatchTool(t),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	assertBodyMatches := func(t *testing.T, width int) {
+		t.Helper()
+
+		presentedLines := strings.Split(stripANSI(formatter.FormatEvent(presentedEvent, width)), "\n")
+		explicitLines := strings.Split(stripANSI(formatter.FormatEvent(explicitEvent, width)), "\n")
+		require.NotEmpty(t, presentedLines)
+		require.NotEmpty(t, explicitLines)
+		assert.Equal(t, explicitLines, presentedLines)
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(presentedEvent, 58)
+		assertBodyMatches(t, 58)
+		assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
+		assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
+		assert.Contains(t, out, ansiWrap("⋮", pal, colorAccent, false, false))
+	})
+
+	t.Run("minimum tui width", func(t *testing.T) {
+		out := formatter.FormatEvent(presentedEvent, MinTerminalWidth)
+		explicitOut := formatter.FormatEvent(explicitEvent, MinTerminalWidth)
+		lines := strings.Split(out, "\n")
+		require.NotEmpty(t, lines)
+		require.Equal(t, stripANSI(explicitOut), stripANSI(out))
+	})
+}
+
+func TestPresentedDiffBodyRejectsExplicitSummary(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	event := agent.Event{
+		Type: agent.EventTypeToolComplete,
+		Tool: testToolWithPresenter("apply_patch", staticPresenter{
+			complete: llmstream.Presentation{
+				Behavior: llmstream.CompletionBehaviorReplace,
+				Summary: llmstream.Line{
+					Segments: []llmstream.Segment{
+						{Text: "Apply Patch", Role: llmstream.RoleAction},
+					},
+				},
+				Body: llmstream.Diff{
+					Edits: []llmstream.DiffEdit{{
+						Kind:    llmstream.DiffEditKindEdit,
+						OldPath: "foo/bar.go",
+					}},
+				},
+			},
+		}),
+		ToolCall:   &llmstream.ToolCall{Name: "apply_patch"},
+		ToolResult: &llmstream.ToolResult{Name: "apply_patch", Result: `{"success":true}`},
+	}
+
+	out := formatter.FormatEvent(event, 120)
+	require.NotEmpty(t, out)
+	assert.Equal(t, "• Error presenter diff bodies must leave Summary.Segments nil", stripANSI(out))
+}
+
+func TestPresentedToolCompleteSemanticBodyErrorStillOverridesBody(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	presenter := staticPresenter{
+		call: presentedReplaceSummary("Update Plan", ""),
+		complete: presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{{Text: "This body should be suppressed on error.", Role: llmstream.RoleAccent}},
+				}},
+			},
+		),
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "update_plan",
+		Input: `{"explanation":"ignored by presenter"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "update failed",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       testToolWithPresenter("update_plan", presenter),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	expected := []string{
+		"• Update Plan",
+		"  └ Error: update failed",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 100)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "This body should be suppressed on error.")
+		assert.NotContains(t, stripANSI(out), "Do the thing")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "This body should be suppressed on error.")
+		assert.NotContains(t, stripANSI(out), "Do the thing")
+	})
 }
 
 func TestToolCallReadFileVerbColor(t *testing.T) {
@@ -436,14 +1076,18 @@ func TestToolCallReadFileVerbColor(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(240, 240, 240),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+		complete: presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "read_file",
-		Input: `{"path":"codeai/tools/shell.go"}`,
+		Input: `{"path":"ignored/by/presenter.go"}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "read_file",
+		Tool:     testToolWithPresenter("read_file", presenter),
 		ToolCall: &call,
 	}
 
@@ -465,10 +1109,14 @@ func TestReadFileCompleteSuccessNoOutput(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+		complete: presentedReplaceSummary("Read", "codeai/tools/shell.go"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "read_file",
-		Input: `{"path":"codeai/tools/shell.go"}`,
+		Input: `{"path":"ignored/by/presenter.go"}`,
 	}
 	result := llmstream.ToolResult{
 		Result: `<file name="codeai/tools/shell.go" line-count="2" byte-count="20" truncated="false">
@@ -480,7 +1128,7 @@ line 2
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testToolWithPresenter("read_file", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -500,10 +1148,14 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("Read", "missing.txt"),
+		complete: presentedReplaceSummary("Read", "missing.txt"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "read_file",
-		Input: `{"path":"missing.txt"}`,
+		Input: `{"path":"ignored/by/presenter.txt"}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  "path does not exist",
@@ -511,7 +1163,7 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testToolWithPresenter("read_file", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -524,6 +1176,279 @@ func TestReadFileCompleteErrorShowsMessage(t *testing.T) {
 		"  └ Error: path does not exist",
 	}, lines)
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
+}
+
+func TestAppendPresenterFormatsToolCall(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	presenter := staticPresenter{
+		call: llmstream.Presentation{
+			Behavior: llmstream.CompletionBehaviorAppend,
+			Summary: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: "Presented", Role: llmstream.RoleAction},
+					{Text: " by presenter", Role: llmstream.RoleNormal},
+				},
+			},
+		},
+		complete: llmstream.Presentation{
+			Behavior: llmstream.CompletionBehaviorAppend,
+			Summary: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: "Presented", Role: llmstream.RoleAction},
+					{Text: " by presenter", Role: llmstream.RoleNormal},
+				},
+			},
+		},
+	}
+
+	call := llmstream.ToolCall{
+		Name:  "shell",
+		Input: `{"command":["go","test","."]}`,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     testToolWithPresenter("shell", presenter),
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 72)
+	require.NotEmpty(t, out)
+	assert.Equal(t, "• Presented by presenter", stripANSI(out))
+}
+
+func TestPresentedToolSummaryJoinWithSpace(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	testCases := []struct {
+		name     string
+		line     llmstream.Line
+		expected string
+	}{
+		{
+			name: "false preserves adjacent text",
+			line: llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: "foo", Role: llmstream.RoleAction},
+					{Text: "(bar)", Role: llmstream.RoleNormal},
+				},
+			},
+			expected: "• foo(bar)",
+		},
+		{
+			name: "true inserts single space",
+			line: llmstream.Line{
+				JoinWithSpace: true,
+				Segments: []llmstream.Segment{
+					{Text: "foo", Role: llmstream.RoleAction},
+					{Text: "bar", Role: llmstream.RoleNormal},
+				},
+			},
+			expected: "• foo bar",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			presenter := staticPresenter{
+				call:     presentedReplaceLine(tc.line),
+				complete: presentedReplaceLine(tc.line),
+			}
+			call := llmstream.ToolCall{
+				Name:  "read_file",
+				Input: `{"path":"ignored/by/presenter.go"}`,
+			}
+
+			callEvent := agent.Event{
+				Type:     agent.EventTypeToolCall,
+				Tool:     testToolWithPresenter("read_file", presenter),
+				ToolCall: &call,
+			}
+			completeEvent := agent.Event{
+				Type:     agent.EventTypeToolComplete,
+				Tool:     testToolWithPresenter("read_file", presenter),
+				ToolCall: &call,
+				ToolResult: &llmstream.ToolResult{
+					Result:  `{"success":true}`,
+					IsError: false,
+				},
+			}
+
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(callEvent, 120)))
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(completeEvent, 120)))
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)))
+			assert.Equal(t, tc.expected, stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)))
+		})
+	}
+}
+
+func TestPresentedToolTUIWidthLimit(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+
+	makeEvent := func(presentation llmstream.Presentation) agent.Event {
+		call := llmstream.ToolCall{
+			Name:  "read_file",
+			Input: `{"path":"ignored/by/presenter.go"}`,
+		}
+		result := llmstream.ToolResult{
+			Result:  `{"success":true}`,
+			IsError: false,
+		}
+		return agent.Event{
+			Type:       agent.EventTypeToolComplete,
+			Tool:       testToolWithPresenter("read_file", staticPresenter{complete: presentation}),
+			ToolCall:   &call,
+			ToolResult: &result,
+		}
+	}
+
+	assertWidthLimit := func(t *testing.T, width int, out string) {
+		t.Helper()
+		for _, line := range strings.Split(out, "\n") {
+			assert.LessOrEqual(t, termformat.TextWidthWithANSICodes(line), width)
+		}
+	}
+
+	t.Run("summary wraps", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummary("Read", "some/really/long/path/that/needs/to/wrap/in/the/tui/output.go"))
+		out := formatter.FormatEvent(event, 36)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, 36, out)
+	})
+
+	t.Run("summary wraps at minimum tui width", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummary("Read", "some/really/long/path/that/needs/to/wrap/in/the/tui/output.go"))
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, MinTerminalWidth, out)
+	})
+
+	t.Run("zero width still uses cli fallback", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummary("Read", "some/really/long/path/that/needs/to/wrap/in/the/tui/output.go"))
+		out := formatter.FormatEvent(event, 0)
+		require.NotEmpty(t, out)
+		assert.Greater(t, termformat.TextWidthWithANSICodes(out), MinTerminalWidth)
+		assert.NotContains(t, out, "\n")
+	})
+
+	t.Run("paragraph body wraps", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{{
+						Text: "This presenter paragraph line is intentionally long enough to require wrapping inside a narrow TUI.",
+						Role: llmstream.RoleAccent,
+					}},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, 36)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, 36, out)
+	})
+
+	t.Run("paragraph body wraps at minimum tui width", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{{
+						Text: "This presenter paragraph line is intentionally long enough to require wrapping inside a narrow TUI.",
+						Role: llmstream.RoleAccent,
+					}},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, MinTerminalWidth, out)
+	})
+
+	t.Run("checklist body wraps", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Checklist{
+				Items: []llmstream.ChecklistItem{{
+					Status: llmstream.ChecklistStatusInProgress,
+					Line: llmstream.Line{
+						Segments: []llmstream.Segment{{
+							Text: "Check that an in-progress presenter checklist item still respects the requested width.",
+							Role: llmstream.RoleAction,
+						}},
+					},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, 36)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, 36, out)
+	})
+
+	t.Run("checklist overview renders before items", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Checklist{
+				Overview: llmstream.Line{
+					Segments: []llmstream.Segment{{
+						Text: "Need to align tool rendering with presenter output.",
+						Role: llmstream.RoleAccent,
+					}},
+				},
+				Items: []llmstream.ChecklistItem{{
+					Status: llmstream.ChecklistStatusInProgress,
+					Line: llmstream.Line{
+						Segments: []llmstream.Segment{{
+							Text: "Keep the visible plan output unchanged.",
+							Role: llmstream.RoleAction,
+						}},
+					},
+				}},
+			},
+		))
+
+		out := formatter.FormatEvent(event, 100)
+		assert.Equal(t, []string{
+			"• Update Plan",
+			"  └ Need to align tool rendering with presenter output.",
+			"    □ Keep the visible plan output unchanged.",
+		}, strings.Split(stripANSI(out), "\n"))
+	})
+
+	t.Run("checklist body wraps at minimum tui width", func(t *testing.T) {
+		event := makeEvent(presentedReplaceSummaryWithBody(
+			"Update Plan",
+			"",
+			llmstream.Checklist{
+				Items: []llmstream.ChecklistItem{{
+					Status: llmstream.ChecklistStatusInProgress,
+					Line: llmstream.Line{
+						Segments: []llmstream.Segment{{
+							Text: "Check that an in-progress presenter checklist item still respects the requested width.",
+							Role: llmstream.RoleAction,
+						}},
+					},
+				}},
+			},
+		))
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assertWidthLimit(t, MinTerminalWidth, out)
+	})
 }
 
 func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {
@@ -544,7 +1469,7 @@ func TestToolCompleteSillyAgentOutsidePackageReadFileTUI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testTool("read_file"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -575,7 +1500,7 @@ func TestToolCompleteSillyLLMOutsidePackageReadFileCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "read_file",
+		Tool:       testTool("read_file"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -602,7 +1527,7 @@ func TestToolCompleteSillyLLMOutsidePackageNoPath(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "apply_patch",
+		Tool:       newApplyPatchTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -624,7 +1549,7 @@ func TestDiagnosticsToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "diagnostics",
+		Tool:     extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall: &call,
 	}
 
@@ -652,7 +1577,7 @@ func TestDiagnosticsToolCompleteSuccessNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -682,7 +1607,7 @@ func TestDiagnosticsToolCompleteFailureNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -715,7 +1640,7 @@ agentformatter.go:1:1: some error
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -746,7 +1671,7 @@ $ go build -o /dev/null ./internal/agentformatter
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -773,7 +1698,7 @@ func TestDiagnosticsToolCompleteCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "diagnostics",
+		Tool:       extToolWithPresenter(t, exttools.NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -795,7 +1720,7 @@ func TestFixLintsToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "fix_lints",
+		Tool:     extToolWithPresenter(t, exttools.NewFixLintsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall: &call,
 	}
 
@@ -831,7 +1756,7 @@ internal/agentformatter/agentformatter.go
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "fix_lints",
+		Tool:       extToolWithPresenter(t, exttools.NewFixLintsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -867,7 +1792,7 @@ func TestFixLintsToolCompleteCLI(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "fix_lints",
+		Tool:       extToolWithPresenter(t, exttools.NewFixLintsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -881,16 +1806,20 @@ func TestFixLintsToolCompleteCLI(t *testing.T) {
 	}, lines)
 }
 
-func TestLsCompleteSuccessNoOutput(t *testing.T) {
+func TestLsPresenterCompleteSuccessNoOutput(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("List", "."),
+		complete: presentedReplaceSummary("List", "."),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "ls",
-		Input: `{"path":"."}`,
+		Input: `{"path":"ignored/by/presenter"}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  `{"success":true,"content":"- file1\n- file2"}`,
@@ -898,7 +1827,7 @@ func TestLsCompleteSuccessNoOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "ls",
+		Tool:       testToolWithPresenter("ls", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -911,16 +1840,20 @@ func TestLsCompleteSuccessNoOutput(t *testing.T) {
 	assert.NotContains(t, out, "└")
 }
 
-func TestLsCompleteErrorShowsMessage(t *testing.T) {
+func TestLsPresenterCompleteErrorShowsMessage(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	presenter := staticPresenter{
+		call:     presentedReplaceSummary("List", "/tmp/unknown"),
+		complete: presentedReplaceSummary("List", "/tmp/unknown"),
+	}
 
 	call := llmstream.ToolCall{
 		Name:  "ls",
-		Input: `{"path":"/tmp/unknown"}`,
+		Input: `{"path":"ignored/by/presenter"}`,
 	}
 	result := llmstream.ToolResult{
 		Result:  "path does not exist",
@@ -928,7 +1861,7 @@ func TestLsCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "ls",
+		Tool:       testToolWithPresenter("ls", presenter),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -962,7 +1895,7 @@ func TestApplyPatchCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "apply_patch",
+		Tool:     newApplyPatchTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 80)
@@ -978,6 +1911,46 @@ func TestApplyPatchCallFormatting(t *testing.T) {
 	assert.NotContains(t, stripped, "└")
 	assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
 	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
+}
+
+func TestApplyPatchMultiEditCallFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	patch := `*** Begin Patch
+*** Add File: foo/new.txt
++first line
+*** Delete File: foo/old.txt
+*** Update File: foo/bar.go
+*** Move to: foo/baz.go
+@@
+-old line
++new line
+*** End Patch
+`
+	call := llmstream.ToolCall{
+		Name:  "apply_patch",
+		Input: patch,
+	}
+	event := agent.Event{
+		Type:     agent.EventTypeToolCall,
+		Tool:     newApplyPatchTool(t),
+		ToolCall: &call,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, []string{
+		"• Add foo/new.txt",
+		"     + first line",
+		"• Delete foo/old.txt",
+		"• Edit foo/bar.go → foo/baz.go",
+		"     - old line",
+		"     + new line",
+	}, strings.Split(stripANSI(out), "\n"))
+	assert.NotContains(t, stripANSI(out), "Apply Patch")
+	assert.NotContains(t, stripANSI(out), "└ Delete")
 }
 
 func TestApplyPatchContextLinesAreNormalColor(t *testing.T) {
@@ -1001,7 +1974,7 @@ func TestApplyPatchContextLinesAreNormalColor(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "apply_patch",
+		Tool:     newApplyPatchTool(t),
 		ToolCall: &call,
 	}
 
@@ -1023,7 +1996,7 @@ func TestApplyPatchLinesSanitized(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "apply_patch",
+		Tool:     newApplyPatchTool(t),
 		ToolCall: &call,
 	}
 	ctrlC := string([]byte{0x03})
@@ -1048,7 +2021,7 @@ func TestApplyPatchLinesSanitized(t *testing.T) {
 	assert.NotContains(t, cliOut, "\t")
 	assert.NotContains(t, cliOut, ctrlC)
 }
-func TestEditToolCallFormattingReplaceAll(t *testing.T) {
+func TestEditToolCallUsesPresenterAndKeepsReplaceAllUX(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -1060,7 +2033,7 @@ func TestEditToolCallFormattingReplaceAll(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "edit",
+		Tool:     newEditTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
@@ -1074,7 +2047,7 @@ func TestEditToolCallFormattingReplaceAll(t *testing.T) {
 	assert.Contains(t, out, ansiWrap("-", pal, colorRed, false, false))
 	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
 }
-func TestWriteToolCallFormatting(t *testing.T) {
+func TestWriteToolCallUsesPresenterAndKeepsUX(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -1086,7 +2059,7 @@ func TestWriteToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "write",
+		Tool:     newWriteTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
@@ -1099,25 +2072,118 @@ func TestWriteToolCallFormatting(t *testing.T) {
 	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
 	assert.Contains(t, out, ansiWrap("+", pal, colorGreen, false, false))
 }
-func TestDeleteToolCallFormatting(t *testing.T) {
+func TestDeleteToolCallUsesPresenter(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	tool := newDeleteTool(t)
+	require.NotNil(t, tool.Presenter())
+
 	call := llmstream.ToolCall{
 		Name:  "delete",
 		Input: `{"path":"foo/old.txt"}`,
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "delete",
+		Tool:     tool,
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
 	require.NotEmpty(t, out)
 	require.Equal(t, "• Delete foo/old.txt", stripANSI(out))
 	assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+	assert.Contains(t, out, ansiWrap("Delete", pal, colorColorful, false, true))
+}
+
+func TestDeleteToolCompleteSuccessUsesPresenter(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "delete",
+		Input: `{"path":"foo/old.txt"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  `{"success":true}`,
+		IsError: false,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       newDeleteTool(t),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Delete foo/old.txt", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
+	assert.NotContains(t, stripANSI(out), "└")
+}
+
+func TestDeleteToolCompleteErrorUsesSharedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "delete",
+		Input: `{"path":"foo/old.txt"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:  "delete failed",
+		IsError: true,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       newDeleteTool(t),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, []string{
+		"• Delete foo/old.txt",
+		"  └ Error: delete failed",
+	}, strings.Split(stripANSI(out), "\n"))
+	assert.Contains(t, out, ansiWrap("•", pal, colorRed, false, false))
+}
+
+func TestDeleteToolCompleteOutsidePackageUsesSharedFormatting(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+
+	call := llmstream.ToolCall{
+		Name:  "delete",
+		Input: `{"path":"foo/old.txt"}`,
+	}
+	result := llmstream.ToolResult{
+		Result:    "denied",
+		IsError:   true,
+		SourceErr: authdomain.ErrCodeUnitPathOutside,
+	}
+	event := agent.Event{
+		Type:       agent.EventTypeToolComplete,
+		Tool:       newDeleteTool(t),
+		ToolCall:   &call,
+		ToolResult: &result,
+	}
+
+	out := NewTUIFormatter(cfg).FormatEvent(event, 90)
+	require.NotEmpty(t, out)
+	require.Equal(t, "• Silly LLM tried delete on foo/old.txt outside of package.", stripANSI(out))
+	assert.Contains(t, out, ansiWrap("•", pal, colorRed, false, false))
 }
 func TestEditToolCompleteErrorShowsMessage(t *testing.T) {
 	cfg := Config{
@@ -1135,7 +2201,7 @@ func TestEditToolCompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "edit",
+		Tool:       newEditTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1173,7 +2239,7 @@ func TestApplyPatchCompleteWithError(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "apply_patch",
+		Tool:       newApplyPatchTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1221,7 +2287,7 @@ func TestApplyPatchCompleteInvalidPatchIsConcise(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "apply_patch",
+		Tool:       newApplyPatchTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1273,7 +2339,7 @@ func TestUpdatePlanCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "update_plan",
+		Tool:     newUpdatePlanTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 400)
@@ -1320,7 +2386,7 @@ func TestUpdatePlanCompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "update_plan",
+		Tool:       newUpdatePlanTool(t),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1351,7 +2417,7 @@ func TestUpdatePlanNoExplanationStartsWithFirstItem(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "update_plan",
+		Tool:     newUpdatePlanTool(t),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 80)
@@ -1378,7 +2444,7 @@ func TestUpdateUsageCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "update_usage",
+		Tool:     pkgToolWithPresenter(t, newUpdateUsageTool(t)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
@@ -1414,7 +2480,7 @@ func TestUpdateUsageCompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "update_usage",
+		Tool:       pkgToolWithPresenter(t, newUpdateUsageTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1448,7 +2514,7 @@ func TestUpdateUsageCompleteErrorShowsOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "update_usage",
+		Tool:       pkgToolWithPresenter(t, newUpdateUsageTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1469,6 +2535,7 @@ func TestChangeAPICallFormatting(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	sandbox := t.TempDir()
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
@@ -1477,8 +2544,14 @@ func TestChangeAPICallFormatting(t *testing.T) {
 }`,
 	}
 	event := agent.Event{
-		Type:     agent.EventTypeToolCall,
-		Tool:     "change_api",
+		Type: agent.EventTypeToolCall,
+		Tool: extToolWithPresenter(t, pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
@@ -1500,6 +2573,7 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	sandbox := t.TempDir()
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
@@ -1512,8 +2586,14 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 		IsError: false,
 	}
 	event := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       "change_api",
+		Type: agent.EventTypeToolComplete,
+		Tool: extToolWithPresenter(t, pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1534,6 +2614,7 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	pal := newPalette(cfg)
+	sandbox := t.TempDir()
 	call := llmstream.ToolCall{
 		Name: "change_api",
 		Input: `{
@@ -1546,8 +2627,14 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 		IsError: true,
 	}
 	event := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       "change_api",
+		Type: agent.EventTypeToolComplete,
+		Tool: extToolWithPresenter(t, pkgtools.NewChangeAPITool(
+			sandbox,
+			authdomain.NewAutoApproveAuthorizer(sandbox),
+			nil,
+			llmmodel.DefaultModel,
+			nil,
+		)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -1562,12 +2649,11 @@ func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure should use red bullet")
 }
 
-func TestReviewToolCallFormatting(t *testing.T) {
+func TestReviewToolCallUsesGenericFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
-	pal := newPalette(cfg)
 	formatter := NewTUIFormatter(cfg)
 
 	call := llmstream.ToolCall{
@@ -1576,58 +2662,38 @@ func TestReviewToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "review",
+		Tool:     testTool("review"),
 		ToolCall: &call,
 	}
 
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
-		require.Equal(t, "• Reviewing origin/main", stripANSI(out))
-		assert.Contains(t, out, ansiWrap("Reviewing", pal, colorColorful, false, true))
-		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
-		assert.NotContains(t, stripANSI(out), "└")
+		require.Equal(t, `• Tool review {"base":"origin/main"}`, stripANSI(out))
+		assert.NotContains(t, stripANSI(out), "Reviewing")
 	})
 
 	t.Run("cli", func(t *testing.T) {
 		out := formatter.FormatEvent(event, MinTerminalWidth)
 		require.NotEmpty(t, out)
-		require.Equal(t, "• Reviewing origin/main", stripANSI(out))
-		assert.NotContains(t, stripANSI(out), "review {")
+		require.Equal(t, `• Tool review {"base":"origin/main"}`, stripANSI(out))
+		assert.NotContains(t, stripANSI(out), "Reviewing")
 	})
 }
 
-func builtInReviewToolPayload() map[string]any {
-	return map[string]any{
-		"findings": []map[string]any{
-			{
-				"title":            "[P2] Return JSON payload",
-				"body":             "The orchestrator expects JSON back from review so this must stay machine-readable.",
-				"confidence_score": 0.81,
-				"priority":         2,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/pkg.go",
-					"line_range": map[string]any{
-						"start": 1,
-						"end":   1,
-					},
-				},
-			},
-		},
-		"overall_correctness":      "patch is incorrect",
-		"overall_explanation":      "The patch still has one actionable issue.",
-		"overall_confidence_score": 0.81,
-	}
-}
-
-func TestSubagentReviewJSONAssistantTextIsSuppressed(t *testing.T) {
+func TestSubagentReviewJSONAssistantTextStillRenders(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
 	formatter := NewTUIFormatter(cfg)
 
-	payload := builtInReviewToolPayload()
+	payload := map[string]any{
+		"findings":                 []map[string]any{},
+		"overall_correctness":      "patch is correct",
+		"overall_explanation":      "Looks good.",
+		"overall_confidence_score": 0.88,
+	}
 	data, err := json.Marshal(payload)
 	require.NoError(t, err)
 
@@ -1639,42 +2705,16 @@ func TestSubagentReviewJSONAssistantTextIsSuppressed(t *testing.T) {
 		},
 	}
 
-	reviewCall := llmstream.ToolCall{
-		Name:  "review",
-		Input: `{"base":"origin/main"}`,
-	}
-	reviewResult := llmstream.ToolResult{
-		Result:  string(data),
-		IsError: false,
-	}
-	reviewEvent := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       "review",
-		ToolCall:   &reviewCall,
-		ToolResult: &reviewResult,
-	}
-
-	expectedReviewLines := []string{
-		"• Reviewed origin/main",
-		"  └ [P2] Return JSON payload",
-	}
-
 	t.Run("tui", func(t *testing.T) {
 		assistantOut := formatter.FormatEvent(assistantEvent, 200)
-		require.Empty(t, stripANSI(assistantOut))
-
-		reviewOut := formatter.FormatEvent(reviewEvent, 200)
-		require.Equal(t, expectedReviewLines, strings.Split(stripANSI(reviewOut), "\n"))
-		assert.NotContains(t, stripANSI(reviewOut), `"overall_correctness"`)
+		require.NotEmpty(t, assistantOut)
+		assert.Contains(t, stripANSI(assistantOut), string(data))
 	})
 
 	t.Run("cli", func(t *testing.T) {
 		assistantOut := formatter.FormatEvent(assistantEvent, MinTerminalWidth)
-		require.Empty(t, stripANSI(assistantOut))
-
-		reviewOut := formatter.FormatEvent(reviewEvent, MinTerminalWidth)
-		require.Equal(t, expectedReviewLines, strings.Split(stripANSI(reviewOut), "\n"))
-		assert.NotContains(t, stripANSI(reviewOut), `"overall_correctness"`)
+		require.NotEmpty(t, assistantOut)
+		assert.Contains(t, stripANSI(assistantOut), string(data))
 	})
 }
 
@@ -1706,12 +2746,11 @@ func TestSubagentNonReviewAssistantTextStillRenders(t *testing.T) {
 	})
 }
 
-func TestReviewToolCompleteFormatting(t *testing.T) {
+func TestReviewToolCompleteUsesGenericFormatting(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
 	}
-	pal := newPalette(cfg)
 	formatter := NewTUIFormatter(cfg)
 
 	call := llmstream.ToolCall{
@@ -1719,422 +2758,43 @@ func TestReviewToolCompleteFormatting(t *testing.T) {
 		Input: `{"base":"origin/main"}`,
 	}
 
-	assertBothModes := func(t *testing.T, event agent.Event, tuiExpected []string, cliExpected []string) {
-		t.Helper()
-
-		t.Run("tui", func(t *testing.T) {
-			out := formatter.FormatEvent(event, 200)
-			require.NotEmpty(t, out)
-			require.Equal(t, tuiExpected, strings.Split(stripANSI(out), "\n"))
-		})
-
-		t.Run("cli", func(t *testing.T) {
-			out := formatter.FormatEvent(event, MinTerminalWidth)
-			require.NotEmpty(t, out)
-			require.Equal(t, cliExpected, strings.Split(stripANSI(out), "\n"))
-		})
+	payload := map[string]any{
+		"findings":                 []map[string]any{},
+		"overall_correctness":      "patch is correct",
+		"overall_explanation":      "Looks good.",
+		"overall_confidence_score": 0.88,
 	}
+	data, err := json.Marshal(payload)
+	require.NoError(t, err)
 
-	t.Run("success with findings", func(t *testing.T) {
-		payload := builtInReviewToolPayload()
-		findings := append(payload["findings"].([]map[string]any), []map[string]any{
-			{
-				"title":            "[P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
-				"body":             "Detailed explanation that should not be shown.",
-				"confidence_score": 0.9,
-				"priority":         1,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/agentbuilder/config.go",
-					"line_range": map[string]any{
-						"start": 41,
-						"end":   41,
-					},
-				},
-			},
-			{
-				"title":            "[P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
-				"body":             "Another body that should be ignored.",
-				"confidence_score": 0.92,
-				"priority":         1,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/agentformatter/agentformatter.go",
-					"line_range": map[string]any{
-						"start": 2964,
-						"end":   2986,
-					},
-				},
-			},
-			{
-				"title":            "[P2] internal/agentbuilder: review prompt file path is not validated before read.",
-				"confidence_score": 0.73,
-				"priority":         2,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/agentbuilder/prompt.go",
-					"line_range": map[string]any{
-						"start": 10,
-						"end":   10,
-					},
-				},
-			},
-			{
-				"title":            "[P2] internal/orchestrate: review errors are swallowed on retry.",
-				"confidence_score": 0.72,
-				"priority":         2,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/orchestrate/retry.go",
-					"line_range": map[string]any{
-						"start": 22,
-						"end":   22,
-					},
-				},
-			},
-			{
-				"title":            "[P3] internal/tui: completion banner wraps awkwardly for narrow terminals.",
-				"confidence_score": 0.66,
-				"priority":         3,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/tui/banner.go",
-					"line_range": map[string]any{
-						"start": 8,
-						"end":   8,
-					},
-				},
-			},
-			{
-				"title":            "[P3] internal/noninteractive: status line omits review summary.",
-				"confidence_score": 0.61,
-				"priority":         3,
-				"code_location": map[string]any{
-					"absolute_file_path": "/tmp/review/internal/noninteractive/output.go",
-					"line_range": map[string]any{
-						"start": 17,
-						"end":   17,
-					},
-				},
-			},
-		}...)
-		payload["findings"] = findings
-		data, err := json.Marshal(payload)
-		require.NoError(t, err)
-
-		result := llmstream.ToolResult{
-			Result:  string(data),
-			IsError: false,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ [P2] Return JSON payload",
-			"    [P1] internal/agentbuilder: YAML package-target resolution falls back to a missing module root for generic callers.",
-			"    [P1] internal/agentformatter: review JSON is still rendered as raw payload text.",
-			"    [P2] internal/agentbuilder: review prompt file path is not validated before read.",
-			"    [P2] internal/orchestrate: review errors are swallowed on retry.",
-			"    … +2 findings",
-		}
-		assertBothModes(t, event, expected, expected)
-
-		out := formatter.FormatEvent(event, 200)
-		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
-		assert.Contains(t, out, ansiWrap("Reviewed", pal, colorColorful, false, true))
-		assert.NotContains(t, stripANSI(out), "Detailed explanation that should not be shown.")
-		assert.NotContains(t, stripANSI(out), "overall_correctness")
-	})
-
-	t.Run("success with wrapped built-in findings payload", func(t *testing.T) {
-		payload := builtInReviewToolPayload()
-		resultPayload := map[string]any{
-			"success": true,
-			"content": payload,
-		}
-		data, err := json.Marshal(resultPayload)
-		require.NoError(t, err)
-
-		result := llmstream.ToolResult{
-			Result:  string(data),
-			IsError: false,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ [P2] Return JSON payload",
-		}
-		assertBothModes(t, event, expected, expected)
-
-		out := formatter.FormatEvent(event, 200)
-		assert.NotContains(t, stripANSI(out), `"findings"`)
-		assert.NotContains(t, stripANSI(out), `"overall_correctness"`)
-	})
-
-	t.Run("success with no findings", func(t *testing.T) {
-		payload := map[string]any{
-			"findings":                 []map[string]any{},
-			"overall_correctness":      "patch is correct",
-			"overall_explanation":      "The patch looks correct and no actionable findings were identified.",
-			"overall_confidence_score": 0.88,
-		}
-		data, err := json.Marshal(payload)
-		require.NoError(t, err)
-
-		result := llmstream.ToolResult{
-			Result:  string(data),
-			IsError: false,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ No findings. Patch is correct.",
-		}
-		assertBothModes(t, event, expected, expected)
-	})
-
-	t.Run("error shows message", func(t *testing.T) {
-		result := llmstream.ToolResult{
-			Result:  "review failed",
-			IsError: true,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       "review",
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		expected := []string{
-			"• Reviewed origin/main",
-			"  └ Error: review failed",
-		}
-		assertBothModes(t, event, expected, expected)
-
-		out := formatter.FormatEvent(event, 120)
-		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
-	})
-
-	t.Run("malformed or non-review json falls back", func(t *testing.T) {
-		testCases := []struct {
-			name    string
-			payload string
-		}{
-			{
-				name:    "non-review json",
-				payload: `{"hello":"world"}`,
-			},
-			{
-				name:    "malformed json",
-				payload: `{"hello"`,
-			},
-		}
-
-		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
-				result := llmstream.ToolResult{
-					Result:  tc.payload,
-					IsError: false,
-				}
-				event := agent.Event{
-					Type:       agent.EventTypeToolComplete,
-					Tool:       "review",
-					ToolCall:   &call,
-					ToolResult: &result,
-				}
-
-				expected := []string{
-					"• Reviewed origin/main",
-					"  └ " + tc.payload,
-				}
-				assertBothModes(t, event, expected, expected)
-			})
-		}
-	})
-}
-
-func TestImplementToolCallFormatting(t *testing.T) {
-	cfg := Config{
-		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
-		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
-	}
-	pal := newPalette(cfg)
-	formatter := NewTUIFormatter(cfg)
-
-	call := llmstream.ToolCall{
-		Name:  "implement",
-		Input: `{"path":"internal/agentformatter","instructions":"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."}`,
-	}
-	event := agent.Event{
-		Type:     agent.EventTypeToolCall,
-		Tool:     "implement",
-		ToolCall: &call,
-	}
-
-	t.Run("tui", func(t *testing.T) {
-		out := formatter.FormatEvent(event, 160)
-		require.NotEmpty(t, out)
-		lines := strings.Split(stripANSI(out), "\n")
-		require.Equal(t, []string{
-			"• Implementing internal/agentformatter",
-			"  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.",
-		}, lines)
-		assert.Contains(t, out, ansiWrap("Implementing", pal, colorColorful, false, true))
-		assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
-	})
-
-	t.Run("cli", func(t *testing.T) {
-		out := formatter.FormatEvent(event, MinTerminalWidth)
-		require.NotEmpty(t, out)
-		lines := strings.Split(stripANSI(out), "\n")
-		require.Equal(t, []string{
-			"• Implementing internal/agentformatter",
-			"  └ Format the new orchestrator implement/review events so manual and noninteractive output stays readable.",
-		}, lines)
-		assert.NotContains(t, stripANSI(out), "subagent")
-	})
-}
-
-func TestImplementToolCompleteFormatting(t *testing.T) {
-	cfg := Config{
-		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
-		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
-	}
-	pal := newPalette(cfg)
-	formatter := NewTUIFormatter(cfg)
-
-	call := llmstream.ToolCall{
-		Name:  "implement",
-		Input: `{"path":"internal/agentformatter","instructions":"Format the new orchestrator implement/review events so manual and noninteractive output stays readable."}`,
-	}
-
-	t.Run("success with summarized output", func(t *testing.T) {
-		result := llmstream.ToolResult{
-			Result:  `{"success":true,"content":"Added focused coverage for orchestrator tool-event formatting."}`,
-			IsError: false,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       "implement",
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		t.Run("tui", func(t *testing.T) {
-			out := formatter.FormatEvent(event, 160)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Implemented internal/agentformatter",
-				"  └ Added focused coverage for orchestrator tool-event formatting.",
-			}, lines)
-			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "))
-			assert.Contains(t, out, ansiWrap("Implemented", pal, colorColorful, false, true))
-		})
-
-		t.Run("cli", func(t *testing.T) {
-			out := formatter.FormatEvent(event, MinTerminalWidth)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Implemented internal/agentformatter",
-				"  └ Added focused coverage for orchestrator tool-event formatting.",
-			}, lines)
-		})
-	})
-
-	t.Run("error shows message", func(t *testing.T) {
-		result := llmstream.ToolResult{
-			Result:  "implementation failed",
-			IsError: true,
-		}
-		event := agent.Event{
-			Type:       agent.EventTypeToolComplete,
-			Tool:       "implement",
-			ToolCall:   &call,
-			ToolResult: &result,
-		}
-
-		t.Run("tui", func(t *testing.T) {
-			out := formatter.FormatEvent(event, 120)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Implemented internal/agentformatter",
-				"  └ Error: implementation failed",
-			}, lines)
-			assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "))
-		})
-
-		t.Run("cli", func(t *testing.T) {
-			out := formatter.FormatEvent(event, MinTerminalWidth)
-			require.NotEmpty(t, out)
-			lines := strings.Split(stripANSI(out), "\n")
-			require.Equal(t, []string{
-				"• Implemented internal/agentformatter",
-				"  └ Error: implementation failed",
-			}, lines)
-		})
-	})
-}
-
-func TestImplementToolCompleteDoesNotTruncateOutput(t *testing.T) {
-	cfg := Config{
-		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
-		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
-	}
-	formatter := NewTUIFormatter(cfg)
-
-	call := llmstream.ToolCall{
-		Name:  "implement",
-		Input: `{"path":"internal/agentformatter","instructions":"Update formatter output."}`,
-	}
 	result := llmstream.ToolResult{
-		Result:  `{"success":true,"content":"line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7"}`,
+		Result:  string(data),
 		IsError: false,
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "implement",
+		Tool:       testTool("review"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
 
-	expectedLines := []string{
-		"• Implemented internal/agentformatter",
-		"  └ line 1",
-		"    line 2",
-		"    line 3",
-		"    line 4",
-		"    line 5",
-		"    line 6",
-		"    line 7",
+	expected := []string{
+		`• Tool review {"base":"origin/main"}`,
+		"  └ " + string(data),
 	}
 
 	t.Run("tui", func(t *testing.T) {
-		out := formatter.FormatEvent(event, 160)
+		out := formatter.FormatEvent(event, 200)
 		require.NotEmpty(t, out)
-		require.Equal(t, expectedLines, strings.Split(stripANSI(out), "\n"))
-		assert.NotContains(t, stripANSI(out), "… +")
+		require.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "Reviewed origin/main")
 	})
 
 	t.Run("cli", func(t *testing.T) {
 		out := formatter.FormatEvent(event, MinTerminalWidth)
 		require.NotEmpty(t, out)
-		require.Equal(t, expectedLines, strings.Split(stripANSI(out), "\n"))
-		assert.NotContains(t, stripANSI(out), "… +")
+		require.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "Reviewed origin/main")
 	})
 }
 
@@ -2150,7 +2810,7 @@ func TestModuleInfoToolCallNoOptions(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "module_info",
+		Tool:     pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall: &call,
 	}
 
@@ -2175,7 +2835,7 @@ func TestModuleInfoToolCallWithOptions(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "module_info",
+		Tool:     pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall: &call,
 	}
 
@@ -2204,7 +2864,7 @@ func TestModuleInfoToolCompleteSuccessMirrorsCall(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "module_info",
+		Tool:       pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2219,7 +2879,7 @@ func TestModuleInfoToolCompleteSuccessMirrorsCall(t *testing.T) {
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "success bullet should be green")
 }
 
-func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
+func TestModuleInfoToolCompleteErrorShowsToolError(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
 		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
@@ -2235,7 +2895,7 @@ func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "module_info",
+		Tool:       pkgToolWithPresenter(t, newModuleInfoTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2245,9 +2905,8 @@ func TestModuleInfoToolCompleteErrorDoesNotPrintToolOutput(t *testing.T) {
 	lines := strings.Split(stripANSI(out), "\n")
 	require.Equal(t, []string{
 		"• Read Module Info",
-		"  └ Search: agentformatter",
+		"  └ Error: go mod parse error",
 	}, lines)
-	assert.NotContains(t, stripANSI(out), "Error:", "module_info completion should not include tool output per SPEC")
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorRed, false, false)+" "), "failure bullet should be red")
 }
 
@@ -2263,7 +2922,7 @@ func TestGetPublicAPICallWithIdentifiers(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "get_public_api",
+		Tool:     pkgToolWithPresenter(t, newGetPublicAPITool(t)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 100)
@@ -2294,7 +2953,7 @@ func TestGetPublicAPICompleteSuccessWithIdentifiers(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "get_public_api",
+		Tool:       pkgToolWithPresenter(t, newGetPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2325,7 +2984,7 @@ func TestGetPublicAPICompleteErrorShowsMessage(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "get_public_api",
+		Tool:       pkgToolWithPresenter(t, newGetPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2352,7 +3011,7 @@ func TestClarifyPublicAPICallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "clarify_public_api",
+		Tool:     pkgToolWithPresenter(t, newClarifyPublicAPITool(t)),
 		ToolCall: &call,
 	}
 	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
@@ -2388,7 +3047,7 @@ func TestClarifyPublicAPICompleteSuccess(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "clarify_public_api",
+		Tool:       pkgToolWithPresenter(t, newClarifyPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2418,7 +3077,7 @@ func TestClarifyPublicAPICompleteError(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "clarify_public_api",
+		Tool:       pkgToolWithPresenter(t, newClarifyPublicAPITool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2444,7 +3103,7 @@ func TestGetUsageToolCallFormatting(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:     agent.EventTypeToolCall,
-		Tool:     "get_usage",
+		Tool:     pkgToolWithPresenter(t, newGetUsageTool(t)),
 		ToolCall: &call,
 	}
 
@@ -2478,7 +3137,7 @@ func TestGetUsageToolCompleteSuccessCountsResults(t *testing.T) {
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "get_usage",
+		Tool:       pkgToolWithPresenter(t, newGetUsageTool(t)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2508,7 +3167,7 @@ func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:     agent.EventTypeToolCall,
-			Tool:     "get_usage",
+			Tool:     pkgToolWithPresenter(t, newGetUsageTool(t)),
 			ToolCall: &call,
 		}
 
@@ -2524,13 +3183,55 @@ func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
 		}
 		event := agent.Event{
 			Type:     agent.EventTypeToolCall,
-			Tool:     "get_usage",
+			Tool:     pkgToolWithPresenter(t, newGetUsageTool(t)),
 			ToolCall: &call,
 		}
 
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
 		assert.Equal(t, "• Read Usage get_usage *SomeType.SomeFunc", stripANSI(out))
+	})
+}
+
+func TestToolNamePrecedence(t *testing.T) {
+	t.Run("prefers tool object name", func(t *testing.T) {
+		event := agent.Event{
+			Tool: testTool("skill_shell"),
+			ToolCall: &llmstream.ToolCall{
+				Name: "read_file",
+			},
+			ToolResult: &llmstream.ToolResult{
+				Name: "ls",
+			},
+		}
+
+		assert.Equal(t, "shell", normalizedToolName(event))
+		assert.Equal(t, "skill_shell", toolDisplayName(event))
+	})
+
+	t.Run("falls back to tool call name", func(t *testing.T) {
+		event := agent.Event{
+			ToolCall: &llmstream.ToolCall{
+				Name: "read_file",
+			},
+			ToolResult: &llmstream.ToolResult{
+				Name: "ls",
+			},
+		}
+
+		assert.Equal(t, "read_file", normalizedToolName(event))
+		assert.Equal(t, "read_file", toolDisplayName(event))
+	})
+
+	t.Run("falls back to tool result name", func(t *testing.T) {
+		event := agent.Event{
+			ToolResult: &llmstream.ToolResult{
+				Name: "diagnostics",
+			},
+		}
+
+		assert.Equal(t, "diagnostics", normalizedToolName(event))
+		assert.Equal(t, "diagnostics", toolDisplayName(event))
 	})
 }
 
@@ -2574,7 +3275,7 @@ $ staticcheck ./internal/tools/toolsets
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2634,7 +3335,7 @@ file6.go
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2676,7 +3377,7 @@ ok  	github.com/codalotl/codalotl/internal/tools/toolsets	(cached)
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2698,7 +3399,7 @@ func TestRunProjectTestsCallFormatting(t *testing.T) {
 	pal := newPalette(cfg)
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
-	event := agent.Event{Type: agent.EventTypeToolCall, Tool: "run_project_tests", ToolCall: &call}
+	event := agent.Event{Type: agent.EventTypeToolCall, Tool: extToolWithPresenter(t, exttools.NewRunProjectTestsTool("", authdomain.NewAutoApproveAuthorizer(t.TempDir()))), ToolCall: &call}
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
@@ -2721,7 +3422,7 @@ func TestRunProjectTestsCompleteSuccessShowsPassed(t *testing.T) {
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
 	result := llmstream.ToolResult{Result: `{"success":true,"content":"(elided)"}`, IsError: false}
-	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: "run_project_tests", ToolCall: &call, ToolResult: &result}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: extToolWithPresenter(t, exttools.NewRunProjectTestsTool("", authdomain.NewAutoApproveAuthorizer(t.TempDir()))), ToolCall: &call, ToolResult: &result}
 	out := formatter.FormatEvent(event, 120)
 	require.NotEmpty(t, out)
 	lines := strings.Split(stripANSI(out), "\n")
@@ -2740,7 +3441,7 @@ func TestRunProjectTestsCompleteFailureShowsPackages(t *testing.T) {
 	formatter := NewTUIFormatter(cfg)
 	call := llmstream.ToolCall{Name: "run_project_tests", Input: `{}`}
 	result := llmstream.ToolResult{Result: `{"success":false,"content":"Failed:\nsome/pkg1\nother/pkg2\n"}`, IsError: false}
-	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: "run_project_tests", ToolCall: &call, ToolResult: &result}
+	event := agent.Event{Type: agent.EventTypeToolComplete, Tool: extToolWithPresenter(t, exttools.NewRunProjectTestsTool("", authdomain.NewAutoApproveAuthorizer(t.TempDir()))), ToolCall: &call, ToolResult: &result}
 	t.Run("tui", func(t *testing.T) {
 		out := formatter.FormatEvent(event, 120)
 		require.NotEmpty(t, out)
@@ -2859,7 +3560,7 @@ $ gofmt -l -w internal/agentformatter
 	event := agent.Event{
 		Agent:      agent.AgentMeta{Depth: 1},
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -2898,7 +3599,7 @@ $ gofmt -l -w internal/agentformatter
 	event := agent.Event{
 		Agent:      agent.AgentMeta{Depth: 2},
 		Type:       agent.EventTypeToolComplete,
-		Tool:       "run_tests",
+		Tool:       extToolWithPresenter(t, exttools.NewRunTestsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), nil)),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}

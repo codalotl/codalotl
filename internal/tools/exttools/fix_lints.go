@@ -18,6 +18,8 @@ var descriptionFixLints string
 
 const ToolNameFixLints = "fix_lints"
 
+var fixLintsPresenterInstance llmstream.Presenter = fixLintsPresenter{}
+
 type toolFixLints struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
@@ -39,6 +41,37 @@ func NewFixLintsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) l
 
 func (t *toolFixLints) Name() string {
 	return ToolNameFixLints
+}
+
+func (t *toolFixLints) Presenter() llmstream.Presenter {
+	return fixLintsPresenterInstance
+}
+
+type fixLintsPresenter struct{}
+
+func (p fixLintsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	action := "Fix Lints"
+	if result != nil {
+		action = "Fixed Lints"
+	}
+
+	presentation := extToolSummaryPresentation(action, fixLintsPresenterTarget(call))
+	if result == nil {
+		return presentation
+	}
+
+	content, ok := extToolResultContent(*result)
+	if !ok {
+		return presentation
+	}
+
+	content = stripOuterXMLTag(strings.TrimSpace(content))
+	content = stripFixLintsCommandWrappers(content)
+	if output, ok := summarizePresenterOutput(content, 5); ok {
+		presentation.Body = output
+	}
+
+	return presentation
 }
 
 func (t *toolFixLints) Info() llmstream.ToolInfo {
@@ -101,4 +134,39 @@ func runLints(ctx context.Context, sandboxDir string, targetPath string, steps [
 	}
 
 	return lints.Run(ctx, sandboxDir, targetPath, steps, situation)
+}
+
+func fixLintsPresenterTarget(call llmstream.ToolCall) string {
+	var params fixLintsParams
+	if err := json.Unmarshal([]byte(call.Input), &params); err == nil {
+		if path := strings.TrimSpace(params.Path); path != "" {
+			return path
+		}
+	}
+	if name := strings.TrimSpace(call.Name); name != "" {
+		return name
+	}
+	return ToolNameFixLints
+}
+
+func stripFixLintsCommandWrappers(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "<command") || strings.HasPrefix(trimmed, "</command") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "<lint-status") || strings.HasPrefix(trimmed, "</lint-status") {
+			continue
+		}
+		out = append(out, line)
+	}
+
+	return strings.Join(out, "\n")
 }

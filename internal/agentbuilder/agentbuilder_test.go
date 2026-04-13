@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/agentregistry"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/lints"
@@ -64,10 +65,13 @@ func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) 
 		"`prompts`",
 		"`edit_files`",
 		"`agentsmd`",
+		"`presenter`",
 		"`command`",
 		"`subagent`",
 		"`subagent.messages`",
 		"`result_format`",
+		"`subagent_q_and_a`",
+		"`review`",
 		"`sandbox_dir`",
 		"`package_dir`",
 	} {
@@ -348,6 +352,75 @@ func TestBuildRegistry_PROrchestratorReviewTool_InvokesReviewSubagentAndReturnsJ
 	assert.Contains(t, invoker.lastRequest.Messages[2], "pkg.go")
 	assert.Contains(t, invoker.lastRequest.Messages[3], "diff --git")
 	assert.Contains(t, invoker.lastRequest.Messages[3], "+func Feature() string")
+}
+
+func TestBuildRegistry_PROrchestratorReviewTool_FormatsWithAgentformatter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sandbox := t.TempDir()
+	reviewedFile := initGitRepoForReviewTest(t, sandbox)
+
+	payload, err := json.Marshal(map[string]any{
+		"findings": []map[string]any{
+			{
+				"title":            "[P1] Preserve machine-readable review output",
+				"body":             "The orchestrator expects structured JSON back from review.",
+				"confidence_score": 0.92,
+				"priority":         1,
+				"code_location": map[string]any{
+					"absolute_file_path": reviewedFile,
+					"line_range": map[string]any{
+						"start": 1,
+						"end":   1,
+					},
+				},
+			},
+		},
+		"overall_correctness":      "patch is incorrect",
+		"overall_explanation":      "One actionable issue remains.",
+		"overall_confidence_score": 0.92,
+	})
+	require.NoError(t, err)
+
+	reviewTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	), "review")
+	require.NotNil(t, reviewTool.Presenter())
+
+	formatter := agentformatter.NewTUIFormatter(agentformatter.Config{PlainText: true})
+	call := llmstream.ToolCall{
+		Name:  "review",
+		Input: `{"base":"main"}`,
+	}
+
+	t.Run("tool call", func(t *testing.T) {
+		out := formatter.FormatEvent(agent.Event{
+			Type:     agent.EventTypeToolCall,
+			Tool:     reviewTool,
+			ToolCall: &call,
+		}, 160)
+
+		assert.Equal(t, "• Reviewing main", out)
+	})
+
+	t.Run("tool complete", func(t *testing.T) {
+		out := formatter.FormatEvent(agent.Event{
+			Type:     agent.EventTypeToolComplete,
+			Tool:     reviewTool,
+			ToolCall: &call,
+			ToolResult: &llmstream.ToolResult{
+				Name:   "review",
+				Result: string(payload),
+			},
+		}, 160)
+
+		assert.Equal(t, "• Reviewed main\n  └ [P1] Preserve machine-readable review output", out)
+	})
 }
 
 func TestBuildRegistry_PackageModeOpenAIApplyPatchRunsPostChecks(t *testing.T) {

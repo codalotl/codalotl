@@ -30,9 +30,9 @@ for ev := range out {
     case agent.EventTypeAssistantReasoning:
         fmt.Println("reasoning: ", ev.ReasoningContent.Content)
     case agent.EventTypeToolCall:
-        fmt.Println("tool call: ", ev.Tool, ev.ToolCall)
+        fmt.Println("tool call: ", ev.Tool.Name(), ev.ToolCall)
     case agent.EventTypeToolComplete:
-        fmt.Println("tool: ", ev.Tool, ev.ToolCall, ev.ToolResult) // These are just the llmstream structs
+        fmt.Println("tool: ", ev.Tool.Name(), ev.ToolCall, ev.ToolResult) // ev.Tool is the concrete llmstream.Tool
     case agent.EventTypeAssistantTurnComplete:
         fmt.Println("turn: ", ev.Turn)
         fmt.Println("tokens used: ", ev.Turn.TokenUsage)
@@ -104,6 +104,8 @@ type AgentMeta struct {
 
 type Event struct {
 	Agent AgentMeta
+	Tool  llmstream.Tool // nil on non-tool events
+
 	// ... other fields
 }
 ```

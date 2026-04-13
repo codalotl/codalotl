@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// CollectFinalAssistantText drains an agent event stream and returns the final
-// assistant text answer, or an error if the stream terminates unsuccessfully.
+// CollectFinalAssistantText drains an agent event stream and returns the final assistant text answer, or an error if the stream terminates unsuccessfully.
 func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string, error) {
 	var assistantText []string
 	lastTurnText := ""

@@ -22,6 +22,7 @@
 //
 // Each `tools` entry includes:
 //   - `name`, `description`, and `parameters`.
+//   - optional `presenter`, which currently supports preset-based semantic formatting for tool call/result display.
 //   - exactly one of `command` or `subagent`.
 //   - `command` defines `cmd`, optional templated `args`, and optional templated `cwd`.
 //   - `subagent` defines target agent `name`, either templated `message` or `subagent.messages`, optional `package`, optional `result_format`, and optional `package_restrictions`.
@@ -29,6 +30,8 @@
 //   - `name`, `file`, and `text` message blocks are resolved to text first, then rendered with the same template data as command tools.
 //   - `command` message blocks run a templated command and use its textual output as the message body.
 //   - `result_format: json` parses the final assistant text as JSON and returns normalized JSON; `text` is the default.
+//   - the preset `subagent_q_and_a` renders Q-and-A style subagent tools using `call_action`, `result_action`, optional `summary_items`, `call_body`, and `result_body`.
+//   - the preset `review` renders the built-in review tool with fixed `base`-driven summaries and concise finding titles.
 //
 // Templated YAML fields can reference tool parameters plus calling-context values such as `sandbox_dir` and `package_dir`.
 package agentbuilder
