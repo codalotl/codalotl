@@ -134,7 +134,8 @@ type queuedMessage struct {
 type toolDisplayScope struct {
 	callID                string
 	subagentEventPolicy   llmstream.SubagentEventPolicy
-	pendingDescendantText *agent.Event
+	pendingDescendantTurn []agent.Event
+	pendingTurnComplete   bool
 }
 
 type toolDisplayScopeRef struct {
@@ -1939,32 +1940,44 @@ func (m *model) handleHideFinalDescendantMessage(ref toolDisplayScopeRef, ev age
 		return false
 	}
 
-	flushedPending := false
-	if scope.pendingDescendantText != nil && shouldFlushPendingDescendantText(ev) {
-		m.appendAgentEvent(*scope.pendingDescendantText)
-		scope.pendingDescendantText = nil
-		flushedPending = true
-	}
-
-	if ev.Type != agent.EventTypeAssistantText {
-		return false
-	}
-
-	candidate := ev
-	scope.pendingDescendantText = &candidate
-	if flushedPending {
-		m.refreshViewport(autoScroll)
-	}
-	return true
-}
-
-func shouldFlushPendingDescendantText(ev agent.Event) bool {
 	switch ev.Type {
-	case agent.EventTypeAssistantTurnComplete, agent.EventTypeDoneSuccess, agent.EventTypeUserMessageQueued:
+	case agent.EventTypeAssistantText:
+		if scope.pendingTurnComplete {
+			m.flushPendingDescendantTurn(scope)
+		}
+		scope.pendingDescendantTurn = append(scope.pendingDescendantTurn, ev)
+		scope.pendingTurnComplete = false
+		return true
+	case agent.EventTypeAssistantTurnComplete:
+		if len(scope.pendingDescendantTurn) == 0 {
+			return false
+		}
+		scope.pendingTurnComplete = true
+		return true
+	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
+		scope.pendingDescendantTurn = nil
+		scope.pendingTurnComplete = false
+		return false
+	case agent.EventTypeUserMessageQueued:
 		return false
 	default:
-		return true
+		if len(scope.pendingDescendantTurn) == 0 {
+			return false
+		}
+		m.flushPendingDescendantTurn(scope)
+		return false
 	}
+}
+
+func (m *model) flushPendingDescendantTurn(scope *toolDisplayScope) {
+	if scope == nil {
+		return
+	}
+	for _, pending := range scope.pendingDescendantTurn {
+		m.appendAgentEvent(pending)
+	}
+	scope.pendingDescendantTurn = nil
+	scope.pendingTurnComplete = false
 }
 
 // refreshViewport calculates the contents of the viewport, calls SetContent on it, and optionally scrolls to the bottom.
