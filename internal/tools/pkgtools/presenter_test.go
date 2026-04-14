@@ -27,21 +27,21 @@ func TestReadOnlyTools_ExposePresenters(t *testing.T) {
 	}
 }
 
-func TestPresenters_DefaultSubagentEventPolicy(t *testing.T) {
+func TestPresenters_SubagentEventPolicy(t *testing.T) {
 	auth := authdomain.NewAutoApproveAuthorizer(t.TempDir())
 	call := llmstream.ToolCall{Name: "test"}
 
-	tools := []llmstream.Tool{
-		NewChangeAPITool(".", auth, nil, "", nil),
-		NewClarifyPublicAPITool(auth, nil),
-		NewGetPublicAPITool(auth),
-		NewGetUsageTool(auth),
-		NewModuleInfoTool(auth),
-		NewUpdateUsageTool(".", auth, nil, "", nil),
+	policyByTool := map[llmstream.Tool]llmstream.SubagentEventPolicy{
+		NewChangeAPITool(".", auth, nil, "", nil):   llmstream.SubagentEventPolicyHideFinalMessage,
+		NewClarifyPublicAPITool(auth, nil):          llmstream.SubagentEventPolicyHideFinalMessage,
+		NewGetPublicAPITool(auth):                   llmstream.SubagentEventPolicyDefault,
+		NewGetUsageTool(auth):                       llmstream.SubagentEventPolicyDefault,
+		NewModuleInfoTool(auth):                     llmstream.SubagentEventPolicyDefault,
+		NewUpdateUsageTool(".", auth, nil, "", nil): llmstream.SubagentEventPolicyHideFinalMessage,
 	}
 
-	for _, tool := range tools {
-		assert.Equal(t, llmstream.SubagentEventPolicyDefault, tool.Presenter().SubagentEventPolicy(call))
+	for tool, policy := range policyByTool {
+		assert.Equal(t, policy, tool.Presenter().SubagentEventPolicy(call))
 	}
 }
 
@@ -80,6 +80,59 @@ func TestGetPublicAPIPresenter(t *testing.T) {
 	assert.Equal(t, expectedSummary, resultPresentation.Summary)
 	assert.Equal(t, expectedBody, callPresentation.Body)
 	assert.Equal(t, expectedBody, resultPresentation.Body)
+}
+
+func TestPkgToolResultPayloadContent_OnlyRecognizesExplicitEnvelope(t *testing.T) {
+	testCases := []struct {
+		name          string
+		result        string
+		wantContent   string
+		wantError     string
+		wantIsPayload bool
+	}{
+		{
+			name:          "envelope with content",
+			result:        `{"success":true,"content":"updated successfully"}`,
+			wantContent:   "updated successfully",
+			wantIsPayload: true,
+		},
+		{
+			name:          "raw object without envelope fields",
+			result:        `{"kind":"summary","changed":["SomeType.DoThing"]}`,
+			wantContent:   `{"kind":"summary","changed":["SomeType.DoThing"]}`,
+			wantIsPayload: false,
+		},
+		{
+			name:          "object with extra fields is not envelope",
+			result:        `{"content":"updated successfully","details":{"files":2}}`,
+			wantContent:   `{"content":"updated successfully","details":{"files":2}}`,
+			wantIsPayload: false,
+		},
+		{
+			name:          "raw array",
+			result:        `["first","second"]`,
+			wantContent:   `["first","second"]`,
+			wantIsPayload: false,
+		},
+		{
+			name:          "raw string",
+			result:        `"updated successfully"`,
+			wantContent:   `"updated successfully"`,
+			wantIsPayload: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			content, payloadErr, isPayload := pkgToolResultPayloadContent(llmstream.ToolResult{
+				Result: tc.result,
+			})
+
+			assert.Equal(t, tc.wantContent, content)
+			assert.Equal(t, tc.wantError, payloadErr)
+			assert.Equal(t, tc.wantIsPayload, isPayload)
+		})
+	}
 }
 
 func TestGetUsagePresenter(t *testing.T) {

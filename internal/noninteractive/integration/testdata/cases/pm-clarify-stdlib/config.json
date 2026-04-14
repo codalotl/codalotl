@@ -91,20 +91,6 @@
     },
     {
       "agent": {
-        "depth": 1
-      },
-      "content": {
-        "match": "partial",
-        "texts": [
-          "returns an error whose `Unwrap() []error` returns multiple wrapped errors",
-          "same argument is wrapped more than once, it only appears once",
-          "with positional formatting, the wrapped errors are ordered by argument index"
-        ]
-      },
-      "type": "assistant_text"
-    },
-    {
-      "agent": {
         "depth": 0
       },
       "result": {

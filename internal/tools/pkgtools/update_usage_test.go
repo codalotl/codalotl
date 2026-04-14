@@ -54,12 +54,13 @@ func TestUpdateUsagePresenter(t *testing.T) {
 	}
 	result := &llmstream.ToolResult{
 		Name:   ToolNameUpdateUsage,
-		Result: `{"success":true}`,
+		Result: "some/path:\nUpdated callsites to use the new API.\n\nother/path:\nNo further changes needed.",
 	}
 
 	callPresentation := presenter.Present(call, nil)
 	resultPresentation := presenter.Present(call, result)
 
+	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(call))
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
 	assert.Equal(t, llmstream.Line{
@@ -83,7 +84,38 @@ func TestUpdateUsagePresenter(t *testing.T) {
 	assert.Equal(t, llmstream.Output{
 		Lines: []string{"Update the callsites to conform to this new API."},
 	}, callPresentation.Body)
-	assert.Nil(t, resultPresentation.Body)
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{
+			"some/path:",
+			"Updated callsites to use the new API.",
+			"",
+			"other/path:",
+			"No further changes needed.",
+		},
+	}, resultPresentation.Body)
+}
+
+func TestUpdateUsagePresenter_PreservesRawJSONObjectResult(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), llmmodel.DefaultModel, nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameUpdateUsage,
+		Input: `{"instructions":"Update callers.","paths":["some/path"]}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   ToolNameUpdateUsage,
+		Result: `{"consumer":"updated","status":"ok"}`,
+	}
+
+	presentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{`{"consumer":"updated","status":"ok"}`},
+	}, presentation.Body)
 }
 
 func TestUpdateUsage_Run_DownstreamPackagePath_ReachesSubagentCheck(t *testing.T) {

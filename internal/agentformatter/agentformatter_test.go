@@ -2485,7 +2485,7 @@ func TestUpdateUsageCompleteSuccess(t *testing.T) {
 }`,
 	}
 	result := llmstream.ToolResult{
-		Result:  `{"success":true}`,
+		Result:  "first/path:\nUpdated callsites to use the new API.\n\nsecond/path:\nNo changes needed.",
 		IsError: false,
 	}
 	event := agent.Event{
@@ -2500,9 +2500,14 @@ func TestUpdateUsageCompleteSuccess(t *testing.T) {
 	lines := strings.Split(stripANSI(out), "\n")
 	require.Equal(t, []string{
 		"• Updated Usage in first/path, second/path, third/path (2 more)",
+		"  └ first/path:",
+		"    Updated callsites to use the new API.",
+		"    ",
+		"    second/path:",
+		"    No changes needed.",
 	}, lines)
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "success bullet should be green")
-	assert.NotContains(t, out, "└", "success output should not include a body")
+	assert.Contains(t, out, "└", "success output should include a body")
 }
 
 func TestUpdateUsageCompleteErrorShowsOutput(t *testing.T) {
@@ -2592,7 +2597,7 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 }`,
 	}
 	result := llmstream.ToolResult{
-		Result:  `{"success":true}`,
+		Result:  "Added SomeType.DoThing and updated downstream callers to use it.",
 		IsError: false,
 	}
 	event := agent.Event{
@@ -2613,9 +2618,10 @@ func TestChangeAPICompleteSuccess(t *testing.T) {
 	lines := strings.Split(stripANSI(out), "\n")
 	require.Equal(t, []string{
 		"• Changed API in axi/some/pkg",
+		"  └ Added SomeType.DoThing and updated downstream callers to use it.",
 	}, lines)
 	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorGreen, false, false)+" "), "success bullet should be green")
-	assert.NotContains(t, out, "└", "success output should not include a body")
+	assert.Contains(t, out, "└", "success output should include a body")
 }
 
 func TestChangeAPICompleteErrorShowsOutput(t *testing.T) {

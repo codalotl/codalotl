@@ -84,7 +84,7 @@ func (t *toolChangeAPI) Presenter() llmstream.Presenter {
 }
 
 func (p changeAPIPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyDefault
+	return llmstream.SubagentEventPolicyHideFinalMessage
 }
 
 func (p changeAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
@@ -98,14 +98,21 @@ func (p changeAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.T
 		Behavior: llmstream.CompletionBehaviorAppend,
 		Summary:  changeAPIPresenterSummary(action, call, path, ok),
 	}
-	if result == nil && strings.TrimSpace(instructions) != "" && ok {
-		presentation.Body = llmstream.Paragraph{
-			Lines: []llmstream.Line{{
-				Segments: []llmstream.Segment{
-					{Text: instructions, Role: llmstream.RoleAccent},
-				},
-			}},
+	if result == nil {
+		if strings.TrimSpace(instructions) != "" && ok {
+			presentation.Body = llmstream.Paragraph{
+				Lines: []llmstream.Line{{
+					Segments: []llmstream.Segment{
+						{Text: instructions, Role: llmstream.RoleAccent},
+					},
+				}},
+			}
 		}
+		return presentation
+	}
+
+	if body, ok := pkgToolResultOutput(*result); ok {
+		presentation.Body = body
 	}
 	return presentation
 }

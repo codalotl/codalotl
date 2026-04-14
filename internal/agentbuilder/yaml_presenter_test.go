@@ -77,10 +77,43 @@ func TestYAMLSubagentQAPresenterPresent_ResultBodyNoneOmitsCompletionBody(t *tes
 	}, resultPresentation)
 }
 
-func TestYAMLSubagentQAPresenter_SubagentEventPolicyDefault(t *testing.T) {
+func TestYAMLSubagentQAPresenterPresent_ResultBodyResultShowsCompletionBody(t *testing.T) {
+	presenter := requireYAMLSubagentQAPresenter(t, yamlPresenterBodyResult)
+
+	call := llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentbuilder","instructions":"Refine the built-in implement presenter."}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   "implement",
+		Result: "Implemented the requested presenter refinement.\nUpdated focused tests.",
+	}
+
+	resultPresentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.Presentation{
+		Behavior:      llmstream.CompletionBehaviorAppend,
+		ErrorBehavior: llmstream.ErrorBehaviorDefault,
+		Summary: llmstream.Line{
+			JoinWithSpace: true,
+			Segments: []llmstream.Segment{
+				{Text: "Implemented", Role: llmstream.RoleAction},
+				{Text: "internal/agentbuilder", Role: llmstream.RoleNormal},
+			},
+		},
+		Body: llmstream.Output{
+			Lines: []string{
+				"Implemented the requested presenter refinement.",
+				"Updated focused tests.",
+			},
+		},
+	}, resultPresentation)
+}
+
+func TestYAMLSubagentQAPresenter_SubagentEventPolicyHideFinalMessage(t *testing.T) {
 	presenter := requireYAMLSubagentQAPresenter(t, yamlPresenterBodyNone)
 
-	assert.Equal(t, llmstream.SubagentEventPolicyDefault, presenter.SubagentEventPolicy(llmstream.ToolCall{
+	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(llmstream.ToolCall{
 		Name:  "implement",
 		Input: `{"path":"internal/agentbuilder"}`,
 	}))

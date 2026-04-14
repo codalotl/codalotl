@@ -264,7 +264,7 @@ func (p *yamlSubagentQAPresenter) Present(call llmstream.ToolCall, result *llmst
 }
 
 func (p *yamlSubagentQAPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyDefault
+	return llmstream.SubagentEventPolicyHideFinalMessage
 }
 
 func (p *yamlSubagentQAPresenter) summary(params map[string]any, isResult bool) llmstream.Line {
