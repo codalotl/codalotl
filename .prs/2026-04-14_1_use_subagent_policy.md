@@ -77,6 +77,10 @@ should instead change to
 
 ## Review
 
+- Review against `main` found two actionable P2 issues in `internal/tools/pkgtools`.
+- `pkgToolResultPayloadContent` currently treats any valid JSON object as the internal `{content,error}` envelope. If a successful subagent reply is raw JSON without those keys, `change_api` / `update_usage` now hide the nested final assistant message and also drop the outer completion body.
+- `clarifyPublicAPIPresenterResultContent` has the same issue, so a successful raw-JSON clarification answer can disappear entirely once nested final assistant messages are hidden.
+- Next step: fix presenter payload parsing so only the explicit envelope shape is treated specially; preserve arbitrary raw JSON text as visible output.
 ## Summary
 
 ## State
