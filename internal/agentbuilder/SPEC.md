@@ -137,6 +137,7 @@ It displays the call/result like:
 
 ```
 • Reviewing origin/main
+  • (... various subagent events ...)
 • Reviewed origin/main
   └ [P2] Some finding title
     [P1] Another finding title
@@ -152,7 +153,7 @@ presenter:
 
 Notes:
 - Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
-- `SubagentEventPolicy` is always `HideFinalMessage`.
+- `SubagentEventPolicy` is `HideFinalMessage`.
 - This preset has no tunable fields beyond `name`.
 - The tool must define a `base` parameter. The call/result summary line is fixed to `Reviewing {{ .base }}` and `Reviewed {{ .base }}`.
 - The call has no body.
@@ -160,7 +161,6 @@ Notes:
     - If the tool result matches the review JSON schema (in `data/review.prompt.md`), show concise human-readable review output instead of raw JSON.
     - With findings, show finding titles only (max 10; then `… +N findings`).
     - With no findings, show a concise success line instead of raw JSON.
-- Display consumers hide the review subagent's final machine-readable assistant message, while still showing descendant tool activity and the outer review result.
 
 ## Toolsets
 
