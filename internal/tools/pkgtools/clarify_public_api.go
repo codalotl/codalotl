@@ -143,27 +143,14 @@ func clarifyPublicAPIPresenterResultContent(result llmstream.ToolResult) (string
 		return "", false
 	}
 
-	trimmed := strings.TrimSpace(result.Result)
-	if trimmed == "" {
+	content, payloadErr, isPayload := pkgToolResultPayloadContent(result)
+	if isPayload && payloadErr != "" {
 		return "", false
 	}
-
-	var payload struct {
-		Content string `json:"content"`
-		Error   string `json:"error"`
+	if content == "" {
+		return "", false
 	}
-	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
-		if strings.TrimSpace(payload.Error) != "" {
-			return "", false
-		}
-		content := strings.TrimSpace(payload.Content)
-		if content == "" {
-			return "", false
-		}
-		return content, true
-	}
-
-	return trimmed, true
+	return content, true
 }
 
 func (t *toolClarifyPublicAPI) Info() llmstream.ToolInfo {

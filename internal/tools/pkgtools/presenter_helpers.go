@@ -11,6 +11,11 @@ import (
 
 var usageResultPattern = regexp.MustCompile(`^\d+:`)
 
+type pkgToolResultEnvelope struct {
+	Content string `json:"content"`
+	Error   string `json:"error"`
+}
+
 func pkgToolPresenterFallbackSummary(call llmstream.ToolCall) llmstream.Line {
 	segments := []llmstream.Segment{
 		{Text: "Tool", Role: llmstream.RoleAction},
@@ -91,15 +96,40 @@ func pkgToolResultPayloadContent(result llmstream.ToolResult) (string, string, b
 		return "", "", false
 	}
 
-	var payload struct {
-		Content string `json:"content"`
-		Error   string `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+	payload, ok := parsePkgToolResultEnvelope(trimmed)
+	if ok {
 		return strings.TrimSpace(payload.Content), strings.TrimSpace(payload.Error), true
 	}
 
 	return trimmed, "", false
+}
+
+func parsePkgToolResultEnvelope(raw string) (pkgToolResultEnvelope, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil || fields == nil {
+		return pkgToolResultEnvelope{}, false
+	}
+
+	hasEnvelopeField := false
+	for key := range fields {
+		switch key {
+		case "content", "error":
+			hasEnvelopeField = true
+		case "success":
+			continue
+		default:
+			return pkgToolResultEnvelope{}, false
+		}
+	}
+	if !hasEnvelopeField {
+		return pkgToolResultEnvelope{}, false
+	}
+
+	var payload pkgToolResultEnvelope
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return pkgToolResultEnvelope{}, false
+	}
+	return payload, true
 }
 
 func pkgToolUsageResultCount(result llmstream.ToolResult) (int, bool) {

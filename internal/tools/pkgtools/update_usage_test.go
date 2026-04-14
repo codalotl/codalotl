@@ -95,6 +95,29 @@ func TestUpdateUsagePresenter(t *testing.T) {
 	}, resultPresentation.Body)
 }
 
+func TestUpdateUsagePresenter_PreservesRawJSONObjectResult(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewUpdateUsageTool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), llmmodel.DefaultModel, nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameUpdateUsage,
+		Input: `{"instructions":"Update callers.","paths":["some/path"]}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   ToolNameUpdateUsage,
+		Result: `{"consumer":"updated","status":"ok"}`,
+	}
+
+	presentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{`{"consumer":"updated","status":"ok"}`},
+	}, presentation.Body)
+}
+
 func TestUpdateUsage_Run_DownstreamPackagePath_ReachesSubagentCheck(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
 		err := gocodetesting.AddPackage(t, pkg.Module, "consumer", map[string]string{

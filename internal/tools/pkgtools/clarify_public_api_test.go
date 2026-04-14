@@ -84,6 +84,38 @@ func TestClarifyPublicAPIPresenter(t *testing.T) {
 	}, resultPresentation.Body)
 }
 
+func TestClarifyPublicAPIPresenter_PreservesRawJSONObjectResult(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewClarifyPublicAPITool(authdomain.NewAutoApproveAuthorizer(sandbox), nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameClarifyPublicAPI,
+		Input: `{"path":"axi/some/pkg","identifier":"SomeIdentifier","question":"What does SomeIdentifier return?"}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   ToolNameClarifyPublicAPI,
+		Result: `{"answer":"SomeIdentifier returns a description."}`,
+	}
+
+	presentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{`{"answer":"SomeIdentifier returns a description."}`},
+	}, presentation.Body)
+}
+
+func TestClarifyPublicAPIPresenterResultContent_PreservesRawJSONObject(t *testing.T) {
+	content, ok := clarifyPublicAPIPresenterResultContent(llmstream.ToolResult{
+		Result: `{"answer":"SomeIdentifier returns a description."}`,
+	})
+
+	assert.True(t, ok)
+	assert.Equal(t, `{"answer":"SomeIdentifier returns a description."}`, content)
+}
+
 func (a *denyReadAuthorizer) SandboxDir() string { return a.sandboxDir }
 func (a *denyReadAuthorizer) CodeUnitDir() string {
 	return ""

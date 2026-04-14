@@ -98,6 +98,29 @@ func TestChangeAPIPresenter(t *testing.T) {
 	}, resultPresentation.Body)
 }
 
+func TestChangeAPIPresenter_PreservesRawJSONObjectResult(t *testing.T) {
+	sandbox := t.TempDir()
+	tool := NewChangeAPITool(sandbox, authdomain.NewAutoApproveAuthorizer(sandbox), dummyPackageToolset(), llmmodel.DefaultModel, nil)
+	presenter := tool.Presenter()
+
+	require.NotNil(t, presenter)
+
+	call := llmstream.ToolCall{
+		Name:  ToolNameChangeAPI,
+		Input: `{"path":"axi/some/pkg","instructions":"Update the API."}`,
+	}
+	result := &llmstream.ToolResult{
+		Name:   ToolNameChangeAPI,
+		Result: `{"kind":"summary","changed":["SomeType.DoThing"]}`,
+	}
+
+	presentation := presenter.Present(call, result)
+
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{`{"kind":"summary","changed":["SomeType.DoThing"]}`},
+	}, presentation.Body)
+}
+
 func TestChangeAPI_MissingImportPath(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
 		auth := authdomain.NewAutoApproveAuthorizer(pkg.Module.AbsolutePath)
