@@ -51,3 +51,34 @@ should instead change to
 • Investigated in path/to/pkg
   └ I investigated and found...
 ```
+
+## Plan
+
+### Phase 0
+
+#### Package internal/agentbuilder
+- Update `subagent_q_and_a` presenter design to hide descendant final assistant messages and surface tool result text on the outer completion when configured.
+- Update built-in `implement` tool config to show the subagent result in the outer completion body instead of relying on the nested final message.
+- Update YAML presenter tests for completion body + `SubagentEventPolicy`.
+
+#### Package internal/tools/pkgtools
+- `clarify_public_api`, `change_api`, and `update_usage` are the current hand-written subagent-backed tools in this package.
+- Use `SubagentEventPolicyHideFinalMessage` for those presenters.
+- Keep `clarify_public_api` completion body behavior.
+- Add outer completion bodies for `change_api` and `update_usage` so the subagent's final text still appears after the nested final message is hidden.
+- Update presenter tests accordingly.
+
+#### Validation
+- Run focused tests for `internal/agentbuilder` and `internal/tools/pkgtools`.
+- If event rendering coverage needs extra confidence, run targeted `internal/tui` or `internal/noninteractive` tests that already exercise hidden-final-message handling.
+
+## Review
+
+## Summary
+
+## State
+
+- Branch: `jn/use-subagent-policy`
+- Existing policy support already lands in `llmstream`, `tui`, `noninteractive`, and review presenters.
+- Current subagent-backed presenters in scope: YAML `implement` via `subagent_q_and_a`, plus pkgtools `clarify_public_api`, `change_api`, and `update_usage`.
+- I did not find other current tool presenters in repo that both launch subagents and still return `SubagentEventPolicyDefault`.
