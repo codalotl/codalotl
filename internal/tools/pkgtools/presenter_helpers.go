@@ -73,6 +73,18 @@ func pkgToolAccentParagraph(text string) (llmstream.Paragraph, bool) {
 	}, true
 }
 
+func pkgToolResultOutput(result llmstream.ToolResult) (llmstream.Output, bool) {
+	if result.IsError {
+		return llmstream.Output{}, false
+	}
+
+	content, payloadErr, isPayload := pkgToolResultPayloadContent(result)
+	if isPayload && payloadErr != "" {
+		return llmstream.Output{}, false
+	}
+	return pkgToolPresenterOutput(content)
+}
+
 func pkgToolResultPayloadContent(result llmstream.ToolResult) (string, string, bool) {
 	trimmed := strings.TrimSpace(result.Result)
 	if trimmed == "" {

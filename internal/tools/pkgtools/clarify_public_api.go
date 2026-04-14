@@ -70,7 +70,7 @@ func (t *toolClarifyPublicAPI) Presenter() llmstream.Presenter {
 }
 
 func (p clarifyPublicAPIPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyDefault
+	return llmstream.SubagentEventPolicyHideFinalMessage
 }
 
 func (p clarifyPublicAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {

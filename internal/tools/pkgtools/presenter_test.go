@@ -27,21 +27,21 @@ func TestReadOnlyTools_ExposePresenters(t *testing.T) {
 	}
 }
 
-func TestPresenters_DefaultSubagentEventPolicy(t *testing.T) {
+func TestPresenters_SubagentEventPolicy(t *testing.T) {
 	auth := authdomain.NewAutoApproveAuthorizer(t.TempDir())
 	call := llmstream.ToolCall{Name: "test"}
 
-	tools := []llmstream.Tool{
-		NewChangeAPITool(".", auth, nil, "", nil),
-		NewClarifyPublicAPITool(auth, nil),
-		NewGetPublicAPITool(auth),
-		NewGetUsageTool(auth),
-		NewModuleInfoTool(auth),
-		NewUpdateUsageTool(".", auth, nil, "", nil),
+	policyByTool := map[llmstream.Tool]llmstream.SubagentEventPolicy{
+		NewChangeAPITool(".", auth, nil, "", nil):   llmstream.SubagentEventPolicyHideFinalMessage,
+		NewClarifyPublicAPITool(auth, nil):          llmstream.SubagentEventPolicyHideFinalMessage,
+		NewGetPublicAPITool(auth):                   llmstream.SubagentEventPolicyDefault,
+		NewGetUsageTool(auth):                       llmstream.SubagentEventPolicyDefault,
+		NewModuleInfoTool(auth):                     llmstream.SubagentEventPolicyDefault,
+		NewUpdateUsageTool(".", auth, nil, "", nil): llmstream.SubagentEventPolicyHideFinalMessage,
 	}
 
-	for _, tool := range tools {
-		assert.Equal(t, llmstream.SubagentEventPolicyDefault, tool.Presenter().SubagentEventPolicy(call))
+	for tool, policy := range policyByTool {
+		assert.Equal(t, policy, tool.Presenter().SubagentEventPolicy(call))
 	}
 }
 

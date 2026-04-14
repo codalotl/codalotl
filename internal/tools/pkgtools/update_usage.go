@@ -82,7 +82,7 @@ func (t *toolUpdateUsage) Presenter() llmstream.Presenter {
 }
 
 func (p updateUsagePresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyDefault
+	return llmstream.SubagentEventPolicyHideFinalMessage
 }
 
 func (p updateUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
@@ -100,6 +100,11 @@ func (p updateUsagePresenter) Present(call llmstream.ToolCall, result *llmstream
 		if body, ok := pkgToolPresenterOutput(instructions); ok {
 			presentation.Body = body
 		}
+		return presentation
+	}
+
+	if body, ok := pkgToolResultOutput(*result); ok {
+		presentation.Body = body
 	}
 	return presentation
 }

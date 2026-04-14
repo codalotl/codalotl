@@ -55,12 +55,13 @@ func TestChangeAPIPresenter(t *testing.T) {
 	}
 	result := &llmstream.ToolResult{
 		Name:   ToolNameChangeAPI,
-		Result: `{"success":true}`,
+		Result: "Updated upstream package.\nAdded SomeType.DoThing and switched callers to the shared implementation.",
 	}
 
 	callPresentation := presenter.Present(call, nil)
 	resultPresentation := presenter.Present(call, result)
 
+	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(call))
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
 	assert.Equal(t, llmstream.Line{
@@ -89,7 +90,12 @@ func TestChangeAPIPresenter(t *testing.T) {
 			},
 		}},
 	}, paragraph)
-	assert.Nil(t, resultPresentation.Body)
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{
+			"Updated upstream package.",
+			"Added SomeType.DoThing and switched callers to the shared implementation.",
+		},
+	}, resultPresentation.Body)
 }
 
 func TestChangeAPI_MissingImportPath(t *testing.T) {
