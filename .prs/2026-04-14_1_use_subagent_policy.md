@@ -75,12 +75,12 @@ should instead change to
 - Ran focused tests for `internal/noninteractive/integration`.
 - Ran `go test ./...`.
 
-## Review
+## Review [DONE]
 
 - Review against `main` found two actionable P2 issues in `internal/tools/pkgtools`.
 - `pkgToolResultPayloadContent` currently treats any valid JSON object as the internal `{content,error}` envelope. If a successful subagent reply is raw JSON without those keys, `change_api` / `update_usage` now hide the nested final assistant message and also drop the outer completion body.
 - `clarifyPublicAPIPresenterResultContent` has the same issue, so a successful raw-JSON clarification answer can disappear entirely once nested final assistant messages are hidden.
-- Next step: fix presenter payload parsing so only the explicit envelope shape is treated specially; preserve arbitrary raw JSON text as visible output.
+- [DONE] Actioned in `c363165`: pkgtools presenters now only treat the explicit envelope shape specially, preserving arbitrary raw JSON text in `change_api`, `update_usage`, and `clarify_public_api`. Added focused regression tests and re-ran `go test ./internal/tools/pkgtools`.
 ## Summary
 
 ## State
@@ -91,4 +91,5 @@ should instead change to
 - I did not find other current tool presenters in repo that both launch subagents and still return `SubagentEventPolicyDefault`.
 - `internal/agentbuilder` is implemented: `subagent_q_and_a` now hides nested final messages, and built-in `implement` now shows the subagent result in the outer completion body.
 - `internal/tools/pkgtools` is implemented: `clarify_public_api`, `change_api`, and `update_usage` now hide nested final messages; `change_api` and `update_usage` now surface result text on the outer completion body.
+- Review feedback is fixed: raw JSON subagent answers are preserved as visible output unless the result is the explicit pkgtools envelope.
 - `internal/noninteractive/integration` expectations are updated for the new presented event stream; full `go test ./...` now passes.
