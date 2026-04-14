@@ -61,7 +61,7 @@ should instead change to
 - Update built-in `implement` tool config to show the subagent result in the outer completion body instead of relying on the nested final message.
 - Update YAML presenter tests for completion body + `SubagentEventPolicy`.
 
-#### Package internal/tools/pkgtools
+#### [DONE] Package internal/tools/pkgtools
 - `clarify_public_api`, `change_api`, and `update_usage` are the current hand-written subagent-backed tools in this package.
 - Use `SubagentEventPolicyHideFinalMessage` for those presenters.
 - Keep `clarify_public_api` completion body behavior.
@@ -70,7 +70,8 @@ should instead change to
 
 #### Validation
 - Ran focused tests for `internal/agentbuilder`.
-- Still need focused tests for `internal/tools/pkgtools`.
+- Ran focused tests for `internal/tools/pkgtools`.
+- Still need to update `internal/noninteractive/integration` expectations for changed pkgtools subagent event output (`pm-change_api`, `pm-clarify`, `pm-clarify-stdlib`, `pm-dependency`, `pm-update_usage`).
 - If event rendering coverage needs extra confidence, run targeted `internal/tui` or `internal/noninteractive` tests that already exercise hidden-final-message handling.
 
 ## Review
@@ -84,3 +85,5 @@ should instead change to
 - Current subagent-backed presenters in scope: YAML `implement` via `subagent_q_and_a`, plus pkgtools `clarify_public_api`, `change_api`, and `update_usage`.
 - I did not find other current tool presenters in repo that both launch subagents and still return `SubagentEventPolicyDefault`.
 - `internal/agentbuilder` is implemented: `subagent_q_and_a` now hides nested final messages, and built-in `implement` now shows the subagent result in the outer completion body.
+- `internal/tools/pkgtools` is implemented: `clarify_public_api`, `change_api`, and `update_usage` now hide nested final messages; `change_api` and `update_usage` now surface result text on the outer completion body.
+- `go test ./...` currently needs follow-up snapshot updates in `internal/noninteractive/integration` for the changed pkgtools presentation.
