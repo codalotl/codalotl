@@ -118,6 +118,7 @@ presenter:
 
 Notes:
 - Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
+- `SubagentEventPolicy` is always `Default`.
 - The summary line is always joined with spaces.
 - `call_action` is required. Used in the call summary line (`RoleAction`).
 - `result_action` is required. Used in the completion summary line (`RoleAction`).
@@ -136,6 +137,7 @@ It displays the call/result like:
 
 ```
 • Reviewing origin/main
+  • (... various subagent events ...)
 • Reviewed origin/main
   └ [P2] Some finding title
     [P1] Another finding title
@@ -151,6 +153,7 @@ presenter:
 
 Notes:
 - Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
+- `SubagentEventPolicy` is `HideFinalMessage`.
 - This preset has no tunable fields beyond `name`.
 - The tool must define a `base` parameter. The call/result summary line is fixed to `Reviewing {{ .base }}` and `Reviewed {{ .base }}`.
 - The call has no body.

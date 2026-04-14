@@ -754,6 +754,55 @@ func (presenterBackedTestPresenter) Present(call llmstream.ToolCall, result *llm
 	}
 }
 
+func (presenterBackedTestPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
+type policyBackedTestTool struct {
+	name   string
+	policy llmstream.SubagentEventPolicy
+}
+
+func (t policyBackedTestTool) Info() llmstream.ToolInfo {
+	return llmstream.ToolInfo{Name: t.name}
+}
+
+func (t policyBackedTestTool) Name() string {
+	return t.name
+}
+
+func (t policyBackedTestTool) Presenter() llmstream.Presenter {
+	return policyBackedTestPresenter{policy: t.policy}
+}
+
+func (t policyBackedTestTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
+	return llmstream.ToolResult{}
+}
+
+type policyBackedTestPresenter struct {
+	policy llmstream.SubagentEventPolicy
+}
+
+func (p policyBackedTestPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+	summary := "Presenter call " + call.Name
+	if result != nil {
+		summary = "Presenter done " + result.Name
+	}
+
+	return llmstream.Presentation{
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary: llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: summary, Role: llmstream.RoleNormal},
+			},
+		},
+	}
+}
+
+func (p policyBackedTestPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return p.policy
+}
+
 type recordingFormatter struct {
 	events []agent.Event
 }
@@ -762,6 +811,29 @@ func (f *recordingFormatter) FormatEvent(e agent.Event, _ int) string {
 	f.events = append(f.events, e)
 
 	switch e.Type {
+	case agent.EventTypeToolCall:
+		if e.ToolCall == nil {
+			return "CALL"
+		}
+		return "CALL " + e.ToolCall.Name
+	case agent.EventTypeToolComplete:
+		if e.ToolResult == nil {
+			return "DONE"
+		}
+		return "DONE " + e.ToolResult.Name
+	default:
+		return ""
+	}
+}
+
+type verboseRecordingFormatter struct{}
+
+func (verboseRecordingFormatter) FormatEvent(e agent.Event, _ int) string {
+	switch e.Type {
+	case agent.EventTypeAssistantText:
+		return "TEXT " + e.TextContent.Content
+	case agent.EventTypeAssistantReasoning:
+		return "REASON " + e.ReasoningContent.Content
 	case agent.EventTypeToolCall:
 		if e.ToolCall == nil {
 			return "CALL"
@@ -1350,6 +1422,262 @@ func TestSessionSendUserMessageJSONToolEventsRemainUnchanged(t *testing.T) {
 			"is_error": false,
 		},
 	}, toolComplete)
+}
+
+func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
+	t.Parallel()
+
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := policyBackedTestTool{
+		name:   "review",
+		policy: llmstream.SubagentEventPolicyHideFinalMessage,
+	}
+	readTool := namedTestTool{name: "read_file"}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       childAgent,
+						TextContent: llmstream.TextContent{Content: "looked at files"},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: childAgent,
+						Turn:  textAssistantTurn("looked at files"),
+					},
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: childAgent,
+						Tool:  &readTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_read",
+							Name:   "ignored_read_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: childAgent,
+						Tool:  &readTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_read",
+							Name:   "ignored_read_result",
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       childAgent,
+						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: childAgent,
+						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  12,
+					TotalOutputTokens: 4,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "> review this change\n")
+	require.Contains(t, output, "CALL review\n")
+	require.Contains(t, output, "TEXT looked at files\n")
+	require.Contains(t, output, "CALL read_file\n")
+	require.Contains(t, output, "DONE read_file\n")
+	require.Contains(t, output, "DONE review\n")
+	require.NotContains(t, output, `TEXT {"decision":"approve"}`)
+}
+
+func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *testing.T) {
+	t.Parallel()
+
+	reviewTool := policyBackedTestTool{
+		name:   "review",
+		policy: llmstream.SubagentEventPolicyHideFinalMessage,
+	}
+	readTool := namedTestTool{name: "read_file"}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+							Type:   "function_call",
+							Input:  `{"prompt":"review"}`,
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       childAgent,
+						TextContent: llmstream.TextContent{Content: "looked at files"},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: childAgent,
+						Turn:  textAssistantTurn("looked at files"),
+					},
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: childAgent,
+						Tool:  &readTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_read",
+							Name:   "ignored_read_name",
+							Type:   "function_call",
+							Input:  `{"path":"foo.go"}`,
+						},
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: childAgent,
+						Tool:  &readTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID:  "call_read",
+							Name:    "ignored_read_result",
+							Type:    "function_call",
+							Result:  "package foo\n",
+							IsError: false,
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       childAgent,
+						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: childAgent,
+						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID:  "call_review",
+							Name:    "ignored_review_result",
+							Type:    "function_call",
+							Result:  "approved",
+							IsError: false,
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  12,
+					TotalOutputTokens: 4,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	require.NotContains(t, buf.String(), `{"decision":"approve"}`)
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
+	require.Len(t, lines, 8)
+
+	var visibleAssistant jsonAssistantContentEvent
+	require.NoError(t, json.Unmarshal(lines[3], &visibleAssistant))
+	require.Equal(t, "assistant_text", visibleAssistant.Type)
+	require.Equal(t, "looked at files", visibleAssistant.Content)
+	require.Equal(t, jsonAgent{ID: "reviewer", Depth: 1}, visibleAssistant.Agent)
+
+	var childToolCall jsonToolCallEvent
+	require.NoError(t, json.Unmarshal(lines[4], &childToolCall))
+	require.Equal(t, "tool_call", childToolCall.Type)
+	require.Equal(t, jsonTool{
+		CallID: "call_read",
+		Name:   "read_file",
+		Type:   "function_call",
+		Input:  `{"path":"foo.go"}`,
+	}, childToolCall.Tool)
+
+	var outerToolComplete jsonToolCompleteEvent
+	require.NoError(t, json.Unmarshal(lines[6], &outerToolComplete))
+	require.Equal(t, "tool_complete", outerToolComplete.Type)
+	require.Equal(t, jsonTool{
+		CallID: "call_review",
+		Name:   "review",
+		Type:   "function_call",
+	}, outerToolComplete.Tool)
+}
+
+func TestPresenterBackedTestPresenterSubagentEventPolicyDefaults(t *testing.T) {
+	t.Parallel()
+
+	presenter := presenterBackedTestPresenter{}
+
+	require.Equal(t, llmstream.SubagentEventPolicyDefault, presenter.SubagentEventPolicy(llmstream.ToolCall{
+		Name: "read_file",
+	}))
 }
 
 func TestExecUsesSessionAPIAndPreservesTextOutput(t *testing.T) {

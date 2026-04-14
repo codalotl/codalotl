@@ -131,6 +131,18 @@ type queuedMessage struct {
 	dest queuedMessageDest
 }
 
+type toolDisplayScope struct {
+	callID                string
+	subagentEventPolicy   llmstream.SubagentEventPolicy
+	pendingDescendantTurn []agent.Event
+	pendingTurnComplete   bool
+}
+
+type toolDisplayScopeRef struct {
+	agentID string
+	index   int
+}
+
 // Run launches the TUI in an alternate screen buffer.
 func Run() error {
 	return RunWithConfig(Config{})
@@ -250,12 +262,10 @@ type model struct {
 	clipboardSetter             func(text string) // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
 	osClipboardAvailable        func() bool       // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
 	osClipboardWrite            func(text string) error
-
-	// now allows deterministic tests around transient UI state (ex: "copied!").
-	now func() time.Time
-
-	// detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and package context gathering.
-	detailsDialog *detailsDialog
+	now                         func() time.Time // now allows deterministic tests around transient UI state (ex: "copied!").
+	detailsDialog               *detailsDialog   // detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and package context gathering.
+	agentParents                map[string]string
+	activeToolScopes            map[string][]toolDisplayScope
 }
 
 func newModel(
@@ -299,6 +309,8 @@ func newModel(
 		now:                  time.Now,
 		osClipboardAvailable: clipboard.Available,
 		osClipboardWrite:     clipboard.Write,
+		agentParents:         make(map[string]string),
+		activeToolScopes:     make(map[string][]toolDisplayScope),
 	}
 	if initialSession != nil {
 		m.requests = initialSession.UserRequests()
@@ -1517,6 +1529,7 @@ func (m *model) finishAgentRun() {
 	m.currentRun = nil
 	m.runStartedAt = time.Time{}
 	m.workingIndicatorAnimationPos = 0
+	m.resetToolDisplayState()
 	m.updatePlaceholder()
 	m.refreshViewport(m.shouldAutoScrollOnUpdate())
 }
@@ -1641,7 +1654,19 @@ func (m *model) updateContextStatusMessage(index int, status packageContextStatu
 }
 
 func (m *model) handleAgentEvent(ev agent.Event) {
+	m.recordAgentMeta(ev.Agent)
+	if ev.Type == agent.EventTypeToolCall {
+		m.beginToolDisplayScope(ev)
+	}
+
 	autoScroll := m.shouldAutoScrollOnUpdate()
+	if m.handleDescendantSubagentEventPolicy(ev, autoScroll) {
+		return
+	}
+	if ev.Type == agent.EventTypeToolComplete {
+		m.endToolDisplayScope(ev)
+	}
+
 	switch ev.Type {
 	case agent.EventTypeUserMessageQueued:
 		// Queued messages are already reflected in the UI immediately when the user
@@ -1676,6 +1701,7 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	m.appendAgentEvent(ev)
 	m.refreshViewport(autoScroll)
 }
+
 func (m *model) dropQueuedMessage(message string) {
 	if len(m.queuedMessages) == 0 {
 		return
@@ -1812,6 +1838,146 @@ func toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
 	default:
 		return llmstream.CompletionBehaviorReplace
 	}
+}
+
+func (m *model) recordAgentMeta(meta agent.AgentMeta) {
+	if meta.ID == "" {
+		return
+	}
+	m.agentParents[meta.ID] = meta.Parent
+}
+
+func (m *model) resetToolDisplayState() {
+	clear(m.agentParents)
+	clear(m.activeToolScopes)
+}
+
+func (m *model) beginToolDisplayScope(ev agent.Event) {
+	if ev.ToolCall == nil || ev.Agent.ID == "" {
+		return
+	}
+	scope := toolDisplayScope{
+		callID:              ev.ToolCall.CallID,
+		subagentEventPolicy: toolSubagentEventPolicy(ev),
+	}
+	m.activeToolScopes[ev.Agent.ID] = append(m.activeToolScopes[ev.Agent.ID], scope)
+}
+
+func (m *model) endToolDisplayScope(ev agent.Event) {
+	if ev.Agent.ID == "" {
+		return
+	}
+	callID := eventToolCallID(ev)
+	if callID == "" {
+		return
+	}
+	scopes := m.activeToolScopes[ev.Agent.ID]
+	for i := len(scopes) - 1; i >= 0; i-- {
+		if scopes[i].callID != callID {
+			continue
+		}
+		scopes = append(scopes[:i], scopes[i+1:]...)
+		if len(scopes) == 0 {
+			delete(m.activeToolScopes, ev.Agent.ID)
+		} else {
+			m.activeToolScopes[ev.Agent.ID] = scopes
+		}
+		return
+	}
+}
+
+func toolSubagentEventPolicy(ev agent.Event) llmstream.SubagentEventPolicy {
+	if ev.Tool == nil || ev.ToolCall == nil {
+		return llmstream.SubagentEventPolicyDefault
+	}
+	presenter := ev.Tool.Presenter()
+	if presenter == nil {
+		return llmstream.SubagentEventPolicyDefault
+	}
+	return presenter.SubagentEventPolicy(*ev.ToolCall)
+}
+
+func (m *model) handleDescendantSubagentEventPolicy(ev agent.Event, autoScroll bool) bool {
+	ref, ok := m.enclosingToolDisplayScope(ev.Agent)
+	if !ok {
+		return false
+	}
+	scope := m.toolDisplayScope(ref)
+	if scope == nil {
+		return false
+	}
+
+	switch scope.subagentEventPolicy {
+	case llmstream.SubagentEventPolicyHideFinalMessage:
+		return m.handleHideFinalDescendantMessage(ref, ev, autoScroll)
+	default:
+		return false
+	}
+}
+
+func (m *model) enclosingToolDisplayScope(meta agent.AgentMeta) (toolDisplayScopeRef, bool) {
+	for agentID := meta.Parent; agentID != ""; agentID = m.agentParents[agentID] {
+		scopes := m.activeToolScopes[agentID]
+		if len(scopes) == 0 {
+			continue
+		}
+		return toolDisplayScopeRef{agentID: agentID, index: len(scopes) - 1}, true
+	}
+	return toolDisplayScopeRef{}, false
+}
+
+func (m *model) toolDisplayScope(ref toolDisplayScopeRef) *toolDisplayScope {
+	scopes := m.activeToolScopes[ref.agentID]
+	if ref.index < 0 || ref.index >= len(scopes) {
+		return nil
+	}
+	return &scopes[ref.index]
+}
+
+func (m *model) handleHideFinalDescendantMessage(ref toolDisplayScopeRef, ev agent.Event, autoScroll bool) bool {
+	scope := m.toolDisplayScope(ref)
+	if scope == nil {
+		return false
+	}
+
+	switch ev.Type {
+	case agent.EventTypeAssistantText:
+		if scope.pendingTurnComplete {
+			m.flushPendingDescendantTurn(scope)
+		}
+		scope.pendingDescendantTurn = append(scope.pendingDescendantTurn, ev)
+		scope.pendingTurnComplete = false
+		return true
+	case agent.EventTypeAssistantTurnComplete:
+		if len(scope.pendingDescendantTurn) == 0 {
+			return false
+		}
+		scope.pendingTurnComplete = true
+		return true
+	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
+		scope.pendingDescendantTurn = nil
+		scope.pendingTurnComplete = false
+		return false
+	case agent.EventTypeUserMessageQueued:
+		return false
+	default:
+		if len(scope.pendingDescendantTurn) == 0 {
+			return false
+		}
+		m.flushPendingDescendantTurn(scope)
+		return false
+	}
+}
+
+func (m *model) flushPendingDescendantTurn(scope *toolDisplayScope) {
+	if scope == nil {
+		return
+	}
+	for _, pending := range scope.pendingDescendantTurn {
+		m.appendAgentEvent(pending)
+	}
+	scope.pendingDescendantTurn = nil
+	scope.pendingTurnComplete = false
 }
 
 // refreshViewport calculates the contents of the viewport, calls SetContent on it, and optionally scrolls to the bottom.
@@ -2528,6 +2694,7 @@ func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	m.pendingPostResetStartRun = false
 	m.packageContext = nil
 	m.specConformance = nil
+	m.resetToolDisplayState()
 	m.exitEditingState()
 	m.editedHistoryDrafts = nil
 	if m.textarea != nil {

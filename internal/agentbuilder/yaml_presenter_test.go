@@ -77,6 +77,15 @@ func TestYAMLSubagentQAPresenterPresent_ResultBodyNoneOmitsCompletionBody(t *tes
 	}, resultPresentation)
 }
 
+func TestYAMLSubagentQAPresenter_SubagentEventPolicyDefault(t *testing.T) {
+	presenter := requireYAMLSubagentQAPresenter(t, yamlPresenterBodyNone)
+
+	assert.Equal(t, llmstream.SubagentEventPolicyDefault, presenter.SubagentEventPolicy(llmstream.ToolCall{
+		Name:  "implement",
+		Input: `{"path":"internal/agentbuilder"}`,
+	}))
+}
+
 func TestYAMLReviewPresenterPresent_FormatsFindingsAndTruncates(t *testing.T) {
 	presenter := requireYAMLReviewPresenter(t)
 
@@ -168,6 +177,15 @@ func TestYAMLReviewPresenterPresent_InvalidReviewJSONFallsBackToRawOutput(t *tes
 	assert.Equal(t, llmstream.Output{
 		Lines: []string{"{", `  "unexpected": true`, "}"},
 	}, presentation.Body)
+}
+
+func TestYAMLReviewPresenter_SubagentEventPolicyHideFinalMessage(t *testing.T) {
+	presenter := requireYAMLReviewPresenter(t)
+
+	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(llmstream.ToolCall{
+		Name:  "review",
+		Input: `{"base":"main"}`,
+	}))
 }
 
 func requireYAMLSubagentQAPresenter(t *testing.T, resultBody string) llmstream.Presenter {

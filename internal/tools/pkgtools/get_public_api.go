@@ -49,6 +49,10 @@ func (t *toolGetPublicAPI) Presenter() llmstream.Presenter {
 	return getPublicAPIPresenterInstance
 }
 
+func (p getPublicAPIPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (p getPublicAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	presentation := pkgToolReplaceSummaryPresentation(getPublicAPIPresenterSummary(call))
 	if body, ok := getPublicAPIPresenterBody(call); ok {

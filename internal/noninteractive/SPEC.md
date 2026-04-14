@@ -10,6 +10,7 @@ To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, firs
 - Upon getting a tool call, start a 3 second timer.
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
 - If the three seconds elapses without getting the result, print the tool call. When the result comes in, print that as well.
+- Output respects `llmstream.Presenter.SubagentEventPolicy` for subagent events.
 
 ## Finishing a session
 
@@ -37,6 +38,7 @@ JSON mode is a structured log, not a 1:1 dump of every internal `agent.Event`. I
 - `done`, `error`, or `canceled` is terminal event.
 - Validation errors before session start still return an error and print nothing.
 - `user_message` is only the end-user prompt passed to `Exec`. Internal setup messages are not emitted as JSON `user_message` events.
+- Output respects `llmstream.Presenter.SubagentEventPolicy` for subagent events.
 
 ### Shared objects
 

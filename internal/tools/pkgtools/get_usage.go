@@ -49,6 +49,10 @@ func (t *toolGetUsage) Presenter() llmstream.Presenter {
 	return getUsagePresenterInstance
 }
 
+func (p getUsagePresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (p getUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	presentation := pkgToolReplaceSummaryPresentation(getUsagePresenterSummary(call))
 	if result == nil {

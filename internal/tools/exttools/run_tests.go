@@ -89,6 +89,10 @@ func (p runTestsPresenter) Present(call llmstream.ToolCall, result *llmstream.To
 	return presentation
 }
 
+func (p runTestsPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return llmstream.SubagentEventPolicyDefault
+}
+
 func (t *toolRunTests) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameRunTests,

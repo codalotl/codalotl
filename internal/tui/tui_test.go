@@ -25,6 +25,19 @@ func (noopFormatter) FormatEvent(agent.Event, int) string {
 	return ""
 }
 
+type stubPresenter struct {
+	behavior llmstream.CompletionBehavior
+	policy   llmstream.SubagentEventPolicy
+}
+
+func (p stubPresenter) Present(llmstream.ToolCall, *llmstream.ToolResult) llmstream.Presentation {
+	return llmstream.Presentation{Behavior: p.behavior}
+}
+
+func (p stubPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
+	return p.policy
+}
+
 type stubAuthorizer struct {
 	closed bool
 }
@@ -746,6 +759,142 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 			require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 		})
 	}
+}
+
+func TestHideFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
+	reviewTool := newNamedToolWithPresenter("review", stubPresenter{
+		behavior: llmstream.CompletionBehaviorAppend,
+		policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+	})
+
+	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
+	reviewResult := &llmstream.ToolResult{CallID: "review-1", Name: "review"}
+	readCall := &llmstream.ToolCall{CallID: "read-1", Name: "read_file"}
+	readResult := &llmstream.ToolResult{CallID: "read-1", Name: "read_file"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: reviewTool, ToolCall: reviewCall})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: readCall})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: readCall, ToolResult: readResult})
+	m.handleAgentEvent(agent.Event{
+		Agent:       child,
+		Type:        agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{Content: `{"verdict":"pass",`},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:       child,
+		Type:        agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{Content: `"notes":[]}`},
+	})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
+
+	require.Len(t, m.messages, 3)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, "review", m.messages[0].event.ToolCall.Name)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	require.Equal(t, "read_file", m.messages[1].event.ToolResult.Name)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[2].event.Type)
+	require.Equal(t, "review", m.messages[2].event.ToolResult.Name)
+
+	for _, msg := range m.messages {
+		require.NotEqual(t, agent.EventTypeAssistantText, msg.event.Type)
+	}
+}
+
+func TestHideFinalDescendantAssistantTextDroppedOnDescendantErrorOrCancel(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		eventType agent.EventType
+		err       error
+	}{
+		{name: "error", eventType: agent.EventTypeError, err: errors.New("review failed")},
+		{name: "canceled", eventType: agent.EventTypeCanceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+			root := agent.AgentMeta{ID: "root"}
+			child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
+			reviewTool := newNamedToolWithPresenter("review", stubPresenter{
+				behavior: llmstream.CompletionBehaviorAppend,
+				policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+			})
+			reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
+
+			m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: reviewTool, ToolCall: reviewCall})
+			m.handleAgentEvent(agent.Event{
+				Agent:       child,
+				Type:        agent.EventTypeAssistantText,
+				TextContent: llmstream.TextContent{Content: "partial "},
+			})
+			m.handleAgentEvent(agent.Event{
+				Agent:       child,
+				Type:        agent.EventTypeAssistantText,
+				TextContent: llmstream.TextContent{Content: "final reply"},
+			})
+			m.handleAgentEvent(agent.Event{Agent: child, Type: tc.eventType, Error: tc.err})
+
+			require.Len(t, m.messages, 2)
+			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+			require.Equal(t, tc.eventType, m.messages[1].event.Type)
+			require.NotEqual(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+			for _, msg := range m.messages {
+				require.NotEqual(t, agent.EventTypeAssistantText, msg.event.Type)
+			}
+		})
+	}
+}
+
+func TestHideFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
+	reviewTool := newNamedToolWithPresenter("review", stubPresenter{
+		behavior: llmstream.CompletionBehaviorAppend,
+		policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+	})
+
+	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
+	reviewResult := &llmstream.ToolResult{CallID: "review-1", Name: "review"}
+	readCall := &llmstream.ToolCall{CallID: "read-1", Name: "read_file"}
+	readResult := &llmstream.ToolResult{CallID: "read-1", Name: "read_file"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: reviewTool, ToolCall: reviewCall})
+	m.handleAgentEvent(agent.Event{
+		Agent:       child,
+		Type:        agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{Content: "Checking the diff before the structured result."},
+	})
+	require.Len(t, m.messages, 1)
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
+
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: readCall})
+	require.Len(t, m.messages, 3)
+	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+	require.Equal(t, "Checking the diff before the structured result.", m.messages[1].event.TextContent.Content)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[2].event.Type)
+
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: readCall, ToolResult: readResult})
+	m.handleAgentEvent(agent.Event{
+		Agent:       child,
+		Type:        agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{Content: `{"verdict":"pass"}`},
+	})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
+
+	require.Len(t, m.messages, 4)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[2].event.Type)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[3].event.Type)
+	require.Equal(t, "Checking the diff before the structured result.", m.messages[1].event.TextContent.Content)
 }
 
 func TestToolNamePrecedence(t *testing.T) {
