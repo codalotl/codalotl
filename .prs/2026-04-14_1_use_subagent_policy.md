@@ -56,7 +56,7 @@ should instead change to
 
 ### Phase 0
 
-#### Package internal/agentbuilder
+#### [DONE] Package internal/agentbuilder
 - Update `subagent_q_and_a` presenter design to hide descendant final assistant messages and surface tool result text on the outer completion when configured.
 - Update built-in `implement` tool config to show the subagent result in the outer completion body instead of relying on the nested final message.
 - Update YAML presenter tests for completion body + `SubagentEventPolicy`.
@@ -69,7 +69,8 @@ should instead change to
 - Update presenter tests accordingly.
 
 #### Validation
-- Run focused tests for `internal/agentbuilder` and `internal/tools/pkgtools`.
+- Ran focused tests for `internal/agentbuilder`.
+- Still need focused tests for `internal/tools/pkgtools`.
 - If event rendering coverage needs extra confidence, run targeted `internal/tui` or `internal/noninteractive` tests that already exercise hidden-final-message handling.
 
 ## Review
@@ -82,3 +83,4 @@ should instead change to
 - Existing policy support already lands in `llmstream`, `tui`, `noninteractive`, and review presenters.
 - Current subagent-backed presenters in scope: YAML `implement` via `subagent_q_and_a`, plus pkgtools `clarify_public_api`, `change_api`, and `update_usage`.
 - I did not find other current tool presenters in repo that both launch subagents and still return `SubagentEventPolicyDefault`.
+- `internal/agentbuilder` is implemented: `subagent_q_and_a` now hides nested final messages, and built-in `implement` now shows the subagent result in the outer completion body.
