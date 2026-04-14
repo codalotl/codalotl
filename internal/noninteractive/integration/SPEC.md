@@ -122,7 +122,6 @@ Optional `config.json` fields:
 Rules for matching expected JSON lines:
 - The runner parses `noninteractive.Exec(..., OutputJSON=true)` output as NDJSON.
 - Expected events are matched as an ordered subsequence, not as a full exact transcript. Extra events between expected ones are allowed.
-- Some subagent-backed tool presenters intentionally hide a descendant subagent's final `assistant_text` event and instead surface that body on the parent `tool_complete.result.output`. Record expectations to match the presented stream, not the raw subagent transcript.
 - Any field present as a scalar in `config.json` must match exactly.
 - If a field is absent from the expected event but present in the actual event, it is ignored.
 - Nested objects are matched recursively as subsets.
@@ -166,7 +165,6 @@ Details:
     - `start` keeps `type` and `package_path`, but omits `cwd` and `model_id`
     - `agent.id` is omitted; only `agent.depth` is kept
     - `assistant_reasoning` events are omitted, because the mock transport does not replay reasoning deltas
-    - when a presenter hides a descendant subagent final message, that nested final `assistant_text` is omitted and the corresponding parent `tool_complete.result.output` carries the body instead
     - other event payloads are kept concrete, with only absolute paths normalized
     - `done.token_usage` is included only when `--include-token-usage=true`
 - `http.json` is kept close to recorded provider traffic:
