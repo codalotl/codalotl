@@ -83,6 +83,12 @@ should instead change to
 - [DONE] Actioned in `c363165`: pkgtools presenters now only treat the explicit envelope shape specially, preserving arbitrary raw JSON text in `change_api`, `update_usage`, and `clarify_public_api`. Added focused regression tests and re-ran `go test ./internal/tools/pkgtools`.
 ## Summary
 
+- Apply `SubagentEventPolicyHideFinalMessage` to the current subagent-backed tool presenters so nested final assistant messages are hidden in the event stream.
+- Update `internal/agentbuilder`'s YAML `subagent_q_and_a` presenter and built-in `implement` tool wiring so the subagent result is shown on the outer completion body instead of relying on the hidden nested final message.
+- Update `internal/tools/pkgtools` presenters for `clarify_public_api`, `change_api`, and `update_usage` to keep their user-visible completion text on the outer completion when nested finals are hidden.
+- Preserve raw JSON subagent answers as visible output for pkgtools presenters unless the result is the explicit pkgtools `{content,error}` envelope.
+- Refresh presenter/unit coverage and noninteractive integration expectations for the new event presentation; `go test ./...` passed before review, and the pkgtools review fix was revalidated with `go test ./internal/tools/pkgtools`.
+
 ## State
 
 - Branch: `jn/use-subagent-policy`
