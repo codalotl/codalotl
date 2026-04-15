@@ -46,9 +46,13 @@ func TestDetermineComparisonBaseUsesCreationMessageWhenCandidatesAreAmbiguous(t 
 	tool := &toolCheckSpecConformance{
 		git: fakeGitRunner{
 			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                              "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"):            "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from main\n",
-				gitCommandKey("branch", "--format=%(refname:short)", "--contains", "aaaaaaaaaaaaaaaa"): "feature\nmain\nrelease\n",
+				gitCommandKey("branch", "--show-current"):                                   "feature\n",
+				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from main\n",
+				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nmain\nrelease\n",
+				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/feature\norigin/main\n",
+				gitCommandKey("merge-base", "--fork-point", "main", "feature"):              "cccccccccccccccc\n",
+				gitCommandKey("merge-base", "--fork-point", "release", "feature"):           "1111111111111111\n",
+				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):       "cccccccccccccccc\n",
 			},
 		},
 	}
@@ -58,7 +62,61 @@ func TestDetermineComparisonBaseUsesCreationMessageWhenCandidatesAreAmbiguous(t 
 	assert.Equal(t, comparisonBase{
 		Branch:       "feature",
 		ParentBranch: "main",
-		Commit:       "aaaaaaaaaaaaaaaa",
+		Commit:       "cccccccccccccccc",
+		Mode:         comparisonBaseModeBranchPoint,
+	}, base)
+}
+
+func TestDetermineComparisonBaseUsesHEADCheckoutHistoryAndIgnoresFalseAmbiguity(t *testing.T) {
+	t.Parallel()
+
+	tool := &toolCheckSpecConformance{
+		git: fakeGitRunner{
+			outputs: map[string]string{
+				gitCommandKey("branch", "--show-current"):                                      "feature\n",
+				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"):    "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from HEAD\n",
+				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "HEAD"):                  "dddddddddddddddd\x00commit\ncccccccccccccccc\x00checkout: moving from release to main\naaaaaaaaaaaaaaaa\x00checkout: moving from main to feature\n",
+				gitCommandKey("branch", "--format=%(refname:short)"):                           "feature\nmain\n",
+				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                     "origin/HEAD\norigin/feature\norigin/main\norigin/other-feature\n",
+				gitCommandKey("merge-base", "--fork-point", "main", "feature"):                 "eeeeeeeeeeeeeeee\n",
+				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):          "eeeeeeeeeeeeeeee\n",
+				gitCommandKey("merge-base", "--fork-point", "origin/other-feature", "feature"): "aaaaaaaaaaaaaaaa\n",
+			},
+		},
+	}
+
+	base, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
+	require.NoError(t, err)
+	assert.Equal(t, comparisonBase{
+		Branch:       "feature",
+		ParentBranch: "main",
+		Commit:       "eeeeeeeeeeeeeeee",
+		Mode:         comparisonBaseModeBranchPoint,
+	}, base)
+}
+
+func TestDetermineComparisonBaseUsesCurrentForkPointAfterRebase(t *testing.T) {
+	t.Parallel()
+
+	tool := &toolCheckSpecConformance{
+		git: fakeGitRunner{
+			outputs: map[string]string{
+				gitCommandKey("branch", "--show-current"):                                   "feature\n",
+				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from main\n",
+				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nmain\n",
+				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/feature\norigin/main\n",
+				gitCommandKey("merge-base", "--fork-point", "main", "feature"):              "dddddddddddddddd\n",
+				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):       "dddddddddddddddd\n",
+			},
+		},
+	}
+
+	base, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
+	require.NoError(t, err)
+	assert.Equal(t, comparisonBase{
+		Branch:       "feature",
+		ParentBranch: "main",
+		Commit:       "dddddddddddddddd",
 		Mode:         comparisonBaseModeBranchPoint,
 	}, base)
 }
@@ -83,10 +141,12 @@ func TestDetermineComparisonBaseUsesRemoteTrackingParentWhenNoLocalParentExists(
 	tool := &toolCheckSpecConformance{
 		git: fakeGitRunner{
 			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                                    "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"):                  "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from origin/main\n",
-				gitCommandKey("branch", "--format=%(refname:short)", "--contains", "aaaaaaaaaaaaaaaa"):       "feature\nrelease\n",
-				gitCommandKey("branch", "-r", "--format=%(refname:short)", "--contains", "aaaaaaaaaaaaaaaa"): "origin/HEAD\norigin/main\n",
+				gitCommandKey("branch", "--show-current"):                                   "feature\n",
+				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from origin/main\n",
+				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nrelease\n",
+				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/main\norigin/feature\n",
+				gitCommandKey("merge-base", "--fork-point", "release", "feature"):           "1111111111111111\n",
+				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):       "cccccccccccccccc\n",
 			},
 		},
 	}
@@ -96,7 +156,7 @@ func TestDetermineComparisonBaseUsesRemoteTrackingParentWhenNoLocalParentExists(
 	assert.Equal(t, comparisonBase{
 		Branch:       "feature",
 		ParentBranch: "origin/main",
-		Commit:       "aaaaaaaaaaaaaaaa",
+		Commit:       "cccccccccccccccc",
 		Mode:         comparisonBaseModeBranchPoint,
 	}, base)
 }
@@ -107,9 +167,12 @@ func TestDetermineComparisonBaseFailsWhenParentBranchIsAmbiguous(t *testing.T) {
 	tool := &toolCheckSpecConformance{
 		git: fakeGitRunner{
 			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                              "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"):            "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from HEAD\n",
-				gitCommandKey("branch", "--format=%(refname:short)", "--contains", "aaaaaaaaaaaaaaaa"): "feature\nmain\nrelease\n",
+				gitCommandKey("branch", "--show-current"):                                   "feature\n",
+				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00commit\n",
+				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nmain\nrelease\n",
+				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/feature\n",
+				gitCommandKey("merge-base", "--fork-point", "main", "feature"):              "aaaaaaaaaaaaaaaa\n",
+				gitCommandKey("merge-base", "--fork-point", "release", "feature"):           "aaaaaaaaaaaaaaaa\n",
 			},
 		},
 	}

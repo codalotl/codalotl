@@ -79,6 +79,11 @@ type branchCreation struct {
 	Message string
 }
 
+type branchRef struct {
+	Name   string
+	Remote bool
+}
+
 type repoChanges struct {
 	tracked   []string
 	untracked []string
@@ -118,6 +123,13 @@ type packageIssue struct {
 	Severity string `json:"severity"`
 	Latent   bool   `json:"latent"`
 	Message  string `json:"message"`
+}
+
+type parentBranchChoice struct {
+	AliasKey     string
+	ParentBranch string
+	ForkPoint    string
+	Aliases      []string
 }
 
 type gitRunner interface {
@@ -500,32 +512,27 @@ func (t *toolCheckSpecConformance) determineComparisonBase(ctx context.Context, 
 		return comparisonBase{}, err
 	}
 
+	historyParents, err := t.parentBranchesFromCreationHistory(ctx, repoAbsDir, branch, created)
+	if err != nil {
+		return comparisonBase{}, err
+	}
+
 	candidates, err := t.parentBranchCandidates(ctx, repoAbsDir, branch, created.Commit)
 	if err != nil {
 		return comparisonBase{}, err
 	}
 
-	if parent := parentBranchFromCreationMessage(created.Message, branch, candidates); parent != "" {
-		return comparisonBase{
-			Branch:       branch,
-			ParentBranch: parent,
-			Commit:       created.Commit,
-			Mode:         comparisonBaseModeBranchPoint,
-		}, nil
+	parent, err := t.selectParentBranch(ctx, repoAbsDir, branch, created.Commit, historyParents, candidates)
+	if err != nil {
+		return comparisonBase{}, err
 	}
 
-	if len(candidates) == 1 {
-		return comparisonBase{
-			Branch:       branch,
-			ParentBranch: candidates[0],
-			Commit:       created.Commit,
-			Mode:         comparisonBaseModeBranchPoint,
-		}, nil
-	}
-	if len(candidates) == 0 {
-		return comparisonBase{}, fmt.Errorf("unable to determine parent branch for %q at branch-point commit %s", branch, shortCommit(created.Commit))
-	}
-	return comparisonBase{}, fmt.Errorf("ambiguous parent branch for %q at branch-point commit %s: %s", branch, shortCommit(created.Commit), strings.Join(candidates, ", "))
+	return comparisonBase{
+		Branch:       branch,
+		ParentBranch: parent.ParentBranch,
+		Commit:       parent.ForkPoint,
+		Mode:         comparisonBaseModeBranchPoint,
+	}, nil
 }
 
 func (t *toolCheckSpecConformance) oldestBranchCreation(ctx context.Context, repoAbsDir string, branch string) (branchCreation, error) {
@@ -550,32 +557,330 @@ func (t *toolCheckSpecConformance) oldestBranchCreation(ctx context.Context, rep
 	return creation, nil
 }
 
-func (t *toolCheckSpecConformance) parentBranchCandidates(ctx context.Context, repoAbsDir string, currentBranch string, commit string) ([]string, error) {
-	localOut, err := t.git.Output(ctx, repoAbsDir, "branch", "--format=%(refname:short)", "--contains", commit)
+func (t *toolCheckSpecConformance) parentBranchCandidates(ctx context.Context, repoAbsDir string, currentBranch string, commit string) ([]branchRef, error) {
+	_ = commit
+
+	localOut, err := t.git.Output(ctx, repoAbsDir, "branch", "--format=%(refname:short)")
 	if err != nil {
 		return nil, fmt.Errorf("find parent-branch candidates for %q: %w", currentBranch, err)
 	}
-	remoteOut, err := t.git.Output(ctx, repoAbsDir, "branch", "-r", "--format=%(refname:short)", "--contains", commit)
+	remoteOut, err := t.git.Output(ctx, repoAbsDir, "branch", "-r", "--format=%(refname:short)")
 	if err != nil {
 		return nil, fmt.Errorf("find parent-branch candidates for %q: %w", currentBranch, err)
 	}
 
-	lines := append(splitNonEmptyLines(localOut), splitNonEmptyLines(remoteOut)...)
-	candidates := make([]string, 0, len(lines))
+	localRefs := collectBranchRefs(splitNonEmptyLines(localOut), false, currentBranch)
+	remoteRefs := collectBranchRefs(splitNonEmptyLines(remoteOut), true, currentBranch)
+	candidates := append(localRefs, remoteRefs...)
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Name == candidates[j].Name {
+			return !candidates[i].Remote && candidates[j].Remote
+		}
+		return candidates[i].Name < candidates[j].Name
+	})
+	return candidates, nil
+}
+
+func collectBranchRefs(lines []string, remote bool, currentBranch string) []branchRef {
+	refs := make([]branchRef, 0, len(lines))
 	seen := make(map[string]struct{}, len(lines))
 	for _, line := range lines {
-		line = strings.TrimSpace(strings.TrimPrefix(line, "* "))
-		if line == "" || line == currentBranch || line == "HEAD" || strings.HasSuffix(line, "/HEAD") {
+		name := strings.TrimSpace(strings.TrimPrefix(line, "* "))
+		if name == "" || name == "HEAD" || strings.HasSuffix(name, "/HEAD") {
 			continue
 		}
-		if _, ok := seen[line]; ok {
+		ref := branchRef{Name: name, Remote: remote}
+		if isSelfBranchRef(ref, currentBranch) {
 			continue
 		}
-		seen[line] = struct{}{}
-		candidates = append(candidates, line)
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		refs = append(refs, ref)
 	}
-	sort.Strings(candidates)
-	return candidates, nil
+	return refs
+}
+
+func isSelfBranchRef(ref branchRef, currentBranch string) bool {
+	if ref.Name == currentBranch {
+		return true
+	}
+	return ref.Remote && branchRefAliasKey(ref) == currentBranch
+}
+
+func branchRefAliasKey(ref branchRef) string {
+	if ref.Remote {
+		if trimmed := trimRemoteTrackingBranch(ref.Name); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ref.Name
+}
+
+func (t *toolCheckSpecConformance) parentBranchesFromCreationHistory(ctx context.Context, repoAbsDir string, currentBranch string, created branchCreation) ([]string, error) {
+	const prefix = "branch: Created from "
+	if !strings.HasPrefix(created.Message, prefix) {
+		return nil, nil
+	}
+
+	parent := strings.TrimSpace(strings.TrimPrefix(created.Message, prefix))
+	if parent == "" {
+		return nil, nil
+	}
+	if parent != "HEAD" {
+		return normalizeCreationMessageParentBranches(parent), nil
+	}
+
+	parents, err := t.parentBranchesFromHEADReflog(ctx, repoAbsDir, currentBranch, created.Commit)
+	if err != nil {
+		return nil, err
+	}
+	if len(parents) == 0 {
+		return nil, fmt.Errorf("unable to determine parent branch for %q at branch-point commit %s from HEAD reflog", currentBranch, shortCommit(created.Commit))
+	}
+	return parents, nil
+}
+
+func (t *toolCheckSpecConformance) parentBranchesFromHEADReflog(ctx context.Context, repoAbsDir string, currentBranch string, commit string) ([]string, error) {
+	out, err := t.git.Output(ctx, repoAbsDir, "reflog", "show", "--format=%H%x00%gs", "HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("inspect HEAD reflog for %q: %w", currentBranch, err)
+	}
+
+	lines := splitNonEmptyLines(out)
+	for i := len(lines) - 1; i >= 0; i-- {
+		parts := strings.SplitN(lines[i], "\x00", 2)
+		if len(parts) != 2 || parts[0] != commit {
+			continue
+		}
+		if parent := checkoutSourceBranch(parts[1], currentBranch); parent != "" {
+			return normalizeCreationMessageParentBranches(parent), nil
+		}
+	}
+
+	return nil, nil
+}
+
+func checkoutSourceBranch(message string, currentBranch string) string {
+	const prefix = "checkout: moving from "
+	suffix := " to " + currentBranch
+	if !strings.HasPrefix(message, prefix) || !strings.HasSuffix(message, suffix) {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(message, prefix), suffix)
+}
+
+func (t *toolCheckSpecConformance) selectParentBranch(ctx context.Context, repoAbsDir string, currentBranch string, branchPointCommit string, historyParents []string, refs []branchRef) (parentBranchChoice, error) {
+	choices, err := t.parentBranchChoices(ctx, repoAbsDir, currentBranch, refs)
+	if err != nil {
+		return parentBranchChoice{}, err
+	}
+	if len(choices) == 0 {
+		return parentBranchChoice{}, fmt.Errorf("unable to determine parent branch for %q at branch-point commit %s", currentBranch, shortCommit(branchPointCommit))
+	}
+
+	if len(historyParents) > 0 {
+		matched := make([]parentBranchChoice, 0, len(choices))
+		for _, choice := range choices {
+			if parentBranchChoiceMatchesHistory(choice, historyParents) {
+				matched = append(matched, choice)
+			}
+		}
+		switch len(matched) {
+		case 0:
+			return parentBranchChoice{}, fmt.Errorf("unable to determine parent branch for %q at branch-point commit %s", currentBranch, shortCommit(branchPointCommit))
+		case 1:
+			return matched[0], nil
+		default:
+			return parentBranchChoice{}, fmt.Errorf("ambiguous parent branch for %q at branch-point commit %s: %s", currentBranch, shortCommit(branchPointCommit), strings.Join(parentBranchChoiceNames(matched), ", "))
+		}
+	}
+
+	if len(choices) == 1 {
+		return choices[0], nil
+	}
+
+	choice, ok, err := t.mostSpecificParentBranchChoice(ctx, repoAbsDir, choices)
+	if err != nil {
+		return parentBranchChoice{}, err
+	}
+	if ok {
+		return choice, nil
+	}
+
+	return parentBranchChoice{}, fmt.Errorf("ambiguous parent branch for %q at branch-point commit %s: %s", currentBranch, shortCommit(branchPointCommit), strings.Join(parentBranchChoiceNames(choices), ", "))
+}
+
+func parentBranchChoiceMatchesHistory(choice parentBranchChoice, historyParents []string) bool {
+	seen := make(map[string]struct{}, len(historyParents))
+	for _, parent := range historyParents {
+		seen[parent] = struct{}{}
+	}
+	if _, ok := seen[choice.ParentBranch]; ok {
+		return true
+	}
+	if _, ok := seen[choice.AliasKey]; ok {
+		return true
+	}
+	for _, alias := range choice.Aliases {
+		if _, ok := seen[alias]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func parentBranchChoiceNames(choices []parentBranchChoice) []string {
+	names := make([]string, 0, len(choices))
+	for _, choice := range choices {
+		names = append(names, choice.ParentBranch)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (t *toolCheckSpecConformance) parentBranchChoices(ctx context.Context, repoAbsDir string, currentBranch string, refs []branchRef) ([]parentBranchChoice, error) {
+	type choiceBuilder struct {
+		choice            parentBranchChoice
+		representativeRef branchRef
+		aliases           map[string]struct{}
+	}
+
+	builders := make(map[string]*choiceBuilder, len(refs))
+	for _, ref := range refs {
+		forkPoint, err := t.currentForkPoint(ctx, repoAbsDir, ref.Name, currentBranch)
+		if err != nil {
+			continue
+		}
+
+		aliasKey := branchRefAliasKey(ref)
+		builder, ok := builders[aliasKey]
+		if !ok {
+			builders[aliasKey] = &choiceBuilder{
+				choice: parentBranchChoice{
+					AliasKey:     aliasKey,
+					ParentBranch: ref.Name,
+					ForkPoint:    forkPoint,
+				},
+				representativeRef: ref,
+				aliases:           map[string]struct{}{ref.Name: {}},
+			}
+			continue
+		}
+
+		builder.aliases[ref.Name] = struct{}{}
+		newerForkPoint, err := t.newerForkPoint(ctx, repoAbsDir, builder.choice.ForkPoint, forkPoint)
+		if err != nil {
+			return nil, fmt.Errorf("resolve fork-point for %q aliases: %w", aliasKey, err)
+		}
+		if newerForkPoint == forkPoint && builder.choice.ForkPoint != forkPoint {
+			builder.choice.ParentBranch = ref.Name
+			builder.choice.ForkPoint = forkPoint
+			builder.representativeRef = ref
+			continue
+		}
+		if newerForkPoint == forkPoint && builder.choice.ForkPoint == forkPoint && builder.representativeRef.Remote && !ref.Remote {
+			builder.choice.ParentBranch = ref.Name
+			builder.representativeRef = ref
+		}
+	}
+
+	choices := make([]parentBranchChoice, 0, len(builders))
+	for _, builder := range builders {
+		for alias := range builder.aliases {
+			builder.choice.Aliases = append(builder.choice.Aliases, alias)
+		}
+		sort.Strings(builder.choice.Aliases)
+		choices = append(choices, builder.choice)
+	}
+	sort.Slice(choices, func(i, j int) bool {
+		return choices[i].ParentBranch < choices[j].ParentBranch
+	})
+	return choices, nil
+}
+
+func (t *toolCheckSpecConformance) currentForkPoint(ctx context.Context, repoAbsDir string, parentBranch string, currentBranch string) (string, error) {
+	out, err := t.git.Output(ctx, repoAbsDir, "merge-base", "--fork-point", parentBranch, currentBranch)
+	if err == nil {
+		if commit := trimLineEndings(out); commit != "" {
+			return commit, nil
+		}
+	}
+
+	out, err = t.git.Output(ctx, repoAbsDir, "merge-base", parentBranch, currentBranch)
+	if err != nil {
+		return "", err
+	}
+	commit := trimLineEndings(out)
+	if commit == "" {
+		return "", fmt.Errorf("empty merge-base for %q and %q", parentBranch, currentBranch)
+	}
+	return commit, nil
+}
+
+func (t *toolCheckSpecConformance) newerForkPoint(ctx context.Context, repoAbsDir string, left string, right string) (string, error) {
+	if left == right {
+		return left, nil
+	}
+
+	rightDescendsFromLeft, err := t.commitIsAncestor(ctx, repoAbsDir, left, right)
+	if err != nil {
+		return "", err
+	}
+	if rightDescendsFromLeft {
+		return right, nil
+	}
+
+	leftDescendsFromRight, err := t.commitIsAncestor(ctx, repoAbsDir, right, left)
+	if err != nil {
+		return "", err
+	}
+	if leftDescendsFromRight {
+		return left, nil
+	}
+
+	return "", fmt.Errorf("incomparable fork-point commits %s and %s", shortCommit(left), shortCommit(right))
+}
+
+func (t *toolCheckSpecConformance) mostSpecificParentBranchChoice(ctx context.Context, repoAbsDir string, choices []parentBranchChoice) (parentBranchChoice, bool, error) {
+	winners := make([]parentBranchChoice, 0, len(choices))
+	for i, candidate := range choices {
+		mostSpecific := true
+		for j, other := range choices {
+			if i == j {
+				continue
+			}
+			descends, err := t.commitIsAncestor(ctx, repoAbsDir, other.ForkPoint, candidate.ForkPoint)
+			if err != nil {
+				return parentBranchChoice{}, false, err
+			}
+			if !descends {
+				mostSpecific = false
+				break
+			}
+		}
+		if mostSpecific {
+			winners = append(winners, candidate)
+		}
+	}
+
+	if len(winners) != 1 {
+		return parentBranchChoice{}, false, nil
+	}
+	return winners[0], true, nil
+}
+
+func (t *toolCheckSpecConformance) commitIsAncestor(ctx context.Context, repoAbsDir string, ancestor string, descendant string) (bool, error) {
+	if ancestor == descendant {
+		return true, nil
+	}
+
+	out, err := t.git.Output(ctx, repoAbsDir, "rev-list", "--ancestry-path", "--max-count=1", ancestor+".."+descendant)
+	if err != nil {
+		return false, err
+	}
+	return trimLineEndings(out) != "", nil
 }
 
 func parentBranchFromCreationMessage(message string, currentBranch string, candidates []string) string {
