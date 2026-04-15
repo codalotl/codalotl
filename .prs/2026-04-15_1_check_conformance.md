@@ -135,11 +135,14 @@ More Details:
 ### Comparison-base robustness follow-up
 
 #### Package `internal/tools/spectools`
-- Treat ordinary feature branches created from a checked-out branch as resolvable even when branch reflog says `branch: Created from HEAD`.
-- Use `HEAD` reflog checkout entries to recover the source branch for `Created from HEAD` cases.
-- Validate parent candidates by actual fork-point equality with the branch-point commit instead of the current broad `git branch --contains <commit>` set alone.
-- Exclude self refs such as `origin/<current-branch>` and collapse local/remote aliases such as `main` plus `origin/main` so they do not create false ambiguity.
-- Add focused tests for the reproduced case where `main`, `origin/main`, sibling feature-branch remotes, and the current branch's own remote all contain the branch-point commit.
+- Make comparison-base selection rebase-aware: after rebasing a feature branch onto newer `main`, treat the effective branch-point as the branch's current fork-point with its intended upstream, not the historical original creation point.
+- Prefer current upstream-branch semantics over historical branch-creation metadata when determining `only_changed` diffs.
+- Determine intended upstream robustly for ordinary feature branches, including `branch: Created from HEAD` cases by consulting `HEAD` reflog checkout history.
+- Validate upstream candidates using current fork-point behavior instead of raw `git branch --contains <commit>` membership; exclude self refs and collapse local/remote aliases such as `main` plus `origin/main`.
+- Add focused tests for:
+  - ordinary feature branches created from a checked-out branch
+  - rebased branches where effective comparison base moves forward with `main`
+  - false-ambiguity cases caused by sibling feature-branch remotes and current-branch remote-tracking refs
 
 ## Review
 
@@ -232,18 +235,19 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - Skip CAS-verified packages only when package scope has no diff against comparison base.
 - After package checking starts, package-scoped failures stay in that package's `error` payload; reserve overall tool-call failure for pre-launch or global failures.
 
-### Parent-branch selection for comparison base
-- On non-`main`/`master` branches, branch-point commit still comes from the oldest branch reflog entry.
-- If the branch creation message names a branch/ref directly, use that when it maps to a valid parent candidate.
-- If the branch creation message says `branch: Created from HEAD`, inspect `HEAD` reflog checkout history at that point to recover the source branch (example: `checkout: moving from main to feature` => parent `main`).
-- Treat raw `git branch --contains <branch-point>` output as an overbroad starting set only; validate candidates with `git merge-base --fork-point <candidate> <current-branch>` matching the branch-point commit.
-- Exclude refs for the current branch itself, including its remote-tracking alias. When local and remote-tracking aliases both qualify for the same parent branch, prefer the local branch name.
+### Upstream and comparison-base selection for `only_changed`
+- `only_changed` should follow current branch intent, not stale historical branch creation. Rebasing onto newer `main` should behave like recreating the branch from that newer `main` and replaying branch commits.
+- On non-`main`/`master` branches, comparison should prefer the branch's current fork-point with its intended upstream branch.
+- Historical branch-creation metadata is still useful for identifying the intended upstream branch, especially for ordinary feature branches and `branch: Created from HEAD` cases.
+- If branch creation says `Created from HEAD`, inspect `HEAD` reflog checkout history at that point to recover the source branch/ref.
+- Treat raw `git branch --contains <commit>` output as an overbroad candidate set only; validate/refine candidates with fork-point behavior, exclude refs for the current branch itself, and collapse local/remote aliases such as `main` plus `origin/main`.
+- If upstream cannot be determined robustly, fail explicitly rather than silently choosing an arbitrary comparison base.
 
 ## State
 
 - Branch `jn/check-conformance-tool-2` now contains `internal/tools/spectools` implementation plus PR-file commits.
 - New implementation package: `internal/tools/spectools`.
-- `only_changed` uses actual-parent-branch semantics; ambiguity must fail explicitly rather than silently pick the wrong parent.
+- `only_changed` should use current-upstream fork-point semantics; ambiguity determining intended upstream should fail explicitly rather than silently pick the wrong one.
 - Existing helpers likely useful:
   - `internal/lints.Run(..., spec-diff, ...)` for in-process spec-diff-style context
   - `internal/gocas/casconformance` for CAS writes/reads
@@ -262,3 +266,6 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
   - branch reflog oldest entry is `branch: Created from HEAD` at `d58ed726599c`
   - `HEAD` reflog at that point is `checkout: moving from main to jn/check-conformance-tool-2`
   - current parent-candidate logic is too broad and reports `main`, `origin/main`, `origin/jn/check-conformance-tool`, and `origin/jn/check-conformance-tool-2`
+- User requirement clarified after investigation:
+  - rebasing onto newer `main` should move the effective comparison base forward to the new fork-point with `main`
+  - tool semantics should match "as if I recreated the branch from latest main and replayed my commits"
