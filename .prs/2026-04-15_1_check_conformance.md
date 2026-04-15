@@ -117,6 +117,12 @@ More Details:
 - [DONE] Accept remote-tracking branch creation messages like `origin/main`, `refs/remotes/origin/main`, and `remotes/origin/main` when matching parent-branch candidates.
 - Tighten creation-message normalization so plain local branch names containing `/` are not mistaken for remote-tracking refs during ambiguous parent-branch selection.
 
+### SPEC conformance follow-up
+
+#### Package `internal/tools/spectools`
+- Resolve changed-package conformance mismatch around CAS-verified packages: current implementation re-checks changed packages even when CAS already records `conforms=true`, while the spec currently says those packages are skipped.
+- Make non-subagent failures fail the overall tool call instead of returning per-package `error` payloads; reserve per-package errors for subagent failures only.
+
 ## Review
 
 Review against `main` found actionable correctness issues in `internal/tools/spectools`; branch is not ready as-is.
@@ -135,6 +141,12 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
 - P2: `parentBranchCandidates` now includes remote-tracking refs as candidates, so branch-point selection can succeed when the parent exists only as `origin/main`.
 - P2: creation-message normalization now shortens only actual remote-tracking ref forms, so plain local branch names like `release/foo` are no longer misread as `foo`.
 - Self-review after these fixes did not find additional correctness issues in the changed code path.
+
+### Changed-package `check_spec_conformance` run (only_changed=true)
+- `internal/agentbuilder`: conforms; CAS was recorded.
+- `internal/tools/spectools`: does not conform.
+  - Major, latent=false: `findEligiblePackages` still re-checks changed packages that already have CAS `conforms=true`, while the spec says CAS-conforming packages are skipped.
+  - Major, latent=false: non-subagent failures in `checkPackage` are returned as per-package error results instead of failing the overall tool call.
 
 ## Summary
 
@@ -194,4 +206,7 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - `internal/agentbuilder` now registers `check_spec_conformance` and exposes it to `pr-orchestrator`, with focused registry/YAML coverage.
 - Review feedback is implemented in commit `6be56f8` (`spectools: fix package eligibility and scoping`).
 - Additional review feedback is fully implemented across commit `0898b83` (`spectools: handle deleted paths and remote parent refs`) and commit `a7bab20` (`spectools: fix rename and parent branch review issues`).
-- No outstanding review follow-up remains in `internal/tools/spectools`.
+- Changed-package conformance run with `only_changed=true` recorded CAS for `internal/agentbuilder`.
+- Changed-package conformance run reported two major latent=false nonconformances in `internal/tools/spectools`:
+  - spec mismatch on skipping CAS-conforming packages
+  - non-subagent failures are surfaced as per-package errors
