@@ -83,7 +83,7 @@ More Details:
 
 ### Phase 0
 
-#### Package `internal/tools/spectools`
+#### [DONE] Package `internal/tools/spectools`
 - Create new package and `SPEC.md` for the tool.
 - Add `check_spec_conformance` as a generic-mode tool with parameter `only_changed`.
 - Tool scope:
@@ -129,7 +129,7 @@ More Details:
 
 ## State
 
-- Branch `jn/check-conformance-tool-2` currently only contains PR-file commits.
+- Branch `jn/check-conformance-tool-2` now contains `internal/tools/spectools` implementation plus PR-file commits.
 - New implementation package: `internal/tools/spectools`.
 - `only_changed` uses actual-parent-branch semantics; ambiguity must fail explicitly rather than silently pick the wrong parent.
 - Existing helpers likely useful:
@@ -137,3 +137,5 @@ More Details:
   - `internal/gocas/casconformance` for CAS writes/reads
   - `internal/agentbuilder/data/config.yml` for `pr-orchestrator` tool exposure
   - `internal/agentbuilder/genericTools()` for built-in tool registration
+- `internal/tools/spectools` now contains `check_spec_conformance` implementation + tests.
+- Remaining implementation work is `internal/agentbuilder` registration + orchestrator tool exposure.
