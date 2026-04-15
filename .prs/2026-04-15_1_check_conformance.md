@@ -110,7 +110,7 @@ More Details:
 - Restrict changed-path attribution to the package itself; do not treat descendant packages as changes to the parent package, and do not let root-package matching broaden to the whole repo.
 - Enumerate packages using current-module semantics, excluding nested `go.mod` modules outside the current module.
 
-### Additional review follow-up
+### Additional review follow-up [DONE]
 
 #### Package `internal/tools/spectools`
 - [DONE] Treat deleted package-local support-file paths as package changes even when the deleted subtree no longer exists on disk.
@@ -130,10 +130,11 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
 - [DONE] P1: deriving package scope only from the current filesystem can miss package-local deletions. When `newPackageScope()` rebuilds scope without including paths that existed only at the comparison base, deleting support files such as `testdata/` content can make `only_changed=true` skip a changed package and leave a stale `conforms=true` CAS entry in place.
 - [DONE] P2: parent-branch inference does not currently accept remote-tracking creation messages such as `branch: Created from origin/main`. `parentBranchFromCreationMessage` only normalizes `refs/heads/...`, which makes branch-point selection spuriously ambiguous or fail outright on common `git switch -c feature origin/main` workflows.
 
-### New follow-up from implementation review
-- P1: `collectRepoChanges` still uses `git diff --name-only`, so rename and move-out cases only report the destination path. If a tracked file moves out of a CAS-verified package, the old package can be treated as unchanged and skipped, leaving stale `conforms=true` state behind.
-- P2: `parentBranchCandidates` still only inspects local branches via `git branch --contains`. On branches created from `origin/main` without a local `main`, comparison-base selection can still fail even when the reflog creation message identified `origin/main`.
-- P2: creation-message normalization now accepts remote-tracking refs, but it also strips the first path segment from plain branch names. A local branch such as `release/foo` can therefore be misread as `foo` when parent-branch candidates are ambiguous. Restrict that shortening to actual remote-tracking forms only.
+### New follow-up from implementation review [DONE]
+- P1: `collectRepoChanges` now preserves both source and destination paths for tracked renames/moves, so move-out cases re-check the old package instead of leaving stale `conforms=true` CAS state behind.
+- P2: `parentBranchCandidates` now includes remote-tracking refs as candidates, so branch-point selection can succeed when the parent exists only as `origin/main`.
+- P2: creation-message normalization now shortens only actual remote-tracking ref forms, so plain local branch names like `release/foo` are no longer misread as `foo`.
+- Self-review after these fixes did not find additional correctness issues in the changed code path.
 
 ## Summary
 
@@ -192,8 +193,5 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - `internal/tools/spectools` now contains `check_spec_conformance` implementation + tests.
 - `internal/agentbuilder` now registers `check_spec_conformance` and exposes it to `pr-orchestrator`, with focused registry/YAML coverage.
 - Review feedback is implemented in commit `6be56f8` (`spectools: fix package eligibility and scoping`).
-- Additional review feedback was accurate and was mostly implemented in commit `0898b83` (`spectools: handle deleted paths and remote parent refs`).
-- Remaining follow-up:
-  - track both sides of renamed files when collecting repo changes so move-out cases re-check the old package
-  - include remote-tracking refs when choosing parent-branch candidates
-  - restrict creation-message branch normalization so local branch names with `/` are not treated like remote-tracking refs
+- Additional review feedback is fully implemented across commit `0898b83` (`spectools: handle deleted paths and remote parent refs`) and commit `a7bab20` (`spectools: fix rename and parent branch review issues`).
+- No outstanding review follow-up remains in `internal/tools/spectools`.
