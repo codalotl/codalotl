@@ -110,7 +110,14 @@ More Details:
 - Restrict changed-path attribution to the package itself; do not treat descendant packages as changes to the parent package, and do not let root-package matching broaden to the whole repo.
 - Enumerate packages using current-module semantics, excluding nested `go.mod` modules outside the current module.
 
-## Review [DONE]
+### Additional review follow-up
+
+#### Package `internal/tools/spectools`
+- [DONE] Treat deleted package-local support-file paths as package changes even when the deleted subtree no longer exists on disk.
+- [DONE] Accept remote-tracking branch creation messages like `origin/main`, `refs/remotes/origin/main`, and `remotes/origin/main` when matching parent-branch candidates.
+- Tighten creation-message normalization so plain local branch names containing `/` are not mistaken for remote-tracking refs during ambiguous parent-branch selection.
+
+## Review
 
 Review against `main` found actionable correctness issues in `internal/tools/spectools`; branch is not ready as-is.
 
@@ -120,8 +127,11 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
 - P2: package enumeration uses recursive directory walking via `LoadAllPackages`, which can include Go packages from nested `go.mod` modules even though this tool is supposed to operate on the current module only.
 
 ### Additional review feedback
-- P1: deriving package scope only from the current filesystem can miss package-local deletions. When `newPackageScope()` rebuilds scope without including paths that existed only at the comparison base, deleting support files such as `testdata/` content can make `only_changed=true` skip a changed package and leave a stale `conforms=true` CAS entry in place.
-- P2: parent-branch inference does not currently accept remote-tracking creation messages such as `branch: Created from origin/main`. `parentBranchFromCreationMessage` only normalizes `refs/heads/...`, which makes branch-point selection spuriously ambiguous or fail outright on common `git switch -c feature origin/main` workflows.
+- [DONE] P1: deriving package scope only from the current filesystem can miss package-local deletions. When `newPackageScope()` rebuilds scope without including paths that existed only at the comparison base, deleting support files such as `testdata/` content can make `only_changed=true` skip a changed package and leave a stale `conforms=true` CAS entry in place.
+- [DONE] P2: parent-branch inference does not currently accept remote-tracking creation messages such as `branch: Created from origin/main`. `parentBranchFromCreationMessage` only normalizes `refs/heads/...`, which makes branch-point selection spuriously ambiguous or fail outright on common `git switch -c feature origin/main` workflows.
+
+### New follow-up from implementation review
+- P2: creation-message normalization now accepts remote-tracking refs, but it also strips the first path segment from plain branch names. A local branch such as `release/foo` can therefore be misread as `foo` when parent-branch candidates are ambiguous. Restrict that shortening to actual remote-tracking forms only.
 
 ## Summary
 
@@ -141,8 +151,10 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
   - add focused registry/YAML coverage
 - Address review findings in `internal/tools/spectools`:
   - do not skip CAS-verified packages when package-local support files changed
+  - treat deleted package-local support-file paths as changes even after the support subtree is removed from disk
   - scope package diffs to the package plus support dirs like `data/` and `testdata`, excluding descendant Go packages
   - enumerate packages with current-module semantics so nested modules are excluded
+  - accept remote-tracking branch creation messages when inferring parent branches
 - Add focused tests covering tool behavior, registry exposure, and the review regressions.
 
 ## Decisions
@@ -178,4 +190,5 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - `internal/tools/spectools` now contains `check_spec_conformance` implementation + tests.
 - `internal/agentbuilder` now registers `check_spec_conformance` and exposes it to `pr-orchestrator`, with focused registry/YAML coverage.
 - Review feedback is implemented in commit `6be56f8` (`spectools: fix package eligibility and scoping`).
-- Additional review feedback remains to be actioned for deletion-aware package scoping and remote-tracking parent-branch inference.
+- Additional review feedback was accurate and was mostly implemented in commit `0898b83` (`spectools: handle deleted paths and remote parent refs`).
+- Remaining follow-up: restrict creation-message branch normalization so local branch names with `/` are not treated like remote-tracking refs.
