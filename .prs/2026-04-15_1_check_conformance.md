@@ -114,11 +114,11 @@ More Details:
 ### Comparison base for `only_changed`
 - My previous wording was too narrow: "parent branch" here means the branch the current branch actually forked from, not automatically the repo default branch.
 - On branch `main` or `master`, compare current on-disk state against `HEAD`.
-- On any other branch, the tool should resolve a concrete parent-branch ref, then compare against the fork point with that parent branch.
+- On any other branch, the tool should resolve a concrete parent-branch ref, find the fork-point commit where `HEAD` branched from that parent branch, and compare current on-disk state against that fork-point commit.
 - Preferred parent-branch resolution order:
   - an explicit configured upstream for `HEAD`, when present and not self-referential
   - otherwise, infer the parent branch from existing local/remote branch refs using the most plausible fork-point match
-- The comparison commit is the fork point between `HEAD` and the resolved parent branch.
+- The comparison commit is the resolved fork-point commit.
 - If the tool cannot resolve a credible parent branch, it should fail rather than silently assume `main`/`master`.
 - Implementation note: exact tie-breaking for inferred parent-branch resolution still needs to be nailed down during implementation; the important product requirement is "actual parent branch if we can determine it", not "always default branch".
 
