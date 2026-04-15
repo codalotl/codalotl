@@ -23,6 +23,7 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
+	"github.com/codalotl/codalotl/internal/tools/spectools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
@@ -118,6 +119,15 @@ func genericTools() map[string]toolsetinterface.Tool {
 		},
 		exttools.ToolNameFixLints: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			return exttools.NewFixLintsTool(opts.Authorizer, opts.LintSteps), nil
+		},
+		spectools.ToolNameCheckSpecConformance: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+			return spectools.NewCheckSpecConformanceTool(
+				opts.Authorizer.WithoutCodeUnit(),
+				spectools.CheckSpecConformanceToolOptions{
+					AgentInvoker: opts.AgentInvoker,
+					Model:        opts.Model,
+				},
+			), nil
 		},
 		pkgtools.ToolNameGetPublicAPI: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			return pkgtools.NewGetPublicAPITool(opts.Authorizer.WithoutCodeUnit()), nil
