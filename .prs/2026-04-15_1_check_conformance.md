@@ -132,14 +132,14 @@ More Details:
 #### Package `internal/agentbuilder`
 - Reconcile YAML schema validation with `internal/agentbuilder/SPEC.md`, or update that spec if looser validation around `presenter` and parameter-level `required` is intentional.
 
-### Comparison-base robustness follow-up
+### Comparison-base robustness follow-up [DONE]
 
-#### Package `internal/tools/spectools`
-- Make comparison-base selection rebase-aware: after rebasing a feature branch onto newer `main`, treat the effective branch-point as the branch's current fork-point with its intended upstream, not the historical original creation point.
-- Prefer current upstream-branch semantics over historical branch-creation metadata when determining `only_changed` diffs.
-- Determine intended upstream robustly for ordinary feature branches, including `branch: Created from HEAD` cases by consulting `HEAD` reflog checkout history.
-- Validate upstream candidates using current fork-point behavior instead of raw `git branch --contains <commit>` membership; exclude self refs and collapse local/remote aliases such as `main` plus `origin/main`.
-- Add focused tests for:
+#### [DONE] Package `internal/tools/spectools`
+- [DONE] Make comparison-base selection rebase-aware: after rebasing a feature branch onto newer `main`, treat the effective branch-point as the branch's current fork-point with its intended upstream, not the historical original creation point.
+- [DONE] Prefer current upstream-branch semantics over historical branch-creation metadata when determining `only_changed` diffs.
+- [DONE] Determine intended upstream robustly for ordinary feature branches, including `branch: Created from HEAD` cases by consulting `HEAD` reflog checkout history.
+- [DONE] Validate upstream candidates using current fork-point behavior instead of raw `git branch --contains <commit>` membership; exclude self refs and collapse local/remote aliases such as `main` plus `origin/main`.
+- [DONE] Add focused tests for:
   - ordinary feature branches created from a checked-out branch
   - rebased branches where effective comparison base moves forward with `main`
   - false-ambiguity cases caused by sibling feature-branch remotes and current-branch remote-tracking refs
@@ -269,3 +269,5 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - User requirement clarified after investigation:
   - rebasing onto newer `main` should move the effective comparison base forward to the new fork-point with `main`
   - tool semantics should match "as if I recreated the branch from latest main and replayed my commits"
+- Comparison-base robustness implementation landed in commit `6790722` (`spectools: make comparison base rebase-aware`).
+- `go test ./internal/tools/spectools` passed after the comparison-base changes.
