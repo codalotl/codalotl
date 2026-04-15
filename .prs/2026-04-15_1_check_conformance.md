@@ -132,6 +132,15 @@ More Details:
 #### Package `internal/agentbuilder`
 - Reconcile YAML schema validation with `internal/agentbuilder/SPEC.md`, or update that spec if looser validation around `presenter` and parameter-level `required` is intentional.
 
+### Comparison-base robustness follow-up
+
+#### Package `internal/tools/spectools`
+- Treat ordinary feature branches created from a checked-out branch as resolvable even when branch reflog says `branch: Created from HEAD`.
+- Use `HEAD` reflog checkout entries to recover the source branch for `Created from HEAD` cases.
+- Validate parent candidates by actual fork-point equality with the branch-point commit instead of the current broad `git branch --contains <commit>` set alone.
+- Exclude self refs such as `origin/<current-branch>` and collapse local/remote aliases such as `main` plus `origin/main` so they do not create false ambiguity.
+- Add focused tests for the reproduced case where `main`, `origin/main`, sibling feature-branch remotes, and the current branch's own remote all contain the branch-point commit.
+
 ## Review
 
 Review against `main` found actionable correctness issues in `internal/tools/spectools`; branch is not ready as-is.
@@ -223,6 +232,13 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - Skip CAS-verified packages only when package scope has no diff against comparison base.
 - After package checking starts, package-scoped failures stay in that package's `error` payload; reserve overall tool-call failure for pre-launch or global failures.
 
+### Parent-branch selection for comparison base
+- On non-`main`/`master` branches, branch-point commit still comes from the oldest branch reflog entry.
+- If the branch creation message names a branch/ref directly, use that when it maps to a valid parent candidate.
+- If the branch creation message says `branch: Created from HEAD`, inspect `HEAD` reflog checkout history at that point to recover the source branch (example: `checkout: moving from main to feature` => parent `main`).
+- Treat raw `git branch --contains <branch-point>` output as an overbroad starting set only; validate candidates with `git merge-base --fork-point <candidate> <current-branch>` matching the branch-point commit.
+- Exclude refs for the current branch itself, including its remote-tracking alias. When local and remote-tracking aliases both qualify for the same parent branch, prefer the local branch name.
+
 ## State
 
 - Branch `jn/check-conformance-tool-2` now contains `internal/tools/spectools` implementation plus PR-file commits.
@@ -242,3 +258,7 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - Remaining post-fix conformance follow-up:
   - `internal/tools/spectools`: require `nonconformances` when `conforms=false`
   - `internal/agentbuilder`: reconcile YAML validation with spec around `presenter` and parameter `required`
+- Reproduced current user-facing failure on `jn/check-conformance-tool-2`:
+  - branch reflog oldest entry is `branch: Created from HEAD` at `d58ed726599c`
+  - `HEAD` reflog at that point is `checkout: moving from main to jn/check-conformance-tool-2`
+  - current parent-candidate logic is too broad and reports `main`, `origin/main`, `origin/jn/check-conformance-tool`, and `origin/jn/check-conformance-tool-2`
