@@ -98,7 +98,7 @@ More Details:
   - strict output requirements for severity + latent classification
 - Aggregate raw JSON results keyed by module-relative package dir.
 
-#### Package `internal/agentbuilder`
+#### [DONE] Package `internal/agentbuilder`
 - Register the new built-in tool from `internal/tools/spectools`.
 - Add `check_spec_conformance` to the `pr-orchestrator` tool list.
 - Update existing registry/YAML coverage for the orchestrator toolset.
@@ -138,4 +138,5 @@ More Details:
   - `internal/agentbuilder/data/config.yml` for `pr-orchestrator` tool exposure
   - `internal/agentbuilder/genericTools()` for built-in tool registration
 - `internal/tools/spectools` now contains `check_spec_conformance` implementation + tests.
-- Remaining implementation work is `internal/agentbuilder` registration + orchestrator tool exposure.
+- `internal/agentbuilder` now registers `check_spec_conformance` and exposes it to `pr-orchestrator`, with focused registry/YAML coverage.
+- Implementation work for the planned packages is complete; next workflow step is review.
