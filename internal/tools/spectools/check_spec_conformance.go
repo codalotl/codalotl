@@ -304,6 +304,8 @@ func (t *toolCheckSpecConformance) checkEligiblePackages(ctx context.Context, mo
 }
 
 func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDir string, pkg eligiblePackage, base comparisonBase, changes repoChanges) packageCheckResult {
+	// Once package checking begins, package-scoped failures stay in the per-package result
+	// so partial successes and CAS writes are still surfaced to the caller.
 	packageDiff, err := t.buildPackageDiff(ctx, moduleAbsDir, pkg.Package, base.Commit, changes)
 	if err != nil {
 		return packageErrorResult(fmt.Errorf("build package diff: %w", err))

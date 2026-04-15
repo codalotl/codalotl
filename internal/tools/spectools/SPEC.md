@@ -8,9 +8,9 @@ This tool checks Go packages in this module for `SPEC.md` conformance. It accept
 
 Details:
 - Skips packages without `SPEC.md`.
-- Skips packages whose CAS record already says `conforms=true`.
+- Skips packages whose CAS record already says `conforms=true` when package scope has no diff against comparison base.
 - `only_changed=true` further restricts to packages whose on-disk state changed against the current git comparison base. See `### Diffing`
-- `only_changed=false` checks all current-module packages that have `SPEC.md` and do not already have CAS `conforms=true`.
+- `only_changed=false` checks all current-module packages that have `SPEC.md`, except packages already marked `conforms=true` in CAS when package scope has no diff.
 - If no packages are eligible, tool returns `{}`.
 - Runs one `limited_package_mode` subagent per package, with bounded concurrency.
 - Supplies package diff and programmatic `spec diff` context to each subagent.
@@ -21,8 +21,9 @@ Details:
     - Happen for a package as soon as that package's result comes in.
     - write `conforms=true` only for conforming packages
     - do not store nonconforming results
-- If a failure or error happens outside of a concurrent subagent: overall tool call fails
-- If a failure or error happens inside a subagent: record error in package's object. Do not fail overall tool call.
+- Fail overall tool call only for pre-launch or global failures.
+- Once package checking starts, record package-scoped failures in that package's object instead of failing overall tool call.
+- Package-scoped failures include subagent errors and per-package preparation, parsing, or CAS-write failures.
 - Once we start launching subagents, keep surface area of overall tool call errors to a minimum. It would be surprising if the overall tool call failed, but some CAS entries were still written.
 
 ### Result
@@ -50,7 +51,7 @@ Notes:
 - `severity`: `trivial`, `minor`, or `major`
 - `latent`: `true` when issue predates comparison base; `false` when current diff introduced it
 - `message`: human-readable explanation
-- `error`: only if subagent experiences error. Value is a string error message.
+- `error`: only if package checking for that package fails after launch. Value is a string error message.
 
 ### Diffing
 

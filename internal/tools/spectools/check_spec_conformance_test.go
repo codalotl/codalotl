@@ -3,6 +3,7 @@ package spectools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -195,6 +196,43 @@ func TestRunOnlyChangedChecksOnlyModifiedPackagesAndStoresCAS(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
+}
+
+func TestRunRechecksChangedCASVerifiedPackage(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+	require.NoError(t, tool.storeConformanceState(barPkg))
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/foo.go"), fooGoFile(`"foo changed"`))
+
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-recheck-cas-verified",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+	assert.NotContains(t, parsed, "internal/bar")
 }
 
 func TestRunOnlyChangedRechecksCASVerifiedPackageWhenSupportFileChanges(t *testing.T) {
@@ -547,6 +585,88 @@ func TestRunRecordsPerPackageErrorsWithoutFailingOverall(t *testing.T) {
 	assert.False(t, conforms)
 }
 
+func TestRunRecordsPackagePreparationFailuresWithoutFailingOverall(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	tool.specDiffContext = func(pkg *gocode.Package) (string, error) {
+		if pkg.RelativeDir == "internal/bar" {
+			return "", errors.New("spec diff exploded")
+		}
+		return "", nil
+	}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-package-prep-error",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 2)
+	require.Contains(t, parsed, "internal/foo")
+	require.Contains(t, parsed, "internal/bar")
+	require.NotNil(t, parsed["internal/foo"].Conforms)
+	assert.True(t, *parsed["internal/foo"].Conforms)
+	assert.Contains(t, parsed["internal/bar"].Error, "compute spec diff: spec diff exploded")
+
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
+	require.NoError(t, err)
+
+	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.True(t, conforms)
+
+	found, conforms, err = casconformance.Retrieve(newCASDB(moduleDir), barPkg)
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.False(t, conforms)
+}
+
+func TestRunRecordsPackageCASWriteFailuresWithoutFailingOverall(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(moduleDir, ".codalotl", "cas"), 0o755))
+	require.NoError(t, casconformance.Store(newCASDB(moduleDir), barPkg, true))
+
+	tool := NewCheckSpecConformanceTool(denyWritesAuthorizer{
+		allowAllAuthorizer: allowAllAuthorizer{sandboxDir: moduleDir},
+		err:                errors.New("writes disabled"),
+	}).(*toolCheckSpecConformance)
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-package-cas-write-error",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	require.Contains(t, parsed, "internal/foo")
+	assert.Contains(t, parsed["internal/foo"].Error, "store CAS conformance: writes disabled")
+}
+
 type fakeGitRunner struct {
 	outputs map[string]string
 }
@@ -611,6 +731,15 @@ func (a allowAllAuthorizer) IsShellAuthorized(requestPermission bool, requestRea
 }
 
 func (a allowAllAuthorizer) Close() {}
+
+type denyWritesAuthorizer struct {
+	allowAllAuthorizer
+	err error
+}
+
+func (a denyWritesAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
+	return a.err
+}
 
 func setupModuleRepo(t *testing.T) string {
 	t.Helper()
