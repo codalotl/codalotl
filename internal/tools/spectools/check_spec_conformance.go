@@ -550,18 +550,27 @@ func (t *toolCheckSpecConformance) oldestBranchCreation(ctx context.Context, rep
 }
 
 func (t *toolCheckSpecConformance) parentBranchCandidates(ctx context.Context, repoAbsDir string, currentBranch string, commit string) ([]string, error) {
-	out, err := t.git.Output(ctx, repoAbsDir, "branch", "--format=%(refname:short)", "--contains", commit)
+	localOut, err := t.git.Output(ctx, repoAbsDir, "branch", "--format=%(refname:short)", "--contains", commit)
+	if err != nil {
+		return nil, fmt.Errorf("find parent-branch candidates for %q: %w", currentBranch, err)
+	}
+	remoteOut, err := t.git.Output(ctx, repoAbsDir, "branch", "-r", "--format=%(refname:short)", "--contains", commit)
 	if err != nil {
 		return nil, fmt.Errorf("find parent-branch candidates for %q: %w", currentBranch, err)
 	}
 
-	lines := splitNonEmptyLines(out)
+	lines := append(splitNonEmptyLines(localOut), splitNonEmptyLines(remoteOut)...)
 	candidates := make([]string, 0, len(lines))
+	seen := make(map[string]struct{}, len(lines))
 	for _, line := range lines {
-		line = strings.TrimPrefix(line, "* ")
-		if line == "" || line == currentBranch {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "* "))
+		if line == "" || line == currentBranch || line == "HEAD" || strings.HasSuffix(line, "/HEAD") {
 			continue
 		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
 		candidates = append(candidates, line)
 	}
 	sort.Strings(candidates)
@@ -621,10 +630,6 @@ func normalizeCreationMessageParentBranches(parent string) []string {
 		}
 	}
 
-	if !strings.HasPrefix(parent, "refs/") && !strings.HasPrefix(parent, "remotes/") {
-		add(trimRemoteTrackingBranch(parent))
-	}
-
 	return normalized
 }
 
@@ -637,7 +642,7 @@ func trimRemoteTrackingBranch(branch string) string {
 }
 
 func (t *toolCheckSpecConformance) collectRepoChanges(ctx context.Context, repoAbsDir string, baseCommit string) (repoChanges, error) {
-	trackedOut, err := t.git.Output(ctx, repoAbsDir, "diff", "--name-only", "--relative", baseCommit, "--")
+	trackedOut, err := t.git.Output(ctx, repoAbsDir, "diff", "--name-status", "--find-renames", "--relative", baseCommit, "--")
 	if err != nil {
 		return repoChanges{}, fmt.Errorf("collect tracked git changes: %w", err)
 	}
@@ -647,9 +652,37 @@ func (t *toolCheckSpecConformance) collectRepoChanges(ctx context.Context, repoA
 	}
 
 	return repoChanges{
-		tracked:   splitNonEmptyLines(trackedOut),
+		tracked:   trackedChangePaths(trackedOut),
 		untracked: splitNonEmptyLines(untrackedOut),
 	}, nil
+}
+
+func trackedChangePaths(nameStatusOutput string) []string {
+	lines := splitNonEmptyLines(nameStatusOutput)
+	if len(lines) == 0 {
+		return nil
+	}
+
+	paths := make([]string, 0, len(lines))
+	seen := make(map[string]struct{}, len(lines))
+	for _, line := range lines {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		for _, path := range fields[1:] {
+			path = strings.TrimSpace(path)
+			if path == "" {
+				continue
+			}
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 func packageHasChanges(pkg *gocode.Package, changes repoChanges) (bool, error) {

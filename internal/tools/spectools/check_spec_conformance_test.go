@@ -65,13 +65,39 @@ func TestDetermineComparisonBaseUsesCreationMessageWhenCandidatesAreAmbiguous(t 
 func TestParentBranchFromCreationMessageMatchesRemoteTrackingRefs(t *testing.T) {
 	t.Parallel()
 
-	for _, message := range []string{
-		"branch: Created from origin/main",
-		"branch: Created from refs/remotes/origin/main",
-		"branch: Created from remotes/origin/main",
-	} {
-		assert.Equal(t, "main", parentBranchFromCreationMessage(message, "feature", []string{"main", "release"}))
+	assert.Equal(t, "origin/main", parentBranchFromCreationMessage("branch: Created from origin/main", "feature", []string{"origin/main", "release"}))
+	assert.Equal(t, "main", parentBranchFromCreationMessage("branch: Created from refs/remotes/origin/main", "feature", []string{"main", "release"}))
+	assert.Equal(t, "main", parentBranchFromCreationMessage("branch: Created from remotes/origin/main", "feature", []string{"main", "release"}))
+}
+
+func TestParentBranchFromCreationMessageDoesNotShortenPlainLocalBranchNames(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, parentBranchFromCreationMessage("branch: Created from release/foo", "feature", []string{"foo", "main"}))
+}
+
+func TestDetermineComparisonBaseUsesRemoteTrackingParentWhenNoLocalParentExists(t *testing.T) {
+	t.Parallel()
+
+	tool := &toolCheckSpecConformance{
+		git: fakeGitRunner{
+			outputs: map[string]string{
+				gitCommandKey("branch", "--show-current"):                                                    "feature\n",
+				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"):                  "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from origin/main\n",
+				gitCommandKey("branch", "--format=%(refname:short)", "--contains", "aaaaaaaaaaaaaaaa"):       "feature\nrelease\n",
+				gitCommandKey("branch", "-r", "--format=%(refname:short)", "--contains", "aaaaaaaaaaaaaaaa"): "origin/HEAD\norigin/main\n",
+			},
+		},
 	}
+
+	base, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
+	require.NoError(t, err)
+	assert.Equal(t, comparisonBase{
+		Branch:       "feature",
+		ParentBranch: "origin/main",
+		Commit:       "aaaaaaaaaaaaaaaa",
+		Mode:         comparisonBaseModeBranchPoint,
+	}, base)
 }
 
 func TestDetermineComparisonBaseFailsWhenParentBranchIsAmbiguous(t *testing.T) {
@@ -215,6 +241,47 @@ func TestRunOnlyChangedRechecksCASVerifiedPackageWhenSupportSubtreeIsDeleted(t *
 	require.Len(t, parsed, 1)
 	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
 	require.Contains(t, parsed, "internal/foo")
+}
+
+func TestRunOnlyChangedRechecksCASVerifiedPackageWhenTrackedFileMovesOut(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/testdata/input.txt"), "fixture\n")
+	runGit(t, moduleDir, "add", ".")
+	runGit(t, moduleDir, "commit", "-m", "add foo fixture")
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(moduleDir, "internal/bar/testdata"), 0o755))
+	require.NoError(t, os.Rename(
+		filepath.Join(moduleDir, "internal/foo/testdata/input.txt"),
+		filepath.Join(moduleDir, "internal/bar/testdata/input.txt"),
+	))
+
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-support-move-out",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 2)
+	assert.ElementsMatch(t, []string{"internal/bar", "internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+	require.Contains(t, parsed, "internal/bar")
 }
 
 func TestRunOnlyChangedDoesNotAttributeDescendantPackageChangesToParent(t *testing.T) {
