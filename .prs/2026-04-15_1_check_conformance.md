@@ -119,6 +119,10 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
 - P2: `pathInPackage` currently treats descendant package paths as belonging to the parent package. That can make `only_changed=true` check the wrong package, and package key `"."` broadens matching to the whole repo.
 - P2: package enumeration uses recursive directory walking via `LoadAllPackages`, which can include Go packages from nested `go.mod` modules even though this tool is supposed to operate on the current module only.
 
+### Additional review feedback
+- P1: deriving package scope only from the current filesystem can miss package-local deletions. When `newPackageScope()` rebuilds scope without including paths that existed only at the comparison base, deleting support files such as `testdata/` content can make `only_changed=true` skip a changed package and leave a stale `conforms=true` CAS entry in place.
+- P2: parent-branch inference does not currently accept remote-tracking creation messages such as `branch: Created from origin/main`. `parentBranchFromCreationMessage` only normalizes `refs/heads/...`, which makes branch-point selection spuriously ambiguous or fail outright on common `git switch -c feature origin/main` workflows.
+
 ## Summary
 
 Add built-in `check_spec_conformance` support so the PR orchestrator can check `SPEC.md` conformance and record conforming packages in CAS.
@@ -174,3 +178,4 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - `internal/tools/spectools` now contains `check_spec_conformance` implementation + tests.
 - `internal/agentbuilder` now registers `check_spec_conformance` and exposes it to `pr-orchestrator`, with focused registry/YAML coverage.
 - Review feedback is implemented in commit `6be56f8` (`spectools: fix package eligibility and scoping`).
+- Additional review feedback remains to be actioned for deletion-aware package scoping and remote-tracking parent-branch inference.
