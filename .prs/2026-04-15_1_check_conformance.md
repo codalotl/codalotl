@@ -103,7 +103,21 @@ More Details:
 - Add `check_spec_conformance` to the `pr-orchestrator` tool list.
 - Update existing registry/YAML coverage for the orchestrator toolset.
 
+### Review follow-up
+
+#### Package `internal/tools/spectools`
+- Re-check CAS-skip eligibility so package-local non-Go support-file changes that matter to SPEC conformance still trigger a check.
+- Restrict changed-path attribution to the package itself; do not treat descendant packages as changes to the parent package, and do not let root-package matching broaden to the whole repo.
+- Enumerate packages using current-module semantics, excluding nested `go.mod` modules outside the current module.
+
 ## Review
+
+Review against `main` found actionable correctness issues in `internal/tools/spectools`; branch is not ready as-is.
+
+### Accepted findings
+- P1: CAS-verified packages are skipped too aggressively. `retrieveConformanceState` keys off package Go files plus `SPEC.md`, so edits in package-local support files such as `data/` or `testdata/` can leave a stale `conforms=true` record in place and wrongly suppress a re-check.
+- P2: `pathInPackage` currently treats descendant package paths as belonging to the parent package. That can make `only_changed=true` check the wrong package, and package key `"."` broadens matching to the whole repo.
+- P2: package enumeration uses recursive directory walking via `LoadAllPackages`, which can include Go packages from nested `go.mod` modules even though this tool is supposed to operate on the current module only.
 
 ## Summary
 
@@ -139,4 +153,4 @@ More Details:
   - `internal/agentbuilder/genericTools()` for built-in tool registration
 - `internal/tools/spectools` now contains `check_spec_conformance` implementation + tests.
 - `internal/agentbuilder` now registers `check_spec_conformance` and exposes it to `pr-orchestrator`, with focused registry/YAML coverage.
-- Implementation work for the planned packages is complete; next workflow step is review.
+- Review against `main` found 3 actionable `internal/tools/spectools` issues. Next workflow step is implementing that review feedback.
