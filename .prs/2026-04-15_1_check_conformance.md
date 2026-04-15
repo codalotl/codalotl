@@ -103,14 +103,14 @@ More Details:
 - Add `check_spec_conformance` to the `pr-orchestrator` tool list.
 - Update existing registry/YAML coverage for the orchestrator toolset.
 
-### Review follow-up
+### Review follow-up [DONE]
 
-#### Package `internal/tools/spectools`
+#### [DONE] Package `internal/tools/spectools`
 - Re-check CAS-skip eligibility so package-local non-Go support-file changes that matter to SPEC conformance still trigger a check.
 - Restrict changed-path attribution to the package itself; do not treat descendant packages as changes to the parent package, and do not let root-package matching broaden to the whole repo.
 - Enumerate packages using current-module semantics, excluding nested `go.mod` modules outside the current module.
 
-## Review
+## Review [DONE]
 
 Review against `main` found actionable correctness issues in `internal/tools/spectools`; branch is not ready as-is.
 
@@ -153,4 +153,4 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
   - `internal/agentbuilder/genericTools()` for built-in tool registration
 - `internal/tools/spectools` now contains `check_spec_conformance` implementation + tests.
 - `internal/agentbuilder` now registers `check_spec_conformance` and exposes it to `pr-orchestrator`, with focused registry/YAML coverage.
-- Review against `main` found 3 actionable `internal/tools/spectools` issues. Next workflow step is implementing that review feedback.
+- Review feedback is implemented in commit `6be56f8` (`spectools: fix package eligibility and scoping`).
