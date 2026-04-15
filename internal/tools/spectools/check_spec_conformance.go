@@ -189,7 +189,8 @@ func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolC
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	if err := mod.LoadAllPackages(); err != nil {
+	pkgs, err := loadCurrentModulePackages(ctx, mod)
+	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
@@ -198,7 +199,7 @@ func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolC
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	eligible, err := t.findEligiblePackages(mod, changes, params.OnlyChanged)
+	eligible, err := t.findEligiblePackages(pkgs, changes, params.OnlyChanged)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
@@ -225,11 +226,7 @@ func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolC
 	}
 }
 
-func (t *toolCheckSpecConformance) findEligiblePackages(mod *gocode.Module, changes repoChanges, onlyChanged bool) ([]eligiblePackage, error) {
-	pkgs := make([]*gocode.Package, 0, len(mod.Packages))
-	for _, pkg := range mod.Packages {
-		pkgs = append(pkgs, pkg)
-	}
+func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, changes repoChanges, onlyChanged bool) ([]eligiblePackage, error) {
 	sort.Slice(pkgs, func(i, j int) bool {
 		return packageResultKey(pkgs[i].RelativeDir) < packageResultKey(pkgs[j].RelativeDir)
 	})
@@ -241,15 +238,19 @@ func (t *toolCheckSpecConformance) findEligiblePackages(mod *gocode.Module, chan
 			continue
 		}
 
+		hasDiff, err := packageHasChanges(pkg, changes)
+		if err != nil {
+			return nil, fmt.Errorf("check package diff scope for %s: %w", packageResultKey(pkg.RelativeDir), err)
+		}
+
 		found, conforms, err := retrieveConformanceState(pkg)
 		if err != nil {
 			return nil, fmt.Errorf("retrieve CAS conformance for %s: %w", packageResultKey(pkg.RelativeDir), err)
 		}
-		if found && conforms {
+		if found && conforms && !hasDiff {
 			continue
 		}
 
-		hasDiff := changes.packageHasChanges(packageResultKey(pkg.RelativeDir))
 		if onlyChanged && !hasDiff {
 			continue
 		}
@@ -296,7 +297,7 @@ func (t *toolCheckSpecConformance) checkEligiblePackages(ctx context.Context, mo
 }
 
 func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDir string, pkg eligiblePackage, base comparisonBase, changes repoChanges) packageCheckResult {
-	packageDiff, err := t.buildPackageDiff(ctx, moduleAbsDir, pkg.Key, base.Commit, changes)
+	packageDiff, err := t.buildPackageDiff(ctx, moduleAbsDir, pkg.Package, base.Commit, changes)
 	if err != nil {
 		return packageErrorResult(fmt.Errorf("build package diff: %w", err))
 	}
@@ -596,29 +597,28 @@ func (t *toolCheckSpecConformance) collectRepoChanges(ctx context.Context, repoA
 	}, nil
 }
 
-func (c repoChanges) packageHasChanges(pkgKey string) bool {
-	for _, path := range c.tracked {
-		if pathInPackage(path, pkgKey) {
-			return true
-		}
+func packageHasChanges(pkg *gocode.Package, changes repoChanges) (bool, error) {
+	trackedPaths, untrackedPaths, err := packageChangedPaths(pkg, changes)
+	if err != nil {
+		return false, err
 	}
-	for _, path := range c.untracked {
-		if pathInPackage(path, pkgKey) {
-			return true
-		}
-	}
-	return false
+	return len(trackedPaths) > 0 || len(untrackedPaths) > 0, nil
 }
 
-func (t *toolCheckSpecConformance) buildPackageDiff(ctx context.Context, repoAbsDir string, pkgKey string, baseCommit string, changes repoChanges) (string, error) {
-	pathspec := pkgKey
-	if pathspec == "." {
-		pathspec = "."
-	}
-
-	trackedDiff, err := t.git.Output(ctx, repoAbsDir, "diff", "--no-ext-diff", "--relative", baseCommit, "--", pathspec)
+func (t *toolCheckSpecConformance) buildPackageDiff(ctx context.Context, repoAbsDir string, pkg *gocode.Package, baseCommit string, changes repoChanges) (string, error) {
+	trackedPaths, untrackedPaths, err := packageChangedPaths(pkg, changes)
 	if err != nil {
 		return "", err
+	}
+
+	trackedDiff := ""
+	if len(trackedPaths) > 0 {
+		args := []string{"diff", "--no-ext-diff", "--relative", baseCommit, "--"}
+		args = append(args, trackedPaths...)
+		trackedDiff, err = t.git.Output(ctx, repoAbsDir, args...)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	var buf strings.Builder
@@ -626,10 +626,7 @@ func (t *toolCheckSpecConformance) buildPackageDiff(ctx context.Context, repoAbs
 		buf.WriteString(trimTrailingNewline(trackedDiff))
 	}
 
-	for _, relPath := range changes.untracked {
-		if !pathInPackage(relPath, pkgKey) {
-			continue
-		}
+	for _, relPath := range untrackedPaths {
 		untrackedDiff, err := renderUntrackedFileDiff(repoAbsDir, relPath)
 		if err != nil {
 			return "", err
@@ -658,11 +655,75 @@ func renderUntrackedFileDiff(repoAbsDir string, relPath string) (string, error) 
 	return trimTrailingNewline(rendered), nil
 }
 
-func pathInPackage(relPath string, pkgKey string) bool {
-	if pkgKey == "." || pkgKey == "" {
-		return true
+func loadCurrentModulePackages(ctx context.Context, mod *gocode.Module) ([]*gocode.Package, error) {
+	importPaths, err := currentModulePackageImportPaths(ctx, mod.AbsolutePath)
+	if err != nil {
+		return nil, err
 	}
-	return relPath == pkgKey || strings.HasPrefix(relPath, pkgKey+"/")
+
+	pkgs := make([]*gocode.Package, 0, len(importPaths))
+	for _, importPath := range importPaths {
+		pkg, err := mod.LoadPackageByImportPath(importPath)
+		if err != nil {
+			return nil, fmt.Errorf("load package %s: %w", importPath, err)
+		}
+		pkgs = append(pkgs, pkg)
+	}
+	return pkgs, nil
+}
+
+func currentModulePackageImportPaths(ctx context.Context, moduleAbsDir string) ([]string, error) {
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, goPath, "list", "./...")
+	cmd.Dir = moduleAbsDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := trimTrailingNewline(string(out))
+		if msg == "" {
+			return nil, fmt.Errorf("go list ./...: %w", err)
+		}
+		return nil, fmt.Errorf("go list ./...: %s", msg)
+	}
+	return splitNonEmptyLines(string(out)), nil
+}
+
+func packageChangedPaths(pkg *gocode.Package, changes repoChanges) ([]string, []string, error) {
+	scope, err := newPackageScope(pkg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	moduleAbsDir := pkg.Module.AbsolutePath
+	return filterPackagePaths(scope, moduleAbsDir, changes.tracked), filterPackagePaths(scope, moduleAbsDir, changes.untracked), nil
+}
+
+func newPackageScope(pkg *gocode.Package) (*codeunit.CodeUnit, error) {
+	scope, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", pkg.ImportPath), pkg.AbsolutePath())
+	if err != nil {
+		return nil, err
+	}
+	if err := scope.IncludeSubtreeUnlessContains("*.go"); err != nil {
+		return nil, err
+	}
+	return scope, nil
+}
+
+func filterPackagePaths(scope *codeunit.CodeUnit, moduleAbsDir string, relPaths []string) []string {
+	filtered := make([]string, 0, len(relPaths))
+	for _, relPath := range relPaths {
+		if pathInPackage(scope, moduleAbsDir, relPath) {
+			filtered = append(filtered, relPath)
+		}
+	}
+	return filtered
+}
+
+func pathInPackage(scope *codeunit.CodeUnit, moduleAbsDir string, relPath string) bool {
+	return scope.Includes(filepath.Join(moduleAbsDir, filepath.FromSlash(relPath)))
 }
 
 func packageResultKey(relativeDir string) string {

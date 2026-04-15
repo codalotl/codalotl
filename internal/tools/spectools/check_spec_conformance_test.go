@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
@@ -95,9 +96,9 @@ func TestRunOnlyChangedChecksOnlyModifiedPackagesAndStoresCAS(t *testing.T) {
 	writeFile(t, filepath.Join(moduleDir, "internal/foo/foo.go"), fooGoFile(`"foo changed"`))
 
 	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
-	var checked []string
+	recorder := &checkedRecorder{}
 	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
-		checked = append(checked, req.Key)
+		recorder.add(req.Key)
 		return `{"conforms":true}`, nil
 	}
 
@@ -112,7 +113,7 @@ func TestRunOnlyChangedChecksOnlyModifiedPackagesAndStoresCAS(t *testing.T) {
 	var parsed map[string]packageCheckResult
 	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
 	require.Len(t, parsed, 1)
-	assert.Equal(t, []string{"internal/foo"}, checked)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
 	require.Contains(t, parsed, "internal/foo")
 	require.NotNil(t, parsed["internal/foo"].Conforms)
 	assert.True(t, *parsed["internal/foo"].Conforms)
@@ -133,6 +134,130 @@ func TestRunOnlyChangedChecksOnlyModifiedPackagesAndStoresCAS(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
+}
+
+func TestRunOnlyChangedRechecksCASVerifiedPackageWhenSupportFileChanges(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/testdata/input.txt"), "changed fixture\n")
+
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-support-file",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+}
+
+func TestRunOnlyChangedDoesNotAttributeDescendantPackageChangesToParent(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/child/child.go"), childGoFile(`"child"`))
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/child/SPEC.md"), childSpec())
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-descendant",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo/child"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo/child")
+	assert.NotContains(t, parsed, "internal/foo")
+}
+
+func TestRunOnlyChangedDoesNotTreatRootPackageAsWholeRepo(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	writeFile(t, filepath.Join(moduleDir, "root.go"), rootGoFile(`"root"`))
+	writeFile(t, filepath.Join(moduleDir, "SPEC.md"), rootSpec())
+	runGit(t, moduleDir, "add", ".")
+	runGit(t, moduleDir, "commit", "-m", "add root package")
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/foo.go"), fooGoFile(`"foo changed"`))
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-root-scope",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+	assert.NotContains(t, parsed, ".")
+}
+
+func TestRunUsesCurrentModulePackagesOnly(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	writeFile(t, filepath.Join(moduleDir, "third_party/nested/go.mod"), "module example.com/nested\n\ngo 1.24.4\n")
+	writeFile(t, filepath.Join(moduleDir, "third_party/nested/nested.go"), nestedGoFile(`"nested"`))
+	writeFile(t, filepath.Join(moduleDir, "third_party/nested/SPEC.md"), nestedSpec())
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-current-module",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 2)
+	assert.ElementsMatch(t, []string{"internal/bar", "internal/foo"}, recorder.list())
+	assert.NotContains(t, parsed, "third_party/nested")
 }
 
 func TestRunRecordsPerPackageErrorsWithoutFailingOverall(t *testing.T) {
@@ -191,6 +316,25 @@ func (f fakeGitRunner) Output(ctx context.Context, repoAbsDir string, args ...st
 
 func gitCommandKey(args ...string) string {
 	return strings.Join(args, "\x00")
+}
+
+type checkedRecorder struct {
+	mu      sync.Mutex
+	checked []string
+}
+
+func (r *checkedRecorder) add(key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.checked = append(r.checked, key)
+}
+
+func (r *checkedRecorder) list() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append([]string(nil), r.checked...)
 }
 
 type allowAllAuthorizer struct {
@@ -270,10 +414,34 @@ func barGoFile(returnValue string) string {
 	return "package bar\n\n// Bar returns bar.\nfunc Bar() string {\n\treturn " + returnValue + "\n}\n"
 }
 
+func childGoFile(returnValue string) string {
+	return "package child\n\n// Child returns child.\nfunc Child() string {\n\treturn " + returnValue + "\n}\n"
+}
+
+func rootGoFile(returnValue string) string {
+	return "package specmod\n\n// Root returns root.\nfunc Root() string {\n\treturn " + returnValue + "\n}\n"
+}
+
+func nestedGoFile(returnValue string) string {
+	return "package nested\n\n// Nested returns nested.\nfunc Nested() string {\n\treturn " + returnValue + "\n}\n"
+}
+
 func fooSpec() string {
 	return "# foo\n\n## Public API\n\n```go\n// Foo returns foo.\nfunc Foo() string\n```\n"
 }
 
 func barSpec() string {
 	return "# bar\n\n## Public API\n\n```go\n// Bar returns bar.\nfunc Bar() string\n```\n"
+}
+
+func childSpec() string {
+	return "# child\n\n## Public API\n\n```go\n// Child returns child.\nfunc Child() string\n```\n"
+}
+
+func rootSpec() string {
+	return "# specmod\n\n## Public API\n\n```go\n// Root returns root.\nfunc Root() string\n```\n"
+}
+
+func nestedSpec() string {
+	return "# nested\n\n## Public API\n\n```go\n// Nested returns nested.\nfunc Nested() string\n```\n"
 }
