@@ -129,6 +129,29 @@ func TestParsePackageCheckResultMarksNoDiffIssuesLatent(t *testing.T) {
 	assert.True(t, result.Nonconformances[0].Latent)
 }
 
+func TestNewPackageModeCodeUnitIncludesReachableTestdataAndExcludesNestedPackages(t *testing.T) {
+	t.Parallel()
+
+	pkgDir := t.TempDir()
+	writeFile(t, filepath.Join(pkgDir, "foo.go"), fooGoFile(`"foo"`))
+	writeFile(t, filepath.Join(pkgDir, "README.md"), "# foo\n")
+	writeFile(t, filepath.Join(pkgDir, "support/config.json"), "{}\n")
+	writeFile(t, filepath.Join(pkgDir, "testdata/fixture.go"), "package fixture\n")
+	writeFile(t, filepath.Join(pkgDir, "child/child.go"), childGoFile(`"child"`))
+	writeFile(t, filepath.Join(pkgDir, "child/notes.txt"), "nested support\n")
+	writeFile(t, filepath.Join(pkgDir, "child/testdata/input.txt"), "nested fixture\n")
+
+	unit, err := newPackageModeCodeUnit("package example.com/foo", pkgDir)
+	require.NoError(t, err)
+
+	assert.True(t, unit.Includes(filepath.Join(pkgDir, "README.md")))
+	assert.True(t, unit.Includes(filepath.Join(pkgDir, "support/config.json")))
+	assert.True(t, unit.Includes(filepath.Join(pkgDir, "testdata/fixture.go")))
+	assert.False(t, unit.Includes(filepath.Join(pkgDir, "child/child.go")))
+	assert.False(t, unit.Includes(filepath.Join(pkgDir, "child/notes.txt")))
+	assert.False(t, unit.Includes(filepath.Join(pkgDir, "child/testdata/input.txt")))
+}
+
 func TestRunOnlyChangedChecksOnlyModifiedPackagesAndStoresCAS(t *testing.T) {
 	moduleDir := setupModuleRepo(t)
 	writeFile(t, filepath.Join(moduleDir, "internal/foo/foo.go"), fooGoFile(`"foo changed"`))
@@ -194,6 +217,78 @@ func TestRunOnlyChangedRechecksCASVerifiedPackageWhenSupportFileChanges(t *testi
 
 	result := tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-support-file",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+}
+
+func TestRunOnlyChangedRechecksCASVerifiedPackageWhenReachableTestdataGoFileChanges(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/testdata/fixture.go"), "package fixture\n")
+	runGit(t, moduleDir, "add", ".")
+	runGit(t, moduleDir, "commit", "-m", "add foo go fixture")
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/testdata/fixture.go"), "package fixture\n\nconst Changed = true\n")
+
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-testdata-go-change",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+}
+
+func TestRunOnlyChangedRechecksCASVerifiedPackageWhenReachableTestdataGoFileIsDeleted(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/testdata/fixture.go"), "package fixture\n")
+	runGit(t, moduleDir, "add", ".")
+	runGit(t, moduleDir, "commit", "-m", "add foo go fixture")
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	require.NoError(t, os.Remove(filepath.Join(moduleDir, "internal/foo/testdata/fixture.go")))
+
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-testdata-go-delete",
 		Name:   ToolNameCheckSpecConformance,
 		Type:   "function_call",
 		Input:  `{"only_changed":true}`,
