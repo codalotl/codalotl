@@ -121,6 +121,26 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
 
 ## Summary
 
+Add built-in `check_spec_conformance` support so the PR orchestrator can check `SPEC.md` conformance and record conforming packages in CAS.
+
+- Add new package `internal/tools/spectools` with `check_spec_conformance`:
+  - accepts `only_changed`
+  - checks current-module packages with `SPEC.md`
+  - skips already-conforming CAS entries when safe to do so
+  - computes comparison-base-aware package diffs and precomputed spec-diff context
+  - runs bounded concurrent `limited_package_mode` subagents
+  - stores `conforms=true` in CAS for conforming packages
+  - returns raw JSON results and a human-readable presenter summary
+- Wire the tool into `internal/agentbuilder`:
+  - register the built-in tool
+  - expose it to `pr-orchestrator`
+  - add focused registry/YAML coverage
+- Address review findings in `internal/tools/spectools`:
+  - do not skip CAS-verified packages when package-local support files changed
+  - scope package diffs to the package plus support dirs like `data/` and `testdata`, excluding descendant Go packages
+  - enumerate packages with current-module semantics so nested modules are excluded
+- Add focused tests covering tool behavior, registry exposure, and the review regressions.
+
 ## Decisions
 
 ### Tool result keys
