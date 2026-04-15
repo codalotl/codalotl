@@ -112,13 +112,15 @@ More Details:
 ## Decisions
 
 ### Comparison base for `only_changed`
+- My previous wording was too narrow: "parent branch" here means the branch the current branch actually forked from, not automatically the repo default branch.
 - On branch `main` or `master`, compare current on-disk state against `HEAD`.
-- On any other branch, v1 treats the "parent branch" as the repo default branch, resolved in this order:
-  - symbolic ref from `refs/remotes/origin/HEAD`
-  - local `main`
-  - local `master`
-- The comparison commit is `git merge-base HEAD <resolved-default-branch-ref>`.
-- If no default-branch ref can be resolved, the tool should fail rather than silently guess.
+- On any other branch, the tool should resolve a concrete parent-branch ref, then compare against the fork point with that parent branch.
+- Preferred parent-branch resolution order:
+  - an explicit configured upstream for `HEAD`, when present and not self-referential
+  - otherwise, infer the parent branch from existing local/remote branch refs using the most plausible fork-point match
+- The comparison commit is the fork point between `HEAD` and the resolved parent branch.
+- If the tool cannot resolve a credible parent branch, it should fail rather than silently assume `main`/`master`.
+- Implementation note: exact tie-breaking for inferred parent-branch resolution still needs to be nailed down during implementation; the important product requirement is "actual parent branch if we can determine it", not "always default branch".
 
 ### Tool result keys
 - Result JSON keys are module-relative package directories with slash separators, matching existing package display conventions (example: `internal/foo`).
@@ -140,6 +142,7 @@ More Details:
 
 - Branch `jn/check-conformance-tool-2` currently only contains PR-file commits.
 - New implementation package: `internal/tools/spectools`.
+- `only_changed` must use the current branch's actual parent branch semantics, not a hard-coded default-branch assumption.
 - Existing helpers likely useful:
   - `internal/lints.Run(..., spec-diff, ...)` for in-process spec-diff-style context
   - `internal/gocas/casconformance` for CAS writes/reads
