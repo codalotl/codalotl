@@ -62,6 +62,18 @@ func TestDetermineComparisonBaseUsesCreationMessageWhenCandidatesAreAmbiguous(t 
 	}, base)
 }
 
+func TestParentBranchFromCreationMessageMatchesRemoteTrackingRefs(t *testing.T) {
+	t.Parallel()
+
+	for _, message := range []string{
+		"branch: Created from origin/main",
+		"branch: Created from refs/remotes/origin/main",
+		"branch: Created from remotes/origin/main",
+	} {
+		assert.Equal(t, "main", parentBranchFromCreationMessage(message, "feature", []string{"main", "release"}))
+	}
+}
+
 func TestDetermineComparisonBaseFailsWhenParentBranchIsAmbiguous(t *testing.T) {
 	t.Parallel()
 
@@ -169,6 +181,42 @@ func TestRunOnlyChangedRechecksCASVerifiedPackageWhenSupportFileChanges(t *testi
 	require.Contains(t, parsed, "internal/foo")
 }
 
+func TestRunOnlyChangedRechecksCASVerifiedPackageWhenSupportSubtreeIsDeleted(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/testdata/golden/input.txt"), "fixture\n")
+	runGit(t, moduleDir, "add", ".")
+	runGit(t, moduleDir, "commit", "-m", "add foo fixture")
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	require.NoError(t, os.RemoveAll(filepath.Join(moduleDir, "internal/foo/testdata")))
+
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-support-delete",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+}
+
 func TestRunOnlyChangedDoesNotAttributeDescendantPackageChangesToParent(t *testing.T) {
 	moduleDir := setupModuleRepo(t)
 
@@ -196,6 +244,37 @@ func TestRunOnlyChangedDoesNotAttributeDescendantPackageChangesToParent(t *testi
 	assert.ElementsMatch(t, []string{"internal/foo/child"}, recorder.list())
 	require.Contains(t, parsed, "internal/foo/child")
 	assert.NotContains(t, parsed, "internal/foo")
+}
+
+func TestRunOnlyChangedDoesNotAttributeDeletedDescendantPackagePathsToParent(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/child/child.go"), childGoFile(`"child"`))
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/child/SPEC.md"), childSpec())
+	runGit(t, moduleDir, "add", ".")
+	runGit(t, moduleDir, "commit", "-m", "add child package")
+
+	require.NoError(t, os.RemoveAll(filepath.Join(moduleDir, "internal/foo/child")))
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-descendant-delete",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Empty(t, parsed)
+	assert.Empty(t, recorder.list())
 }
 
 func TestRunOnlyChangedDoesNotTreatRootPackageAsWholeRepo(t *testing.T) {

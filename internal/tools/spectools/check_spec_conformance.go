@@ -84,6 +84,13 @@ type repoChanges struct {
 	untracked []string
 }
 
+type packagePathScope struct {
+	codeUnit        *codeunit.CodeUnit
+	moduleAbsDir    string
+	packageRelDir   string
+	blockedSubtrees []string
+}
+
 type eligiblePackage struct {
 	Key     string
 	Package *gocode.Package
@@ -568,17 +575,65 @@ func parentBranchFromCreationMessage(message string, currentBranch string, candi
 	}
 
 	parent := strings.TrimPrefix(message, prefix)
-	parent = strings.TrimPrefix(parent, "refs/heads/")
-	if parent == "" || parent == "HEAD" || parent == currentBranch {
+	normalized := normalizeCreationMessageParentBranches(parent)
+	if len(normalized) == 0 {
 		return ""
 	}
 
 	for _, candidate := range candidates {
-		if candidate == parent {
-			return parent
+		for _, parent := range normalized {
+			if candidate == parent && candidate != currentBranch {
+				return candidate
+			}
 		}
 	}
 	return ""
+}
+
+func normalizeCreationMessageParentBranches(parent string) []string {
+	parent = strings.TrimSpace(parent)
+	if parent == "" || parent == "HEAD" {
+		return nil
+	}
+
+	var normalized []string
+	seen := make(map[string]struct{})
+	add := func(branch string) {
+		branch = strings.TrimSpace(branch)
+		if branch == "" || branch == "HEAD" {
+			return
+		}
+		if _, ok := seen[branch]; ok {
+			return
+		}
+		seen[branch] = struct{}{}
+		normalized = append(normalized, branch)
+	}
+
+	add(parent)
+	add(strings.TrimPrefix(parent, "refs/heads/"))
+
+	for _, prefix := range []string{"refs/remotes/", "remotes/"} {
+		if strings.HasPrefix(parent, prefix) {
+			remoteRef := strings.TrimPrefix(parent, prefix)
+			add(remoteRef)
+			add(trimRemoteTrackingBranch(remoteRef))
+		}
+	}
+
+	if !strings.HasPrefix(parent, "refs/") && !strings.HasPrefix(parent, "remotes/") {
+		add(trimRemoteTrackingBranch(parent))
+	}
+
+	return normalized
+}
+
+func trimRemoteTrackingBranch(branch string) string {
+	slash := strings.IndexByte(branch, '/')
+	if slash <= 0 || slash == len(branch)-1 {
+		return ""
+	}
+	return branch[slash+1:]
 }
 
 func (t *toolCheckSpecConformance) collectRepoChanges(ctx context.Context, repoAbsDir string, baseCommit string) (repoChanges, error) {
@@ -692,38 +747,176 @@ func currentModulePackageImportPaths(ctx context.Context, moduleAbsDir string) (
 }
 
 func packageChangedPaths(pkg *gocode.Package, changes repoChanges) ([]string, []string, error) {
-	scope, err := newPackageScope(pkg)
+	scope, err := newPackageScope(pkg, changes)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	moduleAbsDir := pkg.Module.AbsolutePath
-	return filterPackagePaths(scope, moduleAbsDir, changes.tracked), filterPackagePaths(scope, moduleAbsDir, changes.untracked), nil
+	return filterPackagePaths(scope, changes.tracked), filterPackagePaths(scope, changes.untracked), nil
 }
 
-func newPackageScope(pkg *gocode.Package) (*codeunit.CodeUnit, error) {
-	scope, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", pkg.ImportPath), pkg.AbsolutePath())
+func newPackageScope(pkg *gocode.Package, changes repoChanges) (*packagePathScope, error) {
+	codeUnitScope, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", pkg.ImportPath), pkg.AbsolutePath())
 	if err != nil {
 		return nil, err
 	}
-	if err := scope.IncludeSubtreeUnlessContains("*.go"); err != nil {
+	if err := codeUnitScope.IncludeSubtreeUnlessContains("*.go"); err != nil {
 		return nil, err
 	}
-	return scope, nil
+
+	blockedSubtrees, err := descendantPackageDirsOnDisk(pkg)
+	if err != nil {
+		return nil, err
+	}
+	blockedSubtrees = append(blockedSubtrees, descendantPackageDirsFromTrackedGoChanges(pkg, changes.tracked)...)
+
+	return &packagePathScope{
+		codeUnit:        codeUnitScope,
+		moduleAbsDir:    pkg.Module.AbsolutePath,
+		packageRelDir:   normalizeRelativeDir(pkg.RelativeDir),
+		blockedSubtrees: compactRelativeDirs(blockedSubtrees),
+	}, nil
 }
 
-func filterPackagePaths(scope *codeunit.CodeUnit, moduleAbsDir string, relPaths []string) []string {
+func descendantPackageDirsOnDisk(pkg *gocode.Package) ([]string, error) {
+	rootAbsDir := pkg.AbsolutePath()
+	moduleAbsDir := pkg.Module.AbsolutePath
+	var descendantDirs []string
+
+	err := filepath.WalkDir(rootAbsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() || path == rootAbsDir {
+			return nil
+		}
+
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+				continue
+			}
+			relDir, err := filepath.Rel(moduleAbsDir, path)
+			if err != nil {
+				return err
+			}
+			descendantDirs = append(descendantDirs, filepath.ToSlash(relDir))
+			return filepath.SkipDir
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return descendantDirs, nil
+}
+
+func descendantPackageDirsFromTrackedGoChanges(pkg *gocode.Package, trackedPaths []string) []string {
+	packageRelDir := normalizeRelativeDir(pkg.RelativeDir)
+	descendantDirs := make([]string, 0, len(trackedPaths))
+	for _, relPath := range trackedPaths {
+		relPath = filepath.ToSlash(relPath)
+		if !strings.HasSuffix(relPath, ".go") || !pathWithinRelativeDir(relPath, packageRelDir) {
+			continue
+		}
+
+		dir := normalizeRelativeDir(filepath.Dir(relPath))
+		if dir == packageRelDir {
+			continue
+		}
+		descendantDirs = append(descendantDirs, dir)
+	}
+	return descendantDirs
+}
+
+func filterPackagePaths(scope *packagePathScope, relPaths []string) []string {
 	filtered := make([]string, 0, len(relPaths))
 	for _, relPath := range relPaths {
-		if pathInPackage(scope, moduleAbsDir, relPath) {
+		if pathInPackage(scope, relPath) {
 			filtered = append(filtered, relPath)
 		}
 	}
 	return filtered
 }
 
-func pathInPackage(scope *codeunit.CodeUnit, moduleAbsDir string, relPath string) bool {
-	return scope.Includes(filepath.Join(moduleAbsDir, filepath.FromSlash(relPath)))
+func pathInPackage(scope *packagePathScope, relPath string) bool {
+	absPath := filepath.Join(scope.moduleAbsDir, filepath.FromSlash(relPath))
+	if scope.codeUnit.Includes(absPath) {
+		return true
+	}
+	if pathExists(absPath) {
+		return false
+	}
+
+	relPath = filepath.ToSlash(relPath)
+	if !pathWithinRelativeDir(relPath, scope.packageRelDir) {
+		return false
+	}
+	for _, blockedDir := range scope.blockedSubtrees {
+		if pathWithinRelativeDir(relPath, blockedDir) {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeRelativeDir(relDir string) string {
+	relDir = filepath.ToSlash(relDir)
+	if relDir == "." {
+		return ""
+	}
+	return relDir
+}
+
+func pathWithinRelativeDir(relPath string, relDir string) bool {
+	relPath = filepath.ToSlash(relPath)
+	relDir = normalizeRelativeDir(relDir)
+	if relDir == "" {
+		return relPath != ""
+	}
+	return relPath == relDir || strings.HasPrefix(relPath, relDir+"/")
+}
+
+func compactRelativeDirs(relDirs []string) []string {
+	if len(relDirs) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(relDirs))
+	unique := make([]string, 0, len(relDirs))
+	for _, relDir := range relDirs {
+		relDir = normalizeRelativeDir(relDir)
+		if relDir == "" {
+			continue
+		}
+		if _, ok := seen[relDir]; ok {
+			continue
+		}
+		seen[relDir] = struct{}{}
+		unique = append(unique, relDir)
+	}
+	sort.Strings(unique)
+
+	compacted := make([]string, 0, len(unique))
+	for _, relDir := range unique {
+		covered := false
+		for _, kept := range compacted {
+			if pathWithinRelativeDir(relDir, kept) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			compacted = append(compacted, relDir)
+		}
+	}
+
+	return compacted
 }
 
 func packageResultKey(relativeDir string) string {
