@@ -78,3 +78,70 @@ More Details:
 - We do have some automatic conformance checks.
     - Run the equivalent of `codalotl spec diff path/to/pkg` (don't shell out! do what it does) and supply to subagent as context before it starts.
 - Figure out how to reconcile the instructions in the $spec-md skill for checking conformance and slightly overriding those instructions. Document in `## Decisions`
+
+## Plan
+
+### Phase 0
+
+#### Package `internal/tools/spectools`
+- Create new package and `SPEC.md` for the tool.
+- Add `check_spec_conformance` as a generic-mode tool with parameter `only_changed`.
+- Tool scope:
+  - enumerate Go packages in current module
+  - skip packages without `SPEC.md`
+  - skip packages whose CAS record already says `conforms=true`
+  - when `only_changed=true`, further restrict to packages changed against the selected git comparison base
+- Run one `limited_package_mode` subagent per package, with bounded concurrency.
+- Pre-seed each subagent with:
+  - package-local git diff vs comparison base
+  - programmatic `spec diff` output for the package
+  - strict output requirements for severity + latent classification
+- Aggregate raw JSON results keyed by module-relative package dir.
+- Store CAS `conforms=true` for packages that conform.
+- Add focused tests for package selection, comparison-base handling, aggregation, CAS writes, and presenter formatting.
+
+#### Package `internal/agentbuilder`
+- Register the new built-in tool from `internal/tools/spectools`.
+- Add `check_spec_conformance` to the `pr-orchestrator` tool list.
+- Update existing registry/YAML coverage for the orchestrator toolset.
+
+## Review
+
+## Summary
+
+## Decisions
+
+### Comparison base for `only_changed`
+- On branch `main` or `master`, compare current on-disk state against `HEAD`.
+- On any other branch, v1 treats the "parent branch" as the repo default branch, resolved in this order:
+  - symbolic ref from `refs/remotes/origin/HEAD`
+  - local `main`
+  - local `master`
+- The comparison commit is `git merge-base HEAD <resolved-default-branch-ref>`.
+- If no default-branch ref can be resolved, the tool should fail rather than silently guess.
+
+### Tool result keys
+- Result JSON keys are module-relative package directories with slash separators, matching existing package display conventions (example: `internal/foo`).
+
+### Reconciling `$spec-md check conformance` with tool-specific output
+- Each package subagent should still be told to use the `$spec-md` "check conformance" workflow.
+- The outer tool precomputes and supplies the equivalent of `codalotl spec diff path/to/pkg`; the subagent should treat that as satisfying the skill's "run the fix lints tool" step unless it has a specific reason to distrust the context.
+- The subagent is read-only for intent and must return strict JSON for one package:
+  - `conforms`
+  - optional `nonconformances`
+  - `severity` constrained to `trivial|minor|major`
+  - `latent` set to `false` only when the current diff introduced the issue
+
+### `only_changed=false`
+- `only_changed=false` means: check all current-module packages that have `SPEC.md` and do not already have CAS `conforms=true`.
+- If a checked package has no diff against the comparison base, any reported nonconformance is `latent=true`.
+
+## State
+
+- Branch `jn/check-conformance-tool-2` currently only contains PR-file commits.
+- New implementation package: `internal/tools/spectools`.
+- Existing helpers likely useful:
+  - `internal/lints.Run(..., spec-diff, ...)` for in-process spec-diff-style context
+  - `internal/gocas/casconformance` for CAS writes/reads
+  - `internal/agentbuilder/data/config.yml` for `pr-orchestrator` tool exposure
+  - `internal/agentbuilder/genericTools()` for built-in tool registration
