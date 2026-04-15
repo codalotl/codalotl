@@ -168,7 +168,7 @@ func (t *toolCheckSpecConformance) Info() llmstream.ToolInfo {
 		Parameters: map[string]any{
 			"only_changed": map[string]any{
 				"type":        "boolean",
-				"description": "If true, only check packages whose on-disk state changed against the current git comparison base.",
+				"description": "If true, only check packages whose state changed (in feature branches, compares on-disk state to branch merge base).",
 			},
 		},
 		Required: []string{"only_changed"},
