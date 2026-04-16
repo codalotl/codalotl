@@ -15,9 +15,9 @@ Goal:
 
 ## Plan
 
-### Phase 0
+### Phase 0 [DONE]
 
-#### Package internal/tools/spectools
+#### Package internal/tools/spectools [DONE]
 - Tighten `check_spec_conformance` result contract in `internal/tools/spectools/SPEC.md` so invalid subagent JSON combinations fail closed:
   - `{"conforms":true}` must not include `nonconformances`
   - `{"conforms":false}` must include at least one nonconformance
@@ -32,6 +32,7 @@ Goal:
 
 - Branch: `jn/check_conformance_solidify`
 - Target package: `internal/tools/spectools`
-- Current validation gap in `parsePackageCheckResult`: accepts `conforms=false` without `nonconformances`, and silently drops `nonconformances` when `conforms=true`
-- Current presentation gap in `presentCheckSpecConformanceBody`: shows non-conforming packages as `<pkg> (<count>)`, not the underlying issues
-- Existing unit coverage in `internal/tools/spectools/check_spec_conformance_test.go` exercises parsing, but not the stricter invalid-shape cases or presentation details
+- Impl commit `56cee46` now rejects `conforms=true` payloads that include `nonconformances`, and rejects `conforms=false` payloads without at least one issue
+- `presentCheckSpecConformanceBody` now renders per-package issue details as `- [severity, new|latent] message`
+- Focused coverage added for invalid result shapes and for completion-body issue rendering
+- Verified locally: `go test ./internal/tools/spectools`
