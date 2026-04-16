@@ -1,6 +1,7 @@
 package casconformance
 
 import (
+	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocode"
 )
@@ -13,17 +14,30 @@ type Metadata struct {
 	Conforms bool `json:"conforms"`
 }
 
+func defaultCodeUnit(pkg *gocode.Package) (*codeunit.CodeUnit, error) {
+	return codeunit.DefaultGoCodeUnit(pkg.AbsolutePath())
+}
+
 // Store stores spec conformance metadata for pkg.
 func Store(db *gocas.DB, pkg *gocode.Package, conforms bool) error {
-	return db.StoreOnPackage(pkg, Namespace, Metadata{Conforms: conforms})
+	unit, err := defaultCodeUnit(pkg)
+	if err != nil {
+		return err
+	}
+	return db.StoreOnCodeUnit(unit, Namespace, Metadata{Conforms: conforms})
 }
 
 // Retrieve loads spec conformance metadata for pkg.
 //
 // found reports whether a record existed.
 func Retrieve(db *gocas.DB, pkg *gocode.Package) (found bool, conforms bool, err error) {
+	unit, err := defaultCodeUnit(pkg)
+	if err != nil {
+		return false, false, err
+	}
+
 	var md Metadata
-	found, _, err = db.RetrieveOnPackage(pkg, Namespace, &md)
+	found, _, err = db.RetrieveOnCodeUnit(unit, Namespace, &md)
 	if err != nil || !found {
 		return found, false, err
 	}

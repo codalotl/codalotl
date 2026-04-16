@@ -32,6 +32,17 @@ func writeTestModuleWithPackage(t *testing.T, modDir string) *gocode.Package {
 	return pkg
 }
 
+func writeTestDataFile(t *testing.T, pkg *gocode.Package, relPath string, content string) {
+	t.Helper()
+
+	absPath := filepath.Join(pkg.AbsolutePath(), relPath)
+	err := os.MkdirAll(filepath.Dir(absPath), 0o755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(absPath, []byte(content), 0o644)
+	require.NoError(t, err)
+}
+
 func TestStoreAndRetrieve_RoundTrip(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
@@ -68,6 +79,36 @@ func TestRetrieve_Miss(t *testing.T) {
 	}
 
 	found, conforms, err := Retrieve(db, pkg)
+	require.NoError(t, err)
+	require.False(t, found)
+	require.False(t, conforms)
+}
+
+func TestRetrieve_MissAfterTestdataChange(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	writeTestDataFile(t, pkg, filepath.Join("testdata", "fixture.txt"), "before\n")
+
+	db := &gocas.DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := Store(db, pkg, true)
+	require.NoError(t, err)
+
+	found, conforms, err := Retrieve(db, pkg)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.True(t, conforms)
+
+	writeTestDataFile(t, pkg, filepath.Join("testdata", "fixture.txt"), "after\n")
+
+	found, conforms, err = Retrieve(db, pkg)
 	require.NoError(t, err)
 	require.False(t, found)
 	require.False(t, conforms)
