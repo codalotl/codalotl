@@ -19,6 +19,7 @@ import (
 	"github.com/codalotl/codalotl/internal/prompt"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
+	"github.com/codalotl/codalotl/internal/tools/spectools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,6 +63,19 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	}, agentsByName["pr-review"].Tools)
 	require.NotNil(t, agentsByName["pr-review"].Skills)
 	assert.False(t, *agentsByName["pr-review"].Skills)
+
+	require.Contains(t, agentsByName, "pr-orchestrator")
+	assert.Equal(t, yamlAgentModeGeneric, agentsByName["pr-orchestrator"].Mode)
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameShell,
+		yamlToolVirtualEditFiles,
+		coretools.ToolNameUpdatePlan,
+		spectools.ToolNameCheckSpecConformance,
+		"review",
+		"implement",
+	}, agentsByName["pr-orchestrator"].Tools)
 
 	var implementSpec *yamlToolSpec
 	var reviewSpec *yamlToolSpec

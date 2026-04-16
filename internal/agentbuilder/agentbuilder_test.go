@@ -29,6 +29,7 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/exttools"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
+	"github.com/codalotl/codalotl/internal/tools/spectools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -272,9 +273,25 @@ func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testi
 		coretools.ToolNameShell,
 		coretools.ToolNameApplyPatch,
 		coretools.ToolNameUpdatePlan,
+		spectools.ToolNameCheckSpecConformance,
 		"review",
 		"implement",
 	}, gotTools)
+}
+
+func TestGenericTools_RegistersCheckSpecConformance(t *testing.T) {
+	toolBuilder, ok := genericTools()[spectools.ToolNameCheckSpecConformance]
+	require.True(t, ok)
+
+	tool, err := toolBuilder(toolsetinterface.Options{
+		Authorizer:   authdomain.NewAutoApproveAuthorizer(t.TempDir()),
+		AgentInvoker: &captureAgentInvoker{},
+		Model:        llmmodel.ProviderIDOpenAI.DefaultModel(),
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, spectools.ToolNameCheckSpecConformance, tool.Name())
+	assert.NotNil(t, tool.Presenter())
 }
 
 func TestBuildRegistry_PROrchestratorReviewTool_InvokesReviewSubagentAndReturnsJSON(t *testing.T) {

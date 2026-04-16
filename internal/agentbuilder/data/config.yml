@@ -80,6 +80,7 @@ agents:
       - shell
       - edit_files
       - update_plan
+      - check_spec_conformance
       - review
       - implement
     mode: generic
