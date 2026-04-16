@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDetermineComparisonBaseUsesHeuristicBaseOnMainBranch(t *testing.T) {
+func TestDetermineComparisonBaseAllowsEmptyParentBranchOnMainBranch(t *testing.T) {
 	t.Parallel()
 
 	tool := &toolCheckSpecConformance{
@@ -30,7 +30,7 @@ func TestDetermineComparisonBaseUsesHeuristicBaseOnMainBranch(t *testing.T) {
 		},
 		heuristicBase: func(repoDir string) (string, string, error) {
 			assert.Equal(t, "/tmp/repo", repoDir)
-			return "0123456789abcdef", "feature", nil
+			return "0123456789abcdef", "", nil
 		},
 	}
 
@@ -38,7 +38,7 @@ func TestDetermineComparisonBaseUsesHeuristicBaseOnMainBranch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, comparisonBase{
 		Branch:       "main",
-		ParentBranch: "feature",
+		ParentBranch: "",
 		Commit:       "0123456789abcdef",
 	}, base)
 }

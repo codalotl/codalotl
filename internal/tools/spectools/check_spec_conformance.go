@@ -482,9 +482,6 @@ func (t *toolCheckSpecConformance) determineComparisonBase(ctx context.Context, 
 	if commit == "" {
 		return comparisonBase{}, fmt.Errorf("determine heuristic comparison base for %q: empty commit", branch)
 	}
-	if parentBranch == "" {
-		return comparisonBase{}, fmt.Errorf("determine heuristic comparison base for %q: empty parent branch", branch)
-	}
 
 	return comparisonBase{
 		Branch:       branch,
