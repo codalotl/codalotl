@@ -124,10 +124,10 @@ More Details:
 - [DONE] Resolve package-error semantics mismatch by updating `internal/tools/spectools/SPEC.md` so post-launch package-scoped failures are returned in that package's `error` payload instead of failing the overall tool call.
 - [DONE] Add focused tests so both semantics are explicit.
 
-### Post-fix conformance follow-up
+### Post-fix conformance follow-up [DONE]
 
-#### Package `internal/tools/spectools`
-- Make `parsePackageCheckResult` reject `{"conforms":false}` without a `nonconformances` array so malformed subagent output becomes a package error instead of a spec-shape mismatch.
+#### [DONE] Package `internal/tools/spectools`
+- Fix primary-branch comparison-base handling so `check_spec_conformance` accepts `internal/gittools.HeuristicMergeBase` returning `HEAD` with an empty parent ref on `main`/`master`.
 
 #### [DONE] Package `internal/agentbuilder`
 - Reconcile YAML schema validation with `internal/agentbuilder/SPEC.md`, or update that spec if looser validation around `presenter` and parameter-level `required` is intentional.
@@ -198,6 +198,11 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
 - `internal/agentbuilder` behavior and docs already consistently treat YAML-tool `presenter` as optional.
 - Parameter-level `required` is also effectively optional in current YAML parsing; omitted YAML bools normalize to `false`.
 - Updated `internal/agentbuilder/SPEC.md` to match that intended YAML schema instead of tightening runtime validation.
+
+### Post-fix changed-package `check_spec_conformance` rerun after addressing both reported issues
+- Tool invocation succeeded.
+- `internal/agentbuilder`: conforms.
+- `internal/tools/spectools`: conforms.
 
 ## Summary
 
@@ -289,3 +294,6 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
 - `internal/agentbuilder/SPEC.md` now matches current YAML-tool behavior:
   - `presenter` is optional
   - parameter `required` is optional and defaults to `false`
+- Latest `check_spec_conformance(only_changed=true)` rerun on the branch reports:
+  - `internal/agentbuilder`: conforms
+  - `internal/tools/spectools`: conforms
