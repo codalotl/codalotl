@@ -68,6 +68,28 @@ func TestHeuristicMergeBaseCanonicalizesLocalAndRemoteAliases(t *testing.T) {
 	assert.Equal(t, "main", ref)
 }
 
+func TestHeuristicMergeBaseUsesTrackedRemoteBaseWhenNoLocalAliasExists(t *testing.T) {
+	t.Parallel()
+
+	repoDir := newTestRepo(t)
+	baseCommit := commitFile(t, repoDir, "base.txt", "base\n", "base commit")
+
+	remoteDir := filepath.Join(t.TempDir(), "origin.git")
+	git(t, "", "init", "--bare", remoteDir)
+	git(t, repoDir, "remote", "add", "origin", remoteDir)
+	git(t, repoDir, "push", "-u", "origin", "main")
+
+	git(t, repoDir, "checkout", "--detach")
+	git(t, repoDir, "branch", "-D", "main")
+	git(t, repoDir, "checkout", "-b", "my-feature-branch", "origin/main")
+	commitFile(t, repoDir, "feature.txt", "feature\n", "feature commit")
+
+	commit, ref, err := HeuristicMergeBase(repoDir)
+	require.NoError(t, err)
+	assert.Equal(t, baseCommit, commit)
+	assert.Equal(t, "origin/main", ref)
+}
+
 func TestChangedPathsSinceCommittedOnly(t *testing.T) {
 	t.Parallel()
 

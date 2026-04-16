@@ -55,6 +55,7 @@ This package offers a function to identify changed repo paths relative to a base
     - Accept `baseCommit`, typically the commit returned by `HeuristicMergeBase`
     - Accept `includeUncommitted` to optionally also include staged, unstaged, and untracked working tree changes
     - Return sorted unique repo-relative paths
+    - For committed history, report net path delta from `baseCommit` to `HEAD`, not every path touched by intermediate commits
     - Include deleted paths
     - For renames and copies, include both old and new paths
 

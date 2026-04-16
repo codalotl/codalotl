@@ -152,7 +152,7 @@ func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs m
 		if strings.HasSuffix(remote, "/HEAD") {
 			continue
 		}
-		if remote == currentUpstream {
+		if remote == currentUpstream && remoteBranchName(remote) == currentBranch {
 			continue
 		}
 
