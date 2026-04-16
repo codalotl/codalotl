@@ -187,6 +187,13 @@ Review against `main` found actionable correctness issues in `internal/tools/spe
 - `internal/tools/spectools`: does not conform.
   - Minor, latent=false: `parsePackageCheckResult` accepts `{"conforms":false}` without a `nonconformances` array, which can produce a package result that does not match the documented result shape.
 
+### Manual-test rerun of changed-package `check_spec_conformance` (only_changed=true)
+- Tool invocation succeeded and returned package-scoped JSON results.
+- `internal/agentbuilder`: does not conform.
+  - Minor, latent=true: `internal/agentbuilder/SPEC.md` still says every YAML tool defines `presenter`, but package behavior and docs treat it as optional.
+- `internal/tools/spectools`: does not conform.
+  - Major, latent=false: `determineComparisonBase` treats an empty parent ref from `internal/gittools.HeuristicMergeBase` as an error. On `main`/`master`, that helper is documented to return `HEAD` with an empty ref, so the tool would fail overall on the primary branch instead of diffing against the current comparison base as specified.
+
 ## Summary
 
 Add built-in `check_spec_conformance` support so the PR orchestrator can check `SPEC.md` conformance and record conforming packages in CAS.
@@ -271,3 +278,6 @@ Add built-in `check_spec_conformance` support so the PR orchestrator can check `
   - tool semantics should match "as if I recreated the branch from latest main and replayed my commits"
 - Comparison-base robustness implementation landed in commit `6790722` (`spectools: make comparison base rebase-aware`).
 - `go test ./internal/tools/spectools` passed after the comparison-base changes.
+- Latest manual-test `check_spec_conformance(only_changed=true)` run still reports:
+  - `internal/agentbuilder`: latent minor mismatch about optional YAML `presenter`
+  - `internal/tools/spectools`: introduced major issue in primary-branch comparison-base handling when `HeuristicMergeBase` returns an empty parent ref
