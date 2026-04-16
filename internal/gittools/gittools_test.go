@@ -90,6 +90,26 @@ func TestHeuristicMergeBaseUsesTrackedRemoteBaseWhenNoLocalAliasExists(t *testin
 	assert.Equal(t, "origin/main", ref)
 }
 
+func TestHeuristicMergeBaseOnPrimaryBranchReturnsHeadAndEmptyRef(t *testing.T) {
+	t.Parallel()
+
+	repoDir := newTestRepo(t)
+	commitFile(t, repoDir, "base.txt", "base\n", "base commit")
+
+	git(t, repoDir, "checkout", "-b", "my-feature-branch")
+	commitFile(t, repoDir, "feature.txt", "feature\n", "feature commit")
+
+	git(t, repoDir, "checkout", "main")
+	commitFile(t, repoDir, "main.txt", "main\n", "main commit")
+	git(t, repoDir, "merge", "--no-ff", "-m", "merge feature", "my-feature-branch")
+	headCommit := git(t, repoDir, "rev-parse", "HEAD")
+
+	commit, ref, err := HeuristicMergeBase(repoDir)
+	require.NoError(t, err)
+	assert.Equal(t, headCommit, commit)
+	assert.Empty(t, ref)
+}
+
 func TestChangedPathsSinceCommittedOnly(t *testing.T) {
 	t.Parallel()
 

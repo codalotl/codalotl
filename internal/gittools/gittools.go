@@ -8,7 +8,8 @@ import (
 	"strings"
 )
 
-// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work.
+// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from the repo's primary branch, it returns
+// HEAD and an empty ref.
 func HeuristicMergeBase(repoDir string) (commit string, ref string, err error) {
 	repoDir, err = repoRoot(repoDir)
 	if err != nil {
@@ -22,6 +23,13 @@ func HeuristicMergeBase(repoDir string) (commit string, ref string, err error) {
 	currentUpstream = strings.TrimSpace(currentUpstream)
 
 	defaultRefs := defaultRefSet(repoDir)
+	if isPrimaryBranch(repoDir, currentBranch) {
+		headCommit, err := gitOutput(repoDir, "rev-parse", "HEAD")
+		if err != nil {
+			return "", "", err
+		}
+		return strings.TrimSpace(headCommit), "", nil
+	}
 
 	candidates, err := candidateRefs(repoDir, currentBranch, currentUpstream, defaultRefs)
 	if err != nil {
@@ -187,6 +195,18 @@ func defaultRefSet(repoDir string) map[string]bool {
 	}
 
 	return defaults
+}
+
+func isPrimaryBranch(repoDir, currentBranch string) bool {
+	if currentBranch == "" {
+		return false
+	}
+
+	if out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		return remoteBranchName(strings.TrimSpace(out)) == currentBranch
+	}
+
+	return currentBranch == "main" || currentBranch == "master" || currentBranch == "trunk"
 }
 
 func scoreCandidate(repoDir string, candidate candidateRef) (candidateScore, bool) {

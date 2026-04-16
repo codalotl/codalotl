@@ -30,6 +30,8 @@ This package offers a function to obtain a heuristic base:
     - It should be a useful boundary for isolating commits that belong to current line of work.
 
 User scenarios:
+- Primary branch:
+    - if current checkout is repo primary branch, return `HEAD` and `""`
 - Simple feature branch off `main`:
     - user creates `users-feature-branch` from `main`
     - co-workers continue merging into `main`
@@ -73,7 +75,8 @@ User scenarios:
 ## Public API
 
 ```go
-// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work.
+// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from the repo's primary branch, it returns
+// HEAD and an empty ref.
 func HeuristicMergeBase(repoDir string) (commit string, ref string, err error)
 
 // ChangedPathsSince returns sorted unique repo-relative paths changed since baseCommit.
