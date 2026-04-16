@@ -76,12 +76,12 @@ Non-goals:
   - exclude descendant dirs whose basename starts with `.`
 - This is the shared default for package workspace / subtree scope. It does not replace more specific or narrower code-unit construction when a caller wants something else.
 
-#### Package `internal/gocas`
+#### Package `internal/gocas` [DONE]
 - Add `StoreOnCodeUnit` / `RetrieveOnCodeUnit`.
 - Hash included files from a `codeunit.CodeUnit`, with path names still interpreted relative to `gocas.DB.BaseDir`.
 - Keep `StoreOnPackage` / `RetrieveOnPackage` as the narrower Go-package API.
 
-#### Package `internal/gocas/casconformance`
+#### Package `internal/gocas/casconformance` [DONE]
 - Keep the package-shaped public API.
 - Re-key conformance records using the default Go code unit rooted at the package dir so conformance caching matches `check_spec_conformance` scope.
 
@@ -118,6 +118,8 @@ Non-goals:
 ## State
 
 - `internal/codeunit` now has `DefaultGoCodeUnit`; tests cover reachable `testdata`, hidden descendant dirs, empty-dir pruning, and nested-package exclusion.
+- `internal/gocas` now has `StoreOnCodeUnit` / `RetrieveOnCodeUnit`; hashing uses code-unit included files but still records paths relative to `gocas.DB.BaseDir`.
+- `internal/gocas/casconformance` now keeps its package-shaped API while re-keying via `codeunit.DefaultGoCodeUnit`.
 - Current duplicate Go-package subtree builders:
   - `internal/noninteractive/noninteractive.go`
   - `internal/tui/session.go`
