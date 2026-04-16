@@ -68,6 +68,63 @@ func TestHeuristicMergeBaseCanonicalizesLocalAndRemoteAliases(t *testing.T) {
 	assert.Equal(t, "main", ref)
 }
 
+func TestChangedPathsSinceCommittedOnly(t *testing.T) {
+	t.Parallel()
+
+	repoDir := newTestRepo(t)
+	baseCommit := commitFile(t, repoDir, "base.txt", "base\n", "base commit")
+
+	git(t, repoDir, "checkout", "-b", "my-feature-branch")
+	commitFile(t, repoDir, "pkg/z.go", "package pkg\n", "add z")
+	commitFile(t, repoDir, "pkg/a.go", "package pkg\n", "add a")
+
+	paths, err := ChangedPathsSince(repoDir, baseCommit, false)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pkg/a.go", "pkg/z.go"}, paths)
+}
+
+func TestChangedPathsSinceOptionallyIncludesUncommittedChanges(t *testing.T) {
+	t.Parallel()
+
+	repoDir := newTestRepo(t)
+	baseCommit := commitFile(t, repoDir, "base.txt", "base\n", "base commit")
+
+	git(t, repoDir, "checkout", "-b", "my-feature-branch")
+	commitFile(t, repoDir, "committed.txt", "committed\n", "committed change")
+
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "staged.txt"), []byte("staged\n"), 0o644))
+	git(t, repoDir, "add", "staged.txt")
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "base.txt"), []byte("base updated\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "untracked.txt"), []byte("untracked\n"), 0o644))
+
+	committedPaths, err := ChangedPathsSince(repoDir, baseCommit, false)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"committed.txt"}, committedPaths)
+
+	allPaths, err := ChangedPathsSince(repoDir, baseCommit, true)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"base.txt", "committed.txt", "staged.txt", "untracked.txt"}, allPaths)
+}
+
+func TestChangedPathsSinceIncludesDeletedAndRenamedPaths(t *testing.T) {
+	t.Parallel()
+
+	repoDir := newTestRepo(t)
+	commitFile(t, repoDir, "old/file.txt", "contents\n", "add old file")
+	baseCommit := commitFile(t, repoDir, "deleted.txt", "delete me\n", "add deleted file")
+
+	git(t, repoDir, "checkout", "-b", "my-feature-branch")
+	require.NoError(t, os.MkdirAll(filepath.Join(repoDir, "new"), 0o755))
+	require.NoError(t, os.Rename(filepath.Join(repoDir, "old/file.txt"), filepath.Join(repoDir, "new/file.txt")))
+	require.NoError(t, os.Remove(filepath.Join(repoDir, "deleted.txt")))
+	git(t, repoDir, "add", "-A")
+	git(t, repoDir, "commit", "-m", "rename and delete")
+
+	paths, err := ChangedPathsSince(repoDir, baseCommit, false)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"deleted.txt", "new/file.txt", "old/file.txt"}, paths)
+}
+
 func newTestRepo(t *testing.T) string {
 	t.Helper()
 

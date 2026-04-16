@@ -59,6 +59,38 @@ func HeuristicMergeBase(repoDir string) (commit string, ref string, err error) {
 	return best.mergeBase, bestRef, nil
 }
 
+// ChangedPathsSince returns sorted unique repo-relative paths changed since baseCommit.
+func ChangedPathsSince(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error) {
+	repoDir, err := repoRoot(repoDir)
+	if err != nil {
+		return nil, err
+	}
+	if baseCommit == "" {
+		return nil, fmt.Errorf("base commit is required")
+	}
+
+	pathSet := map[string]struct{}{}
+
+	if err := addChangedPathsFromDiff(repoDir, pathSet, baseCommit, "HEAD"); err != nil {
+		return nil, err
+	}
+	if includeUncommitted {
+		if err := addChangedPathsFromDiff(repoDir, pathSet, "HEAD"); err != nil {
+			return nil, err
+		}
+		if err := addPathsFromNullOutput(repoDir, pathSet, "ls-files", "--others", "--exclude-standard", "-z"); err != nil {
+			return nil, err
+		}
+	}
+
+	paths := make([]string, 0, len(pathSet))
+	for path := range pathSet {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
 type candidateRef struct {
 	gitRef      string
 	displayName string
@@ -277,6 +309,57 @@ func commitUnixTime(repoDir, rev string) (int64, error) {
 	return unixTime, nil
 }
 
+func addChangedPathsFromDiff(repoDir string, pathSet map[string]struct{}, revs ...string) error {
+	args := []string{"diff", "--name-status", "-z", "--find-renames"}
+	args = append(args, revs...)
+	args = append(args, "--")
+
+	out, err := gitOutput(repoDir, args...)
+	if err != nil {
+		return err
+	}
+
+	fields := nullFields(out)
+	for i := 0; i < len(fields); {
+		status := fields[i]
+		i++
+		if status == "" {
+			return fmt.Errorf("parse git diff output: empty status")
+		}
+
+		switch status[0] {
+		case 'R', 'C':
+			if i+1 >= len(fields) {
+				return fmt.Errorf("parse git diff output: expected two paths for status %q", status)
+			}
+			pathSet[fields[i]] = struct{}{}
+			pathSet[fields[i+1]] = struct{}{}
+			i += 2
+		default:
+			if i >= len(fields) {
+				return fmt.Errorf("parse git diff output: expected path for status %q", status)
+			}
+			pathSet[fields[i]] = struct{}{}
+			i++
+		}
+	}
+
+	return nil
+}
+
+func addPathsFromNullOutput(repoDir string, pathSet map[string]struct{}, args ...string) error {
+	out, err := gitOutput(repoDir, args...)
+	if err != nil {
+		return err
+	}
+
+	for _, path := range nullFields(out) {
+		pathSet[path] = struct{}{}
+	}
+
+	return nil
+}
+
 func gitLines(repoDir string, args ...string) ([]string, error) {
 	out, err := gitOutput(repoDir, args...)
 	if err != nil {
@@ -289,6 +372,18 @@ func gitLines(repoDir string, args ...string) ([]string, error) {
 	}
 
 	return strings.Split(trimmed, "\n"), nil
+}
+
+func nullFields(out string) []string {
+	if out == "" {
+		return nil
+	}
+
+	fields := strings.Split(out, "\x00")
+	if fields[len(fields)-1] == "" {
+		fields = fields[:len(fields)-1]
+	}
+	return fields
 }
 
 func gitSuccess(repoDir string, args ...string) bool {

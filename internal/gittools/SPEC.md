@@ -47,9 +47,37 @@ User scenarios:
     - if ref name cannot be inferred confidently, it may be `""`
     - function should still try to return a plausible base commit
 
+## Changed Paths
+
+This package also offers a function to identify changed repo paths relative to a base commit:
+- `ChangedPathsSince` returns repo-relative changed paths since `baseCommit`
+    - Accept `repoDir`, any path inside a git working tree. Use `""` for cwd.
+    - Accept `baseCommit`, typically the commit returned by `HeuristicMergeBase`
+    - Accept `includeUncommitted`
+        - when false, return paths changed by committed work between `baseCommit` and `HEAD`
+        - when true, also include staged, unstaged, and untracked working tree changes
+    - Return sorted unique repo-relative paths
+    - Include deleted paths
+    - For renames and copies, include both old and new paths
+
+Primary use-case:
+- determine which files or directories the current line of work touches
+- support higher-level tooling that maps changed paths to changed Go packages
+
+User scenarios:
+- Branch-authored commits only:
+    - user wants paths changed by committed work on current branch
+    - call `ChangedPathsSince(repoDir, baseCommit, false)`
+- Include current checkout state:
+    - user also wants staged, unstaged, or untracked edits considered
+    - call `ChangedPathsSince(repoDir, baseCommit, true)`
+
 ## Public API
 
 ```go
 // HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work.
 func HeuristicMergeBase(repoDir string) (commit string, ref string, err error)
+
+// ChangedPathsSince returns sorted unique repo-relative paths changed since baseCommit.
+func ChangedPathsSince(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error)
 ```
