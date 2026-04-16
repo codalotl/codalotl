@@ -50,6 +50,9 @@ Example:
 ```
 
 Notes:
+- `conforms=true` omits `nonconformances`
+- `conforms=false` includes one or more `nonconformances`
+- Any other result-shape combination is invalid and is treated as a package-scoped error
 - `severity`: `trivial`, `minor`, or `major`
 - `latent`: `true` when issue predates comparison base; `false` when current diff introduced it
 - `message`: human-readable explanation
@@ -67,7 +70,8 @@ Use cases:
 
 - In progress: `Checking SPEC conformance`
 - Complete: `Checked SPEC conformance`
-- Completion body summarizes conforming and non-conforming packages.
+- Completion body summarizes conforming, non-conforming, and errored packages.
+- For each non-conforming package, completion body includes actual nonconformance details.
 - Raw `ToolResult.Result` remains machine-readable JSON.
 
 ## Public API

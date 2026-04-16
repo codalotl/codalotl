@@ -15,3 +15,26 @@ Goal:
 - Validate output of subagent. If invalid, subagent should error.
 - user can see actual nonconformances printed out.
 
+## Plan
+
+### Phase 0
+
+#### Package internal/tools/spectools
+- Tighten `check_spec_conformance` result contract in `internal/tools/spectools/SPEC.md` so invalid subagent JSON combinations fail closed:
+  - `{"conforms":true}` must not include `nonconformances`
+  - `{"conforms":false}` must include at least one nonconformance
+- Update completion presentation so non-conforming packages surface actual nonconformance details instead of only counts.
+- Implement in `internal/tools/spectools/check_spec_conformance.go` and extend focused unit coverage in `internal/tools/spectools/check_spec_conformance_test.go`.
+
+## Review
+
+## Summary
+
+## State
+
+- Branch: `jn/check_conformance_solidify`
+- Target package: `internal/tools/spectools`
+- Current validation gap in `parsePackageCheckResult`: accepts `conforms=false` without `nonconformances`, and silently drops `nonconformances` when `conforms=true`
+- Current presentation gap in `presentCheckSpecConformanceBody`: shows non-conforming packages as `<pkg> (<count>)`, not the underlying issues
+- Existing unit coverage in `internal/tools/spectools/check_spec_conformance_test.go` exercises parsing, but not the stricter invalid-shape cases or presentation details
+
