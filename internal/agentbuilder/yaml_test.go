@@ -918,10 +918,14 @@ func TestYAMLSubagentToolRun_PackageModeUsesCallerScopeNotOverrides(t *testing.T
 	require.NoError(t, err)
 }
 
-func TestYAMLSubagentToolBuildTargetPackageAuthorizer_IncludesReachableTestdataOnly(t *testing.T) {
+func TestYAMLSubagentToolBuildTargetPackageAuthorizer_IncludesPackageSubtreeAndExcludesHiddenDescendants(t *testing.T) {
 	sandbox := t.TempDir()
 	targetPkgDir := filepath.Join(sandbox, "targetpkg")
 	ensureGoPackageFixture(t, sandbox, targetPkgDir)
+
+	visibleSupportFile := filepath.Join(targetPkgDir, "data", "config.yml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(visibleSupportFile), 0o755))
+	require.NoError(t, os.WriteFile(visibleSupportFile, []byte("name: fixture\n"), 0o644))
 
 	reachableTestdataFile := filepath.Join(targetPkgDir, "testdata", "fixture.txt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(reachableTestdataFile), 0o755))
@@ -931,6 +935,10 @@ func TestYAMLSubagentToolBuildTargetPackageAuthorizer_IncludesReachableTestdataO
 	require.NoError(t, os.MkdirAll(filepath.Dir(excludedTestdataFile), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(targetPkgDir, "nested", "nested.go"), []byte("package nested\n"), 0o644))
 	require.NoError(t, os.WriteFile(excludedTestdataFile, []byte("blocked"), 0o644))
+
+	hiddenSupportFile := filepath.Join(targetPkgDir, ".hidden", "config.yml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(hiddenSupportFile), 0o755))
+	require.NoError(t, os.WriteFile(hiddenSupportFile, []byte("hidden: true\n"), 0o644))
 
 	tool := &yamlSubagentTool{
 		opts: toolsetinterface.Options{
@@ -946,8 +954,10 @@ func TestYAMLSubagentToolBuildTargetPackageAuthorizer_IncludesReachableTestdataO
 	}, sandbox)
 	t.Cleanup(authorizer.Close)
 
+	require.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", visibleSupportFile))
 	require.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", reachableTestdataFile))
 	require.Error(t, authorizer.IsAuthorizedForRead(false, "", "read_file", excludedTestdataFile))
+	require.Error(t, authorizer.IsAuthorizedForRead(false, "", "read_file", hiddenSupportFile))
 }
 
 func TestBuildRegistry_PROrchestratorImplementTool_InvokesPackageModeSubagent(t *testing.T) {

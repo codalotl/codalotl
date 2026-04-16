@@ -1139,45 +1139,11 @@ func (t *yamlSubagentTool) buildTargetPackageAuthorizer(target resolvedPackageTa
 		fallback = t.opts.Authorizer.WithoutCodeUnit()
 	}
 
-	unit, err := codeunit.NewCodeUnit("package "+target.AbsDir, target.AbsDir)
+	unit, err := codeunit.DefaultGoCodeUnit(target.AbsDir)
 	if err != nil {
 		return fallback
 	}
-	if err := unit.IncludeSubtreeUnlessContains("*.go"); err == nil {
-		_ = includeReachableTestdataDirs(unit)
-		unit.PruneEmptyDirs()
-	}
 	return authdomain.NewCodeUnitAuthorizer(unit, fallback)
-}
-
-func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
-	if unit == nil {
-		return nil
-	}
-
-	for _, absPath := range unit.IncludedFiles() {
-		info, err := os.Stat(absPath)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-
-		testdataPath := filepath.Join(absPath, "testdata")
-		tdInfo, err := os.Stat(testdataPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return fmt.Errorf("stat %q: %w", testdataPath, err)
-		}
-		if !tdInfo.IsDir() || unit.Includes(testdataPath) {
-			continue
-		}
-		if err := unit.IncludeDir(testdataPath, true); err != nil {
-			return fmt.Errorf("include %q: %w", testdataPath, err)
-		}
-	}
-
-	return nil
 }
 
 func parseYAMLToolCallParams(raw string, paramSpecs map[string]yamlNormalizedParameter) (map[string]any, error) {
