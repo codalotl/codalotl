@@ -66,7 +66,7 @@ Non-goals:
 
 ### Phase 0
 
-#### Package `internal/codeunit`
+#### Package `internal/codeunit` [DONE]
 - Add shared constructor `DefaultGoCodeUnit(absBaseDir string) (*codeunit.CodeUnit, error)` for subtree-oriented Go package work.
 - Semantics:
   - include base dir and direct files in it
@@ -117,6 +117,7 @@ Non-goals:
 
 ## State
 
+- `internal/codeunit` now has `DefaultGoCodeUnit`; tests cover reachable `testdata`, hidden descendant dirs, empty-dir pruning, and nested-package exclusion.
 - Current duplicate Go-package subtree builders:
   - `internal/noninteractive/noninteractive.go`
   - `internal/tui/session.go`
