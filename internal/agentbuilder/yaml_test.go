@@ -948,16 +948,37 @@ func TestYAMLSubagentToolBuildTargetPackageAuthorizer_IncludesPackageSubtreeAndE
 		},
 	}
 
-	authorizer := tool.buildTargetPackageAuthorizer(resolvedPackageTarget{
+	authorizer, err := tool.buildTargetPackageAuthorizer(resolvedPackageTarget{
 		AbsDir:        targetPkgDir,
 		WithinSandbox: true,
 	}, sandbox)
+	require.NoError(t, err)
 	t.Cleanup(authorizer.Close)
 
 	require.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", visibleSupportFile))
 	require.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", reachableTestdataFile))
 	require.Error(t, authorizer.IsAuthorizedForRead(false, "", "read_file", excludedTestdataFile))
 	require.Error(t, authorizer.IsAuthorizedForRead(false, "", "read_file", hiddenSupportFile))
+}
+
+func TestYAMLSubagentToolBuildTargetPackageAuthorizer_ReturnsErrorWhenDefaultCodeUnitFails(t *testing.T) {
+	sandbox := t.TempDir()
+	missingPkgDir := filepath.Join(sandbox, "missing")
+
+	tool := &yamlSubagentTool{
+		opts: toolsetinterface.Options{
+			SandboxDir: sandbox,
+			Authorizer: authdomain.NewAutoApproveAuthorizer(sandbox),
+		},
+	}
+
+	authorizer, err := tool.buildTargetPackageAuthorizer(resolvedPackageTarget{
+		AbsDir:        missingPkgDir,
+		WithinSandbox: true,
+	}, sandbox)
+	require.Error(t, err)
+	assert.Nil(t, authorizer)
+	require.ErrorContains(t, err, `build default go code unit for target package "`+missingPkgDir+`"`)
 }
 
 func TestBuildRegistry_PROrchestratorImplementTool_InvokesPackageModeSubagent(t *testing.T) {

@@ -1062,7 +1062,11 @@ func (t *yamlSubagentTool) buildInvokeRequest(messages []string, params map[stri
 
 		req.CallerSandboxDir = overrideSandboxDir
 		req.ToolOptions.SandboxDir = overrideSandboxDir
-		req.CallerAuthorizer = t.buildTargetPackageAuthorizer(targetPackage, overrideSandboxDir)
+		targetAuthorizer, err := t.buildTargetPackageAuthorizer(targetPackage, overrideSandboxDir)
+		if err != nil {
+			return toolsetinterface.InvokeRequest{}, err
+		}
+		req.CallerAuthorizer = targetAuthorizer
 		req.ToolOptions.Authorizer = req.CallerAuthorizer
 	}
 
@@ -1133,17 +1137,18 @@ func (t *yamlSubagentTool) resolveTargetPackage(params map[string]any) (resolved
 	return target, nil
 }
 
-func (t *yamlSubagentTool) buildTargetPackageAuthorizer(target resolvedPackageTarget, sandboxDir string) authdomain.Authorizer {
+func (t *yamlSubagentTool) buildTargetPackageAuthorizer(target resolvedPackageTarget, sandboxDir string) (authdomain.Authorizer, error) {
+	unit, err := codeunit.DefaultGoCodeUnit(target.AbsDir)
+	if err != nil {
+		return nil, fmt.Errorf("build default go code unit for target package %q: %w", target.AbsDir, err)
+	}
+
 	fallback := authdomain.NewAutoApproveAuthorizer(sandboxDir)
 	if target.WithinSandbox && t.opts.Authorizer != nil {
 		fallback = t.opts.Authorizer.WithoutCodeUnit()
 	}
 
-	unit, err := codeunit.DefaultGoCodeUnit(target.AbsDir)
-	if err != nil {
-		return fallback
-	}
-	return authdomain.NewCodeUnitAuthorizer(unit, fallback)
+	return authdomain.NewCodeUnitAuthorizer(unit, fallback), nil
 }
 
 func parseYAMLToolCallParams(raw string, paramSpecs map[string]yamlNormalizedParameter) (map[string]any, error) {
