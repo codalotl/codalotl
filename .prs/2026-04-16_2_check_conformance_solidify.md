@@ -2,9 +2,7 @@
 
 ## User Summary (do not modify)
 
-We're working on checking conformance.
-
-<TODO: add a brief summary of check_conformance pr>
+Many Go packages in this repo have `SPEC.md` files that act as control planes and specifications for their code. "Checking conformance" means evaluating whether a package's Go code and related package contents actually comply with its `SPEC.md`, so we can trust those specs and track verified conformance state in CAS. We recently added a tool (check_spec_conformance) so that orchestrators everywhere can use to automatically check spec conformance of modified packages, and record that fact in CAS.
 
 Problem:
 
@@ -37,4 +35,3 @@ Goal:
 - Current validation gap in `parsePackageCheckResult`: accepts `conforms=false` without `nonconformances`, and silently drops `nonconformances` when `conforms=true`
 - Current presentation gap in `presentCheckSpecConformanceBody`: shows non-conforming packages as `<pkg> (<count>)`, not the underlying issues
 - Existing unit coverage in `internal/tools/spectools/check_spec_conformance_test.go` exercises parsing, but not the stricter invalid-shape cases or presentation details
-
