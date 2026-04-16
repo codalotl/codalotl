@@ -19,41 +19,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDetermineComparisonBaseMainBranchUsesHEAD(t *testing.T) {
+func TestDetermineComparisonBaseUsesHeuristicBaseOnMainBranch(t *testing.T) {
 	t.Parallel()
 
 	tool := &toolCheckSpecConformance{
 		git: fakeGitRunner{
 			outputs: map[string]string{
 				gitCommandKey("branch", "--show-current"): "main\n",
-				gitCommandKey("rev-parse", "HEAD"):        "0123456789abcdef\n",
 			},
+		},
+		heuristicBase: func(repoDir string) (string, string, error) {
+			assert.Equal(t, "/tmp/repo", repoDir)
+			return "0123456789abcdef", "feature", nil
 		},
 	}
 
 	base, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
 	require.NoError(t, err)
 	assert.Equal(t, comparisonBase{
-		Branch: "main",
-		Commit: "0123456789abcdef",
-		Mode:   comparisonBaseModeHEAD,
+		Branch:       "main",
+		ParentBranch: "feature",
+		Commit:       "0123456789abcdef",
 	}, base)
 }
 
-func TestDetermineComparisonBaseUsesCreationMessageWhenCandidatesAreAmbiguous(t *testing.T) {
+func TestDetermineComparisonBaseUsesHeuristicBaseForFeatureBranch(t *testing.T) {
 	t.Parallel()
 
 	tool := &toolCheckSpecConformance{
 		git: fakeGitRunner{
 			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                   "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from main\n",
-				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nmain\nrelease\n",
-				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/feature\norigin/main\n",
-				gitCommandKey("merge-base", "--fork-point", "main", "feature"):              "cccccccccccccccc\n",
-				gitCommandKey("merge-base", "--fork-point", "release", "feature"):           "1111111111111111\n",
-				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):       "cccccccccccccccc\n",
+				gitCommandKey("branch", "--show-current"): "feature\n",
 			},
+		},
+		heuristicBase: func(repoDir string) (string, string, error) {
+			assert.Equal(t, "/tmp/repo", repoDir)
+			return "cccccccccccccccc", "main", nil
 		},
 	}
 
@@ -63,123 +64,53 @@ func TestDetermineComparisonBaseUsesCreationMessageWhenCandidatesAreAmbiguous(t 
 		Branch:       "feature",
 		ParentBranch: "main",
 		Commit:       "cccccccccccccccc",
-		Mode:         comparisonBaseModeBranchPoint,
 	}, base)
 }
 
-func TestDetermineComparisonBaseUsesHEADCheckoutHistoryAndIgnoresFalseAmbiguity(t *testing.T) {
+func TestDetermineComparisonBaseFailsWhenHeuristicBaseReturnsEmptyCommit(t *testing.T) {
 	t.Parallel()
 
 	tool := &toolCheckSpecConformance{
 		git: fakeGitRunner{
 			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                      "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"):    "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from HEAD\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "HEAD"):                  "dddddddddddddddd\x00commit\ncccccccccccccccc\x00checkout: moving from release to main\naaaaaaaaaaaaaaaa\x00checkout: moving from main to feature\n",
-				gitCommandKey("branch", "--format=%(refname:short)"):                           "feature\nmain\n",
-				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                     "origin/HEAD\norigin/feature\norigin/main\norigin/other-feature\n",
-				gitCommandKey("merge-base", "--fork-point", "main", "feature"):                 "eeeeeeeeeeeeeeee\n",
-				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):          "eeeeeeeeeeeeeeee\n",
-				gitCommandKey("merge-base", "--fork-point", "origin/other-feature", "feature"): "aaaaaaaaaaaaaaaa\n",
+				gitCommandKey("branch", "--show-current"): "feature\n",
 			},
 		},
-	}
-
-	base, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
-	require.NoError(t, err)
-	assert.Equal(t, comparisonBase{
-		Branch:       "feature",
-		ParentBranch: "main",
-		Commit:       "eeeeeeeeeeeeeeee",
-		Mode:         comparisonBaseModeBranchPoint,
-	}, base)
-}
-
-func TestDetermineComparisonBaseUsesCurrentForkPointAfterRebase(t *testing.T) {
-	t.Parallel()
-
-	tool := &toolCheckSpecConformance{
-		git: fakeGitRunner{
-			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                   "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from main\n",
-				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nmain\n",
-				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/feature\norigin/main\n",
-				gitCommandKey("merge-base", "--fork-point", "main", "feature"):              "dddddddddddddddd\n",
-				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):       "dddddddddddddddd\n",
-			},
-		},
-	}
-
-	base, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
-	require.NoError(t, err)
-	assert.Equal(t, comparisonBase{
-		Branch:       "feature",
-		ParentBranch: "main",
-		Commit:       "dddddddddddddddd",
-		Mode:         comparisonBaseModeBranchPoint,
-	}, base)
-}
-
-func TestParentBranchFromCreationMessageMatchesRemoteTrackingRefs(t *testing.T) {
-	t.Parallel()
-
-	assert.Equal(t, "origin/main", parentBranchFromCreationMessage("branch: Created from origin/main", "feature", []string{"origin/main", "release"}))
-	assert.Equal(t, "main", parentBranchFromCreationMessage("branch: Created from refs/remotes/origin/main", "feature", []string{"main", "release"}))
-	assert.Equal(t, "main", parentBranchFromCreationMessage("branch: Created from remotes/origin/main", "feature", []string{"main", "release"}))
-}
-
-func TestParentBranchFromCreationMessageDoesNotShortenPlainLocalBranchNames(t *testing.T) {
-	t.Parallel()
-
-	assert.Empty(t, parentBranchFromCreationMessage("branch: Created from release/foo", "feature", []string{"foo", "main"}))
-}
-
-func TestDetermineComparisonBaseUsesRemoteTrackingParentWhenNoLocalParentExists(t *testing.T) {
-	t.Parallel()
-
-	tool := &toolCheckSpecConformance{
-		git: fakeGitRunner{
-			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                   "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00branch: Created from origin/main\n",
-				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nrelease\n",
-				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/main\norigin/feature\n",
-				gitCommandKey("merge-base", "--fork-point", "release", "feature"):           "1111111111111111\n",
-				gitCommandKey("merge-base", "--fork-point", "origin/main", "feature"):       "cccccccccccccccc\n",
-			},
-		},
-	}
-
-	base, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
-	require.NoError(t, err)
-	assert.Equal(t, comparisonBase{
-		Branch:       "feature",
-		ParentBranch: "origin/main",
-		Commit:       "cccccccccccccccc",
-		Mode:         comparisonBaseModeBranchPoint,
-	}, base)
-}
-
-func TestDetermineComparisonBaseFailsWhenParentBranchIsAmbiguous(t *testing.T) {
-	t.Parallel()
-
-	tool := &toolCheckSpecConformance{
-		git: fakeGitRunner{
-			outputs: map[string]string{
-				gitCommandKey("branch", "--show-current"):                                   "feature\n",
-				gitCommandKey("reflog", "show", "--format=%H%x00%gs", "refs/heads/feature"): "bbbbbbbbbbbbbbbb\x00commit\naaaaaaaaaaaaaaaa\x00commit\n",
-				gitCommandKey("branch", "--format=%(refname:short)"):                        "feature\nmain\nrelease\n",
-				gitCommandKey("branch", "-r", "--format=%(refname:short)"):                  "origin/HEAD\norigin/feature\n",
-				gitCommandKey("merge-base", "--fork-point", "main", "feature"):              "aaaaaaaaaaaaaaaa\n",
-				gitCommandKey("merge-base", "--fork-point", "release", "feature"):           "aaaaaaaaaaaaaaaa\n",
-			},
+		heuristicBase: func(repoDir string) (string, string, error) {
+			return "", "main", nil
 		},
 	}
 
 	_, err := tool.determineComparisonBase(context.Background(), "/tmp/repo")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ambiguous parent branch")
+	assert.Contains(t, err.Error(), "empty commit")
+}
+
+func TestCollectRepoChangesUsesChangedPathsAndSeparatesUntracked(t *testing.T) {
+	t.Parallel()
+
+	tool := &toolCheckSpecConformance{
+		git: fakeGitRunner{
+			outputs: map[string]string{
+				gitCommandKey("ls-files", "--others", "--exclude-standard"): "internal/foo/new.txt\nscratch.md\n",
+			},
+		},
+		changedPaths: func(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error) {
+			assert.Equal(t, "/tmp/repo", repoDir)
+			assert.Equal(t, "0123456789abcdef", baseCommit)
+			assert.True(t, includeUncommitted)
+			return []string{
+				"internal/bar/bar.go",
+				"internal/foo/foo.go",
+				"internal/foo/new.txt",
+			}, nil
+		},
+	}
+
+	changes, err := tool.collectRepoChanges(context.Background(), "/tmp/repo", "0123456789abcdef")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"internal/bar/bar.go", "internal/foo/foo.go"}, changes.tracked)
+	assert.Equal(t, []string{"internal/foo/new.txt"}, changes.untracked)
 }
 
 func TestParsePackageCheckResultMarksNoDiffIssuesLatent(t *testing.T) {
@@ -259,6 +190,37 @@ func TestRunOnlyChangedChecksOnlyModifiedPackagesAndStoresCAS(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
+}
+
+func TestRunOnlyChangedChecksCommittedFeatureBranchChangesAgainstComparisonBase(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	runGit(t, moduleDir, "checkout", "-b", "feature")
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/foo.go"), fooGoFile(`"foo changed"`))
+	runGit(t, moduleDir, "add", "internal/foo/foo.go")
+	runGit(t, moduleDir, "commit", "-m", "change foo")
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-feature-branch",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+	assert.NotContains(t, parsed, "internal/bar")
 }
 
 func TestRunRechecksChangedCASVerifiedPackage(t *testing.T) {
@@ -547,6 +509,7 @@ func TestRunOnlyChangedDoesNotTreatRootPackageAsWholeRepo(t *testing.T) {
 	writeFile(t, filepath.Join(moduleDir, "SPEC.md"), rootSpec())
 	runGit(t, moduleDir, "add", ".")
 	runGit(t, moduleDir, "commit", "-m", "add root package")
+	runGit(t, moduleDir, "branch", "after-root")
 
 	writeFile(t, filepath.Join(moduleDir, "internal/foo/foo.go"), fooGoFile(`"foo changed"`))
 
@@ -820,6 +783,7 @@ func setupModuleRepo(t *testing.T) string {
 	runGit(t, moduleDir, "checkout", "-b", "main")
 	runGit(t, moduleDir, "add", ".")
 	runGit(t, moduleDir, "commit", "-m", "initial")
+	runGit(t, moduleDir, "branch", "gittools-base")
 	return moduleDir
 }
 

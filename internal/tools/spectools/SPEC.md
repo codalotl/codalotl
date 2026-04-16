@@ -59,10 +59,7 @@ Use cases:
 - The primary use-case is simple feature branches. Imagine a user branches from main a few days ago to work on users-feature-branch. Co-workers continue to merge their PRs into main, which the user pulls down. User makes several commits to users-feature-branch. They then run `check_spec_conformance`. The diff generated is between their current files and the branch's effective comparison base against its intended upstream.
 - Rebases matter. If the user rebases their feature branch onto newer `main`, treat that as equivalent to recreating the branch from newer `main` and replaying their branch commits. After the rebase, the effective comparison base moves forward to the branch's current fork-point with `main`.
 - If the user branches off of their own feature branch at and makes users-feature-branch-subbranch, then the diff is between the on-disk state and the point at which they branched off of users-feature-branch to make users-feature-branch-subbranch.
-- Historical branch-creation metadata may help identify intended upstream, but current fork-point semantics control the effective comparison base when they differ.
-- `branch: Created from HEAD` should work for ordinary feature branches by consulting relevant `HEAD` reflog checkout history to recover the source branch.
-- Ignore false ambiguity from refs that are effectively the current branch itself. Collapse ordinary local/remote aliases such as `main` plus `origin/main` when choosing intended upstream.
-- If the user is on main/master, the diff is ONLY against their uncommitted files. "What would a simple `git diff` show".
+- Comparison base selection and changed-path discovery use `internal/gittools.HeuristicMergeBase` and `internal/gittools.ChangedPathsSince`.
 
 ### Presentation
 
