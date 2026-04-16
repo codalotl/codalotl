@@ -91,7 +91,11 @@ Non-goals:
 - Replace the open-coded package-target authorizer code-unit construction with `codeunit.DefaultGoCodeUnit`.
 - Preserve the existing broader subtree behavior, while picking up the explicit hidden-dir exclusion.
 
-#### Packages `internal/tui`, `internal/noninteractive`
+#### Package `internal/tui` [DONE]
+- Replace open-coded package-mode code-unit construction with `codeunit.DefaultGoCodeUnit`.
+- Preserve the existing broader subtree behavior, while picking up the explicit hidden-dir exclusion.
+
+#### Package `internal/noninteractive`
 - Replace open-coded package-mode code-unit construction with `codeunit.DefaultGoCodeUnit`.
 - Preserve the existing broader subtree behavior, while picking up the explicit hidden-dir exclusion.
 
@@ -126,9 +130,9 @@ Non-goals:
 - `internal/gocas/casconformance` now keeps its package-shaped API while re-keying via `codeunit.DefaultGoCodeUnit`.
 - Current duplicate Go-package subtree builders:
   - `internal/noninteractive/noninteractive.go`
-  - `internal/tui/session.go`
   - `internal/tools/pkgtools/clarify_public_api.go`
 - `internal/agentbuilder` package-target authorizers now use `codeunit.DefaultGoCodeUnit`; tests cover visible support files, reachable `testdata`, nested-package exclusion, and hidden-dir exclusion.
+- `internal/tui` package mode now uses `codeunit.DefaultGoCodeUnit`; tests cover support dirs, reachable `testdata`, nested-package exclusion, and hidden-dir exclusion.
 - `internal/tools/spectools` now uses `codeunit.DefaultGoCodeUnit` for package authorizer scope and changed-path attribution, and its conformance CAS reuse now matches that same scope.
 - `internal/tools/spectools` still keeps extra deleted/nonexistent path handling via `blockedSubtrees`, now covering deleted descendant package paths and deleted hidden-dir paths.
 - `internal/gocas/casconformance` public API is package-shaped today and can likely keep that shape while changing its internal CAS keying.
