@@ -348,7 +348,7 @@ func (t *toolCheckSpecConformance) runPackageCheckWithSubagent(ctx context.Conte
 		}
 	}
 
-	unit, err := newPackageModeCodeUnit(fmt.Sprintf("package %s", req.Package.ImportPath), req.Package.AbsolutePath())
+	unit, err := codeunit.DefaultGoCodeUnit(req.Package.AbsolutePath())
 	if err != nil {
 		return "", err
 	}
@@ -630,7 +630,7 @@ func packageChangedPaths(pkg *gocode.Package, changes repoChanges) ([]string, []
 }
 
 func newPackageScope(pkg *gocode.Package, changes repoChanges) (*packagePathScope, error) {
-	codeUnitScope, err := newPackageModeCodeUnit(fmt.Sprintf("package %s", pkg.ImportPath), pkg.AbsolutePath())
+	codeUnitScope, err := codeunit.DefaultGoCodeUnit(pkg.AbsolutePath())
 	if err != nil {
 		return nil, err
 	}
@@ -640,6 +640,12 @@ func newPackageScope(pkg *gocode.Package, changes repoChanges) (*packagePathScop
 		return nil, err
 	}
 	blockedSubtrees = append(blockedSubtrees, descendantPackageDirsFromTrackedGoChanges(pkg, changes.tracked)...)
+	hiddenSubtrees, err := descendantHiddenDirsOnDisk(pkg)
+	if err != nil {
+		return nil, err
+	}
+	blockedSubtrees = append(blockedSubtrees, hiddenSubtrees...)
+	blockedSubtrees = append(blockedSubtrees, descendantHiddenDirsFromTrackedChanges(pkg, changes.tracked)...)
 
 	return &packagePathScope{
 		codeUnit:        codeUnitScope,
@@ -647,40 +653,6 @@ func newPackageScope(pkg *gocode.Package, changes repoChanges) (*packagePathScop
 		packageRelDir:   normalizeRelativeDir(pkg.RelativeDir),
 		blockedSubtrees: compactRelativeDirs(blockedSubtrees),
 	}, nil
-}
-
-func newPackageModeCodeUnit(name string, baseDir string) (*codeunit.CodeUnit, error) {
-	unit, err := codeunit.NewCodeUnit(name, baseDir)
-	if err != nil {
-		return nil, err
-	}
-	if err := unit.IncludeSubtreeUnlessContains("*.go"); err != nil {
-		return nil, err
-	}
-	if err := includeReachableTestdataDirs(unit, baseDir); err != nil {
-		return nil, err
-	}
-	return unit, nil
-}
-
-func includeReachableTestdataDirs(unit *codeunit.CodeUnit, baseDir string) error {
-	return filepath.WalkDir(baseDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() || path == baseDir || filepath.Base(path) != "testdata" {
-			return nil
-		}
-
-		parentDir := filepath.Dir(path)
-		if !unit.Includes(parentDir) {
-			return filepath.SkipDir
-		}
-		if unit.Includes(path) {
-			return nil
-		}
-		return unit.IncludeDir(path, true)
-	})
 }
 
 func descendantPackageDirsOnDisk(pkg *gocode.Package) ([]string, error) {
@@ -724,6 +696,33 @@ func descendantPackageDirsOnDisk(pkg *gocode.Package) ([]string, error) {
 	return descendantDirs, nil
 }
 
+func descendantHiddenDirsOnDisk(pkg *gocode.Package) ([]string, error) {
+	rootAbsDir := pkg.AbsolutePath()
+	moduleAbsDir := pkg.Module.AbsolutePath
+	var hiddenDirs []string
+
+	err := filepath.WalkDir(rootAbsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() || path == rootAbsDir || !strings.HasPrefix(d.Name(), ".") {
+			return nil
+		}
+
+		relDir, err := filepath.Rel(moduleAbsDir, path)
+		if err != nil {
+			return err
+		}
+		hiddenDirs = append(hiddenDirs, filepath.ToSlash(relDir))
+		return filepath.SkipDir
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return hiddenDirs, nil
+}
+
 func descendantPackageDirsFromTrackedGoChanges(pkg *gocode.Package, trackedPaths []string) []string {
 	packageRelDir := normalizeRelativeDir(pkg.RelativeDir)
 	descendantDirs := make([]string, 0, len(trackedPaths))
@@ -740,6 +739,20 @@ func descendantPackageDirsFromTrackedGoChanges(pkg *gocode.Package, trackedPaths
 		descendantDirs = append(descendantDirs, dir)
 	}
 	return descendantDirs
+}
+
+func descendantHiddenDirsFromTrackedChanges(pkg *gocode.Package, trackedPaths []string) []string {
+	packageRelDir := normalizeRelativeDir(pkg.RelativeDir)
+	hiddenDirs := make([]string, 0, len(trackedPaths))
+	for _, relPath := range trackedPaths {
+		relPath = filepath.ToSlash(relPath)
+		if !pathWithinRelativeDir(relPath, packageRelDir) {
+			continue
+		}
+
+		hiddenDirs = append(hiddenDirs, hiddenAncestorDirs(relPath, packageRelDir)...)
+	}
+	return hiddenDirs
 }
 
 func filterPackagePaths(scope *packagePathScope, relPaths []string) []string {
@@ -825,6 +838,29 @@ func compactRelativeDirs(relDirs []string) []string {
 	}
 
 	return compacted
+}
+
+func hiddenAncestorDirs(relPath string, packageRelDir string) []string {
+	relPath = filepath.ToSlash(relPath)
+	packageRelDir = normalizeRelativeDir(packageRelDir)
+	if !pathWithinRelativeDir(relPath, packageRelDir) {
+		return nil
+	}
+
+	parts := strings.Split(relPath, "/")
+	start := 0
+	if packageRelDir != "" {
+		start = len(strings.Split(packageRelDir, "/"))
+	}
+
+	hiddenDirs := make([]string, 0, len(parts)-start)
+	for i := start; i < len(parts)-1; i++ {
+		if !strings.HasPrefix(parts[i], ".") {
+			continue
+		}
+		hiddenDirs = append(hiddenDirs, strings.Join(parts[:i+1], "/"))
+	}
+	return hiddenDirs
 }
 
 func relativePathContainsDir(relPath string, dirName string) bool {
