@@ -81,6 +81,78 @@ func TestHappyPathExample(t *testing.T) {
 	assert.Equal(t, expected, unit.IncludedFiles())
 }
 
+func TestDefaultGoCodeUnit(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+
+	writeFile := func(rel string) {
+		t.Helper()
+		path := filepath.Join(base, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("payload"), 0o644))
+	}
+
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "docs", "empty", "nested"), 0o755))
+
+	writeFile("main.go")
+	writeFile("README.md")
+	writeFile(".env")
+	writeFile(filepath.Join(".codalotl", "config.yml"))
+	writeFile(filepath.Join("docs", "guide.md"))
+	writeFile(filepath.Join("docs", ".keep"))
+	writeFile(filepath.Join("docs", ".draft", "notes.md"))
+	writeFile(filepath.Join("docs", "testdata", "case.go"))
+	writeFile(filepath.Join("docs", "testdata", "fixtures", "data.json"))
+	writeFile(filepath.Join("testdata", "rootcase.go"))
+	writeFile(filepath.Join("testdata", ".hidden", "ignored.txt"))
+	writeFile(filepath.Join("pkg", "main.go"))
+	writeFile(filepath.Join("pkg", "testdata", "unreachable.txt"))
+
+	unit, err := codeunit.DefaultGoCodeUnit(base)
+	require.NoError(t, err)
+
+	assert.Equal(t, "package "+filepath.Base(base), unit.Name())
+	assert.True(t, unit.Includes(".env"))
+	assert.True(t, unit.Includes("docs"))
+	assert.True(t, unit.Includes(filepath.Join("docs", ".keep")))
+	assert.True(t, unit.Includes(filepath.Join("docs", "testdata")))
+	assert.True(t, unit.Includes(filepath.Join("docs", "testdata", "case.go")))
+	assert.True(t, unit.Includes("testdata"))
+	assert.True(t, unit.Includes(filepath.Join("testdata", "rootcase.go")))
+
+	assert.False(t, unit.Includes(".codalotl"))
+	assert.False(t, unit.Includes(filepath.Join(".codalotl", "config.yml")))
+	assert.False(t, unit.Includes(filepath.Join("docs", ".draft")))
+	assert.False(t, unit.Includes(filepath.Join("docs", ".draft", "notes.md")))
+	assert.False(t, unit.Includes(filepath.Join("docs", "empty")))
+	assert.False(t, unit.Includes(filepath.Join("docs", "empty", "nested")))
+	assert.False(t, unit.Includes(filepath.Join("testdata", ".hidden")))
+	assert.False(t, unit.Includes(filepath.Join("testdata", ".hidden", "ignored.txt")))
+	assert.False(t, unit.Includes("pkg"))
+	assert.False(t, unit.Includes(filepath.Join("pkg", "testdata")))
+	assert.False(t, unit.Includes(filepath.Join("pkg", "testdata", "unreachable.txt")))
+
+	expected := []string{
+		base,
+		filepath.Join(base, ".env"),
+		filepath.Join(base, "README.md"),
+		filepath.Join(base, "docs"),
+		filepath.Join(base, "docs", ".keep"),
+		filepath.Join(base, "docs", "guide.md"),
+		filepath.Join(base, "docs", "testdata"),
+		filepath.Join(base, "docs", "testdata", "case.go"),
+		filepath.Join(base, "docs", "testdata", "fixtures"),
+		filepath.Join(base, "docs", "testdata", "fixtures", "data.json"),
+		filepath.Join(base, "main.go"),
+		filepath.Join(base, "testdata"),
+		filepath.Join(base, "testdata", "rootcase.go"),
+	}
+	slices.Sort(expected)
+
+	assert.Equal(t, expected, unit.IncludedFiles())
+}
+
 func TestNewCodeUnitValidation(t *testing.T) {
 	t.Parallel()
 

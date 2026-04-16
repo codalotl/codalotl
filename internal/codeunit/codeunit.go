@@ -48,6 +48,25 @@ func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error) {
 	return c, nil
 }
 
+// DefaultGoCodeUnit builds the shared default code unit for subtree-oriented Go package work rooted at absBaseDir. It includes absBaseDir and direct files in it,
+// recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes empty dirs, and excludes descendant dirs whose
+// basename starts with `.`.
+func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error) {
+	unit, err := NewCodeUnit("package "+filepath.Base(absBaseDir), absBaseDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := unit.includeSubtreeUnlessContainsWithFilter(unit.skipDefaultGoCodeUnitDir, "*.go"); err != nil {
+		return nil, err
+	}
+	if err := unit.includeReachableDirsNamedWithFilter("testdata", unit.skipDefaultGoCodeUnitDir); err != nil {
+		return nil, err
+	}
+	unit.PruneEmptyDirs()
+	return unit, nil
+}
+
 // Name returns the configured name, or "code unit" if "" was configured.
 func (c *CodeUnit) Name() string {
 	if c.name == "" {
@@ -122,18 +141,7 @@ func (c *CodeUnit) IncludedFiles() []string {
 
 // IncludeEntireSubtree includes the entire subtree rooted in BaseDir().
 func (c *CodeUnit) IncludeEntireSubtree() {
-	_ = filepath.WalkDir(c.baseDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			if err := c.ensureParentIncluded(path); err != nil {
-				return err
-			}
-			c.includedDirs[path] = struct{}{}
-		}
-		return nil
-	})
+	_ = c.includeExistingDir(c.baseDir, true, nil)
 }
 
 // IncludeDir includes dirPath (and all files in it) in the code unit. dirPath must be a dir (either relative or absolute), and its parent must already be in the
@@ -144,34 +152,16 @@ func (c *CodeUnit) IncludeDir(dirPath string, includeSubtree bool) error {
 		return err
 	}
 
-	if err := c.ensureParentIncluded(dirAbs); err != nil {
-		return err
-	}
-
-	if includeSubtree {
-		return filepath.WalkDir(dirAbs, func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if !d.IsDir() {
-				return nil
-			}
-
-			if err := c.ensureParentIncluded(path); err != nil {
-				return err
-			}
-			c.includedDirs[path] = struct{}{}
-			return nil
-		})
-	}
-
-	c.includedDirs[dirAbs] = struct{}{}
-	return nil
+	return c.includeExistingDir(dirAbs, includeSubtree, nil)
 }
 
 // IncludeSubtreeUnlessContains recursively includes all dirs in BaseDir() unless the directory contains files matched by any glob pattern. For example, in Go, we
 // could do IncludeSubtreeUnlessContains("*.go") which will not include nested packages, but will include supporting data directories.
 func (c *CodeUnit) IncludeSubtreeUnlessContains(globPattern ...string) error {
+	return c.includeSubtreeUnlessContainsWithFilter(nil, globPattern...)
+}
+
+func (c *CodeUnit) includeSubtreeUnlessContainsWithFilter(shouldSkipDir func(string) bool, globPattern ...string) error {
 	queue := []string{c.baseDir}
 
 	for len(queue) > 0 {
@@ -188,6 +178,9 @@ func (c *CodeUnit) IncludeSubtreeUnlessContains(globPattern ...string) error {
 				continue
 			}
 			child := filepath.Join(dir, entry.Name())
+			if shouldSkipDir != nil && shouldSkipDir(child) {
+				continue
+			}
 			shouldSkip, err := c.dirContainsPattern(child, globPattern)
 			if err != nil {
 				return err
@@ -195,7 +188,7 @@ func (c *CodeUnit) IncludeSubtreeUnlessContains(globPattern ...string) error {
 			if shouldSkip {
 				continue
 			}
-			if err := c.IncludeDir(child, false); err != nil {
+			if err := c.includeExistingDir(child, false, shouldSkipDir); err != nil {
 				return err
 			}
 			queue = append(queue, child)
@@ -262,6 +255,36 @@ func (c *CodeUnit) normalizeExistingDir(dirPath string) (string, error) {
 	return abs, nil
 }
 
+func (c *CodeUnit) includeExistingDir(dirAbs string, includeSubtree bool, shouldSkipDir func(string) bool) error {
+	if shouldSkipDir != nil && shouldSkipDir(dirAbs) {
+		return nil
+	}
+	if err := c.ensureParentIncluded(dirAbs); err != nil {
+		return err
+	}
+	if !includeSubtree {
+		c.includedDirs[dirAbs] = struct{}{}
+		return nil
+	}
+
+	return filepath.WalkDir(dirAbs, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		if shouldSkipDir != nil && shouldSkipDir(path) {
+			return fs.SkipDir
+		}
+		if err := c.ensureParentIncluded(path); err != nil {
+			return err
+		}
+		c.includedDirs[path] = struct{}{}
+		return nil
+	})
+}
+
 func (c *CodeUnit) ensureParentIncluded(dir string) error {
 	if dir == c.baseDir {
 		return nil
@@ -274,6 +297,62 @@ func (c *CodeUnit) ensureParentIncluded(dir string) error {
 		return fmt.Errorf("parent directory %s is not included", parent)
 	}
 	return nil
+}
+
+func (c *CodeUnit) includeReachableDirsNamedWithFilter(name string, shouldSkipDir func(string) bool) error {
+	queue := []string{c.baseDir}
+	queued := map[string]struct{}{
+		c.baseDir: {},
+	}
+
+	for len(queue) > 0 {
+		dir := queue[0]
+		queue = queue[1:]
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return fmt.Errorf("read dir %s: %w", dir, err)
+		}
+
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			child := filepath.Join(dir, entry.Name())
+			if shouldSkipDir != nil && shouldSkipDir(child) {
+				continue
+			}
+
+			if _, ok := c.includedDirs[child]; ok {
+				if _, seen := queued[child]; !seen {
+					queued[child] = struct{}{}
+					queue = append(queue, child)
+				}
+				continue
+			}
+
+			if entry.Name() != name {
+				continue
+			}
+
+			if err := c.includeExistingDir(child, true, shouldSkipDir); err != nil {
+				return err
+			}
+			queued[child] = struct{}{}
+			queue = append(queue, child)
+		}
+	}
+
+	return nil
+}
+
+func (c *CodeUnit) skipDefaultGoCodeUnitDir(dir string) bool {
+	if dir == c.baseDir {
+		return false
+	}
+	base := filepath.Base(dir)
+	return len(base) > 0 && base[0] == '.'
 }
 
 func (c *CodeUnit) dirContainsPattern(dir string, patterns []string) (bool, error) {

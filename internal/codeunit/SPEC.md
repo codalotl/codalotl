@@ -54,9 +54,9 @@ type CodeUnit struct {
 // absBaseDir must be absolute.
 func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error)
 
-// DefaultGoCodeUnit builds the shared default code unit for subtree-oriented Go package work rooted at absBaseDir.
-// It includes absBaseDir and direct files in it, recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes
-// empty dirs, and excludes descendant dirs whose basename starts with `.`.
+// DefaultGoCodeUnit builds the shared default code unit for subtree-oriented Go package work rooted at absBaseDir. It includes absBaseDir and direct files in it,
+// recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes empty dirs, and excludes descendant dirs whose
+// basename starts with `.`.
 func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error)
 
 // Name returns the configured name, or "code unit" if "" was configured.
