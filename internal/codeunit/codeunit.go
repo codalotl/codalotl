@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // CodeUnit represents a set of files rooted at a base directory.
@@ -49,8 +50,8 @@ func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error) {
 }
 
 // DefaultGoCodeUnit builds the shared default code unit for subtree-oriented Go package work rooted at absBaseDir. It includes absBaseDir and direct files in it,
-// recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes empty dirs, and excludes descendant dirs whose
-// basename starts with `.`.
+// recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes structural dirs, and excludes descendant dirs
+// whose basename starts with `.`.
 func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error) {
 	unit, err := NewCodeUnit("package "+filepath.Base(absBaseDir), absBaseDir)
 	if err != nil {
@@ -63,7 +64,7 @@ func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error) {
 	if err := unit.includeReachableDirsNamedWithFilter("testdata", unit.skipDefaultGoCodeUnitDir); err != nil {
 		return nil, err
 	}
-	unit.PruneEmptyDirs()
+	unit.PruneStructuralDirs()
 	return unit, nil
 }
 
@@ -231,6 +232,44 @@ func (c *CodeUnit) PruneEmptyDirs() {
 	}
 }
 
+// PruneStructuralDirs removes included dirs that exist only to reach other on-disk structure. A dir is kept if it has included files, has a kept descendant, or
+// is an actually empty leaf dir on disk.
+func (c *CodeUnit) PruneStructuralDirs() {
+	dirs := make([]string, 0, len(c.includedDirs))
+	for dir := range c.includedDirs {
+		dirs = append(dirs, dir)
+	}
+	slices.SortFunc(dirs, func(a, b string) int {
+		aDepth := strings.Count(a, string(os.PathSeparator))
+		bDepth := strings.Count(b, string(os.PathSeparator))
+		switch {
+		case aDepth > bDepth:
+			return -1
+		case aDepth < bDepth:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	keptChildren := make(map[string]int)
+	keptDirs := make(map[string]struct{}, len(c.includedDirs))
+	keptDirs[c.baseDir] = struct{}{}
+
+	for _, dir := range dirs {
+		if dir == c.baseDir {
+			continue
+		}
+
+		if c.dirHasNonDirFiles(dir) || c.dirIsActuallyEmptyLeaf(dir) || keptChildren[dir] > 0 {
+			keptDirs[dir] = struct{}{}
+			keptChildren[filepath.Dir(dir)]++
+		}
+	}
+
+	c.includedDirs = keptDirs
+}
+
 func (c *CodeUnit) normalizeExistingDir(dirPath string) (string, error) {
 	if dirPath == "" {
 		return "", errors.New("directory path is empty")
@@ -395,4 +434,12 @@ func (c *CodeUnit) dirHasNonDirFiles(dir string) bool {
 		return true
 	}
 	return false
+}
+
+func (c *CodeUnit) dirIsActuallyEmptyLeaf(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	return len(entries) == 0
 }

@@ -22,9 +22,9 @@ err = unit.IncludeSubtreeUnlessContains("*.go", "go.mod") // include all dirs bu
 err = unit.IncludeDir("testdata", true) // testdata can include .go files; they're not a real package.
 // (handle err -- testdata might not exist, which is okay)
 
-// removes empty "hierarchy-based" dirs. ex: /path/to/mymod has a package; /path/to/mymod/providers/openai and /path/to/mymod/providers/anthropic exist. The providers dir
-// is otherwise empty, and so will be pruned. It's not intended to be part of this unit.
-unit.PruneEmptyDirs()
+// removes "structural" dirs. ex: /path/to/mymod has a package; /path/to/mymod/internal/foo and /path/to/mymod/internal/bar are nested packages. The internal dir
+// is otherwise structural, so it will be pruned. Actually empty leaf dirs are kept.
+unit.PruneStructuralDirs()
 
 // ...
 
@@ -55,8 +55,8 @@ type CodeUnit struct {
 func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error)
 
 // DefaultGoCodeUnit builds the shared default code unit for subtree-oriented Go package work rooted at absBaseDir. It includes absBaseDir and direct files in it,
-// recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes empty dirs, and excludes descendant dirs whose
-// basename starts with `.`.
+// recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes structural dirs, and excludes descendant dirs
+// whose basename starts with `.`.
 func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error)
 
 // Name returns the configured name, or "code unit" if "" was configured.
@@ -84,4 +84,8 @@ func (c *CodeUnit) IncludeSubtreeUnlessContains(globPattern ...string) error
 
 // PruneEmptyDirs iteratively removes all leaf dirs that have no files (except for the base dir), until there is nothing left to prune.
 func (c *CodeUnit) PruneEmptyDirs()
+
+// PruneStructuralDirs removes included dirs that exist only to reach other on-disk structure. A dir is kept if it has included files, has a kept descendant, or
+// is an actually empty leaf dir on disk.
+func (c *CodeUnit) PruneStructuralDirs()
 ```
