@@ -160,6 +160,35 @@ func TestDefaultGoCodeUnit(t *testing.T) {
 	assert.Equal(t, expected, unit.IncludedFiles())
 }
 
+func TestDefaultGoCodeUnitNameUsesModuleRelativePath(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(base, "go.mod"), []byte("module example.com/test\n\ngo 1.24.0\n"), 0o644))
+
+	pkgDir := filepath.Join(base, "foo", "bar")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "thing.go"), []byte("package bar\n"), 0o644))
+
+	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
+	require.NoError(t, err)
+
+	assert.Equal(t, "package foo/bar", unit.Name())
+}
+
+func TestDefaultGoCodeUnitNameUsesDotAtModuleRoot(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(base, "go.mod"), []byte("module example.com/test\n\ngo 1.24.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "main.go"), []byte("package main\n"), 0o644))
+
+	unit, err := codeunit.DefaultGoCodeUnit(base)
+	require.NoError(t, err)
+
+	assert.Equal(t, "package .", unit.Name())
+}
+
 func TestNewCodeUnitValidation(t *testing.T) {
 	t.Parallel()
 

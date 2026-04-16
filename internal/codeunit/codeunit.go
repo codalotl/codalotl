@@ -53,7 +53,7 @@ func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error) {
 // recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes structural dirs, and excludes descendant dirs
 // whose basename starts with `.`.
 func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error) {
-	unit, err := NewCodeUnit("package "+filepath.Base(absBaseDir), absBaseDir)
+	unit, err := NewCodeUnit(defaultGoCodeUnitName(absBaseDir), absBaseDir)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +66,39 @@ func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error) {
 	}
 	unit.PruneStructuralDirs()
 	return unit, nil
+}
+
+func defaultGoCodeUnitName(absBaseDir string) string {
+	cleanBase := filepath.Clean(absBaseDir)
+	if relPkgPath, ok := goModuleRelativePackagePath(cleanBase); ok {
+		return "package " + relPkgPath
+	}
+	return "package " + filepath.Base(cleanBase)
+}
+
+func goModuleRelativePackagePath(absBaseDir string) (string, bool) {
+	searchDir := filepath.Clean(absBaseDir)
+
+	for {
+		goModPath := filepath.Join(searchDir, "go.mod")
+		info, err := os.Stat(goModPath)
+		if err == nil && !info.IsDir() {
+			relPath, err := filepath.Rel(searchDir, absBaseDir)
+			if err != nil {
+				return "", false
+			}
+			return filepath.ToSlash(relPath), true
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return "", false
+		}
+
+		parent := filepath.Dir(searchDir)
+		if parent == searchDir {
+			return "", false
+		}
+		searchDir = parent
+	}
 }
 
 // Name returns the configured name, or "code unit" if "" was configured.
