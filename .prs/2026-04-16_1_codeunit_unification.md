@@ -91,7 +91,7 @@ Non-goals:
 - Replace open-coded package-mode code-unit construction with `codeunit.DefaultGoCodeUnit`.
 - Preserve the existing broader subtree behavior, while picking up the explicit hidden-dir exclusion.
 
-#### Package `internal/tools/spectools`
+#### Package `internal/tools/spectools` [DONE]
 - Use `codeunit.DefaultGoCodeUnit` for:
   - package authorizer scope
   - package changed-path attribution / diff scope
@@ -125,6 +125,6 @@ Non-goals:
   - `internal/tui/session.go`
   - `internal/agentbuilder/yaml.go`
   - `internal/tools/pkgtools/clarify_public_api.go`
-  - `internal/tools/spectools/check_spec_conformance.go`
-- `internal/tools/spectools` already has extra diff-scope logic for deleted/nonexistent paths via `blockedSubtrees`; likely keep that and swap only the on-disk scope builder.
+- `internal/tools/spectools` now uses `codeunit.DefaultGoCodeUnit` for package authorizer scope and changed-path attribution, and its conformance CAS reuse now matches that same scope.
+- `internal/tools/spectools` still keeps extra deleted/nonexistent path handling via `blockedSubtrees`, now covering deleted descendant package paths and deleted hidden-dir paths.
 - `internal/gocas/casconformance` public API is package-shaped today and can likely keep that shape while changing its internal CAS keying.
