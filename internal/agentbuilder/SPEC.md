@@ -50,11 +50,11 @@ Agents:
     - When combined with `include_package_mode_context`, AGENTS.md text precedes generated package context.
 
 Tools:
-- A tool must have `name`, `description`, `parameters`, `presenter`, and then one of {`command`, `subagent`}.
+- A tool must have `name`, `description`, `parameters`, and then one of {`command`, `subagent`}.
 - `name` is the tool name.
 - `description` is the tool description (this is sent to the LLM as the tool description).
-- `parameters` is an object, which has fields that map to parameters. Each parameter must have `type` (ex: `string`), `description` (sent to LLM), and `required` (true or false). This maps to the construction of an `llmstream.ToolInfo`.
-- `presenter` is an object which configures an `llmstream.Presenter` (used to format the tool call/response in the TUI). See `### Presenters` below.
+- `parameters` is an object, which has fields that map to parameters. Each parameter must have `type` (ex: `string`) and `description` (sent to LLM). `required` is optional and defaults to false. This maps to the construction of an `llmstream.ToolInfo`.
+- `presenter` is optional. When present, it is an object which configures an `llmstream.Presenter` (used to format the tool call/response in the TUI). See `### Presenters` below.
 - `command` is used to map the tool to the execution of a shell command. Subfields:
     - `cmd`: the actual command to run (not including args).
     - `args`: array of strings. Each string can use Go templating.
