@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -341,45 +340,9 @@ func newClarifyTargetAuthorizer(baseAuthorizer authdomain.Authorizer, packageAbs
 		return nil, fmt.Errorf("package path is required")
 	}
 
-	unit, err := codeunit.NewCodeUnit(fmt.Sprintf("package %s", packageAbsDir), packageAbsDir)
+	unit, err := codeunit.DefaultGoCodeUnit(packageAbsDir)
 	if err != nil {
 		return nil, fmt.Errorf("build code unit: %w", err)
 	}
-	if err := unit.IncludeSubtreeUnlessContains("*.go"); err != nil {
-		return nil, fmt.Errorf("expand code unit subtree: %w", err)
-	}
-	if err := includeReachableTestdataDirs(unit); err != nil {
-		return nil, fmt.Errorf("include reachable testdata dirs: %w", err)
-	}
 	return authdomain.NewCodeUnitAuthorizer(unit, baseAuthorizer), nil
-}
-
-func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
-	if unit == nil {
-		return nil
-	}
-
-	for _, absPath := range unit.IncludedFiles() {
-		info, err := os.Stat(absPath)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-
-		testdataPath := filepath.Join(absPath, "testdata")
-		tdInfo, err := os.Stat(testdataPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return fmt.Errorf("stat %q: %w", testdataPath, err)
-		}
-		if !tdInfo.IsDir() || unit.Includes(testdataPath) {
-			continue
-		}
-		if err := unit.IncludeDir(testdataPath, true); err != nil {
-			return fmt.Errorf("include %q: %w", testdataPath, err)
-		}
-	}
-
-	return nil
 }
