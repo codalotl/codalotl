@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
@@ -124,7 +125,7 @@ func TestParsePackageCheckResultMarksNoDiffIssuesLatent(t *testing.T) {
 	assert.True(t, result.Nonconformances[0].Latent)
 }
 
-func TestNewPackageModeCodeUnitIncludesReachableTestdataAndExcludesNestedPackages(t *testing.T) {
+func TestDefaultGoCodeUnitIncludesReachableTestdataAndExcludesNestedPackagesAndHiddenDirs(t *testing.T) {
 	t.Parallel()
 
 	pkgDir := t.TempDir()
@@ -132,16 +133,18 @@ func TestNewPackageModeCodeUnitIncludesReachableTestdataAndExcludesNestedPackage
 	writeFile(t, filepath.Join(pkgDir, "README.md"), "# foo\n")
 	writeFile(t, filepath.Join(pkgDir, "support/config.json"), "{}\n")
 	writeFile(t, filepath.Join(pkgDir, "testdata/fixture.go"), "package fixture\n")
+	writeFile(t, filepath.Join(pkgDir, ".hidden/config.json"), "{}\n")
 	writeFile(t, filepath.Join(pkgDir, "child/child.go"), childGoFile(`"child"`))
 	writeFile(t, filepath.Join(pkgDir, "child/notes.txt"), "nested support\n")
 	writeFile(t, filepath.Join(pkgDir, "child/testdata/input.txt"), "nested fixture\n")
 
-	unit, err := newPackageModeCodeUnit("package example.com/foo", pkgDir)
+	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
 	require.NoError(t, err)
 
 	assert.True(t, unit.Includes(filepath.Join(pkgDir, "README.md")))
 	assert.True(t, unit.Includes(filepath.Join(pkgDir, "support/config.json")))
 	assert.True(t, unit.Includes(filepath.Join(pkgDir, "testdata/fixture.go")))
+	assert.False(t, unit.Includes(filepath.Join(pkgDir, ".hidden/config.json")))
 	assert.False(t, unit.Includes(filepath.Join(pkgDir, "child/child.go")))
 	assert.False(t, unit.Includes(filepath.Join(pkgDir, "child/notes.txt")))
 	assert.False(t, unit.Includes(filepath.Join(pkgDir, "child/testdata/input.txt")))
@@ -490,6 +493,36 @@ func TestRunOnlyChangedDoesNotAttributeDeletedDescendantPackagePathsToParent(t *
 
 	result := tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-descendant-delete",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Empty(t, parsed)
+	assert.Empty(t, recorder.list())
+}
+
+func TestRunOnlyChangedDoesNotAttributeDeletedHiddenDirPathsToPackage(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/.hidden/config.json"), "{\n  \"enabled\": true\n}\n")
+	runGit(t, moduleDir, "add", ".")
+	runGit(t, moduleDir, "commit", "-m", "add hidden support dir")
+
+	require.NoError(t, os.RemoveAll(filepath.Join(moduleDir, "internal/foo/.hidden")))
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-hidden-delete",
 		Name:   ToolNameCheckSpecConformance,
 		Type:   "function_call",
 		Input:  `{"only_changed":true}`,

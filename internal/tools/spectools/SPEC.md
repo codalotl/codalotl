@@ -15,6 +15,8 @@ Details:
 - Runs one `limited_package_mode` subagent per package, with bounded concurrency.
 - Supplies package diff and programmatic `spec diff` context to each subagent.
 - Subagent instructions remain read-only in intent and use the `$spec-md` check-conformance workflow.
+- Package scope is the default Go code unit rooted at the package dir.
+    - This same scope is used for the subagent authorizer, changed-path attribution, and conforming-package CAS reuse / invalidation.
 - Tool result is raw JSON keyed by module-relative package dir. Only checked packages appear.
 - If a checked package has no diff against the comparison base, any reported nonconformance is `latent=true`.
 - CAS writes:

@@ -643,6 +643,43 @@ func TestBuildAuthorizerForToolsAppliesGrantsToCodeUnitAuthorizer(t *testing.T) 
 	}
 }
 
+func TestBuildAuthorizerForToolsPackageModeUsesDefaultGoCodeUnitScope(t *testing.T) {
+	t.Parallel()
+
+	sandbox := t.TempDir()
+	pkgRelPath := "internal/mypkg"
+	pkgAbsPath := filepath.Join(sandbox, filepath.FromSlash(pkgRelPath))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(pkgAbsPath, "data"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(pkgAbsPath, "fixtures", "testdata"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(pkgAbsPath, ".cache"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(pkgAbsPath, "childpkg"), 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(pkgAbsPath, "mypkg.go"), []byte("package mypkg\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgAbsPath, "data", "config.yml"), []byte("value: 1\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgAbsPath, "fixtures", "testdata", "fixture.go"), []byte("package fixture\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgAbsPath, ".cache", "note.txt"), []byte("hidden\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgAbsPath, "childpkg", "child.go"), []byte("package childpkg\n"), 0o644))
+
+	authorizer, err := buildAuthorizerForTools(
+		true,
+		pkgRelPath,
+		pkgAbsPath,
+		authdomain.NewAutoApproveAuthorizer(sandbox),
+		"",
+		nil,
+	)
+	require.NoError(t, err)
+	t.Cleanup(authorizer.Close)
+
+	assert.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(pkgAbsPath, "mypkg.go")))
+	assert.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(pkgAbsPath, "data", "config.yml")))
+	assert.NoError(t, authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(pkgAbsPath, "fixtures", "testdata", "fixture.go")))
+
+	assert.Error(t, authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(pkgAbsPath, ".cache", "note.txt")))
+	assert.Error(t, authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(pkgAbsPath, "childpkg", "child.go")))
+}
+
 type fakeSessionSend struct {
 	events              []agent.Event
 	tokenUsage          llmstream.TokenUsage

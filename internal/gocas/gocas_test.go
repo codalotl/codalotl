@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/stretchr/testify/require"
@@ -17,24 +18,30 @@ type testPayload struct {
 
 const testNamespace Namespace = "gocas-test"
 
+func writeTestFile(t *testing.T, path string, contents []byte) {
+	t.Helper()
+
+	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(path, contents, 0o644)
+	require.NoError(t, err)
+}
+
 func writeTestModuleWithPackage(t *testing.T, modDir string) *gocode.Package {
 	t.Helper()
 
-	err := os.WriteFile(filepath.Join(modDir, "go.mod"), []byte("module example.com/tmp\n\ngo 1.22\n"), 0o644)
-	require.NoError(t, err)
+	writeTestFile(t, filepath.Join(modDir, "go.mod"), []byte("module example.com/tmp\n\ngo 1.22\n"))
 
 	pkgDir := filepath.Join(modDir, "foo")
-	err = os.MkdirAll(pkgDir, 0o755)
-	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(pkgDir, "SPEC.md"), []byte("# foo\n\npackage spec\n"), 0o644)
+	err := os.MkdirAll(pkgDir, 0o755)
 	require.NoError(t, err)
 
-	err = os.WriteFile(filepath.Join(pkgDir, "foo.go"), []byte("package foo\n\nfunc A() {}\n"), 0o644)
-	require.NoError(t, err)
+	writeTestFile(t, filepath.Join(pkgDir, "SPEC.md"), []byte("# foo\n\npackage spec\n"))
+	writeTestFile(t, filepath.Join(pkgDir, "foo.go"), []byte("package foo\n\nfunc A() {}\n"))
 
 	// Ensure we cover pkg.TestPackage hashing as well.
-	err = os.WriteFile(filepath.Join(pkgDir, "foo_test.go"), []byte("package foo_test\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n"), 0o644)
-	require.NoError(t, err)
+	writeTestFile(t, filepath.Join(pkgDir, "foo_test.go"), []byte("package foo_test\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n"))
 
 	m, err := gocode.NewModule(modDir)
 	require.NoError(t, err)
@@ -67,6 +74,71 @@ func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
 	require.Equal(t, 7, got.N)
 	require.Greater(t, ai.UnixTimestamp, 0)
 	require.Equal(t, []string{"foo/SPEC.md", "foo/foo.go", "foo/foo_test.go"}, ai.Paths)
+}
+
+func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_RoundTrip(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	writeTestModuleWithPackage(t, baseDir)
+	writeTestFile(t, filepath.Join(baseDir, "foo", "data", "config.yml"), []byte("name: demo\n"))
+	writeTestFile(t, filepath.Join(baseDir, "foo", ".hidden", "ignored.txt"), []byte("ignored\n"))
+
+	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
+	require.NoError(t, err)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 11})
+	require.NoError(t, err)
+
+	var got testPayload
+	ok, ai, err := db.RetrieveOnCodeUnit(unit, testNamespace, &got)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, 11, got.N)
+	require.Greater(t, ai.UnixTimestamp, 0)
+	require.Equal(t, []string{
+		"foo/SPEC.md",
+		"foo/data/config.yml",
+		"foo/foo.go",
+		"foo/foo_test.go",
+	}, ai.Paths)
+}
+
+func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_SupportFileAffectsKey(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	writeTestModuleWithPackage(t, baseDir)
+	supportFile := filepath.Join(baseDir, "foo", "data", "config.yml")
+	writeTestFile(t, supportFile, []byte("name: before\n"))
+
+	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
+	require.NoError(t, err)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 5})
+	require.NoError(t, err)
+
+	err = os.WriteFile(supportFile, []byte("name: after\n"), 0o644)
+	require.NoError(t, err)
+
+	var got testPayload
+	ok, _, err := db.RetrieveOnCodeUnit(unit, testNamespace, &got)
+	require.NoError(t, err)
+	require.False(t, ok)
 }
 
 func TestRetrieveOnPackage_MissDoesNotMutateTarget(t *testing.T) {
@@ -118,6 +190,34 @@ func TestPackageHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 9, got.N)
+}
+
+func TestStoreOnPackage_IgnoresCodeUnitSupportFiles(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	supportFile := filepath.Join(baseDir, "foo", "data", "config.yml")
+	writeTestFile(t, supportFile, []byte("name: before\n"))
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 13})
+	require.NoError(t, err)
+
+	err = os.WriteFile(supportFile, []byte("name: after\n"), 0o644)
+	require.NoError(t, err)
+
+	var got testPayload
+	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, 13, got.N)
 }
 
 func TestStoreOnPackage_ErrOnUnreadableFile(t *testing.T) {

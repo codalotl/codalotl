@@ -1062,7 +1062,11 @@ func (t *yamlSubagentTool) buildInvokeRequest(messages []string, params map[stri
 
 		req.CallerSandboxDir = overrideSandboxDir
 		req.ToolOptions.SandboxDir = overrideSandboxDir
-		req.CallerAuthorizer = t.buildTargetPackageAuthorizer(targetPackage, overrideSandboxDir)
+		targetAuthorizer, err := t.buildTargetPackageAuthorizer(targetPackage, overrideSandboxDir)
+		if err != nil {
+			return toolsetinterface.InvokeRequest{}, err
+		}
+		req.CallerAuthorizer = targetAuthorizer
 		req.ToolOptions.Authorizer = req.CallerAuthorizer
 	}
 
@@ -1133,51 +1137,18 @@ func (t *yamlSubagentTool) resolveTargetPackage(params map[string]any) (resolved
 	return target, nil
 }
 
-func (t *yamlSubagentTool) buildTargetPackageAuthorizer(target resolvedPackageTarget, sandboxDir string) authdomain.Authorizer {
+func (t *yamlSubagentTool) buildTargetPackageAuthorizer(target resolvedPackageTarget, sandboxDir string) (authdomain.Authorizer, error) {
+	unit, err := codeunit.DefaultGoCodeUnit(target.AbsDir)
+	if err != nil {
+		return nil, fmt.Errorf("build default go code unit for target package %q: %w", target.AbsDir, err)
+	}
+
 	fallback := authdomain.NewAutoApproveAuthorizer(sandboxDir)
 	if target.WithinSandbox && t.opts.Authorizer != nil {
 		fallback = t.opts.Authorizer.WithoutCodeUnit()
 	}
 
-	unit, err := codeunit.NewCodeUnit("package "+target.AbsDir, target.AbsDir)
-	if err != nil {
-		return fallback
-	}
-	if err := unit.IncludeSubtreeUnlessContains("*.go"); err == nil {
-		_ = includeReachableTestdataDirs(unit)
-		unit.PruneEmptyDirs()
-	}
-	return authdomain.NewCodeUnitAuthorizer(unit, fallback)
-}
-
-func includeReachableTestdataDirs(unit *codeunit.CodeUnit) error {
-	if unit == nil {
-		return nil
-	}
-
-	for _, absPath := range unit.IncludedFiles() {
-		info, err := os.Stat(absPath)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-
-		testdataPath := filepath.Join(absPath, "testdata")
-		tdInfo, err := os.Stat(testdataPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return fmt.Errorf("stat %q: %w", testdataPath, err)
-		}
-		if !tdInfo.IsDir() || unit.Includes(testdataPath) {
-			continue
-		}
-		if err := unit.IncludeDir(testdataPath, true); err != nil {
-			return fmt.Errorf("include %q: %w", testdataPath, err)
-		}
-	}
-
-	return nil
+	return authdomain.NewCodeUnitAuthorizer(unit, fallback), nil
 }
 
 func parseYAMLToolCallParams(raw string, paramSpecs map[string]yamlNormalizedParameter) (map[string]any, error) {

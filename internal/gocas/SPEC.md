@@ -1,6 +1,6 @@
 # gocas
 
-This package stores metadata about Go packages using content-addressable storage. It wraps `internal/q/cas` to add Go-specific and application-specific niceties.
+This package stores metadata about Go packages and code units using content-addressable storage. It wraps `internal/q/cas` to add Go-specific and application-specific niceties.
 
 ## Dependencies
 
@@ -8,9 +8,9 @@ This package stores metadata about Go packages using content-addressable storage
 
 ## AdditionalInfo
 
-- StoreOnPackage captures `cas.AdditionalInfo` in a best-effort way by shelling out to `git`.
+- `StoreOnPackage` and `StoreOnCodeUnit` capture `cas.AdditionalInfo` in a best-effort way by shelling out to `git`.
 - If `git` isn't found, there's no `git` repo, there's no current branch (or similar), no error is returned. Those fields are left as zero values on `cas.AdditionalInfo`.
-    - StoreOnPackage should not fail just because the user doesn't use git or their git state is unusual.
+    - These store methods should not fail just because the user doesn't use git or their git state is unusual.
 
 ## Public API
 
@@ -24,12 +24,12 @@ This package stores metadata about Go packages using content-addressable storage
 //   - Bump it when the stored JSON schema or semantics change, to avoid decoding old data into a new type.
 type Namespace string
 
-// DB stores and retrieves Go-package-adjacent metadata in content-addressable storage (CAS).
+// DB stores and retrieves Go-package-adjacent and code-unit-adjacent metadata in content-addressable storage (CAS).
 //
-// Keys are derived from the Go source files in a package (see StoreOnPackage) plus a Namespace. Values are stored as JSON.
+// Keys are derived from either package files (see StoreOnPackage) or code-unit files (see StoreOnCodeUnit), plus a Namespace. Values are stored as JSON.
 //
 // DB wraps cas.DB to add:
-//   - keying based on gocode.Package files (file-content hashing)
+//   - keying based on gocode.Package files or codeunit.CodeUnit files (file-content hashing)
 //   - best-effort git metadata capture (returned as cas.AdditionalInfo)
 //
 // Most callers should use the methods on *DB, rather than calling methods on the embedded cas.DB directly.
@@ -48,6 +48,27 @@ type DB struct {
 	//	<AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>
 	cas.DB
 }
+
+// StoreOnCodeUnit stores jsonable for (unit, namespace).
+//
+// Storage key is content-addressed from the included files in unit and their file contents, plus namespace. Paths are interpreted relative to BaseDir.
+//
+// If any included file cannot be read, StoreOnCodeUnit returns an error.
+//
+// jsonable must be encodable by encoding/json (and is stored as JSON bytes).
+//
+// StoreOnCodeUnit returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
+func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, jsonable any) error
+
+// RetrieveOnCodeUnit loads the stored value for (unit, namespace) into target.
+//
+// ok reports whether a value existed. When ok is false, target is left unchanged.
+//
+// additionalInfo is returned from the underlying CAS layer and may include best-effort git metadata captured at store time. Most callers should treat AdditionalInfo
+// as optional; see cas.AdditionalInfo field docs for details.
+//
+// RetrieveOnCodeUnit returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
+func (db *DB) RetrieveOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
 
 // StoreOnPackage stores jsonable for (pkg, namespace).
 //

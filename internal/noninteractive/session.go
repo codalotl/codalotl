@@ -508,7 +508,7 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 
 		switch ev.Type {
 		case agent.EventTypeToolCall:
-			formatted := s.formatter.FormatEvent(legacyFormattedToolEvent(ev), s.terminalWidth)
+			formatted := formatHumanToolEvent(s.formatter, s.terminalWidth, legacyFormattedToolEvent(ev))
 			if shouldSuppressFormattedOutput(formatted) || formatted == "" {
 				continue
 			}
@@ -528,7 +528,7 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 			if ev.ToolResult != nil && strings.TrimSpace(ev.ToolResult.CallID) != "" {
 				toolCallPrinter.Cancel(ev.ToolResult.CallID)
 			}
-			formatted := s.formatter.FormatEvent(legacyFormattedToolEvent(ev), s.terminalWidth)
+			formatted := formatHumanToolEvent(s.formatter, s.terminalWidth, legacyFormattedToolEvent(ev))
 			if shouldSuppressFormattedOutput(formatted) || formatted == "" {
 				continue
 			}
@@ -561,6 +561,46 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 		return result, &printedError{err: terminalErr}
 	}
 	return result, nil
+}
+
+func formatHumanToolEvent(formatter agentformatter.Formatter, terminalWidth int, ev agent.Event) string {
+	if formatter == nil {
+		return presenterSummaryFallback(ev)
+	}
+
+	formatted := formatter.FormatEvent(ev, terminalWidth)
+	if formatted != "" || ev.Type != agent.EventTypeToolCall {
+		return formatted
+	}
+
+	return presenterSummaryFallback(ev)
+}
+
+func presenterSummaryFallback(ev agent.Event) string {
+	if ev.Type != agent.EventTypeToolCall || ev.Tool == nil || ev.Tool.Presenter() == nil || ev.ToolCall == nil {
+		return ""
+	}
+
+	summary := renderPresentationLine(ev.Tool.Presenter().Present(*ev.ToolCall, nil).Summary)
+	if summary == "" {
+		return ""
+	}
+	return "• " + summary
+}
+
+func renderPresentationLine(line llmstream.Line) string {
+	if len(line.Segments) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	for i, seg := range line.Segments {
+		if line.JoinWithSpace && i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(seg.Text)
+	}
+	return b.String()
 }
 
 func (s *Session) writeFilteredEvents(events []agent.Event) error {

@@ -24,6 +24,11 @@ func TestNewSession_PackageMode_IncludesDataDirsButNotNestedPackages(t *testing.
 	require.NoError(t, os.MkdirAll(bobDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(bobDir, "data.txt"), []byte("hello\n"), 0o644))
 
+	// Hidden descendant dirs are excluded from the package-mode code unit.
+	hiddenDir := filepath.Join(pkgAbsDir, ".hidden")
+	require.NoError(t, os.MkdirAll(hiddenDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hiddenDir, "secret.txt"), []byte("shh\n"), 0o644))
+
 	// Nested Go package (should be excluded from the code unit).
 	subpkgDir := filepath.Join(pkgAbsDir, "subpkg")
 	require.NoError(t, os.MkdirAll(subpkgDir, 0o755))
@@ -43,4 +48,5 @@ func TestNewSession_PackageMode_IncludesDataDirsButNotNestedPackages(t *testing.
 	require.NoError(t, s.authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(bobTestdataDir, "fixture.go")))
 
 	require.Error(t, s.authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(subpkgDir, "sub.go")))
+	require.Error(t, s.authorizer.IsAuthorizedForRead(false, "", "read_file", filepath.Join(hiddenDir, "secret.txt")))
 }
