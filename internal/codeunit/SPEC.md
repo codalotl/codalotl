@@ -6,6 +6,8 @@ Grouping a codebase into units is useful so that we can limit an LLM to work on 
 
 In Go, a package is a great default codeunit. But sometimes Go codebases are constructed such that one main package is supported by several small ones (possibly internal). A human engineer typically considers this whole tree as a single "unit". Therefore, we need the ability to model this.
 
+For common Go-package subtree work, this package also exposes a shared default constructor so multiple systems can agree on the same package-workspace surface without each open-coding it.
+
 ## Usage
 
 A typical usage pattern for a Go code unit might be:
@@ -51,6 +53,11 @@ type CodeUnit struct {
 // NewCodeUnit creates a new code unit named `name` (ex: "package codeunit") that includes absBaseDir and all direct files (but not directories) in it. It is non-recursive.
 // absBaseDir must be absolute.
 func NewCodeUnit(name string, absBaseDir string) (*CodeUnit, error)
+
+// DefaultGoCodeUnit builds the shared default code unit for subtree-oriented Go package work rooted at absBaseDir.
+// It includes absBaseDir and direct files in it, recursively includes descendant dirs unless that dir contains `*.go`, includes reachable `testdata` dirs, prunes
+// empty dirs, and excludes descendant dirs whose basename starts with `.`.
+func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error)
 
 // Name returns the configured name, or "code unit" if "" was configured.
 func (c *CodeUnit) Name() string

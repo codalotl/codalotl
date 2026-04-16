@@ -1,6 +1,8 @@
 # casconformance
 Thin wrapper around `internal/gocas` for storing spec-conformance results for a `*gocode.Package`.
 
+Conformance records for a package are keyed by the default Go code unit rooted at that package dir, not just the package's Go source files.
+
 ## Public API
 
 ```go

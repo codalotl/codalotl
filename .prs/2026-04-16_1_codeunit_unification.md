@@ -61,3 +61,67 @@ Non-goals:
 - Do not try to solve every possible tool-specific invalidation problem in this PR.
   - Some tools may legitimately depend on files outside the package subtree, such as `go.mod`, and that is a separate design question.
 - Do not overfit this to `.codalotl` specifically. The intended rule is hidden descendant dirs in general, not a one-off hard-coded repo name list.
+
+## Plan
+
+### Phase 0
+
+#### Package `internal/codeunit`
+- Add shared constructor `DefaultGoCodeUnit(absBaseDir string) (*codeunit.CodeUnit, error)` for subtree-oriented Go package work.
+- Semantics:
+  - include base dir and direct files in it
+  - recursively include descendant dirs unless that dir contains `*.go`
+  - include reachable `testdata` subtrees even when they contain `*.go`
+  - prune empty dirs
+  - exclude descendant dirs whose basename starts with `.`
+- This is the shared default for package workspace / subtree scope. It does not replace more specific or narrower code-unit construction when a caller wants something else.
+
+#### Package `internal/gocas`
+- Add `StoreOnCodeUnit` / `RetrieveOnCodeUnit`.
+- Hash included files from a `codeunit.CodeUnit`, with path names still interpreted relative to `gocas.DB.BaseDir`.
+- Keep `StoreOnPackage` / `RetrieveOnPackage` as the narrower Go-package API.
+
+#### Package `internal/gocas/casconformance`
+- Keep the package-shaped public API.
+- Re-key conformance records using the default Go code unit rooted at the package dir so conformance caching matches `check_spec_conformance` scope.
+
+### Phase 1
+
+#### Packages `internal/tui`, `internal/noninteractive`, `internal/agentbuilder`
+- Replace open-coded package-mode code-unit construction with `codeunit.DefaultGoCodeUnit`.
+- Preserve the existing broader subtree behavior, while picking up the explicit hidden-dir exclusion.
+
+#### Package `internal/tools/spectools`
+- Use `codeunit.DefaultGoCodeUnit` for:
+  - package authorizer scope
+  - package changed-path attribution / diff scope
+  - conformance CAS reuse / invalidation
+- Keep any extra deleted-path handling needed so changed-path attribution still works when paths no longer exist on disk.
+
+### Possible follow-up
+
+#### Package `internal/tools/pkgtools`
+- Evaluate whether other package-targeted jails such as `clarify_public_api` should also switch to `DefaultGoCodeUnit`.
+- This is not required to satisfy the user request; only do it in this PR if it is obviously the same concept and stays low-risk.
+
+## Decisions
+
+- Guaranteed scope for this PR: package-mode jails plus `check_spec_conformance`.
+- Other package-targeted jails are opportunistic cleanup, not required for completion.
+
+## Review
+
+- Pending.
+
+## Summary
+
+## State
+
+- Current duplicate Go-package subtree builders:
+  - `internal/noninteractive/noninteractive.go`
+  - `internal/tui/session.go`
+  - `internal/agentbuilder/yaml.go`
+  - `internal/tools/pkgtools/clarify_public_api.go`
+  - `internal/tools/spectools/check_spec_conformance.go`
+- `internal/tools/spectools` already has extra diff-scope logic for deleted/nonexistent paths via `blockedSubtrees`; likely keep that and swap only the on-disk scope builder.
+- `internal/gocas/casconformance` public API is package-shaped today and can likely keep that shape while changing its internal CAS keying.
