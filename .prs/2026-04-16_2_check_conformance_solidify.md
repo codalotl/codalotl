@@ -15,23 +15,27 @@ Goal:
 
 ## Plan
 
-### Phase 0
+### Phase 0 [DONE]
 
-#### Package internal/tools/spectools
+#### Package internal/tools/spectools [DONE]
 - Tighten `check_spec_conformance` result contract in `internal/tools/spectools/SPEC.md` so invalid subagent JSON combinations fail closed:
-  - `{"conforms":true}` must not include `nonconformances`
+  - `{"conforms":true}` must not include non-null `nonconformances`; explicit `null` is acceptable and treated the same as omission
   - `{"conforms":false}` must include at least one nonconformance
 - Update completion presentation so non-conforming packages surface actual nonconformance details instead of only counts.
 - Implement in `internal/tools/spectools/check_spec_conformance.go` and extend focused unit coverage in `internal/tools/spectools/check_spec_conformance_test.go`.
-- Follow-up from conformance check: reject explicit `{"conforms":true,"nonconformances":null}` the same way as other invalid `conforms=true` shapes.
+
+## Decisions
+
+- User decision: `{"conforms":true,"nonconformances":null}` is harmless and should remain valid. Handle this with a `SPEC.md` change, not an implementation change.
 
 ## Review
 
-### `check_spec_conformance` with `only_changed=true`
+### `check_spec_conformance` with `only_changed=true` [DONE]
 
-- Result: `internal/tools/spectools` is currently non-conforming.
-- Reported nonconformance:
-  - `minor`, `latent=false`: `parsePackageCheckResult` still accepts `{"conforms":true,"nonconformances":null}` and normalizes it to a conforming result, but the SPEC requires any `conforms=true` result to omit `nonconformances` entirely and treat any other shape as a package-scoped error.
+- Initial run flagged `{"conforms":true,"nonconformances":null}` as non-conforming under the earlier spec wording.
+- User decided that shape is harmless and should be accepted by spec.
+- Updated `internal/tools/spectools/SPEC.md` so explicit `null` is equivalent to omission for `conforms=true`.
+- Reran `check_spec_conformance` with `only_changed=true`: `internal/tools/spectools` conforms.
 
 ## Summary
 
@@ -40,7 +44,8 @@ Goal:
 - Branch: `jn/check_conformance_solidify`
 - Target package: `internal/tools/spectools`
 - Impl commit `56cee46` now rejects `conforms=true` payloads that include `nonconformances`, and rejects `conforms=false` payloads without at least one issue
+- `conforms=true` with explicit `nonconformances:null` is now intentionally allowed by `internal/tools/spectools/SPEC.md`
 - `presentCheckSpecConformanceBody` now renders per-package issue details as `- [severity, new|latent] message`
 - Focused coverage added for invalid result shapes and for completion-body issue rendering
 - Verified locally: `go test ./internal/tools/spectools`
-- Conformance re-check with `only_changed=true` still reports one remaining gap: explicit `nonconformances:null` is accepted for `conforms=true`
+- After the spec adjustment, `check_spec_conformance` with `only_changed=true` reports `internal/tools/spectools` conforming

@@ -50,7 +50,7 @@ Example:
 ```
 
 Notes:
-- `conforms=true` omits `nonconformances`
+- `conforms=true` omits `nonconformances`; explicit `null` is equivalent to omission
 - `conforms=false` includes one or more `nonconformances`
 - Any other result-shape combination is invalid and is treated as a package-scoped error
 - `severity`: `trivial`, `minor`, or `major`
