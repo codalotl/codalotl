@@ -15,16 +15,23 @@ Goal:
 
 ## Plan
 
-### Phase 0 [DONE]
+### Phase 0
 
-#### Package internal/tools/spectools [DONE]
+#### Package internal/tools/spectools
 - Tighten `check_spec_conformance` result contract in `internal/tools/spectools/SPEC.md` so invalid subagent JSON combinations fail closed:
   - `{"conforms":true}` must not include `nonconformances`
   - `{"conforms":false}` must include at least one nonconformance
 - Update completion presentation so non-conforming packages surface actual nonconformance details instead of only counts.
 - Implement in `internal/tools/spectools/check_spec_conformance.go` and extend focused unit coverage in `internal/tools/spectools/check_spec_conformance_test.go`.
+- Follow-up from conformance check: reject explicit `{"conforms":true,"nonconformances":null}` the same way as other invalid `conforms=true` shapes.
 
 ## Review
+
+### `check_spec_conformance` with `only_changed=true`
+
+- Result: `internal/tools/spectools` is currently non-conforming.
+- Reported nonconformance:
+  - `minor`, `latent=false`: `parsePackageCheckResult` still accepts `{"conforms":true,"nonconformances":null}` and normalizes it to a conforming result, but the SPEC requires any `conforms=true` result to omit `nonconformances` entirely and treat any other shape as a package-scoped error.
 
 ## Summary
 
@@ -36,3 +43,4 @@ Goal:
 - `presentCheckSpecConformanceBody` now renders per-package issue details as `- [severity, new|latent] message`
 - Focused coverage added for invalid result shapes and for completion-body issue rendering
 - Verified locally: `go test ./internal/tools/spectools`
+- Conformance re-check with `only_changed=true` still reports one remaining gap: explicit `nonconformances:null` is accepted for `conforms=true`
