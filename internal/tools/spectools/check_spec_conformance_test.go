@@ -125,6 +125,75 @@ func TestParsePackageCheckResultMarksNoDiffIssuesLatent(t *testing.T) {
 	assert.True(t, result.Nonconformances[0].Latent)
 }
 
+func TestParsePackageCheckResultRejectsInvalidResultShapes(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name   string
+		answer string
+	}{
+		{
+			name:   "conforms true with empty nonconformances",
+			answer: `{"conforms":true,"nonconformances":[]}`,
+		},
+		{
+			name:   "conforms true with nonconformances",
+			answer: `{"conforms":true,"nonconformances":[{"severity":"minor","latent":false,"message":"mismatch"}]}`,
+		},
+		{
+			name:   "conforms false without nonconformances",
+			answer: `{"conforms":false}`,
+		},
+		{
+			name:   "conforms false with empty nonconformances",
+			answer: `{"conforms":false,"nonconformances":[]}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := parsePackageCheckResult(tc.answer, true)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing.T) {
+	t.Parallel()
+
+	body, ok := presentCheckSpecConformanceBody(`{
+		"internal/foo": {
+			"conforms": true
+		},
+		"internal/bar": {
+			"conforms": false,
+			"nonconformances": [
+				{"severity": "major", "latent": false, "message": "missing Foo docs"},
+				{"severity": "minor", "latent": true, "message": "Bar usage example is stale"}
+			]
+		},
+		"internal/baz": {
+			"error": "timed out"
+		}
+	}`)
+	require.True(t, ok)
+
+	paragraph, ok := body.(llmstream.Paragraph)
+	require.True(t, ok)
+
+	rendered := renderPresentationLines(paragraph.Lines)
+	assert.Contains(t, rendered, "1 conforming, 1 non-conforming, 1 errors")
+	assert.Contains(t, rendered, "Conforming: internal/foo")
+	assert.Contains(t, rendered, "Non-conforming:")
+	assert.Contains(t, rendered, "internal/bar:")
+	assert.Contains(t, rendered, "- [major, new] missing Foo docs")
+	assert.Contains(t, rendered, "- [minor, latent] Bar usage example is stale")
+	assert.Contains(t, rendered, "Errors: internal/baz")
+}
+
 func TestDefaultGoCodeUnitIncludesReachableTestdataAndExcludesNestedPackagesAndHiddenDirs(t *testing.T) {
 	t.Parallel()
 
@@ -874,4 +943,22 @@ func rootSpec() string {
 
 func nestedSpec() string {
 	return "# nested\n\n## Public API\n\n```go\n// Nested returns nested.\nfunc Nested() string\n```\n"
+}
+
+func renderPresentationLines(lines []llmstream.Line) string {
+	rendered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		segments := make([]string, 0, len(line.Segments))
+		for _, segment := range line.Segments {
+			segments = append(segments, segment.Text)
+		}
+
+		separator := ""
+		if line.JoinWithSpace {
+			separator = " "
+		}
+		rendered = append(rendered, strings.Join(segments, separator))
+	}
+
+	return strings.Join(rendered, "\n")
 }

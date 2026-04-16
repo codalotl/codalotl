@@ -900,8 +900,13 @@ func parsePackageCheckResult(answer string, hasDiff bool) (packageCheckResult, e
 	}
 
 	if *result.Conforms {
-		result.Nonconformances = nil
+		if result.Nonconformances != nil {
+			return packageCheckResult{}, fmt.Errorf("subagent returned nonconformances for conforms=true")
+		}
 		return result, nil
+	}
+	if len(result.Nonconformances) == 0 {
+		return packageCheckResult{}, fmt.Errorf("subagent returned conforms=false without nonconformances")
 	}
 
 	for i := range result.Nonconformances {
@@ -1136,7 +1141,7 @@ func presentCheckSpecConformanceBody(raw string) (llmstream.Block, bool) {
 			conforming = append(conforming, key)
 			continue
 		}
-		nonconforming = append(nonconforming, fmt.Sprintf("%s (%d)", key, len(result.Nonconformances)))
+		nonconforming = append(nonconforming, key)
 	}
 
 	lines := []llmstream.Line{{
@@ -1158,12 +1163,32 @@ func presentCheckSpecConformanceBody(raw string) (llmstream.Block, bool) {
 	}
 	if len(nonconforming) > 0 {
 		lines = append(lines, llmstream.Line{
-			JoinWithSpace: true,
 			Segments: []llmstream.Segment{
 				{Text: "Non-conforming:", Role: llmstream.RoleAccent},
-				{Text: strings.Join(nonconforming, ", "), Role: llmstream.RoleNormal},
 			},
 		})
+		for _, key := range nonconforming {
+			result := results[key]
+			lines = append(lines, llmstream.Line{
+				Segments: []llmstream.Segment{
+					{Text: key + ":", Role: llmstream.RoleAccent},
+				},
+			})
+			for _, issue := range result.Nonconformances {
+				issueScope := "new"
+				if issue.Latent {
+					issueScope = "latent"
+				}
+				lines = append(lines, llmstream.Line{
+					Segments: []llmstream.Segment{
+						{
+							Text: fmt.Sprintf("- [%s, %s] %s", issue.Severity, issueScope, issue.Message),
+							Role: llmstream.RoleNormal,
+						},
+					},
+				})
+			}
+		}
 	}
 	if len(errors) > 0 {
 		lines = append(lines, llmstream.Line{
