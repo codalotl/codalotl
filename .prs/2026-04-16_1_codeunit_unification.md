@@ -108,9 +108,9 @@ Non-goals:
 
 ### Possible follow-up
 
-#### Package `internal/tools/pkgtools`
-- Evaluate whether other package-targeted jails such as `clarify_public_api` should also switch to `DefaultGoCodeUnit`.
-- This is not required to satisfy the user request; only do it in this PR if it is obviously the same concept and stays low-risk.
+#### Package `internal/tools/pkgtools` [DONE]
+- `clarify_public_api` also uses `DefaultGoCodeUnit`.
+- This stayed narrow and low-risk; other `pkgtools` package-target tools were left unchanged.
 
 ## Decisions
 
@@ -128,12 +128,12 @@ Non-goals:
 - `internal/codeunit` now has `DefaultGoCodeUnit`; tests cover reachable `testdata`, hidden descendant dirs, empty-dir pruning, and nested-package exclusion.
 - `internal/gocas` now has `StoreOnCodeUnit` / `RetrieveOnCodeUnit`; hashing uses code-unit included files but still records paths relative to `gocas.DB.BaseDir`.
 - `internal/gocas/casconformance` now keeps its package-shaped API while re-keying via `codeunit.DefaultGoCodeUnit`.
-- Current duplicate Go-package subtree builders:
-  - `internal/tools/pkgtools/clarify_public_api.go`
 - `internal/agentbuilder` package-target authorizers now use `codeunit.DefaultGoCodeUnit`; tests cover visible support files, reachable `testdata`, nested-package exclusion, and hidden-dir exclusion.
 - `internal/tui` package mode now uses `codeunit.DefaultGoCodeUnit`; tests cover support dirs, reachable `testdata`, nested-package exclusion, and hidden-dir exclusion.
 - `internal/noninteractive` package mode now uses `codeunit.DefaultGoCodeUnit`; tests cover support dirs, reachable `testdata`, nested-package exclusion, and hidden-dir exclusion.
 - `internal/noninteractive/session.go` needed a localized fallback for presenter-backed tool-call summaries so package tests still surface human-readable tool output.
+- `internal/tools/pkgtools` `clarify_public_api` jail now uses `codeunit.DefaultGoCodeUnit`; tests cover hidden-dir exclusion in addition to existing package/data/testdata coverage.
+- Remaining `pkgtools` package-target tools still use narrower plain `codeunit.NewCodeUnit` jails rather than the broader subtree builder, so they were left unchanged in this PR.
 - `internal/tools/spectools` now uses `codeunit.DefaultGoCodeUnit` for package authorizer scope and changed-path attribution, and its conformance CAS reuse now matches that same scope.
 - `internal/tools/spectools` still keeps extra deleted/nonexistent path handling via `blockedSubtrees`, now covering deleted descendant package paths and deleted hidden-dir paths.
 - `internal/gocas/casconformance` public API is package-shaped today and can likely keep that shape while changing its internal CAS keying.
