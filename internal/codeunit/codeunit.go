@@ -64,7 +64,7 @@ func DefaultGoCodeUnit(absBaseDir string) (*CodeUnit, error) {
 	if err := unit.includeReachableDirsNamedWithFilter("testdata", unit.skipDefaultGoCodeUnitDir); err != nil {
 		return nil, err
 	}
-	unit.PruneStructuralDirs()
+	unit.pruneStructuralDirsWithFilter(unit.skipDefaultGoCodeUnitDir)
 	return unit, nil
 }
 
@@ -268,6 +268,10 @@ func (c *CodeUnit) PruneEmptyDirs() {
 // PruneStructuralDirs removes included dirs that exist only to reach other on-disk structure. A dir is kept if it has included files, has a kept descendant, or
 // is an actually empty leaf dir on disk.
 func (c *CodeUnit) PruneStructuralDirs() {
+	c.pruneStructuralDirsWithFilter(nil)
+}
+
+func (c *CodeUnit) pruneStructuralDirsWithFilter(shouldSkipDir func(string) bool) {
 	dirs := make([]string, 0, len(c.includedDirs))
 	for dir := range c.includedDirs {
 		dirs = append(dirs, dir)
@@ -294,7 +298,7 @@ func (c *CodeUnit) PruneStructuralDirs() {
 			continue
 		}
 
-		if c.dirHasNonDirFiles(dir) || c.dirIsActuallyEmptyLeaf(dir) || keptChildren[dir] > 0 {
+		if c.dirHasNonDirFiles(dir) || c.dirHasNoNonSkippedEntries(dir, shouldSkipDir) || keptChildren[dir] > 0 {
 			keptDirs[dir] = struct{}{}
 			keptChildren[filepath.Dir(dir)]++
 		}
@@ -469,10 +473,20 @@ func (c *CodeUnit) dirHasNonDirFiles(dir string) bool {
 	return false
 }
 
-func (c *CodeUnit) dirIsActuallyEmptyLeaf(dir string) bool {
+func (c *CodeUnit) dirHasNoNonSkippedEntries(dir string, shouldSkipDir func(string) bool) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return false
 	}
-	return len(entries) == 0
+	for _, entry := range entries {
+		child := filepath.Join(dir, entry.Name())
+		if entry.IsDir() {
+			if shouldSkipDir != nil && shouldSkipDir(child) {
+				continue
+			}
+			return false
+		}
+		return false
+	}
+	return true
 }

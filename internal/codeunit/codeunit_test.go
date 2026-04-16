@@ -160,6 +160,39 @@ func TestDefaultGoCodeUnit(t *testing.T) {
 	assert.Equal(t, expected, unit.IncludedFiles())
 }
 
+func TestDefaultGoCodeUnitKeepsVisibleParentOfSkippedHiddenDir(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+
+	writeFile := func(rel string) {
+		t.Helper()
+		path := filepath.Join(base, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("payload"), 0o644))
+	}
+
+	writeFile("main.go")
+	writeFile(filepath.Join("docs", ".draft", "notes.md"))
+
+	unit, err := codeunit.DefaultGoCodeUnit(base)
+	require.NoError(t, err)
+
+	assert.True(t, unit.Includes("docs"))
+	assert.True(t, unit.Includes(filepath.Join("docs", "new.md")))
+	assert.False(t, unit.Includes(filepath.Join("docs", ".draft")))
+	assert.False(t, unit.Includes(filepath.Join("docs", ".draft", "notes.md")))
+
+	expected := []string{
+		base,
+		filepath.Join(base, "docs"),
+		filepath.Join(base, "main.go"),
+	}
+	slices.Sort(expected)
+
+	assert.Equal(t, expected, unit.IncludedFiles())
+}
+
 func TestDefaultGoCodeUnitNameUsesModuleRelativePath(t *testing.T) {
 	t.Parallel()
 
