@@ -20,7 +20,7 @@ const (
 	EventTypeRetry                 EventType = "retry"
 )
 
-// Event conveys progress or status updates from the agent loop.
+// Event conveys progress or status updates from the agent loop. Which fields are set depends on the Type.
 type Event struct {
 	Agent            AgentMeta
 	Type             EventType
