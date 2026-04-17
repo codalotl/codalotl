@@ -13,8 +13,8 @@ Security/Authorization is orthogonal to `agent` (users may implement in their to
 ## Basic Usage
 
 ```go
-mainAgent, err := agent.NewAgent(model, prompt, tools)
-fmt.Println("Session ID: ", mainAgent.SessionID()) // some unique identifier per NewAgent. Guid-like.
+mainAgent, err := agent.New(prompt, tools, agent.NewOptions{Model: model})
+fmt.Println("Session ID: ", mainAgent.SessionID()) // some unique identifier per new root Agent. Guid-like.
 mainAgent.AddUserTurn(environmentStr) // Any string, which is just added as a user turn without sending it to the LLM.
 out := mainAgent.SendUserMessage(ctx, message)
 for ev := range out {
@@ -33,6 +33,8 @@ for ev := range out {
         fmt.Println("tool call: ", ev.Tool.Name(), ev.ToolCall)
     case agent.EventTypeToolComplete:
         fmt.Println("tool: ", ev.Tool.Name(), ev.ToolCall, ev.ToolResult) // ev.Tool is the concrete llmstream.Tool
+    case agent.EventTypeStartSubagent:
+        fmt.Println("subagent started: ", ev.StartSubagent.Label, ev.StartSubagent.ToolCallID)
     case agent.EventTypeAssistantTurnComplete:
         fmt.Println("turn: ", ev.Turn)
         fmt.Println("tokens used: ", ev.Turn.TokenUsage)
@@ -61,7 +63,11 @@ func (t *exploreTool) Run(ctx context.Context, call llmstream.ToolCall) llmstrea
         // return error (too much SubAgent nesting)
     }
     subAgentCreator := agent.SubAgentCreatorFromContext(ctx)
-    subAgent, err := subAgentCreator.NewWithDefaultModel(prompt, agent.AgentToolsFromContext(ctx))
+    subAgent, err := subAgentCreator.New(
+        prompt,
+        agent.AgentToolsFromContext(ctx),
+        agent.NewOptions{SubagentLabel: "Explore package metadata"},
+    )
     if err != nil {
         // ...
     }
@@ -78,6 +84,16 @@ func (t *exploreTool) Run(ctx context.Context, call llmstream.ToolCall) llmstrea
 - Multiple parallel SubAgents can be created inside a Run method.
 - In addition to a SubAgent keeping track of its own usage, any usage is also automatically added to its parent (recursively).
 - `AgentToolsFromContext` can be called to use the same tools as the parent.
+- SubAgents may be constructed with an optional display label.
+- SubAgent start events:
+    - `Event.StartSubagent` is the zero value unless `Event.Type == EventTypeStartSubagent`.
+    - `EventTypeStartSubagent` is only emitted for SubAgents, never for the root agent.
+    - Exactly one `EventTypeStartSubagent` event happens per subagent ID.
+    - It is emitted when that subagent's `SendUserMessage` call is accepted, not at construction time.
+    - It is the first event produced by that subagent in the shared event stream.
+    - Creating a SubAgent without calling `SendUserMessage` on it does not emit it.
+    - `AddUserTurn` on the SubAgent does not emit it.
+    - For this event, `Event.Agent.Parent == Event.StartSubagent.CallingAgentID`.
 
 The agent package contains an `AgentCreator` interface that a callee can accept, which will either create a primary agent or a SubAgent, based on how it was constructed.
 - This enables a function to be created (ex: ResearchPlan(ac AgentCreator, plan string, ...)) that either operates as a root agent, or as a SubAgent, with the same signature.
@@ -86,10 +102,13 @@ The agent package contains an `AgentCreator` interface that a callee can accept,
 func NewAgentCreator() AgentCreator
 
 type AgentCreator interface {
-	New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error)
+	// Model omitted: root creators use package default model; SubAgent creators use parent model.
+	New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
+}
 
-	// A SubAgent's default model is the same as the parent's model; otherwise, it's the package's default.
-	NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*Agent, error)
+type NewOptions struct {
+	Model         llmmodel.ModelID
+	SubagentLabel string
 }
 ```
 
@@ -105,8 +124,15 @@ type AgentMeta struct {
 type Event struct {
 	Agent AgentMeta
 	Tool  llmstream.Tool // nil on non-tool events
+	StartSubagent StartSubagent
 
 	// ... other fields
+}
+
+type StartSubagent struct {
+	CallingAgentID string // ID of agent/subagent creating the subagent.
+	ToolCallID     string // tool call ID creating the subagent.
+	Label          string // optional display label
 }
 ```
 
@@ -130,6 +156,22 @@ type Event struct {
 See Usage for implied interface. Additionally:
 
 ```go
+// New constructs a root Agent.
+func New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
+
+// NewAgentCreator returns an AgentCreator that constructs root agents.
+func NewAgentCreator() AgentCreator
+
+type NewOptions struct {
+	Model         llmmodel.ModelID
+	SubagentLabel string
+}
+
+type AgentCreator interface {
+	// Model omitted: root creators use package default model; SubAgent creators use parent model.
+	New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
+}
+
 // Status reports whether the agent is currently processing a turn.
 func (a *Agent) Status() Status
 

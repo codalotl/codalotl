@@ -38,3 +38,63 @@ Note:
 
 In terms of the `internal/agent` package itself:
 - Let's unify New vs NewWithDefaultModel into just New, which accepts options; model is one option, and subagent label is another. That's how this ultimately gets into agent.
+
+## Plan
+
+### Phase 0
+
+#### Package `internal/agent`
+- Update `internal/agent/SPEC.md` for a new `EventTypeStartSubagent` event and `Event.StartSubagent`.
+- Emit exactly one start-subagent event per subagent ID, only when `SendUserMessage` is accepted.
+- Make that event the first shared-stream event from the subagent.
+- Carry optional tool-supplied subagent labels through agent construction.
+- Collapse split construction APIs into one `New(..., options)` path where `Model` is optional and `SubagentLabel` is optional.
+
+#### Package `internal/agentregistry` and `internal/agent` callers
+- Update callsites that currently rely on `NewWithDefaultModel` to the unified `New(..., options)` API.
+- Preserve existing default-model behavior for both root creators and subagent creators.
+- No `SPEC.md` changes expected unless public docs become inaccurate during implementation.
+
+#### Package `internal/tools/pkgtools`
+- Retrofit `clarify_public_api` to pass a useful subagent label.
+- Keep existing presenter/result behavior unchanged; this is only about richer event metadata.
+
+#### Package `internal/tools/spectools`
+- Retrofit `check_spec_conformance` to label each package-check subagent, including concurrent launches.
+- Keep raw result JSON and completion semantics unchanged in this PR.
+
+#### Package `internal/tui`, `internal/agentformatter`, `internal/noninteractive`
+- Ensure the new event type is tolerated and does not show up as a standalone user-visible message yet.
+- Update focused tests where event switches or filters assume the old event set.
+
+#### Integration / fixtures
+- Patch replay or serialized fixtures that now include `start_subagent` events from subagent-based tools.
+- Keep tool-call request/response shapes stable aside from the new event-stream entries.
+
+## Review
+
+- Not run yet.
+
+## Summary
+
+## Decisions
+
+### Agent creation API shape
+- Use one agent-construction entrypoint with optional options rather than paired `New` / `NewWithDefaultModel` methods.
+- `Model` omitted means existing default behavior:
+  - root creators use the package default model
+  - subagent creators use the parent agent's model
+- `SubagentLabel` only affects emitted `EventTypeStartSubagent` metadata.
+
+### Consumer behavior in this PR
+- `EventTypeStartSubagent` is foundational metadata for later UI work.
+- Existing consumers should remain stable by ignoring or dropping the event unless they explicitly opt into using it.
+
+## State
+
+- This PR is a prerequisite for `.prs/2026-04-16_3_check_conformance_ui.md`.
+- Relevant packages: `internal/agent`, `internal/agentregistry`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tui`, `internal/agentformatter`, `internal/noninteractive`.
+- `internal/tools/spectools/check_spec_conformance.go` already launches concurrent subagents; this PR needs package labels there.
+- `internal/tools/pkgtools/clarify_public_api.go` is a good simple single-subagent tool to retrofit for labeled launches.
+- Current `internal/agent` split API is `NewAgent(...)` plus `AgentCreator.New(...)` and `AgentCreator.NewWithDefaultModel(...)`; the implementation lives mainly in `internal/agent/agent.go` and `internal/agent/subagent.go`.
+- Current formatter / TUI behavior for unknown event types is mostly "show nothing", but explicit event-type switches and tests will likely still need updates.

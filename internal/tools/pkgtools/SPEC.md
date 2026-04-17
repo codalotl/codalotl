@@ -25,6 +25,7 @@ Presentation specs for Go package tools.
 - In progress: `Clarifying API SomeIdentifier in some/pkg`
 - Complete: `Clarified API SomeIdentifier in some/pkg`
 - `SubagentEventPolicy`: `HideFinalMessage`
+- Clarify subagent may attach a label identifying target package and identifier.
 - In-progress body: question text
 - Complete body: answer text
 
