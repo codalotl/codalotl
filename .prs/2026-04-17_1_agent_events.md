@@ -94,6 +94,12 @@ In terms of the `internal/agent` package itself:
 
 ## Summary
 
+- Add `EventTypeStartSubagent` and `Event.StartSubagent` to `internal/agent`, emitting one metadata event per launched subagent when `SendUserMessage` is accepted and making it the first shared-stream event from that subagent.
+- Unify agent construction onto `New(..., options)` / `AgentCreator.New(..., options)` with optional `Model` and `SubagentLabel`, while preserving existing default-model behavior for root agents and subagents.
+- Retrofit labeled subagent launches in `internal/tools/pkgtools` (`clarify_public_api`) and `internal/tools/spectools` (`check_spec_conformance`) so downstream UI work can identify subagents more ergonomically.
+- Keep current consumers stable by treating the new event as non-user-visible metadata in `internal/tui`, `internal/noninteractive`, and the existing formatter path.
+- Update focused tests and affected integration fixtures/replay handling for subagent-based flows that now emit `start_subagent` events.
+
 ## Decisions
 
 ### Agent creation API shape
