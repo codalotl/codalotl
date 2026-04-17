@@ -4,7 +4,7 @@
 
 This PR is done in the `jn/check_conformance_ui` branch (as a prerequisite for `.prs/2026-04-16_3_check_conformance_ui.md`).
 
-Read the other PR file. In this PR file, our goal is to extend `agent` with events to support `.prs/2026-04-16_3_check_conformance_ui.md`.
+Read the other PR file. In this PR file, our goal is to extend `agent` with events to support `.prs/2026-04-16_3_check_conformance_ui.md`. The change is this file is necessary, but not sufficient, to enable `.prs/2026-04-16_3_check_conformance_ui.md`.
 
 Add event: `EventTypeStartSubagent`. `Event` will have field `StartSubagent StartSubagent`, where
 
@@ -23,12 +23,13 @@ Semantics:
 - Ideally I'd like this to be optional for the tool call, so that current tools don't need to be changed to call this.
 - If `agent` notices that subagents have in fact been created in a tool call without an EventTypeStartSubagent event, it automatically creates an EventTypeStartSubagent event.
     - This forms an invariant for event consumers: we only increase the depth of subagents by starting with an EventTypeStartSubagent event.
-- `agent` ensures only one EventTypeStartSubagent event happens per tool `ToolCallID`.
+- `agent` ensures only one EventTypeStartSubagent event happens per subagent ID.
 - I think (but am not sure) that for this event, `AgentMeta` should be the subagent's (`evt.AgentMeta.Parent == evt.StartSubagent.CallingAgentID`).
 
 Note:
 - add this situation to agent.
 - make sure nothing blows up (it will start sending these events on existing subagent-based tools)
-- adapt things like tui to handle these events if necessary
+- adapt things like tui to handle these events if necessary (they shouldn't be displayed -- mostly just dropped for now)
 - Probably need to manually modify the integration tests so that they expect these events
-- Retrofit one subagent-based tool like clarify_public_api to manually trigger this event to ensure that works.
+- Retrofit one traditional subagent-based tool like clarify_public_api to manually trigger this event to ensure that works.
+- Retrofit check_spec_conformance to make sure we can ergonomically attach subagent names in actually concurrent-based subagent tools.
