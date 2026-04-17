@@ -82,7 +82,15 @@ In terms of the `internal/agent` package itself:
 
 ## Review
 
-- Not run yet.
+- Manual review (user-provided, out of band): no actionable findings. The new start-subagent metadata is emitted consistently, tolerated by existing consumers, and the updated tests for agent, TUI, noninteractive, and affected tools pass.
+- `check_spec_conformance({"only_changed":true})` results:
+  - conforms: `internal/agentbuilder`, `internal/agentregistry`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tui`
+  - nonconforming: `internal/noninteractive`
+    - latent minor: `Options.ReflowWidth` is specified as controlling `updatedocs` reflow width, but `opts.ReflowWidth` is not used or propagated, so setting it currently has no effect
+  - package-level errors:
+    - `internal/agent`: `open_ai_send_async.stream via stream error: stream ID 71; INTERNAL_ERROR; received from peer`
+    - `internal/noninteractive/integration`: `open_ai_send_async.stream via stream error: stream ID 99; INTERNAL_ERROR; received from peer`
+- This PR is not ready to complete yet; a follow-up step is needed to resolve or otherwise address the failed SPEC conformance state and rerun it.
 
 ## Summary
 
@@ -123,3 +131,9 @@ In terms of the `internal/agent` package itself:
   - passed: `go test ./internal/tui`
 - Validation after the `internal/noninteractive` step:
   - passed: `go test ./internal/noninteractive/...`
+- Review/conformance status:
+  - manual review (user-provided) found no actionable issues
+  - `check_spec_conformance({"only_changed":true})` recorded CAS for conforming changed packages
+  - current blockers:
+    - `internal/noninteractive` latent minor SPEC nonconformance about `Options.ReflowWidth`
+    - transient package-check errors for `internal/agent` and `internal/noninteractive/integration`
