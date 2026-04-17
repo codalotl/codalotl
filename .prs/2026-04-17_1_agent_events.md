@@ -55,7 +55,7 @@ In terms of the `internal/agent` package itself:
 - Preserve existing default-model behavior for both root creators and subagent creators.
 - No `SPEC.md` changes expected unless public docs become inaccurate during implementation.
 
-#### Package `internal/tools/pkgtools`
+#### Package `internal/tools/pkgtools` [DONE]
 - Retrofit `clarify_public_api` to pass a useful subagent label.
 - Keep existing presenter/result behavior unchanged; this is only about richer event metadata.
 - Update `pkgtools`-side test fakes and any remaining local `AgentCreator` adapters to the unified `New(..., options)` API.
@@ -99,7 +99,9 @@ In terms of the `internal/agent` package itself:
 - `internal/tools/pkgtools/clarify_public_api.go` is a good simple single-subagent tool to retrofit for labeled launches.
 - `internal/agent` now emits `EventTypeStartSubagent` once per subagent send-start and uses unified creation via `New(..., options)` / `AgentCreator.New(..., options)`.
 - `internal/agentregistry` has been updated to the unified constructor API; `internal/agentbuilder` test adapters were updated as part of the same transition.
+- `internal/tools/pkgtools` now wraps the per-call `AgentCreator` for `clarify_public_api` so the launched subagent gets a label derived from package + identifier, without changing tool output or presenter behavior.
 - Current formatter / TUI behavior for unknown event types is mostly "show nothing", but explicit event-type switches and tests will likely still need updates.
 - Validation after the `internal/agent` step:
   - passed: `go test ./internal/agent ./internal/agentregistry ./internal/agentbuilder`
-  - pending follow-up in `internal/tools/pkgtools`: targeted `go test ./internal/tools/pkgtools` currently fails because local fake `AgentCreator` implementations still use the old interface
+- Validation after the `internal/tools/pkgtools` step:
+  - passed: `go test ./internal/tools/pkgtools`
