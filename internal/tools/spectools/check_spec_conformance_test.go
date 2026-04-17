@@ -11,11 +11,13 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -192,6 +194,111 @@ func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing
 	assert.Contains(t, rendered, "- [major, new] missing Foo docs")
 	assert.Contains(t, rendered, "- [minor, latent] Bar usage example is stale")
 	assert.Contains(t, rendered, "Errors: internal/baz")
+}
+
+func TestRunPackageCheckWithSubagentLabelsSubagentWithPackageKey(t *testing.T) {
+	t.Parallel()
+
+	moduleDir := setupModuleRepo(t)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+
+	creator := &recordingSubAgentCreator{}
+	expectedErr := errors.New("stop after invoke")
+	invoker := funcAgentInvoker{
+		invoke: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+			assert.Equal(t, checkSpecConformanceAgentName, agentName)
+
+			_, err := req.AgentCreator.New("system", nil, agent.NewOptions{SubagentLabel: "wrong"})
+			require.NoError(t, err)
+			return nil, expectedErr
+		},
+	}
+
+	tool := &toolCheckSpecConformance{
+		sandboxAbsDir: moduleDir,
+		agentInvoker:  invoker,
+		subAgentCreatorFromContext: func(context.Context) (agent.SubAgentCreator, error) {
+			return creator, nil
+		},
+	}
+
+	_, err = tool.runPackageCheckWithSubagent(context.Background(), packageCheckRequest{
+		Key:     "internal/foo",
+		Package: fooPkg,
+	})
+	require.ErrorIs(t, err, expectedErr)
+	assert.Equal(t, []string{"internal/foo"}, creator.labels())
+}
+
+func TestRunPackageCheckWithSubagentKeepsConcurrentLabelsPerRequest(t *testing.T) {
+	t.Parallel()
+
+	moduleDir := setupModuleRepo(t)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
+	require.NoError(t, err)
+
+	creator := &recordingSubAgentCreator{}
+	expectedErr := errors.New("stop after invoke")
+	var invokerMu sync.Mutex
+	invokerCalls := 0
+	release := make(chan struct{})
+	invoker := funcAgentInvoker{
+		invoke: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+			invokerMu.Lock()
+			invokerCalls++
+			if invokerCalls == 2 {
+				close(release)
+			}
+			invokerMu.Unlock()
+
+			<-release
+			_, err := req.AgentCreator.New("system", nil)
+			if err != nil {
+				return nil, err
+			}
+			return nil, expectedErr
+		},
+	}
+
+	tool := &toolCheckSpecConformance{
+		sandboxAbsDir: moduleDir,
+		agentInvoker:  invoker,
+		subAgentCreatorFromContext: func(context.Context) (agent.SubAgentCreator, error) {
+			return creator, nil
+		},
+	}
+
+	requests := []packageCheckRequest{
+		{Key: "internal/foo", Package: fooPkg},
+		{Key: "internal/bar", Package: barPkg},
+	}
+	errs := make(chan error, len(requests))
+	var wg sync.WaitGroup
+	for _, req := range requests {
+		req := req
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			_, err := tool.runPackageCheckWithSubagent(context.Background(), req)
+			errs <- err
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.ErrorIs(t, err, expectedErr)
+	}
+	assert.ElementsMatch(t, []string{"internal/foo", "internal/bar"}, creator.labels())
 }
 
 func TestDefaultGoCodeUnitIncludesReachableTestdataAndExcludesNestedPackagesAndHiddenDirs(t *testing.T) {
@@ -810,6 +917,47 @@ func gitCommandKey(args ...string) string {
 type checkedRecorder struct {
 	mu      sync.Mutex
 	checked []string
+}
+
+type recordingSubAgentCreator struct {
+	mu    sync.Mutex
+	calls []subAgentCreatorCall
+}
+
+type subAgentCreatorCall struct {
+	label string
+}
+
+func (c *recordingSubAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
+	call := subAgentCreatorCall{}
+	if len(options) > 0 {
+		call.label = options[len(options)-1].SubagentLabel
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.calls = append(c.calls, call)
+	return nil, nil
+}
+
+func (c *recordingSubAgentCreator) labels() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	labels := make([]string, 0, len(c.calls))
+	for _, call := range c.calls {
+		labels = append(labels, call.label)
+	}
+	return labels
+}
+
+type funcAgentInvoker struct {
+	invoke func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
+}
+
+func (f funcAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+	return f.invoke(ctx, agentName, req)
 }
 
 func (r *checkedRecorder) add(key string) {
