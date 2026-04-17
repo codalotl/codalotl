@@ -60,7 +60,7 @@ In terms of the `internal/agent` package itself:
 - Keep existing presenter/result behavior unchanged; this is only about richer event metadata.
 - Update `pkgtools`-side test fakes and any remaining local `AgentCreator` adapters to the unified `New(..., options)` API.
 
-#### Package `internal/tools/spectools`
+#### Package `internal/tools/spectools` [DONE]
 - Retrofit `check_spec_conformance` to label each package-check subagent, including concurrent launches.
 - Keep raw result JSON and completion semantics unchanged in this PR.
 
@@ -100,8 +100,11 @@ In terms of the `internal/agent` package itself:
 - `internal/agent` now emits `EventTypeStartSubagent` once per subagent send-start and uses unified creation via `New(..., options)` / `AgentCreator.New(..., options)`.
 - `internal/agentregistry` has been updated to the unified constructor API; `internal/agentbuilder` test adapters were updated as part of the same transition.
 - `internal/tools/pkgtools` now wraps the per-call `AgentCreator` for `clarify_public_api` so the launched subagent gets a label derived from package + identifier, without changing tool output or presenter behavior.
+- `internal/tools/spectools` now wraps each package-check subagent creator per request so concurrent `check_spec_conformance` launches get distinct labels based on the module-relative package dir.
 - Current formatter / TUI behavior for unknown event types is mostly "show nothing", but explicit event-type switches and tests will likely still need updates.
 - Validation after the `internal/agent` step:
   - passed: `go test ./internal/agent ./internal/agentregistry ./internal/agentbuilder`
 - Validation after the `internal/tools/pkgtools` step:
   - passed: `go test ./internal/tools/pkgtools`
+- Validation after the `internal/tools/spectools` step:
+  - passed: `go test ./internal/tools/spectools`
