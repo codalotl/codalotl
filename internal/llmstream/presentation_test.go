@@ -283,4 +283,5 @@ func TestPresentationModel_NarrowBehavior(t *testing.T) {
 func TestPresentationModel_SubagentEventPolicy(t *testing.T) {
 	assert.Equal(t, SubagentEventPolicyDefault, SubagentEventPolicy(""))
 	assert.Equal(t, SubagentEventPolicyHideFinalMessage, SubagentEventPolicy("hide_final_message"))
+	assert.Equal(t, SubagentEventPolicySummarizeBySubagent, SubagentEventPolicy("summarize_by_subagent"))
 }

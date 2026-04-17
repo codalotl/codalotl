@@ -169,8 +169,8 @@ type Presenter interface {
 type SubagentEventPolicy string
 
 const (
-	SubagentEventPolicyDefault          SubagentEventPolicy = ""
-	SubagentEventPolicyHideFinalMessage SubagentEventPolicy = "hide_final_message"
+	SubagentEventPolicyDefault             SubagentEventPolicy = ""
+	SubagentEventPolicyHideFinalMessage    SubagentEventPolicy = "hide_final_message"
 	SubagentEventPolicySummarizeBySubagent SubagentEventPolicy = "summarize_by_subagent"
 )
 

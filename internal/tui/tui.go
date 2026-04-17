@@ -36,6 +36,7 @@ const (
 	messageKindSystem messageKind = iota
 	messageKindSkillsList
 	messageKindWelcome
+	messageKindSubagentSummary
 	messageKindUser
 	messageKindQueuedUser
 	messageKindAgent
@@ -63,15 +64,16 @@ type packageContextState struct {
 }
 
 type chatMessage struct {
-	kind           messageKind
-	userMessage    string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
-	event          agent.Event
-	toolCallID     string
-	contextStatus  *contextStatusLine
-	contextDetails string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
-	contextError   string
-	skillsList     []skills.Skill // skillsList is only set for messageKindSkillsList.
-	skillsIssues   string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
+	kind            messageKind
+	userMessage     string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
+	event           agent.Event
+	subagentSummary *subagentSummary
+	toolCallID      string
+	contextStatus   *contextStatusLine
+	contextDetails  string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
+	contextError    string
+	skillsList      []skills.Skill // skillsList is only set for messageKindSkillsList.
+	skillsIssues    string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it. It must be the correct block width (all lines padded with spaces to equal width
 	// of the viewport. Background colors must be set on this (if we're not in the uncolored palette). Resize events need to recalculate this.
@@ -136,11 +138,27 @@ type toolDisplayScope struct {
 	subagentEventPolicy   llmstream.SubagentEventPolicy
 	pendingDescendantTurn []agent.Event
 	pendingTurnComplete   bool
+	summarizedSubagents   map[string]int
 }
 
 type toolDisplayScopeRef struct {
 	agentID string
 	index   int
+}
+
+type subagentSummaryStatus int
+
+const (
+	subagentSummaryStatusRunning subagentSummaryStatus = iota
+	subagentSummaryStatusDone
+	subagentSummaryStatusError
+	subagentSummaryStatusCanceled
+)
+
+type subagentSummary struct {
+	label  string
+	status subagentSummaryStatus
+	detail *agent.Event
 }
 
 // Run launches the TUI in an alternate screen buffer.
@@ -1774,6 +1792,34 @@ func (m *model) appendAgentEvent(ev agent.Event) {
 	m.messages = append(m.messages, msg)
 }
 
+func (m *model) appendSubagentSummary(label string) int {
+	m.messages = append(m.messages, chatMessage{
+		kind: messageKindSubagentSummary,
+		subagentSummary: &subagentSummary{
+			label:  label,
+			status: subagentSummaryStatusRunning,
+		},
+	})
+	return len(m.messages) - 1
+}
+
+func (m *model) updateSubagentSummary(index int, status subagentSummaryStatus, detail *agent.Event) {
+	if index < 0 || index >= len(m.messages) {
+		return
+	}
+	msg := &m.messages[index]
+	if msg.subagentSummary == nil {
+		return
+	}
+	msg.subagentSummary.status = status
+	if detail != nil {
+		evCopy := *detail
+		msg.subagentSummary.detail = &evCopy
+	}
+	msg.formatted = ""
+	msg.formattedWidth = 0
+}
+
 func (m *model) replaceToolEvent(callID string, ev agent.Event) bool {
 	if callID == "" {
 		return false
@@ -1912,6 +1958,8 @@ func (m *model) handleDescendantSubagentEventPolicy(ev agent.Event, autoScroll b
 	switch scope.subagentEventPolicy {
 	case llmstream.SubagentEventPolicyHideFinalMessage:
 		return m.handleHideFinalDescendantMessage(ref, ev, autoScroll)
+	case llmstream.SubagentEventPolicySummarizeBySubagent:
+		return m.handleSummarizeBySubagent(ref, ev, autoScroll)
 	default:
 		return false
 	}
@@ -1977,6 +2025,57 @@ func (m *model) handleHideFinalDescendantMessage(ref toolDisplayScopeRef, ev age
 	}
 }
 
+func (m *model) handleSummarizeBySubagent(ref toolDisplayScopeRef, ev agent.Event, autoScroll bool) bool {
+	scope := m.toolDisplayScope(ref)
+	if scope == nil {
+		return false
+	}
+
+	if ev.Type == agent.EventTypeStartSubagent {
+		if ev.StartSubagent.ToolCallID == scope.callID {
+			if scope.summarizedSubagents == nil {
+				scope.summarizedSubagents = make(map[string]int)
+			}
+			if _, ok := scope.summarizedSubagents[ev.Agent.ID]; !ok {
+				label := ev.StartSubagent.Label
+				if label == "" {
+					label = ev.Agent.ID
+				}
+				scope.summarizedSubagents[ev.Agent.ID] = m.appendSubagentSummary(label)
+				m.refreshViewport(autoScroll)
+			}
+		}
+		return true
+	}
+
+	index, ok := m.summarizedSubagentMessageIndex(ref, ev.Agent.ID)
+	if !ok {
+		return false
+	}
+
+	switch ev.Type {
+	case agent.EventTypeAssistantTurnComplete:
+		detail, detailOK := summarizedAssistantTurnEvent(ev)
+		if !detailOK {
+			return true
+		}
+		m.updateSubagentSummary(index, subagentSummaryStatusRunning, &detail)
+	case agent.EventTypeDoneSuccess:
+		m.updateSubagentSummary(index, subagentSummaryStatusDone, nil)
+	case agent.EventTypeError:
+		m.updateSubagentSummary(index, subagentSummaryStatusError, &ev)
+	case agent.EventTypeCanceled:
+		m.updateSubagentSummary(index, subagentSummaryStatusCanceled, &ev)
+	case agent.EventTypeUserMessageQueued, agent.EventTypeQueuedUserMessageSent:
+		return false
+	default:
+		m.updateSubagentSummary(index, subagentSummaryStatusRunning, &ev)
+	}
+
+	m.refreshViewport(autoScroll)
+	return true
+}
+
 func (m *model) flushPendingDescendantTurn(scope *toolDisplayScope) {
 	if scope == nil {
 		return
@@ -1986,6 +2085,36 @@ func (m *model) flushPendingDescendantTurn(scope *toolDisplayScope) {
 	}
 	scope.pendingDescendantTurn = nil
 	scope.pendingTurnComplete = false
+}
+
+func (m *model) summarizedSubagentMessageIndex(ref toolDisplayScopeRef, agentID string) (int, bool) {
+	scope := m.toolDisplayScope(ref)
+	if scope == nil || len(scope.summarizedSubagents) == 0 {
+		return 0, false
+	}
+	for current := agentID; current != "" && current != ref.agentID; current = m.agentParents[current] {
+		if index, ok := scope.summarizedSubagents[current]; ok {
+			return index, true
+		}
+	}
+	return 0, false
+}
+
+func summarizedAssistantTurnEvent(ev agent.Event) (agent.Event, bool) {
+	if ev.Turn == nil {
+		return agent.Event{}, false
+	}
+	text := ev.Turn.TextContent()
+	if text == "" {
+		return agent.Event{}, false
+	}
+	return agent.Event{
+		Agent: ev.Agent,
+		Type:  agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{
+			Content: text,
+		},
+	}, true
 }
 
 // refreshViewport calculates the contents of the viewport, calls SetContent on it, and optionally scrolls to the bottom.
@@ -2048,6 +2177,9 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 	case messageKindSystem:
 		content = m.withForegroundColor(termformat.Sanitize(msg.userMessage, 4), true)
 		needBgAndWidth = true
+	case messageKindSubagentSummary:
+		content = m.renderSubagentSummaryMessage(msg, width)
+		needBgAndWidth = true
 	case messageKindSkillsList:
 		content = m.renderSkillsListMessage(msg.skillsList, msg.skillsIssues)
 		needBgAndWidth = true
@@ -2074,6 +2206,50 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 		msg.formattedWidth = width
 	}
 
+}
+
+func (m *model) renderSubagentSummaryMessage(msg *chatMessage, width int) string {
+	if msg == nil || msg.subagentSummary == nil {
+		return ""
+	}
+
+	summary := msg.subagentSummary
+	label := termformat.Sanitize(summary.label, 4)
+	if label == "" {
+		label = "<subagent>"
+	}
+
+	statusText := "running"
+	statusColor := m.palette.accentForeground
+	switch summary.status {
+	case subagentSummaryStatusDone:
+		statusText = "done"
+		statusColor = m.palette.greenForeground
+	case subagentSummaryStatusError:
+		statusText = "error"
+		statusColor = m.palette.redForeground
+	case subagentSummaryStatusCanceled:
+		statusText = "canceled"
+		statusColor = m.palette.redForeground
+	}
+
+	header := termformat.Style{Foreground: m.palette.primaryForeground}.Wrap("  - " + label + " ")
+	header += termformat.Style{Foreground: statusColor}.Wrap("[" + statusText + "]")
+
+	if summary.detail == nil {
+		return header
+	}
+
+	detail := m.agentFormatter.FormatEvent(*summary.detail, max(width-4, 1))
+	if detail == "" {
+		return header
+	}
+
+	lines := strings.Split(detail, "\n")
+	for i := range lines {
+		lines[i] = "    " + lines[i]
+	}
+	return header + "\n" + strings.Join(lines, "\n")
 }
 
 func (m *model) renderSkillsListMessage(available []skills.Skill, issues string) string {

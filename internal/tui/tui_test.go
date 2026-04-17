@@ -25,6 +25,28 @@ func (noopFormatter) FormatEvent(agent.Event, int) string {
 	return ""
 }
 
+type eventLabelFormatter struct{}
+
+func (eventLabelFormatter) FormatEvent(ev agent.Event, _ int) string {
+	switch ev.Type {
+	case agent.EventTypeToolCall:
+		return "call:" + toolName(ev)
+	case agent.EventTypeToolComplete:
+		return "result:" + toolName(ev)
+	case agent.EventTypeAssistantText:
+		return "text:" + ev.TextContent.Content
+	case agent.EventTypeError:
+		if ev.Error == nil {
+			return "error"
+		}
+		return "error:" + ev.Error.Error()
+	case agent.EventTypeCanceled:
+		return "canceled"
+	default:
+		return string(ev.Type)
+	}
+}
+
 type stubPresenter struct {
 	behavior llmstream.CompletionBehavior
 	policy   llmstream.SubagentEventPolicy
@@ -56,6 +78,13 @@ func (a *stubAuthorizer) IsAuthorizedForRead(bool, string, string, ...string) er
 func (a *stubAuthorizer) IsAuthorizedForWrite(bool, string, string, ...string) error { return nil }
 func (a *stubAuthorizer) IsShellAuthorized(bool, string, string, []string) error     { return nil }
 func (a *stubAuthorizer) Close()                                                     { a.closed = true }
+
+func renderedMessageText(t *testing.T, m *model, index int) string {
+	t.Helper()
+	require.Greater(t, len(m.messages), index)
+	m.ensureMessageFormatted(&m.messages[index], 80)
+	return stripAnsi(m.messages[index].formatted)
+}
 
 func TestModelViewAfterResize(t *testing.T) {
 	palette := colorPalette{
@@ -544,6 +573,120 @@ func TestHandleAgentEvent_StartSubagentDoesNotAppendMessage(t *testing.T) {
 
 	require.Empty(t, m.messages)
 	require.Equal(t, "root", m.agentParents[child.ID])
+}
+
+func TestSummarizeBySubagent_ReplacesVisibleChildDetailWhileRunning(t *testing.T) {
+	m := newModel(colorPalette{}, eventLabelFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "child", Depth: 1, Parent: root.ID}
+	parentTool := newNamedToolWithPresenter("check_spec_conformance", stubPresenter{
+		policy: llmstream.SubagentEventPolicySummarizeBySubagent,
+	})
+	parentCall := &llmstream.ToolCall{CallID: "parent-1", Name: "check_spec_conformance"}
+	readCall := &llmstream.ToolCall{CallID: "read-1", Name: "read_file"}
+	readResult := &llmstream.ToolResult{CallID: "read-1", Name: "read_file"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: parentTool, ToolCall: parentCall})
+	m.handleAgentEvent(agent.Event{
+		Agent: child,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     parentCall.CallID,
+			Label:          "pkg/a",
+		},
+	})
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindSubagentSummary, m.messages[1].kind)
+	text := renderedMessageText(t, m, 1)
+	require.Contains(t, text, "pkg/a")
+	require.Contains(t, text, "[running]")
+	require.NotContains(t, text, "call:read_file")
+
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: readCall})
+	text = renderedMessageText(t, m, 1)
+	require.Contains(t, text, "call:read_file")
+
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: readCall, ToolResult: readResult})
+	text = renderedMessageText(t, m, 1)
+	require.Contains(t, text, "result:read_file")
+	require.NotContains(t, text, "call:read_file")
+}
+
+func TestSummarizeBySubagent_RendersFinalPerSubagentResult(t *testing.T) {
+	m := newModel(colorPalette{}, eventLabelFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "child", Depth: 1, Parent: root.ID}
+	parentTool := newNamedToolWithPresenter("check_spec_conformance", stubPresenter{
+		policy: llmstream.SubagentEventPolicySummarizeBySubagent,
+	})
+	parentCall := &llmstream.ToolCall{CallID: "parent-1", Name: "check_spec_conformance"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: parentTool, ToolCall: parentCall})
+	m.handleAgentEvent(agent.Event{
+		Agent: child,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     parentCall.CallID,
+			Label:          "pkg/b",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:       child,
+		Type:        agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{Content: "partial"},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: child,
+		Type:  agent.EventTypeAssistantTurnComplete,
+		Turn: &llmstream.Turn{
+			Parts: []llmstream.ContentPart{
+				llmstream.TextContent{Content: "final answer"},
+			},
+		},
+	})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
+
+	require.Len(t, m.messages, 2)
+	text := renderedMessageText(t, m, 1)
+	require.Contains(t, text, "pkg/b")
+	require.Contains(t, text, "[done]")
+	require.Contains(t, text, "text:final answer")
+	require.NotContains(t, text, "text:partial")
+}
+
+func TestDefaultSubagentPolicy_DoesNotSynthesizeSummaryRows(t *testing.T) {
+	m := newModel(colorPalette{}, eventLabelFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "child", Depth: 1, Parent: root.ID}
+	parentTool := newNamedToolWithPresenter("check_spec_conformance", stubPresenter{})
+	parentCall := &llmstream.ToolCall{CallID: "parent-1", Name: "check_spec_conformance"}
+	readCall := &llmstream.ToolCall{CallID: "read-1", Name: "read_file"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: parentTool, ToolCall: parentCall})
+	m.handleAgentEvent(agent.Event{
+		Agent: child,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     parentCall.CallID,
+			Label:          "pkg/c",
+		},
+	})
+
+	require.Len(t, m.messages, 1)
+
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: readCall})
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, messageKindAgent, m.messages[1].kind)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[1].event.Type)
+	require.NotEqual(t, messageKindSubagentSummary, m.messages[1].kind)
 }
 
 func TestRestoreQueuedMessagesToInput_IncludesQueuedMessagesInOrder(t *testing.T) {

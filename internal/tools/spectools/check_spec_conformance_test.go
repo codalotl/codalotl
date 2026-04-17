@@ -163,7 +163,15 @@ func TestParsePackageCheckResultRejectsInvalidResultShapes(t *testing.T) {
 	}
 }
 
-func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing.T) {
+func TestCheckSpecConformancePresenterUsesSummarizeBySubagent(t *testing.T) {
+	t.Parallel()
+
+	presenter := checkSpecConformancePresenter{}
+	policy := presenter.SubagentEventPolicy(llmstream.ToolCall{})
+	assert.Equal(t, llmstream.SubagentEventPolicySummarizeBySubagent, policy)
+}
+
+func TestPresentCheckSpecConformanceBodySummarizesCountsOnly(t *testing.T) {
 	t.Parallel()
 
 	body, ok := presentCheckSpecConformanceBody(`{
@@ -187,13 +195,25 @@ func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing
 	require.True(t, ok)
 
 	rendered := renderPresentationLines(paragraph.Lines)
-	assert.Contains(t, rendered, "1 conforming, 1 non-conforming, 1 errors")
-	assert.Contains(t, rendered, "Conforming: internal/foo")
-	assert.Contains(t, rendered, "Non-conforming:")
-	assert.Contains(t, rendered, "internal/bar:")
-	assert.Contains(t, rendered, "- [major, new] missing Foo docs")
-	assert.Contains(t, rendered, "- [minor, latent] Bar usage example is stale")
-	assert.Contains(t, rendered, "Errors: internal/baz")
+	assert.Equal(t, "1 conforming, 1 non-conforming, 1 errored", rendered)
+	assert.NotContains(t, rendered, "internal/foo")
+	assert.NotContains(t, rendered, "internal/bar")
+	assert.NotContains(t, rendered, "internal/baz")
+	assert.NotContains(t, rendered, "missing Foo docs")
+	assert.NotContains(t, rendered, "Bar usage example is stale")
+}
+
+func TestPresentCheckSpecConformanceBodySummarizesEmptyResults(t *testing.T) {
+	t.Parallel()
+
+	body, ok := presentCheckSpecConformanceBody(`{}`)
+	require.True(t, ok)
+
+	paragraph, ok := body.(llmstream.Paragraph)
+	require.True(t, ok)
+
+	rendered := renderPresentationLines(paragraph.Lines)
+	assert.Equal(t, "0 conforming, 0 non-conforming, 0 errored", rendered)
 }
 
 func TestRunPackageCheckWithSubagentLabelsSubagentWithPackageKey(t *testing.T) {

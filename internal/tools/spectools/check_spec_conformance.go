@@ -1101,7 +1101,7 @@ var checkSpecConformancePresenterInstance llmstream.Presenter = checkSpecConform
 type checkSpecConformancePresenter struct{}
 
 func (checkSpecConformancePresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyHideFinalMessage
+	return llmstream.SubagentEventPolicySummarizeBySubagent
 }
 
 func (checkSpecConformancePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
@@ -1134,93 +1134,30 @@ func presentCheckSpecConformanceBody(raw string) (llmstream.Block, bool) {
 	if err := json.Unmarshal([]byte(raw), &results); err != nil {
 		return nil, false
 	}
-	if len(results) == 0 {
-		return llmstream.Paragraph{
-			Lines: []llmstream.Line{{
-				Segments: []llmstream.Segment{
-					{Text: "No eligible packages.", Role: llmstream.RoleAccent},
-				},
-			}},
-		}, true
-	}
 
-	keys := make([]string, 0, len(results))
-	for key := range results {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	conforming := make([]string, 0)
-	nonconforming := make([]string, 0)
-	errors := make([]string, 0)
-	for _, key := range keys {
-		result := results[key]
+	conforming := 0
+	nonconforming := 0
+	errored := 0
+	for _, result := range results {
 		if result.Error != "" {
-			errors = append(errors, key)
+			errored++
 			continue
 		}
 		if result.Conforms != nil && *result.Conforms {
-			conforming = append(conforming, key)
+			conforming++
 			continue
 		}
-		nonconforming = append(nonconforming, key)
+		nonconforming++
 	}
 
-	lines := []llmstream.Line{{
-		JoinWithSpace: true,
-		Segments: []llmstream.Segment{
-			{Text: fmt.Sprintf("%d conforming,", len(conforming)), Role: llmstream.RoleAccent},
-			{Text: fmt.Sprintf("%d non-conforming,", len(nonconforming)), Role: llmstream.RoleAccent},
-			{Text: fmt.Sprintf("%d errors", len(errors)), Role: llmstream.RoleAccent},
-		},
-	}}
-	if len(conforming) > 0 {
-		lines = append(lines, llmstream.Line{
+	return llmstream.Paragraph{
+		Lines: []llmstream.Line{{
 			JoinWithSpace: true,
 			Segments: []llmstream.Segment{
-				{Text: "Conforming:", Role: llmstream.RoleAccent},
-				{Text: strings.Join(conforming, ", "), Role: llmstream.RoleNormal},
+				{Text: fmt.Sprintf("%d conforming,", conforming), Role: llmstream.RoleAccent},
+				{Text: fmt.Sprintf("%d non-conforming,", nonconforming), Role: llmstream.RoleAccent},
+				{Text: fmt.Sprintf("%d errored", errored), Role: llmstream.RoleAccent},
 			},
-		})
-	}
-	if len(nonconforming) > 0 {
-		lines = append(lines, llmstream.Line{
-			Segments: []llmstream.Segment{
-				{Text: "Non-conforming:", Role: llmstream.RoleAccent},
-			},
-		})
-		for _, key := range nonconforming {
-			result := results[key]
-			lines = append(lines, llmstream.Line{
-				Segments: []llmstream.Segment{
-					{Text: key + ":", Role: llmstream.RoleAccent},
-				},
-			})
-			for _, issue := range result.Nonconformances {
-				issueScope := "new"
-				if issue.Latent {
-					issueScope = "latent"
-				}
-				lines = append(lines, llmstream.Line{
-					Segments: []llmstream.Segment{
-						{
-							Text: fmt.Sprintf("- [%s, %s] %s", issue.Severity, issueScope, issue.Message),
-							Role: llmstream.RoleNormal,
-						},
-					},
-				})
-			}
-		}
-	}
-	if len(errors) > 0 {
-		lines = append(lines, llmstream.Line{
-			JoinWithSpace: true,
-			Segments: []llmstream.Segment{
-				{Text: "Errors:", Role: llmstream.RoleAccent},
-				{Text: strings.Join(errors, ", "), Role: llmstream.RoleNormal},
-			},
-		})
-	}
-
-	return llmstream.Paragraph{Lines: lines}, true
+		}},
+	}, true
 }
