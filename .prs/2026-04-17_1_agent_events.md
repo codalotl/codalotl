@@ -19,11 +19,9 @@ type StartSubagent struct {
 Semantics:
 - Event.StartSubagent is the zero value unless Event.Type is EventTypeStartSubagent.
 - EventTypeStartSubagent events are only emitted during tool calls of an already-running agent. So there's no EventTypeStartSubagent for the root agent.
-- During a tool call that intends to launch subagents, the tool can somehow make a call that triggers an EventTypeStartSubagent event.
+- During the subagent launch process, the calling tool can somehow set the subagent name.
 - Ideally I'd like this to be optional for the tool call, so that current tools don't need to be changed to call this.
-- If `agent` notices that subagents have in fact been created in a tool call without an EventTypeStartSubagent event, it automatically creates an EventTypeStartSubagent event.
-    - This forms an invariant for event consumers: we only increase the depth of subagents by starting with an EventTypeStartSubagent event.
-- `agent` ensures only one EventTypeStartSubagent event happens per subagent ID.
+- `agent` ensures only one EventTypeStartSubagent event happens per subagent ID. I suspect the right time to fire this is during the first SendMessage (vs simply at creation time).
 - I think (but am not sure) that for this event, `AgentMeta` should be the subagent's (`evt.AgentMeta.Parent == evt.StartSubagent.CallingAgentID`).
 
 Note:
@@ -33,3 +31,6 @@ Note:
 - Probably need to manually modify the integration tests so that they expect these events
 - Retrofit one traditional subagent-based tool like clarify_public_api to manually trigger this event to ensure that works.
 - Retrofit check_spec_conformance to make sure we can ergonomically attach subagent names in actually concurrent-based subagent tools.
+
+In terms of the `internal/agent` package itself:
+- Let's unify New vs NewWithDefaultModel into just New, which accepts options, model is one. The other is a subagent name. That's how this ultimately gets into agent.
