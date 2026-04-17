@@ -68,15 +68,15 @@ In terms of the `internal/agent` package itself:
 - Ensure the new event type is tolerated and does not show up as a standalone user-visible message yet.
 - Preserve existing tool-scope / subagent-policy behavior when the metadata event appears in descendant flows.
 
-#### Package `internal/agentformatter`
-- Confirm the formatter keeps `EventTypeStartSubagent` invisible as metadata-only output.
-- Add explicit handling only if focused tests or switches need it.
+#### Package `internal/agentformatter` [DONE]
+- Confirmed the formatter already keeps `EventTypeStartSubagent` invisible via its existing default-empty handling.
+- No code changes were needed in this package for this PR.
 
-#### Package `internal/noninteractive`
+#### Package `internal/noninteractive` [DONE]
 - Ensure the new event type is tolerated and does not show up as a standalone user-visible message yet.
 - Update focused tests where event switches or filters assume the old event set.
 
-#### Integration / fixtures
+#### Integration / fixtures [DONE]
 - Patch replay or serialized fixtures that now include `start_subagent` events from subagent-based tools.
 - Keep tool-call request/response shapes stable aside from the new event-stream entries.
 
@@ -110,7 +110,9 @@ In terms of the `internal/agent` package itself:
 - `internal/tools/pkgtools` now wraps the per-call `AgentCreator` for `clarify_public_api` so the launched subagent gets a label derived from package + identifier, without changing tool output or presenter behavior.
 - `internal/tools/spectools` now wraps each package-check subagent creator per request so concurrent `check_spec_conformance` launches get distinct labels based on the module-relative package dir.
 - `internal/tui` now explicitly drops `EventTypeStartSubagent` after parent/tool-scope bookkeeping, so it does not create blank message slots; the hide-final-descendant path also treats it as metadata-only.
-- Current formatter / TUI behavior for unknown event types is mostly "show nothing", but explicit event-type switches and tests will likely still need updates.
+- `internal/noninteractive` now explicitly drops `EventTypeStartSubagent` in human-readable and JSON output paths, and its focused descendant-filter tests cover nested subagent launches.
+- `internal/agentformatter` needed no code change for this PR; its existing default-empty handling already keeps `EventTypeStartSubagent` invisible.
+- `internal/noninteractive/integration` updated the affected case fixtures (`pm-clarify`, `pm-clarify-stdlib`, `pm-change_api`, `pm-update_usage`) and now has test coverage around the start-subagent fixture handling.
 - Validation after the `internal/agent` step:
   - passed: `go test ./internal/agent ./internal/agentregistry ./internal/agentbuilder`
 - Validation after the `internal/tools/pkgtools` step:
@@ -119,3 +121,5 @@ In terms of the `internal/agent` package itself:
   - passed: `go test ./internal/tools/spectools`
 - Validation after the `internal/tui` step:
   - passed: `go test ./internal/tui`
+- Validation after the `internal/noninteractive` step:
+  - passed: `go test ./internal/noninteractive/...`
