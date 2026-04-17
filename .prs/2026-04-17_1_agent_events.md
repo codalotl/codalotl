@@ -64,7 +64,15 @@ In terms of the `internal/agent` package itself:
 - Retrofit `check_spec_conformance` to label each package-check subagent, including concurrent launches.
 - Keep raw result JSON and completion semantics unchanged in this PR.
 
-#### Package `internal/tui`, `internal/agentformatter`, `internal/noninteractive`
+#### Package `internal/tui` [DONE]
+- Ensure the new event type is tolerated and does not show up as a standalone user-visible message yet.
+- Preserve existing tool-scope / subagent-policy behavior when the metadata event appears in descendant flows.
+
+#### Package `internal/agentformatter`
+- Confirm the formatter keeps `EventTypeStartSubagent` invisible as metadata-only output.
+- Add explicit handling only if focused tests or switches need it.
+
+#### Package `internal/noninteractive`
 - Ensure the new event type is tolerated and does not show up as a standalone user-visible message yet.
 - Update focused tests where event switches or filters assume the old event set.
 
@@ -101,6 +109,7 @@ In terms of the `internal/agent` package itself:
 - `internal/agentregistry` has been updated to the unified constructor API; `internal/agentbuilder` test adapters were updated as part of the same transition.
 - `internal/tools/pkgtools` now wraps the per-call `AgentCreator` for `clarify_public_api` so the launched subagent gets a label derived from package + identifier, without changing tool output or presenter behavior.
 - `internal/tools/spectools` now wraps each package-check subagent creator per request so concurrent `check_spec_conformance` launches get distinct labels based on the module-relative package dir.
+- `internal/tui` now explicitly drops `EventTypeStartSubagent` after parent/tool-scope bookkeeping, so it does not create blank message slots; the hide-final-descendant path also treats it as metadata-only.
 - Current formatter / TUI behavior for unknown event types is mostly "show nothing", but explicit event-type switches and tests will likely still need updates.
 - Validation after the `internal/agent` step:
   - passed: `go test ./internal/agent ./internal/agentregistry ./internal/agentbuilder`
@@ -108,3 +117,5 @@ In terms of the `internal/agent` package itself:
   - passed: `go test ./internal/tools/pkgtools`
 - Validation after the `internal/tools/spectools` step:
   - passed: `go test ./internal/tools/spectools`
+- Validation after the `internal/tui` step:
+  - passed: `go test ./internal/tui`
