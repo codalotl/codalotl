@@ -25,7 +25,7 @@ This is not a great UI for the end-user.
 
 Goal:
 - Display this situation and others like it better for the user.
-- TUI only - ignore noninteractive (for now).
+- TUI only - ignore noninteractive for now, keeping behavior ~as-is.
 - Only update the end-user behavior for the check_spec_conformance tool, not other tools.
     - If we need to change interfaces/APIs/abstractions, updating other tools is allowed, but keep their end-user behavior the same for now.
     - Shared abstractions/specs may change, but resulting end-user behavior changes should stay scoped to check_spec_conformance.
@@ -80,4 +80,3 @@ UI Requirements:
 
 Other notes:
 - We probably want to use SubagentEventPolicy, defining a new policy.
-- We probably need to change `internal/agent` in some way, defining new events or adding fields to event.
