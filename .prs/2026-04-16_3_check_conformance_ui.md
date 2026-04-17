@@ -85,27 +85,35 @@ Other notes:
 
 ### Phase 0
 
-#### Package `internal/llmstream`
+#### Package `internal/llmstream` [DONE]
 - Add a new `SubagentEventPolicy` variant for tools that want descendant activity summarized by subagent instead of interleaved as normal messages.
 - Policy must let tools identify subagents however they want; for this workflow, the TUI will use `StartSubagent.Label`.
 - Keep existing policies and non-subagent tools unchanged.
 
-#### Package `internal/tui`
+#### Package `internal/tui` [DONE]
 - Implement policy-aware subagent summary rows under the parent tool call.
 - When a summarized subagent starts, show a labeled row under the parent tool.
 - While that subagent is active, replace its child detail with the latest visible descendant event.
 - When that subagent finishes, replace the child detail with its final result or error so completed vs active work is easy to read.
 - Do not print raw `start_subagent` events as standalone messages.
 
-#### Package `internal/tools/spectools`
+#### Package `internal/tools/spectools` [DONE]
 - Update `check_spec_conformance` to opt into the new summarized-subagent policy.
 - Keep per-package identification aligned with the existing subagent label, which is already the module-relative package dir.
 - Change the final completed tool body to a summary only; detailed nonconformances and package errors should live under the per-package subagent rows.
 - Keep raw `ToolResult.Result` JSON unchanged.
 
-#### Validation
+#### Validation [DONE]
 - Update/add tests for TUI subagent summarization, including in-progress replacement, final per-subagent result rendering, and unchanged behavior for existing policies.
 - Update/add presenter tests for the `check_spec_conformance` completion summary.
+- Ran:
+  - `go test ./internal/llmstream`
+  - `go test ./internal/tui`
+  - `go test ./internal/tools/spectools`
+
+#### Follow-up polish
+- Manually inspect the TUI manifestation for `check_spec_conformance` to confirm the summarized per-package rows are clear enough for final conformance/nonconformance/error results.
+- If the final per-package detail is still too literal, teach the summarized-row path to render a more tool-owned final result for this workflow.
 
 ## Review
 
@@ -124,6 +132,6 @@ Pending.
 
 - Branch: `jn/check_spec_conformance_ui`
 - `internal/tools/spectools/check_spec_conformance.go` already launches one labeled subagent per eligible package via `labeledSubAgentCreator`.
-- Current `check_spec_conformance` presenter uses `SubagentEventPolicyHideFinalMessage`, which suppresses final assistant text but still lets descendant tool events interleave directly in the TUI.
-- `internal/tui/tui.go` tracks enclosing tool scopes in `activeToolScopes` and applies per-tool descendant handling in `handleDescendantSubagentEventPolicy`.
-- `internal/tools/spectools/SPEC.md` currently says the final completion body includes detailed nonconformance text; this must change for the requested UI.
+- Landed in `d7e3b98`: new `SubagentEventPolicySummarizeBySubagent`, TUI summarized subagent rows keyed by label, and `check_spec_conformance` summary-only completion body.
+- `internal/tui/tui.go` now tracks per-tool summarized subagent rows in the tool display scope and updates each row from descendant events.
+- `check_spec_conformance` now opts into the new policy; package labels still come from the existing package-key subagent label.
