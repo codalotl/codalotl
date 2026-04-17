@@ -31,3 +31,4 @@ Note:
 - make sure nothing blows up (it will start sending these events on existing subagent-based tools)
 - adapt things like tui to handle these events if necessary
 - Probably need to manually modify the integration tests so that they expect these events
+- Retrofit one subagent-based tool like clarify_public_api to manually trigger this event to ensure that works.
