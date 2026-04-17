@@ -30,6 +30,13 @@ func TestBuildExpectedEventsOmitsUnstableFields(t *testing.T) {
 			"content": "thinking",
 		},
 		{
+			"type": "start_subagent",
+			"agent": map[string]any{
+				"id":    "agent-child",
+				"depth": float64(1),
+			},
+		},
+		{
 			"type": "assistant_text",
 			"agent": map[string]any{
 				"id":    "agent-root",
@@ -48,21 +55,24 @@ func TestBuildExpectedEventsOmitsUnstableFields(t *testing.T) {
 	got, err := buildExpectedEvents(actualEvents, false, nil)
 	require.NoError(t, err)
 
-	require.Len(t, got, 3)
+	require.Len(t, got, 4)
 	assert.Equal(t, map[string]any{
 		"type":         "start",
 		"package_path": ".",
 	}, got[0])
+	assert.Equal(t, map[string]any{
+		"type": "start_subagent",
+	}, got[1])
 	assert.Equal(t, map[string]any{
 		"type": "assistant_text",
 		"agent": map[string]any{
 			"depth": float64(0),
 		},
 		"content": "hello",
-	}, got[1])
+	}, got[2])
 	assert.Equal(t, map[string]any{
 		"type": "done",
-	}, got[2])
+	}, got[3])
 }
 
 func TestBuildExpectedEventsNormalizesPathsAndKeepsExactStrings(t *testing.T) {

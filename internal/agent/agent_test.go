@@ -39,7 +39,7 @@ func TestSendUserMessageSimple(t *testing.T) {
 	conv := newScriptedConversation(systemPrompt, script)
 	overrideConversation(t, conv)
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestSendUserMessageWithToolUse(t *testing.T) {
 
 	tool := newStubTool("stub_tool", llmstream.ToolResult{Result: "OK"})
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, []llmstream.Tool{tool})
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: llmmodel.ModelID("model")})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestSendUserMessageUnknownToolEventsHaveNilTool(t *testing.T) {
 	)
 	overrideConversation(t, conv)
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -302,17 +302,28 @@ func TestSendUserMessageRootEventMetadata(t *testing.T) {
 	})
 	overrideConversation(t, conv)
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	for ev := range a.SendUserMessage(ctx, "Say hello") {
+		require.NotEqual(t, EventTypeStartSubagent, ev.Type)
 		require.Equal(t, a.agentID, ev.Agent.ID)
 		require.Equal(t, 0, ev.Agent.Depth)
 		require.Empty(t, ev.Agent.Parent)
 	}
+}
+
+func TestNewDefaultsToPackageDefaultModel(t *testing.T) {
+	systemPrompt := "You are helpful."
+	conv := newScriptedConversation(systemPrompt)
+	overrideConversation(t, conv)
+
+	a, err := New(systemPrompt, nil)
+	require.NoError(t, err)
+	require.Equal(t, llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown), a.model)
 }
 
 func TestContextUsagePercentTracksTurnUsage(t *testing.T) {
@@ -399,7 +410,7 @@ func TestConcurrentSendRejected(t *testing.T) {
 	conv := newScriptedConversation(systemPrompt, script)
 	overrideConversation(t, conv)
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -477,7 +488,7 @@ func TestQueueUserMessageAfterEndTurnContinuesConversation(t *testing.T) {
 	)
 	overrideConversation(t, conv)
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -590,7 +601,7 @@ func TestQueueUserMessageAfterToolResults(t *testing.T) {
 		}
 	}
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, []llmstream.Tool{tool})
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: llmmodel.ModelID("model")})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -654,7 +665,7 @@ func TestTurnsReturnsCopy(t *testing.T) {
 	conv := newScriptedConversation(systemPrompt)
 	overrideConversation(t, conv)
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, nil)
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -679,6 +690,7 @@ func TestTurnsReturnsCopy(t *testing.T) {
 func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 	systemPrompt := "Root system"
 	subPrompt := "Sub system"
+	subLabel := "Explore package metadata"
 	baseModel := llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
 
 	toolCall := llmstream.ToolCall{
@@ -770,7 +782,7 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 		toolsCopy[0] = nil
 
 		creator := SubAgentCreatorFromContext(ctx)
-		subAgent, err := creator.NewWithDefaultModel(subPrompt, nil)
+		subAgent, err := creator.New(subPrompt, nil, NewOptions{SubagentLabel: subLabel})
 		if err != nil {
 			t.Fatalf("creating sub agent: %v", err)
 		}
@@ -805,7 +817,7 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 		}
 	}
 
-	a, err := NewAgent(baseModel, systemPrompt, []llmstream.Tool{tool})
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: baseModel})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -828,6 +840,12 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 	if len(subEvents) == 0 {
 		t.Fatalf("sub agent produced no events")
 	}
+	require.Equal(t, EventTypeStartSubagent, subEvents[0].Type)
+	require.Equal(t, StartSubagent{
+		CallingAgentID: a.agentID,
+		ToolCallID:     toolCall.CallID,
+		Label:          subLabel,
+	}, subEvents[0].StartSubagent)
 
 	for _, ev := range subEvents {
 		if ev.Agent.Depth != 1 {
@@ -842,7 +860,8 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 	}
 
 	var mirrored int
-	for _, ev := range events {
+	firstMirroredSubEvent := -1
+	for i, ev := range events {
 		switch ev.Agent.Depth {
 		case 0:
 			if ev.Agent.ID == "" {
@@ -855,6 +874,9 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 			if ev.Agent.Parent != a.agentID {
 				t.Fatalf("mirrored sub event parent = %q, want %q", ev.Agent.Parent, a.agentID)
 			}
+			if firstMirroredSubEvent == -1 {
+				firstMirroredSubEvent = i
+			}
 			mirrored++
 		default:
 			t.Fatalf("unexpected agent depth %d in root stream", ev.Agent.Depth)
@@ -863,6 +885,13 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 	if mirrored != len(subEvents) {
 		t.Fatalf("mirrored events = %d, want %d", mirrored, len(subEvents))
 	}
+	require.NotEqual(t, -1, firstMirroredSubEvent)
+	require.Equal(t, EventTypeStartSubagent, events[firstMirroredSubEvent].Type)
+	require.Equal(t, StartSubagent{
+		CallingAgentID: a.agentID,
+		ToolCallID:     toolCall.CallID,
+		Label:          subLabel,
+	}, events[firstMirroredSubEvent].StartSubagent)
 
 	expectedInput := turnTool.Usage.TotalInputTokens + turnFinal.Usage.TotalInputTokens + subTurn.Usage.TotalInputTokens
 	expectedOutput := turnTool.Usage.TotalOutputTokens + turnFinal.Usage.TotalOutputTokens + subTurn.Usage.TotalOutputTokens
@@ -892,6 +921,218 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 
 	if len(a.toolList) != 1 || a.toolList[0] == nil {
 		t.Fatalf("parent tool list unexpectedly mutated: %+v", a.toolList)
+	}
+}
+
+func TestSubAgentStartEventOnlyOncePerSubagent(t *testing.T) {
+	rootPrompt := "Root system"
+	subPrompt := "Sub system"
+	rootModel := llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_789",
+		Name:       "explore",
+		Type:       "function_call",
+		Input:      "{}",
+	}
+	rootToolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	rootFinalText := llmstream.TextContent{ProviderID: "root-final", Content: "done"}
+	rootFinalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{rootFinalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	rootConv := newScriptedConversation(rootPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootToolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &rootFinalText, Delta: rootFinalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootFinalTurn},
+			},
+		},
+	)
+
+	firstSubText := llmstream.TextContent{ProviderID: "sub-1", Content: "first"}
+	firstSubTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{firstSubText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	secondSubText := llmstream.TextContent{ProviderID: "sub-2", Content: "second"}
+	secondSubTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{secondSubText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	subConv := newScriptedConversation(subPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &firstSubText, Delta: firstSubText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &firstSubTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &secondSubText, Delta: secondSubText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &secondSubTurn},
+			},
+		},
+	)
+
+	prev := newConversation
+	convs := []llmstream.StreamingConversation{rootConv, subConv}
+	newConversation = func(model llmmodel.ModelID, systemPrompt string) llmstream.StreamingConversation {
+		if len(convs) == 0 {
+			return nil
+		}
+		conv := convs[0]
+		convs = convs[1:]
+		return conv
+	}
+	t.Cleanup(func() {
+		newConversation = prev
+	})
+
+	var firstSubEvents []Event
+	var secondSubEvents []Event
+
+	tool := &funcTool{name: "explore"}
+	tool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		creator := SubAgentCreatorFromContext(ctx)
+		subAgent, err := creator.New(subPrompt, nil)
+		require.NoError(t, err)
+
+		require.NoError(t, subAgent.AddUserTurn("context only"))
+
+		for ev := range subAgent.SendUserMessage(ctx, "first request") {
+			firstSubEvents = append(firstSubEvents, ev)
+		}
+		for ev := range subAgent.SendUserMessage(ctx, "second request") {
+			secondSubEvents = append(secondSubEvents, ev)
+		}
+
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "ok",
+		}
+	}
+
+	rootAgent, err := New(rootPrompt, []llmstream.Tool{tool}, NewOptions{Model: rootModel})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var rootEvents []Event
+	for ev := range rootAgent.SendUserMessage(ctx, "start") {
+		rootEvents = append(rootEvents, ev)
+	}
+
+	require.NotEmpty(t, firstSubEvents)
+	require.Equal(t, EventTypeStartSubagent, firstSubEvents[0].Type)
+	for _, ev := range secondSubEvents {
+		require.NotEqual(t, EventTypeStartSubagent, ev.Type)
+	}
+
+	var startEvents []Event
+	for _, ev := range rootEvents {
+		if ev.Type == EventTypeStartSubagent {
+			startEvents = append(startEvents, ev)
+		}
+	}
+	require.Len(t, startEvents, 1)
+	require.Equal(t, toolCall.CallID, startEvents[0].StartSubagent.ToolCallID)
+	require.Equal(t, rootAgent.agentID, startEvents[0].StartSubagent.CallingAgentID)
+}
+
+func TestSubAgentConstructionWithoutSendDoesNotEmitStartEvent(t *testing.T) {
+	rootPrompt := "Root system"
+	subPrompt := "Sub system"
+	rootModel := llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_unused",
+		Name:       "explore",
+		Type:       "function_call",
+		Input:      "{}",
+	}
+	rootToolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	rootFinalText := llmstream.TextContent{ProviderID: "root-final", Content: "done"}
+	rootFinalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{rootFinalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	rootConv := newScriptedConversation(rootPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootToolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &rootFinalText, Delta: rootFinalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootFinalTurn},
+			},
+		},
+	)
+	subConv := newScriptedConversation(subPrompt)
+
+	prev := newConversation
+	convs := []llmstream.StreamingConversation{rootConv, subConv}
+	newConversation = func(model llmmodel.ModelID, systemPrompt string) llmstream.StreamingConversation {
+		if len(convs) == 0 {
+			return nil
+		}
+		conv := convs[0]
+		convs = convs[1:]
+		return conv
+	}
+	t.Cleanup(func() {
+		newConversation = prev
+	})
+
+	tool := &funcTool{name: "explore"}
+	tool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		creator := SubAgentCreatorFromContext(ctx)
+		subAgent, err := creator.New(subPrompt, nil, NewOptions{SubagentLabel: "unused"})
+		require.NoError(t, err)
+		require.NoError(t, subAgent.AddUserTurn("prefill only"))
+
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "ok",
+		}
+	}
+
+	rootAgent, err := New(rootPrompt, []llmstream.Tool{tool}, NewOptions{Model: rootModel})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for ev := range rootAgent.SendUserMessage(ctx, "start") {
+		require.NotEqual(t, EventTypeStartSubagent, ev.Type)
 	}
 }
 
@@ -955,7 +1196,7 @@ func TestSubAgentCreatorPanicsAfterRun(t *testing.T) {
 		}
 	}
 
-	a, err := NewAgent(llmmodel.ModelID("model"), systemPrompt, []llmstream.Tool{tool})
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: llmmodel.ModelID("model")})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -975,7 +1216,7 @@ func TestSubAgentCreatorPanicsAfterRun(t *testing.T) {
 			t.Fatalf("expected panic when using sub agent creator after run")
 		}
 	}()
-	_, _ = captured.NewWithDefaultModel("should panic", nil)
+	_, _ = captured.New("should panic", nil)
 }
 
 func TestSubAgentNestedDepth(t *testing.T) {
@@ -1097,7 +1338,7 @@ func TestSubAgentNestedDepth(t *testing.T) {
 		}
 		creator := SubAgentCreatorFromContext(ctx)
 		innerTool := &funcTool{name: "inner"}
-		child, err := creator.New(childModel, childPrompt, []llmstream.Tool{innerTool})
+		child, err := creator.New(childPrompt, []llmstream.Tool{innerTool}, NewOptions{Model: childModel})
 		if err != nil {
 			t.Fatalf("create child agent: %v", err)
 		}
@@ -1112,7 +1353,7 @@ func TestSubAgentNestedDepth(t *testing.T) {
 				t.Fatalf("inner AgentToolsFromContext: %+v", tools)
 			}
 			subCreator := SubAgentCreatorFromContext(innerCtx)
-			grand, err := subCreator.NewWithDefaultModel(grandPrompt, nil)
+			grand, err := subCreator.New(grandPrompt, nil)
 			if err != nil {
 				t.Fatalf("create grand agent: %v", err)
 			}
@@ -1156,7 +1397,7 @@ func TestSubAgentNestedDepth(t *testing.T) {
 		}
 	}
 
-	agent, err := NewAgent(rootModel, rootPrompt, []llmstream.Tool{outerTool})
+	agent, err := New(rootPrompt, []llmstream.Tool{outerTool}, NewOptions{Model: rootModel})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -1297,7 +1538,7 @@ func runContextUsageAgent(t *testing.T, model llmmodel.ModelID, usage llmstream.
 	conv := newScriptedConversation(systemPrompt, script)
 	overrideConversation(t, conv)
 
-	agent, err := NewAgent(model, systemPrompt, nil)
+	agent, err := New(systemPrompt, nil, NewOptions{Model: model})
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}

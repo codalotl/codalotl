@@ -329,6 +329,11 @@ func buildExpectedEvents(actualEvents []map[string]any, includeTokenUsage bool, 
 		switch eventType {
 		case "assistant_reasoning":
 			continue
+		case "start_subagent":
+			expected = append(expected, map[string]any{
+				"type": cloned["type"],
+			})
+			continue
 		case "start":
 			start := map[string]any{
 				"type": cloned["type"],

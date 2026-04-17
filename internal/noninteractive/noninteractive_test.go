@@ -886,6 +886,17 @@ func (verboseRecordingFormatter) FormatEvent(e agent.Event, _ int) string {
 	}
 }
 
+type startSubagentRecordingFormatter struct{}
+
+func (startSubagentRecordingFormatter) FormatEvent(e agent.Event, _ int) string {
+	switch e.Type {
+	case agent.EventTypeStartSubagent:
+		return "START SUBAGENT"
+	default:
+		return ""
+	}
+}
+
 type countingAuthorizer struct {
 	sandboxDir string
 	requests   chan authdomain.UserRequest
@@ -1244,8 +1255,6 @@ func TestSessionSendUserMessageReturnsPrintedErrorAndPartialAssistantText(t *tes
 }
 
 func TestSessionSendUserMessageUsesLegacyToolFormattingWithToolObjectName(t *testing.T) {
-	t.Parallel()
-
 	originalDelay := toolCallPrintDelay
 	toolCallPrintDelay = 0
 	t.Cleanup(func() {
@@ -1312,8 +1321,6 @@ func TestSessionSendUserMessageUsesLegacyToolFormattingWithToolObjectName(t *tes
 }
 
 func TestSessionSendUserMessageUsesPresenterBackedToolFormattingInHumanReadableMode(t *testing.T) {
-	t.Parallel()
-
 	originalDelay := toolCallPrintDelay
 	toolCallPrintDelay = 0
 	t.Cleanup(func() {
@@ -1461,9 +1468,42 @@ func TestSessionSendUserMessageJSONToolEventsRemainUnchanged(t *testing.T) {
 	}, toolComplete)
 }
 
-func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
+func TestSessionSendUserMessageDoesNotPrintStartSubagentInHumanReadableOutput(t *testing.T) {
 	t.Parallel()
 
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"},
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review subagent",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = startSubagentRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+	require.NotContains(t, buf.String(), "START SUBAGENT")
+}
+
+func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
 	originalDelay := toolCallPrintDelay
 	toolCallPrintDelay = 0
 	t.Cleanup(func() {
@@ -1474,8 +1514,9 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableO
 		name:   "review",
 		policy: llmstream.SubagentEventPolicyHideFinalMessage,
 	}
-	readTool := namedTestTool{name: "read_file"}
+	clarifyTool := namedTestTool{name: "clarify_public_api"}
 	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+	grandchildAgent := agent.AgentMeta{ID: "clarifier", Depth: 2, Parent: "reviewer"}
 
 	fake := &fakeSessionAgent{
 		sends: []fakeSessionSend{
@@ -1503,19 +1544,42 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableO
 					{
 						Type:  agent.EventTypeToolCall,
 						Agent: childAgent,
-						Tool:  &readTool,
+						Tool:  &clarifyTool,
 						ToolCall: &llmstream.ToolCall{
-							CallID: "call_read",
-							Name:   "ignored_read_name",
+							CallID: "call_clarify",
+							Name:   "ignored_clarify_name",
 						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: grandchildAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "reviewer",
+							ToolCallID:     "call_clarify",
+							Label:          "clarify_public_api",
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       grandchildAgent,
+						TextContent: llmstream.TextContent{Content: "checked docs"},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: grandchildAgent,
+						Turn:  textAssistantTurn("checked docs"),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: grandchildAgent,
 					},
 					{
 						Type:  agent.EventTypeToolComplete,
 						Agent: childAgent,
-						Tool:  &readTool,
+						Tool:  &clarifyTool,
 						ToolResult: &llmstream.ToolResult{
-							CallID: "call_read",
-							Name:   "ignored_read_result",
+							CallID: "call_clarify",
+							Name:   "ignored_clarify_result",
 						},
 					},
 					{
@@ -1566,10 +1630,12 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableO
 	require.Contains(t, output, "> review this change\n")
 	require.Contains(t, output, "CALL review\n")
 	require.Contains(t, output, "TEXT looked at files\n")
-	require.Contains(t, output, "CALL read_file\n")
-	require.Contains(t, output, "DONE read_file\n")
+	require.Contains(t, output, "CALL clarify_public_api\n")
+	require.Contains(t, output, "TEXT checked docs\n")
+	require.Contains(t, output, "DONE clarify_public_api\n")
 	require.Contains(t, output, "DONE review\n")
 	require.NotContains(t, output, `TEXT {"decision":"approve"}`)
+	require.NotContains(t, output, "START SUBAGENT")
 }
 
 func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *testing.T) {
@@ -1579,8 +1645,9 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *
 		name:   "review",
 		policy: llmstream.SubagentEventPolicyHideFinalMessage,
 	}
-	readTool := namedTestTool{name: "read_file"}
+	clarifyTool := namedTestTool{name: "clarify_public_api"}
 	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+	grandchildAgent := agent.AgentMeta{ID: "clarifier", Depth: 2, Parent: "reviewer"}
 
 	fake := &fakeSessionAgent{
 		sends: []fakeSessionSend{
@@ -1610,23 +1677,46 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *
 					{
 						Type:  agent.EventTypeToolCall,
 						Agent: childAgent,
-						Tool:  &readTool,
+						Tool:  &clarifyTool,
 						ToolCall: &llmstream.ToolCall{
-							CallID: "call_read",
-							Name:   "ignored_read_name",
+							CallID: "call_clarify",
+							Name:   "ignored_clarify_name",
 							Type:   "function_call",
-							Input:  `{"path":"foo.go"}`,
+							Input:  `{"path":"internal/noninteractive/SPEC.md","identifier":"Session"}`,
 						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: grandchildAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "reviewer",
+							ToolCallID:     "call_clarify",
+							Label:          "clarify_public_api",
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       grandchildAgent,
+						TextContent: llmstream.TextContent{Content: "checked docs"},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: grandchildAgent,
+						Turn:  textAssistantTurn("checked docs"),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: grandchildAgent,
 					},
 					{
 						Type:  agent.EventTypeToolComplete,
 						Agent: childAgent,
-						Tool:  &readTool,
+						Tool:  &clarifyTool,
 						ToolResult: &llmstream.ToolResult{
-							CallID:  "call_read",
-							Name:    "ignored_read_result",
+							CallID:  "call_clarify",
+							Name:    "ignored_clarify_result",
 							Type:    "function_call",
-							Result:  "package foo\n",
+							Result:  `{"answer":"Session runs one step"}`,
 							IsError: false,
 						},
 					},
@@ -1679,7 +1769,7 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *
 	require.NotContains(t, buf.String(), `{"decision":"approve"}`)
 
 	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
-	require.Len(t, lines, 8)
+	require.Len(t, lines, 9)
 
 	var visibleAssistant jsonAssistantContentEvent
 	require.NoError(t, json.Unmarshal(lines[3], &visibleAssistant))
@@ -1691,14 +1781,33 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *
 	require.NoError(t, json.Unmarshal(lines[4], &childToolCall))
 	require.Equal(t, "tool_call", childToolCall.Type)
 	require.Equal(t, jsonTool{
-		CallID: "call_read",
-		Name:   "read_file",
+		CallID: "call_clarify",
+		Name:   "clarify_public_api",
 		Type:   "function_call",
-		Input:  `{"path":"foo.go"}`,
+		Input:  `{"path":"internal/noninteractive/SPEC.md","identifier":"Session"}`,
 	}, childToolCall.Tool)
 
+	var grandchildAssistant jsonAssistantContentEvent
+	require.NoError(t, json.Unmarshal(lines[5], &grandchildAssistant))
+	require.Equal(t, "assistant_text", grandchildAssistant.Type)
+	require.Equal(t, "checked docs", grandchildAssistant.Content)
+	require.Equal(t, jsonAgent{ID: "clarifier", Depth: 2}, grandchildAssistant.Agent)
+
+	var childToolComplete jsonToolCompleteEvent
+	require.NoError(t, json.Unmarshal(lines[6], &childToolComplete))
+	require.Equal(t, "tool_complete", childToolComplete.Type)
+	require.Equal(t, jsonTool{
+		CallID: "call_clarify",
+		Name:   "clarify_public_api",
+		Type:   "function_call",
+	}, childToolComplete.Tool)
+	require.Equal(t, jsonResult{
+		Output:  `{"answer":"Session runs one step"}`,
+		IsError: false,
+	}, childToolComplete.Result)
+
 	var outerToolComplete jsonToolCompleteEvent
-	require.NoError(t, json.Unmarshal(lines[6], &outerToolComplete))
+	require.NoError(t, json.Unmarshal(lines[7], &outerToolComplete))
 	require.Equal(t, "tool_complete", outerToolComplete.Type)
 	require.Equal(t, jsonTool{
 		CallID: "call_review",

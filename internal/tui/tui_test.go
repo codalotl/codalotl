@@ -527,6 +527,25 @@ func TestHandleAgentEvent_QueuedUserMessageSentAppendsUserMessage(t *testing.T) 
 	require.Equal(t, messageKindUser, m.messages[0].kind)
 	require.Equal(t, "hello", m.messages[0].userMessage)
 }
+
+func TestHandleAgentEvent_StartSubagentDoesNotAppendMessage(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	child := agent.AgentMeta{ID: "child", Depth: 1, Parent: "root"}
+	m.handleAgentEvent(agent.Event{
+		Agent: child,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: "root",
+			ToolCallID:     "tool-1",
+			Label:          "child task",
+		},
+	})
+
+	require.Empty(t, m.messages)
+	require.Equal(t, "root", m.agentParents[child.ID])
+}
+
 func TestRestoreQueuedMessagesToInput_IncludesQueuedMessagesInOrder(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 	m.queuedMessages = []queuedMessage{
@@ -895,6 +914,49 @@ func TestHideFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *test
 	require.Equal(t, agent.EventTypeToolComplete, m.messages[2].event.Type)
 	require.Equal(t, agent.EventTypeToolComplete, m.messages[3].event.Type)
 	require.Equal(t, "Checking the diff before the structured result.", m.messages[1].event.TextContent.Content)
+}
+
+func TestHideFinalDescendantStartSubagentDoesNotAppendMessage(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
+	grandchild := agent.AgentMeta{ID: "nested-subagent", Depth: 2, Parent: child.ID}
+	reviewTool := newNamedToolWithPresenter("review", stubPresenter{
+		behavior: llmstream.CompletionBehaviorAppend,
+		policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+	})
+	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: reviewTool, ToolCall: reviewCall})
+	m.handleAgentEvent(agent.Event{
+		Agent:       child,
+		Type:        agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{Content: "Checking the diff before launching deeper analysis."},
+	})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
+
+	require.Len(t, m.messages, 1)
+
+	m.handleAgentEvent(agent.Event{
+		Agent: grandchild,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: child.ID,
+			ToolCallID:     "clarify-1",
+			Label:          "nested analysis",
+		},
+	})
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+	require.Equal(t, "Checking the diff before launching deeper analysis.", m.messages[1].event.TextContent.Content)
+	require.Equal(t, child.ID, m.agentParents[grandchild.ID])
+
+	for _, msg := range m.messages {
+		require.NotEqual(t, agent.EventTypeStartSubagent, msg.event.Type)
+	}
 }
 
 func TestToolNamePrecedence(t *testing.T) {

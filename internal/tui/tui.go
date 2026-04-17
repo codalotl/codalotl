@@ -1687,6 +1687,8 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	case agent.EventTypeAssistantTurnComplete:
 		m.refreshViewport(autoScroll)
 		return
+	case agent.EventTypeStartSubagent:
+		return
 	case agent.EventTypeDoneSuccess:
 		return
 	}
@@ -1953,6 +1955,12 @@ func (m *model) handleHideFinalDescendantMessage(ref toolDisplayScopeRef, ev age
 			return false
 		}
 		scope.pendingTurnComplete = true
+		return true
+	case agent.EventTypeStartSubagent:
+		if len(scope.pendingDescendantTurn) > 0 {
+			m.flushPendingDescendantTurn(scope)
+			m.refreshViewport(autoScroll)
+		}
 		return true
 	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
 		scope.pendingDescendantTurn = nil

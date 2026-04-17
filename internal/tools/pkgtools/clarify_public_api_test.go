@@ -242,13 +242,14 @@ func TestInvokeClarifyAgent_UsesClarifyAgentAndReturnsAnswer(t *testing.T) {
 		"mock-model",
 		"pkg",
 		filepath.Join(sandboxDir, "pkg"),
+		"github.com/example/pkg",
 		"Equal",
 		"What does Equal do?",
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "It compares the values using equality semantics.", answer)
 	assert.Equal(t, ToolNameClarifyPublicAPI, invoker.invokedAgentName)
-	assert.Equal(t, creator, invoker.req.AgentCreator)
+	assert.NotNil(t, invoker.req.AgentCreator)
 	assert.Equal(t, filepath.Join(sandboxDir, "pkg"), invoker.req.ToolOptions.GoPkgAbsDir)
 	assert.Equal(t, llmmodel.ModelID("mock-model"), invoker.req.ToolOptions.Model)
 	assert.Equal(t, filepath.Join(sandboxDir, "effective-sandbox"), invoker.req.OverrideSandboxDir)
@@ -257,6 +258,46 @@ func TestInvokeClarifyAgent_UsesClarifyAgentAndReturnsAnswer(t *testing.T) {
 	require.Len(t, invoker.req.Messages, 1)
 	assert.Equal(t, "What does Equal do?", invoker.req.Messages[0])
 	assert.JSONEq(t, `{"path":"pkg","identifier":"Equal","question":"What does Equal do?"}`, string(invoker.req.Payload))
+}
+
+func TestInvokeClarifyAgent_AttachesSubagentLabel(t *testing.T) {
+	sandboxDir := t.TempDir()
+	creator := &fakeAgentCreator{
+		newFn: func(string, []llmstream.Tool, ...agent.NewOptions) (*agent.Agent, error) {
+			return nil, nil
+		},
+	}
+	invoker := &fakeAgentInvoker{
+		invokeFn: func(_ context.Context, _ string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+			_, err := req.AgentCreator.New("system", nil, agent.NewOptions{
+				Model: llmmodel.ModelID("wrapped-model"),
+			})
+			require.NoError(t, err)
+			return successfulClarifyEvents("It compares the values using equality semantics."), nil
+		},
+	}
+
+	_, err := invokeClarifyAgent(
+		context.Background(),
+		invoker,
+		creator,
+		sandboxDir,
+		authdomain.NewAutoApproveAuthorizer(sandboxDir),
+		sandboxDir,
+		authdomain.NewAutoApproveAuthorizer(sandboxDir),
+		"mock-model",
+		"pkg",
+		filepath.Join(sandboxDir, "pkg"),
+		"github.com/stretchr/testify/assert",
+		"Equal",
+		"What does Equal do?",
+	)
+	require.NoError(t, err)
+	require.Len(t, creator.newOptions, 1)
+	assert.Equal(t, agent.NewOptions{
+		Model:         llmmodel.ModelID("wrapped-model"),
+		SubagentLabel: "Clarify Equal in github.com/stretchr/testify/assert",
+	}, creator.newOptions[0])
 }
 
 func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T) {
@@ -276,6 +317,7 @@ func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T)
 		"mock-model",
 		"pkg",
 		filepath.Join(sandboxDir, "pkg"),
+		"github.com/example/pkg",
 		"Equal",
 		"What does \"Equal\" do?\nDoes it treat nil specially?",
 	)
@@ -289,7 +331,7 @@ func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {
 	_, err := invokeClarifyAgent(
 		context.Background(),
 		nil,
-		fakeAgentCreator{},
+		&fakeAgentCreator{},
 		t.TempDir(),
 		nil,
 		t.TempDir(),
@@ -297,6 +339,7 @@ func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {
 		"",
 		"fmt",
 		t.TempDir(),
+		"fmt",
 		"Thing",
 		"What does Thing do?",
 	)
@@ -308,21 +351,28 @@ type fakeAgentInvoker struct {
 	err              error
 	invokedAgentName string
 	req              toolsetinterface.InvokeRequest
+	invokeFn         func(context.Context, string, toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
 }
 
 func (f *fakeAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
 	f.invokedAgentName = agentName
 	f.req = req
+	if f.invokeFn != nil {
+		return f.invokeFn(ctx, agentName, req)
+	}
 	return f.events, f.err
 }
 
-type fakeAgentCreator struct{}
-
-func (fakeAgentCreator) New(llmmodel.ModelID, string, []llmstream.Tool) (*agent.Agent, error) {
-	return nil, errors.New("not implemented")
+type fakeAgentCreator struct {
+	newOptions []agent.NewOptions
+	newFn      func(string, []llmstream.Tool, ...agent.NewOptions) (*agent.Agent, error)
 }
 
-func (fakeAgentCreator) NewWithDefaultModel(string, []llmstream.Tool) (*agent.Agent, error) {
+func (f *fakeAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
+	f.newOptions = append([]agent.NewOptions(nil), options...)
+	if f.newFn != nil {
+		return f.newFn(systemPrompt, tools, options...)
+	}
 	return nil, errors.New("not implemented")
 }
 

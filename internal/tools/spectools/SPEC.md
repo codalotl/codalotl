@@ -13,6 +13,7 @@ Details:
 - `only_changed=false` checks all current-module packages that have `SPEC.md`, except packages already marked `conforms=true` in CAS when package scope has no diff.
 - If no packages are eligible, tool returns `{}`.
 - Runs one `limited_package_mode` subagent per package, with bounded concurrency.
+- Labels each package-check subagent with the module-relative package dir.
 - Supplies package diff and programmatic `spec diff` context to each subagent.
 - Subagent instructions remain read-only in intent and use the `$spec-md` check-conformance workflow.
 - Package scope is the default Go code unit rooted at the package dir.

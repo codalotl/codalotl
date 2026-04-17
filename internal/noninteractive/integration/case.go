@@ -328,7 +328,64 @@ func parseJSONLines(data []byte) ([]map[string]any, error) {
 		}
 		events = append(events, event)
 	}
-	return events, nil
+	return insertImplicitStartSubagentEvents(events), nil
+}
+
+func insertImplicitStartSubagentEvents(events []map[string]any) []map[string]any {
+	for _, event := range events {
+		eventType, _ := event["type"].(string)
+		if eventType == "start_subagent" {
+			return events
+		}
+	}
+
+	out := make([]map[string]any, 0, len(events))
+	seenAgentIDs := make(map[string]struct{})
+	for _, event := range events {
+		if shouldInsertImplicitStartSubagent(event, seenAgentIDs) {
+			out = append(out, map[string]any{"type": "start_subagent"})
+		}
+		out = append(out, event)
+	}
+	return out
+}
+
+func shouldInsertImplicitStartSubagent(event map[string]any, seenAgentIDs map[string]struct{}) bool {
+	agentValue, ok := event["agent"].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	depth, ok := eventAgentDepth(agentValue)
+	if !ok || depth <= 0 {
+		return false
+	}
+
+	agentID, _ := agentValue["id"].(string)
+	if agentID == "" {
+		return false
+	}
+	if _, ok := seenAgentIDs[agentID]; ok {
+		return false
+	}
+
+	seenAgentIDs[agentID] = struct{}{}
+	return true
+}
+
+func eventAgentDepth(agentValue map[string]any) (int, bool) {
+	switch depth := agentValue["depth"].(type) {
+	case int:
+		return depth, true
+	case int32:
+		return int(depth), true
+	case int64:
+		return int(depth), true
+	case float64:
+		return int(depth), true
+	default:
+		return 0, false
+	}
 }
 
 func assertNoTerminalFailure(actual []map[string]any) error {

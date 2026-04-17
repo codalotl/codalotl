@@ -52,11 +52,12 @@ type toolCheckSpecConformance struct {
 	model          llmmodel.ModelID
 	maxConcurrency int
 
-	git             gitRunner
-	specDiffContext func(pkg *gocode.Package) (string, error)
-	heuristicBase   func(repoDir string) (commit string, ref string, err error)
-	changedPaths    func(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error)
-	runPackageCheck packageCheckRunner
+	git                        gitRunner
+	specDiffContext            func(pkg *gocode.Package) (string, error)
+	heuristicBase              func(repoDir string) (commit string, ref string, err error)
+	changedPaths               func(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error)
+	runPackageCheck            packageCheckRunner
+	subAgentCreatorFromContext func(ctx context.Context) (agent.SubAgentCreator, error)
 }
 
 type checkSpecConformanceParams struct {
@@ -131,15 +132,16 @@ func NewCheckSpecConformanceTool(authorizer authdomain.Authorizer, options ...Ch
 	}
 
 	tool := &toolCheckSpecConformance{
-		sandboxAbsDir:   sandboxAbsDir,
-		authorizer:      authorizer,
-		agentInvoker:    option.AgentInvoker,
-		model:           option.Model,
-		maxConcurrency:  option.MaxConcurrency,
-		git:             execGitRunner{},
-		specDiffContext: computeSpecDiffContext,
-		heuristicBase:   gittools.HeuristicMergeBase,
-		changedPaths:    gittools.ChangedPathsSince,
+		sandboxAbsDir:              sandboxAbsDir,
+		authorizer:                 authorizer,
+		agentInvoker:               option.AgentInvoker,
+		model:                      option.Model,
+		maxConcurrency:             option.MaxConcurrency,
+		git:                        execGitRunner{},
+		specDiffContext:            computeSpecDiffContext,
+		heuristicBase:              gittools.HeuristicMergeBase,
+		changedPaths:               gittools.ChangedPathsSince,
+		subAgentCreatorFromContext: subAgentCreatorFromContextSafe,
 	}
 	tool.runPackageCheck = tool.runPackageCheckWithSubagent
 	return tool
@@ -358,14 +360,19 @@ func (t *toolCheckSpecConformance) runPackageCheckWithSubagent(ctx context.Conte
 		pkgAuthorizer = authdomain.NewCodeUnitAuthorizer(unit, t.authorizer)
 	}
 
-	agentCreator, err := subAgentCreatorFromContextSafe(ctx)
+	subAgentCreatorFromContext := t.subAgentCreatorFromContext
+	if subAgentCreatorFromContext == nil {
+		subAgentCreatorFromContext = subAgentCreatorFromContextSafe
+	}
+
+	agentCreator, err := subAgentCreatorFromContext(ctx)
 	if err != nil {
 		return "", err
 	}
 
 	instructions := buildPackageCheckInstructions(req)
 	events, err := t.agentInvoker.Invoke(ctx, checkSpecConformanceAgentName, toolsetinterface.InvokeRequest{
-		AgentCreator:     agentCreator,
+		AgentCreator:     labeledSubAgentCreator{base: agentCreator, label: req.Key},
 		CallerAuthorizer: pkgAuthorizer,
 		CallerSandboxDir: t.sandboxAbsDir,
 		ToolOptions: toolsetinterface.Options{
@@ -381,6 +388,21 @@ func (t *toolCheckSpecConformance) runPackageCheckWithSubagent(ctx context.Conte
 	}
 
 	return agent.CollectFinalAssistantText(ctx, events)
+}
+
+type labeledSubAgentCreator struct {
+	base  agent.SubAgentCreator
+	label string
+}
+
+func (c labeledSubAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
+	if len(options) == 0 {
+		return c.base.New(systemPrompt, tools, agent.NewOptions{SubagentLabel: c.label})
+	}
+
+	forwarded := append([]agent.NewOptions(nil), options...)
+	forwarded[len(forwarded)-1].SubagentLabel = c.label
+	return c.base.New(systemPrompt, tools, forwarded...)
 }
 
 func buildPackageCheckInstructions(req packageCheckRequest) string {

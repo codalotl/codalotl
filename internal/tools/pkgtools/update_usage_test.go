@@ -220,7 +220,7 @@ func TestInvokeUpdateUsageAgent_RequiresInvoker(t *testing.T) {
 	_, err := invokeUpdateUsageAgent(
 		context.Background(),
 		nil,
-		fakeAgentCreator{},
+		&fakeAgentCreator{},
 		t.TempDir(),
 		nil,
 		t.TempDir(),

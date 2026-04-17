@@ -249,7 +249,7 @@ func TestInvokeChangeAPIAgent_RequiresInvoker(t *testing.T) {
 	_, err := invokeChangeAPIAgent(
 		context.Background(),
 		nil,
-		fakeAgentCreator{},
+		&fakeAgentCreator{},
 		t.TempDir(),
 		nil,
 		t.TempDir(),

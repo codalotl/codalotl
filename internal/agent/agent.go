@@ -30,12 +30,15 @@ type Agent struct {
 	sessionID           string
 	agentID             string
 	model               llmmodel.ModelID
+	subagentLabel       string
+	callingToolCallID   string
 	conv                llmstream.StreamingConversation
 	mu                  sync.Mutex
 	status              Status
 	turns               []llmstream.Turn
 	tokenUsage          llmstream.TokenUsage
 	contextUsageTokens  int64
+	startSubagentSent   bool
 	tools               map[string]llmstream.Tool
 	toolList            []llmstream.Tool
 	pendingUserMessages []string
@@ -47,14 +50,26 @@ type Agent struct {
 	currentOut          chan<- Event
 }
 
-// NewAgent constructs a new Agent for the supplied model, system prompt, and tools.
-func NewAgent(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error) {
+// NewOptions controls optional agent construction behavior.
+type NewOptions struct {
+	Model         llmmodel.ModelID
+	SubagentLabel string
+}
+
+// New constructs a root Agent.
+func New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error) {
 	sessionID, err := generateSessionID()
 	if err != nil {
 		return nil, err
 	}
 
-	return newAgentInstance(model, systemPrompt, tools, sessionID, sessionID, nil, 0, nil)
+	resolved := mergeNewOptions(options)
+	model := resolved.Model
+	if model == "" {
+		model = llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
+	}
+
+	return newAgentInstance(model, systemPrompt, tools, sessionID, sessionID, nil, 0, nil, resolved.SubagentLabel, "")
 }
 
 // SessionID returns a globally unique identifier for this agent session.
@@ -200,6 +215,7 @@ func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Even
 	a.acceptingQueue = true
 	a.mu.Unlock()
 
+	a.maybeEmitStartSubagentEvent(out)
 	go a.run(ctx, out)
 	return out
 }
@@ -368,7 +384,7 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 			result = llmstream.NewErrorToolResult("unknown tool", call)
 		} else {
 			toolCtx, cancel := context.WithCancel(ctx)
-			factory := newSubAgentFactory(a)
+			factory := newSubAgentFactory(a, callCopy.CallID)
 			toolCtx = withSubAgentContext(toolCtx, factory, a.depth)
 
 			func() {
@@ -607,7 +623,20 @@ func cloneToolSlice(tools []llmstream.Tool) []llmstream.Tool {
 	return out
 }
 
-func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, sessionID, agentID string, parent *Agent, depth int, parentOut chan<- Event) (*Agent, error) {
+func mergeNewOptions(options []NewOptions) NewOptions {
+	var merged NewOptions
+	for _, opt := range options {
+		if opt.Model != "" {
+			merged.Model = opt.Model
+		}
+		if opt.SubagentLabel != "" {
+			merged.SubagentLabel = opt.SubagentLabel
+		}
+	}
+	return merged
+}
+
+func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, sessionID, agentID string, parent *Agent, depth int, parentOut chan<- Event, subagentLabel, callingToolCallID string) (*Agent, error) {
 	conv := newConversation(model, systemPrompt)
 	if conv == nil {
 		return nil, errors.New("agent: failed to create conversation")
@@ -629,17 +658,19 @@ func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmst
 	}
 
 	return &Agent{
-		sessionID: sessionID,
-		agentID:   agentID,
-		model:     model,
-		conv:      conv,
-		status:    StatusIdle,
-		turns:     []llmstream.Turn{systemTurn},
-		tools:     toolMap,
-		toolList:  toolList,
-		parent:    parent,
-		depth:     depth,
-		parentOut: parentOut,
+		sessionID:         sessionID,
+		agentID:           agentID,
+		model:             model,
+		subagentLabel:     subagentLabel,
+		callingToolCallID: callingToolCallID,
+		conv:              conv,
+		status:            StatusIdle,
+		turns:             []llmstream.Turn{systemTurn},
+		tools:             toolMap,
+		toolList:          toolList,
+		parent:            parent,
+		depth:             depth,
+		parentOut:         parentOut,
 	}, nil
 }
 
@@ -655,6 +686,27 @@ func (a *Agent) stopAcceptingQueue() {
 	a.mu.Lock()
 	a.acceptingQueue = false
 	a.mu.Unlock()
+}
+
+func (a *Agent) maybeEmitStartSubagentEvent(out chan<- Event) {
+	a.mu.Lock()
+	if a.parent == nil || a.startSubagentSent {
+		a.mu.Unlock()
+		return
+	}
+
+	start := StartSubagent{
+		CallingAgentID: a.parent.agentID,
+		ToolCallID:     a.callingToolCallID,
+		Label:          a.subagentLabel,
+	}
+	a.startSubagentSent = true
+	a.mu.Unlock()
+
+	a.dispatchEvent(out, Event{
+		Type:          EventTypeStartSubagent,
+		StartSubagent: start,
+	})
 }
 
 // injectOrStopAccepting is called when the provider has produced an end-of-turn. If there are queued user messages, they are appended and the agent continues. Otherwise

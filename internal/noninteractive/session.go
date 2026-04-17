@@ -535,6 +535,8 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 			if err := writeOutputLine(s.out, formatted); err != nil {
 				return result, err
 			}
+		case agent.EventTypeStartSubagent:
+			continue
 		default:
 			formatted := s.formatter.FormatEvent(ev, s.terminalWidth)
 			if shouldSuppressFormattedOutput(formatted) || formatted == "" {
@@ -605,6 +607,9 @@ func renderPresentationLine(line llmstream.Line) string {
 
 func (s *Session) writeFilteredEvents(events []agent.Event) error {
 	for _, ev := range events {
+		if ev.Type == agent.EventTypeStartSubagent {
+			continue
+		}
 		if s.opts.OutputJSON {
 			if err := s.jsonWriter.WriteAgentEvent(ev); err != nil {
 				return err
