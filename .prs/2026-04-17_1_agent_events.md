@@ -43,14 +43,14 @@ In terms of the `internal/agent` package itself:
 
 ### Phase 0
 
-#### Package `internal/agent`
+#### Package `internal/agent` [DONE]
 - Update `internal/agent/SPEC.md` for a new `EventTypeStartSubagent` event and `Event.StartSubagent`.
 - Emit exactly one start-subagent event per subagent ID, only when `SendUserMessage` is accepted.
 - Make that event the first shared-stream event from the subagent.
 - Carry optional tool-supplied subagent labels through agent construction.
 - Collapse split construction APIs into one `New(..., options)` path where `Model` is optional and `SubagentLabel` is optional.
 
-#### Package `internal/agentregistry` and `internal/agent` callers
+#### Package `internal/agentregistry` [DONE]
 - Update callsites that currently rely on `NewWithDefaultModel` to the unified `New(..., options)` API.
 - Preserve existing default-model behavior for both root creators and subagent creators.
 - No `SPEC.md` changes expected unless public docs become inaccurate during implementation.
@@ -58,6 +58,7 @@ In terms of the `internal/agent` package itself:
 #### Package `internal/tools/pkgtools`
 - Retrofit `clarify_public_api` to pass a useful subagent label.
 - Keep existing presenter/result behavior unchanged; this is only about richer event metadata.
+- Update `pkgtools`-side test fakes and any remaining local `AgentCreator` adapters to the unified `New(..., options)` API.
 
 #### Package `internal/tools/spectools`
 - Retrofit `check_spec_conformance` to label each package-check subagent, including concurrent launches.
@@ -96,5 +97,9 @@ In terms of the `internal/agent` package itself:
 - Relevant packages: `internal/agent`, `internal/agentregistry`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tui`, `internal/agentformatter`, `internal/noninteractive`.
 - `internal/tools/spectools/check_spec_conformance.go` already launches concurrent subagents; this PR needs package labels there.
 - `internal/tools/pkgtools/clarify_public_api.go` is a good simple single-subagent tool to retrofit for labeled launches.
-- Current `internal/agent` split API is `NewAgent(...)` plus `AgentCreator.New(...)` and `AgentCreator.NewWithDefaultModel(...)`; the implementation lives mainly in `internal/agent/agent.go` and `internal/agent/subagent.go`.
+- `internal/agent` now emits `EventTypeStartSubagent` once per subagent send-start and uses unified creation via `New(..., options)` / `AgentCreator.New(..., options)`.
+- `internal/agentregistry` has been updated to the unified constructor API; `internal/agentbuilder` test adapters were updated as part of the same transition.
 - Current formatter / TUI behavior for unknown event types is mostly "show nothing", but explicit event-type switches and tests will likely still need updates.
+- Validation after the `internal/agent` step:
+  - passed: `go test ./internal/agent ./internal/agentregistry ./internal/agentbuilder`
+  - pending follow-up in `internal/tools/pkgtools`: targeted `go test ./internal/tools/pkgtools` currently fails because local fake `AgentCreator` implementations still use the old interface
