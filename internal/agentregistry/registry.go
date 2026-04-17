@@ -183,9 +183,13 @@ func (p *PreparedAgent) Create(agentCreator agent.AgentCreator) (*agent.Agent, e
 		err error
 	)
 	if p.BuildOptions.ToolOptions.Model != "" {
-		a, err = agentCreator.New(p.BuildOptions.ToolOptions.Model, p.SystemPrompt, tools)
+		a, err = agentCreator.New(
+			p.SystemPrompt,
+			tools,
+			agent.NewOptions{Model: p.BuildOptions.ToolOptions.Model},
+		)
 	} else {
-		a, err = agentCreator.NewWithDefaultModel(p.SystemPrompt, tools)
+		a, err = agentCreator.New(p.SystemPrompt, tools)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("agentregistry: failed to create agent: %w", err)

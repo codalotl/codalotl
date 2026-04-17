@@ -11,6 +11,7 @@ const (
 	EventTypeDoneSuccess           EventType = "done_success"
 	EventTypeUserMessageQueued     EventType = "user_message_queued"
 	EventTypeQueuedUserMessageSent EventType = "queued_user_message_sent"
+	EventTypeStartSubagent         EventType = "start_subagent"
 	EventTypeAssistantText         EventType = "assistant_text"
 	EventTypeAssistantReasoning    EventType = "assistant_reasoning"
 	EventTypeToolCall              EventType = "tool_call"
@@ -26,6 +27,7 @@ type Event struct {
 	Type             EventType
 	Error            error
 	UserMessage      string
+	StartSubagent    StartSubagent
 	TextContent      llmstream.TextContent
 	ReasoningContent llmstream.ReasoningContent
 	Tool             llmstream.Tool
@@ -39,4 +41,11 @@ type AgentMeta struct {
 	ID     string
 	Depth  int
 	Parent string
+}
+
+// StartSubagent describes the start of a subagent run within a tool call.
+type StartSubagent struct {
+	CallingAgentID string
+	ToolCallID     string
+	Label          string
 }

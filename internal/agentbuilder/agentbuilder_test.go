@@ -1105,16 +1105,15 @@ type captureAgentCreator struct {
 	err              error
 }
 
-func (c *captureAgentCreator) New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
-	c.lastModel = model
+func (c *captureAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
+	c.lastModel = ""
 	c.lastSystemPrompt = systemPrompt
 	c.lastTools = tools
-	return nil, c.err
-}
-
-func (c *captureAgentCreator) NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
-	c.lastSystemPrompt = systemPrompt
-	c.lastTools = tools
+	for _, option := range options {
+		if option.Model != "" {
+			c.lastModel = option.Model
+		}
+	}
 	return nil, c.err
 }
 

@@ -9,8 +9,8 @@ import (
 
 // AgentCreator can construct either a root Agent or a SubAgent, depending on how it was obtained.
 type AgentCreator interface {
-	New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error)
-	NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*Agent, error)
+	// Model omitted: root creators use package default model; SubAgent creators use parent model.
+	New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
 }
 
 // SubAgentCreator constructs SubAgents while servicing a tool call.
@@ -29,25 +29,22 @@ type defaultAgentCreator struct {
 	defaultModel llmmodel.ModelID
 }
 
-func (c *defaultAgentCreator) New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error) {
-	return NewAgent(model, systemPrompt, tools)
-}
-
-func (c *defaultAgentCreator) NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*Agent, error) {
-	model := llmmodel.ModelIDOrFallback(c.defaultModel)
-	return NewAgent(model, systemPrompt, tools)
+func (c *defaultAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error) {
+	opts := append([]NewOptions{{Model: llmmodel.ModelIDOrFallback(c.defaultModel)}}, options...)
+	return New(systemPrompt, tools, opts...)
 }
 
 type subAgentFactory struct {
 	mu           sync.Mutex
 	parent       *Agent
 	parentOut    chan<- Event
+	toolCallID   string
 	defaultModel llmmodel.ModelID
 	tools        []llmstream.Tool
 	closed       bool
 }
 
-func newSubAgentFactory(parent *Agent) *subAgentFactory {
+func newSubAgentFactory(parent *Agent, toolCallID string) *subAgentFactory {
 	if parent == nil {
 		return nil
 	}
@@ -66,21 +63,22 @@ func newSubAgentFactory(parent *Agent) *subAgentFactory {
 	return &subAgentFactory{
 		parent:       parent,
 		parentOut:    out,
+		toolCallID:   toolCallID,
 		defaultModel: parent.model,
 		tools:        cloneToolSlice(parent.toolList),
 	}
 }
 
-func (f *subAgentFactory) New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error) {
-	return f.create(model, systemPrompt, tools)
+func (f *subAgentFactory) New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error) {
+	resolved := mergeNewOptions(options)
+	model := resolved.Model
+	if model == "" {
+		model = llmmodel.ModelIDOrFallback(f.defaultModel)
+	}
+	return f.create(model, systemPrompt, tools, resolved.SubagentLabel)
 }
 
-func (f *subAgentFactory) NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*Agent, error) {
-	model := llmmodel.ModelIDOrFallback(f.defaultModel)
-	return f.create(model, systemPrompt, tools)
-}
-
-func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*Agent, error) {
+func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, subagentLabel string) (*Agent, error) {
 	f.mu.Lock()
 	if f.closed {
 		f.mu.Unlock()
@@ -89,6 +87,7 @@ func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, to
 
 	parent := f.parent
 	parentOut := f.parentOut
+	toolCallID := f.toolCallID
 	f.mu.Unlock()
 
 	if parentOut == nil {
@@ -100,7 +99,7 @@ func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, to
 		return nil, err
 	}
 
-	child, err := newAgentInstance(model, systemPrompt, tools, parent.sessionID, agentID, parent, parent.depth+1, parentOut)
+	child, err := newAgentInstance(model, systemPrompt, tools, parent.sessionID, agentID, parent, parent.depth+1, parentOut, subagentLabel, toolCallID)
 	if err != nil {
 		return nil, err
 	}

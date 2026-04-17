@@ -149,26 +149,26 @@ func TestDefinition_Validate(t *testing.T) {
 }
 
 type mockAgentCreator struct {
-	newCalls            int
-	newWithDefaultCalls int
-	lastModel           llmmodel.ModelID
-	lastSystemPrompt    string
-	lastTools           []llmstream.Tool
-	err                 error
+	newCalls               int
+	newWithExplicitModel   int
+	newWithDefaultBehavior int
+	lastModel              llmmodel.ModelID
+	lastSystemPrompt       string
+	lastTools              []llmstream.Tool
+	err                    error
 }
 
-func (m *mockAgentCreator) New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
+func (m *mockAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
 	m.newCalls++
-	m.lastModel = model
 	m.lastSystemPrompt = systemPrompt
 	m.lastTools = tools
-	return nil, m.err
-}
-
-func (m *mockAgentCreator) NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
-	m.newWithDefaultCalls++
-	m.lastSystemPrompt = systemPrompt
-	m.lastTools = tools
+	if len(options) > 0 {
+		m.lastModel = options[0].Model
+		m.newWithExplicitModel++
+	} else {
+		m.lastModel = ""
+		m.newWithDefaultBehavior++
+	}
 	return nil, m.err
 }
 
@@ -181,16 +181,8 @@ func newRecordingAgentCreator() *recordingAgentCreator {
 	return &recordingAgentCreator{base: agent.NewAgentCreator()}
 }
 
-func (r *recordingAgentCreator) New(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
-	a, err := r.base.New(model, systemPrompt, tools)
-	if err == nil {
-		r.lastAgent = a
-	}
-	return a, err
-}
-
-func (r *recordingAgentCreator) NewWithDefaultModel(systemPrompt string, tools []llmstream.Tool) (*agent.Agent, error) {
-	a, err := r.base.NewWithDefaultModel(systemPrompt, tools)
+func (r *recordingAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
+	a, err := r.base.New(systemPrompt, tools, options...)
 	if err == nil {
 		r.lastAgent = a
 	}
@@ -394,6 +386,7 @@ func TestRegistry_Invoke(t *testing.T) {
 		assert.ErrorContains(t, err, "mock stop")
 
 		assert.Equal(t, 1, mockCreator.newCalls)
+		assert.Equal(t, 1, mockCreator.newWithExplicitModel)
 		assert.Equal(t, llmmodel.ModelID("my-model"), mockCreator.lastModel)
 		assert.Equal(t, "System Prompt", mockCreator.lastSystemPrompt)
 		assert.Len(t, mockCreator.lastTools, 1)
@@ -765,6 +758,7 @@ func TestRegistry_Invoke(t *testing.T) {
 		assert.ErrorContains(t, err, "mock stop")
 
 		assert.Equal(t, "Dynamic builder-agent", mockCreator.lastSystemPrompt)
+		assert.Equal(t, 1, mockCreator.newWithDefaultBehavior)
 	})
 
 	t.Run("tools builder appends dynamic tools", func(t *testing.T) {
@@ -797,6 +791,7 @@ func TestRegistry_Invoke(t *testing.T) {
 		assert.ErrorContains(t, err, "mock stop")
 		assert.Equal(t, []string{"tools-builder-static-tool", "tools-builder-dynamic-tool"}, constructed)
 		assert.Len(t, mockCreator.lastTools, 2)
+		assert.Equal(t, 1, mockCreator.newWithExplicitModel)
 	})
 
 	t.Run("tools builder error stops invoke", func(t *testing.T) {
@@ -814,7 +809,7 @@ func TestRegistry_Invoke(t *testing.T) {
 		})
 		assert.ErrorContains(t, err, "failed to build tool names: builder boom")
 		assert.Zero(t, mockCreator.newCalls)
-		assert.Zero(t, mockCreator.newWithDefaultCalls)
+		assert.Zero(t, mockCreator.newWithDefaultBehavior)
 	})
 
 	t.Run("request messages are forwarded in order after initial turns", func(t *testing.T) {

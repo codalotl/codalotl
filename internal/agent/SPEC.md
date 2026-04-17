@@ -122,8 +122,8 @@ type AgentMeta struct {
 }
 
 type Event struct {
-	Agent AgentMeta
-	Tool  llmstream.Tool // nil on non-tool events
+	Agent         AgentMeta
+	Tool          llmstream.Tool // nil on non-tool events
 	StartSubagent StartSubagent
 
 	// ... other fields
