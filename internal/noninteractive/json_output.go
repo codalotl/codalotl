@@ -155,6 +155,8 @@ func (w *jsonEventWriter) WriteAgentEvent(ev agent.Event) error {
 			Agent:   jsonAgentFromMeta(ev.Agent),
 			Message: errorString(ev.Error),
 		})
+	case agent.EventTypeStartSubagent:
+		return nil
 	default:
 		return nil
 	}

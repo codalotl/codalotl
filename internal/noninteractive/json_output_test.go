@@ -207,6 +207,19 @@ func TestJSONEventWriterWriteAgentEvent(t *testing.T) {
 			wantOut: true,
 		},
 		{
+			name: "start subagent is ignored",
+			event: agent.Event{
+				Type:  agent.EventTypeStartSubagent,
+				Agent: agent.AgentMeta{ID: "sub", Depth: 1, Parent: "root"},
+				StartSubagent: agent.StartSubagent{
+					CallingAgentID: "root",
+					ToolCallID:     "call_1",
+					Label:          "clarify_public_api",
+				},
+			},
+			wantOut: false,
+		},
+		{
 			name: "ignored event",
 			event: agent.Event{
 				Type: agent.EventTypeQueuedUserMessageSent,

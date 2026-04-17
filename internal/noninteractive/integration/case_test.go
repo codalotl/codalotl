@@ -286,3 +286,61 @@ func TestRunCaseDir_ThreadsLintConfigToNoninteractiveExec(t *testing.T) {
 	assert.Equal(t, "echo", capturedOpts.LintSteps[0].Fix.Command)
 	assert.Equal(t, []string{"custom-ran"}, capturedOpts.LintSteps[0].Fix.Args)
 }
+
+func TestInsertImplicitStartSubagentEvents(t *testing.T) {
+	events := []map[string]any{
+		{
+			"type": "tool_call",
+			"agent": map[string]any{
+				"id":    "agent-root",
+				"depth": float64(0),
+			},
+		},
+		{
+			"type": "tool_call",
+			"agent": map[string]any{
+				"id":    "agent-child-1",
+				"depth": float64(1),
+			},
+		},
+		{
+			"type": "tool_complete",
+			"agent": map[string]any{
+				"id":    "agent-child-1",
+				"depth": float64(1),
+			},
+		},
+		{
+			"type": "assistant_text",
+			"agent": map[string]any{
+				"id":    "agent-child-2",
+				"depth": float64(1),
+			},
+		},
+	}
+
+	got := insertImplicitStartSubagentEvents(events)
+
+	require.Len(t, got, 6)
+	assert.Equal(t, map[string]any{"type": "start_subagent"}, got[1])
+	assert.Equal(t, events[1], got[2])
+	assert.Equal(t, map[string]any{"type": "start_subagent"}, got[4])
+	assert.Equal(t, events[3], got[5])
+}
+
+func TestInsertImplicitStartSubagentEventsDoesNotDuplicateExplicitEvents(t *testing.T) {
+	events := []map[string]any{
+		{"type": "start_subagent"},
+		{
+			"type": "tool_call",
+			"agent": map[string]any{
+				"id":    "agent-child",
+				"depth": float64(1),
+			},
+		},
+	}
+
+	got := insertImplicitStartSubagentEvents(events)
+
+	assert.Equal(t, events, got)
+}
