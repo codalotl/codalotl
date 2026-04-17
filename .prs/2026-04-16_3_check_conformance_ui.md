@@ -111,13 +111,24 @@ Other notes:
   - `go test ./internal/tui`
   - `go test ./internal/tools/spectools`
 
-#### Follow-up polish
-- Manually inspect the TUI manifestation for `check_spec_conformance` to confirm the summarized per-package rows are clear enough for final conformance/nonconformance/error results.
-- If the final per-package detail is still too literal, teach the summarized-row path to render a more tool-owned final result for this workflow.
+#### Review follow-up
+- `internal/tools/spectools`: keep `check_spec_conformance` on a noninteractive-supported subagent policy so human/json sessions do not regress into noisy interleaving.
+- `internal/tools/spectools`: keep package-specific error detail in the completed tool body for failures that happen before or after the package subagent run, since those do not currently have a guaranteed per-package summarized row.
+- `internal/tui`: do not permanently mark a summarized package row as done based only on descendant agent completion when outer-package postprocessing can still fail.
+- Re-run review and `check_spec_conformance({"only_changed": true})` after the fixes.
 
 ## Review
 
-Pending.
+Review run against `main` found three actionable issues:
+- `internal/tools/spectools/check_spec_conformance.go`: `SubagentEventPolicySummarizeBySubagent` is only implemented by the TUI path today, so noninteractive sessions regress to interleaved descendant events unless `check_spec_conformance` stays on a policy they already understand.
+- `internal/tools/spectools/check_spec_conformance.go`: package failures that happen before launching a subagent, or after a subagent returns, are now hidden from the final completion body even though they may never appear under a summarized package row.
+- `internal/tui/tui.go`: summarized rows can flip to `[done]` on descendant-agent success before outer-package parsing/CAS persistence finishes, so the row can disagree with the real package result.
+
+`check_spec_conformance({"only_changed": true})` result:
+- `internal/llmstream`: conforms
+- `internal/tui`: conforms
+- `internal/tools/spectools`: non-conforming
+  - major/new: finished package rows are required to show each package's final result, including package-scoped errors; the current implementation only changes the subagent policy and aggregate completion summary, so prep/parsing/CAS-write failures are not guaranteed to surface in the per-package presentation.
 
 ## Summary
 
@@ -135,3 +146,5 @@ Pending.
 - Landed in `d7e3b98`: new `SubagentEventPolicySummarizeBySubagent`, TUI summarized subagent rows keyed by label, and `check_spec_conformance` summary-only completion body.
 - `internal/tui/tui.go` now tracks per-tool summarized subagent rows in the tool display scope and updates each row from descendant events.
 - `check_spec_conformance` now opts into the new policy; package labels still come from the existing package-key subagent label.
+- Review + conformance step found real gaps around noninteractive behavior and package-level failures that occur outside the descendant subagent happy path.
+- CAS files were written for changed conforming packages during the latest conformance run.
