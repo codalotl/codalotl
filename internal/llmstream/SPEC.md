@@ -50,6 +50,7 @@ func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 - `nil` presenter is valid and means the tool has no custom presentation.
 - This package itself does not know or care about any tool's presenter. These types are in this package as a convenience for tool implementers to build to a common spec.
 - A presenter may also define how descendant subagent events are displayed by consumers. This affects presentation only; underlying agent events are unchanged.
+- `SubagentEventPolicySummarizeBySubagent` lets a consumer collapse descendant activity into one visible row per started subagent, identified by `agent.StartSubagent.Label`.
 - `Presentation.Summary` is usually the tool-level 1-line header.
 - If `Presentation.Body` is `Diff`, presenters must leave `Summary` empty.
 - Consumers that need a visible 1-line diff header should derive it from `Diff.Edits[0]`.
@@ -170,6 +171,7 @@ type SubagentEventPolicy string
 const (
 	SubagentEventPolicyDefault          SubagentEventPolicy = ""
 	SubagentEventPolicyHideFinalMessage SubagentEventPolicy = "hide_final_message"
+	SubagentEventPolicySummarizeBySubagent SubagentEventPolicy = "summarize_by_subagent"
 )
 
 // CompletionBehavior indicates what happens when the tool completes. For instance, imagine a TUI:

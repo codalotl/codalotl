@@ -71,8 +71,11 @@ Use cases:
 
 - In progress: `Checking SPEC conformance`
 - Complete: `Checked SPEC conformance`
-- Completion body summarizes conforming, non-conforming, and errored packages.
-- For each non-conforming package, completion body includes actual nonconformance details.
+- Uses `SubagentEventPolicySummarizeBySubagent`.
+- Each package-check subagent is identified in the TUI by its existing subagent label, which is the module-relative package dir.
+- While running, the TUI shows one visible package row per active subagent under the parent tool call and updates that row with the latest descendant event.
+- When a package check finishes, that package row shows the per-package result: conforming, non-conforming with issues, or package-scoped error.
+- Completion body summarizes conforming, non-conforming, and errored package counts only.
 - Raw `ToolResult.Result` remains machine-readable JSON.
 
 ## Public API
