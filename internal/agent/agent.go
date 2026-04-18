@@ -27,27 +27,28 @@ var newConversation = llmstream.NewConversation
 
 // Agent orchestrates the conversation loop between llmstream and tools.
 type Agent struct {
-	sessionID           string
-	agentID             string
-	model               llmmodel.ModelID
-	subagentLabel       string
-	callingToolCallID   string
-	conv                llmstream.StreamingConversation
-	mu                  sync.Mutex
-	status              Status
-	turns               []llmstream.Turn
-	tokenUsage          llmstream.TokenUsage
-	contextUsageTokens  int64
-	startSubagentSent   bool
-	tools               map[string]llmstream.Tool
-	toolList            []llmstream.Tool
-	pendingUserMessages []string
-	pendingQueuedEvents []string
-	acceptingQueue      bool
-	parent              *Agent
-	depth               int
-	parentOut           chan<- Event
-	currentOut          chan<- Event
+	sessionID            string
+	agentID              string
+	model                llmmodel.ModelID
+	subagentLabel        string
+	callingToolCallID    string
+	conv                 llmstream.StreamingConversation
+	mu                   sync.Mutex
+	status               Status
+	turns                []llmstream.Turn
+	tokenUsage           llmstream.TokenUsage
+	contextUsageTokens   int64
+	startSubagentSent    bool
+	tools                map[string]llmstream.Tool
+	toolList             []llmstream.Tool
+	pendingUserMessages  []string
+	pendingQueuedEvents  []string
+	pendingAssistantText *llmstream.TextContent
+	acceptingQueue       bool
+	parent               *Agent
+	depth                int
+	parentOut            chan<- Event
+	currentOut           chan<- Event
 }
 
 // NewOptions controls optional agent construction behavior.
@@ -172,12 +173,12 @@ func (a *Agent) QueueUserMessage(message string) error {
 // Channel lifecycle: The returned channel is always non-nil and is always closed when processing ends. Callers may safely range over it until closed. The channel
 // is buffered (currently size 32); if the caller stops reading, the agent (and any subagents) may block while emitting events.
 //
-// Event ordering and invariants: For each provider send, zero or more intermediate events may be emitted, followed by EventTypeAssistantTurnComplete for the completed
-// assistant turn (when a completed turn is available and has been appended to the agent's internal history).
+// Event ordering and invariants: Provider events are normalized at the agent layer. EventTypeAssistantText is emitted as a buffered assistant message event; adjacent
+// completed provider text blocks from the same agent are coalesced, and EventTypeAssistantTurnComplete does not by itself force buffered assistant text to be emitted.
 //
 // Typical events include:
-//   - EventTypeAssistantText / EventTypeAssistantReasoning when a content block is complete (this implementation does not emit token-by-token deltas; it emits only
-//     when the provider marks the block as done).
+//   - EventTypeAssistantText after one or more completed provider text blocks have been coalesced into an agent-level assistant message, and EventTypeAssistantReasoning
+//     when a reasoning block is complete.
 //   - EventTypeToolCall when the provider requests a tool.
 //   - EventTypeToolComplete after each tool returns a ToolResult (and after any subagent activity performed by that tool).
 //   - EventTypeWarning / EventTypeRetry as reported by the provider.
@@ -212,6 +213,7 @@ func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Even
 	a.status = StatusRunning
 	a.currentOut = out
 	a.pendingUserMessages = nil
+	a.pendingAssistantText = nil
 	a.acceptingQueue = true
 	a.mu.Unlock()
 
@@ -222,6 +224,7 @@ func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Even
 
 func (a *Agent) run(ctx context.Context, out chan<- Event) {
 	defer func() {
+		a.flushBufferedAssistantText(out, false)
 		a.finishRun()
 		close(out)
 	}()
@@ -249,7 +252,7 @@ func (a *Agent) run(ctx context.Context, out chan<- Event) {
 			if !finish {
 				continue
 			}
-			a.dispatchEvent(out, Event{Type: EventTypeDoneSuccess})
+			a.emitEvent(out, Event{Type: EventTypeDoneSuccess})
 			return
 		case llmstream.FinishReasonToolUse:
 			if err := a.handleToolUse(ctx, out, turn.ToolCalls(), seenCalls); err != nil {
@@ -268,28 +271,28 @@ func (a *Agent) run(ctx context.Context, out chan<- Event) {
 		case llmstream.FinishReasonCanceled:
 			a.flushQueuedUserMessageEvents(out)
 			a.stopAcceptingQueue()
-			a.dispatchEvent(out, Event{Type: EventTypeCanceled, Error: errors.New("agent: turn canceled by provider")})
+			a.emitEvent(out, Event{Type: EventTypeCanceled, Error: errors.New("agent: turn canceled by provider")})
 			return
 		case llmstream.FinishReasonError, llmstream.FinishReasonPermissionDenied:
 			a.flushQueuedUserMessageEvents(out)
 			a.stopAcceptingQueue()
-			a.dispatchEvent(out, Event{Type: EventTypeError, Error: fmt.Errorf("agent: provider reported finish reason %s", turn.FinishReason)})
+			a.emitEvent(out, Event{Type: EventTypeError, Error: fmt.Errorf("agent: provider reported finish reason %s", turn.FinishReason)})
 			return
 		case llmstream.FinishReasonMaxTokens:
 			a.flushQueuedUserMessageEvents(out)
 			a.stopAcceptingQueue()
-			a.dispatchEvent(out, Event{Type: EventTypeError, Error: errors.New("agent: turn stopped after hitting token limit")})
+			a.emitEvent(out, Event{Type: EventTypeError, Error: errors.New("agent: turn stopped after hitting token limit")})
 			return
 		default:
 			a.flushQueuedUserMessageEvents(out)
 			a.stopAcceptingQueue()
-			a.dispatchEvent(out, Event{Type: EventTypeError, Error: fmt.Errorf("agent: unsupported finish reason %s", turn.FinishReason)})
+			a.emitEvent(out, Event{Type: EventTypeError, Error: fmt.Errorf("agent: unsupported finish reason %s", turn.FinishReason)})
 			return
 		}
 	}
 }
 
-// sendOnce sends the current conversation to the provider and streams events back to out.
+// sendOnce sends the current conversation to the provider and streams normalized events back to out.
 func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn, map[string]struct{}, error) {
 	events := a.conv.SendAsync(ctx)
 
@@ -306,7 +309,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		case llmstream.EventTypeTextDelta:
 			if ev.Text != nil && ev.Done {
 				textCopy := *ev.Text
-				a.dispatchEvent(out, Event{
+				a.emitEvent(out, Event{
 					Type:        EventTypeAssistantText,
 					TextContent: textCopy,
 				})
@@ -314,7 +317,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		case llmstream.EventTypeReasoningDelta:
 			if ev.Reasoning != nil && ev.Done {
 				reasoningCopy := *ev.Reasoning
-				a.dispatchEvent(out, Event{
+				a.emitEvent(out, Event{
 					Type:             EventTypeAssistantReasoning,
 					ReasoningContent: reasoningCopy,
 				})
@@ -323,14 +326,14 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 			if ev.ToolCall != nil {
 				callCopy := *ev.ToolCall
 				seenToolCallIDs[callCopy.CallID] = struct{}{}
-				a.dispatchEvent(out, Event{Type: EventTypeToolCall, Tool: a.tools[callCopy.Name], ToolCall: &callCopy})
+				a.emitEvent(out, Event{Type: EventTypeToolCall, Tool: a.tools[callCopy.Name], ToolCall: &callCopy})
 			}
 		case llmstream.EventTypeCompletedSuccess:
 			completedTurn = ev.Turn
 		case llmstream.EventTypeWarning:
-			a.dispatchEvent(out, Event{Type: EventTypeWarning, Error: ev.Error})
+			a.emitEvent(out, Event{Type: EventTypeWarning, Error: ev.Error})
 		case llmstream.EventTypeRetry:
-			a.dispatchEvent(out, Event{Type: EventTypeRetry, Error: ev.Error})
+			a.emitEvent(out, Event{Type: EventTypeRetry, Error: ev.Error})
 		}
 	}
 
@@ -356,7 +359,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	a.updateContextUsage(completedTurn.Usage)
 
 	turnCopy := cloned
-	a.dispatchEvent(out, Event{Type: EventTypeAssistantTurnComplete, Turn: &turnCopy})
+	a.emitEvent(out, Event{Type: EventTypeAssistantTurnComplete, Turn: &turnCopy})
 
 	return completedTurn, seenToolCallIDs, nil
 }
@@ -375,7 +378,7 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 		callCopy := call
 		tool := a.tools[call.Name]
 		if _, already := seen[call.CallID]; !already {
-			a.dispatchEvent(out, Event{Type: EventTypeToolCall, Tool: tool, ToolCall: &callCopy})
+			a.emitEvent(out, Event{Type: EventTypeToolCall, Tool: tool, ToolCall: &callCopy})
 		}
 
 		var result llmstream.ToolResult
@@ -407,7 +410,7 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 		}
 
 		resultCopy := result
-		a.dispatchEvent(out, Event{Type: EventTypeToolComplete, Tool: tool, ToolCall: &callCopy, ToolResult: &resultCopy})
+		a.emitEvent(out, Event{Type: EventTypeToolComplete, Tool: tool, ToolCall: &callCopy, ToolResult: &resultCopy})
 
 		results = append(results, result)
 	}
@@ -427,10 +430,10 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 
 func (a *Agent) emitTerminalEvent(out chan<- Event, err error) {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		a.dispatchEvent(out, Event{Type: EventTypeCanceled, Error: err})
+		a.emitEvent(out, Event{Type: EventTypeCanceled, Error: err})
 		return
 	}
-	a.dispatchEvent(out, Event{Type: EventTypeError, Error: err})
+	a.emitEvent(out, Event{Type: EventTypeError, Error: err})
 }
 
 func newTextTurn(role llmstream.Role, text string) llmstream.Turn {
@@ -524,6 +527,7 @@ func (a *Agent) finishRun() {
 	a.acceptingQueue = false
 	a.pendingUserMessages = nil
 	a.pendingQueuedEvents = nil
+	a.pendingAssistantText = nil
 	a.mu.Unlock()
 }
 
@@ -703,7 +707,7 @@ func (a *Agent) maybeEmitStartSubagentEvent(out chan<- Event) {
 	a.startSubagentSent = true
 	a.mu.Unlock()
 
-	a.dispatchEvent(out, Event{
+	a.emitEvent(out, Event{
 		Type:          EventTypeStartSubagent,
 		StartSubagent: start,
 	})
@@ -732,7 +736,7 @@ func (a *Agent) injectOrStopAccepting(out chan<- Event) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		a.dispatchEvent(out, Event{Type: EventTypeQueuedUserMessageSent, UserMessage: msg})
+		a.emitEvent(out, Event{Type: EventTypeQueuedUserMessageSent, UserMessage: msg})
 	}
 	return false, nil
 }
@@ -757,7 +761,7 @@ func (a *Agent) injectAllPending(out chan<- Event) error {
 		if err != nil {
 			return err
 		}
-		a.dispatchEvent(out, Event{Type: EventTypeQueuedUserMessageSent, UserMessage: msg})
+		a.emitEvent(out, Event{Type: EventTypeQueuedUserMessageSent, UserMessage: msg})
 	}
 	return nil
 }
@@ -768,6 +772,56 @@ func (a *Agent) flushQueuedUserMessageEvents(out chan<- Event) {
 	a.pendingQueuedEvents = nil
 	a.mu.Unlock()
 	for _, msg := range msgs {
-		a.dispatchEvent(out, Event{Type: EventTypeUserMessageQueued, UserMessage: msg})
+		a.emitEvent(out, Event{Type: EventTypeUserMessageQueued, UserMessage: msg})
+	}
+}
+
+func (a *Agent) emitEvent(local chan<- Event, ev Event) {
+	switch ev.Type {
+	case EventTypeAssistantText:
+		a.bufferAssistantText(ev.TextContent)
+		return
+	case EventTypeAssistantTurnComplete:
+		a.dispatchEvent(local, ev)
+		return
+	default:
+		a.flushBufferedAssistantText(local, isTerminalEventType(ev.Type))
+		a.dispatchEvent(local, ev)
+	}
+}
+
+func (a *Agent) bufferAssistantText(text llmstream.TextContent) {
+	if a.pendingAssistantText == nil {
+		textCopy := text
+		a.pendingAssistantText = &textCopy
+		return
+	}
+
+	if a.pendingAssistantText.ProviderID != text.ProviderID {
+		a.pendingAssistantText.ProviderID = ""
+	}
+	a.pendingAssistantText.Content += text.Content
+}
+
+func (a *Agent) flushBufferedAssistantText(local chan<- Event, final bool) {
+	if a.pendingAssistantText == nil {
+		return
+	}
+
+	text := *a.pendingAssistantText
+	a.pendingAssistantText = nil
+	a.dispatchEvent(local, Event{
+		Type:               EventTypeAssistantText,
+		TextContent:        text,
+		AssistantTextFinal: final,
+	})
+}
+
+func isTerminalEventType(typ EventType) bool {
+	switch typ {
+	case EventTypeDoneSuccess, EventTypeCanceled, EventTypeError:
+		return true
+	default:
+		return false
 	}
 }

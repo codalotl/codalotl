@@ -3,13 +3,12 @@ package agent
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 
-// CollectFinalAssistantText drains an agent event stream and returns the final assistant text answer, or an error if the stream terminates unsuccessfully.
+// CollectFinalAssistantText drains an agent event stream and returns the final assistant text answer for the top-level agent, or an error if that agent does not
+// terminate successfully.
 func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string, error) {
-	var assistantText []string
-	lastTurnText := ""
+	finalAssistantText := ""
 	targetAgentID := ""
 
 	for event := range events {
@@ -24,22 +23,11 @@ func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string
 
 		switch event.Type {
 		case EventTypeAssistantText:
-			text := strings.TrimSpace(event.TextContent.Content)
-			if text != "" {
-				assistantText = append(assistantText, text)
-			}
-		case EventTypeAssistantTurnComplete:
-			if event.Turn != nil {
-				lastTurnText = strings.TrimSpace(event.Turn.TextContent())
+			if event.AssistantTextFinal {
+				finalAssistantText = event.TextContent.Content
 			}
 		case EventTypeDoneSuccess:
-			if lastTurnText != "" {
-				return lastTurnText, nil
-			}
-			if len(assistantText) > 0 {
-				return strings.Join(assistantText, "\n\n"), nil
-			}
-			return "", nil
+			return finalAssistantText, nil
 		case EventTypeCanceled:
 			if event.Error != nil {
 				return "", event.Error
@@ -54,13 +42,6 @@ func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string
 			}
 			return "", fmt.Errorf("agent failed")
 		}
-	}
-
-	if lastTurnText != "" {
-		return lastTurnText, nil
-	}
-	if len(assistantText) > 0 {
-		return strings.Join(assistantText, "\n\n"), nil
 	}
 
 	if err := ctx.Err(); err != nil {

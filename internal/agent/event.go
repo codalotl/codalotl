@@ -12,7 +12,7 @@ const (
 	EventTypeUserMessageQueued     EventType = "user_message_queued"
 	EventTypeQueuedUserMessageSent EventType = "queued_user_message_sent"
 	EventTypeStartSubagent         EventType = "start_subagent"
-	EventTypeAssistantText         EventType = "assistant_text"
+	EventTypeAssistantText         EventType = "assistant_text" // EventTypeAssistantText emits buffered assistant messages, not raw provider text parts.
 	EventTypeAssistantReasoning    EventType = "assistant_reasoning"
 	EventTypeToolCall              EventType = "tool_call"
 	EventTypeToolComplete          EventType = "tool_complete"
@@ -23,12 +23,17 @@ const (
 
 // Event conveys progress or status updates from the agent loop. Which fields are set depends on the Type.
 type Event struct {
-	Agent            AgentMeta
-	Type             EventType
-	Error            error
-	UserMessage      string
-	StartSubagent    StartSubagent
-	TextContent      llmstream.TextContent
+	Agent         AgentMeta
+	Type          EventType
+	Error         error
+	UserMessage   string
+	StartSubagent StartSubagent
+	TextContent   llmstream.TextContent
+
+	// AssistantTextFinal is only meaningful for EventTypeAssistantText. It reports whether this is the last assistant-text message emitted by this agent before its
+	// terminal event.
+	AssistantTextFinal bool
+
 	ReasoningContent llmstream.ReasoningContent
 	Tool             llmstream.Tool
 	ToolCall         *llmstream.ToolCall

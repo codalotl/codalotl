@@ -143,8 +143,8 @@ type Event struct {
 	Agent AgentMeta
 	Type  EventType
 
-	TextContent         llmstream.TextContent
-	AssistantTextFinal  bool
+	TextContent        llmstream.TextContent
+	AssistantTextFinal bool
 
 	// ... other fields
 }
