@@ -33,6 +33,9 @@ Notes:
 - TUI and noninteractive or whoever can type-assert a presenter to this. If the presenter implements it: pass the final message through it.
 - Only relevant for subagents, not top-level agents.
 
+More instructions to orchestrator:
+- When you call implement, instruct implement to pass along pr context with @mentions whenever it uses tools like `update_usage` or `change_api`.
+
 ## Plan
 
 ### Package `internal/llmstream`
