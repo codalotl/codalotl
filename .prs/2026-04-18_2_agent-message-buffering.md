@@ -22,7 +22,7 @@ In this PR:
 
 In this phase, land the agent-owned assistant-message contract, then migrate `internal/tui` and `internal/noninteractive` to trust it.
 
-#### Package `internal/agent`
+#### Package `internal/agent` [DONE]
 
 - Update `internal/agent/SPEC.md` for assistant-message normalization and assistant-text finality.
 - Implement the event buffering/finality rules below, including per-agent isolation and shutdown flushing.
@@ -134,6 +134,11 @@ TBD
 
 - Branch: `jn/agent-message-buffering`
 - Relevant packages: `internal/agent`, `internal/tui`, `internal/noninteractive`
-- `internal/agent/SPEC.md` currently says `EventTypeAssistantText` is part-shaped; this PR changes it to message-shaped.
+- `internal/agent` is implemented:
+  - `Event.AssistantTextFinal` added
+  - assistant text is buffered per agent instance and flushed before same-agent non-text events
+  - `CollectFinalAssistantText` now keys off final flagged text plus top-level `done_success`
+  - package test command: `go test ./internal/agent`
+- End-of-turn ordering in `internal/agent` is now `assistant_turn_complete`, then final buffered `assistant_text`, then terminal event.
 - Existing descendant final-message reconstruction lives in `internal/tui/tui.go` and `internal/noninteractive/session.go`.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
