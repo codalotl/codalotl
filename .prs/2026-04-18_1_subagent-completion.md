@@ -90,7 +90,21 @@ Current dependency-driven order after the `internal/llmstream` API change:
 
 ## Review
 
-Not run yet.
+Review not run yet, per scope for this step.
+
+SPEC conformance:
+- Ran `check_spec_conformance` with `only_changed=true`.
+- Result: passed for all changed packages:
+  - `internal/agentbuilder`
+  - `internal/agentformatter`
+  - `internal/llmstream`
+  - `internal/noninteractive`
+  - `internal/tools/coretools`
+  - `internal/tools/exttools`
+  - `internal/tools/pkgtools`
+  - `internal/tools/spectools`
+  - `internal/tui`
+- CAS records were generated under `.codalotl/cas/specconforms-1/`.
 
 ## Summary
 
@@ -106,4 +120,5 @@ Not run yet.
 - `internal/llmstream` now exposes optional `SubagentFinalMessagePresenter`; `Presenter.SubagentEventPolicy` and `SubagentEventPolicy` are removed.
 - `internal/tools/coretools`, `internal/tools/exttools`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/agentbuilder`, `internal/tui`, `internal/noninteractive`, and `internal/agentformatter` are updated for the new API.
 - Full validation currently passes with `go test ./...`.
+- Latest `check_spec_conformance --only_changed` passed and wrote CAS files in `.codalotl/cas/specconforms-1/`.
 - Review has not been run yet, per scope.
