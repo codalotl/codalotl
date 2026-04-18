@@ -49,7 +49,7 @@ func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 - A tool may expose semantic display metadata via `Presenter() Presenter`.
 - `nil` presenter is valid and means the tool has no custom presentation.
 - This package itself does not know or care about any tool's presenter. These types are in this package as a convenience for tool implementers to build to a common spec.
-- A presenter may also define how descendant subagent events are displayed by consumers. This affects presentation only; underlying agent events are unchanged.
+- A presenter may additionally customize descendant subagent final-message display via optional `SubagentFinalMessagePresenter`. This affects presentation only; underlying agent events are unchanged.
 - `Presentation.Summary` is usually the tool-level 1-line header.
 - If `Presentation.Body` is `Diff`, presenters must leave `Summary` empty.
 - Consumers that need a visible 1-line diff header should derive it from `Diff.Edits[0]`.
@@ -160,17 +160,15 @@ type Presenter interface {
 	// call Present(call, nil). To present a call with result, call Present(call, result). For instance, for a read file tool, the call might return the equivalent of
 	// "Reading file.go". The result might return the equivalent of "Read file.go (123 bytes)".
 	Present(call ToolCall, result *ToolResult) Presentation
-
-	// SubagentEventPolicy defines how descendant subagent events are displayed by consumers. Tools that do not launch subagents can return SubagentEventPolicyDefault.
-	SubagentEventPolicy(call ToolCall) SubagentEventPolicy
 }
 
-type SubagentEventPolicy string
-
-const (
-	SubagentEventPolicyDefault          SubagentEventPolicy = ""
-	SubagentEventPolicyHideFinalMessage SubagentEventPolicy = "hide_final_message"
-)
+// SubagentFinalMessagePresenter optionally customizes the final message of a descendant subagent launched directly by call.
+//
+// Consumers should type-assert a tool presenter to this interface. When the presenter does not implement it, the descendant subagent final message should be shown as
+// plain text. Returning nil suppresses the descendant final message. Returning a non-nil Block replaces the plain-text rendering with a semantic block.
+type SubagentFinalMessagePresenter interface {
+	SubagentFinalMessage(call ToolCall, subagentLabel string, finalMessage string) Block
+}
 
 // CompletionBehavior indicates what happens when the tool completes. For instance, imagine a TUI:
 //   - With Replace, the tool call presentation is replaced by the result presentation (ideal for quick and/or atomic operations like reading a file).
