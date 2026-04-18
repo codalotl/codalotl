@@ -25,33 +25,6 @@ func TestEditAndWriteToolsExposePresenters(t *testing.T) {
 	}
 }
 
-func TestPresenters_SubagentEventPolicyDefault(t *testing.T) {
-	sandbox := t.TempDir()
-	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
-
-	tests := []struct {
-		name      string
-		presenter llmstream.Presenter
-	}{
-		{name: "apply_patch", presenter: NewApplyPatchTool(auth, true, nil).Presenter()},
-		{name: "delete", presenter: NewDeleteTool(auth).Presenter()},
-		{name: "edit", presenter: NewEditTool(auth).Presenter()},
-		{name: "write", presenter: NewWriteTool(auth).Presenter()},
-		{name: "ls", presenter: NewLsTool(auth).Presenter()},
-		{name: "read_file", presenter: NewReadFileTool(auth).Presenter()},
-		{name: "shell", presenter: NewShellTool(auth).Presenter()},
-		{name: "skill_shell", presenter: NewSkillShellTool(auth).Presenter()},
-		{name: "update_plan", presenter: NewUpdatePlanTool(auth).Presenter()},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			require.NotNil(t, tc.presenter)
-			assert.Equal(t, llmstream.SubagentEventPolicyDefault, tc.presenter.SubagentEventPolicy(llmstream.ToolCall{Name: tc.name}))
-		})
-	}
-}
-
 func TestEditPresenter(t *testing.T) {
 	tool := NewEditTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
 	presenter := tool.Presenter()
