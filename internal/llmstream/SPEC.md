@@ -167,8 +167,8 @@ type Presenter interface {
 
 // SubagentFinalMessagePresenter optionally customizes the final message of a descendant subagent launched directly by call.
 //
-// Consumers should type-assert a tool presenter to this interface. When the presenter does not implement it, the descendant subagent final message should be shown as
-// plain text. Returning nil suppresses the descendant final message. Returning a non-nil Block replaces the plain-text rendering with a semantic block.
+// Consumers should type-assert a tool presenter to this interface. When the presenter does not implement it, the descendant subagent final message should be shown
+// as plain text. Returning nil suppresses the descendant final message. Returning a non-nil Block replaces the plain-text rendering with a semantic block.
 type SubagentFinalMessagePresenter interface {
 	SubagentFinalMessage(call ToolCall, subagentLabel string, finalMessage string) Block
 }
