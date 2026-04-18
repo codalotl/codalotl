@@ -83,8 +83,8 @@ func (t *toolChangeAPI) Presenter() llmstream.Presenter {
 	return changeAPIPresenterInstance
 }
 
-func (p changeAPIPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyHideFinalMessage
+func (p changeAPIPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+	return nil
 }
 
 func (p changeAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {

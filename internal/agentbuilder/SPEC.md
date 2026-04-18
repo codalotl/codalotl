@@ -119,7 +119,7 @@ presenter:
 
 Notes:
 - Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
-- `SubagentEventPolicy` is always `HideFinalMessage`.
+- Descendant subagent final message is hidden by implementing `SubagentFinalMessagePresenter` and returning `nil`.
 - The summary line is always joined with spaces.
 - `call_action` is required. Used in the call summary line (`RoleAction`).
 - `result_action` is required. Used in the completion summary line (`RoleAction`).
@@ -154,7 +154,7 @@ presenter:
 
 Notes:
 - Behavior is always `CompletionBehaviorAppend`. Also uses `ErrorBehaviorDefault`.
-- `SubagentEventPolicy` is `HideFinalMessage`.
+- Descendant subagent final message is hidden by implementing `SubagentFinalMessagePresenter` and returning `nil`.
 - This preset has no tunable fields beyond `name`.
 - The tool must define a `base` parameter. The call/result summary line is fixed to `Reviewing {{ .base }}` and `Reviewed {{ .base }}`.
 - The call has no body.

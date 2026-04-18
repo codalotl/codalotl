@@ -61,7 +61,9 @@ func TestChangeAPIPresenter(t *testing.T) {
 	callPresentation := presenter.Present(call, nil)
 	resultPresentation := presenter.Present(call, result)
 
-	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(call))
+	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
+	require.True(t, ok)
+	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(call, "change_api subagent", "done"))
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
 	assert.Equal(t, llmstream.Line{

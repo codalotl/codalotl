@@ -791,36 +791,32 @@ func (presenterBackedTestPresenter) Present(call llmstream.ToolCall, result *llm
 	}
 }
 
-func (presenterBackedTestPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyDefault
+type finalMessageBackedTestTool struct {
+	name  string
+	block llmstream.Block
 }
 
-type policyBackedTestTool struct {
-	name   string
-	policy llmstream.SubagentEventPolicy
-}
-
-func (t policyBackedTestTool) Info() llmstream.ToolInfo {
+func (t finalMessageBackedTestTool) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{Name: t.name}
 }
 
-func (t policyBackedTestTool) Name() string {
+func (t finalMessageBackedTestTool) Name() string {
 	return t.name
 }
 
-func (t policyBackedTestTool) Presenter() llmstream.Presenter {
-	return policyBackedTestPresenter{policy: t.policy}
+func (t finalMessageBackedTestTool) Presenter() llmstream.Presenter {
+	return finalMessageBackedTestPresenter{block: t.block}
 }
 
-func (t policyBackedTestTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
+func (t finalMessageBackedTestTool) Run(context.Context, llmstream.ToolCall) llmstream.ToolResult {
 	return llmstream.ToolResult{}
 }
 
-type policyBackedTestPresenter struct {
-	policy llmstream.SubagentEventPolicy
+type finalMessageBackedTestPresenter struct {
+	block llmstream.Block
 }
 
-func (p policyBackedTestPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
+func (p finalMessageBackedTestPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	summary := "Presenter call " + call.Name
 	if result != nil {
 		summary = "Presenter done " + result.Name
@@ -836,8 +832,8 @@ func (p policyBackedTestPresenter) Present(call llmstream.ToolCall, result *llms
 	}
 }
 
-func (p policyBackedTestPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return p.policy
+func (p finalMessageBackedTestPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+	return p.block
 }
 
 type recordingFormatter struct {
@@ -1503,17 +1499,14 @@ func TestSessionSendUserMessageDoesNotPrintStartSubagentInHumanReadableOutput(t 
 	require.NotContains(t, buf.String(), "START SUBAGENT")
 }
 
-func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
+func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
 	originalDelay := toolCallPrintDelay
 	toolCallPrintDelay = 0
 	t.Cleanup(func() {
 		toolCallPrintDelay = originalDelay
 	})
 
-	reviewTool := policyBackedTestTool{
-		name:   "review",
-		policy: llmstream.SubagentEventPolicyHideFinalMessage,
-	}
+	reviewTool := finalMessageBackedTestTool{name: "review"}
 	clarifyTool := namedTestTool{name: "clarify_public_api"}
 	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
 	grandchildAgent := agent.AgentMeta{ID: "clarifier", Depth: 2, Parent: "reviewer"}
@@ -1638,13 +1631,10 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInHumanReadableO
 	require.NotContains(t, output, "START SUBAGENT")
 }
 
-func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *testing.T) {
+func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInJSONOutput(t *testing.T) {
 	t.Parallel()
 
-	reviewTool := policyBackedTestTool{
-		name:   "review",
-		policy: llmstream.SubagentEventPolicyHideFinalMessage,
-	}
+	reviewTool := finalMessageBackedTestTool{name: "review"}
 	clarifyTool := namedTestTool{name: "clarify_public_api"}
 	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
 	grandchildAgent := agent.AgentMeta{ID: "clarifier", Depth: 2, Parent: "reviewer"}
@@ -1816,14 +1806,183 @@ func TestSessionSendUserMessageHidesDescendantFinalAssistantTextInJSONOutput(t *
 	}, outerToolComplete.Tool)
 }
 
-func TestPresenterBackedTestPresenterSubagentEventPolicyDefaults(t *testing.T) {
+func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := finalMessageBackedTestTool{
+		name: "review",
+		block: llmstream.Output{
+			Lines: []string{"Verdict: approve", "No actionable findings."},
+		},
+	}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review worker",
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       childAgent,
+						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: childAgent,
+						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "TEXT Verdict: approve\nNo actionable findings.\n")
+	require.NotContains(t, output, `TEXT {"decision":"approve"}`)
+}
+
+func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInJSONOutput(t *testing.T) {
+	t.Parallel()
+
+	reviewTool := finalMessageBackedTestTool{
+		name: "review",
+		block: llmstream.Output{
+			Lines: []string{"Verdict: approve", "No actionable findings."},
+		},
+	}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+							Type:   "function_call",
+							Input:  `{"prompt":"review"}`,
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review worker",
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       childAgent,
+						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
+					},
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: childAgent,
+						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID:  "call_review",
+							Name:    "ignored_review_result",
+							Type:    "function_call",
+							Result:  "approved",
+							IsError: false,
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	require.NotContains(t, buf.String(), `{"decision":"approve"}`)
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
+	require.Len(t, lines, 6)
+
+	var formattedAssistant jsonAssistantContentEvent
+	require.NoError(t, json.Unmarshal(lines[3], &formattedAssistant))
+	require.Equal(t, "assistant_text", formattedAssistant.Type)
+	require.Equal(t, "Verdict: approve\nNo actionable findings.", formattedAssistant.Content)
+	require.Equal(t, jsonAgent{ID: "reviewer", Depth: 1}, formattedAssistant.Agent)
+}
+
+func TestPresenterBackedTestPresenterDoesNotCustomizeSubagentFinalMessage(t *testing.T) {
 	t.Parallel()
 
 	presenter := presenterBackedTestPresenter{}
-
-	require.Equal(t, llmstream.SubagentEventPolicyDefault, presenter.SubagentEventPolicy(llmstream.ToolCall{
-		Name: "read_file",
-	}))
+	_, ok := any(presenter).(llmstream.SubagentFinalMessagePresenter)
+	require.False(t, ok)
 }
 
 func TestExecUsesSessionAPIAndPreservesTextOutput(t *testing.T) {

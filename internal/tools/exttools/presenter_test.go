@@ -32,23 +32,6 @@ func TestTools_ExposePresenters(t *testing.T) {
 	}
 }
 
-func TestPresenters_SubagentEventPolicy_Default(t *testing.T) {
-	auth := authdomain.NewAutoApproveAuthorizer(t.TempDir())
-
-	tools := []llmstream.Tool{
-		NewDiagnosticsTool(auth),
-		NewFixLintsTool(auth, nil),
-		NewRunProjectTestsTool("", auth),
-		NewRunTestsTool(auth, nil),
-	}
-
-	for _, tool := range tools {
-		assert.Equal(t, llmstream.SubagentEventPolicyDefault, tool.Presenter().SubagentEventPolicy(llmstream.ToolCall{
-			Name: tool.Name(),
-		}))
-	}
-}
-
 func TestDiagnosticsPresenter(t *testing.T) {
 	tool := NewDiagnosticsTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
 	presenter := tool.Presenter()

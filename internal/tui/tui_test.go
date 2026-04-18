@@ -27,15 +27,19 @@ func (noopFormatter) FormatEvent(agent.Event, int) string {
 
 type stubPresenter struct {
 	behavior llmstream.CompletionBehavior
-	policy   llmstream.SubagentEventPolicy
 }
 
 func (p stubPresenter) Present(llmstream.ToolCall, *llmstream.ToolResult) llmstream.Presentation {
 	return llmstream.Presentation{Behavior: p.behavior}
 }
 
-func (p stubPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return p.policy
+type finalMessageStubPresenter struct {
+	stubPresenter
+	block llmstream.Block
+}
+
+func (p finalMessageStubPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+	return p.block
 }
 
 type stubAuthorizer struct {
@@ -780,14 +784,15 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 	}
 }
 
-func TestHideFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
+func TestSuppressFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
-	reviewTool := newNamedToolWithPresenter("review", stubPresenter{
-		behavior: llmstream.CompletionBehaviorAppend,
-		policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
+		stubPresenter: stubPresenter{
+			behavior: llmstream.CompletionBehaviorAppend,
+		},
 	})
 
 	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
@@ -839,9 +844,10 @@ func TestHideFinalDescendantAssistantTextDroppedOnDescendantErrorOrCancel(t *tes
 
 			root := agent.AgentMeta{ID: "root"}
 			child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
-			reviewTool := newNamedToolWithPresenter("review", stubPresenter{
-				behavior: llmstream.CompletionBehaviorAppend,
-				policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+			reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
+				stubPresenter: stubPresenter{
+					behavior: llmstream.CompletionBehaviorAppend,
+				},
 			})
 			reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
 
@@ -869,14 +875,15 @@ func TestHideFinalDescendantAssistantTextDroppedOnDescendantErrorOrCancel(t *tes
 	}
 }
 
-func TestHideFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *testing.T) {
+func TestSuppressFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
-	reviewTool := newNamedToolWithPresenter("review", stubPresenter{
-		behavior: llmstream.CompletionBehaviorAppend,
-		policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
+		stubPresenter: stubPresenter{
+			behavior: llmstream.CompletionBehaviorAppend,
+		},
 	})
 
 	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
@@ -916,15 +923,16 @@ func TestHideFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *test
 	require.Equal(t, "Checking the diff before the structured result.", m.messages[1].event.TextContent.Content)
 }
 
-func TestHideFinalDescendantStartSubagentDoesNotAppendMessage(t *testing.T) {
+func TestSuppressFinalDescendantStartSubagentDoesNotAppendMessage(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
 	grandchild := agent.AgentMeta{ID: "nested-subagent", Depth: 2, Parent: child.ID}
-	reviewTool := newNamedToolWithPresenter("review", stubPresenter{
-		behavior: llmstream.CompletionBehaviorAppend,
-		policy:   llmstream.SubagentEventPolicyHideFinalMessage,
+	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
+		stubPresenter: stubPresenter{
+			behavior: llmstream.CompletionBehaviorAppend,
+		},
 	})
 	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
 
@@ -957,6 +965,50 @@ func TestHideFinalDescendantStartSubagentDoesNotAppendMessage(t *testing.T) {
 	for _, msg := range m.messages {
 		require.NotEqual(t, agent.EventTypeStartSubagent, msg.event.Type)
 	}
+}
+
+func TestCustomizeFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
+	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
+		stubPresenter: stubPresenter{
+			behavior: llmstream.CompletionBehaviorAppend,
+		},
+		block: llmstream.Output{
+			Lines: []string{"Verdict: pass", "No actionable findings."},
+		},
+	})
+
+	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
+	reviewResult := &llmstream.ToolResult{CallID: "review-1", Name: "review"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: reviewTool, ToolCall: reviewCall})
+	m.handleAgentEvent(agent.Event{
+		Agent: child,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     reviewCall.CallID,
+			Label:          "review worker",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:       child,
+		Type:        agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{Content: `{"verdict":"pass"}`},
+	})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
+
+	require.Len(t, m.messages, 3)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+	require.Equal(t, "Verdict: pass\nNo actionable findings.", m.messages[1].event.TextContent.Content)
+	require.Equal(t, child.ID, m.messages[1].event.Agent.ID)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[2].event.Type)
 }
 
 func TestToolNamePrecedence(t *testing.T) {

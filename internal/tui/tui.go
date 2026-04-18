@@ -132,10 +132,12 @@ type queuedMessage struct {
 }
 
 type toolDisplayScope struct {
-	callID                string
-	subagentEventPolicy   llmstream.SubagentEventPolicy
-	pendingDescendantTurn []agent.Event
-	pendingTurnComplete   bool
+	call                          llmstream.ToolCall
+	finalMessagePresenter         llmstream.SubagentFinalMessagePresenter
+	pendingDescendantAgent        agent.AgentMeta
+	pendingDescendantLabel        string
+	pendingDescendantTurn         []agent.Event
+	pendingDescendantTurnComplete bool
 }
 
 type toolDisplayScopeRef struct {
@@ -265,6 +267,7 @@ type model struct {
 	now                         func() time.Time // now allows deterministic tests around transient UI state (ex: "copied!").
 	detailsDialog               *detailsDialog   // detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and package context gathering.
 	agentParents                map[string]string
+	subagentLabels              map[string]string
 	activeToolScopes            map[string][]toolDisplayScope
 }
 
@@ -310,6 +313,7 @@ func newModel(
 		osClipboardAvailable: clipboard.Available,
 		osClipboardWrite:     clipboard.Write,
 		agentParents:         make(map[string]string),
+		subagentLabels:       make(map[string]string),
 		activeToolScopes:     make(map[string][]toolDisplayScope),
 	}
 	if initialSession != nil {
@@ -1655,12 +1659,13 @@ func (m *model) updateContextStatusMessage(index int, status packageContextStatu
 
 func (m *model) handleAgentEvent(ev agent.Event) {
 	m.recordAgentMeta(ev.Agent)
+	m.recordSubagentStart(ev)
 	if ev.Type == agent.EventTypeToolCall {
 		m.beginToolDisplayScope(ev)
 	}
 
 	autoScroll := m.shouldAutoScrollOnUpdate()
-	if m.handleDescendantSubagentEventPolicy(ev, autoScroll) {
+	if m.handleDescendantSubagentFinalMessage(ev, autoScroll) {
 		return
 	}
 	if ev.Type == agent.EventTypeToolComplete {
@@ -1851,6 +1856,7 @@ func (m *model) recordAgentMeta(meta agent.AgentMeta) {
 
 func (m *model) resetToolDisplayState() {
 	clear(m.agentParents)
+	clear(m.subagentLabels)
 	clear(m.activeToolScopes)
 }
 
@@ -1859,8 +1865,10 @@ func (m *model) beginToolDisplayScope(ev agent.Event) {
 		return
 	}
 	scope := toolDisplayScope{
-		callID:              ev.ToolCall.CallID,
-		subagentEventPolicy: toolSubagentEventPolicy(ev),
+		call: *ev.ToolCall,
+	}
+	if presenter, ok := toolSubagentFinalMessagePresenter(ev); ok {
+		scope.finalMessagePresenter = presenter
 	}
 	m.activeToolScopes[ev.Agent.ID] = append(m.activeToolScopes[ev.Agent.ID], scope)
 }
@@ -1875,7 +1883,7 @@ func (m *model) endToolDisplayScope(ev agent.Event) {
 	}
 	scopes := m.activeToolScopes[ev.Agent.ID]
 	for i := len(scopes) - 1; i >= 0; i-- {
-		if scopes[i].callID != callID {
+		if scopes[i].call.CallID != callID {
 			continue
 		}
 		scopes = append(scopes[:i], scopes[i+1:]...)
@@ -1888,33 +1896,29 @@ func (m *model) endToolDisplayScope(ev agent.Event) {
 	}
 }
 
-func toolSubagentEventPolicy(ev agent.Event) llmstream.SubagentEventPolicy {
+func toolSubagentFinalMessagePresenter(ev agent.Event) (llmstream.SubagentFinalMessagePresenter, bool) {
 	if ev.Tool == nil || ev.ToolCall == nil {
-		return llmstream.SubagentEventPolicyDefault
+		return nil, false
 	}
 	presenter := ev.Tool.Presenter()
 	if presenter == nil {
-		return llmstream.SubagentEventPolicyDefault
+		return nil, false
 	}
-	return presenter.SubagentEventPolicy(*ev.ToolCall)
+	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
+	return finalMessagePresenter, ok
 }
 
-func (m *model) handleDescendantSubagentEventPolicy(ev agent.Event, autoScroll bool) bool {
+func (m *model) handleDescendantSubagentFinalMessage(ev agent.Event, autoScroll bool) bool {
 	ref, ok := m.enclosingToolDisplayScope(ev.Agent)
 	if !ok {
 		return false
 	}
 	scope := m.toolDisplayScope(ref)
-	if scope == nil {
+	if scope == nil || scope.finalMessagePresenter == nil {
 		return false
 	}
 
-	switch scope.subagentEventPolicy {
-	case llmstream.SubagentEventPolicyHideFinalMessage:
-		return m.handleHideFinalDescendantMessage(ref, ev, autoScroll)
-	default:
-		return false
-	}
+	return m.handleCustomizedDescendantFinalMessage(ref, ev, autoScroll)
 }
 
 func (m *model) enclosingToolDisplayScope(meta agent.AgentMeta) (toolDisplayScopeRef, bool) {
@@ -1936,7 +1940,7 @@ func (m *model) toolDisplayScope(ref toolDisplayScopeRef) *toolDisplayScope {
 	return &scopes[ref.index]
 }
 
-func (m *model) handleHideFinalDescendantMessage(ref toolDisplayScopeRef, ev agent.Event, autoScroll bool) bool {
+func (m *model) handleCustomizedDescendantFinalMessage(ref toolDisplayScopeRef, ev agent.Event, autoScroll bool) bool {
 	scope := m.toolDisplayScope(ref)
 	if scope == nil {
 		return false
@@ -1944,17 +1948,24 @@ func (m *model) handleHideFinalDescendantMessage(ref toolDisplayScopeRef, ev age
 
 	switch ev.Type {
 	case agent.EventTypeAssistantText:
-		if scope.pendingTurnComplete {
+		if scope.pendingDescendantAgent.ID != "" && scope.pendingDescendantAgent.ID != ev.Agent.ID {
 			m.flushPendingDescendantTurn(scope)
 		}
+		if scope.pendingDescendantTurnComplete {
+			m.flushPendingDescendantTurn(scope)
+		}
+		if len(scope.pendingDescendantTurn) == 0 {
+			scope.pendingDescendantAgent = ev.Agent
+			scope.pendingDescendantLabel = m.subagentLabels[ev.Agent.ID]
+		}
 		scope.pendingDescendantTurn = append(scope.pendingDescendantTurn, ev)
-		scope.pendingTurnComplete = false
+		scope.pendingDescendantTurnComplete = false
 		return true
 	case agent.EventTypeAssistantTurnComplete:
 		if len(scope.pendingDescendantTurn) == 0 {
 			return false
 		}
-		scope.pendingTurnComplete = true
+		scope.pendingDescendantTurnComplete = true
 		return true
 	case agent.EventTypeStartSubagent:
 		if len(scope.pendingDescendantTurn) > 0 {
@@ -1963,8 +1974,7 @@ func (m *model) handleHideFinalDescendantMessage(ref toolDisplayScopeRef, ev age
 		}
 		return true
 	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
-		scope.pendingDescendantTurn = nil
-		scope.pendingTurnComplete = false
+		m.finalizePendingDescendantTurn(scope, autoScroll)
 		return false
 	case agent.EventTypeUserMessageQueued:
 		return false
@@ -1984,8 +1994,72 @@ func (m *model) flushPendingDescendantTurn(scope *toolDisplayScope) {
 	for _, pending := range scope.pendingDescendantTurn {
 		m.appendAgentEvent(pending)
 	}
+	m.resetPendingDescendantTurn(scope)
+}
+
+func (m *model) finalizePendingDescendantTurn(scope *toolDisplayScope, autoScroll bool) {
+	if scope == nil || len(scope.pendingDescendantTurn) == 0 {
+		m.resetPendingDescendantTurn(scope)
+		return
+	}
+
+	if !scope.pendingDescendantTurnComplete {
+		m.resetPendingDescendantTurn(scope)
+		return
+	}
+
+	block := scope.finalMessagePresenter.SubagentFinalMessage(
+		scope.call,
+		scope.pendingDescendantLabel,
+		descendantAssistantText(scope.pendingDescendantTurn),
+	)
+	agentMeta := scope.pendingDescendantAgent
+	m.resetPendingDescendantTurn(scope)
+	if block == nil {
+		return
+	}
+
+	content := agentformatter.RenderPlainTextBlock(block)
+	if content == "" {
+		return
+	}
+
+	m.appendAgentEvent(agent.Event{
+		Agent: agentMeta,
+		Type:  agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{
+			Content: content,
+		},
+	})
+	m.refreshViewport(autoScroll)
+}
+
+func (m *model) resetPendingDescendantTurn(scope *toolDisplayScope) {
+	if scope == nil {
+		return
+	}
+	scope.pendingDescendantAgent = agent.AgentMeta{}
+	scope.pendingDescendantLabel = ""
 	scope.pendingDescendantTurn = nil
-	scope.pendingTurnComplete = false
+	scope.pendingDescendantTurnComplete = false
+}
+
+func (m *model) recordSubagentStart(ev agent.Event) {
+	if ev.Type != agent.EventTypeStartSubagent || ev.Agent.ID == "" {
+		return
+	}
+	m.subagentLabels[ev.Agent.ID] = ev.StartSubagent.Label
+}
+
+func descendantAssistantText(events []agent.Event) string {
+	var b strings.Builder
+	for _, ev := range events {
+		if ev.Type != agent.EventTypeAssistantText {
+			continue
+		}
+		b.WriteString(ev.TextContent.Content)
+	}
+	return b.String()
 }
 
 // refreshViewport calculates the contents of the viewport, calls SetContent on it, and optionally scrolls to the bottom.

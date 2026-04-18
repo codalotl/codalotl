@@ -2,22 +2,23 @@ package llmstream
 
 // A Presenter can present a tool call (and optional result) in a "semantic" way - a tree representation that can be further styled for different modalities. As
 // an analogy, it's the HTML (but not the CSS) of underlying data.
+//
+// NOTE: llmstream package does NOT have any additional information about how to use Presenter or Presentation -- consuming packages should NOT interrogate this
+// package with clarify_public_api concerning Presenter or its types. These types are provided as-is for packages to build upon.
 type Presenter interface {
 	// Present presents call and result in a semantic way (no width decisions, no assumptions about ANSI terminals, colors). To present a tool call (no result yet),
 	// call Present(call, nil). To present a call with result, call Present(call, result). For instance, for a read file tool, the call might return the equivalent of
 	// "Reading file.go". The result might return the equivalent of "Read file.go (123 bytes)".
 	Present(call ToolCall, result *ToolResult) Presentation
-
-	// SubagentEventPolicy defines how descendant subagent events are displayed by consumers. Tools that do not launch subagents can return SubagentEventPolicyDefault.
-	SubagentEventPolicy(call ToolCall) SubagentEventPolicy
 }
 
-type SubagentEventPolicy string
-
-const (
-	SubagentEventPolicyDefault          SubagentEventPolicy = ""
-	SubagentEventPolicyHideFinalMessage SubagentEventPolicy = "hide_final_message"
-)
+// SubagentFinalMessagePresenter optionally customizes the final message of a descendant subagent launched directly by call.
+//
+// Consumers should type-assert a tool presenter to this interface. When the presenter does not implement it, the descendant subagent final message should be shown
+// as plain text. Returning nil suppresses the descendant final message. Returning a non-nil Block replaces the plain-text rendering with a semantic block.
+type SubagentFinalMessagePresenter interface {
+	SubagentFinalMessage(call ToolCall, subagentLabel string, finalMessage string) Block
+}
 
 // CompletionBehavior indicates what happens when the tool completes. For instance, imagine a TUI:
 //   - With Replace, the tool call presentation is replaced by the result presentation (ideal for quick and/or atomic operations like reading a file).

@@ -27,21 +27,26 @@ func TestReadOnlyTools_ExposePresenters(t *testing.T) {
 	}
 }
 
-func TestPresenters_SubagentEventPolicy(t *testing.T) {
+func TestPresenters_SubagentFinalMessageCustomization(t *testing.T) {
 	auth := authdomain.NewAutoApproveAuthorizer(t.TempDir())
 	call := llmstream.ToolCall{Name: "test"}
 
-	policyByTool := map[llmstream.Tool]llmstream.SubagentEventPolicy{
-		NewChangeAPITool(".", auth, nil, "", nil):   llmstream.SubagentEventPolicyHideFinalMessage,
-		NewClarifyPublicAPITool(auth, nil):          llmstream.SubagentEventPolicyHideFinalMessage,
-		NewGetPublicAPITool(auth):                   llmstream.SubagentEventPolicyDefault,
-		NewGetUsageTool(auth):                       llmstream.SubagentEventPolicyDefault,
-		NewModuleInfoTool(auth):                     llmstream.SubagentEventPolicyDefault,
-		NewUpdateUsageTool(".", auth, nil, "", nil): llmstream.SubagentEventPolicyHideFinalMessage,
+	customizedByTool := map[llmstream.Tool]bool{
+		NewChangeAPITool(".", auth, nil, "", nil):   true,
+		NewClarifyPublicAPITool(auth, nil):          true,
+		NewGetPublicAPITool(auth):                   false,
+		NewGetUsageTool(auth):                       false,
+		NewModuleInfoTool(auth):                     false,
+		NewUpdateUsageTool(".", auth, nil, "", nil): true,
 	}
 
-	for tool, policy := range policyByTool {
-		assert.Equal(t, policy, tool.Presenter().SubagentEventPolicy(call))
+	for tool, customized := range customizedByTool {
+		finalMessagePresenter, ok := tool.Presenter().(llmstream.SubagentFinalMessagePresenter)
+		assert.Equal(t, customized, ok)
+		if !ok {
+			continue
+		}
+		assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(call, "child", "final message"))
 	}
 }
 

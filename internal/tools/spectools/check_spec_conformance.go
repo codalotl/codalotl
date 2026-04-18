@@ -1100,8 +1100,8 @@ var checkSpecConformancePresenterInstance llmstream.Presenter = checkSpecConform
 
 type checkSpecConformancePresenter struct{}
 
-func (checkSpecConformancePresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyHideFinalMessage
+func (checkSpecConformancePresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+	return nil
 }
 
 func (checkSpecConformancePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {

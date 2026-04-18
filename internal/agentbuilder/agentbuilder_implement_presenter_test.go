@@ -70,7 +70,7 @@ func TestBuildRegistry_PROrchestratorImplementTool_ExposesResultOnCompletionBody
 	}, resultPresentation)
 }
 
-func TestBuildRegistry_PROrchestratorImplementTool_PresenterHidesSubagentFinalMessage(t *testing.T) {
+func TestBuildRegistry_PROrchestratorImplementTool_PresenterSuppressesSubagentFinalMessage(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	implementTool := requireTool(t, invokeAgentTools(
@@ -85,8 +85,10 @@ func TestBuildRegistry_PROrchestratorImplementTool_PresenterHidesSubagentFinalMe
 	presenter := implementTool.Presenter()
 	require.NotNil(t, presenter)
 
-	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(llmstream.ToolCall{
+	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
+	require.True(t, ok)
+	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(llmstream.ToolCall{
 		Name:  "implement",
 		Input: `{"path":"internal/agentbuilder","instructions":"Refine the presenter UX."}`,
-	}))
+	}, "implement worker", "done"))
 }

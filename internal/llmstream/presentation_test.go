@@ -7,6 +7,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type testPresenter struct{}
+
+func (testPresenter) Present(call ToolCall, result *ToolResult) Presentation {
+	return Presentation{}
+}
+
+type testSubagentFinalMessagePresenter struct {
+	block Block
+}
+
+func (testSubagentFinalMessagePresenter) Present(call ToolCall, result *ToolResult) Presentation {
+	return Presentation{}
+}
+
+func (p testSubagentFinalMessagePresenter) SubagentFinalMessage(call ToolCall, subagentLabel string, finalMessage string) Block {
+	return p.block
+}
+
 func TestPresentationModel_CanRepresentUpdatePlanChecklist(t *testing.T) {
 	presentation := Presentation{
 		Behavior:      CompletionBehaviorReplace,
@@ -280,7 +298,33 @@ func TestPresentationModel_NarrowBehavior(t *testing.T) {
 	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, Presentation{NarrowBehavior: PresentationNarrowBehaviorPreferCLI}.NarrowBehavior)
 }
 
-func TestPresentationModel_SubagentEventPolicy(t *testing.T) {
-	assert.Equal(t, SubagentEventPolicyDefault, SubagentEventPolicy(""))
-	assert.Equal(t, SubagentEventPolicyHideFinalMessage, SubagentEventPolicy("hide_final_message"))
+func TestPresentationModel_SubagentFinalMessagePresenterIsOptional(t *testing.T) {
+	var presenter Presenter = testPresenter{}
+
+	_, ok := presenter.(SubagentFinalMessagePresenter)
+	assert.False(t, ok)
+
+	expected := Paragraph{
+		Lines: []Line{{
+			Segments: []Segment{
+				{Text: "formatted final message", Role: RoleAccent},
+			},
+		}},
+	}
+
+	var finalMessagePresenter Presenter = testSubagentFinalMessagePresenter{block: expected}
+
+	customizer, ok := finalMessagePresenter.(SubagentFinalMessagePresenter)
+	require.True(t, ok)
+	assert.Equal(
+		t,
+		expected,
+		customizer.SubagentFinalMessage(ToolCall{Name: "spawn_subagent"}, "child", "raw final message"),
+	)
+
+	var suppressingPresenter Presenter = testSubagentFinalMessagePresenter{}
+
+	suppressor, ok := suppressingPresenter.(SubagentFinalMessagePresenter)
+	require.True(t, ok)
+	assert.Nil(t, suppressor.SubagentFinalMessage(ToolCall{Name: "spawn_subagent"}, "child", "raw final message"))
 }

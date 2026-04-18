@@ -24,7 +24,7 @@ Presentation specs for Go package tools.
 - Behavior: Append
 - In progress: `Clarifying API SomeIdentifier in some/pkg`
 - Complete: `Clarified API SomeIdentifier in some/pkg`
-- `SubagentEventPolicy`: `HideFinalMessage`
+- Descendant subagent final message: hidden
 - Clarify subagent may attach a label identifying target package and identifier.
 - In-progress body: question text
 - Complete body: answer text
@@ -34,7 +34,7 @@ Presentation specs for Go package tools.
 - Behavior: Append
 - In progress: `Changing API in some/pkg`
 - Complete: `Changed API in some/pkg`
-- `SubagentEventPolicy`: `HideFinalMessage`
+- Descendant subagent final message: hidden
 - In-progress body: instructions
 - Complete body: result text
 
@@ -43,6 +43,6 @@ Presentation specs for Go package tools.
 - Behavior: Append
 - In progress: `Updating Usage in pkg/a, pkg/b, pkg/c (N more)`
 - Complete: `Updated Usage in pkg/a, pkg/b, pkg/c (N more)`
-- `SubagentEventPolicy`: `HideFinalMessage`
+- Descendant subagent final message: hidden
 - In-progress body: instructions
 - Complete body: result text

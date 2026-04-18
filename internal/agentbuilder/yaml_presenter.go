@@ -70,6 +70,8 @@ type yamlReviewPresenter struct {
 
 var _ llmstream.Presenter = (*yamlSubagentQAPresenter)(nil)
 var _ llmstream.Presenter = (*yamlReviewPresenter)(nil)
+var _ llmstream.SubagentFinalMessagePresenter = (*yamlSubagentQAPresenter)(nil)
+var _ llmstream.SubagentFinalMessagePresenter = (*yamlReviewPresenter)(nil)
 
 type yamlReviewResult struct {
 	Findings               *[]yamlReviewFinding `json:"findings"`
@@ -263,8 +265,8 @@ func (p *yamlSubagentQAPresenter) Present(call llmstream.ToolCall, result *llmst
 	return presentation
 }
 
-func (p *yamlSubagentQAPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyHideFinalMessage
+func (p *yamlSubagentQAPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+	return nil
 }
 
 func (p *yamlSubagentQAPresenter) summary(params map[string]any, isResult bool) llmstream.Line {
@@ -338,8 +340,8 @@ func (p *yamlReviewPresenter) Present(call llmstream.ToolCall, result *llmstream
 	return presentation
 }
 
-func (p *yamlReviewPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyHideFinalMessage
+func (p *yamlReviewPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+	return nil
 }
 
 func yamlReviewSummary(params map[string]any, isResult bool) llmstream.Line {
