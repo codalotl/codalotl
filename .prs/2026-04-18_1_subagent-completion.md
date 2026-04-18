@@ -54,40 +54,39 @@ Current dependency-driven order after the `internal/llmstream` API change:
 - Remove now-unneeded default `SubagentEventPolicy` methods and tests that only asserted the default behavior.
 - This unblocked the next layer of packages that import `internal/tools/coretools`.
 
-### Package `internal/tui`
+### Package `internal/tui` [DONE]
 - Replace stored descendant subagent policy state with descendant final-message presentation state.
 - When a tool presenter implements `llmstream.SubagentFinalMessagePresenter`, use its returned `Block` for descendant subagent final messages.
 - When `SubagentFinalMessage` returns `nil`, suppress the descendant subagent final message.
 - When the tool presenter does not implement the interface, keep current plain-text display behavior.
 - Update `internal/tui/SPEC.md` and focused tests.
 
-### Package `internal/noninteractive`
+### Package `internal/noninteractive` [DONE]
 - Mirror the same descendant subagent final-message behavior in human-readable output and JSON mode.
 - Preserve existing top-level output behavior and machine-readable tool results.
 - Update `internal/noninteractive/SPEC.md` and focused tests.
 
-### Package `internal/agentbuilder`
+### Package `internal/agentbuilder` [DONE]
 - YAML presenter presets that previously hid descendant subagent final messages should implement `llmstream.SubagentFinalMessagePresenter` and return `nil`.
 - Keep the existing call/result presentations unchanged.
 - Update `internal/agentbuilder/SPEC.md` and presenter tests.
 
-### Package `internal/tools/pkgtools`, `internal/tools/spectools`
+### Package `internal/tools/pkgtools`, `internal/tools/spectools` [DONE]
 - Subagent-launching presenters that previously hid descendant subagent final messages should implement `llmstream.SubagentFinalMessagePresenter` and return `nil`.
 - Presenters that only relied on the old default policy should stop carrying policy methods.
 - Update `internal/tools/pkgtools/SPEC.md` and relevant tests.
 
-### Package `internal/tools/exttools`
+### Package `internal/tools/exttools` [DONE]
 - Remove now-unneeded default `SubagentEventPolicy` methods and tests that only asserted the default behavior.
 
-### Package `internal/agentformatter`
+### Package `internal/agentformatter` [DONE]
 - Remove now-unneeded default `SubagentEventPolicy` tests that only asserted the default behavior.
+- Add a shared plain-text `llmstream.Block` renderer used by TUI/noninteractive when a presenter customizes descendant final-message display.
 
 ### Validation
-- Current package validation: `go test ./internal/llmstream`
-- Current package validation: `go test ./internal/tools/coretools`
-- Current repo build snapshot: `go test ./...` now fails first in `internal/tools/exttools`, `internal/tools/pkgtools`, and `internal/tools/spectools` because they still reference removed `llmstream.SubagentEventPolicy` APIs.
-- Run focused `go test` for the touched packages.
-- Watch for noninteractive integration expectations that depend on descendant subagent final-message printing; this refactor should preserve current UX.
+- `go test ./internal/tools/exttools ./internal/tools/pkgtools ./internal/tools/spectools ./internal/agentbuilder ./internal/agentformatter`
+- `go test ./internal/tui ./internal/noninteractive`
+- `go test ./...`
 
 ## Review
 
@@ -95,15 +94,16 @@ Not run yet.
 
 ## Summary
 
-Pending.
+- Replaced the remaining `SubagentEventPolicy` call sites with optional `SubagentFinalMessagePresenter` handling.
+- TUI and noninteractive now buffer descendant assistant turns only when a tool presenter customizes final-message display, suppress `nil` results, and replace final messages with rendered text when a presenter returns a `Block`.
+- Presenter packages/tests were updated to remove dead default policy methods, and subagent-launching presenters that intentionally hide descendant final messages now return `nil` from `SubagentFinalMessage`.
+- Added a shared plain-text `llmstream.Block` renderer in `internal/agentformatter` for the non-default descendant final-message path.
 
 ## State
 
 - Branch: `jn/subagent-final-message`
 - PR goal: refactor descendant subagent final-message presentation without changing visible UX.
 - `internal/llmstream` now exposes optional `SubagentFinalMessagePresenter`; `Presenter.SubagentEventPolicy` and `SubagentEventPolicy` are removed.
-- `internal/tools/coretools` is updated; `go test ./internal/tools/coretools` passes.
-- `go test ./...` now fails first in `internal/tools/exttools`, `internal/tools/pkgtools`, and `internal/tools/spectools`.
-- Import graph check: `internal/tools/exttools`, `internal/tools/pkgtools`, and `internal/tools/spectools` are peer dependencies of `internal/agentbuilder`; `internal/tui` and `internal/noninteractive` both import `internal/agentbuilder`, so those peer tool packages should be updated before `internal/agentbuilder`.
-- Downstream packages still to update for the new API: `internal/tui`, `internal/noninteractive`, `internal/agentbuilder`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tools/exttools`, `internal/agentformatter`.
-- `internal/agentbuilder` and `internal/tools/pkgtools` explicitly depend on hiding descendant subagent final messages today.
+- `internal/tools/coretools`, `internal/tools/exttools`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/agentbuilder`, `internal/tui`, `internal/noninteractive`, and `internal/agentformatter` are updated for the new API.
+- Full validation currently passes with `go test ./...`.
+- Review has not been run yet, per scope.

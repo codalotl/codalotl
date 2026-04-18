@@ -66,17 +66,21 @@ type Session struct {
 }
 
 type activeToolDisplayState struct {
-	callID string
-	policy llmstream.SubagentEventPolicy
+	call                  llmstream.ToolCall
+	finalMessagePresenter llmstream.SubagentFinalMessagePresenter
 }
 
 type agentDisplayScope struct {
-	policy           llmstream.SubagentEventPolicy
-	launcherAgentID  string
-	launcherToolCall string
+	call                  llmstream.ToolCall
+	finalMessagePresenter llmstream.SubagentFinalMessagePresenter
+	launcherAgentID       string
+	launcherToolCall      string
+	subagentLabel         string
 }
 
 type pendingAssistantEvents struct {
+	agent        agent.AgentMeta
+	label        string
 	events       []agent.Event
 	turnComplete bool
 }
@@ -100,21 +104,19 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
 		return nil, false
 	}
 
+	f.updateToolState(ev)
 	scope := f.scopeForAgent(ev.Agent)
-	if scope.policy != llmstream.SubagentEventPolicyHideFinalMessage {
-		f.updateToolState(ev)
+	if scope.finalMessagePresenter == nil {
 		return nil, false
 	}
 
 	if ev.Agent.Depth > 0 && isAgentTerminalEvent(ev.Type) {
-		delete(f.pendingAssistant, ev.Agent.ID)
-		f.updateToolState(ev)
-		return nil, false
+		return f.finalizePendingAssistantEvents(scope, ev.Agent.ID), false
 	}
 
 	flush := f.pendingEventsToFlushBefore(ev)
 	if ev.Type == agent.EventTypeAssistantText {
-		f.bufferAssistantEvent(ev)
+		f.bufferAssistantEvent(ev, scope.subagentLabel)
 		return flush, true
 	}
 	if ev.Type == agent.EventTypeAssistantTurnComplete {
@@ -122,7 +124,10 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
 		return flush, true
 	}
 
-	f.updateToolState(ev)
+	if ev.Type == agent.EventTypeStartSubagent {
+		return flush, true
+	}
+
 	return flush, false
 }
 
@@ -140,9 +145,10 @@ func (f *subagentDisplayFilter) scopeForAgent(meta agent.AgentMeta) agentDisplay
 	if parentID != "" {
 		if active, ok := f.activeTools[parentID]; ok {
 			scope = agentDisplayScope{
-				policy:           active.policy,
-				launcherAgentID:  parentID,
-				launcherToolCall: active.callID,
+				call:                  active.call,
+				finalMessagePresenter: active.finalMessagePresenter,
+				launcherAgentID:       parentID,
+				launcherToolCall:      active.call.CallID,
 			}
 		}
 	}
@@ -168,6 +174,8 @@ func (f *subagentDisplayFilter) pendingEventsToFlushBefore(ev agent.Event) []age
 		}
 	case agent.EventTypeAssistantTurnComplete:
 		return nil
+	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
+		return nil
 	}
 
 	events := pending.events
@@ -175,13 +183,16 @@ func (f *subagentDisplayFilter) pendingEventsToFlushBefore(ev agent.Event) []age
 	return events
 }
 
-func (f *subagentDisplayFilter) bufferAssistantEvent(ev agent.Event) {
+func (f *subagentDisplayFilter) bufferAssistantEvent(ev agent.Event, label string) {
 	if f == nil {
 		return
 	}
 	pending := f.pendingAssistant[ev.Agent.ID]
 	if pending == nil {
-		pending = &pendingAssistantEvents{}
+		pending = &pendingAssistantEvents{
+			agent: ev.Agent,
+			label: label,
+		}
 		f.pendingAssistant[ev.Agent.ID] = pending
 	}
 	pending.events = append(pending.events, ev)
@@ -205,17 +216,19 @@ func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
 
 	switch ev.Type {
 	case agent.EventTypeToolCall:
-		f.activeTools[ev.Agent.ID] = activeToolDisplayState{
-			callID: toolCallIDFromEvent(ev),
-			policy: subagentEventPolicyFromToolEvent(ev),
-		}
+		f.activeTools[ev.Agent.ID] = activeToolDisplayState{call: toolCallFromToolEvent(ev), finalMessagePresenter: subagentFinalMessagePresenterFromToolEvent(ev)}
 	case agent.EventTypeToolComplete:
 		callID := toolCallIDFromEvent(ev)
 		if callID == "" {
-			callID = f.activeTools[ev.Agent.ID].callID
+			callID = f.activeTools[ev.Agent.ID].call.CallID
 		}
 		delete(f.activeTools, ev.Agent.ID)
 		f.discardFinalAssistantEventsForScope(ev.Agent.ID, callID)
+	case agent.EventTypeStartSubagent:
+		if ev.Agent.ID == "" {
+			return
+		}
+		f.agentScopes[ev.Agent.ID] = f.scopeFromStartSubagent(ev)
 	}
 }
 
@@ -235,11 +248,15 @@ func (f *subagentDisplayFilter) discardFinalAssistantEventsForScope(agentID stri
 	}
 }
 
-func subagentEventPolicyFromToolEvent(ev agent.Event) llmstream.SubagentEventPolicy {
+func subagentFinalMessagePresenterFromToolEvent(ev agent.Event) llmstream.SubagentFinalMessagePresenter {
 	if ev.Tool == nil || ev.Tool.Presenter() == nil {
-		return llmstream.SubagentEventPolicyDefault
+		return nil
 	}
+	customizer, _ := ev.Tool.Presenter().(llmstream.SubagentFinalMessagePresenter)
+	return customizer
+}
 
+func toolCallFromToolEvent(ev agent.Event) llmstream.ToolCall {
 	call := llmstream.ToolCall{}
 	if ev.ToolCall != nil {
 		call = *ev.ToolCall
@@ -252,8 +269,58 @@ func subagentEventPolicyFromToolEvent(ev agent.Event) llmstream.SubagentEventPol
 	if name := toolNameFromEvent(ev); name != "" {
 		call.Name = name
 	}
+	return call
+}
 
-	return ev.Tool.Presenter().SubagentEventPolicy(call)
+func (f *subagentDisplayFilter) scopeFromStartSubagent(ev agent.Event) agentDisplayScope {
+	scope := agentDisplayScope{
+		launcherAgentID:  ev.StartSubagent.CallingAgentID,
+		launcherToolCall: ev.StartSubagent.ToolCallID,
+		subagentLabel:    ev.StartSubagent.Label,
+	}
+	active, ok := f.activeTools[ev.StartSubagent.CallingAgentID]
+	if !ok {
+		return scope
+	}
+	scope.call = active.call
+	scope.finalMessagePresenter = active.finalMessagePresenter
+	if scope.launcherToolCall == "" {
+		scope.launcherToolCall = active.call.CallID
+	}
+	return scope
+}
+
+func (f *subagentDisplayFilter) finalizePendingAssistantEvents(scope agentDisplayScope, agentID string) []agent.Event {
+	if f == nil {
+		return nil
+	}
+	pending := f.pendingAssistant[agentID]
+	delete(f.pendingAssistant, agentID)
+	if pending == nil || !pending.turnComplete || scope.finalMessagePresenter == nil {
+		return nil
+	}
+
+	block := scope.finalMessagePresenter.SubagentFinalMessage(
+		scope.call,
+		pending.label,
+		descendantAssistantText(pending.events),
+	)
+	if block == nil {
+		return nil
+	}
+
+	content := agentformatter.RenderPlainTextBlock(block)
+	if content == "" {
+		return nil
+	}
+
+	return []agent.Event{{
+		Agent: pending.agent,
+		Type:  agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{
+			Content: content,
+		},
+	}}
 }
 
 func toolCallIDFromEvent(ev agent.Event) string {
@@ -268,6 +335,17 @@ func toolCallIDFromEvent(ev agent.Event) string {
 
 func isAgentTerminalEvent(eventType agent.EventType) bool {
 	return eventType == agent.EventTypeDoneSuccess || eventType == agent.EventTypeError || eventType == agent.EventTypeCanceled
+}
+
+func descendantAssistantText(events []agent.Event) string {
+	var b strings.Builder
+	for _, ev := range events {
+		if ev.Type != agent.EventTypeAssistantText {
+			continue
+		}
+		b.WriteString(ev.TextContent.Content)
+	}
+	return b.String()
 }
 
 func buildSessionConfig(opts Options) (sessionConfig, error) {

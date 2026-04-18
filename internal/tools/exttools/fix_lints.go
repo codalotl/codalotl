@@ -74,10 +74,6 @@ func (p fixLintsPresenter) Present(call llmstream.ToolCall, result *llmstream.To
 	return presentation
 }
 
-func (p fixLintsPresenter) SubagentEventPolicy(call llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyDefault
-}
-
 func (t *toolFixLints) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameFixLints,

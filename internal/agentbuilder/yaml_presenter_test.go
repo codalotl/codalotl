@@ -110,13 +110,15 @@ func TestYAMLSubagentQAPresenterPresent_ResultBodyResultShowsCompletionBody(t *t
 	}, resultPresentation)
 }
 
-func TestYAMLSubagentQAPresenter_SubagentEventPolicyHideFinalMessage(t *testing.T) {
+func TestYAMLSubagentQAPresenter_SubagentFinalMessageReturnsNil(t *testing.T) {
 	presenter := requireYAMLSubagentQAPresenter(t, yamlPresenterBodyNone)
 
-	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(llmstream.ToolCall{
+	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
+	require.True(t, ok)
+	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(llmstream.ToolCall{
 		Name:  "implement",
 		Input: `{"path":"internal/agentbuilder"}`,
-	}))
+	}, "implement worker", "done"))
 }
 
 func TestYAMLReviewPresenterPresent_FormatsFindingsAndTruncates(t *testing.T) {
@@ -212,13 +214,15 @@ func TestYAMLReviewPresenterPresent_InvalidReviewJSONFallsBackToRawOutput(t *tes
 	}, presentation.Body)
 }
 
-func TestYAMLReviewPresenter_SubagentEventPolicyHideFinalMessage(t *testing.T) {
+func TestYAMLReviewPresenter_SubagentFinalMessageReturnsNil(t *testing.T) {
 	presenter := requireYAMLReviewPresenter(t)
 
-	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(llmstream.ToolCall{
+	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
+	require.True(t, ok)
+	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(llmstream.ToolCall{
 		Name:  "review",
 		Input: `{"base":"main"}`,
-	}))
+	}, "review worker", "done"))
 }
 
 func requireYAMLSubagentQAPresenter(t *testing.T, resultBody string) llmstream.Presenter {

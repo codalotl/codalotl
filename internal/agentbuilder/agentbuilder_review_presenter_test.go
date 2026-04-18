@@ -80,7 +80,7 @@ func TestBuildRegistry_PROrchestratorReviewTool_ExposesPresenter(t *testing.T) {
 	}, resultPresentation)
 }
 
-func TestBuildRegistry_PROrchestratorReviewTool_PresenterHidesSubagentFinalMessage(t *testing.T) {
+func TestBuildRegistry_PROrchestratorReviewTool_PresenterSuppressesSubagentFinalMessage(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	reviewTool := requireTool(t, invokeAgentTools(
@@ -95,8 +95,10 @@ func TestBuildRegistry_PROrchestratorReviewTool_PresenterHidesSubagentFinalMessa
 	presenter := reviewTool.Presenter()
 	require.NotNil(t, presenter)
 
-	assert.Equal(t, llmstream.SubagentEventPolicyHideFinalMessage, presenter.SubagentEventPolicy(llmstream.ToolCall{
+	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
+	require.True(t, ok)
+	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(llmstream.ToolCall{
 		Name:  "review",
 		Input: `{"base":"origin/main"}`,
-	}))
+	}, "review worker", "done"))
 }

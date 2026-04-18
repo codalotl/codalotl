@@ -57,16 +57,6 @@ func (p staticPresenter) Present(_ llmstream.ToolCall, result *llmstream.ToolRes
 	return p.complete
 }
 
-func (p staticPresenter) SubagentEventPolicy(llmstream.ToolCall) llmstream.SubagentEventPolicy {
-	return llmstream.SubagentEventPolicyDefault
-}
-
-func TestStaticPresenterSubagentEventPolicyDefaults(t *testing.T) {
-	assert.Equal(t, llmstream.SubagentEventPolicyDefault, staticPresenter{}.SubagentEventPolicy(llmstream.ToolCall{
-		Name: "shell",
-	}))
-}
-
 func presentedReplaceSummary(action, target string) llmstream.Presentation {
 	segments := []llmstream.Segment{{
 		Text: action,
