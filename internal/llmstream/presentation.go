@@ -2,6 +2,9 @@ package llmstream
 
 // A Presenter can present a tool call (and optional result) in a "semantic" way - a tree representation that can be further styled for different modalities. As
 // an analogy, it's the HTML (but not the CSS) of underlying data.
+//
+// NOTE: llmstream package does NOT have any additional information about how to use Presenter or Presentation -- consuming packages should NOT interrogate this
+// package with clarify_public_api concerning Presenter or its types. These types are provided as-is for packages to build upon.
 type Presenter interface {
 	// Present presents call and result in a semantic way (no width decisions, no assumptions about ANSI terminals, colors). To present a tool call (no result yet),
 	// call Present(call, nil). To present a call with result, call Present(call, result). For instance, for a read file tool, the call might return the equivalent of
