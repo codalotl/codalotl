@@ -28,7 +28,7 @@ In this phase, land the agent-owned assistant-message contract, then migrate `in
 - Implement the event buffering/finality rules below, including per-agent isolation and shutdown flushing.
 - Update `CollectFinalAssistantText` to rely on final flagged events plus top-level `done_success`.
 
-#### Package `internal/tui`
+#### Package `internal/tui` [DONE]
 
 - Update `internal/tui/SPEC.md`.
 - Remove local descendant final-message reconstruction from `internal/tui/tui.go`.
@@ -140,5 +140,10 @@ TBD
   - `CollectFinalAssistantText` now keys off final flagged text plus top-level `done_success`
   - package test command: `go test ./internal/agent`
 - End-of-turn ordering in `internal/agent` is now `assistant_turn_complete`, then final buffered `assistant_text`, then terminal event.
-- Existing descendant final-message reconstruction lives in `internal/tui/tui.go` and `internal/noninteractive/session.go`.
+- `internal/tui` is implemented:
+  - descendant final-message presentation now keys off descendant `assistant_text` with `AssistantTextFinal=true`
+  - `internal/tui` no longer reconstructs final descendant messages from `AssistantTurnComplete` plus buffered text
+  - non-final descendant assistant text is shown literally
+  - package test command: `go test ./internal/tui`
+- Remaining descendant final-message reconstruction lives in `internal/noninteractive/session.go`.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
