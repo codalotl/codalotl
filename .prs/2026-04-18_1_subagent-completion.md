@@ -16,7 +16,7 @@ Problem:
 
 Task:
 - llmstream: Delete Presenter.SubagentEventPolicy(call ToolCall) SubagentEventPolicy and SubagentEventPolicy.
-- Replace with an interface upgrade on the Presenter interface:
+- Replace with an interface upgrade (type assert to see if presenter has extra methods) on the Presenter interface:
 
 ```go
 type SubagentFinalMessagePresenter interface {
@@ -29,6 +29,6 @@ type SubagentFinalMessagePresenter interface {
 ```
 
 Notes:
-- Tools don't need to implement this. If they don't: it's the same as "keep and display the final message as-is: return a Block built from finalMessage".
+- Tool's presenters don't need to implement this. If they don't: it's the same as "keep and display the final message as-is: return a Block built from finalMessage".
 - TUI and noninteractive or whoever can type-assert a presenter to this. If the presenter implements it: pass the final message through it.
 - Only relevant for subagents, not top-level agents.
