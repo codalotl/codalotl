@@ -38,7 +38,7 @@ More instructions to orchestrator:
 
 ## Plan
 
-### Package `internal/llmstream`
+### Package `internal/llmstream` [DONE]
 - Replace `Presenter.SubagentEventPolicy` and `SubagentEventPolicy` with optional `SubagentFinalMessagePresenter`.
 - Default behavior when a presenter does not implement the extra interface: keep displaying descendant subagent final text as-is.
 - `SubagentFinalMessage` applies only to subagents launched by a tool call; top-level assistant messages stay unchanged.
@@ -70,6 +70,7 @@ More instructions to orchestrator:
 - Remove now-unneeded default `SubagentEventPolicy` methods and tests that only asserted the default behavior.
 
 ### Validation
+- Current package validation: `go test ./internal/llmstream`
 - Run focused `go test` for the touched packages.
 - Watch for noninteractive integration expectations that depend on descendant subagent final-message printing; this refactor should preserve current UX.
 
@@ -85,5 +86,6 @@ Pending.
 
 - Branch: `jn/subagent-final-message`
 - PR goal: refactor descendant subagent final-message presentation without changing visible UX.
-- Old API lives in `internal/llmstream/presentation.go` and is referenced by `internal/tui`, `internal/noninteractive`, `internal/agentbuilder`, `internal/tools/pkgtools`, `internal/tools/spectools`, and presenter tests.
+- `internal/llmstream` now exposes optional `SubagentFinalMessagePresenter`; `Presenter.SubagentEventPolicy` and `SubagentEventPolicy` are removed.
+- Downstream packages still to update for the new API: `internal/tui`, `internal/noninteractive`, `internal/agentbuilder`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tools/coretools`, `internal/tools/exttools`, `internal/agentformatter`.
 - `internal/agentbuilder` and `internal/tools/pkgtools` explicitly depend on hiding descendant subagent final messages today.
