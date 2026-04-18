@@ -16,11 +16,43 @@ In this PR:
 - Make agent mental model: an assistant text is NOT a part - it's a full message
 - agent will need to hold on to assistant text events until the next event comes in
 
-## Design
+## Plan
+
+### Phase 0
+
+In this phase, land the agent-owned assistant-message contract, then migrate `internal/tui` and `internal/noninteractive` to trust it.
+
+#### Package `internal/agent`
+
+- Update `internal/agent/SPEC.md` for assistant-message normalization and assistant-text finality.
+- Implement the event buffering/finality rules below, including per-agent isolation and shutdown flushing.
+- Update `CollectFinalAssistantText` to rely on final flagged events plus top-level `done_success`.
+
+#### Package `internal/tui`
+
+- Update `internal/tui/SPEC.md`.
+- Remove local descendant final-message reconstruction from `internal/tui/tui.go`.
+- Use descendant `assistant_text` events with `AssistantTextFinal=true` to drive `llmstream.SubagentFinalMessagePresenter`.
+- Render non-final descendant assistant text literally.
+
+#### Package `internal/noninteractive`
+
+- Update `internal/noninteractive/SPEC.md`.
+- Remove local descendant final-message reconstruction from `internal/noninteractive/session.go`.
+- Use final flagged events for descendant final-message presentation and for `Result.FinalAssistantText`.
+- Keep human-readable and JSON output stable unless a targeted change is required by the new contract.
+
+#### Validation
+
+- Package tests for `internal/agent`, `internal/tui`, and `internal/noninteractive`
+- Re-run affected noninteractive integration coverage if request/event shapes intentionally change
+- Review plus changed-package SPEC conformance after implementation
+
+### Design details
 
 Make `internal/agent` the single owner of "which assistant text was the final message for this agent run?" logic. `internal/llmstream` can keep its current provider-shaped/event-part model; `agent` should normalize that into a simpler event contract that downstream consumers can trust.
 
-### Proposed event contract
+#### Proposed event contract
 
 - Keep `EventTypeAssistantText`, but define it as an agent-level assistant message event, not a raw provider text-part event.
 - This is an intentional normalization boundary:
@@ -33,7 +65,7 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 - `AssistantTextFinal=false` means: this assistant text was followed by some later event from the same agent, so it is not the terminal assistant message for that run.
 - Finality is per-agent. Parent and child agents must not affect each other's finality bookkeeping.
 
-### Agent buffering rules
+#### Agent buffering rules
 
 - The agent keeps at most one pending assistant-message buffer per agent ID.
 - The pending buffer is string content plus enough metadata to emit one `EventTypeAssistantText` later.
@@ -52,7 +84,7 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 - Descendant events do not resolve an ancestor's pending assistant text, and ancestor events do not resolve a descendant's.
 - On channel close / agent shutdown, there must not be an unclassified pending assistant text. The agent should always flush it as final or non-final before closing the stream.
 
-### Meaning of "final"
+#### Meaning of "final"
 
 - "Final" is about stream position, not success.
 - The final assistant text may be followed by:
@@ -62,7 +94,7 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 - Consumers that need "successful answer text" must still require a later `done_success`; `AssistantTextFinal=true` alone is not enough to imply success.
 - Consumers that only care about presentation policy for the last message can use the finality bit without re-deriving anything from turn history.
 
-### Consumer rules
+#### Consumer rules
 
 - `internal/tui` and `internal/noninteractive` should stop reconstructing "the final message" by buffering descendant assistant text themselves.
 - They should rely on `EventTypeAssistantText` plus the finality bit.
@@ -75,7 +107,7 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - ignore descendant terminal events as it already does today
 - `AssistantTurnComplete` should remain available for conversation history, token/context accounting, and any caller that needs the whole turn, but it should no longer be the mechanism for "what was the final assistant message?"
 
-### Deliberate simplifications / non-goals
+#### Deliberate simplifications / non-goals
 
 - We are intentionally normalizing at the `agent` layer. We do not need TUI/noninteractive to preserve provider-level text-part fidelity.
 - We do merge adjacent provider text blocks into one assistant message.
@@ -83,9 +115,25 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 - We do not try to retroactively edit already-emitted events.
 - We do not keep duplicate "legacy" final-message reconstruction code in TUI/noninteractive once the agent contract exists.
 
-### Caveat / possible correction to the User section
+#### Caveat / possible correction to the User section
 
 - There is no conflict between:
     - providers emitting multiple text blocks in one assistant turn, and
     - `agent.EventTypeAssistantText` meaning "one non-split assistant message".
 - The design simply makes `agent` the normalization layer that coalesces adjacent provider text blocks into message-shaped events for downstream consumers.
+
+## Review
+
+Not run yet.
+
+## Summary
+
+TBD
+
+## State
+
+- Branch: `jn/agent-message-buffering`
+- Relevant packages: `internal/agent`, `internal/tui`, `internal/noninteractive`
+- `internal/agent/SPEC.md` currently says `EventTypeAssistantText` is part-shaped; this PR changes it to message-shaped.
+- Existing descendant final-message reconstruction lives in `internal/tui/tui.go` and `internal/noninteractive/session.go`.
+- `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.

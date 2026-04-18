@@ -136,9 +136,41 @@ type StartSubagent struct {
 }
 ```
 
+Assistant-text events also carry finality metadata:
+
+```go
+type Event struct {
+	Agent AgentMeta
+	Type  EventType
+
+	TextContent         llmstream.TextContent
+	AssistantTextFinal  bool
+
+	// ... other fields
+}
+```
+
+- `AssistantTextFinal` is only meaningful when `Type == EventTypeAssistantText`.
+- `AssistantTextFinal=true` means this is the last assistant-text message emitted by that same agent before it emits `EventTypeDoneSuccess`, `EventTypeError`, or `EventTypeCanceled`.
+- `AssistantTextFinal=false` means some later event from that same agent followed it.
+
+## Assistant text events
+
+`internal/agent` is the normalization boundary between provider-shaped `llmstream` events and downstream agent consumers.
+
+- `EventTypeAssistantText` is an agent-level assistant message event, not a raw provider text-part event.
+- Adjacent provider text blocks from the same agent are coalesced into one assistant message.
+- `EventTypeAssistantReasoning` remains a separate event type and is a message boundary for assistant text.
+- Assistant-text buffering and finality are tracked per agent ID. Parent and child agents do not resolve each other's buffered text.
+- A non-text event from the same agent resolves any buffered assistant text before that event is emitted.
+    - If the boundary event is `EventTypeDoneSuccess`, `EventTypeError`, or `EventTypeCanceled`, emit the buffered assistant text with `AssistantTextFinal=true`, then emit the terminal event.
+    - Otherwise emit the buffered assistant text with `AssistantTextFinal=false`, then emit the boundary event.
+- `EventTypeAssistantTurnComplete` is a completed-turn marker. It does not itself split or flush buffered assistant text.
+- On stream shutdown, the agent must not drop buffered assistant text. Any pending assistant text is flushed as classified final or non-final before the event stream closes.
+
 ## Notes
 
-- The EventTypeAssistantText and EventTypeAssistantReasoning events are only for complete parts, not deltas.
+- The EventTypeAssistantText and EventTypeAssistantReasoning events are complete events, not deltas.
 - Stopping the agent early is accomplished with the context.
 - An agent needs to be thread-safe. It runs in a different goroutine than its instantiator. All public methods should behave assuming multithreaded access.
 - An agent may only run one active loop. A call to SendUserMessage when it's already running results in an error (on the channel of the 2nd call).
