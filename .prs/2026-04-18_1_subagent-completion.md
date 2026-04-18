@@ -39,8 +39,8 @@ More instructions to orchestrator:
 ## Plan
 
 Current dependency-driven order after the `internal/llmstream` API change:
-- `internal/tools/coretools`
-- `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tools/exttools`, `internal/agentbuilder`
+- `internal/tools/exttools`
+- `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/agentbuilder`
 - `internal/tui`, `internal/noninteractive`
 - `internal/agentformatter` test cleanup
 
@@ -50,9 +50,9 @@ Current dependency-driven order after the `internal/llmstream` API change:
 - `SubagentFinalMessage` applies only to subagents launched by a tool call; top-level assistant messages stay unchanged.
 - Update `internal/llmstream/SPEC.md` and package tests to reflect the new interface.
 
-### Package `internal/tools/coretools`
+### Package `internal/tools/coretools` [DONE]
 - Remove now-unneeded default `SubagentEventPolicy` methods and tests that only asserted the default behavior.
-- This is the current repo-level compile blocker after the `internal/llmstream` change and unblocks packages that import `internal/tools/coretools`.
+- This unblocked the next layer of packages that import `internal/tools/coretools`.
 
 ### Package `internal/tui`
 - Replace stored descendant subagent policy state with descendant final-message presentation state.
@@ -76,12 +76,16 @@ Current dependency-driven order after the `internal/llmstream` API change:
 - Presenters that only relied on the old default policy should stop carrying policy methods.
 - Update `internal/tools/pkgtools/SPEC.md` and relevant tests.
 
-### Package `internal/tools/exttools`, `internal/agentformatter`
+### Package `internal/tools/exttools`
 - Remove now-unneeded default `SubagentEventPolicy` methods and tests that only asserted the default behavior.
+
+### Package `internal/agentformatter`
+- Remove now-unneeded default `SubagentEventPolicy` tests that only asserted the default behavior.
 
 ### Validation
 - Current package validation: `go test ./internal/llmstream`
-- Current repo build snapshot: `go test ./...` fails first in `internal/tools/coretools/presenter_policy.go` because `llmstream.SubagentEventPolicy` was removed.
+- Current package validation: `go test ./internal/tools/coretools`
+- Current repo build snapshot: `go test ./...` now fails first in `internal/tools/exttools`, `internal/tools/pkgtools`, and `internal/tools/spectools` because they still reference removed `llmstream.SubagentEventPolicy` APIs.
 - Run focused `go test` for the touched packages.
 - Watch for noninteractive integration expectations that depend on descendant subagent final-message printing; this refactor should preserve current UX.
 
@@ -98,7 +102,8 @@ Pending.
 - Branch: `jn/subagent-final-message`
 - PR goal: refactor descendant subagent final-message presentation without changing visible UX.
 - `internal/llmstream` now exposes optional `SubagentFinalMessagePresenter`; `Presenter.SubagentEventPolicy` and `SubagentEventPolicy` are removed.
-- `go test ./...` currently fails first in `internal/tools/coretools/presenter_policy.go`.
-- Import graph check: `internal/tools/coretools` sits below `internal/agentbuilder`, `internal/tools/pkgtools`, `internal/tools/spectools`, and `internal/tools/exttools`; `internal/tui` and `internal/noninteractive` both import `internal/agentbuilder`, so fixing `internal/tools/coretools` is the next dependency-driven step.
-- Downstream packages still to update for the new API: `internal/tui`, `internal/noninteractive`, `internal/agentbuilder`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tools/coretools`, `internal/tools/exttools`, `internal/agentformatter`.
+- `internal/tools/coretools` is updated; `go test ./internal/tools/coretools` passes.
+- `go test ./...` now fails first in `internal/tools/exttools`, `internal/tools/pkgtools`, and `internal/tools/spectools`.
+- Import graph check: `internal/tools/exttools`, `internal/tools/pkgtools`, and `internal/tools/spectools` are peer dependencies of `internal/agentbuilder`; `internal/tui` and `internal/noninteractive` both import `internal/agentbuilder`, so those peer tool packages should be updated before `internal/agentbuilder`.
+- Downstream packages still to update for the new API: `internal/tui`, `internal/noninteractive`, `internal/agentbuilder`, `internal/tools/pkgtools`, `internal/tools/spectools`, `internal/tools/exttools`, `internal/agentformatter`.
 - `internal/agentbuilder` and `internal/tools/pkgtools` explicitly depend on hiding descendant subagent final messages today.
