@@ -222,6 +222,19 @@ Make `internal/agent` the single owner of "which assistant text was the final me
   - Likely fix direction:
     - Narrow the buffering/reconciliation logic so only assistant-text finality and the specific completed-turn ordering cases are deferred.
     - Completed reasoning, warnings, retries, and any tool-call boundary that no longer depends on completed-turn reconciliation should be emitted promptly while the provider stream is still active.
+- 2026-04-19 implementation attempt assessment for the live-progress follow-up:
+  - Status: not accepted.
+  - What it improved:
+    - warnings and retries were moved back to immediate emission
+    - buffered turn-content replay moved from end-of-stream to `CompletedSuccess`
+  - Why it is still insufficient:
+    - `sendOnce` still buffers completed reasoning blocks and streamed `ToolUse` events until `CompletedSuccess`, so `assistant_reasoning` and `tool_call` are still delayed until the turn has already completed.
+    - That still regresses the live progress stream that `internal/tui` and `internal/noninteractive` depend on during long-running sends.
+    - The added regression test only proved "before stream close", not "while the send is still in flight before completion", so it did not cover the actual gap.
+  - Revised fix direction:
+    - Keep buffering narrow: only hold the minimum assistant-text state needed to classify message finality and synthesize missing completed-turn lead-in text.
+    - Preserve live emission for reasoning, tool-call, warning, and retry progress events.
+    - If completed-turn reconciliation is still needed around a streamed tool boundary, do it without turning reasoning/tool-call progress into end-of-turn buffered events.
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -229,6 +242,10 @@ Make `internal/agent` the single owner of "which assistant text was the final me
   - `internal/tools/pkgtools`
   - `internal/tui`
 - Full `review` step still pending.
+
+## Learnings
+
+- 2026-04-19: Emitting buffered turn content on `CompletedSuccess` is not enough to restore live progress. It still delays `assistant_reasoning` and `tool_call` until turn completion. The next `internal/agent` attempt should buffer only the minimum assistant-text state needed for finality/reconciliation and keep non-text progress events live.
 
 ## Summary
 
@@ -261,5 +278,6 @@ TBD
 - Additional `internal/agent` review follow-up landed: completed-turn synthesis now preserves part order and same-turn text/reasoning boundaries when streamed text coverage is partial.
 - Additional `internal/agent` review follow-up for same-turn tool-call ordering and failed-stream terminal flushing is now landed.
 - Additional `internal/agent` review follow-up is pending: recent buffering changes now delay live reasoning/tool-call/warning/retry progress events until send completion.
-- All planned implementation work for Phase 0 is committed; next step is the new `internal/agent` review follow-up, then re-review plus changed-package SPEC conformance for the new tree state.
+- Latest `internal/agent` implementation attempt for the live-progress follow-up was rejected: moving replay to `CompletedSuccess` fixed warnings/retries and stream-close timing, but still delayed live reasoning/tool-call progress until turn completion.
+- All planned implementation work for Phase 0 is committed; next step is a narrower `internal/agent` follow-up that restores live reasoning/tool-call progress without regressing the completed-turn assistant-text fixes, then re-review plus changed-package SPEC conformance for the new tree state.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
