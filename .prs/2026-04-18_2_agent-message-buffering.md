@@ -209,6 +209,19 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 - 2026-04-19 implementation follow-up verification:
   - `go test ./internal/agent ./internal/tui ./internal/noninteractive ./internal/agentbuilder ./internal/tools/pkgtools`
   - Passed.
+- 2026-04-19 out-of-band review item: [P1] stop deferring non-text events until the provider stream ends.
+  - Assessment: actionable; I agree with the review item.
+  - Why:
+    - The latest `internal/agent` change now appends completed reasoning blocks, streamed tool calls, warnings, and retries into a local `buffered` slice inside `sendOnce`, then replays them only after `for ev := range events` completes.
+    - That means `EventTypeAssistantReasoning`, `EventTypeToolCall`, `EventTypeWarning`, and `EventTypeRetry` are no longer live progress events during an in-flight provider send.
+    - The assistant-text finality contract only requires buffering `assistant_text` until a same-agent boundary is known; it does not justify delaying every other event until end-of-stream.
+  - Impact:
+    - `internal/tui` and `internal/noninteractive` lose timely progress updates during long sends.
+    - Tool calls can appear only after the provider turn has already completed.
+    - Retry / warning notifications can arrive after the underlying condition has already passed.
+  - Likely fix direction:
+    - Narrow the buffering/reconciliation logic so only assistant-text finality and the specific completed-turn ordering cases are deferred.
+    - Completed reasoning, warnings, retries, and any tool-call boundary that no longer depends on completed-turn reconciliation should be emitted promptly while the provider stream is still active.
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -247,5 +260,6 @@ TBD
 - Review follow-up landed in `internal/agent`: completed turns now synthesize missing `assistant_text` when providers/tests do not emit completed text deltas.
 - Additional `internal/agent` review follow-up landed: completed-turn synthesis now preserves part order and same-turn text/reasoning boundaries when streamed text coverage is partial.
 - Additional `internal/agent` review follow-up for same-turn tool-call ordering and failed-stream terminal flushing is now landed.
-- All planned implementation work for Phase 0 is committed; next step is re-review plus changed-package SPEC conformance for the new tree state.
+- Additional `internal/agent` review follow-up is pending: recent buffering changes now delay live reasoning/tool-call/warning/retry progress events until send completion.
+- All planned implementation work for Phase 0 is committed; next step is the new `internal/agent` review follow-up, then re-review plus changed-package SPEC conformance for the new tree state.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
