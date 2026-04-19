@@ -142,6 +142,43 @@ func TestSendUserMessageCoalescesAdjacentAssistantText(t *testing.T) {
 	require.Equal(t, EventTypeDoneSuccess, events[2].Type)
 }
 
+func TestSendUserMessageSynthesizesAssistantTextFromCompletedTurn(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	text := llmstream.TextContent{ProviderID: "text-1", Content: "Hello from completion"}
+	assistantTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{text},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	script := &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &assistantTurn},
+		},
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt, script))
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Say hello") {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 3)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[0].Type)
+	require.Equal(t, EventTypeAssistantText, events[1].Type)
+	require.Equal(t, text.Content, events[1].TextContent.Content)
+	require.True(t, events[1].AssistantTextFinal)
+	require.Equal(t, EventTypeDoneSuccess, events[2].Type)
+}
+
 func TestSendUserMessageFlushesBufferedAssistantTextBeforeReasoning(t *testing.T) {
 	systemPrompt := "You are helpful."
 
@@ -187,6 +224,72 @@ func TestSendUserMessageFlushesBufferedAssistantTextBeforeReasoning(t *testing.T
 	require.Equal(t, " world", events[3].TextContent.Content)
 	require.True(t, events[3].AssistantTextFinal)
 	require.Equal(t, EventTypeDoneSuccess, events[4].Type)
+}
+
+func TestSendUserMessageSynthesizesNonFinalAssistantTextFromCompletedToolTurn(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	toolText := llmstream.TextContent{ProviderID: "text-tool", Content: "Need a tool first"}
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_123",
+		Name:       "stub_tool",
+		Type:       "function_call",
+		Input:      `{"query":"hi"}`,
+	}
+	toolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolText, toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+
+	finalText := llmstream.TextContent{ProviderID: "text-final", Content: "Done"}
+	finalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &toolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &finalTurn},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	tool := newStubTool("stub_tool", llmstream.ToolResult{Result: "OK"})
+
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Use the tool") {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 7)
+	require.Equal(t, EventTypeToolCall, events[0].Type)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[1].Type)
+	require.Equal(t, EventTypeAssistantText, events[2].Type)
+	require.Equal(t, toolText.Content, events[2].TextContent.Content)
+	require.False(t, events[2].AssistantTextFinal)
+	require.Equal(t, EventTypeToolComplete, events[3].Type)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[4].Type)
+	require.Equal(t, EventTypeAssistantText, events[5].Type)
+	require.Equal(t, finalText.Content, events[5].TextContent.Content)
+	require.True(t, events[5].AssistantTextFinal)
+	require.Equal(t, EventTypeDoneSuccess, events[6].Type)
 }
 
 func TestSendUserMessageFlushesBufferedAssistantTextBeforeCanceledTerminal(t *testing.T) {

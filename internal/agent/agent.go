@@ -297,9 +297,10 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	events := a.conv.SendAsync(ctx)
 
 	var (
-		sendErr         error
-		completedTurn   *llmstream.Turn
-		seenToolCallIDs = make(map[string]struct{})
+		sendErr           error
+		completedTurn     *llmstream.Turn
+		completedTextSeen []llmstream.TextContent
+		seenToolCallIDs   = make(map[string]struct{})
 	)
 
 	for ev := range events {
@@ -309,6 +310,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		case llmstream.EventTypeTextDelta:
 			if ev.Text != nil && ev.Done {
 				textCopy := *ev.Text
+				completedTextSeen = append(completedTextSeen, textCopy)
 				a.emitEvent(out, Event{
 					Type:        EventTypeAssistantText,
 					TextContent: textCopy,
@@ -357,6 +359,13 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 
 	a.addUsage(completedTurn.Usage)
 	a.updateContextUsage(completedTurn.Usage)
+
+	for _, text := range missingCompletedTurnText(completedTurn.Parts, completedTextSeen) {
+		a.emitEvent(out, Event{
+			Type:        EventTypeAssistantText,
+			TextContent: text,
+		})
+	}
 
 	turnCopy := cloned
 	a.emitEvent(out, Event{Type: EventTypeAssistantTurnComplete, Turn: &turnCopy})
@@ -580,6 +589,29 @@ func clampNonNegative(v int64) int64 {
 		return 0
 	}
 	return v
+}
+
+func missingCompletedTurnText(parts []llmstream.ContentPart, seen []llmstream.TextContent) []llmstream.TextContent {
+	if len(parts) == 0 {
+		return nil
+	}
+
+	missing := make([]llmstream.TextContent, 0)
+	seenIdx := 0
+
+	for _, part := range parts {
+		text, ok := part.(llmstream.TextContent)
+		if !ok {
+			continue
+		}
+		if seenIdx < len(seen) && seen[seenIdx] == text {
+			seenIdx++
+			continue
+		}
+		missing = append(missing, text)
+	}
+
+	return missing
 }
 
 func percentOfContext(used, capacity int64) int {
