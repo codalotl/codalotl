@@ -249,6 +249,14 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - Treat live reasoning/tool-call delivery as another completed-turn-order problem, not just a buffering-timing problem.
     - The next attempt must explicitly handle the contract tension: providers may omit earlier same-turn text until `CompletedSuccess`, so reasoning/tool-call events cannot always be emitted live without risking reordering.
     - Likely acceptable live events remain `warning` and `retry`; for reasoning/tool-call, emit live only when same-turn lead-in ordering is already known to be safe, otherwise keep the stricter ordering behavior.
+- 2026-04-19 narrowed live-progress follow-up:
+  - Implemented safe subset:
+    - `internal/agent` now emits provider `warning` and `retry` events immediately while `sendOnce` is still in flight.
+    - Added focused paused-provider tests proving both events arrive before `CompletedSuccess`.
+  - Deliberately not actioned in this step:
+    - live `assistant_reasoning` / `tool_call`, because the ordering tradeoff in `## Decisions` still applies.
+  - Verified with:
+    - `go test ./internal/agent`
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -296,8 +304,9 @@ TBD
 - Review follow-up landed in `internal/agent`: completed turns now synthesize missing `assistant_text` when providers/tests do not emit completed text deltas.
 - Additional `internal/agent` review follow-up landed: completed-turn synthesis now preserves part order and same-turn text/reasoning boundaries when streamed text coverage is partial.
 - Additional `internal/agent` review follow-up for same-turn tool-call ordering and failed-stream terminal flushing is now landed.
-- Additional `internal/agent` review follow-up is pending: recent buffering changes now delay live reasoning/tool-call/warning/retry progress events until send completion.
+- Narrowed `internal/agent` live-progress follow-up landed: `warning` and `retry` are live again before `CompletedSuccess`.
 - Latest `internal/agent` implementation attempt for the live-progress follow-up was rejected: moving replay to `CompletedSuccess` fixed warnings/retries and stream-close timing, but still delayed live reasoning/tool-call progress until turn completion.
 - A second `internal/agent` implementation attempt was also rejected: it restored live reasoning, but reintroduced a completed-turn ordering hole when earlier same-turn text exists only in `CompletedSuccess`.
-- All planned implementation work for Phase 0 is committed; next step is a narrower `internal/agent` follow-up that treats live reasoning/tool-call delivery as conditional on completed-turn ordering safety, then re-review plus changed-package SPEC conformance for the new tree state.
+- Remaining live `assistant_reasoning` / `tool_call` liveness is now a judgment call, not an obvious bugfix: current bias is to preserve completed-turn ordering rather than emit those events speculatively.
+- All planned implementation work for Phase 0 is committed; next step is re-review plus changed-package SPEC conformance for the new tree state, while carrying forward the non-actioned reasoning/tool-call liveness decision unless new evidence appears.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
