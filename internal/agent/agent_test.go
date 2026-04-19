@@ -577,6 +577,128 @@ func TestSendUserMessageFlushesCompletedStreamContentBeforeCanceledTerminalWitho
 	require.ErrorIs(t, events[3].Error, context.Canceled)
 }
 
+func TestSendUserMessageEmitsWarningBeforeCompletedSuccess(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	warningErr := errors.New("provider warning")
+	release := make(chan struct{})
+	assistantTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	script := &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeWarning, Error: warningErr},
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &assistantTurn},
+		},
+		pauseAfter: 1,
+		pause:      release,
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt, script))
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := a.SendUserMessage(ctx, "Say hello")
+
+	select {
+	case ev, ok := <-out:
+		require.True(t, ok)
+		require.Equal(t, EventTypeWarning, ev.Type)
+		require.EqualError(t, ev.Error, warningErr.Error())
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for warning event")
+	}
+
+	require.Equal(t, StatusRunning, a.Status())
+
+	select {
+	case ev, ok := <-out:
+		if !ok {
+			t.Fatalf("stream closed before completion was released")
+		}
+		t.Fatalf("received %s before completion was released", ev.Type)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+
+	var rest []Event
+	for ev := range out {
+		rest = append(rest, ev)
+	}
+
+	require.Len(t, rest, 2)
+	require.Equal(t, EventTypeAssistantTurnComplete, rest[0].Type)
+	require.Equal(t, EventTypeDoneSuccess, rest[1].Type)
+}
+
+func TestSendUserMessageEmitsRetryBeforeCompletedSuccess(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	retryErr := errors.New("provider retry")
+	release := make(chan struct{})
+	assistantTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	script := &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeRetry, Error: retryErr},
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &assistantTurn},
+		},
+		pauseAfter: 1,
+		pause:      release,
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt, script))
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := a.SendUserMessage(ctx, "Say hello")
+
+	select {
+	case ev, ok := <-out:
+		require.True(t, ok)
+		require.Equal(t, EventTypeRetry, ev.Type)
+		require.EqualError(t, ev.Error, retryErr.Error())
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for retry event")
+	}
+
+	require.Equal(t, StatusRunning, a.Status())
+
+	select {
+	case ev, ok := <-out:
+		if !ok {
+			t.Fatalf("stream closed before completion was released")
+		}
+		t.Fatalf("received %s before completion was released", ev.Type)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+
+	var rest []Event
+	for ev := range out {
+		rest = append(rest, ev)
+	}
+
+	require.Len(t, rest, 2)
+	require.Equal(t, EventTypeAssistantTurnComplete, rest[0].Type)
+	require.Equal(t, EventTypeDoneSuccess, rest[1].Type)
+}
+
 func TestSendUserMessageWithToolUse(t *testing.T) {
 	systemPrompt := "You are helpful."
 
@@ -2062,10 +2184,12 @@ type scriptedConversation struct {
 }
 
 type sendScript struct {
-	events   []llmstream.Event
-	wait     <-chan struct{}
-	sent     chan<- struct{}
-	tailWait <-chan struct{}
+	events     []llmstream.Event
+	wait       <-chan struct{}
+	sent       chan<- struct{}
+	tailWait   <-chan struct{}
+	pauseAfter int
+	pause      <-chan struct{}
 }
 
 func newScriptedConversation(systemPrompt string, scripts ...*sendScript) *scriptedConversation {
@@ -2152,7 +2276,7 @@ func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.Sen
 			}
 		}
 
-		for _, ev := range script.events {
+		for i, ev := range script.events {
 			select {
 			case <-ctx.Done():
 				return
@@ -2162,6 +2286,13 @@ func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.Sen
 				c.mu.Lock()
 				c.turns = append(c.turns, cloneTurnTest(*ev.Turn))
 				c.mu.Unlock()
+			}
+			if script.pauseAfter > 0 && i+1 == script.pauseAfter && script.pause != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-script.pause:
+				}
 			}
 		}
 

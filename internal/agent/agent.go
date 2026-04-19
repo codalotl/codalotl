@@ -321,9 +321,9 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		case llmstream.EventTypeCompletedSuccess:
 			completedTurn = ev.Turn
 		case llmstream.EventTypeWarning:
-			buffered = append(buffered, newBufferedWarningItem(ev.Error))
+			a.emitEvent(out, Event{Type: EventTypeWarning, Error: ev.Error})
 		case llmstream.EventTypeRetry:
-			buffered = append(buffered, newBufferedRetryItem(ev.Error))
+			a.emitEvent(out, Event{Type: EventTypeRetry, Error: ev.Error})
 		}
 	}
 
