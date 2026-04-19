@@ -130,7 +130,13 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 
 ## Review
 
-Not run yet.
+- 2026-04-19: `check_spec_conformance --only_changed` passed for:
+  - `internal/agent`
+  - `internal/agentbuilder`
+  - `internal/noninteractive`
+  - `internal/tools/pkgtools`
+  - `internal/tui`
+- Full `review` step still pending.
 
 ## Summary
 
@@ -158,5 +164,6 @@ TBD
 - Downstream adaptation status:
   - `internal/agentbuilder` tests are updated and `go test ./internal/agentbuilder` passes
   - `internal/tools/pkgtools` tests are updated and `go test ./internal/tools/pkgtools` passes
-- All planned implementation work for Phase 0 is committed; next step is review plus changed-package SPEC conformance.
+- Changed-package SPEC conformance passed on 2026-04-19 for `internal/agent`, `internal/agentbuilder`, `internal/noninteractive`, `internal/tools/pkgtools`, and `internal/tui`.
+- All planned implementation work for Phase 0 is committed; next step is full review.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
