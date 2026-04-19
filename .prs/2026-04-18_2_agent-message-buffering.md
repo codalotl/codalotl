@@ -50,7 +50,8 @@ In this phase, land the agent-owned assistant-message contract, then migrate `in
 
 #### Downstream follow-up
 
-- Update downstream tests/helpers in `internal/agentbuilder` and `internal/tools/pkgtools` that still model the old final-assistant-text contract.
+- [DONE] Update downstream tests/helpers in `internal/agentbuilder` that still model the old final-assistant-text contract.
+- Update downstream tests/helpers in `internal/tools/pkgtools` that still model the old final-assistant-text contract.
 - Those packages call `CollectFinalAssistantText` and now need mocked event streams that include final-flagged `assistant_text` plus top-level `done_success`.
 
 ### Design details
@@ -155,5 +156,6 @@ TBD
   - `Result.FinalAssistantText` now keys off top-level final-flagged assistant text plus top-level terminal events
   - package test command: `go test ./internal/noninteractive`
 - Remaining follow-up is downstream test adaptation:
-  - `go test ./internal/agentbuilder ./internal/tools/pkgtools` currently fails because several mocked streams still expect pre-buffering `CollectFinalAssistantText` behavior
+  - `internal/agentbuilder` tests are updated and `go test ./internal/agentbuilder` passes
+  - `internal/tools/pkgtools` still fails because several mocked streams still expect pre-buffering `CollectFinalAssistantText` behavior
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
