@@ -147,6 +147,28 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - `internal/agent` now synthesizes missing assistant-text blocks from `CompletedSuccess.Turn.Parts` while tracking completed text deltas to avoid duplicates.
     - Added focused `internal/agent` tests for completed-turn-only text in both end-turn and tool-use flows.
     - Verified with `go test ./internal/agent`.
+- 2026-04-19 out-of-band review item: [P1] preserve completed-turn text order when deltas are only partial.
+  - Assessment: actionable; I agree with the review item.
+  - Why:
+    - `missingCompletedTurnText` (`internal/agent/agent.go:594-615`) walks `Turn.Parts` against `completedTextSeen` with a single forward index, which assumes streamed completed text blocks are a prefix/subsequence of the final turn's text parts in the same order.
+    - For a completed turn with text parts `["first", "second"]` and streamed completed text only for `"second"`, the helper reports only `"first"` as missing.
+    - `sendOnce` then replays that missing text after `"second"` has already been buffered from the earlier `TextDelta`, so the agent-level assistant message becomes `"secondfirst"`.
+  - Impact:
+    - `CollectFinalAssistantText` can return corrupted text.
+    - `internal/tui` and `internal/noninteractive` can display corrupted assistant text when completed-turn synthesis fills holes in the middle of a turn rather than only at the end.
+  - Likely fix direction:
+    - Reconcile completed-turn synthesis against the full turn structure in order, instead of treating already-streamed text as a single prefix-matched list of completed text blocks.
+- 2026-04-19 out-of-band review item: [P1] replay missing text with completed-turn boundaries intact.
+  - Assessment: actionable; I agree with the review item.
+  - Why:
+    - `sendOnce` currently loops over only the missing `TextContent` values (`internal/agent/agent.go:363-368`) and feeds them through `emitEvent` back-to-back.
+    - Because `emitEvent(EventTypeAssistantText)` buffers text and there are no synthesized boundary events between those replays, text blocks that were separated by non-text parts in `CompletedSuccess.Turn.Parts` are coalesced into one assistant message.
+    - Example: a completed turn shaped like `Text("draft"), Reasoning, Text("answer")` with no text deltas becomes one buffered `"draftanswer"` assistant-text event, instead of a non-final `"draft"` assistant-text message followed by the final `"answer"` message.
+  - Impact:
+    - The final/non-final split promised by the new agent contract is lost when assistant text must be synthesized from completed turns.
+    - Downstream consumers can no longer reliably identify the true final assistant message for those turns.
+  - Likely fix direction:
+    - Replay synthesized completed-turn content with same-turn boundaries preserved, which likely requires tracking/reconciling more than a flat slice of completed text blocks.
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -183,5 +205,6 @@ TBD
   - `internal/tools/pkgtools` tests are updated and `go test ./internal/tools/pkgtools` passes
 - Changed-package SPEC conformance passed on 2026-04-19 for `internal/agent`, `internal/agentbuilder`, `internal/noninteractive`, `internal/tools/pkgtools`, and `internal/tui`.
 - Review follow-up landed in `internal/agent`: completed turns now synthesize missing `assistant_text` when providers/tests do not emit completed text deltas.
-- All planned implementation work for Phase 0 is committed; next step is re-review plus changed-package SPEC conformance for the new tree state.
+- Additional `internal/agent` review follow-up is pending: completed-turn synthesis must preserve part order and same-turn text boundaries when streamed text coverage is partial.
+- All planned implementation work for Phase 0 is committed; next step is the new `internal/agent` review follow-up, then re-review plus changed-package SPEC conformance for the new tree state.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
