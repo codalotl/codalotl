@@ -130,7 +130,7 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 
 ## Review
 
-- 2026-04-19 out-of-band review item: [P1] synthesize `assistant_text` from completed turns when no text deltas arrive.
+- 2026-04-19 out-of-band review item: [P1] synthesize `assistant_text` from completed turns when no text deltas arrive. [DONE]
   - Assessment: actionable; I agree with the review item.
   - Why:
     - `internal/agent/sendOnce` currently only creates `EventTypeAssistantText` from `llmstream.EventTypeTextDelta` events where `Done=true` (`internal/agent/agent.go:309-316`).
@@ -143,6 +143,10 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - descendant final-message presentation in `internal/tui` / `internal/noninteractive` can lose subagent final text.
   - Likely fix direction for next step:
     - In `internal/agent`, when processing `EventTypeCompletedSuccess`, synthesize buffered assistant-text events from completed-turn text parts if equivalent assistant text was not already observed via completed text deltas for that turn.
+  - Implemented:
+    - `internal/agent` now synthesizes missing assistant-text blocks from `CompletedSuccess.Turn.Parts` while tracking completed text deltas to avoid duplicates.
+    - Added focused `internal/agent` tests for completed-turn-only text in both end-turn and tool-use flows.
+    - Verified with `go test ./internal/agent`.
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -178,6 +182,6 @@ TBD
   - `internal/agentbuilder` tests are updated and `go test ./internal/agentbuilder` passes
   - `internal/tools/pkgtools` tests are updated and `go test ./internal/tools/pkgtools` passes
 - Changed-package SPEC conformance passed on 2026-04-19 for `internal/agent`, `internal/agentbuilder`, `internal/noninteractive`, `internal/tools/pkgtools`, and `internal/tui`.
-- Review follow-up pending in `internal/agent`: synthesize `assistant_text` from completed turns when providers/tests do not emit completed text deltas.
-- All planned implementation work for Phase 0 is committed; next step is review follow-up in `internal/agent`, then re-review.
+- Review follow-up landed in `internal/agent`: completed turns now synthesize missing `assistant_text` when providers/tests do not emit completed text deltas.
+- All planned implementation work for Phase 0 is committed; next step is re-review plus changed-package SPEC conformance for the new tree state.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
