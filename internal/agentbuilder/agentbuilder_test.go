@@ -323,16 +323,7 @@ func TestBuildRegistry_PROrchestratorReviewTool_InvokesReviewSubagentAndReturnsJ
 	require.NoError(t, err)
 
 	invoker := &captureAgentInvoker{
-		events: []agent.Event{
-			{
-				Type: agent.EventTypeAssistantTurnComplete,
-				Turn: &llmstream.Turn{
-					Role:  llmstream.RoleAssistant,
-					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: string(payload)}},
-				},
-			},
-			{Type: agent.EventTypeDoneSuccess},
-		},
+		events: successfulSubagentEvents(string(payload)),
 	}
 
 	reviewTool := requireTool(t, invokeAgentTools(

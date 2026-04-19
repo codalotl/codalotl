@@ -448,16 +448,7 @@ tools:
 	ensureGoPackageFixture(t, sandbox, pkgDir)
 
 	invoker := &captureAgentInvoker{
-		events: []agent.Event{
-			{
-				Type: agent.EventTypeAssistantTurnComplete,
-				Turn: &llmstream.Turn{
-					Role:  llmstream.RoleAssistant,
-					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
-				},
-			},
-			{Type: agent.EventTypeDoneSuccess},
-		},
+		events: successfulSubagentEvents("done"),
 	}
 
 	_, tools := invokeAgentForModelWithRegistryDetailed(
@@ -589,16 +580,7 @@ tools:
 
 func TestYAMLSubagentToolRun_JSONResultHandling(t *testing.T) {
 	invoker := &captureAgentInvoker{
-		events: []agent.Event{
-			{
-				Type: agent.EventTypeAssistantTurnComplete,
-				Turn: &llmstream.Turn{
-					Role:  llmstream.RoleAssistant,
-					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "{\n  \"z\": 1,\n  \"a\": [true, false]\n}"}},
-				},
-			},
-			{Type: agent.EventTypeDoneSuccess},
-		},
+		events: successfulSubagentEvents("{\n  \"z\": 1,\n  \"a\": [true, false]\n}"),
 	}
 
 	tool := &yamlSubagentTool{
@@ -637,16 +619,7 @@ func TestYAMLSubagentToolRun_InvalidJSONResultReturnsToolError(t *testing.T) {
 		params: map[string]yamlNormalizedParameter{},
 		opts: toolsetinterface.Options{
 			AgentInvoker: &captureAgentInvoker{
-				events: []agent.Event{
-					{
-						Type: agent.EventTypeAssistantTurnComplete,
-						Turn: &llmstream.Turn{
-							Role:  llmstream.RoleAssistant,
-							Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "not json"}},
-						},
-					},
-					{Type: agent.EventTypeDoneSuccess},
-				},
+				events: successfulSubagentEvents("not json"),
 			},
 		},
 	}
@@ -664,8 +637,8 @@ func TestYAMLSubagentToolRun_InvalidJSONResultReturnsToolError(t *testing.T) {
 
 func TestYAMLSubagentToolRun_AcceptsToolEventsWithNamedToolObject(t *testing.T) {
 	invoker := &captureAgentInvoker{
-		events: []agent.Event{
-			{
+		events: successfulSubagentEvents("done",
+			agent.Event{
 				Type: agent.EventTypeToolCall,
 				Tool: fakeNamedTool{name: "review"},
 				ToolCall: &llmstream.ToolCall{
@@ -675,7 +648,7 @@ func TestYAMLSubagentToolRun_AcceptsToolEventsWithNamedToolObject(t *testing.T) 
 					Input:  `{}`,
 				},
 			},
-			{
+			agent.Event{
 				Type: agent.EventTypeToolComplete,
 				Tool: fakeNamedTool{name: "review"},
 				ToolCall: &llmstream.ToolCall{
@@ -691,15 +664,7 @@ func TestYAMLSubagentToolRun_AcceptsToolEventsWithNamedToolObject(t *testing.T) 
 					Result: "ok",
 				},
 			},
-			{
-				Type: agent.EventTypeAssistantTurnComplete,
-				Turn: &llmstream.Turn{
-					Role:  llmstream.RoleAssistant,
-					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
-				},
-			},
-			{Type: agent.EventTypeDoneSuccess},
-		},
+		),
 	}
 
 	tool := &yamlSubagentTool{
@@ -728,8 +693,8 @@ func TestYAMLSubagentToolRun_AcceptsToolEventsWithNamedToolObject(t *testing.T) 
 
 func TestYAMLSubagentToolRun_AcceptsToolEventsWithoutToolObject(t *testing.T) {
 	invoker := &captureAgentInvoker{
-		events: []agent.Event{
-			{
+		events: successfulSubagentEvents("done",
+			agent.Event{
 				Type: agent.EventTypeToolCall,
 				ToolCall: &llmstream.ToolCall{
 					CallID: "call-review",
@@ -738,7 +703,7 @@ func TestYAMLSubagentToolRun_AcceptsToolEventsWithoutToolObject(t *testing.T) {
 					Input:  `{}`,
 				},
 			},
-			{
+			agent.Event{
 				Type: agent.EventTypeToolComplete,
 				ToolCall: &llmstream.ToolCall{
 					CallID: "call-review",
@@ -753,15 +718,7 @@ func TestYAMLSubagentToolRun_AcceptsToolEventsWithoutToolObject(t *testing.T) {
 					Result: "ok",
 				},
 			},
-			{
-				Type: agent.EventTypeAssistantTurnComplete,
-				Turn: &llmstream.Turn{
-					Role:  llmstream.RoleAssistant,
-					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "done"}},
-				},
-			},
-			{Type: agent.EventTypeDoneSuccess},
-		},
+		),
 	}
 
 	tool := &yamlSubagentTool{
@@ -989,16 +946,7 @@ func TestBuildRegistry_PROrchestratorImplementTool_InvokesPackageModeSubagent(t 
 	ensureGoPackageFixture(t, sandbox, targetPkgDir)
 
 	invoker := &captureAgentInvoker{
-		events: []agent.Event{
-			{
-				Type: agent.EventTypeAssistantTurnComplete,
-				Turn: &llmstream.Turn{
-					Role:  llmstream.RoleAssistant,
-					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "implemented target package"}},
-				},
-			},
-			{Type: agent.EventTypeDoneSuccess},
-		},
+		events: successfulSubagentEvents("implemented target package"),
 	}
 
 	implementTool := requireTool(t, invokeAgentTools(
@@ -1157,16 +1105,7 @@ func TestBuildRegistry_PROrchestratorImplementTool_GenericModeImportPathResolves
 	ensureGoPackageFixture(t, sandbox, targetPkgDir)
 
 	invoker := &captureAgentInvoker{
-		events: []agent.Event{
-			{
-				Type: agent.EventTypeAssistantTurnComplete,
-				Turn: &llmstream.Turn{
-					Role:  llmstream.RoleAssistant,
-					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "implemented target package"}},
-				},
-			},
-			{Type: agent.EventTypeDoneSuccess},
-		},
+		events: successfulSubagentEvents("implemented target package"),
 	}
 
 	_, tools := invokeAgentForModelWithRegistryDetailed(
