@@ -235,6 +235,20 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - Keep buffering narrow: only hold the minimum assistant-text state needed to classify message finality and synthesize missing completed-turn lead-in text.
     - Preserve live emission for reasoning, tool-call, warning, and retry progress events.
     - If completed-turn reconciliation is still needed around a streamed tool boundary, do it without turning reasoning/tool-call progress into end-of-turn buffered events.
+- 2026-04-19 second implementation attempt assessment for the live-progress follow-up:
+  - Status: not accepted.
+  - What it improved:
+    - warnings and retries were restored to true in-flight delivery before `CompletedSuccess`
+    - completed reasoning was also restored to in-flight delivery before `CompletedSuccess`
+    - tool-call deferral stayed narrow, so the earlier tool-boundary ordering fix was not immediately regressed
+  - Why it is still insufficient:
+    - it reintroduces a same-turn ordering hole for reasoning: if a provider emits a completed reasoning block live but omits earlier same-turn text until `CompletedSuccess`, the later reconciliation can only replay that missing text after the already-emitted reasoning event.
+    - example supported shape: completed turn `Text("draft"), Reasoning("thinking")`, with only `ReasoningDelta(Done=true)` streamed. The attempted fix emits `assistant_reasoning` live, then later synthesizes `assistant_text("draft")`, reversing the completed-turn order.
+    - that means the current attempt trades away the ordering guarantees we already fixed for completed turns.
+  - Revised fix direction:
+    - Treat live reasoning/tool-call delivery as another completed-turn-order problem, not just a buffering-timing problem.
+    - The next attempt must explicitly handle the contract tension: providers may omit earlier same-turn text until `CompletedSuccess`, so reasoning/tool-call events cannot always be emitted live without risking reordering.
+    - Likely acceptable live events remain `warning` and `retry`; for reasoning/tool-call, emit live only when same-turn lead-in ordering is already known to be safe, otherwise keep the stricter ordering behavior.
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -246,6 +260,11 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 ## Learnings
 
 - 2026-04-19: Emitting buffered turn content on `CompletedSuccess` is not enough to restore live progress. It still delays `assistant_reasoning` and `tool_call` until turn completion. The next `internal/agent` attempt should buffer only the minimum assistant-text state needed for finality/reconciliation and keep non-text progress events live.
+- 2026-04-19: Restoring live `assistant_reasoning` is not free. Because `llmstream` allows earlier same-turn text to exist only in `CompletedSuccess`, a live reasoning event can make later text synthesis come out in the wrong order. Any future fix has to treat reasoning like tool-call ordering: live delivery is only safe when prior same-turn content is already known.
+
+## Decisions
+
+- Pending design decision: when provider streams `assistant_reasoning` or `tool_call` before `CompletedSuccess`, but earlier same-turn assistant text may still exist only in the final turn, strict turn-order preservation conflicts with live progress delivery. Current bias remains to preserve completed-turn order over speculative liveness.
 
 ## Summary
 
@@ -279,5 +298,6 @@ TBD
 - Additional `internal/agent` review follow-up for same-turn tool-call ordering and failed-stream terminal flushing is now landed.
 - Additional `internal/agent` review follow-up is pending: recent buffering changes now delay live reasoning/tool-call/warning/retry progress events until send completion.
 - Latest `internal/agent` implementation attempt for the live-progress follow-up was rejected: moving replay to `CompletedSuccess` fixed warnings/retries and stream-close timing, but still delayed live reasoning/tool-call progress until turn completion.
-- All planned implementation work for Phase 0 is committed; next step is a narrower `internal/agent` follow-up that restores live reasoning/tool-call progress without regressing the completed-turn assistant-text fixes, then re-review plus changed-package SPEC conformance for the new tree state.
+- A second `internal/agent` implementation attempt was also rejected: it restored live reasoning, but reintroduced a completed-turn ordering hole when earlier same-turn text exists only in `CompletedSuccess`.
+- All planned implementation work for Phase 0 is committed; next step is a narrower `internal/agent` follow-up that treats live reasoning/tool-call delivery as conditional on completed-turn ordering safety, then re-review plus changed-package SPEC conformance for the new tree state.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
