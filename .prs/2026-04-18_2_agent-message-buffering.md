@@ -177,7 +177,7 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - `internal/agent` now replays text and reasoning from completed turns in final turn order, so synthesized text keeps same-turn boundaries instead of being coalesced across reasoning boundaries.
     - Added focused `internal/agent` coverage for completed-turn `text -> reasoning -> text` synthesis preserving the non-final/final split.
     - Verified with `go test ./internal/agent ./internal/tui ./internal/noninteractive ./internal/agentbuilder ./internal/tools/pkgtools`.
-- 2026-04-19 out-of-band review item: [P1] flush assistant content before streamed `tool_call` boundaries.
+- 2026-04-19 out-of-band review item: [P1] flush assistant content before streamed `tool_call` boundaries. [DONE]
   - Assessment: actionable; I agree with the review item.
   - Why:
     - `sendOnce` still emits `EventTypeToolCall` immediately on streamed `llmstream.EventTypeToolUse` (`internal/agent/agent.go:313-317`).
@@ -187,7 +187,11 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - `internal/tui` and `internal/noninteractive` can show a tool call before the assistant's lead-in text or reasoning, violating the agent contract's boundary ordering.
   - Likely fix direction:
     - Reconcile streamed `tool_call` boundaries with the same turn's completed content instead of dispatching them immediately when prior assistant content might still need to be synthesized from the completed turn.
-- 2026-04-19 out-of-band review item: [P1] keep completed text blocks when a send ends with error/cancel.
+  - Implemented:
+    - `internal/agent` now buffers streamed completed text/reasoning/tool-call items during `sendOnce` and replays successful turns from `CompletedSuccess.Turn.Parts` in final same-turn order.
+    - Tool calls are no longer emitted ahead of synthesized lead-in assistant text/reasoning from the same completed turn.
+    - Added focused `internal/agent` coverage for lead-in `text -> reasoning -> tool_call` ordering when the lead-in content only exists in the completed turn.
+- 2026-04-19 out-of-band review item: [P1] keep completed text blocks when a send ends with error/cancel. [DONE]
   - Assessment: actionable; I agree with the review item.
   - Why:
     - `sendOnce` currently discards both `llmstream.EventTypeTextDelta` and `llmstream.EventTypeReasoningDelta` (`internal/agent/agent.go:309-312`).
@@ -198,6 +202,13 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - `internal/tui` and `internal/noninteractive` can lose the last assistant message before an error or cancellation.
   - Likely fix direction:
     - Preserve completed text/reasoning blocks during the stream so they can still participate in buffering/finality when a send terminates without `CompletedSuccess`.
+  - Implemented:
+    - `internal/agent` now retains completed text/reasoning blocks from streaming deltas and replays them before returning provider-error / context-cancel / missing-completion failures.
+    - The terminal-path flush can now still classify the last assistant-text event as final on failed streams.
+    - Added focused `internal/agent` regressions for provider-error and context-cancel sends that terminate without `CompletedSuccess`.
+- 2026-04-19 implementation follow-up verification:
+  - `go test ./internal/agent ./internal/tui ./internal/noninteractive ./internal/agentbuilder ./internal/tools/pkgtools`
+  - Passed.
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -235,6 +246,6 @@ TBD
 - Changed-package SPEC conformance passed on 2026-04-19 for `internal/agent`, `internal/agentbuilder`, `internal/noninteractive`, `internal/tools/pkgtools`, and `internal/tui`.
 - Review follow-up landed in `internal/agent`: completed turns now synthesize missing `assistant_text` when providers/tests do not emit completed text deltas.
 - Additional `internal/agent` review follow-up landed: completed-turn synthesis now preserves part order and same-turn text/reasoning boundaries when streamed text coverage is partial.
-- Additional `internal/agent` review follow-up is pending: same-turn tool-call ordering and failed-stream terminal flushing still need completed-turn/delta reconciliation.
-- All planned implementation work for Phase 0 is committed; next step is the new `internal/agent` review follow-up, then re-review plus changed-package SPEC conformance for the new tree state.
+- Additional `internal/agent` review follow-up for same-turn tool-call ordering and failed-stream terminal flushing is now landed.
+- All planned implementation work for Phase 0 is committed; next step is re-review plus changed-package SPEC conformance for the new tree state.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
