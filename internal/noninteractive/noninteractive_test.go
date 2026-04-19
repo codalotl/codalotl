@@ -1101,14 +1101,15 @@ func TestSessionSendUserMessageReusesConversationAcrossSteps(t *testing.T) {
 			{
 				events: []agent.Event{
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       agent.AgentMeta{ID: "root", Depth: 0},
-						TextContent: llmstream.TextContent{Content: "draft"},
-					},
-					{
 						Type:  agent.EventTypeAssistantTurnComplete,
 						Agent: agent.AgentMeta{ID: "root", Depth: 0},
 						Turn:  textAssistantTurn("CONTINUE_ITERATION"),
+					},
+					{
+						Type:               agent.EventTypeAssistantText,
+						Agent:              agent.AgentMeta{ID: "root", Depth: 0},
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: "CONTINUE_ITERATION"},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
@@ -1134,14 +1135,15 @@ func TestSessionSendUserMessageReusesConversationAcrossSteps(t *testing.T) {
 						Turn:  textAssistantTurn("ignore me"),
 					},
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       agent.AgentMeta{ID: "root", Depth: 0},
-						TextContent: llmstream.TextContent{Content: "STOP_ITERATION"},
-					},
-					{
 						Type:  agent.EventTypeAssistantTurnComplete,
 						Agent: agent.AgentMeta{ID: "root", Depth: 0},
 						Turn:  textAssistantTurn("STOP_ITERATION"),
+					},
+					{
+						Type:               agent.EventTypeAssistantText,
+						Agent:              agent.AgentMeta{ID: "root", Depth: 0},
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: "STOP_ITERATION"},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
@@ -1216,9 +1218,10 @@ func TestSessionSendUserMessageReturnsPrintedErrorAndPartialAssistantText(t *tes
 			{
 				events: []agent.Event{
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       agent.AgentMeta{ID: "root", Depth: 0},
-						TextContent: llmstream.TextContent{Content: "partial STOP_ITERATION"},
+						Type:               agent.EventTypeAssistantText,
+						Agent:              agent.AgentMeta{ID: "root", Depth: 0},
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: "partial STOP_ITERATION"},
 					},
 					{
 						Type:  agent.EventTypeError,
@@ -1248,6 +1251,63 @@ func TestSessionSendUserMessageReturnsPrintedErrorAndPartialAssistantText(t *tes
 		TotalOutputTokens: 1,
 	}, step.TokenUsage)
 	require.Equal(t, 9, step.ContextUsagePercent)
+}
+
+func TestSessionSendUserMessageFinalAssistantTextIgnoresTurnCompleteWithoutFinalAssistantText(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeAssistantTurnComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Turn:  textAssistantTurn("STOP_ITERATION"),
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+
+	step, err := session.SendUserMessage(context.Background(), "continue")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+	require.Empty(t, step.FinalAssistantText)
+}
+
+func TestSessionSendUserMessageFinalAssistantTextRequiresTopLevelTerminal(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:               agent.EventTypeAssistantText,
+						Agent:              agent.AgentMeta{ID: "root", Depth: 0},
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: "STOP_ITERATION"},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+
+	step, err := session.SendUserMessage(context.Background(), "continue")
+	require.NoError(t, err)
+	require.Empty(t, step.TerminalEventType)
+	require.Empty(t, step.FinalAssistantText)
 }
 
 func TestSessionSendUserMessageUsesLegacyToolFormattingWithToolObjectName(t *testing.T) {
@@ -1530,11 +1590,6 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInHumanRead
 						TextContent: llmstream.TextContent{Content: "looked at files"},
 					},
 					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: childAgent,
-						Turn:  textAssistantTurn("looked at files"),
-					},
-					{
 						Type:  agent.EventTypeToolCall,
 						Agent: childAgent,
 						Tool:  &clarifyTool,
@@ -1553,14 +1608,10 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInHumanRead
 						},
 					},
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       grandchildAgent,
-						TextContent: llmstream.TextContent{Content: "checked docs"},
-					},
-					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: grandchildAgent,
-						Turn:  textAssistantTurn("checked docs"),
+						Type:               agent.EventTypeAssistantText,
+						Agent:              grandchildAgent,
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: "checked docs"},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
@@ -1576,14 +1627,10 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInHumanRead
 						},
 					},
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       childAgent,
-						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
-					},
-					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: childAgent,
-						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+						Type:               agent.EventTypeAssistantText,
+						Agent:              childAgent,
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: `{"decision":"approve"}`},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
@@ -1660,11 +1707,6 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInJSONOutpu
 						TextContent: llmstream.TextContent{Content: "looked at files"},
 					},
 					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: childAgent,
-						Turn:  textAssistantTurn("looked at files"),
-					},
-					{
 						Type:  agent.EventTypeToolCall,
 						Agent: childAgent,
 						Tool:  &clarifyTool,
@@ -1685,14 +1727,10 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInJSONOutpu
 						},
 					},
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       grandchildAgent,
-						TextContent: llmstream.TextContent{Content: "checked docs"},
-					},
-					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: grandchildAgent,
-						Turn:  textAssistantTurn("checked docs"),
+						Type:               agent.EventTypeAssistantText,
+						Agent:              grandchildAgent,
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: "checked docs"},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
@@ -1711,14 +1749,10 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInJSONOutpu
 						},
 					},
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       childAgent,
-						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
-					},
-					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: childAgent,
-						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+						Type:               agent.EventTypeAssistantText,
+						Agent:              childAgent,
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: `{"decision":"approve"}`},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
@@ -1844,14 +1878,10 @@ func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInHumanReadabl
 						},
 					},
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       childAgent,
-						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
-					},
-					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: childAgent,
-						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+						Type:               agent.EventTypeAssistantText,
+						Agent:              childAgent,
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: `{"decision":"approve"}`},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
@@ -1924,14 +1954,10 @@ func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInJSONOutput(t
 						},
 					},
 					{
-						Type:        agent.EventTypeAssistantText,
-						Agent:       childAgent,
-						TextContent: llmstream.TextContent{Content: `{"decision":"approve"}`},
-					},
-					{
-						Type:  agent.EventTypeAssistantTurnComplete,
-						Agent: childAgent,
-						Turn:  textAssistantTurn(`{"decision":"approve"}`),
+						Type:               agent.EventTypeAssistantText,
+						Agent:              childAgent,
+						AssistantTextFinal: true,
+						TextContent:        llmstream.TextContent{Content: `{"decision":"approve"}`},
 					},
 					{
 						Type:  agent.EventTypeDoneSuccess,
