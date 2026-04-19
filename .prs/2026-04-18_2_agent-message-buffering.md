@@ -130,6 +130,19 @@ Make `internal/agent` the single owner of "which assistant text was the final me
 
 ## Review
 
+- 2026-04-19 out-of-band review item: [P1] synthesize `assistant_text` from completed turns when no text deltas arrive.
+  - Assessment: actionable; I agree with the review item.
+  - Why:
+    - `internal/agent/sendOnce` currently only creates `EventTypeAssistantText` from `llmstream.EventTypeTextDelta` events where `Done=true` (`internal/agent/agent.go:309-316`).
+    - On `llmstream.EventTypeCompletedSuccess`, it only stores `ev.Turn` (`internal/agent/agent.go:331-332`), and later emits `EventTypeAssistantTurnComplete` from that completed turn (`internal/agent/agent.go:361-362`).
+    - `internal/llmstream` documents `EventTypeTextDelta` as something that "may be emitted", while `EventTypeCompletedSuccess` carries the final `Turn`, so a provider or test double can legally put assistant text only in `Turn.Parts`.
+    - In that case, `pendingAssistantText` stays empty, so the run emits `assistant_turn_complete` and terminal status but never emits `assistant_text`.
+  - Impact:
+    - `agent.CollectFinalAssistantText` can return an empty answer on successful runs.
+    - `internal/noninteractive.Result.FinalAssistantText` can lose the final answer.
+    - descendant final-message presentation in `internal/tui` / `internal/noninteractive` can lose subagent final text.
+  - Likely fix direction for next step:
+    - In `internal/agent`, when processing `EventTypeCompletedSuccess`, synthesize buffered assistant-text events from completed-turn text parts if equivalent assistant text was not already observed via completed text deltas for that turn.
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -165,5 +178,6 @@ TBD
   - `internal/agentbuilder` tests are updated and `go test ./internal/agentbuilder` passes
   - `internal/tools/pkgtools` tests are updated and `go test ./internal/tools/pkgtools` passes
 - Changed-package SPEC conformance passed on 2026-04-19 for `internal/agent`, `internal/agentbuilder`, `internal/noninteractive`, `internal/tools/pkgtools`, and `internal/tui`.
-- All planned implementation work for Phase 0 is committed; next step is full review.
+- Review follow-up pending in `internal/agent`: synthesize `assistant_text` from completed turns when providers/tests do not emit completed text deltas.
+- All planned implementation work for Phase 0 is committed; next step is review follow-up in `internal/agent`, then re-review.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
