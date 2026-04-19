@@ -155,7 +155,7 @@ TBD
   - descendant final-message presentation now keys off descendant final `assistant_text` events
   - `Result.FinalAssistantText` now keys off top-level final-flagged assistant text plus top-level terminal events
   - package test command: `go test ./internal/noninteractive`
-- Remaining follow-up is downstream test adaptation:
+- Downstream adaptation status:
   - `internal/agentbuilder` tests are updated and `go test ./internal/agentbuilder` passes
   - `internal/tools/pkgtools` tests are updated and `go test ./internal/tools/pkgtools` passes
 - All planned implementation work for Phase 0 is committed; next step is review plus changed-package SPEC conformance.
