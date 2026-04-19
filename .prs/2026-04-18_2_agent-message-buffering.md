@@ -35,7 +35,7 @@ In this phase, land the agent-owned assistant-message contract, then migrate `in
 - Use descendant `assistant_text` events with `AssistantTextFinal=true` to drive `llmstream.SubagentFinalMessagePresenter`.
 - Render non-final descendant assistant text literally.
 
-#### Package `internal/noninteractive`
+#### Package `internal/noninteractive` [DONE]
 
 - Update `internal/noninteractive/SPEC.md`.
 - Remove local descendant final-message reconstruction from `internal/noninteractive/session.go`.
@@ -47,6 +47,11 @@ In this phase, land the agent-owned assistant-message contract, then migrate `in
 - Package tests for `internal/agent`, `internal/tui`, and `internal/noninteractive`
 - Re-run affected noninteractive integration coverage if request/event shapes intentionally change
 - Review plus changed-package SPEC conformance after implementation
+
+#### Downstream follow-up
+
+- Update downstream tests/helpers in `internal/agentbuilder` and `internal/tools/pkgtools` that still model the old final-assistant-text contract.
+- Those packages call `CollectFinalAssistantText` and now need mocked event streams that include final-flagged `assistant_text` plus top-level `done_success`.
 
 ### Design details
 
@@ -145,5 +150,10 @@ TBD
   - `internal/tui` no longer reconstructs final descendant messages from `AssistantTurnComplete` plus buffered text
   - non-final descendant assistant text is shown literally
   - package test command: `go test ./internal/tui`
-- Remaining descendant final-message reconstruction lives in `internal/noninteractive/session.go`.
+- `internal/noninteractive` is implemented:
+  - descendant final-message presentation now keys off descendant final `assistant_text` events
+  - `Result.FinalAssistantText` now keys off top-level final-flagged assistant text plus top-level terminal events
+  - package test command: `go test ./internal/noninteractive`
+- Remaining follow-up is downstream test adaptation:
+  - `go test ./internal/agentbuilder ./internal/tools/pkgtools` currently fails because several mocked streams still expect pre-buffering `CollectFinalAssistantText` behavior
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
