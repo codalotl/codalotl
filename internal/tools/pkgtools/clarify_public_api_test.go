@@ -379,13 +379,18 @@ func (f *fakeAgentCreator) New(systemPrompt string, tools []llmstream.Tool, opti
 }
 
 func successfulClarifyEvents(answer string) <-chan agent.Event {
-	events := make(chan agent.Event, 2)
+	events := make(chan agent.Event, 3)
 	events <- agent.Event{
 		Type: agent.EventTypeAssistantTurnComplete,
 		Turn: &llmstream.Turn{
 			Role:  llmstream.RoleAssistant,
 			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: answer}},
 		},
+	}
+	events <- agent.Event{
+		Type:               agent.EventTypeAssistantText,
+		TextContent:        llmstream.TextContent{Content: answer},
+		AssistantTextFinal: true,
 	}
 	events <- agent.Event{Type: agent.EventTypeDoneSuccess}
 	close(events)
