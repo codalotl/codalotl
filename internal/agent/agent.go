@@ -297,10 +297,9 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	events := a.conv.SendAsync(ctx)
 
 	var (
-		sendErr           error
-		completedTurn     *llmstream.Turn
-		completedTextSeen []llmstream.TextContent
-		seenToolCallIDs   = make(map[string]struct{})
+		sendErr         error
+		completedTurn   *llmstream.Turn
+		seenToolCallIDs = make(map[string]struct{})
 	)
 
 	for ev := range events {
@@ -308,22 +307,9 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		case llmstream.EventTypeError:
 			sendErr = ev.Error
 		case llmstream.EventTypeTextDelta:
-			if ev.Text != nil && ev.Done {
-				textCopy := *ev.Text
-				completedTextSeen = append(completedTextSeen, textCopy)
-				a.emitEvent(out, Event{
-					Type:        EventTypeAssistantText,
-					TextContent: textCopy,
-				})
-			}
+			continue
 		case llmstream.EventTypeReasoningDelta:
-			if ev.Reasoning != nil && ev.Done {
-				reasoningCopy := *ev.Reasoning
-				a.emitEvent(out, Event{
-					Type:             EventTypeAssistantReasoning,
-					ReasoningContent: reasoningCopy,
-				})
-			}
+			continue
 		case llmstream.EventTypeToolUse:
 			if ev.ToolCall != nil {
 				callCopy := *ev.ToolCall
@@ -360,12 +346,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	a.addUsage(completedTurn.Usage)
 	a.updateContextUsage(completedTurn.Usage)
 
-	for _, text := range missingCompletedTurnText(completedTurn.Parts, completedTextSeen) {
-		a.emitEvent(out, Event{
-			Type:        EventTypeAssistantText,
-			TextContent: text,
-		})
-	}
+	a.emitCompletedTurnContent(out, completedTurn.Parts)
 
 	turnCopy := cloned
 	a.emitEvent(out, Event{Type: EventTypeAssistantTurnComplete, Turn: &turnCopy})
@@ -591,27 +572,21 @@ func clampNonNegative(v int64) int64 {
 	return v
 }
 
-func missingCompletedTurnText(parts []llmstream.ContentPart, seen []llmstream.TextContent) []llmstream.TextContent {
-	if len(parts) == 0 {
-		return nil
-	}
-
-	missing := make([]llmstream.TextContent, 0)
-	seenIdx := 0
-
+func (a *Agent) emitCompletedTurnContent(out chan<- Event, parts []llmstream.ContentPart) {
 	for _, part := range parts {
-		text, ok := part.(llmstream.TextContent)
-		if !ok {
-			continue
+		switch content := part.(type) {
+		case llmstream.TextContent:
+			a.emitEvent(out, Event{
+				Type:        EventTypeAssistantText,
+				TextContent: content,
+			})
+		case llmstream.ReasoningContent:
+			a.emitEvent(out, Event{
+				Type:             EventTypeAssistantReasoning,
+				ReasoningContent: content,
+			})
 		}
-		if seenIdx < len(seen) && seen[seenIdx] == text {
-			seenIdx++
-			continue
-		}
-		missing = append(missing, text)
 	}
-
-	return missing
 }
 
 func percentOfContext(used, capacity int64) int {

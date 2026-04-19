@@ -179,6 +179,45 @@ func TestSendUserMessageSynthesizesAssistantTextFromCompletedTurn(t *testing.T) 
 	require.Equal(t, EventTypeDoneSuccess, events[2].Type)
 }
 
+func TestSendUserMessagePreservesCompletedTurnTextOrderWhenOnlyLaterTextStreams(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	first := llmstream.TextContent{ProviderID: "text-1", Content: "first"}
+	second := llmstream.TextContent{ProviderID: "text-2", Content: "second"}
+	assistantTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{first, second},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	script := &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeTextDelta, Text: &second, Delta: second.Content, Done: true},
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &assistantTurn},
+		},
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt, script))
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Say hello") {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 3)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[0].Type)
+	require.Equal(t, EventTypeAssistantText, events[1].Type)
+	require.Equal(t, "firstsecond", events[1].TextContent.Content)
+	require.True(t, events[1].AssistantTextFinal)
+	require.Equal(t, EventTypeDoneSuccess, events[2].Type)
+}
+
 func TestSendUserMessageFlushesBufferedAssistantTextBeforeReasoning(t *testing.T) {
 	systemPrompt := "You are helpful."
 
@@ -222,6 +261,50 @@ func TestSendUserMessageFlushesBufferedAssistantTextBeforeReasoning(t *testing.T
 	require.Equal(t, EventTypeAssistantTurnComplete, events[2].Type)
 	require.Equal(t, EventTypeAssistantText, events[3].Type)
 	require.Equal(t, " world", events[3].TextContent.Content)
+	require.True(t, events[3].AssistantTextFinal)
+	require.Equal(t, EventTypeDoneSuccess, events[4].Type)
+}
+
+func TestSendUserMessageSynthesizesCompletedTurnBoundaries(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	draft := llmstream.TextContent{ProviderID: "text-1", Content: "draft"}
+	reasoning := llmstream.ReasoningContent{ProviderID: "reasoning-1", Content: "thinking"}
+	answer := llmstream.TextContent{ProviderID: "text-2", Content: "answer"}
+	assistantTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{draft, reasoning, answer},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	script := &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &assistantTurn},
+		},
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt, script))
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Say hello") {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 5)
+	require.Equal(t, EventTypeAssistantText, events[0].Type)
+	require.Equal(t, draft.Content, events[0].TextContent.Content)
+	require.False(t, events[0].AssistantTextFinal)
+	require.Equal(t, EventTypeAssistantReasoning, events[1].Type)
+	require.Equal(t, reasoning.Content, events[1].ReasoningContent.Content)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[2].Type)
+	require.Equal(t, EventTypeAssistantText, events[3].Type)
+	require.Equal(t, answer.Content, events[3].TextContent.Content)
 	require.True(t, events[3].AssistantTextFinal)
 	require.Equal(t, EventTypeDoneSuccess, events[4].Type)
 }
