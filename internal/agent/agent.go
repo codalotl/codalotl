@@ -297,9 +297,9 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	events := a.conv.SendAsync(ctx)
 
 	var (
-		sendErr         error
-		completedTurn   *llmstream.Turn
-		seenToolCallIDs = make(map[string]struct{})
+		sendErr       error
+		completedTurn *llmstream.Turn
+		buffered      []bufferedSendItem
 	)
 
 	for ev := range events {
@@ -307,34 +307,36 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		case llmstream.EventTypeError:
 			sendErr = ev.Error
 		case llmstream.EventTypeTextDelta:
-			continue
+			if ev.Done && ev.Text != nil {
+				buffered = append(buffered, newBufferedTextItem(*ev.Text))
+			}
 		case llmstream.EventTypeReasoningDelta:
-			continue
+			if ev.Done && ev.Reasoning != nil {
+				buffered = append(buffered, newBufferedReasoningItem(*ev.Reasoning))
+			}
 		case llmstream.EventTypeToolUse:
 			if ev.ToolCall != nil {
-				callCopy := *ev.ToolCall
-				seenToolCallIDs[callCopy.CallID] = struct{}{}
-				a.emitEvent(out, Event{Type: EventTypeToolCall, Tool: a.tools[callCopy.Name], ToolCall: &callCopy})
+				buffered = append(buffered, newBufferedToolCallItem(*ev.ToolCall))
 			}
 		case llmstream.EventTypeCompletedSuccess:
 			completedTurn = ev.Turn
 		case llmstream.EventTypeWarning:
-			a.emitEvent(out, Event{Type: EventTypeWarning, Error: ev.Error})
+			buffered = append(buffered, newBufferedWarningItem(ev.Error))
 		case llmstream.EventTypeRetry:
-			a.emitEvent(out, Event{Type: EventTypeRetry, Error: ev.Error})
+			buffered = append(buffered, newBufferedRetryItem(ev.Error))
 		}
 	}
 
 	if sendErr != nil {
-		return nil, nil, sendErr
+		return nil, a.emitBufferedSendItems(out, buffered, nil), sendErr
 	}
 
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, nil, ctxErr
+		return nil, a.emitBufferedSendItems(out, buffered, nil), ctxErr
 	}
 
 	if completedTurn == nil {
-		return nil, nil, errMissingCompletion
+		return nil, a.emitBufferedSendItems(out, buffered, nil), errMissingCompletion
 	}
 
 	cloned := cloneTurn(*completedTurn)
@@ -346,7 +348,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	a.addUsage(completedTurn.Usage)
 	a.updateContextUsage(completedTurn.Usage)
 
-	a.emitCompletedTurnContent(out, completedTurn.Parts)
+	seenToolCallIDs := a.emitBufferedSendItems(out, buffered, completedTurn)
 
 	turnCopy := cloned
 	a.emitEvent(out, Event{Type: EventTypeAssistantTurnComplete, Turn: &turnCopy})
@@ -572,20 +574,185 @@ func clampNonNegative(v int64) int64 {
 	return v
 }
 
-func (a *Agent) emitCompletedTurnContent(out chan<- Event, parts []llmstream.ContentPart) {
+type bufferedSendItemKind int
+
+const (
+	bufferedSendItemText bufferedSendItemKind = iota
+	bufferedSendItemReasoning
+	bufferedSendItemToolCall
+	bufferedSendItemWarning
+	bufferedSendItemRetry
+)
+
+type bufferedSendItem struct {
+	kind      bufferedSendItemKind
+	text      llmstream.TextContent
+	reasoning llmstream.ReasoningContent
+	toolCall  llmstream.ToolCall
+	err       error
+}
+
+func newBufferedTextItem(text llmstream.TextContent) bufferedSendItem {
+	return bufferedSendItem{kind: bufferedSendItemText, text: text}
+}
+
+func newBufferedReasoningItem(reasoning llmstream.ReasoningContent) bufferedSendItem {
+	return bufferedSendItem{kind: bufferedSendItemReasoning, reasoning: reasoning}
+}
+
+func newBufferedToolCallItem(call llmstream.ToolCall) bufferedSendItem {
+	return bufferedSendItem{kind: bufferedSendItemToolCall, toolCall: call}
+}
+
+func newBufferedWarningItem(err error) bufferedSendItem {
+	return bufferedSendItem{kind: bufferedSendItemWarning, err: err}
+}
+
+func newBufferedRetryItem(err error) bufferedSendItem {
+	return bufferedSendItem{kind: bufferedSendItemRetry, err: err}
+}
+
+func (i bufferedSendItem) isTurnContent() bool {
+	switch i.kind {
+	case bufferedSendItemText, bufferedSendItemReasoning, bufferedSendItemToolCall:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *Agent) emitBufferedSendItems(out chan<- Event, observed []bufferedSendItem, completedTurn *llmstream.Turn) map[string]struct{} {
+	seenToolCallIDs := make(map[string]struct{})
+	if completedTurn == nil {
+		for _, item := range observed {
+			a.emitBufferedSendItem(out, item, seenToolCallIDs)
+		}
+		return seenToolCallIDs
+	}
+
+	turnItems := bufferedSendItemsFromTurn(completedTurn.Parts)
+	matches := matchObservedBufferedItems(observed, turnItems)
+
+	nextTurnItem := 0
+	var pendingMeta []bufferedSendItem
+
+	emitTurnItemsBefore := func(limit int) {
+		for nextTurnItem < limit {
+			a.emitBufferedSendItem(out, turnItems[nextTurnItem], seenToolCallIDs)
+			nextTurnItem++
+		}
+	}
+
+	flushPendingMeta := func() {
+		for _, item := range pendingMeta {
+			a.emitBufferedSendItem(out, item, seenToolCallIDs)
+		}
+		pendingMeta = nil
+	}
+
+	for idx, item := range observed {
+		if !item.isTurnContent() {
+			pendingMeta = append(pendingMeta, item)
+			continue
+		}
+
+		turnIdx, ok := matches[idx]
+		if !ok {
+			continue
+		}
+
+		emitTurnItemsBefore(turnIdx)
+		flushPendingMeta()
+		a.emitBufferedSendItem(out, turnItems[turnIdx], seenToolCallIDs)
+		nextTurnItem = turnIdx + 1
+	}
+
+	emitTurnItemsBefore(len(turnItems))
+	flushPendingMeta()
+	return seenToolCallIDs
+}
+
+func bufferedSendItemsFromTurn(parts []llmstream.ContentPart) []bufferedSendItem {
+	items := make([]bufferedSendItem, 0, len(parts))
 	for _, part := range parts {
 		switch content := part.(type) {
 		case llmstream.TextContent:
-			a.emitEvent(out, Event{
-				Type:        EventTypeAssistantText,
-				TextContent: content,
-			})
+			items = append(items, newBufferedTextItem(content))
 		case llmstream.ReasoningContent:
-			a.emitEvent(out, Event{
-				Type:             EventTypeAssistantReasoning,
-				ReasoningContent: content,
-			})
+			items = append(items, newBufferedReasoningItem(content))
+		case llmstream.ToolCall:
+			items = append(items, newBufferedToolCallItem(content))
 		}
+	}
+	return items
+}
+
+func matchObservedBufferedItems(observed, turnItems []bufferedSendItem) map[int]int {
+	matches := make(map[int]int)
+	nextTurnItem := 0
+	for idx, item := range observed {
+		if !item.isTurnContent() {
+			continue
+		}
+		for turnIdx := nextTurnItem; turnIdx < len(turnItems); turnIdx++ {
+			if bufferedSendItemsMatch(item, turnItems[turnIdx]) {
+				matches[idx] = turnIdx
+				nextTurnItem = turnIdx + 1
+				break
+			}
+		}
+	}
+	return matches
+}
+
+func bufferedSendItemsMatch(observed, turn bufferedSendItem) bool {
+	if observed.kind != turn.kind {
+		return false
+	}
+
+	switch observed.kind {
+	case bufferedSendItemText:
+		return observed.text == turn.text
+	case bufferedSendItemReasoning:
+		return observed.reasoning == turn.reasoning
+	case bufferedSendItemToolCall:
+		return toolCallsMatch(observed.toolCall, turn.toolCall)
+	default:
+		return false
+	}
+}
+
+func toolCallsMatch(observed, turn llmstream.ToolCall) bool {
+	if observed.CallID != "" && turn.CallID != "" {
+		return observed.CallID == turn.CallID
+	}
+	return observed == turn
+}
+
+func (a *Agent) emitBufferedSendItem(out chan<- Event, item bufferedSendItem, seenToolCallIDs map[string]struct{}) {
+	switch item.kind {
+	case bufferedSendItemText:
+		a.emitEvent(out, Event{
+			Type:        EventTypeAssistantText,
+			TextContent: item.text,
+		})
+	case bufferedSendItemReasoning:
+		a.emitEvent(out, Event{
+			Type:             EventTypeAssistantReasoning,
+			ReasoningContent: item.reasoning,
+		})
+	case bufferedSendItemToolCall:
+		callCopy := item.toolCall
+		seenToolCallIDs[callCopy.CallID] = struct{}{}
+		a.emitEvent(out, Event{
+			Type:     EventTypeToolCall,
+			Tool:     a.tools[callCopy.Name],
+			ToolCall: &callCopy,
+		})
+	case bufferedSendItemWarning:
+		a.emitEvent(out, Event{Type: EventTypeWarning, Error: item.err})
+	case bufferedSendItemRetry:
+		a.emitEvent(out, Event{Type: EventTypeRetry, Error: item.err})
 	}
 }
 

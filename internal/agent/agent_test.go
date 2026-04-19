@@ -362,17 +362,87 @@ func TestSendUserMessageSynthesizesNonFinalAssistantTextFromCompletedToolTurn(t 
 	}
 
 	require.Len(t, events, 7)
-	require.Equal(t, EventTypeToolCall, events[0].Type)
-	require.Equal(t, EventTypeAssistantTurnComplete, events[1].Type)
-	require.Equal(t, EventTypeAssistantText, events[2].Type)
-	require.Equal(t, toolText.Content, events[2].TextContent.Content)
-	require.False(t, events[2].AssistantTextFinal)
+	require.Equal(t, EventTypeAssistantText, events[0].Type)
+	require.Equal(t, toolText.Content, events[0].TextContent.Content)
+	require.False(t, events[0].AssistantTextFinal)
+	require.Equal(t, EventTypeToolCall, events[1].Type)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[2].Type)
 	require.Equal(t, EventTypeToolComplete, events[3].Type)
 	require.Equal(t, EventTypeAssistantTurnComplete, events[4].Type)
 	require.Equal(t, EventTypeAssistantText, events[5].Type)
 	require.Equal(t, finalText.Content, events[5].TextContent.Content)
 	require.True(t, events[5].AssistantTextFinal)
 	require.Equal(t, EventTypeDoneSuccess, events[6].Type)
+}
+
+func TestSendUserMessagePreservesCompletedTurnLeadInOrderBeforeToolCall(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	leadIn := llmstream.TextContent{ProviderID: "text-tool", Content: "Need a tool first"}
+	reasoning := llmstream.ReasoningContent{ProviderID: "reasoning-tool", Content: "checking prerequisites"}
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_123",
+		Name:       "stub_tool",
+		Type:       "function_call",
+		Input:      `{"query":"hi"}`,
+	}
+	toolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{leadIn, reasoning, toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+
+	finalText := llmstream.TextContent{ProviderID: "text-final", Content: "Done"}
+	finalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &toolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &finalTurn},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	tool := newStubTool("stub_tool", llmstream.ToolResult{Result: "OK"})
+
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Use the tool") {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 8)
+	require.Equal(t, EventTypeAssistantText, events[0].Type)
+	require.Equal(t, leadIn.Content, events[0].TextContent.Content)
+	require.False(t, events[0].AssistantTextFinal)
+	require.Equal(t, EventTypeAssistantReasoning, events[1].Type)
+	require.Equal(t, reasoning.Content, events[1].ReasoningContent.Content)
+	require.Equal(t, EventTypeToolCall, events[2].Type)
+	require.Equal(t, toolCall.CallID, events[2].ToolCall.CallID)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[3].Type)
+	require.Equal(t, EventTypeToolComplete, events[4].Type)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[5].Type)
+	require.Equal(t, EventTypeAssistantText, events[6].Type)
+	require.Equal(t, finalText.Content, events[6].TextContent.Content)
+	require.True(t, events[6].AssistantTextFinal)
+	require.Equal(t, EventTypeDoneSuccess, events[7].Type)
 }
 
 func TestSendUserMessageFlushesBufferedAssistantTextBeforeCanceledTerminal(t *testing.T) {
@@ -411,6 +481,100 @@ func TestSendUserMessageFlushesBufferedAssistantTextBeforeCanceledTerminal(t *te
 	require.Equal(t, text.Content, events[1].TextContent.Content)
 	require.True(t, events[1].AssistantTextFinal)
 	require.Equal(t, EventTypeCanceled, events[2].Type)
+}
+
+func TestSendUserMessageFlushesCompletedStreamContentBeforeErrorTerminal(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	draft := llmstream.TextContent{ProviderID: "text-1", Content: "draft"}
+	reasoning := llmstream.ReasoningContent{ProviderID: "reasoning-1", Content: "thinking"}
+	answer := llmstream.TextContent{ProviderID: "text-2", Content: "answer"}
+
+	script := &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeTextDelta, Text: &draft, Delta: draft.Content, Done: true},
+			{Type: llmstream.EventTypeReasoningDelta, Reasoning: &reasoning, Delta: reasoning.Content, Done: true},
+			{Type: llmstream.EventTypeTextDelta, Text: &answer, Delta: answer.Content, Done: true},
+			{Type: llmstream.EventTypeError, Error: errors.New("boom")},
+		},
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt, script))
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Say hello") {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 4)
+	require.Equal(t, EventTypeAssistantText, events[0].Type)
+	require.Equal(t, draft.Content, events[0].TextContent.Content)
+	require.False(t, events[0].AssistantTextFinal)
+	require.Equal(t, EventTypeAssistantReasoning, events[1].Type)
+	require.Equal(t, reasoning.Content, events[1].ReasoningContent.Content)
+	require.Equal(t, EventTypeAssistantText, events[2].Type)
+	require.Equal(t, answer.Content, events[2].TextContent.Content)
+	require.True(t, events[2].AssistantTextFinal)
+	require.Equal(t, EventTypeError, events[3].Type)
+	require.EqualError(t, events[3].Error, "boom")
+}
+
+func TestSendUserMessageFlushesCompletedStreamContentBeforeCanceledTerminalWithoutCompletion(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	draft := llmstream.TextContent{ProviderID: "text-1", Content: "draft"}
+	reasoning := llmstream.ReasoningContent{ProviderID: "reasoning-1", Content: "thinking"}
+	answer := llmstream.TextContent{ProviderID: "text-2", Content: "answer"}
+	sent := make(chan struct{})
+
+	script := &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeTextDelta, Text: &draft, Delta: draft.Content, Done: true},
+			{Type: llmstream.EventTypeReasoningDelta, Reasoning: &reasoning, Delta: reasoning.Content, Done: true},
+			{Type: llmstream.EventTypeTextDelta, Text: &answer, Delta: answer.Content, Done: true},
+		},
+		sent:     sent,
+		tailWait: make(chan struct{}),
+	}
+
+	overrideConversation(t, newScriptedConversation(systemPrompt, script))
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	out := a.SendUserMessage(ctx, "Say hello")
+
+	select {
+	case <-sent:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for scripted send to emit completed blocks")
+	}
+	cancel()
+
+	var events []Event
+	for ev := range out {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 4)
+	require.Equal(t, EventTypeAssistantText, events[0].Type)
+	require.Equal(t, draft.Content, events[0].TextContent.Content)
+	require.False(t, events[0].AssistantTextFinal)
+	require.Equal(t, EventTypeAssistantReasoning, events[1].Type)
+	require.Equal(t, reasoning.Content, events[1].ReasoningContent.Content)
+	require.Equal(t, EventTypeAssistantText, events[2].Type)
+	require.Equal(t, answer.Content, events[2].TextContent.Content)
+	require.True(t, events[2].AssistantTextFinal)
+	require.Equal(t, EventTypeCanceled, events[3].Type)
+	require.ErrorIs(t, events[3].Error, context.Canceled)
 }
 
 func TestSendUserMessageWithToolUse(t *testing.T) {
@@ -1898,8 +2062,10 @@ type scriptedConversation struct {
 }
 
 type sendScript struct {
-	events []llmstream.Event
-	wait   <-chan struct{}
+	events   []llmstream.Event
+	wait     <-chan struct{}
+	sent     chan<- struct{}
+	tailWait <-chan struct{}
 }
 
 func newScriptedConversation(systemPrompt string, scripts ...*sendScript) *scriptedConversation {
@@ -1996,6 +2162,17 @@ func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.Sen
 				c.mu.Lock()
 				c.turns = append(c.turns, cloneTurnTest(*ev.Turn))
 				c.mu.Unlock()
+			}
+		}
+
+		if script.sent != nil {
+			close(script.sent)
+		}
+		if script.tailWait != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-script.tailWait:
 			}
 		}
 	}()
