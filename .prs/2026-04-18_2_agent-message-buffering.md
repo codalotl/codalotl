@@ -257,6 +257,13 @@ Make `internal/agent` the single owner of "which assistant text was the final me
     - live `assistant_reasoning` / `tool_call`, because the ordering tradeoff in `## Decisions` still applies.
   - Verified with:
     - `go test ./internal/agent`
+- 2026-04-19 out-of-band review follow-up: do not defer reasoning and tool-call progress until completion.
+  - Assessment:
+    - The liveness observation is accurate: current `internal/agent` behavior still delays completed reasoning blocks and streamed `ToolUse` events until completed-turn reconciliation.
+    - I am not treating this as a straightforward actionable bugfix, because the previously rejected live-reasoning attempt demonstrated a real contract conflict: when earlier same-turn text can exist only in `CompletedSuccess`, emitting reasoning or tool-call progress early can reverse turn order.
+  - Current disposition:
+    - recorded as a known tradeoff, aligned with `## Decisions`
+    - not actioned in the current tree without a narrower safety rule or an explicit contract decision to prefer liveness over strict completed-turn ordering
 - 2026-04-19: `check_spec_conformance --only_changed` passed for:
   - `internal/agent`
   - `internal/agentbuilder`
@@ -307,6 +314,7 @@ TBD
 - Narrowed `internal/agent` live-progress follow-up landed: `warning` and `retry` are live again before `CompletedSuccess`.
 - Latest `internal/agent` implementation attempt for the live-progress follow-up was rejected: moving replay to `CompletedSuccess` fixed warnings/retries and stream-close timing, but still delayed live reasoning/tool-call progress until turn completion.
 - A second `internal/agent` implementation attempt was also rejected: it restored live reasoning, but reintroduced a completed-turn ordering hole when earlier same-turn text exists only in `CompletedSuccess`.
+- Latest out-of-band review confirms the remaining gap: reasoning/tool-call progress is still deferred. Current stance remains that this is a tradeoff with completed-turn ordering, not an already-decided must-fix.
 - Remaining live `assistant_reasoning` / `tool_call` liveness is now a judgment call, not an obvious bugfix: current bias is to preserve completed-turn ordering rather than emit those events speculatively.
 - All planned implementation work for Phase 0 is committed; next step is re-review plus changed-package SPEC conformance for the new tree state, while carrying forward the non-actioned reasoning/tool-call liveness decision unless new evidence appears.
 - `internal/llmstream` stays provider/event-part shaped; normalization boundary remains `internal/agent`.
