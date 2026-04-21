@@ -35,10 +35,14 @@ func (p stubPresenter) Present(llmstream.ToolCall, *llmstream.ToolResult) llmstr
 
 type finalMessageStubPresenter struct {
 	stubPresenter
-	block llmstream.Block
+	block                llmstream.Block
+	subagentFinalMessage func(llmstream.ToolCall, string, string) llmstream.Block
 }
 
-func (p finalMessageStubPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+func (p finalMessageStubPresenter) SubagentFinalMessage(call llmstream.ToolCall, subagentLabel string, finalMessage string) llmstream.Block {
+	if p.subagentFinalMessage != nil {
+		return p.subagentFinalMessage(call, subagentLabel, finalMessage)
+	}
 	return p.block
 }
 
@@ -790,9 +794,7 @@ func TestSuppressFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
 	root := agent.AgentMeta{ID: "root"}
 	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
 	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
-		stubPresenter: stubPresenter{
-			behavior: llmstream.CompletionBehaviorAppend,
-		},
+		stubPresenter: stubPresenter{behavior: llmstream.CompletionBehaviorAppend},
 	})
 
 	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
@@ -804,16 +806,11 @@ func TestSuppressFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
 	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: readCall})
 	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: readCall, ToolResult: readResult})
 	m.handleAgentEvent(agent.Event{
-		Agent:       child,
-		Type:        agent.EventTypeAssistantText,
-		TextContent: llmstream.TextContent{Content: `{"verdict":"pass",`},
+		Agent:                   child,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: `{"verdict":"pass","notes":[]}`},
 	})
-	m.handleAgentEvent(agent.Event{
-		Agent:       child,
-		Type:        agent.EventTypeAssistantText,
-		TextContent: llmstream.TextContent{Content: `"notes":[]}`},
-	})
-	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
 	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
 	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
 
@@ -830,7 +827,7 @@ func TestSuppressFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
 	}
 }
 
-func TestHideFinalDescendantAssistantTextDroppedOnDescendantErrorOrCancel(t *testing.T) {
+func TestNonFinalDescendantAssistantTextStillVisibleOnDescendantErrorOrCancel(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		eventType agent.EventType
@@ -845,9 +842,7 @@ func TestHideFinalDescendantAssistantTextDroppedOnDescendantErrorOrCancel(t *tes
 			root := agent.AgentMeta{ID: "root"}
 			child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
 			reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
-				stubPresenter: stubPresenter{
-					behavior: llmstream.CompletionBehaviorAppend,
-				},
+				stubPresenter: stubPresenter{behavior: llmstream.CompletionBehaviorAppend},
 			})
 			reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
 
@@ -855,24 +850,51 @@ func TestHideFinalDescendantAssistantTextDroppedOnDescendantErrorOrCancel(t *tes
 			m.handleAgentEvent(agent.Event{
 				Agent:       child,
 				Type:        agent.EventTypeAssistantText,
-				TextContent: llmstream.TextContent{Content: "partial "},
+				TextContent: llmstream.TextContent{Content: "partial reply"},
 			})
-			m.handleAgentEvent(agent.Event{
-				Agent:       child,
-				Type:        agent.EventTypeAssistantText,
-				TextContent: llmstream.TextContent{Content: "final reply"},
-			})
-			m.handleAgentEvent(agent.Event{Agent: child, Type: tc.eventType, Error: tc.err})
 
 			require.Len(t, m.messages, 2)
+			require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+			require.Equal(t, "partial reply", m.messages[1].event.TextContent.Content)
+
+			m.handleAgentEvent(agent.Event{Agent: child, Type: tc.eventType, Error: tc.err})
+
+			require.Len(t, m.messages, 3)
 			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
-			require.Equal(t, tc.eventType, m.messages[1].event.Type)
-			require.NotEqual(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
-			for _, msg := range m.messages {
-				require.NotEqual(t, agent.EventTypeAssistantText, msg.event.Type)
-			}
+			require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+			require.Equal(t, tc.eventType, m.messages[2].event.Type)
 		})
 	}
+}
+
+func TestFinalDescendantAssistantTextWithoutPresenterDisplaysPlainText(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
+	reviewTool := newNamedToolWithPresenter("review", stubPresenter{
+		behavior: llmstream.CompletionBehaviorAppend,
+	})
+	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
+	reviewResult := &llmstream.ToolResult{CallID: "review-1", Name: "review"}
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolCall, Tool: reviewTool, ToolCall: reviewCall})
+	m.handleAgentEvent(agent.Event{
+		Agent:                   child,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: "plain final reply"},
+	})
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+	require.Equal(t, "plain final reply", m.messages[1].event.TextContent.Content)
+	require.True(t, m.messages[1].event.AssistantTextFinalizing)
+
+	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
+
+	require.Len(t, m.messages, 3)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[2].event.Type)
 }
 
 func TestSuppressFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *testing.T) {
@@ -881,9 +903,7 @@ func TestSuppressFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *
 	root := agent.AgentMeta{ID: "root"}
 	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
 	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
-		stubPresenter: stubPresenter{
-			behavior: llmstream.CompletionBehaviorAppend,
-		},
+		stubPresenter: stubPresenter{behavior: llmstream.CompletionBehaviorAppend},
 	})
 
 	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
@@ -897,20 +917,18 @@ func TestSuppressFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *
 		Type:        agent.EventTypeAssistantText,
 		TextContent: llmstream.TextContent{Content: "Checking the diff before the structured result."},
 	})
-	require.Len(t, m.messages, 1)
-	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
 
-	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: readCall})
-	require.Len(t, m.messages, 3)
+	require.Len(t, m.messages, 2)
 	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
 	require.Equal(t, "Checking the diff before the structured result.", m.messages[1].event.TextContent.Content)
-	require.Equal(t, agent.EventTypeToolCall, m.messages[2].event.Type)
 
+	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: readCall})
 	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: readCall, ToolResult: readResult})
 	m.handleAgentEvent(agent.Event{
-		Agent:       child,
-		Type:        agent.EventTypeAssistantText,
-		TextContent: llmstream.TextContent{Content: `{"verdict":"pass"}`},
+		Agent:                   child,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: `{"verdict":"pass"}`},
 	})
 	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
 	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
@@ -923,16 +941,14 @@ func TestSuppressFinalDescendantAssistantTextStillShowsEarlierDescendantText(t *
 	require.Equal(t, "Checking the diff before the structured result.", m.messages[1].event.TextContent.Content)
 }
 
-func TestSuppressFinalDescendantStartSubagentDoesNotAppendMessage(t *testing.T) {
+func TestStartSubagentDoesNotAppendMessageAndEarlierDescendantTextAlreadyVisible(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
 	grandchild := agent.AgentMeta{ID: "nested-subagent", Depth: 2, Parent: child.ID}
 	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
-		stubPresenter: stubPresenter{
-			behavior: llmstream.CompletionBehaviorAppend,
-		},
+		stubPresenter: stubPresenter{behavior: llmstream.CompletionBehaviorAppend},
 	})
 	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
 
@@ -942,9 +958,8 @@ func TestSuppressFinalDescendantStartSubagentDoesNotAppendMessage(t *testing.T) 
 		Type:        agent.EventTypeAssistantText,
 		TextContent: llmstream.TextContent{Content: "Checking the diff before launching deeper analysis."},
 	})
-	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
 
-	require.Len(t, m.messages, 1)
+	require.Len(t, m.messages, 2)
 
 	m.handleAgentEvent(agent.Event{
 		Agent: grandchild,
@@ -973,11 +988,15 @@ func TestCustomizeFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
 	root := agent.AgentMeta{ID: "root"}
 	child := agent.AgentMeta{ID: "review-subagent", Depth: 1, Parent: root.ID}
 	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
-		stubPresenter: stubPresenter{
-			behavior: llmstream.CompletionBehaviorAppend,
-		},
-		block: llmstream.Output{
-			Lines: []string{"Verdict: pass", "No actionable findings."},
+		stubPresenter: stubPresenter{behavior: llmstream.CompletionBehaviorAppend},
+		subagentFinalMessage: func(call llmstream.ToolCall, subagentLabel string, finalMessage string) llmstream.Block {
+			require.Equal(t, "review", call.Name)
+			return llmstream.Output{
+				Lines: []string{
+					"Label: " + subagentLabel,
+					"Message: " + finalMessage,
+				},
+			}
 		},
 	})
 
@@ -995,19 +1014,23 @@ func TestCustomizeFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
 		},
 	})
 	m.handleAgentEvent(agent.Event{
-		Agent:       child,
-		Type:        agent.EventTypeAssistantText,
-		TextContent: llmstream.TextContent{Content: `{"verdict":"pass"}`},
+		Agent:                   child,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: `{"verdict":"pass"}`},
 	})
-	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeAssistantTurnComplete})
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
+	require.Equal(t, "Label: review worker\nMessage: {\"verdict\":\"pass\"}", m.messages[1].event.TextContent.Content)
+	require.Equal(t, child.ID, m.messages[1].event.Agent.ID)
+	require.True(t, m.messages[1].event.AssistantTextFinalizing)
+
 	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
 	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
 
 	require.Len(t, m.messages, 3)
-	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
-	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
-	require.Equal(t, "Verdict: pass\nNo actionable findings.", m.messages[1].event.TextContent.Content)
-	require.Equal(t, child.ID, m.messages[1].event.Agent.ID)
 	require.Equal(t, agent.EventTypeToolComplete, m.messages[2].event.Type)
 }
 

@@ -43,8 +43,9 @@ Basic controls:
     - When a Call comes in, we print it.
     - When a paired Result in, we replace the Call message with the Result.
     - Exception: tools whose presenter uses `Append` should NOT replace the Call with Result (they print both).
-- Displayed descendant subagent final messages respect optional `llmstream.SubagentFinalMessagePresenter`.
-- When a tool presenter does not implement that interface, descendant subagent final messages are displayed as plain text.
+- Descendant non-final assistant text is displayed live as it arrives.
+- Displayed descendant finalizing assistant text respects optional `llmstream.SubagentFinalMessagePresenter`.
+- When a tool presenter does not implement that interface, descendant finalizing assistant text is displayed as plain text.
 - `EventTypeStartSubagent` is metadata for subagent-aware consumers and is not displayed as its own message yet.
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.

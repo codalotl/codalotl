@@ -10,8 +10,9 @@ To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, firs
 - Upon getting a tool call, start a 3 second timer.
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
 - If the three seconds elapses without getting the result, print the tool call. When the result comes in, print that as well.
-- Descendant subagent final-message output respects optional `llmstream.SubagentFinalMessagePresenter`.
-- When a tool presenter does not implement that interface, descendant subagent final messages are printed as plain text.
+- Descendant non-final assistant text streams immediately.
+- Descendant finalizing assistant-text output respects optional `llmstream.SubagentFinalMessagePresenter`.
+- When a tool presenter does not implement that interface, descendant finalizing assistant text is printed as plain text.
 
 ## Finishing a session
 
@@ -39,8 +40,10 @@ JSON mode is a structured log, not a 1:1 dump of every internal `agent.Event`. I
 - `done`, `error`, or `canceled` is terminal event.
 - Validation errors before session start still return an error and print nothing.
 - `user_message` is only the end-user prompt passed to `Exec`. Internal setup messages are not emitted as JSON `user_message` events.
-- Descendant subagent final-message output respects optional `llmstream.SubagentFinalMessagePresenter`.
-- When a tool presenter does not implement that interface, descendant subagent final messages are emitted as plain text.
+- Descendant non-final assistant text streams immediately.
+- Descendant finalizing assistant-text output respects optional `llmstream.SubagentFinalMessagePresenter`.
+- When a tool presenter does not implement that interface, descendant finalizing assistant text is emitted as plain text.
+- The internal finalizing flag on `agent.EventTypeAssistantText` is not exposed as a JSON field.
 
 ### Shared objects
 
@@ -153,7 +156,7 @@ type Options struct {
 
 type Result struct {
 	TerminalEventType   agent.EventType      // Terminal event for this step's run.
-	FinalAssistantText  string               // Final top-level assistant text emitted for this step.
+	FinalAssistantText  string               // Final top-level finalizing assistant text emitted for this step.
 	TokenUsage          llmstream.TokenUsage // Cumulative session token usage after this step, not a per-step delta.
 	ContextUsagePercent int                  // Overall session context usage after this step, based on the latest assistant turn.
 }

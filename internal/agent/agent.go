@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"strings"
 	"sync"
 )
 
@@ -297,21 +298,66 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		sendErr         error
 		completedTurn   *llmstream.Turn
 		seenToolCallIDs = make(map[string]struct{})
+		bufferedText    []llmstream.TextContent
+		emittedTextRuns int
 	)
+
+	emitTextRun := func(parts []llmstream.TextContent, finalizing bool) {
+		if len(parts) == 0 {
+			return
+		}
+
+		a.dispatchEvent(out, Event{
+			Type:                    EventTypeAssistantText,
+			AssistantTextFinalizing: finalizing,
+			TextContent:             coalesceTextContent(parts),
+		})
+		emittedTextRuns++
+	}
+
+	flushBufferedText := func(finalizing bool) {
+		if len(bufferedText) == 0 {
+			return
+		}
+
+		parts := bufferedText
+		bufferedText = nil
+		emitTextRun(parts, finalizing)
+	}
+
+	emitPendingCompletedText := func(turn llmstream.Turn) {
+		runs, trailingRunIndex := assistantTextRuns(turn)
+		bufferedText = nil
+		if len(runs) == 0 {
+			return
+		}
+
+		start := emittedTextRuns
+		if start < 0 {
+			start = 0
+		}
+		if start > len(runs) {
+			start = len(runs)
+		}
+
+		for i := start; i < len(runs); i++ {
+			emitTextRun(runs[i], i == trailingRunIndex)
+		}
+	}
 
 	for ev := range events {
 		switch ev.Type {
 		case llmstream.EventTypeError:
+			flushBufferedText(false)
 			sendErr = ev.Error
 		case llmstream.EventTypeTextDelta:
 			if ev.Text != nil && ev.Done {
-				textCopy := *ev.Text
-				a.dispatchEvent(out, Event{
-					Type:        EventTypeAssistantText,
-					TextContent: textCopy,
-				})
+				bufferedText = append(bufferedText, *ev.Text)
 			}
 		case llmstream.EventTypeReasoningDelta:
+			if ev.Reasoning != nil {
+				flushBufferedText(false)
+			}
 			if ev.Reasoning != nil && ev.Done {
 				reasoningCopy := *ev.Reasoning
 				a.dispatchEvent(out, Event{
@@ -320,6 +366,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 				})
 			}
 		case llmstream.EventTypeToolUse:
+			flushBufferedText(false)
 			if ev.ToolCall != nil {
 				callCopy := *ev.ToolCall
 				seenToolCallIDs[callCopy.CallID] = struct{}{}
@@ -327,22 +374,32 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 			}
 		case llmstream.EventTypeCompletedSuccess:
 			completedTurn = ev.Turn
+			if completedTurn == nil {
+				continue
+			}
+			emitPendingCompletedText(*completedTurn)
 		case llmstream.EventTypeWarning:
+			flushBufferedText(false)
 			a.dispatchEvent(out, Event{Type: EventTypeWarning, Error: ev.Error})
 		case llmstream.EventTypeRetry:
+			flushBufferedText(false)
+			emittedTextRuns = 0
 			a.dispatchEvent(out, Event{Type: EventTypeRetry, Error: ev.Error})
 		}
 	}
 
 	if sendErr != nil {
+		flushBufferedText(false)
 		return nil, nil, sendErr
 	}
 
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		flushBufferedText(false)
 		return nil, nil, ctxErr
 	}
 
 	if completedTurn == nil {
+		flushBufferedText(false)
 		return nil, nil, errMissingCompletion
 	}
 
@@ -359,6 +416,69 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	a.dispatchEvent(out, Event{Type: EventTypeAssistantTurnComplete, Turn: &turnCopy})
 
 	return completedTurn, seenToolCallIDs, nil
+}
+
+func assistantTextRuns(turn llmstream.Turn) ([][]llmstream.TextContent, int) {
+	var runs [][]llmstream.TextContent
+	var current []llmstream.TextContent
+	trailingRunIndex := -1
+
+	for _, part := range turn.Parts {
+		text, ok := part.(llmstream.TextContent)
+		if ok {
+			current = append(current, text)
+			continue
+		}
+
+		if len(current) == 0 {
+			continue
+		}
+
+		runs = append(runs, current)
+		current = nil
+	}
+
+	if len(current) > 0 {
+		trailingRunIndex = len(runs)
+		runs = append(runs, current)
+	}
+
+	return runs, trailingRunIndex
+}
+
+func coalesceTextContent(parts []llmstream.TextContent) llmstream.TextContent {
+	if len(parts) == 0 {
+		return llmstream.TextContent{}
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+
+	providerID := parts[0].ProviderID
+	sameProviderID := true
+	for _, part := range parts {
+		if part.ProviderID != providerID {
+			sameProviderID = false
+		}
+	}
+	if !sameProviderID {
+		providerID = ""
+	}
+
+	var builder strings.Builder
+	totalLen := 0
+	for _, part := range parts {
+		totalLen += len(part.Content)
+	}
+	builder.Grow(totalLen)
+	for _, part := range parts {
+		builder.WriteString(part.Content)
+	}
+
+	return llmstream.TextContent{
+		ProviderID: providerID,
+		Content:    builder.String(),
+	}
 }
 
 func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llmstream.ToolCall, seen map[string]struct{}) error {

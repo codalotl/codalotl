@@ -26,7 +26,7 @@ for ev := range out {
     case agent.EventTypeDoneSuccess:
         fmt.Println("done") // mainAgent ended turn (not via tool use), in a successful manner.
     case agent.EventTypeAssistantText:
-        fmt.Println("message: ", ev.TextContent.Content) // what did the mainAgent say?
+        fmt.Println("message: ", ev.TextContent.Content, ev.AssistantTextFinalizing) // what did the mainAgent say? is it the finalizing message?
     case agent.EventTypeAssistantReasoning:
         fmt.Println("reasoning: ", ev.ReasoningContent.Content)
     case agent.EventTypeToolCall:
@@ -122,9 +122,10 @@ type AgentMeta struct {
 }
 
 type Event struct {
-	Agent         AgentMeta
-	Tool          llmstream.Tool // nil on non-tool events
-	StartSubagent StartSubagent
+	Agent                   AgentMeta
+	Tool                    llmstream.Tool // nil on non-tool events
+	StartSubagent           StartSubagent
+	AssistantTextFinalizing bool // only meaningful when Type == EventTypeAssistantText
 
 	// ... other fields
 }
@@ -136,9 +137,20 @@ type StartSubagent struct {
 }
 ```
 
+## Assistant text events
+
+`EventTypeAssistantText` is a streaming/presentation event for one logical assistant text message within one provider send.
+
+- It is not a delta.
+- It is not an arbitrary `llmstream` text block fragment.
+- Adjacent completed provider text blocks may be coalesced into one `EventTypeAssistantText`.
+- `Event.AssistantTextFinalizing` is only meaningful when `Event.Type == EventTypeAssistantText`.
+- `AssistantTextFinalizing=true` means this assistant text is the trailing assistant text of the completed turn. If any reasoning, tool call, or other turn content follows the text, it is not finalizing.
+- `EventTypeAssistantTurnComplete` remains canonical completed-turn history. `EventTypeAssistantText` is for streaming and presentation.
+
 ## Notes
 
-- The EventTypeAssistantText and EventTypeAssistantReasoning events are only for complete parts, not deltas.
+- `EventTypeAssistantReasoning` is for complete reasoning parts, not deltas.
 - Stopping the agent early is accomplished with the context.
 - An agent needs to be thread-safe. It runs in a different goroutine than its instantiator. All public methods should behave assuming multithreaded access.
 - An agent may only run one active loop. A call to SendUserMessage when it's already running results in an error (on the channel of the 2nd call).

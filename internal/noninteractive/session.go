@@ -39,7 +39,7 @@ type stepStartOutput struct {
 // Result reports structured metadata for one top-level noninteractive step.
 type Result struct {
 	TerminalEventType   agent.EventType      // Terminal event for this step's run.
-	FinalAssistantText  string               // Final top-level assistant text emitted for this step.
+	FinalAssistantText  string               // Final top-level finalizing assistant text emitted for this step.
 	TokenUsage          llmstream.TokenUsage // Cumulative session token usage after this step, not a per-step delta.
 	ContextUsagePercent int                  // Overall session context usage after this step, based on the latest assistant turn.
 }
@@ -78,24 +78,15 @@ type agentDisplayScope struct {
 	subagentLabel         string
 }
 
-type pendingAssistantEvents struct {
-	agent        agent.AgentMeta
-	label        string
-	events       []agent.Event
-	turnComplete bool
-}
-
 type subagentDisplayFilter struct {
-	activeTools      map[string]activeToolDisplayState
-	agentScopes      map[string]agentDisplayScope
-	pendingAssistant map[string]*pendingAssistantEvents
+	activeTools map[string]activeToolDisplayState
+	agentScopes map[string]agentDisplayScope
 }
 
 func newSubagentDisplayFilter() *subagentDisplayFilter {
 	return &subagentDisplayFilter{
-		activeTools:      make(map[string]activeToolDisplayState),
-		agentScopes:      make(map[string]agentDisplayScope),
-		pendingAssistant: make(map[string]*pendingAssistantEvents),
+		activeTools: make(map[string]activeToolDisplayState),
+		agentScopes: make(map[string]agentDisplayScope),
 	}
 }
 
@@ -105,30 +96,40 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
 	}
 
 	f.updateToolState(ev)
+	if ev.Type == agent.EventTypeStartSubagent {
+		return nil, true
+	}
+
+	if ev.Type != agent.EventTypeAssistantText || ev.Agent.Depth == 0 || !ev.AssistantTextFinalizing {
+		return nil, false
+	}
+
 	scope := f.scopeForAgent(ev.Agent)
 	if scope.finalMessagePresenter == nil {
 		return nil, false
 	}
 
-	if ev.Agent.Depth > 0 && isAgentTerminalEvent(ev.Type) {
-		return f.finalizePendingAssistantEvents(scope, ev.Agent.ID), false
+	block := scope.finalMessagePresenter.SubagentFinalMessage(
+		scope.call,
+		scope.subagentLabel,
+		ev.TextContent.Content,
+	)
+	if block == nil {
+		return nil, true
 	}
 
-	flush := f.pendingEventsToFlushBefore(ev)
-	if ev.Type == agent.EventTypeAssistantText {
-		f.bufferAssistantEvent(ev, scope.subagentLabel)
-		return flush, true
-	}
-	if ev.Type == agent.EventTypeAssistantTurnComplete {
-		f.markAssistantTurnComplete(ev.Agent.ID)
-		return flush, true
+	content := agentformatter.RenderPlainTextBlock(block)
+	if content == "" {
+		return nil, true
 	}
 
-	if ev.Type == agent.EventTypeStartSubagent {
-		return flush, true
-	}
-
-	return flush, false
+	return []agent.Event{{
+		Agent: ev.Agent,
+		Type:  agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{
+			Content: content,
+		},
+	}}, true
 }
 
 func (f *subagentDisplayFilter) scopeForAgent(meta agent.AgentMeta) agentDisplayScope {
@@ -157,58 +158,6 @@ func (f *subagentDisplayFilter) scopeForAgent(meta agent.AgentMeta) agentDisplay
 	return scope
 }
 
-func (f *subagentDisplayFilter) pendingEventsToFlushBefore(ev agent.Event) []agent.Event {
-	if f == nil {
-		return nil
-	}
-
-	pending := f.pendingAssistant[ev.Agent.ID]
-	if pending == nil || len(pending.events) == 0 {
-		return nil
-	}
-
-	switch ev.Type {
-	case agent.EventTypeAssistantText:
-		if !pending.turnComplete {
-			return nil
-		}
-	case agent.EventTypeAssistantTurnComplete:
-		return nil
-	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
-		return nil
-	}
-
-	events := pending.events
-	delete(f.pendingAssistant, ev.Agent.ID)
-	return events
-}
-
-func (f *subagentDisplayFilter) bufferAssistantEvent(ev agent.Event, label string) {
-	if f == nil {
-		return
-	}
-	pending := f.pendingAssistant[ev.Agent.ID]
-	if pending == nil {
-		pending = &pendingAssistantEvents{
-			agent: ev.Agent,
-			label: label,
-		}
-		f.pendingAssistant[ev.Agent.ID] = pending
-	}
-	pending.events = append(pending.events, ev)
-}
-
-func (f *subagentDisplayFilter) markAssistantTurnComplete(agentID string) {
-	if f == nil {
-		return
-	}
-	pending := f.pendingAssistant[agentID]
-	if pending == nil {
-		return
-	}
-	pending.turnComplete = true
-}
-
 func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
 	if f == nil {
 		return
@@ -218,33 +167,12 @@ func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
 	case agent.EventTypeToolCall:
 		f.activeTools[ev.Agent.ID] = activeToolDisplayState{call: toolCallFromToolEvent(ev), finalMessagePresenter: subagentFinalMessagePresenterFromToolEvent(ev)}
 	case agent.EventTypeToolComplete:
-		callID := toolCallIDFromEvent(ev)
-		if callID == "" {
-			callID = f.activeTools[ev.Agent.ID].call.CallID
-		}
 		delete(f.activeTools, ev.Agent.ID)
-		f.discardFinalAssistantEventsForScope(ev.Agent.ID, callID)
 	case agent.EventTypeStartSubagent:
 		if ev.Agent.ID == "" {
 			return
 		}
 		f.agentScopes[ev.Agent.ID] = f.scopeFromStartSubagent(ev)
-	}
-}
-
-func (f *subagentDisplayFilter) discardFinalAssistantEventsForScope(agentID string, callID string) {
-	if f == nil || strings.TrimSpace(agentID) == "" {
-		return
-	}
-
-	for childID, scope := range f.agentScopes {
-		if scope.launcherAgentID != agentID {
-			continue
-		}
-		if callID != "" && scope.launcherToolCall != "" && scope.launcherToolCall != callID {
-			continue
-		}
-		delete(f.pendingAssistant, childID)
 	}
 }
 
@@ -288,64 +216,6 @@ func (f *subagentDisplayFilter) scopeFromStartSubagent(ev agent.Event) agentDisp
 		scope.launcherToolCall = active.call.CallID
 	}
 	return scope
-}
-
-func (f *subagentDisplayFilter) finalizePendingAssistantEvents(scope agentDisplayScope, agentID string) []agent.Event {
-	if f == nil {
-		return nil
-	}
-	pending := f.pendingAssistant[agentID]
-	delete(f.pendingAssistant, agentID)
-	if pending == nil || !pending.turnComplete || scope.finalMessagePresenter == nil {
-		return nil
-	}
-
-	block := scope.finalMessagePresenter.SubagentFinalMessage(
-		scope.call,
-		pending.label,
-		descendantAssistantText(pending.events),
-	)
-	if block == nil {
-		return nil
-	}
-
-	content := agentformatter.RenderPlainTextBlock(block)
-	if content == "" {
-		return nil
-	}
-
-	return []agent.Event{{
-		Agent: pending.agent,
-		Type:  agent.EventTypeAssistantText,
-		TextContent: llmstream.TextContent{
-			Content: content,
-		},
-	}}
-}
-
-func toolCallIDFromEvent(ev agent.Event) string {
-	if ev.ToolCall != nil && strings.TrimSpace(ev.ToolCall.CallID) != "" {
-		return ev.ToolCall.CallID
-	}
-	if ev.ToolResult != nil {
-		return strings.TrimSpace(ev.ToolResult.CallID)
-	}
-	return ""
-}
-
-func isAgentTerminalEvent(eventType agent.EventType) bool {
-	return eventType == agent.EventTypeDoneSuccess || eventType == agent.EventTypeError || eventType == agent.EventTypeCanceled
-}
-
-func descendantAssistantText(events []agent.Event) string {
-	var b strings.Builder
-	for _, ev := range events {
-		if ev.Type != agent.EventTypeAssistantText {
-			continue
-		}
-		b.WriteString(ev.TextContent.Content)
-	}
-	return b.String()
 }
 
 func buildSessionConfig(opts Options) (sessionConfig, error) {
@@ -522,7 +392,6 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 
 	result := Result{}
 	var terminalErr error
-	var partialAssistantText strings.Builder
 	displayFilter := newSubagentDisplayFilter()
 
 	for ev := range s.agent.SendUserMessage(ctx, userPrompt) {
@@ -533,16 +402,12 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 
 		switch ev.Type {
 		case agent.EventTypeAssistantText:
-			if ev.Agent.Depth == 0 {
-				appendAssistantText(&partialAssistantText, ev.TextContent.Content)
+			if ev.Agent.Depth == 0 && ev.AssistantTextFinalizing {
+				result.FinalAssistantText = ev.TextContent.Content
 			}
 		case agent.EventTypeAssistantTurnComplete:
 			if ev.Turn != nil {
 				s.completedAssistantTurnsByAgent[ev.Agent.ID] = append(s.completedAssistantTurnsByAgent[ev.Agent.ID], *ev.Turn)
-				if ev.Agent.Depth == 0 {
-					result.FinalAssistantText = ev.Turn.TextContent()
-					partialAssistantText.Reset()
-				}
 			}
 			continue
 		case agent.EventTypeDoneSuccess:
@@ -629,10 +494,6 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 			result.TerminalEventType = ev.Type
 			terminalErr = ev.Error
 		}
-	}
-
-	if partialAssistantText.Len() > 0 {
-		result.FinalAssistantText = partialAssistantText.String()
 	}
 	result.TokenUsage = s.agent.TokenUsage()
 	result.ContextUsagePercent = s.agent.ContextUsagePercent()
@@ -750,14 +611,4 @@ func writeOutputLine(out io.Writer, s string) error {
 	}
 	_, err := io.WriteString(out, s)
 	return err
-}
-
-func appendAssistantText(b *strings.Builder, content string) {
-	if b == nil || content == "" {
-		return
-	}
-	if b.Len() > 0 {
-		b.WriteString("\n\n")
-	}
-	b.WriteString(content)
 }

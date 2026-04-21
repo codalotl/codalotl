@@ -3,13 +3,13 @@ package agent
 import (
 	"context"
 	"fmt"
-	"strings"
+
+	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
 // CollectFinalAssistantText drains an agent event stream and returns the final assistant text answer, or an error if the stream terminates unsuccessfully.
 func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string, error) {
-	var assistantText []string
-	lastTurnText := ""
+	finalAssistantText := ""
 	targetAgentID := ""
 
 	for event := range events {
@@ -24,22 +24,20 @@ func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string
 
 		switch event.Type {
 		case EventTypeAssistantText:
-			text := strings.TrimSpace(event.TextContent.Content)
-			if text != "" {
-				assistantText = append(assistantText, text)
+			if event.AssistantTextFinalizing {
+				finalAssistantText = event.TextContent.Content
 			}
 		case EventTypeAssistantTurnComplete:
-			if event.Turn != nil {
-				lastTurnText = strings.TrimSpace(event.Turn.TextContent())
+			if event.Turn == nil {
+				continue
 			}
+			if turnEndsWithAssistantText(*event.Turn) {
+				finalAssistantText = event.Turn.TextContent()
+				continue
+			}
+			finalAssistantText = ""
 		case EventTypeDoneSuccess:
-			if lastTurnText != "" {
-				return lastTurnText, nil
-			}
-			if len(assistantText) > 0 {
-				return strings.Join(assistantText, "\n\n"), nil
-			}
-			return "", nil
+			return finalAssistantText, nil
 		case EventTypeCanceled:
 			if event.Error != nil {
 				return "", event.Error
@@ -56,15 +54,17 @@ func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string
 		}
 	}
 
-	if lastTurnText != "" {
-		return lastTurnText, nil
-	}
-	if len(assistantText) > 0 {
-		return strings.Join(assistantText, "\n\n"), nil
+	if finalAssistantText != "" {
+		return finalAssistantText, nil
 	}
 
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	return "", fmt.Errorf("agent did not return an answer")
+}
+
+func turnEndsWithAssistantText(turn llmstream.Turn) bool {
+	_, trailingRunIndex := assistantTextRuns(turn)
+	return trailingRunIndex >= 0
 }
