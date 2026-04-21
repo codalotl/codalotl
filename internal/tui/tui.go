@@ -132,12 +132,8 @@ type queuedMessage struct {
 }
 
 type toolDisplayScope struct {
-	call                          llmstream.ToolCall
-	finalMessagePresenter         llmstream.SubagentFinalMessagePresenter
-	pendingDescendantAgent        agent.AgentMeta
-	pendingDescendantLabel        string
-	pendingDescendantTurn         []agent.Event
-	pendingDescendantTurnComplete bool
+	call                  llmstream.ToolCall
+	finalMessagePresenter llmstream.SubagentFinalMessagePresenter
 }
 
 type toolDisplayScopeRef struct {
@@ -1909,6 +1905,10 @@ func toolSubagentFinalMessagePresenter(ev agent.Event) (llmstream.SubagentFinalM
 }
 
 func (m *model) handleDescendantSubagentFinalMessage(ev agent.Event, autoScroll bool) bool {
+	if ev.Type != agent.EventTypeAssistantText || !ev.AssistantTextFinalizing {
+		return false
+	}
+
 	ref, ok := m.enclosingToolDisplayScope(ev.Agent)
 	if !ok {
 		return false
@@ -1946,102 +1946,31 @@ func (m *model) handleCustomizedDescendantFinalMessage(ref toolDisplayScopeRef, 
 		return false
 	}
 
-	switch ev.Type {
-	case agent.EventTypeAssistantText:
-		if scope.pendingDescendantAgent.ID != "" && scope.pendingDescendantAgent.ID != ev.Agent.ID {
-			m.flushPendingDescendantTurn(scope)
-		}
-		if scope.pendingDescendantTurnComplete {
-			m.flushPendingDescendantTurn(scope)
-		}
-		if len(scope.pendingDescendantTurn) == 0 {
-			scope.pendingDescendantAgent = ev.Agent
-			scope.pendingDescendantLabel = m.subagentLabels[ev.Agent.ID]
-		}
-		scope.pendingDescendantTurn = append(scope.pendingDescendantTurn, ev)
-		scope.pendingDescendantTurnComplete = false
-		return true
-	case agent.EventTypeAssistantTurnComplete:
-		if len(scope.pendingDescendantTurn) == 0 {
-			return false
-		}
-		scope.pendingDescendantTurnComplete = true
-		return true
-	case agent.EventTypeStartSubagent:
-		if len(scope.pendingDescendantTurn) > 0 {
-			m.flushPendingDescendantTurn(scope)
-			m.refreshViewport(autoScroll)
-		}
-		return true
-	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
-		m.finalizePendingDescendantTurn(scope, autoScroll)
-		return false
-	case agent.EventTypeUserMessageQueued:
-		return false
-	default:
-		if len(scope.pendingDescendantTurn) == 0 {
-			return false
-		}
-		m.flushPendingDescendantTurn(scope)
-		return false
-	}
-}
-
-func (m *model) flushPendingDescendantTurn(scope *toolDisplayScope) {
-	if scope == nil {
-		return
-	}
-	for _, pending := range scope.pendingDescendantTurn {
-		m.appendAgentEvent(pending)
-	}
-	m.resetPendingDescendantTurn(scope)
-}
-
-func (m *model) finalizePendingDescendantTurn(scope *toolDisplayScope, autoScroll bool) {
-	if scope == nil || len(scope.pendingDescendantTurn) == 0 {
-		m.resetPendingDescendantTurn(scope)
-		return
-	}
-
-	if !scope.pendingDescendantTurnComplete {
-		m.resetPendingDescendantTurn(scope)
-		return
-	}
-
 	block := scope.finalMessagePresenter.SubagentFinalMessage(
 		scope.call,
-		scope.pendingDescendantLabel,
-		descendantAssistantText(scope.pendingDescendantTurn),
+		m.subagentLabels[ev.Agent.ID],
+		ev.TextContent.Content,
 	)
-	agentMeta := scope.pendingDescendantAgent
-	m.resetPendingDescendantTurn(scope)
 	if block == nil {
-		return
+		return true
 	}
 
 	content := agentformatter.RenderPlainTextBlock(block)
 	if content == "" {
-		return
+		return true
 	}
 
 	m.appendAgentEvent(agent.Event{
-		Agent: agentMeta,
-		Type:  agent.EventTypeAssistantText,
+		Agent:                   ev.Agent,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: ev.AssistantTextFinalizing,
 		TextContent: llmstream.TextContent{
-			Content: content,
+			ProviderID: ev.TextContent.ProviderID,
+			Content:    content,
 		},
 	})
 	m.refreshViewport(autoScroll)
-}
-
-func (m *model) resetPendingDescendantTurn(scope *toolDisplayScope) {
-	if scope == nil {
-		return
-	}
-	scope.pendingDescendantAgent = agent.AgentMeta{}
-	scope.pendingDescendantLabel = ""
-	scope.pendingDescendantTurn = nil
-	scope.pendingDescendantTurnComplete = false
+	return true
 }
 
 func (m *model) recordSubagentStart(ev agent.Event) {
@@ -2049,17 +1978,6 @@ func (m *model) recordSubagentStart(ev agent.Event) {
 		return
 	}
 	m.subagentLabels[ev.Agent.ID] = ev.StartSubagent.Label
-}
-
-func descendantAssistantText(events []agent.Event) string {
-	var b strings.Builder
-	for _, ev := range events {
-		if ev.Type != agent.EventTypeAssistantText {
-			continue
-		}
-		b.WriteString(ev.TextContent.Content)
-	}
-	return b.String()
 }
 
 // refreshViewport calculates the contents of the viewport, calls SetContent on it, and optionally scrolls to the bottom.
