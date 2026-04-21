@@ -337,7 +337,7 @@ That is a code-sharing change, not a new user-visible abstraction.
 
 Land the shared result/presentation changes first, then teach TUI to render `check_spec_conformance` as a composite tool call with stable package slots.
 
-#### Package internal/tools/spectools
+#### Package internal/tools/spectools [DONE]
 - Update `internal/tools/spectools/SPEC.md` for:
   - `postcheck_error` on otherwise-valid package results
   - human-readable package slot formatting via `SubagentFinalMessage`
@@ -374,4 +374,8 @@ Pending.
   - start-subagent events with labels
   - finalizing assistant text detection in `internal/agent`
   - `llmstream.SubagentFinalMessagePresenter`
-- No current `## Plan`/`## Review`/`##Summary`/`## State` existed before this step.
+- `internal/tools/spectools` landed:
+  - `postcheck_error` preserves valid package verdicts when CAS writes fail
+  - shared parsing/summary/package-formatting helpers exist for TUI reuse
+  - presenter now formats package final JSON into human-readable blocks
+- Focused validation done: `go test ./internal/tools/spectools`
