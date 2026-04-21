@@ -1,1 +1,0 @@
-hello-world integration fixture
