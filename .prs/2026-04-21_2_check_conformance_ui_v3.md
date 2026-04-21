@@ -345,13 +345,12 @@ Land the shared result/presentation changes first, then teach TUI to render `che
 - Add shared parsing/formatting helpers for package results and summary counts.
 - Keep raw tool result machine-readable JSON.
 
-#### Package internal/tui
+#### Package internal/tui [DONE]
 - Update `internal/tui/SPEC.md` for tool-specific package-slot rendering for `check_spec_conformance`.
 - Add per-tool-call state for direct package subagents.
 - Render one stable slot per direct package subagent label.
 - Show latest descendant event while active, then replace with terminal package result.
 - Render compact completion summary plus `postcheck_error` lines under `Checked SPEC conformance`.
-- Follow-up before review: preserve normal completion rendering for overall tool-error cases instead of showing an invalid-result fallback.
 
 #### Validation
 - Run focused tests for `internal/tools/spectools` and `internal/tui`.
@@ -384,4 +383,8 @@ Pending.
   - stable package slots under the active call
   - nested descendant events collapse into the owning package slot
   - compact completion summary uses shared `spectools` helpers
-- One known pre-review follow-up: overall tool-error completions should keep the normal error rendering path.
+- `internal/tui` follow-up landed:
+  - overall tool-error completions keep the normal error rendering path
+- Validation done:
+  - `go test ./internal/tui`
+  - `go test ./...`
