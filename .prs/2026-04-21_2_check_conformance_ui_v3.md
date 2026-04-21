@@ -88,8 +88,19 @@ UI Requirements:
     - For subagents that end in JSON (like this one), don't show, eg, `{"conforms":true}` to the user. User doesn't want to read JSON. It needs to be formatted somehow.
 - The result shown under the final overall tool call "Checked SPEC conformance" is a summary, and doesn't show all specific nonconformances, because we showed those under the subagent.
     - This intentionally changes the current check_spec_conformance completion presentation contract, which today includes detailed nonconformance text in the final tool result body.
-- In terms of concurrency, a goroutne handles "checking conformance and storing in CAS for a package". So things happen after the subagent itself is done and has produced JSON, including errors.
-    - You must decide how to handle this. We can somehow route post-subagent errors to the per-package "slot". Or we could say that errors that happen after the subagent are shown in the overall tool call result. Or maybe something else?
+- In terms of concurrency, a goroutine handles "checking conformance and storing in CAS for a package". So things happen after the subagent itself is done and has produced JSON, including errors.
+    - Putting these errors into the package's "slot" complicates the design.
+    - Therefore, I want to NOT support doing that. These post-subagent errors will be displayed in the overall tool summary.
+    - This means the user could see that a package conforms (which is true), some error occurred in saving the result. Example (exact form is NOT a requirement):
+
+```
+• Checking SPEC conformance
+  • Subagent in internal/baz
+    • Conforms
+• Checked SPEC conformance
+  └ 1 conforming
+    Error when saving internal/baz conformance to file.
+```
 
 My Extra requirements of you, the Omnipotent Orchestrator:
 - before you make a `## Plan`, make a `## Design`.
