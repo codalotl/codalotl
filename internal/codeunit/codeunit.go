@@ -400,7 +400,10 @@ func (c *CodeUnit) includeReachableDirsNamedWithFilter(name string, shouldSkipDi
 				continue
 			}
 
-			if _, ok := c.includedDirs[child]; ok {
+			if entry.Name() == name {
+				if err := c.includeExistingDir(child, true, shouldSkipDir); err != nil {
+					return err
+				}
 				if _, seen := queued[child]; !seen {
 					queued[child] = struct{}{}
 					queue = append(queue, child)
@@ -408,15 +411,13 @@ func (c *CodeUnit) includeReachableDirsNamedWithFilter(name string, shouldSkipDi
 				continue
 			}
 
-			if entry.Name() != name {
+			if _, ok := c.includedDirs[child]; ok {
+				if _, seen := queued[child]; !seen {
+					queued[child] = struct{}{}
+					queue = append(queue, child)
+				}
 				continue
 			}
-
-			if err := c.includeExistingDir(child, true, shouldSkipDir); err != nil {
-				return err
-			}
-			queued[child] = struct{}{}
-			queue = append(queue, child)
 		}
 	}
 

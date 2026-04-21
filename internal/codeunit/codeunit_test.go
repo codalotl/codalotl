@@ -193,6 +193,51 @@ func TestDefaultGoCodeUnitKeepsVisibleParentOfSkippedHiddenDir(t *testing.T) {
 	assert.Equal(t, expected, unit.IncludedFiles())
 }
 
+func TestDefaultGoCodeUnitIncludesGoFilesUnderReachableTestdataSubtree(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+
+	writeFile := func(rel string) {
+		t.Helper()
+		path := filepath.Join(base, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("payload"), 0o644))
+	}
+
+	writeFile("main.go")
+	writeFile(filepath.Join("testdata", "fixtures", "data.json"))
+	writeFile(filepath.Join("testdata", "repo", "go.mod"))
+	writeFile(filepath.Join("testdata", "repo", "orders.go"))
+	writeFile(filepath.Join("testdata", "repo", "orders_test.go"))
+
+	unit, err := codeunit.DefaultGoCodeUnit(base)
+	require.NoError(t, err)
+
+	assert.True(t, unit.Includes("testdata"))
+	assert.True(t, unit.Includes(filepath.Join("testdata", "fixtures")))
+	assert.True(t, unit.Includes(filepath.Join("testdata", "fixtures", "data.json")))
+	assert.True(t, unit.Includes(filepath.Join("testdata", "repo")))
+	assert.True(t, unit.Includes(filepath.Join("testdata", "repo", "go.mod")))
+	assert.True(t, unit.Includes(filepath.Join("testdata", "repo", "orders.go")))
+	assert.True(t, unit.Includes(filepath.Join("testdata", "repo", "orders_test.go")))
+
+	expected := []string{
+		base,
+		filepath.Join(base, "main.go"),
+		filepath.Join(base, "testdata"),
+		filepath.Join(base, "testdata", "fixtures"),
+		filepath.Join(base, "testdata", "fixtures", "data.json"),
+		filepath.Join(base, "testdata", "repo"),
+		filepath.Join(base, "testdata", "repo", "go.mod"),
+		filepath.Join(base, "testdata", "repo", "orders.go"),
+		filepath.Join(base, "testdata", "repo", "orders_test.go"),
+	}
+	slices.Sort(expected)
+
+	assert.Equal(t, expected, unit.IncludedFiles())
+}
+
 func TestDefaultGoCodeUnitNameUsesModuleRelativePath(t *testing.T) {
 	t.Parallel()
 
