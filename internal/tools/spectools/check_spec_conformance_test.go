@@ -150,6 +150,10 @@ func TestParsePackageCheckResultRejectsInvalidResultShapes(t *testing.T) {
 			name:   "conforms false with empty nonconformances",
 			answer: `{"conforms":false,"nonconformances":[]}`,
 		},
+		{
+			name:   "postcheck error from subagent",
+			answer: `{"conforms":true,"postcheck_error":"store CAS conformance: denied"}`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -168,7 +172,8 @@ func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing
 
 	body, ok := presentCheckSpecConformanceBody(`{
 		"internal/foo": {
-			"conforms": true
+			"conforms": true,
+			"postcheck_error": "store CAS conformance: permission denied"
 		},
 		"internal/bar": {
 			"conforms": false,
@@ -194,6 +199,67 @@ func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing
 	assert.Contains(t, rendered, "- [major, new] missing Foo docs")
 	assert.Contains(t, rendered, "- [minor, latent] Bar usage example is stale")
 	assert.Contains(t, rendered, "Errors: internal/baz")
+	assert.Contains(t, rendered, "Post-check errors:")
+	assert.Contains(t, rendered, "internal/foo: store CAS conformance: permission denied")
+}
+
+func TestParseAndSummarizeCheckSpecConformanceResults(t *testing.T) {
+	t.Parallel()
+
+	results, err := ParseCheckSpecConformanceResults(`{
+		"internal/foo": {
+			"conforms": true,
+			"postcheck_error": "store CAS conformance: permission denied"
+		},
+		"internal/bar": {
+			"conforms": false,
+			"nonconformances": [
+				{"severity": "major", "latent": false, "message": "missing Foo docs"}
+			]
+		},
+		"internal/baz": {
+			"error": "timed out"
+		}
+	}`)
+	require.NoError(t, err)
+
+	summary := SummarizeCheckSpecConformanceResults(results)
+	assert.Equal(t, 1, summary.ConformingCount)
+	assert.Equal(t, 1, summary.NonconformingCount)
+	assert.Equal(t, 1, summary.ErrorCount)
+	assert.Equal(t, []string{"internal/foo"}, summary.ConformingPackages)
+	assert.Equal(t, []string{"internal/bar"}, summary.NonconformingPackages)
+	assert.Equal(t, []string{"internal/baz"}, summary.ErrorPackages)
+	assert.Equal(t, []CheckSpecConformancePostcheckError{{
+		Package: "internal/foo",
+		Error:   "store CAS conformance: permission denied",
+	}}, summary.PostcheckErrors)
+}
+
+func TestFormatCheckSpecConformancePackageFinalMessage(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nonconforming", func(t *testing.T) {
+		t.Parallel()
+
+		rendered := renderBlock(t, FormatCheckSpecConformancePackageFinalMessage(`{
+			"conforms": false,
+			"nonconformances": [
+				{"severity": "major", "latent": true, "message": "missing Foo docs"},
+				{"severity": "minor", "latent": false, "message": "Bar usage example is stale"}
+			]
+		}`))
+		assert.Contains(t, rendered, "Non-conforming")
+		assert.Contains(t, rendered, "[Latent][major] missing Foo docs")
+		assert.Contains(t, rendered, "[New][minor] Bar usage example is stale")
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		t.Parallel()
+
+		rendered := renderBlock(t, FormatCheckSpecConformancePackageFinalMessage(`not json`))
+		assert.Equal(t, "Invalid conformance result", rendered)
+	})
 }
 
 func TestRunPackageCheckWithSubagentLabelsSubagentWithPackageKey(t *testing.T) {
@@ -899,7 +965,8 @@ func TestRunRecordsPackageCASWriteFailuresWithoutFailingOverall(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
 	require.Len(t, parsed, 1)
 	require.Contains(t, parsed, "internal/foo")
-	assert.Contains(t, parsed["internal/foo"].Error, "store CAS conformance: writes disabled")
+	assert.Empty(t, parsed["internal/foo"].Error)
+	assert.Equal(t, "store CAS conformance: writes disabled", parsed["internal/foo"].PostcheckError)
 }
 
 type fakeGitRunner struct {
@@ -1109,4 +1176,12 @@ func renderPresentationLines(lines []llmstream.Line) string {
 	}
 
 	return strings.Join(rendered, "\n")
+}
+
+func renderBlock(t *testing.T, block llmstream.Block) string {
+	t.Helper()
+
+	paragraph, ok := block.(llmstream.Paragraph)
+	require.True(t, ok)
+	return renderPresentationLines(paragraph.Lines)
 }
