@@ -46,6 +46,22 @@ func (descriptiveFormatter) FormatEvent(ev agent.Event, _ int) string {
 	}
 }
 
+type errorAwareFormatter struct{}
+
+func (errorAwareFormatter) FormatEvent(ev agent.Event, _ int) string {
+	switch ev.Type {
+	case agent.EventTypeToolCall:
+		return fmt.Sprintf("tool-call: %s", toolName(ev))
+	case agent.EventTypeToolComplete:
+		if ev.ToolResult != nil && ev.ToolResult.IsError {
+			return fmt.Sprintf("tool-result-error: %s", ev.ToolResult.Result)
+		}
+		return fmt.Sprintf("tool-result: %s", toolName(ev))
+	default:
+		return fmt.Sprintf("event: %s", ev.Type)
+	}
+}
+
 type stubPresenter struct {
 	behavior llmstream.CompletionBehavior
 }
@@ -1248,6 +1264,38 @@ func TestCheckSpecConformanceCompletionAppendsCompactSummary(t *testing.T) {
 	require.Contains(t, summaryText, "tool-result(depth=0): check_spec_conformance")
 	require.Contains(t, summaryText, "1 conforming, 1 non-conforming, 1 error")
 	require.Contains(t, summaryText, "Postcheck error for internal/foo: permission denied")
+}
+
+func TestCheckSpecConformanceCompletionErrorUsesNormalToolRendering(t *testing.T) {
+	m := newModel(colorPalette{}, errorAwareFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
+		ToolCall: checkCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolComplete,
+		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
+		ToolCall: checkCall,
+		ToolResult: &llmstream.ToolResult{
+			CallID:  checkCall.CallID,
+			Name:    spectools.ToolNameCheckSpecConformance,
+			Result:  "failed before launching package checks",
+			IsError: true,
+		},
+	})
+
+	require.Len(t, m.messages, 2)
+
+	summaryText := renderAgentMessageText(t, m, 1, 120)
+	require.Contains(t, summaryText, "tool-result-error: failed before launching package checks")
+	require.NotContains(t, summaryText, "Invalid SPEC conformance result")
 }
 
 func TestToolNamePrecedence(t *testing.T) {

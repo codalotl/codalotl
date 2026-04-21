@@ -157,6 +157,9 @@ func (m *model) renderToolSpecificMessage(msg *chatMessage, width int) (string, 
 		if toolName(msg.event) != spectools.ToolNameCheckSpecConformance {
 			return "", false
 		}
+		if msg.event.ToolResult == nil || msg.event.ToolResult.IsError {
+			return "", false
+		}
 		return m.renderCheckSpecConformanceCompleteMessage(msg.event, width), true
 	default:
 		return "", false
