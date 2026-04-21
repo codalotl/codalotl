@@ -28,7 +28,11 @@ func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string
 				finalAssistantText = event.TextContent.Content
 			}
 		case EventTypeAssistantTurnComplete:
-			if event.Turn == nil || turnEndsWithAssistantText(*event.Turn) {
+			if event.Turn == nil {
+				continue
+			}
+			if turnEndsWithAssistantText(*event.Turn) {
+				finalAssistantText = event.Turn.TextContent()
 				continue
 			}
 			finalAssistantText = ""

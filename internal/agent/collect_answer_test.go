@@ -11,7 +11,7 @@ import (
 )
 
 func TestCollectFinalAssistantText_PrefersCompletedTurnText(t *testing.T) {
-	events := make(chan Event, 3)
+	events := make(chan Event, 4)
 	events <- Event{
 		Type:        EventTypeAssistantText,
 		TextContent: llmstream.TextContent{Content: "intermediate"},
@@ -19,14 +19,40 @@ func TestCollectFinalAssistantText_PrefersCompletedTurnText(t *testing.T) {
 	events <- Event{
 		Type:                    EventTypeAssistantText,
 		AssistantTextFinalizing: true,
-		TextContent:             llmstream.TextContent{Content: "final answer"},
+		TextContent:             llmstream.TextContent{Content: "streamed answer"},
+	}
+	events <- Event{
+		Type: EventTypeAssistantTurnComplete,
+		Turn: &llmstream.Turn{
+			Role:         llmstream.RoleAssistant,
+			Parts:        []llmstream.ContentPart{llmstream.TextContent{Content: "completed answer"}},
+			FinishReason: llmstream.FinishReasonEndTurn,
+		},
 	}
 	events <- Event{Type: EventTypeDoneSuccess}
 	close(events)
 
 	answer, err := CollectFinalAssistantText(context.Background(), events)
 	require.NoError(t, err)
-	assert.Equal(t, "final answer", answer)
+	assert.Equal(t, "completed answer", answer)
+}
+
+func TestCollectFinalAssistantText_FallsBackToCompletedTurnText(t *testing.T) {
+	events := make(chan Event, 2)
+	events <- Event{
+		Type: EventTypeAssistantTurnComplete,
+		Turn: &llmstream.Turn{
+			Role:         llmstream.RoleAssistant,
+			Parts:        []llmstream.ContentPart{llmstream.TextContent{Content: "completed answer"}},
+			FinishReason: llmstream.FinishReasonEndTurn,
+		},
+	}
+	events <- Event{Type: EventTypeDoneSuccess}
+	close(events)
+
+	answer, err := CollectFinalAssistantText(context.Background(), events)
+	require.NoError(t, err)
+	assert.Equal(t, "completed answer", answer)
 }
 
 func TestCollectFinalAssistantText_IgnoresNonFinalAssistantTextEvents(t *testing.T) {
