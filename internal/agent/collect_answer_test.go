@@ -142,6 +142,48 @@ func TestCollectFinalAssistantText_IgnoresDescendantError(t *testing.T) {
 	assert.Equal(t, "root answer", answer)
 }
 
+func TestCollectFinalAssistantText_ClearsStaleTopLevelFinalizingTextOnLaterTurnWithoutAssistantText(t *testing.T) {
+	events := make(chan Event, 5)
+	events <- Event{
+		Agent:                   AgentMeta{ID: "root", Depth: 0},
+		Type:                    EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: "first answer"},
+	}
+	events <- Event{
+		Agent: AgentMeta{ID: "root", Depth: 0},
+		Type:  EventTypeAssistantTurnComplete,
+		Turn: &llmstream.Turn{
+			Role:         llmstream.RoleAssistant,
+			Parts:        []llmstream.ContentPart{llmstream.TextContent{Content: "first answer"}},
+			FinishReason: llmstream.FinishReasonEndTurn,
+		},
+	}
+	events <- Event{
+		Agent:       AgentMeta{ID: "root", Depth: 0},
+		Type:        EventTypeQueuedUserMessageSent,
+		UserMessage: "follow up",
+	}
+	events <- Event{
+		Agent: AgentMeta{ID: "root", Depth: 0},
+		Type:  EventTypeAssistantTurnComplete,
+		Turn: &llmstream.Turn{
+			Role:         llmstream.RoleAssistant,
+			Parts:        []llmstream.ContentPart{llmstream.ReasoningContent{Content: "thinking"}},
+			FinishReason: llmstream.FinishReasonEndTurn,
+		},
+	}
+	events <- Event{
+		Agent: AgentMeta{ID: "root", Depth: 0},
+		Type:  EventTypeDoneSuccess,
+	}
+	close(events)
+
+	answer, err := CollectFinalAssistantText(context.Background(), events)
+	require.NoError(t, err)
+	assert.Empty(t, answer)
+}
+
 func TestCollectFinalAssistantText_ReturnsGenericErrorWhenNoAnswer(t *testing.T) {
 	events := make(chan Event)
 	close(events)

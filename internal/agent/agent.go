@@ -383,6 +383,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 			a.dispatchEvent(out, Event{Type: EventTypeWarning, Error: ev.Error})
 		case llmstream.EventTypeRetry:
 			flushBufferedText(false)
+			emittedTextRuns = 0
 			a.dispatchEvent(out, Event{Type: EventTypeRetry, Error: ev.Error})
 		}
 	}

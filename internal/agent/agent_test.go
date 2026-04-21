@@ -378,6 +378,53 @@ func TestSendUserMessageFlushesBufferedAssistantTextOnCancellation(t *testing.T)
 	require.ErrorIs(t, events[1].Error, context.Canceled)
 }
 
+func TestSendUserMessageRetryResetsCompletedTextRunBookkeeping(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	draftText := llmstream.TextContent{ProviderID: "text-draft", Content: "draft"}
+	finalText := llmstream.TextContent{ProviderID: "text-final", Content: "final"}
+	assistantTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt, &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeTextDelta, Text: &draftText, Delta: draftText.Content, Done: true},
+			{Type: llmstream.EventTypeRetry, Error: errors.New("retrying")},
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &assistantTurn},
+		},
+	})
+	overrideConversation(t, conv)
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Say hello") {
+		events = append(events, ev)
+	}
+
+	require.Len(t, events, 5)
+	require.Equal(t, EventTypeAssistantText, events[0].Type)
+	require.Equal(t, draftText.Content, events[0].TextContent.Content)
+	require.False(t, events[0].AssistantTextFinalizing)
+
+	require.Equal(t, EventTypeRetry, events[1].Type)
+	require.EqualError(t, events[1].Error, "retrying")
+
+	require.Equal(t, EventTypeAssistantText, events[2].Type)
+	require.Equal(t, finalText.Content, events[2].TextContent.Content)
+	require.True(t, events[2].AssistantTextFinalizing)
+
+	require.Equal(t, EventTypeAssistantTurnComplete, events[3].Type)
+	require.Equal(t, EventTypeDoneSuccess, events[4].Type)
+}
+
 func TestSendUserMessageCompletedSuccessEmitsNonFinalAssistantTextWhenTurnEndsWithReasoning(t *testing.T) {
 	systemPrompt := "You are helpful."
 

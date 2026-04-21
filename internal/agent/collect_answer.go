@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"fmt"
+
+	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
 // CollectFinalAssistantText drains an agent event stream and returns the final assistant text answer, or an error if the stream terminates unsuccessfully.
@@ -25,6 +27,11 @@ func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string
 			if event.AssistantTextFinalizing {
 				finalAssistantText = event.TextContent.Content
 			}
+		case EventTypeAssistantTurnComplete:
+			if event.Turn == nil || turnEndsWithAssistantText(*event.Turn) {
+				continue
+			}
+			finalAssistantText = ""
 		case EventTypeDoneSuccess:
 			return finalAssistantText, nil
 		case EventTypeCanceled:
@@ -51,4 +58,9 @@ func CollectFinalAssistantText(ctx context.Context, events <-chan Event) (string
 		return "", err
 	}
 	return "", fmt.Errorf("agent did not return an answer")
+}
+
+func turnEndsWithAssistantText(turn llmstream.Turn) bool {
+	_, trailingRunIndex := assistantTextRuns(turn)
+	return trailingRunIndex >= 0
 }
