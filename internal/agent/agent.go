@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"strings"
 	"sync"
 )
 
@@ -298,20 +299,50 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		completedTurn   *llmstream.Turn
 		seenToolCallIDs = make(map[string]struct{})
 		bufferedText    []llmstream.TextContent
+		emittedTextRuns int
 	)
+
+	emitTextRun := func(parts []llmstream.TextContent, finalizing bool) {
+		if len(parts) == 0 {
+			return
+		}
+
+		a.dispatchEvent(out, Event{
+			Type:                    EventTypeAssistantText,
+			AssistantTextFinalizing: finalizing,
+			TextContent:             coalesceTextContent(parts),
+		})
+		emittedTextRuns++
+	}
 
 	flushBufferedText := func(finalizing bool) {
 		if len(bufferedText) == 0 {
 			return
 		}
 
-		textCopy := coalesceTextContent(bufferedText)
+		parts := bufferedText
 		bufferedText = nil
-		a.dispatchEvent(out, Event{
-			Type:                    EventTypeAssistantText,
-			AssistantTextFinalizing: finalizing,
-			TextContent:             textCopy,
-		})
+		emitTextRun(parts, finalizing)
+	}
+
+	emitPendingCompletedText := func(turn llmstream.Turn) {
+		runs, trailingRunIndex := assistantTextRuns(turn)
+		bufferedText = nil
+		if len(runs) == 0 {
+			return
+		}
+
+		start := emittedTextRuns
+		if start < 0 {
+			start = 0
+		}
+		if start > len(runs) {
+			start = len(runs)
+		}
+
+		for i := start; i < len(runs); i++ {
+			emitTextRun(runs[i], i == trailingRunIndex)
+		}
 	}
 
 	for ev := range events {
@@ -344,22 +375,9 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 		case llmstream.EventTypeCompletedSuccess:
 			completedTurn = ev.Turn
 			if completedTurn == nil {
-				bufferedText = nil
 				continue
 			}
-
-			trailingText := trailingAssistantText(*completedTurn)
-			if len(trailingText) == 0 {
-				bufferedText = nil
-				continue
-			}
-
-			bufferedText = nil
-			a.dispatchEvent(out, Event{
-				Type:                    EventTypeAssistantText,
-				AssistantTextFinalizing: true,
-				TextContent:             coalesceTextContent(trailingText),
-			})
+			emitPendingCompletedText(*completedTurn)
 		case llmstream.EventTypeWarning:
 			flushBufferedText(false)
 			a.dispatchEvent(out, Event{Type: EventTypeWarning, Error: ev.Error})
@@ -370,14 +388,17 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	}
 
 	if sendErr != nil {
+		flushBufferedText(false)
 		return nil, nil, sendErr
 	}
 
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		flushBufferedText(false)
 		return nil, nil, ctxErr
 	}
 
 	if completedTurn == nil {
+		flushBufferedText(false)
 		return nil, nil, errMissingCompletion
 	}
 
@@ -396,27 +417,32 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	return completedTurn, seenToolCallIDs, nil
 }
 
-func trailingAssistantText(turn llmstream.Turn) []llmstream.TextContent {
-	if len(turn.Parts) == 0 {
-		return nil
-	}
+func assistantTextRuns(turn llmstream.Turn) ([][]llmstream.TextContent, int) {
+	var runs [][]llmstream.TextContent
+	var current []llmstream.TextContent
+	trailingRunIndex := -1
 
-	var trailing []llmstream.TextContent
-	for i := len(turn.Parts) - 1; i >= 0; i-- {
-		text, ok := turn.Parts[i].(llmstream.TextContent)
-		if !ok {
-			break
+	for _, part := range turn.Parts {
+		text, ok := part.(llmstream.TextContent)
+		if ok {
+			current = append(current, text)
+			continue
 		}
-		trailing = append(trailing, text)
-	}
-	if len(trailing) == 0 {
-		return nil
+
+		if len(current) == 0 {
+			continue
+		}
+
+		runs = append(runs, current)
+		current = nil
 	}
 
-	for left, right := 0, len(trailing)-1; left < right; left, right = left+1, right-1 {
-		trailing[left], trailing[right] = trailing[right], trailing[left]
+	if len(current) > 0 {
+		trailingRunIndex = len(runs)
+		runs = append(runs, current)
 	}
-	return trailing
+
+	return runs, trailingRunIndex
 }
 
 func coalesceTextContent(parts []llmstream.TextContent) llmstream.TextContent {
@@ -427,11 +453,9 @@ func coalesceTextContent(parts []llmstream.TextContent) llmstream.TextContent {
 		return parts[0]
 	}
 
-	mergedParts := make([]llmstream.ContentPart, len(parts))
 	providerID := parts[0].ProviderID
 	sameProviderID := true
-	for i, part := range parts {
-		mergedParts[i] = part
+	for _, part := range parts {
 		if part.ProviderID != providerID {
 			sameProviderID = false
 		}
@@ -440,9 +464,19 @@ func coalesceTextContent(parts []llmstream.TextContent) llmstream.TextContent {
 		providerID = ""
 	}
 
+	var builder strings.Builder
+	totalLen := 0
+	for _, part := range parts {
+		totalLen += len(part.Content)
+	}
+	builder.Grow(totalLen)
+	for _, part := range parts {
+		builder.WriteString(part.Content)
+	}
+
 	return llmstream.TextContent{
 		ProviderID: providerID,
-		Content:    llmstream.Turn{Parts: mergedParts}.TextContent(),
+		Content:    builder.String(),
 	}
 }
 
