@@ -26,7 +26,8 @@ Details:
     - do not store nonconforming results
 - Fail overall tool call only for pre-launch or global failures.
 - Once package checking starts, record package-scoped failures in that package's object instead of failing overall tool call.
-- Package-scoped failures include subagent errors and per-package preparation, parsing, or CAS-write failures.
+- Package-scoped failures in `error` include subagent errors and per-package preparation or parsing failures.
+- Post-verdict package side-effect failures are recorded in `postcheck_error`, not `error`.
 - Once we start launching subagents, keep surface area of overall tool call errors to a minimum. It would be surprising if the overall tool call failed, but some CAS entries were still written.
 
 ### Result
@@ -47,17 +48,23 @@ Example:
     "internal/baz": {
         "error": "timed out"
     },
+    "internal/qux": {
+        "conforms": true,
+        "postcheck_error": "store CAS conformance: permission denied"
+    },
 }
 ```
 
 Notes:
 - `conforms=true` omits `nonconformances`; explicit `null` is equivalent to omission
 - `conforms=false` includes one or more `nonconformances`
+- `postcheck_error` may coexist with a valid verdict
 - Any other result-shape combination is invalid and is treated as a package-scoped error
 - `severity`: `trivial`, `minor`, or `major`
 - `latent`: `true` when issue predates comparison base; `false` when current diff introduced it
 - `message`: human-readable explanation
-- `error`: only if package checking for that package fails after launch. Value is a string error message.
+- `error`: only if package checking for that package fails before producing a valid verdict. Value is a string error message.
+- `postcheck_error`: only if per-package work after a valid verdict fails. Value is a string error message.
 
 ### Diffing
 
@@ -71,8 +78,11 @@ Use cases:
 
 - In progress: `Checking SPEC conformance`
 - Complete: `Checked SPEC conformance`
-- Completion body summarizes conforming, non-conforming, and errored packages.
-- For each non-conforming package, completion body includes actual nonconformance details.
+- Direct package-check subagents have labels based on module-relative package dir.
+- `SubagentFinalMessage` formats direct package-check final JSON into human-readable package-slot output. It never prints raw JSON.
+- TUI in-progress rendering may show one stable slot per direct package-check subagent under `Checking SPEC conformance`, with each slot showing latest descendant event from that package subtree until terminal package result is available.
+- TUI completion body is compact: summary counts plus any `postcheck_error` lines.
+- Noninteractive completion body may include actual nonconformance details, because it cannot rewrite earlier lines.
 - Raw `ToolResult.Result` remains machine-readable JSON.
 
 ## Public API

@@ -330,3 +330,48 @@ That is a code-sharing change, not a new user-visible abstraction.
 - Showing package verdict in the slot even when later CAS persistence fails:
   - This creates a slightly split presentation: the package slot can say `Conforms` while the final summary also shows an error for that same package.
   - I still think this is the right behavior because it reflects the actual lifecycle boundary the user explicitly called out: the package verdict was real; the later side effect failed.
+
+## Plan
+
+### Phase 0
+
+Land the shared result/presentation changes first, then teach TUI to render `check_spec_conformance` as a composite tool call with stable package slots.
+
+#### Package internal/tools/spectools
+- Update `internal/tools/spectools/SPEC.md` for:
+  - `postcheck_error` on otherwise-valid package results
+  - human-readable package slot formatting via `SubagentFinalMessage`
+  - split presentation between TUI compact summary and fuller noninteractive completion body
+- Add shared parsing/formatting helpers for package results and summary counts.
+- Keep raw tool result machine-readable JSON.
+
+#### Package internal/tui
+- Update `internal/tui/SPEC.md` for tool-specific package-slot rendering for `check_spec_conformance`.
+- Add per-tool-call state for direct package subagents.
+- Render one stable slot per direct package subagent label.
+- Show latest descendant event while active, then replace with terminal package result.
+- Render compact completion summary plus `postcheck_error` lines under `Checked SPEC conformance`.
+
+#### Validation
+- Run focused tests for `internal/tools/spectools` and `internal/tui`.
+- Defer `review` and `check_spec_conformance({"only_changed":true})` until after initial implementation is complete.
+
+## Review
+
+Pending.
+
+## Summary
+
+Pending.
+
+## State
+
+- Branch: `jn/spec-conform-ui-v3`
+- Current implementation targets two packages:
+  - `internal/tools/spectools` for result contract + package/result formatting helpers
+  - `internal/tui` for tool-specific slot rendering
+- Existing prerequisites already present:
+  - start-subagent events with labels
+  - finalizing assistant text detection in `internal/agent`
+  - `llmstream.SubagentFinalMessagePresenter`
+- No current `## Plan`/`## Review`/`##Summary`/`## State` existed before this step.

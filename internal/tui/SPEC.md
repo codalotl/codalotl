@@ -43,6 +43,13 @@ Basic controls:
     - When a Call comes in, we print it.
     - When a paired Result in, we replace the Call message with the Result.
     - Exception: tools whose presenter uses `Append` should NOT replace the Call with Result (they print both).
+- `check_spec_conformance` has tool-specific composite rendering in TUI:
+    - While `Checking SPEC conformance` is active, direct package-check subagents appear as stable slots under that tool call.
+    - Slot headers use the subagent label when present; for this tool, labels are package dirs.
+    - While a slot is active, it shows exactly one live child block: latest descendant event from that package subtree.
+    - Nested subagents do not get separate slots for this tool; their latest event feeds the owning direct package slot.
+    - When the direct package subagent reaches a terminal state, the live child block is replaced by the package result.
+    - `Checked SPEC conformance` renders a compact summary plus any post-verdict package errors. Package detail stays in the slot list above.
 - Descendant non-final assistant text is displayed live as it arrives.
 - Displayed descendant finalizing assistant text respects optional `llmstream.SubagentFinalMessagePresenter`.
 - When a tool presenter does not implement that interface, descendant finalizing assistant text is displayed as plain text.
