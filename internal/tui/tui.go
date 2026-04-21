@@ -265,6 +265,7 @@ type model struct {
 	agentParents                map[string]string
 	subagentLabels              map[string]string
 	activeToolScopes            map[string][]toolDisplayScope
+	checkSpecDisplays           map[string]*checkSpecConformanceDisplay
 }
 
 func newModel(
@@ -311,6 +312,7 @@ func newModel(
 		agentParents:         make(map[string]string),
 		subagentLabels:       make(map[string]string),
 		activeToolScopes:     make(map[string][]toolDisplayScope),
+		checkSpecDisplays:    make(map[string]*checkSpecConformanceDisplay),
 	}
 	if initialSession != nil {
 		m.requests = initialSession.UserRequests()
@@ -1658,14 +1660,21 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	m.recordSubagentStart(ev)
 	if ev.Type == agent.EventTypeToolCall {
 		m.beginToolDisplayScope(ev)
+		m.startCheckSpecConformanceDisplay(ev)
 	}
 
 	autoScroll := m.shouldAutoScrollOnUpdate()
+	if m.handleCheckSpecConformanceDescendantEvent(ev, autoScroll) {
+		return
+	}
 	if m.handleDescendantSubagentFinalMessage(ev, autoScroll) {
 		return
 	}
 	if ev.Type == agent.EventTypeToolComplete {
 		m.endToolDisplayScope(ev)
+		if m.handleCheckSpecConformanceCompletion(ev, autoScroll) {
+			return
+		}
 	}
 
 	switch ev.Type {
@@ -1854,6 +1863,7 @@ func (m *model) resetToolDisplayState() {
 	clear(m.agentParents)
 	clear(m.subagentLabels)
 	clear(m.activeToolScopes)
+	clear(m.checkSpecDisplays)
 }
 
 func (m *model) beginToolDisplayScope(ev agent.Event) {
@@ -2051,7 +2061,11 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 	case messageKindQueuedUser:
 		content = m.renderUserMessageBlock(msg.userMessage, true, width)
 	case messageKindAgent:
-		content = m.agentFormatter.FormatEvent(msg.event, width)
+		if custom, ok := m.renderToolSpecificMessage(msg, width); ok {
+			content = custom
+		} else {
+			content = m.agentFormatter.FormatEvent(msg.event, width)
+		}
 		needBgAndWidth = true
 	default:
 		content = termformat.Sanitize(msg.userMessage, 4)
