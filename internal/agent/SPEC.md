@@ -122,10 +122,10 @@ type AgentMeta struct {
 }
 
 type Event struct {
-	Agent                    AgentMeta
-	Tool                     llmstream.Tool // nil on non-tool events
-	StartSubagent            StartSubagent
-	AssistantTextFinalizing  bool // only meaningful when Type == EventTypeAssistantText
+	Agent                   AgentMeta
+	Tool                    llmstream.Tool // nil on non-tool events
+	StartSubagent           StartSubagent
+	AssistantTextFinalizing bool // only meaningful when Type == EventTypeAssistantText
 
 	// ... other fields
 }

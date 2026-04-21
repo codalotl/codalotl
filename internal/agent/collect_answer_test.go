@@ -17,11 +17,9 @@ func TestCollectFinalAssistantText_PrefersCompletedTurnText(t *testing.T) {
 		TextContent: llmstream.TextContent{Content: "intermediate"},
 	}
 	events <- Event{
-		Type: EventTypeAssistantTurnComplete,
-		Turn: &llmstream.Turn{
-			Role:  llmstream.RoleAssistant,
-			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "final answer"}},
-		},
+		Type:                    EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: "final answer"},
 	}
 	events <- Event{Type: EventTypeDoneSuccess}
 	close(events)
@@ -31,22 +29,18 @@ func TestCollectFinalAssistantText_PrefersCompletedTurnText(t *testing.T) {
 	assert.Equal(t, "final answer", answer)
 }
 
-func TestCollectFinalAssistantText_FallsBackToAssistantTextEvents(t *testing.T) {
-	events := make(chan Event, 3)
+func TestCollectFinalAssistantText_IgnoresNonFinalAssistantTextEvents(t *testing.T) {
+	events := make(chan Event, 2)
 	events <- Event{
 		Type:        EventTypeAssistantText,
 		TextContent: llmstream.TextContent{Content: "first"},
-	}
-	events <- Event{
-		Type:        EventTypeAssistantText,
-		TextContent: llmstream.TextContent{Content: "second"},
 	}
 	events <- Event{Type: EventTypeDoneSuccess}
 	close(events)
 
 	answer, err := CollectFinalAssistantText(context.Background(), events)
 	require.NoError(t, err)
-	assert.Equal(t, "first\n\nsecond", answer)
+	assert.Empty(t, answer)
 }
 
 func TestCollectFinalAssistantText_PropagatesErrorEvent(t *testing.T) {
@@ -66,24 +60,20 @@ func TestCollectFinalAssistantText_IgnoresDescendantDoneSuccess(t *testing.T) {
 		Type:  EventTypeToolCall,
 	}
 	events <- Event{
-		Agent: AgentMeta{ID: "child", Depth: 1},
-		Type:  EventTypeAssistantTurnComplete,
-		Turn: &llmstream.Turn{
-			Role:  llmstream.RoleAssistant,
-			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "child answer"}},
-		},
+		Agent:                   AgentMeta{ID: "child", Depth: 1},
+		Type:                    EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: "child answer"},
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "child", Depth: 1},
 		Type:  EventTypeDoneSuccess,
 	}
 	events <- Event{
-		Agent: AgentMeta{ID: "root", Depth: 0},
-		Type:  EventTypeAssistantTurnComplete,
-		Turn: &llmstream.Turn{
-			Role:  llmstream.RoleAssistant,
-			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "root answer"}},
-		},
+		Agent:                   AgentMeta{ID: "root", Depth: 0},
+		Type:                    EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: "root answer"},
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "root", Depth: 0},
@@ -108,12 +98,10 @@ func TestCollectFinalAssistantText_IgnoresDescendantCanceled(t *testing.T) {
 		Error: context.Canceled,
 	}
 	events <- Event{
-		Agent: AgentMeta{ID: "root", Depth: 0},
-		Type:  EventTypeAssistantTurnComplete,
-		Turn: &llmstream.Turn{
-			Role:  llmstream.RoleAssistant,
-			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "root answer"}},
-		},
+		Agent:                   AgentMeta{ID: "root", Depth: 0},
+		Type:                    EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: "root answer"},
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "root", Depth: 0},
@@ -138,12 +126,10 @@ func TestCollectFinalAssistantText_IgnoresDescendantError(t *testing.T) {
 		Error: errors.New("child boom"),
 	}
 	events <- Event{
-		Agent: AgentMeta{ID: "root", Depth: 0},
-		Type:  EventTypeAssistantTurnComplete,
-		Turn: &llmstream.Turn{
-			Role:  llmstream.RoleAssistant,
-			Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "root answer"}},
-		},
+		Agent:                   AgentMeta{ID: "root", Depth: 0},
+		Type:                    EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: "root answer"},
 	}
 	events <- Event{
 		Agent: AgentMeta{ID: "root", Depth: 0},
