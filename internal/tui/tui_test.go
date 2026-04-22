@@ -15,7 +15,6 @@ import (
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/pkgtools"
-	"github.com/codalotl/codalotl/internal/tools/spectools"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -819,27 +818,40 @@ func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
 		require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
 		require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 	})
+}
 
-	for _, toolName := range []string{"implement", "review"} {
-		t.Run(toolName, func(t *testing.T) {
-			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+func TestToolResultUsesStoredAppendBehaviorWhenCompletionLacksTool(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
-			callID := "call-2"
-			call := &llmstream.ToolCall{CallID: callID, Name: toolName}
-			result := &llmstream.ToolResult{CallID: callID, Name: toolName}
+	callID := "call-review"
+	call := &llmstream.ToolCall{CallID: callID, Name: "review"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "review"}
+	tool := newNamedToolWithPresenter("review", stubPresenter{behavior: llmstream.CompletionBehaviorAppend})
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, ToolCall: call})
-			require.Len(t, m.messages, 1)
-			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+	require.Len(t, m.messages, 1)
 
-			m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, ToolCall: call, ToolResult: result})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, ToolCall: call, ToolResult: result})
 
-			// Exception behavior: for SubAgent tools, keep the call and append the result.
-			require.Len(t, m.messages, 2)
-			require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
-			require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
-		})
-	}
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+}
+
+func TestToolResultUsesStoredReplaceBehaviorWhenCompletionLacksTool(t *testing.T) {
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	callID := "call-read"
+	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "read_file"}
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: call})
+	require.Len(t, m.messages, 1)
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, ToolCall: call, ToolResult: result})
+
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[0].event.Type)
 }
 
 func TestSuppressFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
@@ -1074,40 +1086,41 @@ func TestCustomizeFinalDescendantAssistantTextForSubagentTool(t *testing.T) {
 		TextContent:             llmstream.TextContent{Content: `{"verdict":"pass"}`},
 	})
 
-	require.Len(t, m.messages, 2)
+	require.Len(t, m.messages, 1)
 	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
-	require.Equal(t, agent.EventTypeAssistantText, m.messages[1].event.Type)
-	require.Equal(t, "Label: review worker\nMessage: {\"verdict\":\"pass\"}", m.messages[1].event.TextContent.Content)
-	require.Equal(t, child.ID, m.messages[1].event.Agent.ID)
-	require.True(t, m.messages[1].event.AssistantTextFinalizing)
+	text := renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, text, "review worker")
+	require.Contains(t, text, "Label: review worker")
+	require.Contains(t, text, "Message:")
+	require.Contains(t, text, "{\"verdict\":\"pass\"}")
 
 	m.handleAgentEvent(agent.Event{Agent: child, Type: agent.EventTypeDoneSuccess})
 	m.handleAgentEvent(agent.Event{Agent: root, Type: agent.EventTypeToolComplete, Tool: reviewTool, ToolCall: reviewCall, ToolResult: reviewResult})
 
-	require.Len(t, m.messages, 3)
-	require.Equal(t, agent.EventTypeToolComplete, m.messages[2].event.Type)
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
 }
 
-func TestCheckSpecConformanceShowsStableDirectPackageSlots(t *testing.T) {
+func TestToolSubagentDisplayShowsStableSlotsForLabeledDirectChildren(t *testing.T) {
 	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
 	bar := agent.AgentMeta{ID: "bar", Depth: 1, Parent: root.ID}
-	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+	toolCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
 
 	m.handleAgentEvent(agent.Event{
 		Agent:    root,
 		Type:     agent.EventTypeToolCall,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
 	})
 	m.handleAgentEvent(agent.Event{
 		Agent: foo,
 		Type:  agent.EventTypeStartSubagent,
 		StartSubagent: agent.StartSubagent{
 			CallingAgentID: root.ID,
-			ToolCallID:     checkCall.CallID,
+			ToolCallID:     toolCall.CallID,
 			Label:          "internal/foo",
 		},
 	})
@@ -1116,7 +1129,7 @@ func TestCheckSpecConformanceShowsStableDirectPackageSlots(t *testing.T) {
 		Type:  agent.EventTypeStartSubagent,
 		StartSubagent: agent.StartSubagent{
 			CallingAgentID: root.ID,
-			ToolCallID:     checkCall.CallID,
+			ToolCallID:     toolCall.CallID,
 			Label:          "internal/bar",
 		},
 	})
@@ -1129,36 +1142,71 @@ func TestCheckSpecConformanceShowsStableDirectPackageSlots(t *testing.T) {
 
 	require.Len(t, m.messages, 1)
 	text := renderAgentMessageText(t, m, 0, 120)
-	require.Contains(t, text, "tool-call(depth=0): check_spec_conformance")
-	require.Contains(t, text, "Package internal/foo")
-	require.Contains(t, text, "Package internal/bar")
+	require.Contains(t, text, "tool-call(depth=0): audit")
+	require.Contains(t, text, "internal/foo")
+	require.Contains(t, text, "internal/bar")
 	require.Contains(t, text, "tool-call(depth=0): read_file")
 	require.Contains(t, text, "Starting")
-	require.Equal(t, 1, strings.Count(text, "Package internal/foo"))
-	require.Equal(t, 1, strings.Count(text, "Package internal/bar"))
-	require.Less(t, strings.Index(text, "Package internal/foo"), strings.Index(text, "Package internal/bar"))
+	require.Equal(t, 1, strings.Count(text, "internal/foo"))
+	require.Equal(t, 1, strings.Count(text, "internal/bar"))
+	require.Less(t, strings.Index(text, "internal/foo"), strings.Index(text, "internal/bar"))
 }
 
-func TestCheckSpecConformanceNestedDescendantUpdatesOwningSlot(t *testing.T) {
+func TestToolSubagentDisplayRequiresDirectChildLabelForStableSlot(t *testing.T) {
 	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
-	fooNested := agent.AgentMeta{ID: "foo-nested", Depth: 2, Parent: foo.ID}
-	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+	toolCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
 
 	m.handleAgentEvent(agent.Event{
 		Agent:    root,
 		Type:     agent.EventTypeToolCall,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
 	})
 	m.handleAgentEvent(agent.Event{
 		Agent: foo,
 		Type:  agent.EventTypeStartSubagent,
 		StartSubagent: agent.StartSubagent{
 			CallingAgentID: root.ID,
-			ToolCallID:     checkCall.CallID,
+			ToolCallID:     toolCall.CallID,
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    foo,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool("read_file"),
+		ToolCall: &llmstream.ToolCall{CallID: "foo-read-1", Name: "read_file"},
+	})
+
+	require.Len(t, m.messages, 2)
+	callText := renderAgentMessageText(t, m, 0, 120)
+	require.NotContains(t, callText, "internal/foo")
+	childText := renderAgentMessageText(t, m, 1, 120)
+	require.Contains(t, childText, "tool-call(depth=1): read_file")
+}
+
+func TestToolSubagentDisplayNestedDescendantUpdatesOwningSlot(t *testing.T) {
+	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
+	fooNested := agent.AgentMeta{ID: "foo-nested", Depth: 2, Parent: foo.ID}
+	toolCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: foo,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     toolCall.CallID,
 			Label:          "internal/foo",
 		},
 	})
@@ -1180,31 +1228,30 @@ func TestCheckSpecConformanceNestedDescendantUpdatesOwningSlot(t *testing.T) {
 
 	require.Len(t, m.messages, 1)
 	text := renderAgentMessageText(t, m, 0, 120)
-	require.Contains(t, text, "Package internal/foo")
+	require.Contains(t, text, "internal/foo")
 	require.Contains(t, text, "tool-call(depth=0): read_file")
 	require.NotContains(t, text, "nested worker")
-	require.Equal(t, 1, strings.Count(text, "Package internal/foo"))
 }
 
-func TestCheckSpecConformanceDirectSubagentFinalReplacesLiveSlot(t *testing.T) {
+func TestToolSubagentDisplayDirectFinalReplacesLiveSlot(t *testing.T) {
 	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
-	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+	toolCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
 
 	m.handleAgentEvent(agent.Event{
 		Agent:    root,
 		Type:     agent.EventTypeToolCall,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
 	})
 	m.handleAgentEvent(agent.Event{
 		Agent: foo,
 		Type:  agent.EventTypeStartSubagent,
 		StartSubagent: agent.StartSubagent{
 			CallingAgentID: root.ID,
-			ToolCallID:     checkCall.CallID,
+			ToolCallID:     toolCall.CallID,
 			Label:          "internal/foo",
 		},
 	})
@@ -1218,38 +1265,82 @@ func TestCheckSpecConformanceDirectSubagentFinalReplacesLiveSlot(t *testing.T) {
 		Agent:                   foo,
 		Type:                    agent.EventTypeAssistantText,
 		AssistantTextFinalizing: true,
-		TextContent: llmstream.TextContent{
-			Content: `{"conforms":false,"nonconformances":[{"severity":"major","latent":true,"message":"Missing Foo behavior."}]}`,
-		},
+		TextContent:             llmstream.TextContent{Content: "finished cleanly"},
 	})
 
 	require.Len(t, m.messages, 1)
 	text := renderAgentMessageText(t, m, 0, 120)
-	require.Contains(t, text, "Package internal/foo")
-	require.Contains(t, text, "Non-conforming")
-	require.Contains(t, text, "Missing Foo behavior.")
+	require.Contains(t, text, "internal/foo")
+	require.Contains(t, text, "finished cleanly")
 	require.NotContains(t, text, "tool-call(depth=0): read_file")
 }
 
-func TestCheckSpecConformanceCompletionAppendsCompactSummary(t *testing.T) {
+func TestToolSubagentDisplayCustomizesDirectFinalTextInsideSlot(t *testing.T) {
 	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
 	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
-	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+	tool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
+		stubPresenter: stubPresenter{behavior: llmstream.CompletionBehaviorAppend},
+		subagentFinalMessage: func(call llmstream.ToolCall, subagentLabel string, finalMessage string) llmstream.Block {
+			require.Equal(t, "review", call.Name)
+			return llmstream.Output{
+				Lines: []string{
+					"Label: " + subagentLabel,
+					"Message: " + finalMessage,
+				},
+			}
+		},
+	})
+	toolCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
 
 	m.handleAgentEvent(agent.Event{
 		Agent:    root,
 		Type:     agent.EventTypeToolCall,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
+		Tool:     tool,
+		ToolCall: toolCall,
 	})
 	m.handleAgentEvent(agent.Event{
 		Agent: foo,
 		Type:  agent.EventTypeStartSubagent,
 		StartSubagent: agent.StartSubagent{
 			CallingAgentID: root.ID,
-			ToolCallID:     checkCall.CallID,
+			ToolCallID:     toolCall.CallID,
+			Label:          "review worker",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:                   foo,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: `{"verdict":"pass"}`},
+	})
+
+	text := renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, text, "review worker")
+	require.Contains(t, text, "Label: review worker")
+	require.Contains(t, text, "Message: {\"verdict\":\"pass\"}")
+}
+
+func TestToolSubagentDisplayCompletedSlotsPersistAfterFinishAgentRun(t *testing.T) {
+	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
+	toolCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: foo,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     toolCall.CallID,
 			Label:          "internal/foo",
 		},
 	})
@@ -1257,151 +1348,62 @@ func TestCheckSpecConformanceCompletionAppendsCompactSummary(t *testing.T) {
 		Agent:                   foo,
 		Type:                    agent.EventTypeAssistantText,
 		AssistantTextFinalizing: true,
-		TextContent:             llmstream.TextContent{Content: `{"conforms":true}`},
+		TextContent:             llmstream.TextContent{Content: "finished cleanly"},
 	})
 	m.handleAgentEvent(agent.Event{
 		Agent:    root,
 		Type:     agent.EventTypeToolComplete,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
 		ToolResult: &llmstream.ToolResult{
-			CallID: checkCall.CallID,
-			Name:   spectools.ToolNameCheckSpecConformance,
-			Result: `{"internal/foo":{"conforms":true,"postcheck_error":"permission denied"},"internal/bar":{"conforms":false,"nonconformances":[{"severity":"minor","latent":false,"message":"bar mismatch"}]},"internal/baz":{"error":"timed out"}}`,
-		},
-	})
-
-	require.Len(t, m.messages, 2)
-
-	callText := renderAgentMessageText(t, m, 0, 120)
-	require.Contains(t, callText, "Package internal/foo")
-	require.Contains(t, callText, "Conforms")
-
-	summaryText := renderAgentMessageText(t, m, 1, 120)
-	require.Contains(t, summaryText, "tool-result(depth=0): check_spec_conformance")
-	require.Contains(t, summaryText, "1 conforming, 1 non-conforming, 1 error")
-	require.Contains(t, summaryText, "Postcheck error for internal/foo: permission denied")
-}
-
-func TestCheckSpecConformanceCompletionDropsVerboseFormatterBody(t *testing.T) {
-	m := newModel(colorPalette{}, verboseCheckSpecFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
-
-	root := agent.AgentMeta{ID: "root"}
-	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
-
-	m.handleAgentEvent(agent.Event{
-		Agent:    root,
-		Type:     agent.EventTypeToolCall,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
-	})
-	m.handleAgentEvent(agent.Event{
-		Agent:    root,
-		Type:     agent.EventTypeToolComplete,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
-		ToolResult: &llmstream.ToolResult{
-			CallID: checkCall.CallID,
-			Name:   spectools.ToolNameCheckSpecConformance,
-			Result: `{"internal/foo":{"conforms":false,"nonconformances":[{"severity":"major","latent":true,"message":"Missing Foo behavior."}]}}`,
-		},
-	})
-
-	require.Len(t, m.messages, 2)
-
-	summaryText := renderAgentMessageText(t, m, 1, 120)
-	require.Contains(t, summaryText, "tool-result(depth=0): check_spec_conformance")
-	require.Contains(t, summaryText, "1 non-conforming")
-	require.NotContains(t, summaryText, "detailed package results that should stay out of TUI completion")
-	require.NotContains(t, summaryText, "internal/foo: non-conforming")
-	require.NotContains(t, summaryText, "Missing Foo behavior.")
-}
-
-func TestCheckSpecConformanceCompletedSlotsPersistAfterFinishAgentRun(t *testing.T) {
-	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
-
-	root := agent.AgentMeta{ID: "root"}
-	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
-	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
-
-	m.handleAgentEvent(agent.Event{
-		Agent:    root,
-		Type:     agent.EventTypeToolCall,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
-	})
-	m.handleAgentEvent(agent.Event{
-		Agent: foo,
-		Type:  agent.EventTypeStartSubagent,
-		StartSubagent: agent.StartSubagent{
-			CallingAgentID: root.ID,
-			ToolCallID:     checkCall.CallID,
-			Label:          "internal/foo",
-		},
-	})
-	m.handleAgentEvent(agent.Event{
-		Agent:                   foo,
-		Type:                    agent.EventTypeAssistantText,
-		AssistantTextFinalizing: true,
-		TextContent: llmstream.TextContent{
-			Content: `{"conforms":false,"nonconformances":[{"severity":"major","latent":true,"message":"Missing Foo behavior."}]}`,
-		},
-	})
-	m.handleAgentEvent(agent.Event{
-		Agent:    root,
-		Type:     agent.EventTypeToolComplete,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
-		ToolResult: &llmstream.ToolResult{
-			CallID: checkCall.CallID,
-			Name:   spectools.ToolNameCheckSpecConformance,
-			Result: `{"internal/foo":{"conforms":false,"nonconformances":[{"severity":"major","latent":true,"message":"Missing Foo behavior."}]}}`,
+			CallID: toolCall.CallID,
+			Name:   "audit",
+			Result: `{"ok":true}`,
 		},
 	})
 
 	beforeFinish := renderAgentMessageText(t, m, 0, 120)
-	require.Contains(t, beforeFinish, "Package internal/foo")
-	require.Contains(t, beforeFinish, "Missing Foo behavior.")
+	require.Contains(t, beforeFinish, "internal/foo")
+	require.Contains(t, beforeFinish, "finished cleanly")
 
 	m.finishAgentRun()
 
-	require.Len(t, m.checkSpecDisplays, 0)
+	require.Len(t, m.toolSubagentDisplays, 0)
 
 	afterFinish := renderAgentMessageText(t, m, 0, 120)
-	require.Contains(t, afterFinish, "Package internal/foo")
-	require.Contains(t, afterFinish, "Missing Foo behavior.")
+	require.Contains(t, afterFinish, "internal/foo")
+	require.Contains(t, afterFinish, "finished cleanly")
 }
 
-func TestCheckSpecConformanceCompletionErrorUsesNormalToolRendering(t *testing.T) {
+func TestToolSubagentDisplayCompletionErrorUsesNormalToolRendering(t *testing.T) {
 	m := newModel(colorPalette{}, errorAwareFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
 	root := agent.AgentMeta{ID: "root"}
-	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+	toolCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
 
 	m.handleAgentEvent(agent.Event{
 		Agent:    root,
 		Type:     agent.EventTypeToolCall,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
 	})
 	m.handleAgentEvent(agent.Event{
 		Agent:    root,
 		Type:     agent.EventTypeToolComplete,
-		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
-		ToolCall: checkCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: toolCall,
 		ToolResult: &llmstream.ToolResult{
-			CallID:  checkCall.CallID,
-			Name:    spectools.ToolNameCheckSpecConformance,
+			CallID:  toolCall.CallID,
+			Name:    "audit",
 			Result:  "failed before launching package checks",
 			IsError: true,
 		},
 	})
 
-	require.Len(t, m.messages, 2)
+	require.Len(t, m.messages, 1)
 
-	summaryText := renderAgentMessageText(t, m, 1, 120)
-	require.Contains(t, summaryText, "tool-result-error: failed before launching package checks")
-	require.NotContains(t, summaryText, "Invalid SPEC conformance result")
+	text := renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, text, "tool-result-error: failed before launching package checks")
 }
 
 func TestToolNamePrecedence(t *testing.T) {
