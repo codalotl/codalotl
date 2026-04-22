@@ -379,6 +379,16 @@ Review skipped in this step per user request.
   - `internal/tools/spectools` now exposes a compact completion formatter for TUI while preserving the richer shared/noninteractive completion body.
   - `internal/tui` now keeps completed package-slot display state attached to the original tool-call message so later re-renders preserve the package detail above the compact completion summary.
 
+### 2026-04-22 SPEC conformance rerun (`only_changed=true`)
+
+- Mixed result for changed packages:
+  - `internal/tools/pkgtools`: conforms
+  - `internal/tools/spectools`: conforms
+  - `internal/tui`: non-conforming
+- `internal/tui` findings:
+  - [minor][new] Within stable-slot display, finalizing assistant text from deeper descendants is handled as a generic slot event instead of going through `llmstream.SubagentFinalMessagePresenter`. Because stable slots are specified to own and route descendant events as if they came from the labeled direct subagent, presenter-based customization/suppression is not respected for that case.
+- CAS entries were written for the conforming packages under `.codalotl/cas/specconforms-1/...`.
+
 ## Summary
 
 Pending.
@@ -417,4 +427,11 @@ Pending.
   - `internal/tools/spectools`
   - `internal/tui`
 - CAS entries were written under `.codalotl/cas/specconforms-1/...` for those two packages.
+- Latest `check_spec_conformance({"only_changed":true})` rerun on 2026-04-22 reported:
+  - `internal/tools/pkgtools`: conforms
+  - `internal/tools/spectools`: conforms
+  - `internal/tui`: non-conforming due to stable-slot handling of deeper descendants' finalizing assistant text bypassing `llmstream.SubagentFinalMessagePresenter`
+- Latest CAS entries were written under `.codalotl/cas/specconforms-1/...` for:
+  - `internal/tools/pkgtools`
+  - `internal/tools/spectools`
 - `review` intentionally skipped in this step per user request.
