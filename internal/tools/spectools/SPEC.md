@@ -8,24 +8,21 @@ This tool checks Go packages in this module for `SPEC.md` conformance. It accept
 
 Details:
 - Skips packages without `SPEC.md`.
-- Skips packages whose CAS record already says `conforms=true` when package scope has no diff against comparison base.
+- Skips packages whose CAS record already says `conforms=true`.
 - `only_changed=true` further restricts to packages whose on-disk state changed against the current git comparison base. See `### Diffing`
-- `only_changed=false` checks all current-module packages that have `SPEC.md`, except packages already marked `conforms=true` in CAS when package scope has no diff.
 - If no packages are eligible, tool returns `{}`.
 - Runs one `limited_package_mode` subagent per package, with bounded concurrency.
 - Labels each package-check subagent with the module-relative package dir.
 - Supplies package diff and programmatic `spec diff` context to each subagent.
-- Subagent instructions remain read-only in intent and use the `$spec-md` check-conformance workflow.
+- Subagent instructions are read-only in intent and use the `$spec-md` check-conformance workflow (strict read-only guardrails unnecessary).
 - Package scope is the default Go code unit rooted at the package dir.
     - This same scope is used for the subagent authorizer, changed-path attribution, and conforming-package CAS reuse / invalidation.
 - Tool result is raw JSON keyed by module-relative package dir. Only checked packages appear.
 - If a checked package has no diff against the comparison base, any reported nonconformance is `latent=true`.
-- CAS writes:
-    - Happen for a package as soon as that package's result comes in.
-    - write `conforms=true` only for conforming packages
-    - do not store nonconforming results
+- Conforming packages use CAS to save result:
+    - write `conforms=true` only for conforming packages (do not store nonconforming results)
 - Fail overall tool call only for pre-launch or global failures.
-- Once package checking starts, record package-scoped failures in that package's object instead of failing overall tool call.
+    - Once package checking starts, record package-scoped failures instead of failing overall tool call.
 - Package-scoped failures in `error` include subagent errors and per-package preparation or parsing failures.
 - Post-verdict package side-effect failures are recorded in `postcheck_error`, not `error`.
 - Once we start launching subagents, keep surface area of overall tool call errors to a minimum. It would be surprising if the overall tool call failed, but some CAS entries were still written.
@@ -77,12 +74,25 @@ Use cases:
 ### Presentation
 
 - In progress: `Checking SPEC conformance`
-- Complete: `Checked SPEC conformance`
+- Complete example in TUI:
+
+```
+• Checked SPEC conformance
+  └ 2 conforming, 1 non-conforming, 1 error
+```
+
+If there are any `postcheck_error`s, or other overall errors that haven't been reported in some way per-package, list them in the tool result. Ex:
+
+```
+• Checked SPEC conformance
+  └ 2 conforming, 1 non-conforming, 1 error
+    Error saving CAS for internal/foo
+```
+
 - Direct package-check subagents have labels based on module-relative package dir.
 - `SubagentFinalMessage` formats direct package-check final JSON into human-readable package-slot output. It never prints raw JSON.
 - TUI in-progress rendering may show one stable slot per direct package-check subagent under `Checking SPEC conformance`, with each slot showing latest descendant event from that package subtree until terminal package result is available.
 - TUI completion body is compact: summary counts plus any `postcheck_error` lines.
-- Noninteractive completion body may include actual nonconformance details, because it cannot rewrite earlier lines.
 - Raw `ToolResult.Result` remains machine-readable JSON.
 
 ## Public API

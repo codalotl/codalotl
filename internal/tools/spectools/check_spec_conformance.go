@@ -272,17 +272,17 @@ func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, 
 			continue
 		}
 
-		hasDiff, err := packageHasChanges(pkg, changes)
-		if err != nil {
-			return nil, fmt.Errorf("check package diff scope for %s: %w", packageResultKey(pkg.RelativeDir), err)
-		}
-
 		found, conforms, err := retrieveConformanceState(pkg)
 		if err != nil {
 			return nil, fmt.Errorf("retrieve CAS conformance for %s: %w", packageResultKey(pkg.RelativeDir), err)
 		}
-		if found && conforms && !hasDiff {
+		if found && conforms {
 			continue
+		}
+
+		hasDiff, err := packageHasChanges(pkg, changes)
+		if err != nil {
+			return nil, fmt.Errorf("check package diff scope for %s: %w", packageResultKey(pkg.RelativeDir), err)
 		}
 
 		if onlyChanged && !hasDiff {
@@ -441,7 +441,7 @@ func (c labeledSubAgentCreator) New(systemPrompt string, tools []llmstream.Tool,
 func buildPackageCheckInstructions(req packageCheckRequest) string {
 	var body strings.Builder
 	body.WriteString("Use the $spec-md check-conformance workflow for this package.\n")
-	body.WriteString("This is read-only in intent. Do not modify files.\n")
+	body.WriteString("This is read-only in intent.\n")
 	body.WriteString("The outer tool already computed the equivalent of `codalotl spec diff` for this package. Treat that as satisfying the mechanical public-API-diff step unless you have a specific reason to distrust it.\n")
 	body.WriteString("Return STRICT JSON only. No prose. No markdown fences.\n")
 	body.WriteString("Allowed JSON shapes:\n")
@@ -1251,6 +1251,13 @@ func trimLineEndings(s string) string {
 	return trimTrailingNewline(s)
 }
 
+func nounForCount(count int, singular string, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
+}
+
 func shortCommit(commit string) string {
 	if len(commit) <= 12 {
 		return commit
@@ -1284,7 +1291,7 @@ func checkSpecConformanceSummaryLine(summary CheckSpecConformanceSummary) llmstr
 		Segments: []llmstream.Segment{
 			{Text: fmt.Sprintf("%d conforming,", summary.ConformingCount), Role: llmstream.RoleAccent},
 			{Text: fmt.Sprintf("%d non-conforming,", summary.NonconformingCount), Role: llmstream.RoleAccent},
-			{Text: fmt.Sprintf("%d errors", summary.ErrorCount), Role: llmstream.RoleAccent},
+			{Text: fmt.Sprintf("%d %s", summary.ErrorCount, nounForCount(summary.ErrorCount, "error", "errors")), Role: llmstream.RoleAccent},
 		},
 	}
 }
@@ -1383,70 +1390,5 @@ func presentCheckSpecConformanceBody(raw string) (llmstream.Block, bool) {
 		}, true
 	}
 
-	summary := SummarizeCheckSpecConformanceResults(results)
-
-	lines := []llmstream.Line{checkSpecConformanceSummaryLine(summary)}
-	if len(summary.ConformingPackages) > 0 {
-		lines = append(lines, llmstream.Line{
-			JoinWithSpace: true,
-			Segments: []llmstream.Segment{
-				{Text: "Conforming:", Role: llmstream.RoleAccent},
-				{Text: strings.Join(summary.ConformingPackages, ", "), Role: llmstream.RoleNormal},
-			},
-		})
-	}
-	if len(summary.NonconformingPackages) > 0 {
-		lines = append(lines, llmstream.Line{
-			Segments: []llmstream.Segment{
-				{Text: "Non-conforming:", Role: llmstream.RoleAccent},
-			},
-		})
-		for _, key := range summary.NonconformingPackages {
-			result := packageCheckResult(results[key])
-			lines = append(lines, llmstream.Line{
-				Segments: []llmstream.Segment{
-					{Text: key + ":", Role: llmstream.RoleAccent},
-				},
-			})
-			for _, issue := range result.Nonconformances {
-				issueScope := "new"
-				if issue.Latent {
-					issueScope = "latent"
-				}
-				lines = append(lines, llmstream.Line{
-					Segments: []llmstream.Segment{
-						{
-							Text: fmt.Sprintf("- [%s, %s] %s", issue.Severity, issueScope, issue.Message),
-							Role: llmstream.RoleNormal,
-						},
-					},
-				})
-			}
-		}
-	}
-	if len(summary.ErrorPackages) > 0 {
-		lines = append(lines, llmstream.Line{
-			JoinWithSpace: true,
-			Segments: []llmstream.Segment{
-				{Text: "Errors:", Role: llmstream.RoleAccent},
-				{Text: strings.Join(summary.ErrorPackages, ", "), Role: llmstream.RoleNormal},
-			},
-		})
-	}
-	if len(summary.PostcheckErrors) > 0 {
-		lines = append(lines, llmstream.Line{
-			Segments: []llmstream.Segment{
-				{Text: "Post-check errors:", Role: llmstream.RoleAccent},
-			},
-		})
-		for _, postcheckErr := range summary.PostcheckErrors {
-			lines = append(lines, llmstream.Line{
-				Segments: []llmstream.Segment{
-					{Text: fmt.Sprintf("%s: %s", postcheckErr.Package, postcheckErr.Error), Role: llmstream.RoleNormal},
-				},
-			})
-		}
-	}
-
-	return llmstream.Paragraph{Lines: lines}, true
+	return formatCompactCheckSpecConformanceSummaryBlock(SummarizeCheckSpecConformanceResults(results)), true
 }

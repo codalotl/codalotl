@@ -167,7 +167,26 @@ func TestParsePackageCheckResultRejectsInvalidResultShapes(t *testing.T) {
 	}
 }
 
-func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing.T) {
+func TestBuildPackageCheckInstructionsKeepsReadOnlyIntentWithoutStrictGuardrail(t *testing.T) {
+	t.Parallel()
+
+	instructions := buildPackageCheckInstructions(packageCheckRequest{
+		Key:         "internal/foo",
+		HasDiff:     true,
+		PackageDiff: "diff --git a/foo.go b/foo.go\n",
+		SpecDiff:    "public API differs",
+		ComparisonBase: comparisonBase{
+			Branch:       "feature",
+			ParentBranch: "main",
+			Commit:       "0123456789abcdef",
+		},
+	})
+
+	assert.Contains(t, instructions, "This is read-only in intent.")
+	assert.NotContains(t, instructions, "Do not modify files.")
+}
+
+func TestPresentCheckSpecConformanceBodyUsesCompactCompletion(t *testing.T) {
 	t.Parallel()
 
 	body, ok := presentCheckSpecConformanceBody(`{
@@ -192,15 +211,15 @@ func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing
 	require.True(t, ok)
 
 	rendered := renderPresentationLines(paragraph.Lines)
-	assert.Contains(t, rendered, "1 conforming, 1 non-conforming, 1 errors")
-	assert.Contains(t, rendered, "Conforming: internal/foo")
-	assert.Contains(t, rendered, "Non-conforming:")
-	assert.Contains(t, rendered, "internal/bar:")
-	assert.Contains(t, rendered, "- [major, new] missing Foo docs")
-	assert.Contains(t, rendered, "- [minor, latent] Bar usage example is stale")
-	assert.Contains(t, rendered, "Errors: internal/baz")
-	assert.Contains(t, rendered, "Post-check errors:")
+	assert.Contains(t, rendered, "1 conforming, 1 non-conforming, 1 error")
 	assert.Contains(t, rendered, "internal/foo: store CAS conformance: permission denied")
+	assert.NotContains(t, rendered, "Conforming:")
+	assert.NotContains(t, rendered, "Non-conforming:")
+	assert.NotContains(t, rendered, "internal/bar:")
+	assert.NotContains(t, rendered, "missing Foo docs")
+	assert.NotContains(t, rendered, "Bar usage example is stale")
+	assert.NotContains(t, rendered, "Errors:")
+	assert.NotContains(t, rendered, "Post-check errors:")
 }
 
 func TestFormatCheckSpecConformanceCompactCompletion(t *testing.T) {
@@ -225,7 +244,7 @@ func TestFormatCheckSpecConformanceCompactCompletion(t *testing.T) {
 			}
 		}`))
 
-		assert.Contains(t, rendered, "1 conforming, 1 non-conforming, 1 errors")
+		assert.Contains(t, rendered, "1 conforming, 1 non-conforming, 1 error")
 		assert.Contains(t, rendered, "internal/foo: store CAS conformance: permission denied")
 		assert.NotContains(t, rendered, "Conforming:")
 		assert.NotContains(t, rendered, "Non-conforming:")
