@@ -49,13 +49,12 @@ func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 - A tool may expose semantic display metadata via `Presenter() Presenter`.
 - `nil` presenter is valid and means the tool has no custom presentation.
 - This package itself does not know or care about any tool's presenter. These types are in this package as a convenience for tool implementers to build to a common spec.
-- A presenter may additionally customize descendant subagent final-message display via optional `SubagentFinalMessagePresenter`.
-- `SubagentFinalMessagePresenter` is defined in terms of the direct tool-call/subagent relationship. Consumers that collapse deeper descendant activity into that direct subagent's visible slot may reuse the same presentation for the slot's terminal visible message.
-- This affects presentation only; underlying agent events are unchanged.
-- `Presentation.Summary` is usually the tool-level 1-line header.
+- `Presentation.Summary` is usually the tool-level 1-line header;  `Presentation.Body` is optional details.
 - If `Presentation.Body` is `Diff`, presenters must leave `Summary` empty.
 - Consumers that need a visible 1-line diff header should derive it from `Diff.Edits[0]`.
 - `Diff.Edits` are in display order; first edit is the lead edit/header source.
+- A presenter may also implement `SubagentFinalMessagePresenter` (callers can attempt a type assertion). Example use case:
+	- A tool launches a subagent, whose final message is JSON. This JSON can be parsed and formatted for the user.
 - A **partial** `Presentation` type tree is below in Public API.
 
 ## Public API
@@ -167,9 +166,7 @@ type Presenter interface {
 	Present(call ToolCall, result *ToolResult) Presentation
 }
 
-// SubagentFinalMessagePresenter optionally customizes the final message of a descendant subagent launched directly by call. The interface is defined in terms of
-// that direct tool-call/subagent relationship. Consumers that collapse deeper descendant activity into the direct subagent's visible slot may reuse the same presentation
-// for that slot's terminal visible message.
+// SubagentFinalMessagePresenter optionally customizes the final message of a descendant subagent launched directly by call.
 //
 // Consumers should type-assert a tool presenter to this interface. When the presenter does not implement it, the descendant subagent final message should be shown
 // as plain text. Returning nil suppresses the descendant final message. Returning a non-nil Block replaces the plain-text rendering with a semantic block.
