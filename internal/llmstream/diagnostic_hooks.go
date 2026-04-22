@@ -9,7 +9,7 @@ import (
 // is the completed response object (or potentially, an error object). Even though responses are streamed, the `response` here represents the completed object, as
 // if there was no streaming (ex: `{"id": "resp_123", "object": "response", ...}`).
 //
-// This method may be called eagerly as soon as we know the response object, but must be called before SendAsync returns.
+// This method may be called eagerly as soon as we know the response object, but must be called before the channel returned by SendAsync closes.
 type DiagnosticHookReceiver interface {
 	AddTurn(request map[string]any, response map[string]any)
 }

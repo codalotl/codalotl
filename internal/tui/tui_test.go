@@ -1397,6 +1397,86 @@ func TestToolSubagentDisplayCustomizesDirectFinalTextInsideSlot(t *testing.T) {
 	require.Contains(t, text, "Message: {\"verdict\":\"pass\"}")
 }
 
+func TestToolSubagentDisplayUsesNestedToolFinalMessagePresenter(t *testing.T) {
+	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
+	oracle := agent.AgentMeta{ID: "oracle", Depth: 2, Parent: foo.ID}
+	auditCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
+	reviewCall := &llmstream.ToolCall{CallID: "review-1", Name: "review"}
+	reviewTool := newNamedToolWithPresenter("review", finalMessageStubPresenter{
+		stubPresenter: stubPresenter{behavior: llmstream.CompletionBehaviorAppend},
+		subagentFinalMessage: func(call llmstream.ToolCall, subagentLabel string, finalMessage string) llmstream.Block {
+			require.Equal(t, "review", call.Name)
+			return llmstream.Output{
+				Lines: []string{
+					"Label: " + subagentLabel,
+					"Message: " + finalMessage,
+				},
+			}
+		},
+	})
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: auditCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: foo,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     auditCall.CallID,
+			Label:          "internal/foo",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    foo,
+		Type:     agent.EventTypeToolCall,
+		Tool:     reviewTool,
+		ToolCall: reviewCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: oracle,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: foo.ID,
+			ToolCallID:     reviewCall.CallID,
+			Label:          "oracle worker",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:                   oracle,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent:             llmstream.TextContent{Content: `{"verdict":"pass"}`},
+	})
+
+	text := renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, text, "internal/foo")
+	require.Contains(t, text, "Label: oracle worker")
+	require.Contains(t, text, "Message: {\"verdict\":\"pass\"}")
+	require.NotContains(t, text, "assistant(depth=0): {\"verdict\":\"pass\"}")
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    foo,
+		Type:     agent.EventTypeToolComplete,
+		Tool:     reviewTool,
+		ToolCall: reviewCall,
+		ToolResult: &llmstream.ToolResult{
+			CallID: reviewCall.CallID,
+			Name:   reviewCall.Name,
+		},
+	})
+
+	text = renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, text, "Label: oracle worker")
+	require.NotContains(t, text, "tool-result(depth=0): review")
+}
+
 func TestToolSubagentDisplayCompletedSlotsPersistAfterFinishAgentRun(t *testing.T) {
 	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 

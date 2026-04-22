@@ -111,6 +111,17 @@ func (m *model) handleToolSubagentDescendantEvent(ev agent.Event, autoScroll boo
 			updated = true
 		}
 	case agent.EventTypeAssistantText:
+		if ev.AssistantTextFinalizing {
+			if ref, ok := m.enclosingToolDisplayScope(ev.Agent); ok {
+				if presenterScope := m.toolDisplayScope(ref); presenterScope != nil && presenterScope.finalMessagePresenter != nil {
+					slot.stateKind = toolSubagentSlotStateTerminalText
+					slot.stateText = m.formatToolSubagentFinalText(presenterScope, m.subagentLabels[ev.Agent.ID], ev.TextContent.Content)
+					slot.done = true
+					updated = true
+					break
+				}
+			}
+		}
 		if directAgentID == ev.Agent.ID && ev.AssistantTextFinalizing {
 			slot.stateKind = toolSubagentSlotStateTerminalText
 			slot.stateText = m.formatToolSubagentFinalText(scope, slot.label, ev.TextContent.Content)
