@@ -191,7 +191,7 @@ Nested subagents:
 
 Rendering details:
 - Live descendant events should reuse the normal formatter, but with slot-local indentation rather than true agent-depth indentation. In practice, TUI can render the event as if `Agent.Depth == 0` and then place that text under the slot body.
-- Direct package final messages should go through the existing `llmstream.SubagentFinalMessagePresenter` hook, not raw JSON printing.
+- The presenter contract remains attached to the direct package subagent. If the slot's terminal visible finalizing text came from a deeper descendant routed into that slot, TUI may still reuse the direct subagent's `llmstream.SubagentFinalMessagePresenter` for that visible terminal text rather than showing raw JSON.
 - `EventTypeStartSubagent`, `EventTypeAssistantTurnComplete`, and `EventTypeDoneSuccess` are metadata for the slot tracker, not visible slot content on their own.
 
 ### `spectools` Result Contract
@@ -431,6 +431,8 @@ Pending.
   - `internal/tools/pkgtools`: conforms
   - `internal/tools/spectools`: conforms
   - `internal/tui`: non-conforming due to stable-slot handling of deeper descendants' finalizing assistant text bypassing `llmstream.SubagentFinalMessagePresenter`
+- Wording follow-up:
+  - `internal/tui/SPEC.md` and `internal/llmstream` docs should agree that the presenter contract is defined by the direct subagent/tool-call relationship, while stable-slot consumers may reuse that presentation for the slot's terminal visible descendant text.
 - Latest CAS entries were written under `.codalotl/cas/specconforms-1/...` for:
   - `internal/tools/pkgtools`
   - `internal/tools/spectools`
