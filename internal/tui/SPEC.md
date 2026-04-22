@@ -51,7 +51,8 @@ Basic controls:
 - Nested event streams: display subagent events with extra indentation.
 - Stable slots: each labeled direct subagent becomes a slot. Under it, display the last event of ANY depth that occurred under that subagent.
 - Once a tool enters stable-slot display, it owns display of ALL descendant tools and subagents under those slots. Deeper descendants do not create separate nested event streams or nested stable-slot displays; route their events into the existing slot as if they came directly from the labeled direct subagent.
-- In stable-slot display, the slot's terminal visible finalizing assistant text respects optional `llmstream.SubagentFinalMessagePresenter`, using the labeled direct subagent's presenter even when that visible text came from a routed deeper descendant.
+- Subagent finalizing assistant text respects optional `llmstream.SubagentFinalMessagePresenter`.
+    - NOTE: if a stable slot subagent launches tools/subagents which have a `llmstream.SubagentFinalMessagePresenter`, we respect that too (in other words, don't show the user ugly JSON from some deeply nested subagent).
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.
 - The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").
