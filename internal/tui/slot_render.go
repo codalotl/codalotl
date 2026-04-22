@@ -51,7 +51,7 @@ func (m *model) startToolSubagentDisplay(ev agent.Event) {
 }
 
 func (m *model) handleToolSubagentDescendantEvent(ev agent.Event, autoScroll bool) bool {
-	scopeRef, ok := m.enclosingToolDisplayScope(ev.Agent)
+	scopeRef, ok := m.owningToolDisplayScope(ev.Agent)
 	if !ok {
 		return false
 	}
@@ -229,6 +229,31 @@ func (m *model) formatToolSubagentFinalText(scope *toolDisplayScope, label strin
 func (m *model) normalizeToolSubagentSlotEvent(ev agent.Event) agent.Event {
 	ev.Agent.Depth = 0
 	return ev
+}
+
+func (m *model) owningToolDisplayScope(meta agent.AgentMeta) (toolDisplayScopeRef, bool) {
+	nearest, ok := m.enclosingToolDisplayScope(meta)
+	if !ok {
+		return toolDisplayScopeRef{}, false
+	}
+
+	var owner toolDisplayScopeRef
+	hasOwner := false
+	for agentID := meta.Parent; agentID != ""; agentID = m.agentParents[agentID] {
+		scopes := m.activeToolScopes[agentID]
+		for i := len(scopes) - 1; i >= 0; i-- {
+			display := m.toolSubagentDisplays[scopes[i].call.CallID]
+			if display == nil || len(display.slots) == 0 {
+				continue
+			}
+			owner = toolDisplayScopeRef{agentID: agentID, index: i}
+			hasOwner = true
+		}
+	}
+	if hasOwner {
+		return owner, true
+	}
+	return nearest, true
 }
 
 func (m *model) enclosingNamedToolDisplayScope(meta agent.AgentMeta, tool string) (toolDisplayScopeRef, bool) {

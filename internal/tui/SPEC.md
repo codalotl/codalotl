@@ -49,8 +49,8 @@ Basic controls:
 - Each `agent` event has `AgentMeta` like ID, Depth, and Parent, which informs how we keep track of this hierarchy.
 - Stable slots are used only if the subagent fires `EventTypeStartSubagent` and has a label. Otherwise, display nested event streams.
 - Nested event streams: display subagent events with extra indentation.
-- Stable slots: each labeled subagent becomes a slot. Under it, display the last event of ANY depth that occurred under that subagent.
-- Nested event streams can have nested stable slots, but stable slots have no more displayed nesting (subagents can still spawn subagents, but the UI only shows the containing stable slots).
+- Stable slots: each labeled direct subagent becomes a slot. Under it, display the last event of ANY depth that occurred under that subagent.
+- Once a tool enters stable-slot display, it owns display of ALL descendant tools and subagents under those slots. Deeper descendants do not create separate nested event streams or nested stable-slot displays; route their events into the existing slot as if they came directly from the labeled direct subagent.
 - Subagent finalizing assistant text respects optional `llmstream.SubagentFinalMessagePresenter`.
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.

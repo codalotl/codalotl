@@ -1233,6 +1233,81 @@ func TestToolSubagentDisplayNestedDescendantUpdatesOwningSlot(t *testing.T) {
 	require.NotContains(t, text, "nested worker")
 }
 
+func TestToolSubagentDisplayOuterStableSlotsOwnNestedToolSubagents(t *testing.T) {
+	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
+	oracle := agent.AgentMeta{ID: "oracle", Depth: 2, Parent: foo.ID}
+	auditCall := &llmstream.ToolCall{CallID: "audit-1", Name: "audit"}
+	clarifyCall := &llmstream.ToolCall{CallID: "clarify-1", Name: "clarify_public_api"}
+	clarifyTool := newNamedToolWithPresenter("clarify_public_api", stubPresenter{behavior: llmstream.CompletionBehaviorAppend})
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool("audit"),
+		ToolCall: auditCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: foo,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     auditCall.CallID,
+			Label:          "internal/foo",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    foo,
+		Type:     agent.EventTypeToolCall,
+		Tool:     clarifyTool,
+		ToolCall: clarifyCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: oracle,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: foo.ID,
+			ToolCallID:     clarifyCall.CallID,
+			Label:          "oracle worker",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    oracle,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool("read_file"),
+		ToolCall: &llmstream.ToolCall{CallID: "oracle-read-1", Name: "read_file"},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    oracle,
+		Type:     agent.EventTypeToolComplete,
+		Tool:     newNamedTool("read_file"),
+		ToolCall: &llmstream.ToolCall{CallID: "oracle-read-1", Name: "read_file"},
+		ToolResult: &llmstream.ToolResult{
+			CallID: "oracle-read-1",
+			Name:   "read_file",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    foo,
+		Type:     agent.EventTypeToolComplete,
+		Tool:     clarifyTool,
+		ToolCall: clarifyCall,
+		ToolResult: &llmstream.ToolResult{
+			CallID: clarifyCall.CallID,
+			Name:   clarifyCall.Name,
+		},
+	})
+
+	require.Len(t, m.messages, 1)
+	text := renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, text, "internal/foo")
+	require.Contains(t, text, "tool-result(depth=0): clarify_public_api")
+	require.NotContains(t, text, "oracle worker")
+	require.Empty(t, m.activeToolScopes[foo.ID])
+}
+
 func TestToolSubagentDisplayDirectFinalReplacesLiveSlot(t *testing.T) {
 	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 

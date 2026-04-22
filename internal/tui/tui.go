@@ -1667,6 +1667,7 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	}
 	if ev.Type == agent.EventTypeToolComplete {
 		defer m.clearCompletedToolState(ev)
+		defer m.endToolDisplayScope(ev)
 	}
 
 	autoScroll := m.shouldAutoScrollOnUpdate()
@@ -1675,9 +1676,6 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	}
 	if m.handleDescendantSubagentFinalMessage(ev, autoScroll) {
 		return
-	}
-	if ev.Type == agent.EventTypeToolComplete {
-		m.endToolDisplayScope(ev)
 	}
 
 	switch ev.Type {
