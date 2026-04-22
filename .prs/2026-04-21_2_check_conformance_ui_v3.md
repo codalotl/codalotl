@@ -369,6 +369,16 @@ Review skipped in this step per user request.
     - [minor][new] `check_spec_conformance` package detail is stored in transient `checkSpecDisplays` state and is cleared by `finishAgentRun`, so a later re-render can drop the package slots from the original tool-call message even though the spec requires that completed package detail remain visible there.
 - No CAS files were written by this run.
 
+### 2026-04-21 SPEC conformance rerun (`only_changed=true`)
+
+- Passed for changed packages:
+  - `internal/tools/spectools`
+  - `internal/tui`
+- CAS entries were written for both conforming packages under `.codalotl/cas/specconforms-1/...`.
+- The previous changed-package conformance findings were addressed:
+  - `internal/tools/spectools` now exposes a compact completion formatter for TUI while preserving the richer shared/noninteractive completion body.
+  - `internal/tui` now keeps completed package-slot display state attached to the original tool-call message so later re-renders preserve the package detail above the compact completion summary.
+
 ## Summary
 
 Pending.
@@ -400,4 +410,11 @@ Pending.
 - Latest `check_spec_conformance({"only_changed":true})` run failed:
   - `internal/tools/spectools`: TUI completion body still too verbose in the shared presenter path
   - `internal/tui`: package-slot detail can disappear on a later re-render because completion clears the slot display state
+- Follow-up implementation landed:
+  - `internal/tools/spectools` now has a compact completion formatter for TUI
+  - `internal/tui` preserves completed package slots across later re-renders by storing the display state on the original call message
+- Latest `check_spec_conformance({"only_changed":true})` rerun passed for:
+  - `internal/tools/spectools`
+  - `internal/tui`
+- CAS entries were written under `.codalotl/cas/specconforms-1/...` for those two packages.
 - `review` intentionally skipped in this step per user request.
