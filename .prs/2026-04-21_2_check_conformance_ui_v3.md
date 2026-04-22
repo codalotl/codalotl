@@ -358,7 +358,16 @@ Land the shared result/presentation changes first, then teach TUI to render `che
 
 ## Review
 
-Pending.
+Review skipped in this step per user request.
+
+### 2026-04-21 SPEC conformance (`only_changed=true`)
+
+- Failed for changed packages:
+  - `internal/tools/spectools`
+    - [minor][new] `presentCheckSpecConformanceBody` still produces a verbose completion body for all presenters. The spec now requires TUI completion output to stay compact, with detailed nonconformance text staying in package slots and optionally in noninteractive rendering.
+  - `internal/tui`
+    - [minor][new] `check_spec_conformance` package detail is stored in transient `checkSpecDisplays` state and is cleared by `finishAgentRun`, so a later re-render can drop the package slots from the original tool-call message even though the spec requires that completed package detail remain visible there.
+- No CAS files were written by this run.
 
 ## Summary
 
@@ -388,3 +397,7 @@ Pending.
 - Validation done:
   - `go test ./internal/tui`
   - `go test ./...`
+- Latest `check_spec_conformance({"only_changed":true})` run failed:
+  - `internal/tools/spectools`: TUI completion body still too verbose in the shared presenter path
+  - `internal/tui`: package-slot detail can disappear on a later re-render because completion clears the slot display state
+- `review` intentionally skipped in this step per user request.
