@@ -203,6 +203,45 @@ func TestPresentCheckSpecConformanceBodyIncludesNonconformanceDetails(t *testing
 	assert.Contains(t, rendered, "internal/foo: store CAS conformance: permission denied")
 }
 
+func TestFormatCheckSpecConformanceCompactCompletion(t *testing.T) {
+	t.Parallel()
+
+	t.Run("compact", func(t *testing.T) {
+		t.Parallel()
+
+		rendered := renderBlock(t, FormatCheckSpecConformanceCompactCompletion(`{
+			"internal/foo": {
+				"conforms": true,
+				"postcheck_error": "store CAS conformance: permission denied"
+			},
+			"internal/bar": {
+				"conforms": false,
+				"nonconformances": [
+					{"severity": "major", "latent": false, "message": "missing Foo docs"}
+				]
+			},
+			"internal/baz": {
+				"error": "timed out"
+			}
+		}`))
+
+		assert.Contains(t, rendered, "1 conforming, 1 non-conforming, 1 errors")
+		assert.Contains(t, rendered, "internal/foo: store CAS conformance: permission denied")
+		assert.NotContains(t, rendered, "Conforming:")
+		assert.NotContains(t, rendered, "Non-conforming:")
+		assert.NotContains(t, rendered, "internal/bar:")
+		assert.NotContains(t, rendered, "missing Foo docs")
+		assert.NotContains(t, rendered, "Errors:")
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		t.Parallel()
+
+		rendered := renderBlock(t, FormatCheckSpecConformanceCompactCompletion(`not json`))
+		assert.Equal(t, "Invalid check_spec_conformance result", rendered)
+	})
+}
+
 func TestParseAndSummarizeCheckSpecConformanceResults(t *testing.T) {
 	t.Parallel()
 

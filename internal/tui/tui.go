@@ -21,6 +21,7 @@ import (
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
 	"github.com/codalotl/codalotl/internal/skills"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"github.com/codalotl/codalotl/internal/tools/spectools"
 )
 
 const (
@@ -63,15 +64,16 @@ type packageContextState struct {
 }
 
 type chatMessage struct {
-	kind           messageKind
-	userMessage    string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
-	event          agent.Event
-	toolCallID     string
-	contextStatus  *contextStatusLine
-	contextDetails string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
-	contextError   string
-	skillsList     []skills.Skill // skillsList is only set for messageKindSkillsList.
-	skillsIssues   string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
+	kind             messageKind
+	userMessage      string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
+	event            agent.Event
+	toolCallID       string
+	contextStatus    *contextStatusLine
+	contextDetails   string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
+	contextError     string
+	skillsList       []skills.Skill // skillsList is only set for messageKindSkillsList.
+	skillsIssues     string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
+	checkSpecDisplay *checkSpecConformanceDisplay
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it. It must be the correct block width (all lines padded with spaces to equal width
 	// of the viewport. Background colors must be set on this (if we're not in the uncolored palette). Resize events need to recalculate this.
@@ -1776,10 +1778,14 @@ func (m *model) withForegroundColor(str string, accent bool) string {
 }
 
 func (m *model) appendAgentEvent(ev agent.Event) {
+	toolCallID := eventToolCallID(ev)
 	msg := chatMessage{
 		kind:       messageKindAgent,
 		event:      ev,
-		toolCallID: eventToolCallID(ev),
+		toolCallID: toolCallID,
+	}
+	if ev.Type == agent.EventTypeToolCall && toolName(ev) == spectools.ToolNameCheckSpecConformance {
+		msg.checkSpecDisplay = m.checkSpecDisplays[toolCallID]
 	}
 	m.messages = append(m.messages, msg)
 }

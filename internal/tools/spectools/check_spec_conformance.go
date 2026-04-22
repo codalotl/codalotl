@@ -994,17 +994,22 @@ func SummarizeCheckSpecConformanceResults(results CheckSpecConformanceResults) C
 	return summary
 }
 
+// FormatCheckSpecConformanceCompactCompletion formats raw machine-readable tool output into a compact completion block for TUI use.
+func FormatCheckSpecConformanceCompactCompletion(raw string) llmstream.Block {
+	results, err := ParseCheckSpecConformanceResults(raw)
+	if err != nil {
+		return invalidCheckSpecConformanceResultBlock()
+	}
+
+	summary := SummarizeCheckSpecConformanceResults(results)
+	return formatCompactCheckSpecConformanceSummaryBlock(summary)
+}
+
 // FormatCheckSpecConformancePackageFinalMessage formats one subagent's final JSON verdict for human display.
 func FormatCheckSpecConformancePackageFinalMessage(finalMessage string) llmstream.Block {
 	result, err := parsePackageFinalMessageResult(finalMessage)
 	if err != nil {
-		return llmstream.Paragraph{
-			Lines: []llmstream.Line{{
-				Segments: []llmstream.Segment{
-					{Text: "Invalid conformance result", Role: llmstream.RoleError},
-				},
-			}},
-		}
+		return invalidConformanceResultBlock()
 	}
 
 	return formatPackageCheckResultBlock(result)
@@ -1253,6 +1258,49 @@ func shortCommit(commit string) string {
 	return commit[:12]
 }
 
+func invalidConformanceResultBlock() llmstream.Block {
+	return llmstream.Paragraph{
+		Lines: []llmstream.Line{{
+			Segments: []llmstream.Segment{
+				{Text: "Invalid conformance result", Role: llmstream.RoleError},
+			},
+		}},
+	}
+}
+
+func invalidCheckSpecConformanceResultBlock() llmstream.Block {
+	return llmstream.Paragraph{
+		Lines: []llmstream.Line{{
+			Segments: []llmstream.Segment{
+				{Text: "Invalid check_spec_conformance result", Role: llmstream.RoleError},
+			},
+		}},
+	}
+}
+
+func checkSpecConformanceSummaryLine(summary CheckSpecConformanceSummary) llmstream.Line {
+	return llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: fmt.Sprintf("%d conforming,", summary.ConformingCount), Role: llmstream.RoleAccent},
+			{Text: fmt.Sprintf("%d non-conforming,", summary.NonconformingCount), Role: llmstream.RoleAccent},
+			{Text: fmt.Sprintf("%d errors", summary.ErrorCount), Role: llmstream.RoleAccent},
+		},
+	}
+}
+
+func formatCompactCheckSpecConformanceSummaryBlock(summary CheckSpecConformanceSummary) llmstream.Block {
+	lines := []llmstream.Line{checkSpecConformanceSummaryLine(summary)}
+	for _, postcheckErr := range summary.PostcheckErrors {
+		lines = append(lines, llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: fmt.Sprintf("%s: %s", postcheckErr.Package, postcheckErr.Error), Role: llmstream.RoleNormal},
+			},
+		})
+	}
+	return llmstream.Paragraph{Lines: lines}
+}
+
 func (execGitRunner) Output(ctx context.Context, repoAbsDir string, args ...string) (string, error) {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
@@ -1337,14 +1385,7 @@ func presentCheckSpecConformanceBody(raw string) (llmstream.Block, bool) {
 
 	summary := SummarizeCheckSpecConformanceResults(results)
 
-	lines := []llmstream.Line{{
-		JoinWithSpace: true,
-		Segments: []llmstream.Segment{
-			{Text: fmt.Sprintf("%d conforming,", summary.ConformingCount), Role: llmstream.RoleAccent},
-			{Text: fmt.Sprintf("%d non-conforming,", summary.NonconformingCount), Role: llmstream.RoleAccent},
-			{Text: fmt.Sprintf("%d errors", summary.ErrorCount), Role: llmstream.RoleAccent},
-		},
-	}}
+	lines := []llmstream.Line{checkSpecConformanceSummaryLine(summary)}
 	if len(summary.ConformingPackages) > 0 {
 		lines = append(lines, llmstream.Line{
 			JoinWithSpace: true,

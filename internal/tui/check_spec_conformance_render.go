@@ -152,7 +152,7 @@ func (m *model) renderToolSpecificMessage(msg *chatMessage, width int) (string, 
 		if toolName(msg.event) != spectools.ToolNameCheckSpecConformance {
 			return "", false
 		}
-		return m.renderCheckSpecConformanceCallMessage(msg.event, width), true
+		return m.renderCheckSpecConformanceCallMessage(msg, width), true
 	case agent.EventTypeToolComplete:
 		if toolName(msg.event) != spectools.ToolNameCheckSpecConformance {
 			return "", false
@@ -166,10 +166,15 @@ func (m *model) renderToolSpecificMessage(msg *chatMessage, width int) (string, 
 	}
 }
 
-func (m *model) renderCheckSpecConformanceCallMessage(ev agent.Event, width int) string {
-	header := m.agentFormatter.FormatEvent(ev, width)
-	callID := eventToolCallID(ev)
-	display := m.checkSpecDisplays[callID]
+func (m *model) renderCheckSpecConformanceCallMessage(msg *chatMessage, width int) string {
+	if msg == nil {
+		return ""
+	}
+	header := m.agentFormatter.FormatEvent(msg.event, width)
+	display := msg.checkSpecDisplay
+	if display == nil {
+		display = m.checkSpecDisplays[msg.toolCallID]
+	}
 	if display == nil || len(display.slots) == 0 {
 		return header
 	}
@@ -181,7 +186,7 @@ func (m *model) renderCheckSpecConformanceCallMessage(ev agent.Event, width int)
 }
 
 func (m *model) renderCheckSpecConformanceCompleteMessage(ev agent.Event, width int) string {
-	header := m.agentFormatter.FormatEvent(ev, width)
+	header := firstLine(m.agentFormatter.FormatEvent(ev, width))
 	body := m.renderCheckSpecConformanceSummary(ev.ToolResult)
 	if body == "" {
 		return header
@@ -370,4 +375,11 @@ func (m *model) styleCheckSpecConformanceErrorLine(s string) string {
 
 func termformatSanitizeLine(s string) string {
 	return termformat.Sanitize(strings.ReplaceAll(s, "\n", " "), 4)
+}
+
+func firstLine(s string) string {
+	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+		return s[:idx]
+	}
+	return s
 }

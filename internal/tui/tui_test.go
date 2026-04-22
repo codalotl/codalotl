@@ -62,6 +62,23 @@ func (errorAwareFormatter) FormatEvent(ev agent.Event, _ int) string {
 	}
 }
 
+type verboseCheckSpecFormatter struct{}
+
+func (verboseCheckSpecFormatter) FormatEvent(ev agent.Event, _ int) string {
+	switch ev.Type {
+	case agent.EventTypeToolCall:
+		return fmt.Sprintf("tool-call(depth=%d): %s", ev.Agent.Depth, toolName(ev))
+	case agent.EventTypeToolComplete:
+		return strings.Join([]string{
+			fmt.Sprintf("tool-result(depth=%d): %s", ev.Agent.Depth, toolName(ev)),
+			"detailed package results that should stay out of TUI completion",
+			"internal/foo: non-conforming",
+		}, "\n")
+	default:
+		return ""
+	}
+}
+
 type stubPresenter struct {
 	behavior llmstream.CompletionBehavior
 }
@@ -1264,6 +1281,95 @@ func TestCheckSpecConformanceCompletionAppendsCompactSummary(t *testing.T) {
 	require.Contains(t, summaryText, "tool-result(depth=0): check_spec_conformance")
 	require.Contains(t, summaryText, "1 conforming, 1 non-conforming, 1 error")
 	require.Contains(t, summaryText, "Postcheck error for internal/foo: permission denied")
+}
+
+func TestCheckSpecConformanceCompletionDropsVerboseFormatterBody(t *testing.T) {
+	m := newModel(colorPalette{}, verboseCheckSpecFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
+		ToolCall: checkCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolComplete,
+		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
+		ToolCall: checkCall,
+		ToolResult: &llmstream.ToolResult{
+			CallID: checkCall.CallID,
+			Name:   spectools.ToolNameCheckSpecConformance,
+			Result: `{"internal/foo":{"conforms":false,"nonconformances":[{"severity":"major","latent":true,"message":"Missing Foo behavior."}]}}`,
+		},
+	})
+
+	require.Len(t, m.messages, 2)
+
+	summaryText := renderAgentMessageText(t, m, 1, 120)
+	require.Contains(t, summaryText, "tool-result(depth=0): check_spec_conformance")
+	require.Contains(t, summaryText, "1 non-conforming")
+	require.NotContains(t, summaryText, "detailed package results that should stay out of TUI completion")
+	require.NotContains(t, summaryText, "internal/foo: non-conforming")
+	require.NotContains(t, summaryText, "Missing Foo behavior.")
+}
+
+func TestCheckSpecConformanceCompletedSlotsPersistAfterFinishAgentRun(t *testing.T) {
+	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	root := agent.AgentMeta{ID: "root"}
+	foo := agent.AgentMeta{ID: "foo", Depth: 1, Parent: root.ID}
+	checkCall := &llmstream.ToolCall{CallID: "check-1", Name: spectools.ToolNameCheckSpecConformance}
+
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolCall,
+		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
+		ToolCall: checkCall,
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent: foo,
+		Type:  agent.EventTypeStartSubagent,
+		StartSubagent: agent.StartSubagent{
+			CallingAgentID: root.ID,
+			ToolCallID:     checkCall.CallID,
+			Label:          "internal/foo",
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:                   foo,
+		Type:                    agent.EventTypeAssistantText,
+		AssistantTextFinalizing: true,
+		TextContent: llmstream.TextContent{
+			Content: `{"conforms":false,"nonconformances":[{"severity":"major","latent":true,"message":"Missing Foo behavior."}]}`,
+		},
+	})
+	m.handleAgentEvent(agent.Event{
+		Agent:    root,
+		Type:     agent.EventTypeToolComplete,
+		Tool:     newNamedTool(spectools.ToolNameCheckSpecConformance),
+		ToolCall: checkCall,
+		ToolResult: &llmstream.ToolResult{
+			CallID: checkCall.CallID,
+			Name:   spectools.ToolNameCheckSpecConformance,
+			Result: `{"internal/foo":{"conforms":false,"nonconformances":[{"severity":"major","latent":true,"message":"Missing Foo behavior."}]}}`,
+		},
+	})
+
+	beforeFinish := renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, beforeFinish, "Package internal/foo")
+	require.Contains(t, beforeFinish, "Missing Foo behavior.")
+
+	m.finishAgentRun()
+
+	require.Len(t, m.checkSpecDisplays, 0)
+
+	afterFinish := renderAgentMessageText(t, m, 0, 120)
+	require.Contains(t, afterFinish, "Package internal/foo")
+	require.Contains(t, afterFinish, "Missing Foo behavior.")
 }
 
 func TestCheckSpecConformanceCompletionErrorUsesNormalToolRendering(t *testing.T) {
