@@ -63,15 +63,16 @@ type packageContextState struct {
 }
 
 type chatMessage struct {
-	kind           messageKind
-	userMessage    string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
-	event          agent.Event
-	toolCallID     string
-	contextStatus  *contextStatusLine
-	contextDetails string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
-	contextError   string
-	skillsList     []skills.Skill // skillsList is only set for messageKindSkillsList.
-	skillsIssues   string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
+	kind                messageKind
+	userMessage         string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
+	event               agent.Event
+	toolCallID          string
+	contextStatus       *contextStatusLine
+	contextDetails      string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
+	contextError        string
+	skillsList          []skills.Skill // skillsList is only set for messageKindSkillsList.
+	skillsIssues        string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
+	toolSubagentDisplay *toolSubagentDisplay
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it. It must be the correct block width (all lines padded with spaces to equal width
 	// of the viewport. Background colors must be set on this (if we're not in the uncolored palette). Resize events need to recalculate this.
@@ -265,6 +266,8 @@ type model struct {
 	agentParents                map[string]string
 	subagentLabels              map[string]string
 	activeToolScopes            map[string][]toolDisplayScope
+	toolSubagentDisplays        map[string]*toolSubagentDisplay
+	toolCompletionByCallID      map[string]llmstream.CompletionBehavior
 }
 
 func newModel(
@@ -287,30 +290,32 @@ func newModel(
 	}
 
 	m := &model{
-		viewport:             vp,
-		textarea:             ti,
-		session:              initialSession,
-		sessionFactory:       factory,
-		sessionConfig:        activeCfg,
-		agentFormatter:       formatter,
-		persistModelID:       persistModelID,
-		requestSource:        1,
-		nextAgentRunID:       1,
-		messages:             make([]chatMessage, 0, 32),
-		messageHistory:       make([]string, 0, 32),
-		queuedMessages:       make([]queuedMessage, 0),
-		permissionQueue:      make([]*permissionPrompt, 0),
-		palette:              palette,
-		cycleIndex:           historyIndexNone,
-		editingHistoryIndex:  historyIndexNone,
-		monitor:              monitor,
-		casDB:                casDB,
-		now:                  time.Now,
-		osClipboardAvailable: clipboard.Available,
-		osClipboardWrite:     clipboard.Write,
-		agentParents:         make(map[string]string),
-		subagentLabels:       make(map[string]string),
-		activeToolScopes:     make(map[string][]toolDisplayScope),
+		viewport:               vp,
+		textarea:               ti,
+		session:                initialSession,
+		sessionFactory:         factory,
+		sessionConfig:          activeCfg,
+		agentFormatter:         formatter,
+		persistModelID:         persistModelID,
+		requestSource:          1,
+		nextAgentRunID:         1,
+		messages:               make([]chatMessage, 0, 32),
+		messageHistory:         make([]string, 0, 32),
+		queuedMessages:         make([]queuedMessage, 0),
+		permissionQueue:        make([]*permissionPrompt, 0),
+		palette:                palette,
+		cycleIndex:             historyIndexNone,
+		editingHistoryIndex:    historyIndexNone,
+		monitor:                monitor,
+		casDB:                  casDB,
+		now:                    time.Now,
+		osClipboardAvailable:   clipboard.Available,
+		osClipboardWrite:       clipboard.Write,
+		agentParents:           make(map[string]string),
+		subagentLabels:         make(map[string]string),
+		activeToolScopes:       make(map[string][]toolDisplayScope),
+		toolSubagentDisplays:   make(map[string]*toolSubagentDisplay),
+		toolCompletionByCallID: make(map[string]llmstream.CompletionBehavior),
 	}
 	if initialSession != nil {
 		m.requests = initialSession.UserRequests()
@@ -1658,14 +1663,19 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	m.recordSubagentStart(ev)
 	if ev.Type == agent.EventTypeToolCall {
 		m.beginToolDisplayScope(ev)
+		m.startToolSubagentDisplay(ev)
+	}
+	if ev.Type == agent.EventTypeToolComplete {
+		defer m.clearCompletedToolState(ev)
+		defer m.endToolDisplayScope(ev)
 	}
 
 	autoScroll := m.shouldAutoScrollOnUpdate()
-	if m.handleDescendantSubagentFinalMessage(ev, autoScroll) {
+	if m.handleToolSubagentDescendantEvent(ev, autoScroll) {
 		return
 	}
-	if ev.Type == agent.EventTypeToolComplete {
-		m.endToolDisplayScope(ev)
+	if m.handleDescendantSubagentFinalMessage(ev, autoScroll) {
+		return
 	}
 
 	switch ev.Type {
@@ -1695,7 +1705,7 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	}
 
 	if ev.Type == agent.EventTypeToolComplete {
-		if id := eventToolCallID(ev); id != "" && shouldReplaceToolCallWithResult(ev) && m.replaceToolEvent(id, ev) {
+		if id := eventToolCallID(ev); id != "" && m.shouldReplaceToolCallWithResult(ev) && m.replaceToolEvent(id, ev) {
 			m.refreshViewport(autoScroll)
 			return
 		}
@@ -1767,10 +1777,14 @@ func (m *model) withForegroundColor(str string, accent bool) string {
 }
 
 func (m *model) appendAgentEvent(ev agent.Event) {
+	toolCallID := eventToolCallID(ev)
 	msg := chatMessage{
 		kind:       messageKindAgent,
 		event:      ev,
-		toolCallID: eventToolCallID(ev),
+		toolCallID: toolCallID,
+	}
+	if ev.Type == agent.EventTypeToolCall {
+		msg.toolSubagentDisplay = m.toolSubagentDisplays[toolCallID]
 	}
 	m.messages = append(m.messages, msg)
 }
@@ -1812,8 +1826,8 @@ func toolName(ev agent.Event) string {
 	return ""
 }
 
-func shouldReplaceToolCallWithResult(ev agent.Event) bool {
-	switch toolCompletionBehavior(ev) {
+func (m *model) shouldReplaceToolCallWithResult(ev agent.Event) bool {
+	switch m.toolCompletionBehavior(ev) {
 	case llmstream.CompletionBehaviorAppend:
 		return false
 	default:
@@ -1821,7 +1835,7 @@ func shouldReplaceToolCallWithResult(ev agent.Event) bool {
 	}
 }
 
-func toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
+func (m *model) toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
 	if ev.Tool != nil && ev.ToolCall != nil {
 		if presenter := ev.Tool.Presenter(); presenter != nil {
 			var result *llmstream.ToolResult
@@ -1833,14 +1847,12 @@ func toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
 			}
 		}
 	}
-
-	switch toolName(ev) {
-	case "implement", "review":
-		// SubAgent tools: we want to show the call *and* the result as separate messages.
-		return llmstream.CompletionBehaviorAppend
-	default:
-		return llmstream.CompletionBehaviorReplace
+	if callID := eventToolCallID(ev); callID != "" {
+		if behavior, ok := m.toolCompletionByCallID[callID]; ok {
+			return behavior
+		}
 	}
+	return llmstream.CompletionBehaviorReplace
 }
 
 func (m *model) recordAgentMeta(meta agent.AgentMeta) {
@@ -1854,10 +1866,16 @@ func (m *model) resetToolDisplayState() {
 	clear(m.agentParents)
 	clear(m.subagentLabels)
 	clear(m.activeToolScopes)
+	clear(m.toolSubagentDisplays)
+	clear(m.toolCompletionByCallID)
 }
 
 func (m *model) beginToolDisplayScope(ev agent.Event) {
-	if ev.ToolCall == nil || ev.Agent.ID == "" {
+	if ev.ToolCall == nil {
+		return
+	}
+	m.toolCompletionByCallID[ev.ToolCall.CallID] = m.toolCompletionBehavior(ev)
+	if ev.Agent.ID == "" {
 		return
 	}
 	scope := toolDisplayScope{
@@ -1867,6 +1885,14 @@ func (m *model) beginToolDisplayScope(ev agent.Event) {
 		scope.finalMessagePresenter = presenter
 	}
 	m.activeToolScopes[ev.Agent.ID] = append(m.activeToolScopes[ev.Agent.ID], scope)
+}
+
+func (m *model) clearCompletedToolState(ev agent.Event) {
+	callID := eventToolCallID(ev)
+	if callID == "" {
+		return
+	}
+	delete(m.toolCompletionByCallID, callID)
 }
 
 func (m *model) endToolDisplayScope(ev agent.Event) {
@@ -2051,7 +2077,11 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 	case messageKindQueuedUser:
 		content = m.renderUserMessageBlock(msg.userMessage, true, width)
 	case messageKindAgent:
-		content = m.agentFormatter.FormatEvent(msg.event, width)
+		if custom, ok := m.renderToolSpecificMessage(msg, width); ok {
+			content = custom
+		} else {
+			content = m.agentFormatter.FormatEvent(msg.event, width)
+		}
 		needBgAndWidth = true
 	default:
 		content = termformat.Sanitize(msg.userMessage, 4)

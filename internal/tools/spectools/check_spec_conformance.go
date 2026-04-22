@@ -103,12 +103,45 @@ type packageCheckResult struct {
 	Conforms        *bool          `json:"conforms,omitempty"`
 	Nonconformances []packageIssue `json:"nonconformances,omitempty"`
 	Error           string         `json:"error,omitempty"`
+	PostcheckError  string         `json:"postcheck_error,omitempty"`
 }
 
 type packageIssue struct {
 	Severity string `json:"severity"`
 	Latent   bool   `json:"latent"`
 	Message  string `json:"message"`
+}
+
+// CheckSpecConformancePackageResult is one package entry in a check_spec_conformance tool result.
+type CheckSpecConformancePackageResult = packageCheckResult
+
+// CheckSpecConformanceIssue is one reported SPEC.md nonconformance.
+type CheckSpecConformanceIssue = packageIssue
+
+// CheckSpecConformanceResults is the parsed raw JSON result of check_spec_conformance.
+type CheckSpecConformanceResults map[string]CheckSpecConformancePackageResult
+
+// CheckSpecConformanceSummary groups package result counts and sorted package keys.
+type CheckSpecConformanceSummary struct {
+	ConformingCount       int
+	NonconformingCount    int
+	ErrorCount            int
+	ConformingPackages    []string
+	NonconformingPackages []string
+	ErrorPackages         []string
+	PostcheckErrors       []CheckSpecConformancePostcheckError
+}
+
+// CheckSpecConformancePostcheckError is a package-scoped failure that happened after a valid verdict.
+type CheckSpecConformancePostcheckError struct {
+	Package string
+	Error   string
+}
+
+type packageResultValidationOptions struct {
+	allowError          bool
+	allowPostcheckError bool
+	hasDiff             *bool
 }
 
 type gitRunner interface {
@@ -239,17 +272,17 @@ func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, 
 			continue
 		}
 
-		hasDiff, err := packageHasChanges(pkg, changes)
-		if err != nil {
-			return nil, fmt.Errorf("check package diff scope for %s: %w", packageResultKey(pkg.RelativeDir), err)
-		}
-
 		found, conforms, err := retrieveConformanceState(pkg)
 		if err != nil {
 			return nil, fmt.Errorf("retrieve CAS conformance for %s: %w", packageResultKey(pkg.RelativeDir), err)
 		}
-		if found && conforms && !hasDiff {
+		if found && conforms {
 			continue
+		}
+
+		hasDiff, err := packageHasChanges(pkg, changes)
+		if err != nil {
+			return nil, fmt.Errorf("check package diff scope for %s: %w", packageResultKey(pkg.RelativeDir), err)
 		}
 
 		if onlyChanged && !hasDiff {
@@ -332,7 +365,7 @@ func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDi
 
 	if result.Conforms != nil && *result.Conforms {
 		if err := t.storeConformanceState(pkg.Package); err != nil {
-			return packageErrorResult(fmt.Errorf("store CAS conformance: %w", err))
+			result.PostcheckError = fmt.Sprintf("store CAS conformance: %s", err)
 		}
 	}
 
@@ -408,7 +441,7 @@ func (c labeledSubAgentCreator) New(systemPrompt string, tools []llmstream.Tool,
 func buildPackageCheckInstructions(req packageCheckRequest) string {
 	var body strings.Builder
 	body.WriteString("Use the $spec-md check-conformance workflow for this package.\n")
-	body.WriteString("This is read-only in intent. Do not modify files.\n")
+	body.WriteString("This is read-only in intent.\n")
 	body.WriteString("The outer tool already computed the equivalent of `codalotl spec diff` for this package. Treat that as satisfying the mechanical public-API-diff step unless you have a specific reason to distrust it.\n")
 	body.WriteString("Return STRICT JSON only. No prose. No markdown fences.\n")
 	body.WriteString("Allowed JSON shapes:\n")
@@ -901,51 +934,103 @@ func packageResultKey(relativeDir string) string {
 	return filepath.ToSlash(relativeDir)
 }
 
+// ParseCheckSpecConformanceResults parses the raw machine-readable JSON tool result.
+func ParseCheckSpecConformanceResults(raw string) (CheckSpecConformanceResults, error) {
+	var results CheckSpecConformanceResults
+	if err := json.Unmarshal([]byte(raw), &results); err != nil {
+		return nil, err
+	}
+
+	for key, result := range results {
+		validated, err := validatePackageCheckResult(packageCheckResult(result), packageResultValidationOptions{
+			allowError:          true,
+			allowPostcheckError: true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", key, err)
+		}
+		results[key] = validated
+	}
+
+	return results, nil
+}
+
+// SummarizeCheckSpecConformanceResults computes sorted package buckets and counts.
+func SummarizeCheckSpecConformanceResults(results CheckSpecConformanceResults) CheckSpecConformanceSummary {
+	keys := make([]string, 0, len(results))
+	for key := range results {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	summary := CheckSpecConformanceSummary{
+		ConformingPackages:    make([]string, 0, len(results)),
+		NonconformingPackages: make([]string, 0, len(results)),
+		ErrorPackages:         make([]string, 0, len(results)),
+		PostcheckErrors:       make([]CheckSpecConformancePostcheckError, 0),
+	}
+	for _, key := range keys {
+		result := packageCheckResult(results[key])
+		switch {
+		case result.Error != "":
+			summary.ErrorPackages = append(summary.ErrorPackages, key)
+		case result.Conforms != nil && *result.Conforms:
+			summary.ConformingPackages = append(summary.ConformingPackages, key)
+		default:
+			summary.NonconformingPackages = append(summary.NonconformingPackages, key)
+		}
+
+		if result.PostcheckError != "" {
+			summary.PostcheckErrors = append(summary.PostcheckErrors, CheckSpecConformancePostcheckError{
+				Package: key,
+				Error:   result.PostcheckError,
+			})
+		}
+	}
+
+	summary.ConformingCount = len(summary.ConformingPackages)
+	summary.NonconformingCount = len(summary.NonconformingPackages)
+	summary.ErrorCount = len(summary.ErrorPackages)
+	return summary
+}
+
+// FormatCheckSpecConformanceCompactCompletion formats raw machine-readable tool output into a compact completion block for TUI use.
+func FormatCheckSpecConformanceCompactCompletion(raw string) llmstream.Block {
+	results, err := ParseCheckSpecConformanceResults(raw)
+	if err != nil {
+		return invalidCheckSpecConformanceResultBlock()
+	}
+
+	summary := SummarizeCheckSpecConformanceResults(results)
+	return formatCompactCheckSpecConformanceSummaryBlock(summary)
+}
+
+// FormatCheckSpecConformancePackageFinalMessage formats one subagent's final JSON verdict for human display.
+func FormatCheckSpecConformancePackageFinalMessage(finalMessage string) llmstream.Block {
+	result, err := parsePackageFinalMessageResult(finalMessage)
+	if err != nil {
+		return invalidConformanceResultBlock()
+	}
+
+	return formatPackageCheckResultBlock(result)
+}
+
 func parsePackageCheckResult(answer string, hasDiff bool) (packageCheckResult, error) {
 	payload := extractJSONObject(answer)
 	if payload == "" {
 		return packageCheckResult{}, fmt.Errorf("subagent returned non-JSON result")
 	}
 
-	var result packageCheckResult
-	decoder := json.NewDecoder(strings.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&result); err != nil {
-		return packageCheckResult{}, fmt.Errorf("decode subagent JSON: %w", err)
+	result, err := decodePackageCheckResult(payload)
+	if err != nil {
+		return packageCheckResult{}, err
 	}
 
-	if result.Error != "" {
-		return packageCheckResult{}, fmt.Errorf("subagent returned unexpected error payload: %s", result.Error)
-	}
-	if result.Conforms == nil {
-		return packageCheckResult{}, fmt.Errorf("subagent JSON must include conforms")
-	}
-
-	if *result.Conforms {
-		if result.Nonconformances != nil {
-			return packageCheckResult{}, fmt.Errorf("subagent returned nonconformances for conforms=true")
-		}
-		return result, nil
-	}
-	if len(result.Nonconformances) == 0 {
-		return packageCheckResult{}, fmt.Errorf("subagent returned conforms=false without nonconformances")
-	}
-
-	for i := range result.Nonconformances {
-		switch result.Nonconformances[i].Severity {
-		case "trivial", "minor", "major":
-		default:
-			return packageCheckResult{}, fmt.Errorf("subagent returned invalid severity %q", result.Nonconformances[i].Severity)
-		}
-		if result.Nonconformances[i].Message == "" {
-			return packageCheckResult{}, fmt.Errorf("subagent returned a nonconformance with an empty message")
-		}
-		if !hasDiff {
-			result.Nonconformances[i].Latent = true
-		}
-	}
-
-	return result, nil
+	return validatePackageCheckResult(result, packageResultValidationOptions{
+		hasDiff:             &hasDiff,
+		allowError:          false,
+		allowPostcheckError: false,
+	})
 }
 
 func extractJSONObject(answer string) string {
@@ -978,6 +1063,117 @@ func extractJSONObject(answer string) string {
 		return answer[start : end+1]
 	}
 	return ""
+}
+
+func parsePackageFinalMessageResult(finalMessage string) (packageCheckResult, error) {
+	payload := extractJSONObject(finalMessage)
+	if payload == "" {
+		return packageCheckResult{}, fmt.Errorf("subagent returned non-JSON result")
+	}
+
+	result, err := decodePackageCheckResult(payload)
+	if err != nil {
+		return packageCheckResult{}, err
+	}
+
+	return validatePackageCheckResult(result, packageResultValidationOptions{
+		allowError:          false,
+		allowPostcheckError: false,
+	})
+}
+
+func decodePackageCheckResult(payload string) (packageCheckResult, error) {
+	var result packageCheckResult
+	decoder := json.NewDecoder(strings.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return packageCheckResult{}, fmt.Errorf("decode subagent JSON: %w", err)
+	}
+	return result, nil
+}
+
+func validatePackageCheckResult(result packageCheckResult, options packageResultValidationOptions) (packageCheckResult, error) {
+	if result.Error != "" {
+		if !options.allowError {
+			return packageCheckResult{}, fmt.Errorf("subagent returned unexpected error payload: %s", result.Error)
+		}
+		if result.Conforms != nil || result.Nonconformances != nil || result.PostcheckError != "" {
+			return packageCheckResult{}, fmt.Errorf("error result cannot include verdict fields")
+		}
+		return result, nil
+	}
+
+	if result.PostcheckError != "" && !options.allowPostcheckError {
+		return packageCheckResult{}, fmt.Errorf("subagent returned unexpected postcheck_error payload: %s", result.PostcheckError)
+	}
+	if result.Conforms == nil {
+		return packageCheckResult{}, fmt.Errorf("subagent JSON must include conforms")
+	}
+
+	if *result.Conforms {
+		if result.Nonconformances != nil {
+			return packageCheckResult{}, fmt.Errorf("subagent returned nonconformances for conforms=true")
+		}
+		return result, nil
+	}
+	if len(result.Nonconformances) == 0 {
+		return packageCheckResult{}, fmt.Errorf("subagent returned conforms=false without nonconformances")
+	}
+
+	for i := range result.Nonconformances {
+		switch result.Nonconformances[i].Severity {
+		case "trivial", "minor", "major":
+		default:
+			return packageCheckResult{}, fmt.Errorf("subagent returned invalid severity %q", result.Nonconformances[i].Severity)
+		}
+		if result.Nonconformances[i].Message == "" {
+			return packageCheckResult{}, fmt.Errorf("subagent returned a nonconformance with an empty message")
+		}
+		if options.hasDiff != nil && !*options.hasDiff {
+			result.Nonconformances[i].Latent = true
+		}
+	}
+
+	return result, nil
+}
+
+func formatPackageCheckResultBlock(result packageCheckResult) llmstream.Block {
+	if result.Error != "" {
+		return llmstream.Paragraph{
+			Lines: []llmstream.Line{{
+				Segments: []llmstream.Segment{
+					{Text: "Error: " + result.Error, Role: llmstream.RoleError},
+				},
+			}},
+		}
+	}
+	if result.Conforms != nil && *result.Conforms {
+		return llmstream.Paragraph{
+			Lines: []llmstream.Line{{
+				Segments: []llmstream.Segment{
+					{Text: "Conforms", Role: llmstream.RoleSuccess},
+				},
+			}},
+		}
+	}
+
+	lines := []llmstream.Line{{
+		Segments: []llmstream.Segment{
+			{Text: "Non-conforming", Role: llmstream.RoleAccent},
+		},
+	}}
+	for _, issue := range result.Nonconformances {
+		scope := "New"
+		if issue.Latent {
+			scope = "Latent"
+		}
+		lines = append(lines, llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: fmt.Sprintf("[%s][%s] %s", scope, issue.Severity, issue.Message), Role: llmstream.RoleNormal},
+			},
+		})
+	}
+	return llmstream.Paragraph{Lines: lines}
 }
 
 func packageErrorResult(err error) packageCheckResult {
@@ -1055,11 +1251,61 @@ func trimLineEndings(s string) string {
 	return trimTrailingNewline(s)
 }
 
+func nounForCount(count int, singular string, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
+}
+
 func shortCommit(commit string) string {
 	if len(commit) <= 12 {
 		return commit
 	}
 	return commit[:12]
+}
+
+func invalidConformanceResultBlock() llmstream.Block {
+	return llmstream.Paragraph{
+		Lines: []llmstream.Line{{
+			Segments: []llmstream.Segment{
+				{Text: "Invalid conformance result", Role: llmstream.RoleError},
+			},
+		}},
+	}
+}
+
+func invalidCheckSpecConformanceResultBlock() llmstream.Block {
+	return llmstream.Paragraph{
+		Lines: []llmstream.Line{{
+			Segments: []llmstream.Segment{
+				{Text: "Invalid check_spec_conformance result", Role: llmstream.RoleError},
+			},
+		}},
+	}
+}
+
+func checkSpecConformanceSummaryLine(summary CheckSpecConformanceSummary) llmstream.Line {
+	return llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: fmt.Sprintf("%d conforming,", summary.ConformingCount), Role: llmstream.RoleAccent},
+			{Text: fmt.Sprintf("%d non-conforming,", summary.NonconformingCount), Role: llmstream.RoleAccent},
+			{Text: fmt.Sprintf("%d %s", summary.ErrorCount, nounForCount(summary.ErrorCount, "error", "errors")), Role: llmstream.RoleAccent},
+		},
+	}
+}
+
+func formatCompactCheckSpecConformanceSummaryBlock(summary CheckSpecConformanceSummary) llmstream.Block {
+	lines := []llmstream.Line{checkSpecConformanceSummaryLine(summary)}
+	for _, postcheckErr := range summary.PostcheckErrors {
+		lines = append(lines, llmstream.Line{
+			Segments: []llmstream.Segment{
+				{Text: fmt.Sprintf("%s: %s", postcheckErr.Package, postcheckErr.Error), Role: llmstream.RoleNormal},
+			},
+		})
+	}
+	return llmstream.Paragraph{Lines: lines}
 }
 
 func (execGitRunner) Output(ctx context.Context, repoAbsDir string, args ...string) (string, error) {
@@ -1100,8 +1346,8 @@ var checkSpecConformancePresenterInstance llmstream.Presenter = checkSpecConform
 
 type checkSpecConformancePresenter struct{}
 
-func (checkSpecConformancePresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
-	return nil
+func (checkSpecConformancePresenter) SubagentFinalMessage(_ llmstream.ToolCall, _ string, finalMessage string) llmstream.Block {
+	return FormatCheckSpecConformancePackageFinalMessage(finalMessage)
 }
 
 func (checkSpecConformancePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
@@ -1130,8 +1376,8 @@ func (checkSpecConformancePresenter) Present(call llmstream.ToolCall, result *ll
 }
 
 func presentCheckSpecConformanceBody(raw string) (llmstream.Block, bool) {
-	var results map[string]packageCheckResult
-	if err := json.Unmarshal([]byte(raw), &results); err != nil {
+	results, err := ParseCheckSpecConformanceResults(raw)
+	if err != nil {
 		return nil, false
 	}
 	if len(results) == 0 {
@@ -1144,83 +1390,5 @@ func presentCheckSpecConformanceBody(raw string) (llmstream.Block, bool) {
 		}, true
 	}
 
-	keys := make([]string, 0, len(results))
-	for key := range results {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	conforming := make([]string, 0)
-	nonconforming := make([]string, 0)
-	errors := make([]string, 0)
-	for _, key := range keys {
-		result := results[key]
-		if result.Error != "" {
-			errors = append(errors, key)
-			continue
-		}
-		if result.Conforms != nil && *result.Conforms {
-			conforming = append(conforming, key)
-			continue
-		}
-		nonconforming = append(nonconforming, key)
-	}
-
-	lines := []llmstream.Line{{
-		JoinWithSpace: true,
-		Segments: []llmstream.Segment{
-			{Text: fmt.Sprintf("%d conforming,", len(conforming)), Role: llmstream.RoleAccent},
-			{Text: fmt.Sprintf("%d non-conforming,", len(nonconforming)), Role: llmstream.RoleAccent},
-			{Text: fmt.Sprintf("%d errors", len(errors)), Role: llmstream.RoleAccent},
-		},
-	}}
-	if len(conforming) > 0 {
-		lines = append(lines, llmstream.Line{
-			JoinWithSpace: true,
-			Segments: []llmstream.Segment{
-				{Text: "Conforming:", Role: llmstream.RoleAccent},
-				{Text: strings.Join(conforming, ", "), Role: llmstream.RoleNormal},
-			},
-		})
-	}
-	if len(nonconforming) > 0 {
-		lines = append(lines, llmstream.Line{
-			Segments: []llmstream.Segment{
-				{Text: "Non-conforming:", Role: llmstream.RoleAccent},
-			},
-		})
-		for _, key := range nonconforming {
-			result := results[key]
-			lines = append(lines, llmstream.Line{
-				Segments: []llmstream.Segment{
-					{Text: key + ":", Role: llmstream.RoleAccent},
-				},
-			})
-			for _, issue := range result.Nonconformances {
-				issueScope := "new"
-				if issue.Latent {
-					issueScope = "latent"
-				}
-				lines = append(lines, llmstream.Line{
-					Segments: []llmstream.Segment{
-						{
-							Text: fmt.Sprintf("- [%s, %s] %s", issue.Severity, issueScope, issue.Message),
-							Role: llmstream.RoleNormal,
-						},
-					},
-				})
-			}
-		}
-	}
-	if len(errors) > 0 {
-		lines = append(lines, llmstream.Line{
-			JoinWithSpace: true,
-			Segments: []llmstream.Segment{
-				{Text: "Errors:", Role: llmstream.RoleAccent},
-				{Text: strings.Join(errors, ", "), Role: llmstream.RoleNormal},
-			},
-		})
-	}
-
-	return llmstream.Paragraph{Lines: lines}, true
+	return formatCompactCheckSpecConformanceSummaryBlock(SummarizeCheckSpecConformanceResults(results)), true
 }

@@ -259,7 +259,6 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		t.model,
 		agentPath,
 		packageAbsDir,
-		importPath,
 		params.Identifier,
 		params.Question,
 	)
@@ -275,7 +274,7 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 	}
 }
 
-func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, callerSandboxAbsDir string, callerAuthorizer authdomain.Authorizer, targetSandboxAbsDir string, targetAuthorizer authdomain.Authorizer, model llmmodel.ModelID, path string, packageAbsDir string, packageLabelPath string, identifier string, question string) (string, error) {
+func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, callerSandboxAbsDir string, callerAuthorizer authdomain.Authorizer, targetSandboxAbsDir string, targetAuthorizer authdomain.Authorizer, model llmmodel.ModelID, path string, packageAbsDir string, identifier string, question string) (string, error) {
 	if invoker == nil {
 		return "", fmt.Errorf("clarify agent unavailable")
 	}
@@ -290,7 +289,7 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 	}
 
 	req := toolsetinterface.InvokeRequest{
-		AgentCreator:       clarifyAgentCreatorWithLabel(agentCreator, packageLabelPath, identifier),
+		AgentCreator:       agentCreator,
 		CallerAuthorizer:   callerAuthorizer,
 		CallerSandboxDir:   callerSandboxAbsDir,
 		OverrideAuthorizer: targetAuthorizer,
@@ -309,57 +308,6 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 	}
 
 	return agent.CollectFinalAssistantText(ctx, events)
-}
-
-func clarifyAgentCreatorWithLabel(agentCreator agent.AgentCreator, packagePath string, identifier string) agent.AgentCreator {
-	label := clarifySubagentLabel(packagePath, identifier)
-	if agentCreator == nil || label == "" {
-		return agentCreator
-	}
-	return clarifyLabeledAgentCreator{
-		base:  agentCreator,
-		label: label,
-	}
-}
-
-type clarifyLabeledAgentCreator struct {
-	base  agent.AgentCreator
-	label string
-}
-
-func (c clarifyLabeledAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
-	return c.base.New(systemPrompt, tools, newOptionsWithSubagentLabel(options, c.label)...)
-}
-
-func newOptionsWithSubagentLabel(options []agent.NewOptions, label string) []agent.NewOptions {
-	if label == "" {
-		return options
-	}
-
-	merged := agent.NewOptions{}
-	for _, option := range options {
-		if option.Model != "" {
-			merged.Model = option.Model
-		}
-		if option.SubagentLabel != "" {
-			merged.SubagentLabel = option.SubagentLabel
-		}
-	}
-	merged.SubagentLabel = label
-	return []agent.NewOptions{merged}
-}
-
-func clarifySubagentLabel(packagePath string, identifier string) string {
-	switch {
-	case identifier != "" && packagePath != "":
-		return fmt.Sprintf("Clarify %s in %s", identifier, packagePath)
-	case identifier != "":
-		return fmt.Sprintf("Clarify %s", identifier)
-	case packagePath != "":
-		return fmt.Sprintf("Clarify API in %s", packagePath)
-	default:
-		return ""
-	}
 }
 
 func packagePathForSandbox(sandboxAbsDir string, packageAbsDir string) (string, error) {

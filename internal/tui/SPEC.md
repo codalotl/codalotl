@@ -13,6 +13,8 @@ The tui package is the primary package that implements the coding agent TUI, bri
 - `internal/q/tui` is the TUI runtime (raw mode, alt screen, input, resize, render loop).
 - `internal/q/tui/tuicontrols` provides common controls like a scrollable view and text area.
 
+This package must not directly hard-code specific tools. Tool behavior must be controlled by general policies, not by things like `if toolName == "read_file" { ... }`.
+
 ## Basic Agent
 
 There's a Messages Area on top to see chat history and agent activity. On the bottom is a Text Area to enter commands. Entering a message and hitting the Enter key will send a message to the agent. The agent loop will work on it for a while, outputting thoughts, issuing tool calls, and sending messages. The user will see this activity in the Messages Area.
@@ -43,10 +45,14 @@ Basic controls:
     - When a Call comes in, we print it.
     - When a paired Result in, we replace the Call message with the Result.
     - Exception: tools whose presenter uses `Append` should NOT replace the Call with Result (they print both).
-- Descendant non-final assistant text is displayed live as it arrives.
-- Displayed descendant finalizing assistant text respects optional `llmstream.SubagentFinalMessagePresenter`.
-- When a tool presenter does not implement that interface, descendant finalizing assistant text is displayed as plain text.
-- `EventTypeStartSubagent` is metadata for subagent-aware consumers and is not displayed as its own message yet.
+- Some tools launch subagents (which run tools which may launch more subagents). Generally, these are displayed in one of two ways: nested event streams or stable slots.
+- Each `agent` event has `AgentMeta` like ID, Depth, and Parent, which informs how we keep track of this hierarchy.
+- Stable slots are used only if the subagent fires `EventTypeStartSubagent` and has a label. Otherwise, display nested event streams.
+- Nested event streams: display subagent events with extra indentation.
+- Stable slots: each labeled direct subagent becomes a slot. Under it, display the last event of ANY depth that occurred under that subagent.
+- Once a tool enters stable-slot display, it owns display of ALL descendant tools and subagents under those slots. Deeper descendants do not create separate nested event streams or nested stable-slot displays; route their events into the existing slot as if they came directly from the labeled direct subagent.
+- Subagent finalizing assistant text respects optional `llmstream.SubagentFinalMessagePresenter`.
+    - NOTE: if a stable slot subagent launches tools/subagents which have a `llmstream.SubagentFinalMessagePresenter`, we respect that too (in other words, don't show the user ugly JSON from some deeply nested subagent).
 - User messages are displayed as a block of text with the same background color as the Text Area's background, with same prompt caret (ex: `›`). There is no need to write "You:" or similar.
 - When the agent finishes its turn, don't print anything like "Agent finished the turn". This can be indicated in other ways.
 - The mouse scroll wheel should scroll the message area (without scrolling the "entire TUI").

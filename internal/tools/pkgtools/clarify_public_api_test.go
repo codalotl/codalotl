@@ -244,7 +244,6 @@ func TestInvokeClarifyAgent_UsesClarifyAgentAndReturnsAnswer(t *testing.T) {
 		"mock-model",
 		"pkg",
 		filepath.Join(sandboxDir, "pkg"),
-		"github.com/example/pkg",
 		"Equal",
 		"What does Equal do?",
 	)
@@ -260,46 +259,6 @@ func TestInvokeClarifyAgent_UsesClarifyAgentAndReturnsAnswer(t *testing.T) {
 	require.Len(t, invoker.req.Messages, 1)
 	assert.Equal(t, "What does Equal do?", invoker.req.Messages[0])
 	assert.JSONEq(t, `{"path":"pkg","identifier":"Equal","question":"What does Equal do?"}`, string(invoker.req.Payload))
-}
-
-func TestInvokeClarifyAgent_AttachesSubagentLabel(t *testing.T) {
-	sandboxDir := t.TempDir()
-	creator := &fakeAgentCreator{
-		newFn: func(string, []llmstream.Tool, ...agent.NewOptions) (*agent.Agent, error) {
-			return nil, nil
-		},
-	}
-	invoker := &fakeAgentInvoker{
-		invokeFn: func(_ context.Context, _ string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
-			_, err := req.AgentCreator.New("system", nil, agent.NewOptions{
-				Model: llmmodel.ModelID("wrapped-model"),
-			})
-			require.NoError(t, err)
-			return successfulClarifyEvents("It compares the values using equality semantics."), nil
-		},
-	}
-
-	_, err := invokeClarifyAgent(
-		context.Background(),
-		invoker,
-		creator,
-		sandboxDir,
-		authdomain.NewAutoApproveAuthorizer(sandboxDir),
-		sandboxDir,
-		authdomain.NewAutoApproveAuthorizer(sandboxDir),
-		"mock-model",
-		"pkg",
-		filepath.Join(sandboxDir, "pkg"),
-		"github.com/stretchr/testify/assert",
-		"Equal",
-		"What does Equal do?",
-	)
-	require.NoError(t, err)
-	require.Len(t, creator.newOptions, 1)
-	assert.Equal(t, agent.NewOptions{
-		Model:         llmmodel.ModelID("wrapped-model"),
-		SubagentLabel: "Clarify Equal in github.com/stretchr/testify/assert",
-	}, creator.newOptions[0])
 }
 
 func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T) {
@@ -319,7 +278,6 @@ func TestInvokeClarifyAgent_PreservesMultilineQuestionsAsPlainText(t *testing.T)
 		"mock-model",
 		"pkg",
 		filepath.Join(sandboxDir, "pkg"),
-		"github.com/example/pkg",
 		"Equal",
 		"What does \"Equal\" do?\nDoes it treat nil specially?",
 	)
@@ -341,7 +299,6 @@ func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {
 		"",
 		"fmt",
 		t.TempDir(),
-		"fmt",
 		"Thing",
 		"What does Thing do?",
 	)
@@ -366,12 +323,10 @@ func (f *fakeAgentInvoker) Invoke(ctx context.Context, agentName string, req too
 }
 
 type fakeAgentCreator struct {
-	newOptions []agent.NewOptions
-	newFn      func(string, []llmstream.Tool, ...agent.NewOptions) (*agent.Agent, error)
+	newFn func(string, []llmstream.Tool, ...agent.NewOptions) (*agent.Agent, error)
 }
 
 func (f *fakeAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
-	f.newOptions = append([]agent.NewOptions(nil), options...)
 	if f.newFn != nil {
 		return f.newFn(systemPrompt, tools, options...)
 	}
