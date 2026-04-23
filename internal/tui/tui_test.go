@@ -172,39 +172,6 @@ func TestModelViewAfterResize(t *testing.T) {
 	require.Contains(t, viewNoANSI, "Ready")
 }
 
-func TestFakeAgentEventsCoverage(t *testing.T) {
-	events := fakeAgentEvents()
-	require.Greater(t, len(events), 0)
-
-	require.Equal(t, agent.EventTypeAssistantReasoning, events[0].Type)
-	require.GreaterOrEqual(t, len(events), 2)
-	require.Equal(t, agent.EventTypeAssistantText, events[len(events)-2].Type)
-	require.Equal(t, agent.EventTypeDoneSuccess, events[len(events)-1].Type)
-
-	planUpdates := 0
-	var sawPatch, sawRead, sawList bool
-	for _, ev := range events {
-		if ev.Type != agent.EventTypeToolComplete || ev.ToolCall == nil {
-			continue
-		}
-		switch ev.ToolCall.Name {
-		case "update_plan":
-			planUpdates++
-		case "apply_patch":
-			sawPatch = true
-		case "read_file":
-			sawRead = true
-		case "ls":
-			sawList = true
-		}
-	}
-
-	require.Equal(t, 3, planUpdates)
-	require.True(t, sawPatch)
-	require.True(t, sawRead)
-	require.True(t, sawList)
-}
-
 func TestRenderUserMessageBlock_WrappedLinesAlignAfterPrompt(t *testing.T) {
 	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 

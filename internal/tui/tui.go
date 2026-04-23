@@ -818,22 +818,6 @@ func (m *model) handleSlashCommand(cmd string) bool {
 		orchestrateArg := strings.TrimSpace(strings.TrimPrefix(cmd, "/orchestrate"))
 		m.handleOrchestrateCommand(orchestrateArg)
 		return true
-	case "/fake":
-		if m.isAgentRunning() {
-			m.appendSystemMessage("Finish the current run before starting /fake.")
-			m.refreshViewport(true)
-			if m.viewport != nil {
-				m.viewport.ScrollToBottom()
-			}
-			return true
-		}
-		m.appendSystemMessage("Simulating agent activity...")
-		m.refreshViewport(true)
-		if m.viewport != nil {
-			m.viewport.ScrollToBottom()
-		}
-		m.startFakeAgentRun()
-		return true
 	case "/permission":
 		m.triggerPermissionDemo()
 		return true
@@ -1465,49 +1449,6 @@ func (m *model) startAgentRun(value string) {
 	m.updatePlaceholder()
 	m.refreshViewport(m.shouldAutoScrollOnUpdate())
 	m.forwardAgentEvents(runID, events)
-}
-
-func (m *model) startFakeAgentRun() {
-	if m.tui == nil || m.isAgentRunning() {
-		return
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	fakeEvents := fakeAgentEvents()
-	ch := make(chan agent.Event)
-
-	runID := m.nextAgentRunID
-	m.nextAgentRunID++
-	m.currentRun = &agentRun{
-		cancel: cancel,
-		events: ch,
-		id:     runID,
-	}
-	m.runStartedAt = time.Now()
-	m.workingIndicatorAnimationPos = 0
-	m.startWorkingIndicatorTicker()
-	m.updatePlaceholder()
-	m.refreshViewport(m.shouldAutoScrollOnUpdate())
-	m.forwardAgentEvents(runID, ch)
-
-	go func() {
-		defer close(ch)
-		defer cancel()
-		for i, ev := range fakeEvents {
-			if i > 0 {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(time.Millisecond * 100):
-				}
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- ev:
-			}
-		}
-	}()
 }
 
 func (m *model) forwardAgentEvents(runID int, events <-chan agent.Event) {
