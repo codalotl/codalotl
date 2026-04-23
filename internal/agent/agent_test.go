@@ -1521,6 +1521,167 @@ func TestSubAgentConstructionWithoutSendDoesNotEmitStartEvent(t *testing.T) {
 	}
 }
 
+func TestSubAgentCanceledBeforeToolCompleteWhenToolReturns(t *testing.T) {
+	rootPrompt := "Root system"
+	subPrompt := "Sub system"
+	rootModel := llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_cancel_subagent",
+		Name:       "explore",
+		Type:       "function_call",
+		Input:      "{}",
+	}
+	rootToolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	rootFinalText := llmstream.TextContent{ProviderID: "root-final", Content: "done"}
+	rootFinalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{rootFinalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+	rootConv := newScriptedConversation(rootPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootToolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &rootFinalText, Delta: rootFinalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootFinalTurn},
+			},
+		},
+	)
+
+	subCanceled := make(chan struct{})
+	allowSubExit := make(chan struct{})
+	subConv := newScriptedConversation(subPrompt,
+		&sendScript{
+			wait:             make(chan struct{}),
+			afterCancel:      subCanceled,
+			blockAfterCancel: allowSubExit,
+		},
+	)
+
+	prev := newConversation
+	convs := []llmstream.StreamingConversation{rootConv, subConv}
+	newConversation = func(model llmmodel.ModelID, systemPrompt string) llmstream.StreamingConversation {
+		if len(convs) == 0 {
+			return nil
+		}
+		conv := convs[0]
+		convs = convs[1:]
+		return conv
+	}
+	t.Cleanup(func() {
+		newConversation = prev
+	})
+
+	var createdSubAgent *Agent
+	tool := &funcTool{name: "explore"}
+	tool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		creator := SubAgentCreatorFromContext(ctx)
+		subAgent, err := creator.New(subPrompt, nil)
+		require.NoError(t, err)
+		createdSubAgent = subAgent
+
+		_ = subAgent.SendUserMessage(ctx, "slow abandoned work")
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "ok",
+		}
+	}
+
+	rootAgent, err := New(rootPrompt, []llmstream.Tool{tool}, NewOptions{Model: rootModel})
+	require.NoError(t, err)
+
+	eventsCh := rootAgent.SendUserMessage(context.Background(), "start")
+	var events []Event
+
+	waitForEvent := func(match func(Event) bool) Event {
+		t.Helper()
+		timeout := time.After(time.Second)
+		for {
+			select {
+			case ev, ok := <-eventsCh:
+				require.True(t, ok)
+				events = append(events, ev)
+				if match(ev) {
+					return ev
+				}
+			case <-timeout:
+				t.Fatal("timeout waiting for event")
+			}
+		}
+	}
+
+	waitForEvent(func(ev Event) bool {
+		return ev.Type == EventTypeStartSubagent
+	})
+
+	select {
+	case <-subCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for subagent cancellation")
+	}
+
+	noToolComplete := time.NewTimer(50 * time.Millisecond)
+	defer noToolComplete.Stop()
+	for {
+		select {
+		case ev, ok := <-eventsCh:
+			require.True(t, ok)
+			events = append(events, ev)
+			if ev.Type == EventTypeToolComplete {
+				t.Fatalf("tool completed before subagent exited")
+			}
+		case <-noToolComplete.C:
+			goto allowExit
+		}
+	}
+
+allowExit:
+	close(allowSubExit)
+
+	for {
+		select {
+		case ev, ok := <-eventsCh:
+			if !ok {
+				goto done
+			}
+			events = append(events, ev)
+		case <-time.After(time.Second):
+			t.Fatal("timeout waiting for root stream to close")
+		}
+	}
+
+done:
+	require.NotNil(t, createdSubAgent)
+	require.Equal(t, StatusIdle, createdSubAgent.Status())
+
+	canceledIndex := -1
+	toolCompleteIndex := -1
+	for i, ev := range events {
+		if ev.Agent.Depth == 1 && ev.Type == EventTypeCanceled {
+			canceledIndex = i
+		}
+		if ev.Agent.Depth == 0 && ev.Type == EventTypeToolComplete {
+			toolCompleteIndex = i
+		}
+	}
+	require.NotEqual(t, -1, canceledIndex)
+	require.NotEqual(t, -1, toolCompleteIndex)
+	require.Less(t, canceledIndex, toolCompleteIndex)
+}
+
 func TestSubAgentCreatorPanicsAfterRun(t *testing.T) {
 	systemPrompt := "Root system"
 
@@ -1961,10 +2122,12 @@ type scriptedConversation struct {
 }
 
 type sendScript struct {
-	events     []llmstream.Event
-	wait       <-chan struct{}
-	waitBefore []<-chan struct{}
-	afterSend  []chan struct{}
+	events           []llmstream.Event
+	wait             <-chan struct{}
+	waitBefore       []<-chan struct{}
+	afterSend        []chan struct{}
+	afterCancel      chan struct{}
+	blockAfterCancel <-chan struct{}
 }
 
 func newScriptedConversation(systemPrompt string, scripts ...*sendScript) *scriptedConversation {
@@ -2042,10 +2205,21 @@ func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.Sen
 
 	go func() {
 		defer close(out)
+		cancelNotified := false
+		handleCancel := func() {
+			if script.afterCancel != nil && !cancelNotified {
+				close(script.afterCancel)
+				cancelNotified = true
+			}
+			if script.blockAfterCancel != nil {
+				<-script.blockAfterCancel
+			}
+		}
 
 		if script.wait != nil {
 			select {
 			case <-ctx.Done():
+				handleCancel()
 				return
 			case <-script.wait:
 			}
@@ -2055,6 +2229,7 @@ func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.Sen
 			if i < len(script.waitBefore) && script.waitBefore[i] != nil {
 				select {
 				case <-ctx.Done():
+					handleCancel()
 					return
 				case <-script.waitBefore[i]:
 				}
@@ -2062,6 +2237,7 @@ func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.Sen
 
 			select {
 			case <-ctx.Done():
+				handleCancel()
 				return
 			case out <- ev:
 			}

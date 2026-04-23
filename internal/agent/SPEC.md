@@ -174,11 +174,13 @@ func New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*A
 // NewAgentCreator returns an AgentCreator that constructs root agents.
 func NewAgentCreator() AgentCreator
 
+// NewOptions controls optional agent construction behavior.
 type NewOptions struct {
 	Model         llmmodel.ModelID
 	SubagentLabel string
 }
 
+// AgentCreator can construct either a root Agent or a SubAgent, depending on how it was obtained.
 type AgentCreator interface {
 	// Model omitted: root creators use package default model; SubAgent creators use parent model.
 	New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)

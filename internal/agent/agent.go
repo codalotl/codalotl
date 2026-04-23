@@ -49,6 +49,9 @@ type Agent struct {
 	depth               int
 	parentOut           chan<- Event
 	currentOut          chan<- Event
+	subagentFactory     *subAgentFactory
+	lifetimeCtx         context.Context
+	lifetimeCancel      context.CancelFunc
 }
 
 // NewOptions controls optional agent construction behavior.
@@ -193,6 +196,19 @@ func (a *Agent) QueueUserMessage(message string) error {
 // stops, some non-terminal events may be delivered before the cancellation is observed.
 func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Event {
 	out := make(chan Event, 32)
+	runCtx := ctx
+	var runCancel context.CancelFunc
+	var registeredFactory *subAgentFactory
+
+	if a.subagentFactory != nil {
+		if a.lifetimeCtx != nil {
+			if err := a.lifetimeCtx.Err(); err != nil {
+				a.dispatchEvent(out, Event{Type: EventTypeCanceled, Error: err})
+				close(out)
+				return out
+			}
+		}
+	}
 
 	a.mu.Lock()
 	if a.status == StatusRunning {
@@ -202,8 +218,25 @@ func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Even
 		return out
 	}
 
+	if a.subagentFactory != nil {
+		if !a.subagentFactory.registerRun(a, out) {
+			a.mu.Unlock()
+			a.dispatchEvent(out, Event{Type: EventTypeError, Error: errors.New("agent: subagent run requested after tool run completed")})
+			close(out)
+			return out
+		}
+		registeredFactory = a.subagentFactory
+		runCtx, runCancel = contextWithLifetime(ctx, a.lifetimeCtx)
+	}
+
 	if err := a.conv.AddUserTurn(message); err != nil {
 		a.mu.Unlock()
+		if runCancel != nil {
+			runCancel()
+		}
+		if registeredFactory != nil {
+			registeredFactory.finishRun(a)
+		}
 		a.dispatchEvent(out, Event{Type: EventTypeError, Error: err})
 		close(out)
 		return out
@@ -217,7 +250,15 @@ func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Even
 	a.mu.Unlock()
 
 	a.maybeEmitStartSubagentEvent(out)
-	go a.run(ctx, out)
+	go func() {
+		if runCancel != nil {
+			defer runCancel()
+		}
+		if registeredFactory != nil {
+			defer registeredFactory.finishRun(a)
+		}
+		a.run(runCtx, out)
+	}()
 	return out
 }
 
@@ -509,7 +550,7 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 
 			func() {
 				defer func() {
-					factory.Close()
+					factory.CloseAndWait()
 					cancel()
 				}()
 				result = tool.Run(toolCtx, call)
@@ -890,4 +931,20 @@ func (a *Agent) flushQueuedUserMessageEvents(out chan<- Event) {
 	for _, msg := range msgs {
 		a.dispatchEvent(out, Event{Type: EventTypeUserMessageQueued, UserMessage: msg})
 	}
+}
+
+func contextWithLifetime(ctx context.Context, lifetime context.Context) (context.Context, context.CancelFunc) {
+	if lifetime == nil {
+		return ctx, func() {}
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-lifetime.Done():
+			cancel()
+		case <-runCtx.Done():
+		}
+	}()
+	return runCtx, cancel
 }
