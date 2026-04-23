@@ -228,7 +228,7 @@ func TestFormatCheckSpecConformanceCompactCompletion(t *testing.T) {
 	t.Run("compact", func(t *testing.T) {
 		t.Parallel()
 
-		rendered := renderBlock(t, FormatCheckSpecConformanceCompactCompletion(`{
+		rendered := renderBlock(t, formatCheckSpecConformanceCompactCompletion(`{
 			"internal/foo": {
 				"conforms": true,
 				"postcheck_error": "store CAS conformance: permission denied"
@@ -256,7 +256,7 @@ func TestFormatCheckSpecConformanceCompactCompletion(t *testing.T) {
 	t.Run("invalid", func(t *testing.T) {
 		t.Parallel()
 
-		rendered := renderBlock(t, FormatCheckSpecConformanceCompactCompletion(`not json`))
+		rendered := renderBlock(t, formatCheckSpecConformanceCompactCompletion(`not json`))
 		assert.Equal(t, "Invalid check_spec_conformance result", rendered)
 	})
 }
@@ -300,7 +300,7 @@ func TestFormatCheckSpecConformancePackageFinalMessage(t *testing.T) {
 	t.Run("nonconforming", func(t *testing.T) {
 		t.Parallel()
 
-		rendered := renderBlock(t, FormatCheckSpecConformancePackageFinalMessage(`{
+		rendered := renderBlock(t, formatCheckSpecConformancePackageFinalMessage(`{
 			"conforms": false,
 			"nonconformances": [
 				{"severity": "major", "latent": true, "message": "missing Foo docs"},
@@ -315,7 +315,7 @@ func TestFormatCheckSpecConformancePackageFinalMessage(t *testing.T) {
 	t.Run("invalid", func(t *testing.T) {
 		t.Parallel()
 
-		rendered := renderBlock(t, FormatCheckSpecConformancePackageFinalMessage(`not json`))
+		rendered := renderBlock(t, formatCheckSpecConformancePackageFinalMessage(`not json`))
 		assert.Equal(t, "Invalid conformance result", rendered)
 	})
 }

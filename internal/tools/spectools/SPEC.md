@@ -110,10 +110,4 @@ type CheckSpecConformanceToolOptions struct {
 //
 // authorizer should be a sandbox authorizer, not a package-jail authorizer.
 func NewCheckSpecConformanceTool(authorizer authdomain.Authorizer, options ...CheckSpecConformanceToolOptions) llmstream.Tool
-
-// FormatCheckSpecConformanceCompactCompletion formats raw machine-readable tool output into a compact completion block for TUI use.
-func FormatCheckSpecConformanceCompactCompletion(raw string) llmstream.Block
-
-// FormatCheckSpecConformancePackageFinalMessage formats one subagent's final JSON verdict for human display.
-func FormatCheckSpecConformancePackageFinalMessage(finalMessage string) llmstream.Block
 ```

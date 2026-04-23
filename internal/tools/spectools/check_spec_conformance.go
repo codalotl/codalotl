@@ -994,8 +994,7 @@ func SummarizeCheckSpecConformanceResults(results CheckSpecConformanceResults) C
 	return summary
 }
 
-// FormatCheckSpecConformanceCompactCompletion formats raw machine-readable tool output into a compact completion block for TUI use.
-func FormatCheckSpecConformanceCompactCompletion(raw string) llmstream.Block {
+func formatCheckSpecConformanceCompactCompletion(raw string) llmstream.Block {
 	results, err := ParseCheckSpecConformanceResults(raw)
 	if err != nil {
 		return invalidCheckSpecConformanceResultBlock()
@@ -1005,8 +1004,7 @@ func FormatCheckSpecConformanceCompactCompletion(raw string) llmstream.Block {
 	return formatCompactCheckSpecConformanceSummaryBlock(summary)
 }
 
-// FormatCheckSpecConformancePackageFinalMessage formats one subagent's final JSON verdict for human display.
-func FormatCheckSpecConformancePackageFinalMessage(finalMessage string) llmstream.Block {
+func formatCheckSpecConformancePackageFinalMessage(finalMessage string) llmstream.Block {
 	result, err := parsePackageFinalMessageResult(finalMessage)
 	if err != nil {
 		return invalidConformanceResultBlock()
@@ -1347,7 +1345,7 @@ var checkSpecConformancePresenterInstance llmstream.Presenter = checkSpecConform
 type checkSpecConformancePresenter struct{}
 
 func (checkSpecConformancePresenter) SubagentFinalMessage(_ llmstream.ToolCall, _ string, finalMessage string) llmstream.Block {
-	return FormatCheckSpecConformancePackageFinalMessage(finalMessage)
+	return formatCheckSpecConformancePackageFinalMessage(finalMessage)
 }
 
 func (checkSpecConformancePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
