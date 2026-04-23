@@ -9,6 +9,7 @@ The agent issues events for tool calls and tool call results. Usually running th
 To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, first with a grey bullet, then a green bullet), we do the following:
 - Upon getting a tool call, start a 3 second timer.
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
+- Exception: if a labeled subagent lifecycle becomes visible under that tool call before the result arrives, print the pending tool-call line first so the lifecycle has a visible owner.
 - If the three seconds elapses without getting the result, print the tool call. When the result comes in, print that as well.
 - Descendant non-final assistant text streams immediately unless hidden by a labeled subagent lifecycle.
 - Human-readable output supports a labeled subagent lifecycle when a subagent emits `EventTypeStartSubagent` with a non-empty label.

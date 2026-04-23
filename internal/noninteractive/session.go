@@ -102,32 +102,32 @@ func newSubagentDisplayFilter(humanReadable bool) *subagentDisplayFilter {
 	}
 }
 
-func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
+func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, string, bool) {
 	if f == nil {
-		return nil, false
+		return nil, "", false
 	}
 
 	f.rememberAgent(ev.Agent)
 	f.updateToolState(ev)
 
 	if f.humanReadable {
-		flush, hide, handled := f.prepareLabeledSubagentEvent(ev)
+		flush, forceToolCallID, hide, handled := f.prepareLabeledSubagentEvent(ev)
 		if handled {
-			return flush, hide
+			return flush, forceToolCallID, hide
 		}
 	}
 
 	if ev.Type == agent.EventTypeStartSubagent {
-		return nil, true
+		return nil, "", true
 	}
 
 	if ev.Type != agent.EventTypeAssistantText || ev.Agent.Depth == 0 || !ev.AssistantTextFinalizing {
-		return nil, false
+		return nil, "", false
 	}
 
 	scope := f.scopeForAgent(ev.Agent)
 	if scope.finalMessagePresenter == nil {
-		return nil, false
+		return nil, "", false
 	}
 
 	block := scope.finalMessagePresenter.SubagentFinalMessage(
@@ -136,12 +136,12 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
 		ev.TextContent.Content,
 	)
 	if block == nil {
-		return nil, true
+		return nil, "", true
 	}
 
 	content := agentformatter.RenderPlainTextBlock(block)
 	if content == "" {
-		return nil, true
+		return nil, "", true
 	}
 
 	return []agent.Event{{
@@ -150,7 +150,7 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
 		TextContent: llmstream.TextContent{
 			Content: content,
 		},
-	}}, true
+	}}, "", true
 }
 
 func (f *subagentDisplayFilter) rememberAgent(meta agent.AgentMeta) {
@@ -204,21 +204,21 @@ func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
 	}
 }
 
-func (f *subagentDisplayFilter) prepareLabeledSubagentEvent(ev agent.Event) ([]agent.Event, bool, bool) {
+func (f *subagentDisplayFilter) prepareLabeledSubagentEvent(ev agent.Event) ([]agent.Event, string, bool, bool) {
 	if f == nil {
-		return nil, false, false
+		return nil, "", false, false
 	}
 
 	switch ev.Type {
 	case agent.EventTypeStartSubagent:
 		if strings.TrimSpace(ev.StartSubagent.Label) == "" {
 			if _, _, ok := f.activeLabeledOwner(ev.Agent); ok {
-				return nil, true, true
+				return nil, "", true, true
 			}
-			return nil, false, false
+			return nil, "", false, false
 		}
 		if _, _, ok := f.activeLabeledOwner(ev.Agent); ok {
-			return nil, true, true
+			return nil, "", true, true
 		}
 		scope := f.scopeFromStartSubagent(ev)
 		state := labeledSubagentState{
@@ -226,22 +226,22 @@ func (f *subagentDisplayFilter) prepareLabeledSubagentEvent(ev agent.Event) ([]a
 			scope: scope,
 		}
 		f.activeLabeledSubagent[ev.Agent.ID] = state
-		return []agent.Event{f.syntheticAssistantText(ev.Agent, buildLabeledSubagentMessage(scope.subagentLabel, "started"))}, true, true
+		return []agent.Event{f.syntheticAssistantText(ev.Agent, buildLabeledSubagentMessage(scope.subagentLabel, "started"))}, scope.launcherToolCall, true, true
 	default:
 		ownerID, state, ok := f.activeLabeledOwner(ev.Agent)
 		if !ok {
-			return nil, false, false
+			return nil, "", false, false
 		}
 		if ev.Agent.ID == ownerID && ev.Type == agent.EventTypeAssistantText && ev.AssistantTextFinalizing {
 			state.finalText = ev.TextContent.Content
 			f.activeLabeledSubagent[ownerID] = state
-			return nil, true, true
+			return nil, "", true, true
 		}
 		if ev.Agent.ID == ownerID && isSubagentTerminalEvent(ev.Type) {
 			delete(f.activeLabeledSubagent, ownerID)
-			return []agent.Event{f.syntheticAssistantText(ev.Agent, f.labeledSubagentCompletionText(state))}, true, true
+			return []agent.Event{f.syntheticAssistantText(ev.Agent, f.labeledSubagentCompletionText(state))}, "", true, true
 		}
-		return nil, true, true
+		return nil, "", true, true
 	}
 }
 
@@ -537,7 +537,10 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 	displayFilter := newSubagentDisplayFilter(!s.opts.OutputJSON)
 
 	for ev := range s.agent.SendUserMessage(ctx, userPrompt) {
-		flush, hide := displayFilter.Prepare(ev)
+		flush, forceToolCallID, hide := displayFilter.Prepare(ev)
+		if toolCallPrinter != nil && forceToolCallID != "" {
+			toolCallPrinter.Force(forceToolCallID)
+		}
 		if err := s.writeFilteredEvents(flush); err != nil {
 			return result, err
 		}

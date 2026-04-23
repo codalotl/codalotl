@@ -524,6 +524,22 @@ func TestDelayedToolCallPrinterCloseStopsPendingPrints(t *testing.T) {
 	}
 }
 
+func TestDelayedToolCallPrinterForcePrintsOnlyRequestedPendingCall(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	out := &lockedWriter{w: &buf}
+
+	p := newDelayedToolCallPrinter(out, time.Second)
+	defer p.Close()
+
+	p.Schedule("call_1", "• Check SPEC conformance")
+	p.Schedule("call_2", "• Read file")
+	p.Force("call_1")
+
+	require.Equal(t, "• Check SPEC conformance\n", buf.String())
+}
+
 func TestApplyGrantsFromUserPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -2079,6 +2095,81 @@ func TestSessionSendUserMessageFallsBackToFinishedForLabeledSubagentWithoutVisib
 	output := buf.String()
 	require.Contains(t, output, "TEXT review worker: started\n")
 	require.Contains(t, output, "TEXT review worker: finished\n")
+}
+
+func TestSessionSendUserMessagePrintsOwningToolCallBeforeLabeledSubagentLifecycle(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = time.Hour
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := namedTestTool{name: "review"}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "internal/foo",
+						},
+					},
+					{
+						Type:                    agent.EventTypeAssistantText,
+						Agent:                   childAgent,
+						AssistantTextFinalizing: true,
+						TextContent:             llmstream.TextContent{Content: "conforms"},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "CALL review\n")
+	require.Contains(t, output, "TEXT internal/foo: started\n")
+	require.Contains(t, output, "TEXT internal/foo: conforms\n")
+	require.Less(t, strings.Index(output, "CALL review\n"), strings.Index(output, "TEXT internal/foo: started\n"))
 }
 
 func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInJSONOutput(t *testing.T) {
