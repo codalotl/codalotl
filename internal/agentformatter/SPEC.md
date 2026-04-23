@@ -107,41 +107,6 @@ If it follows this general format (leading **Some Summary Text** line, or only t
 
 If it follows some other format, just render the whole thing as if it were an EventTypeAssistantText, but print it all in italics.
 
-### EventTypeToolCall - shell commands
-
-This event happens when a tool call is **initiated** - as such, the tool call is in progress.
-
-Note: `skill_shell` is formatted exactly like `shell` (it's a drop-in replacement).
-
-Default shell call formatting will follow this format:
-
-```
-• Running go test .
-```
-
-- Bullet is accent
-- Running is Bold, Colorful.
-- The command itself (`go test .` above) is normal
-
-### EventTypeToolComplete - shell commands
-
-Complete tool calls have a call and a result.
-
-Note: `skill_shell` is formatted exactly like `shell` (it's a drop-in replacement).
-
-```
-• Ran go test .
-  └ ok      axi/q/termformat    0.002s
-    ?       axi/q/termformat/cmd    [no test files]
-```
-
-- Status is indicated by bullet color.
-- `└` is Accent.
-- Ran is Bold, Colorful.
-- The command itself is normal.
-- If there is no output, it is just one line. Ex: `• Ran gofmt -w .`.
-- If the output is more than 5 lines, show the first five, followed by `… +13 lines` (for example).
-
 ### EventTypeToolComplete - error messages
 
 Unless otherwise stated, a command that results in an error will show an error message in red text below the command. Example:
