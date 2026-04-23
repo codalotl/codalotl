@@ -2097,6 +2097,156 @@ func TestSessionSendUserMessageFallsBackToFinishedForLabeledSubagentWithoutVisib
 	require.Contains(t, output, "TEXT review worker: finished\n")
 }
 
+func TestSessionSendUserMessagePrintsLabeledSubagentErrorInsteadOfFinished(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := finalMessageBackedTestTool{
+		name: "review",
+		block: llmstream.Output{
+			Lines: []string{"Verdict: approve"},
+		},
+	}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review worker",
+						},
+					},
+					{
+						Type:  agent.EventTypeError,
+						Agent: childAgent,
+						Error: errors.New("context deadline exceeded"),
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "TEXT review worker: started\n")
+	require.Contains(t, output, "TEXT review worker: error: context deadline exceeded\n")
+	require.NotContains(t, output, "TEXT review worker: finished\n")
+	require.NotContains(t, output, "Verdict: approve")
+}
+
+func TestSessionSendUserMessagePrintsLabeledSubagentCanceledInsteadOfFinished(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := finalMessageBackedTestTool{
+		name: "review",
+		block: llmstream.Output{
+			Lines: []string{"Verdict: approve"},
+		},
+	}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review worker",
+						},
+					},
+					{
+						Type:  agent.EventTypeCanceled,
+						Agent: childAgent,
+						Error: errors.New("timed out waiting for reply"),
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "TEXT review worker: started\n")
+	require.Contains(t, output, "TEXT review worker: canceled: timed out waiting for reply\n")
+	require.NotContains(t, output, "TEXT review worker: finished\n")
+	require.NotContains(t, output, "Verdict: approve")
+}
+
 func TestSessionSendUserMessagePrintsOwningToolCallBeforeLabeledSubagentLifecycle(t *testing.T) {
 	originalDelay := toolCallPrintDelay
 	toolCallPrintDelay = time.Hour

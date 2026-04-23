@@ -239,7 +239,7 @@ func (f *subagentDisplayFilter) prepareLabeledSubagentEvent(ev agent.Event) ([]a
 		}
 		if ev.Agent.ID == ownerID && isSubagentTerminalEvent(ev.Type) {
 			delete(f.activeLabeledSubagent, ownerID)
-			return []agent.Event{f.syntheticAssistantText(ev.Agent, f.labeledSubagentCompletionText(state))}, "", true, true
+			return []agent.Event{f.syntheticAssistantText(ev.Agent, f.labeledSubagentCompletionText(state, ev))}, "", true, true
 		}
 		return nil, "", true, true
 	}
@@ -263,7 +263,17 @@ func (f *subagentDisplayFilter) activeLabeledOwner(meta agent.AgentMeta) (string
 	return "", labeledSubagentState{}, false
 }
 
-func (f *subagentDisplayFilter) labeledSubagentCompletionText(state labeledSubagentState) string {
+func (f *subagentDisplayFilter) labeledSubagentCompletionText(state labeledSubagentState, terminal agent.Event) string {
+	switch terminal.Type {
+	case agent.EventTypeError, agent.EventTypeCanceled:
+		status := string(terminal.Type)
+		msg := errorString(terminal.Error)
+		if strings.TrimSpace(msg) == "" {
+			return buildLabeledSubagentMessage(state.scope.subagentLabel, status)
+		}
+		return buildLabeledSubagentMessage(state.scope.subagentLabel, status+": "+msg)
+	}
+
 	content := ""
 	if state.scope.finalMessagePresenter != nil {
 		block := state.scope.finalMessagePresenter.SubagentFinalMessage(
