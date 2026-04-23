@@ -19,9 +19,8 @@ var errDefaultSkillMismatch = errors.New("installed default skill does not match
 
 // InstallDefault ensures built-in (system) skills are installed to `~/.codalotl/skills/.system`.
 //
-// It creates the destination directory if needed. If an installed built-in skill differs from the
-// embedded version, it overwrites that skill dir. It must not delete or modify other skill dirs
-// under `~/.codalotl/skills`.
+// It creates the destination directory if needed. If an installed built-in skill differs from the embedded version, it overwrites that skill dir. It must not delete
+// or modify other skill dirs under `~/.codalotl/skills`.
 func InstallDefault() error {
 	skillsRootDir, systemSkillsDir, err := defaultInstallPaths()
 	if err != nil {
