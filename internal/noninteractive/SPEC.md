@@ -10,8 +10,14 @@ To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, firs
 - Upon getting a tool call, start a 3 second timer.
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
 - If the three seconds elapses without getting the result, print the tool call. When the result comes in, print that as well.
-- Descendant non-final assistant text streams immediately.
-- Descendant finalizing assistant-text output respects optional `llmstream.SubagentFinalMessagePresenter`.
+- Descendant non-final assistant text streams immediately unless hidden by a labeled subagent lifecycle.
+- Human-readable output supports a labeled subagent lifecycle when a subagent emits `EventTypeStartSubagent` with a non-empty label.
+  - Print one visible started line for that label.
+  - While active, hide all other descendant events in that labeled scope.
+  - When that labeled subagent finishes, print one label-prefixed completion entry.
+  - Completion entry uses presenter-customized finalizing assistant text when available, otherwise plain finalizing assistant text, otherwise fallback text like `<label>: finished`.
+  - Deeper descendants route into the nearest active labeled ancestor; they do not create their own visible event stream inside that scope.
+- Outside a labeled subagent lifecycle, descendant finalizing assistant-text output respects optional `llmstream.SubagentFinalMessagePresenter`.
 - When a tool presenter does not implement that interface, descendant finalizing assistant text is printed as plain text.
 
 ## Finishing a session

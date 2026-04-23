@@ -55,3 +55,45 @@ Validation:
 - Run something like `go run . exec --yes --slash-command="orchestrate" ".prs/2026-04-22_1_parallel-noninteractive.md - do not do steps. just run check_spec_conformance(true) and end your turn without commits or pr file edits"`
 - Make sure everything looks good. If not, iterate.
 - NOTE: running the above has side effects (CAS writes on conformance). you'll have to deal with that.
+
+## Plan
+
+### Package internal/noninteractive
+- Update `internal/noninteractive/SPEC.md` for a generic labeled subagent lifecycle in human-readable output.
+- Keep scope local to `internal/noninteractive`; do not change `tui`, `spectools`, or JSON mode behavior.
+- Detect labeled subagents from `EventTypeStartSubagent` with non-empty `StartSubagent.Label`.
+- Print one visible started line when a labeled subagent begins.
+- While a labeled subagent is active, hide all other descendant events in that labeled scope from human-readable output.
+- When the labeled subagent finishes, print one label-prefixed completion entry using, in order:
+  - presenter-customized finalizing assistant text,
+  - plain finalizing assistant text,
+  - fallback text like `<label>: finished` when no visible final text exists.
+- Treat the nearest active labeled ancestor as the visible owner for deeper descendants so nested activity does not leak through as read-file/tool chatter.
+- Add or update focused tests around human-readable output. JSON mode should remain unchanged.
+
+### Validation
+- Run focused `go test ./internal/noninteractive/...`.
+- Manually validate with `go run . exec --yes --slash-command="orchestrate" "<prompt>"` using the prompt from the user summary, or a close equivalent that exercises `check_spec_conformance(true)`.
+- If manual validation surfaces formatting problems, iterate in `internal/noninteractive` before moving to review.
+
+## Review
+
+Pending.
+
+## Summary
+
+Pending.
+
+## State
+
+- Branch: `jn/parallel-noninteractive`
+- Intended implementation package: `internal/noninteractive`
+- Relevant files:
+  - `internal/noninteractive/session.go`
+  - `internal/noninteractive/noninteractive_test.go`
+  - `internal/noninteractive/SPEC.md`
+- Current behavior:
+  - human-readable mode suppresses `start_subagent`
+  - descendant finalizing assistant text may be presenter-formatted
+  - descendant tool/read_file chatter still leaks through
+  - JSON mode emits its current event stream and should stay unchanged
