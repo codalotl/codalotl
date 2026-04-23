@@ -102,6 +102,27 @@ func (db *DB) RetrieveOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, t
 	return db.retrieve(namespace, hasher, target)
 }
 
+// DeleteOnCodeUnit removes the stored value for (unit, namespace).
+//
+// Deleting a missing value is a no-op and returns nil.
+//
+// DeleteOnCodeUnit returns an error only for "real" failures (I/O, CAS delete failures, etc).
+func (db *DB) DeleteOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace) error {
+	if unit == nil {
+		return errors.New("code unit is nil")
+	}
+	if err := db.validateCommon(namespace); err != nil {
+		return err
+	}
+
+	hasher, _, err := db.hasherForCodeUnit(unit)
+	if err != nil {
+		return err
+	}
+
+	return db.delete(namespace, hasher)
+}
+
 // StoreOnPackage stores jsonable for (pkg, namespace).
 //
 // Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative
@@ -224,6 +245,10 @@ func (db *DB) retrieve(namespace Namespace, hasher cas.Hasher, target any) (ok b
 		return true, additionalInfo, err
 	}
 	return true, additionalInfo, nil
+}
+
+func (db *DB) delete(namespace Namespace, hasher cas.Hasher) error {
+	return db.DB.Delete(hasher, string(namespace))
 }
 
 type fileRec struct {

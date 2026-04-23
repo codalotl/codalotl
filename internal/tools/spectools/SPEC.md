@@ -4,11 +4,14 @@ Tools for `SPEC.md` workflows.
 
 ## check_spec_conformance
 
-This tool checks Go packages in this module for `SPEC.md` conformance. It accepts one parameter: `only_changed`. It returns JSON that indicates which checked packages conform and which do not. It has the side-effect of automatically doing CAS writes for any conforming package.
+This tool checks Go packages in this module for `SPEC.md` conformance. It accepts `only_changed` and optional `packages`. It returns JSON that indicates which checked packages conform and which do not. It has the side-effect of automatically doing CAS writes for any conforming package.
 
 Details:
 - Skips packages without `SPEC.md`.
 - Skips packages whose CAS record already says `conforms=true`.
+- Optional `packages` targets specific packages by import path or module-relative package path.
+- Explicit `packages` bypass CAS `conforms=true` skipping.
+- Invalid explicit package, or explicit package without `SPEC.md`, fails the tool before package checking starts.
 - `only_changed=true` further restricts to packages whose on-disk state changed against the current git comparison base. See `### Diffing`
 - If no packages are eligible, tool returns `{}`.
 - Runs one `limited_package_mode` subagent per package, with bounded concurrency.
@@ -21,6 +24,7 @@ Details:
 - If a checked package has no diff against the comparison base, any reported nonconformance is `latent=true`.
 - Conforming packages use CAS to save result:
     - write `conforms=true` only for conforming packages (do not store nonconforming results)
+- A nonconforming recheck clears any matching cached `conforms=true` entry.
 - Fail overall tool call only for pre-launch or global failures.
     - Once package checking starts, record package-scoped failures instead of failing overall tool call.
 - Package-scoped failures in `error` include subagent errors and per-package preparation or parsing failures.

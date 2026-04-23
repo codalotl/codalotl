@@ -84,6 +84,53 @@ func TestRetrieve_Miss(t *testing.T) {
 	require.False(t, conforms)
 }
 
+func TestDelete_MissIsNoOp(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &gocas.DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := Delete(db, pkg)
+	require.NoError(t, err)
+
+	found, conforms, err := Retrieve(db, pkg)
+	require.NoError(t, err)
+	require.False(t, found)
+	require.False(t, conforms)
+}
+
+func TestDelete_RemovesStoredMetadata(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &gocas.DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := Store(db, pkg, true)
+	require.NoError(t, err)
+
+	err = Delete(db, pkg)
+	require.NoError(t, err)
+
+	found, conforms, err := Retrieve(db, pkg)
+	require.NoError(t, err)
+	require.False(t, found)
+	require.False(t, conforms)
+}
+
 func TestRetrieve_MissAfterTestdataChange(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()

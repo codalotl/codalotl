@@ -128,6 +128,36 @@ func TestDB_StoreRetrieve_AdditionalInfo(t *testing.T) {
 	require.Equal(t, opts.AdditionalInfo, ai)
 }
 
+func TestDB_Delete(t *testing.T) {
+	dbRoot := t.TempDir()
+	db := &DB{AbsRoot: dbRoot}
+
+	ns := "docaudit-1.2"
+	h := NewBytesHasher([]byte("content"))
+
+	require.NoError(t, db.Delete(h, ns))
+
+	require.NoError(t, db.Store(h, ns, map[string]any{"ok": true}, nil))
+
+	hash := h.Hash()
+	recordPath := filepath.Join(dbRoot, ns, hash[:2], hash[2:])
+	_, err := os.Stat(recordPath)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Delete(h, ns))
+
+	_, err = os.Stat(recordPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	var out map[string]any
+	found, ai, err := db.Retrieve(h, ns, &out)
+	require.NoError(t, err)
+	require.False(t, found)
+	require.Equal(t, AdditionalInfo{}, ai)
+
+	require.NoError(t, db.Delete(h, ns))
+}
+
 func TestDB_Store_ValidatesNamespaceAndHash(t *testing.T) {
 	dbRoot := t.TempDir()
 	db := &DB{AbsRoot: dbRoot}

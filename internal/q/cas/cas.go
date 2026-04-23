@@ -263,6 +263,33 @@ func (db *DB) Retrieve(hasher Hasher, namespace string, target any) (bool, Addit
 	return true, AdditionalInfo{}, nil
 }
 
+// Delete removes metadata for (namespace, hasher.Hash()).
+//
+// namespace must be filesystem-safe with no path separators. If the record does not exist, Delete returns nil.
+func (db *DB) Delete(hasher Hasher, namespace string) error {
+	if db.AbsRoot == "" {
+		return errors.New("DB.AbsRoot is empty")
+	}
+	if hasher == nil {
+		return errors.New("hasher is nil")
+	}
+	if err := validatePathSegment("namespace", namespace); err != nil {
+		return err
+	}
+	hash := hasher.Hash()
+	if err := validatePathSegment("hash", hash); err != nil {
+		return err
+	}
+	if len(hash) < 3 {
+		return fmt.Errorf("hash %q is too short", hash)
+	}
+
+	if err := os.Remove(db.recordPath(namespace, hash)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func (db *DB) recordPath(namespace, hash string) string {
 	return filepath.Join(db.AbsRoot, namespace, hash[:2], hash[2:])
 }

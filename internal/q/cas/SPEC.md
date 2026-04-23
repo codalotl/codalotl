@@ -5,6 +5,7 @@
 - Compute a content key (hash) from bytes, or from a set of files.
 - Store JSON metadata under `(namespace, hash)`.
 - Retrieve metadata later by recomputing the hash. If content changes, the hash changes and the record is naturally missed.
+- Delete metadata for a given `(namespace, hash)` when callers no longer want to keep it.
 
 This package stores metadata. It is optimized for small (< 2 KB) JSON metadata.
 
@@ -91,4 +92,9 @@ func (db *DB) Store(hasher Hasher, namespace string, jsonable any, opts *Options
 //   - target must be a pointer that is passed to json.Unmarshal.
 //   - namespace must be filesystem-safe with no path separators.
 func (db *DB) Retrieve(hasher Hasher, namespace string, target any) (bool, AdditionalInfo, error)
+
+// Delete removes metadata for (namespace, hasher.Hash()).
+//
+// namespace must be filesystem-safe with no path separators. If the record does not exist, Delete returns nil.
+func (db *DB) Delete(hasher Hasher, namespace string) error
 ```

@@ -141,6 +141,57 @@ func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_SupportFileAffectsKey(t *testing.T
 	require.False(t, ok)
 }
 
+func TestDeleteOnCodeUnit_RemovesStoredValue(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	writeTestModuleWithPackage(t, baseDir)
+
+	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
+	require.NoError(t, err)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 17})
+	require.NoError(t, err)
+
+	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	require.NoError(t, err)
+
+	var got testPayload
+	ok, _, err := db.RetrieveOnCodeUnit(unit, testNamespace, &got)
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+func TestDeleteOnCodeUnit_MissingRecordIsNoOp(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	writeTestModuleWithPackage(t, baseDir)
+
+	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
+	require.NoError(t, err)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	require.NoError(t, err)
+
+	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	require.NoError(t, err)
+}
+
 func TestRetrieveOnPackage_MissDoesNotMutateTarget(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()

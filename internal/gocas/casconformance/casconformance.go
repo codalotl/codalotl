@@ -27,6 +27,17 @@ func Store(db *gocas.DB, pkg *gocode.Package, conforms bool) error {
 	return db.StoreOnCodeUnit(unit, Namespace, Metadata{Conforms: conforms})
 }
 
+// Delete removes spec conformance metadata for pkg.
+//
+// Deleting a missing record is a no-op.
+func Delete(db *gocas.DB, pkg *gocode.Package) error {
+	unit, err := defaultCodeUnit(pkg)
+	if err != nil {
+		return err
+	}
+	return db.DeleteOnCodeUnit(unit, Namespace)
+}
+
 // Retrieve loads spec conformance metadata for pkg.
 //
 // found reports whether a record existed.

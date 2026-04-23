@@ -70,6 +70,13 @@ func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, json
 // RetrieveOnCodeUnit returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
 func (db *DB) RetrieveOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
 
+// DeleteOnCodeUnit removes the stored value for (unit, namespace).
+//
+// Deleting a missing value is a no-op and returns nil.
+//
+// DeleteOnCodeUnit returns an error only for "real" failures (I/O, CAS delete failures, etc).
+func (db *DB) DeleteOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace) error
+
 // StoreOnPackage stores jsonable for (pkg, namespace).
 //
 // Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative

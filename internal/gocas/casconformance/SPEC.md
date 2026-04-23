@@ -17,6 +17,11 @@ type Metadata struct {
 // Store stores spec conformance metadata for pkg.
 func Store(db *gocas.DB, pkg *gocode.Package, conforms bool) error
 
+// Delete removes spec conformance metadata for pkg.
+//
+// Deleting a missing record is a no-op.
+func Delete(db *gocas.DB, pkg *gocode.Package) error
+
 // Retrieve loads spec conformance metadata for pkg.
 //
 // found reports whether a record existed.

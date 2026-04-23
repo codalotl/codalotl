@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -61,7 +62,8 @@ type toolCheckSpecConformance struct {
 }
 
 type checkSpecConformanceParams struct {
-	OnlyChanged bool `json:"only_changed"`
+	OnlyChanged bool     `json:"only_changed"`
+	Packages    []string `json:"packages"`
 }
 
 type comparisonBase struct {
@@ -197,6 +199,13 @@ func (t *toolCheckSpecConformance) Info() llmstream.ToolInfo {
 				"type":        "boolean",
 				"description": "If true, only check packages whose state changed (in feature branches, compares on-disk state to branch merge base).",
 			},
+			"packages": map[string]any{
+				"type":        "array",
+				"description": "Optional package list. Entries may be current-module import paths or module-relative package paths. Omit, null, or empty to use default discovery.",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
 		},
 		Required: []string{"only_changed"},
 	}
@@ -218,14 +227,25 @@ func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolC
 		}
 	}
 
+	explicitSelection := len(params.Packages) > 0
+	var pkgs []*gocode.Package
+	if explicitSelection {
+		pkgs, err = t.resolveRequestedPackages(mod, params.Packages)
+		if err != nil {
+			return coretools.NewToolErrorResult(call, err.Error(), err)
+		}
+	}
+
 	base, err := t.determineComparisonBase(ctx, mod.AbsolutePath)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	pkgs, err := loadCurrentModulePackages(ctx, mod)
-	if err != nil {
-		return coretools.NewToolErrorResult(call, err.Error(), err)
+	if !explicitSelection {
+		pkgs, err = loadCurrentModulePackages(ctx, mod)
+		if err != nil {
+			return coretools.NewToolErrorResult(call, err.Error(), err)
+		}
 	}
 
 	changes, err := t.collectRepoChanges(ctx, mod.AbsolutePath, base.Commit)
@@ -233,7 +253,10 @@ func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolC
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	eligible, err := t.findEligiblePackages(pkgs, changes, params.OnlyChanged)
+	eligible, err := t.findEligiblePackages(pkgs, changes, packageEligibilityOptions{
+		onlyChanged:       params.OnlyChanged,
+		explicitSelection: explicitSelection,
+	})
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
@@ -260,24 +283,33 @@ func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolC
 	}
 }
 
-func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, changes repoChanges, onlyChanged bool) ([]eligiblePackage, error) {
+type packageEligibilityOptions struct {
+	onlyChanged       bool
+	explicitSelection bool
+}
+
+func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, changes repoChanges, options packageEligibilityOptions) ([]eligiblePackage, error) {
 	sort.Slice(pkgs, func(i, j int) bool {
 		return packageResultKey(pkgs[i].RelativeDir) < packageResultKey(pkgs[j].RelativeDir)
 	})
 
 	eligible := make([]eligiblePackage, 0, len(pkgs))
 	for _, pkg := range pkgs {
-		specPath := filepath.Join(pkg.AbsolutePath(), "SPEC.md")
-		if !pathExists(specPath) {
+		if !packageHasSpec(pkg) {
+			if options.explicitSelection {
+				return nil, fmt.Errorf("explicit package %q has no SPEC.md", packageResultKey(pkg.RelativeDir))
+			}
 			continue
 		}
 
-		found, conforms, err := retrieveConformanceState(pkg)
-		if err != nil {
-			return nil, fmt.Errorf("retrieve CAS conformance for %s: %w", packageResultKey(pkg.RelativeDir), err)
-		}
-		if found && conforms {
-			continue
+		if !options.explicitSelection {
+			found, conforms, err := retrieveConformanceState(pkg)
+			if err != nil {
+				return nil, fmt.Errorf("retrieve CAS conformance for %s: %w", packageResultKey(pkg.RelativeDir), err)
+			}
+			if found && conforms {
+				continue
+			}
 		}
 
 		hasDiff, err := packageHasChanges(pkg, changes)
@@ -285,7 +317,7 @@ func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, 
 			return nil, fmt.Errorf("check package diff scope for %s: %w", packageResultKey(pkg.RelativeDir), err)
 		}
 
-		if onlyChanged && !hasDiff {
+		if options.onlyChanged && !hasDiff {
 			continue
 		}
 
@@ -297,6 +329,102 @@ func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, 
 	}
 
 	return eligible, nil
+}
+
+func (t *toolCheckSpecConformance) resolveRequestedPackages(mod *gocode.Module, requested []string) ([]*gocode.Package, error) {
+	seen := make(map[string]struct{}, len(requested))
+	pkgs := make([]*gocode.Package, 0, len(requested))
+	for _, raw := range requested {
+		pkg, err := t.resolveRequestedPackage(mod, raw)
+		if err != nil {
+			return nil, err
+		}
+
+		key := packageResultKey(pkg.RelativeDir)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		pkgs = append(pkgs, pkg)
+	}
+	return pkgs, nil
+}
+
+func (t *toolCheckSpecConformance) resolveRequestedPackage(mod *gocode.Module, raw string) (*gocode.Package, error) {
+	requested, err := normalizeRequestedPackage(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid package %q: %w", raw, err)
+	}
+
+	if pkg, err := t.resolveRequestedPackageRelative(mod, requested); err == nil {
+		return pkg, nil
+	} else if !errors.Is(err, gocode.ErrResolveNotFound) {
+		return nil, fmt.Errorf("invalid package %q: %w", raw, err)
+	}
+
+	pkg, err := t.resolveRequestedPackageImport(mod, requested)
+	if err != nil {
+		return nil, fmt.Errorf("invalid package %q: %w", raw, err)
+	}
+	return pkg, nil
+}
+
+func (t *toolCheckSpecConformance) resolveRequestedPackageRelative(mod *gocode.Module, requested string) (*gocode.Package, error) {
+	moduleAbsDir, _, packageRelDir, _, err := mod.ResolvePackageByRelativeDir(requested)
+	if err != nil {
+		return nil, err
+	}
+	if moduleAbsDir != mod.AbsolutePath {
+		return nil, fmt.Errorf("package is not in the current module")
+	}
+
+	pkg, err := mod.LoadPackageByRelativeDir(packageRelDir)
+	if err != nil {
+		return nil, err
+	}
+	if !packageHasSpec(pkg) {
+		return nil, fmt.Errorf("package has no SPEC.md")
+	}
+	return pkg, nil
+}
+
+func (t *toolCheckSpecConformance) resolveRequestedPackageImport(mod *gocode.Module, requested string) (*gocode.Package, error) {
+	moduleAbsDir, _, _, fqImportPath, err := mod.ResolvePackageByImport(requested)
+	if err != nil {
+		if errors.Is(err, gocode.ErrResolveNotFound) {
+			return nil, err
+		}
+		return nil, err
+	}
+	if moduleAbsDir != mod.AbsolutePath {
+		return nil, fmt.Errorf("package is not in the current module")
+	}
+
+	pkg, err := mod.LoadPackageByImportPath(fqImportPath)
+	if err != nil {
+		return nil, err
+	}
+	if !packageHasSpec(pkg) {
+		return nil, fmt.Errorf("package has no SPEC.md")
+	}
+	return pkg, nil
+}
+
+func normalizeRequestedPackage(raw string) (string, error) {
+	requested := strings.TrimSpace(raw)
+	if requested == "" {
+		return "", fmt.Errorf("package name is empty")
+	}
+	if strings.HasPrefix(requested, "/") {
+		return "", fmt.Errorf("absolute paths are not allowed")
+	}
+	for strings.HasSuffix(requested, "/") && requested != "/" {
+		requested = strings.TrimSuffix(requested, "/")
+	}
+	if requested == "" {
+		return "", fmt.Errorf("package name is empty")
+	}
+	return requested, nil
 }
 
 func (t *toolCheckSpecConformance) checkEligiblePackages(ctx context.Context, moduleAbsDir string, eligible []eligiblePackage, base comparisonBase, changes repoChanges) map[string]packageCheckResult {
@@ -363,9 +491,15 @@ func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDi
 		return packageErrorResult(err)
 	}
 
-	if result.Conforms != nil && *result.Conforms {
-		if err := t.storeConformanceState(pkg.Package); err != nil {
-			result.PostcheckError = fmt.Sprintf("store CAS conformance: %s", err)
+	if result.Conforms != nil {
+		if *result.Conforms {
+			if err := t.storeConformanceState(pkg.Package); err != nil {
+				result.PostcheckError = fmt.Sprintf("store CAS conformance: %s", err)
+			}
+		} else {
+			if err := t.deleteConformanceState(pkg.Package); err != nil {
+				result.PostcheckError = fmt.Sprintf("delete CAS conformance: %s", err)
+			}
 		}
 	}
 
@@ -1214,6 +1348,19 @@ func (t *toolCheckSpecConformance) storeConformanceState(pkg *gocode.Package) er
 	return casconformance.Store(newCASDB(pkg.Module.AbsolutePath), pkg, true)
 }
 
+func (t *toolCheckSpecConformance) deleteConformanceState(pkg *gocode.Package) error {
+	casRoot := filepath.Join(pkg.Module.AbsolutePath, ".codalotl", "cas")
+	if !pathExists(casRoot) {
+		return nil
+	}
+	if t.authorizer != nil {
+		if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameCheckSpecConformance, casRoot); authErr != nil {
+			return authErr
+		}
+	}
+	return casconformance.Delete(newCASDB(pkg.Module.AbsolutePath), pkg)
+}
+
 func newCASDB(moduleAbsDir string) *gocas.DB {
 	return &gocas.DB{
 		BaseDir: moduleAbsDir,
@@ -1221,6 +1368,10 @@ func newCASDB(moduleAbsDir string) *gocas.DB {
 			AbsRoot: filepath.Join(moduleAbsDir, ".codalotl", "cas"),
 		},
 	}
+}
+
+func packageHasSpec(pkg *gocode.Package) bool {
+	return pathExists(filepath.Join(pkg.AbsolutePath(), "SPEC.md"))
 }
 
 func pathExists(absPath string) bool {

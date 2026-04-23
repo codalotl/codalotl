@@ -563,6 +563,168 @@ func TestRunRechecksChangedCASVerifiedPackage(t *testing.T) {
 	assert.NotContains(t, parsed, "internal/bar")
 }
 
+func TestRunWithPackagesRechecksCASVerifiedExplicitPackage(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-explicit-cas-bypass",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false,"packages":["internal/foo"]}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	assert.ElementsMatch(t, []string{"internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+}
+
+func TestRunWithPackagesClearsStaleCASConformanceForNonconformingPackage(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		return `{"conforms":false,"nonconformances":[{"severity":"major","latent":false,"message":"missing docs"}]}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-explicit-clear-stale-cas",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false,"packages":["internal/foo"]}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	require.Contains(t, parsed, "internal/foo")
+	require.NotNil(t, parsed["internal/foo"].Conforms)
+	assert.False(t, *parsed["internal/foo"].Conforms)
+
+	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.False(t, conforms)
+}
+
+func TestRunWithPackagesSupportsImportPathsRelativePathsAndDedupes(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-explicit-dedupe",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false,"packages":["./internal/foo/","example.com/specmod/internal/foo","internal/bar"]}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 2)
+	assert.ElementsMatch(t, []string{"internal/bar", "internal/foo"}, recorder.list())
+	require.Contains(t, parsed, "internal/foo")
+	require.Contains(t, parsed, "internal/bar")
+}
+
+func TestRunWithPackagesOnlyChangedFiltersExplicitPackageList(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	writeFile(t, filepath.Join(moduleDir, "internal/foo/foo.go"), fooGoFile(`"foo changed"`))
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-explicit-only-changed",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":true,"packages":["internal/bar"]}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Empty(t, parsed)
+	assert.Empty(t, recorder.list())
+}
+
+func TestRunWithPackagesRejectsInvalidPackageBeforeCheckingAnything(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-explicit-invalid",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false,"packages":["internal/foo","fmt"]}`,
+	})
+	require.True(t, result.IsError)
+	assert.Contains(t, result.Result, `invalid package "fmt"`)
+	assert.Contains(t, result.Result, "current module")
+	assert.Empty(t, recorder.list())
+}
+
+func TestRunWithPackagesRejectsPackageWithoutSpecBeforeCheckingAnything(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	writeFile(t, filepath.Join(moduleDir, "internal/nospec/nospec.go"), "package nospec\n")
+
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}).(*toolCheckSpecConformance)
+	recorder := &checkedRecorder{}
+	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
+		recorder.add(req.Key)
+		return `{"conforms":true}`, nil
+	}
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-explicit-no-spec",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false,"packages":["internal/nospec"]}`,
+	})
+	require.True(t, result.IsError)
+	assert.Contains(t, result.Result, `invalid package "internal/nospec"`)
+	assert.Contains(t, result.Result, "no SPEC.md")
+	assert.Empty(t, recorder.list())
+}
+
 func TestRunOnlyChangedRechecksCASVerifiedPackageWhenSupportFileChanges(t *testing.T) {
 	moduleDir := setupModuleRepo(t)
 
