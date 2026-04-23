@@ -58,7 +58,7 @@ Validation:
 
 ## Plan
 
-### Package internal/noninteractive
+### Package internal/noninteractive [DONE]
 - Update `internal/noninteractive/SPEC.md` for a generic labeled subagent lifecycle in human-readable output.
 - Keep scope local to `internal/noninteractive`; do not change `tui`, `spectools`, or JSON mode behavior.
 - Detect labeled subagents from `EventTypeStartSubagent` with non-empty `StartSubagent.Label`.
@@ -93,7 +93,16 @@ Pending.
   - `internal/noninteractive/noninteractive_test.go`
   - `internal/noninteractive/SPEC.md`
 - Current behavior:
-  - human-readable mode suppresses `start_subagent`
-  - descendant finalizing assistant text may be presenter-formatted
-  - descendant tool/read_file chatter still leaks through
+  - human-readable mode now emits a labeled lifecycle for labeled subagents: started line, hidden descendant chatter, label-prefixed completion entry
+  - nearest active labeled ancestor owns deeper descendant activity in human-readable mode
+  - unlabeled descendant subagents still use the older behavior
   - JSON mode emits its current event stream and should stay unchanged
+- Landed implementation:
+  - `internal/noninteractive/session.go` now tracks active labeled subagents only for human-readable output
+  - descendant finalizing text still uses presenter formatting when available
+  - fallback completion text is `<label>: finished` when a labeled subagent ends without visible final text
+- Focused validation from implementation step:
+  - subagent reported `go test ./internal/noninteractive`
+  - subagent also reported `go test ./...`
+- Remaining before review step:
+  - manual CLI validation of the orchestrate + `check_spec_conformance(true)` flow
