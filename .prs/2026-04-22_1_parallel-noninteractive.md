@@ -71,7 +71,7 @@ Validation:
 - Treat the nearest active labeled ancestor as the visible owner for deeper descendants so nested activity does not leak through as read-file/tool chatter.
 - Add or update focused tests around human-readable output. JSON mode should remain unchanged.
 
-### Validation
+### Validation [DONE]
 - Run focused `go test ./internal/noninteractive/...`.
 - Manually validate with `go run . exec --yes --slash-command="orchestrate" "<prompt>"` using the prompt from the user summary, or a close equivalent that exercises `check_spec_conformance(true)`.
 - If manual validation surfaces formatting problems, iterate in `internal/noninteractive` before moving to review.
@@ -104,5 +104,17 @@ Pending.
 - Focused validation from implementation step:
   - subagent reported `go test ./internal/noninteractive`
   - subagent also reported `go test ./...`
+- Fix-forward after manual validation:
+  - force-print the launching tool-call header before the first visible labeled lifecycle line
+  - sync `internal/noninteractive/SPEC.md` with the intentional exception to the 3-second tool-call suppression rule
+- Validation completed on the current tree:
+  - `go test ./internal/noninteractive/...` passed locally
+  - manual `go run . exec --yes --slash-command="orchestrate" ".prs/2026-04-22_1_parallel-noninteractive.md - do not do steps. just run check_spec_conformance(true) and end your turn without commits or pr file edits"` produced the intended shape:
+    - `Checking SPEC conformance`
+    - `internal/noninteractive: started`
+    - `internal/noninteractive: Conforms`
+    - `Checked SPEC conformance`
+  - the manual validation run wrote a CAS artifact for `internal/noninteractive`; it was deleted afterward because this PR is stopping before the formal review / `check_spec_conformance` step
 - Remaining before review step:
-  - manual CLI validation of the orchestrate + `check_spec_conformance(true)` flow
+  - formal `review`
+  - formal `check_spec_conformance({"only_changed":true})`
