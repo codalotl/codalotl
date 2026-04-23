@@ -206,6 +206,16 @@ func validateAbsDir(fieldName, p string) error {
 	return nil
 }
 
+func validateAbsPath(fieldName, p string) error {
+	if p == "" {
+		return fmt.Errorf("%s is empty", fieldName)
+	}
+	if !filepath.IsAbs(p) {
+		return fmt.Errorf("%s must be an absolute path: %q", fieldName, p)
+	}
+	return nil
+}
+
 func (db *DB) validateCommon(namespace Namespace) error {
 	if db == nil {
 		return errors.New("gocas DB is nil")
@@ -216,7 +226,7 @@ func (db *DB) validateCommon(namespace Namespace) error {
 	if err := validateAbsDir("BaseDir", db.BaseDir); err != nil {
 		return err
 	}
-	if err := validateAbsDir("cas.DB.AbsRoot", db.DB.AbsRoot); err != nil {
+	if err := validateAbsPath("cas.DB.AbsRoot", db.DB.AbsRoot); err != nil {
 		return err
 	}
 	return nil

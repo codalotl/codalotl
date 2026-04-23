@@ -76,6 +76,29 @@ func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
 	require.Equal(t, []string{"foo/SPEC.md", "foo/foo.go", "foo/foo_test.go"}, ai.Paths)
 }
 
+func TestStoreOnPackage_CreatesMissingCASRoot(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := filepath.Join(t.TempDir(), "cas")
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	var got testPayload
+	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, 7, got.N)
+}
+
 func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_RoundTrip(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
@@ -172,6 +195,29 @@ func TestDeleteOnCodeUnit_RemovesStoredValue(t *testing.T) {
 func TestDeleteOnCodeUnit_MissingRecordIsNoOp(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
+
+	writeTestModuleWithPackage(t, baseDir)
+
+	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
+	require.NoError(t, err)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	require.NoError(t, err)
+
+	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	require.NoError(t, err)
+}
+
+func TestDeleteOnCodeUnit_MissingCASRootIsNoOp(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := filepath.Join(t.TempDir(), "cas")
 
 	writeTestModuleWithPackage(t, baseDir)
 

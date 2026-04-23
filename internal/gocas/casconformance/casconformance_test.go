@@ -86,7 +86,7 @@ func TestRetrieve_Miss(t *testing.T) {
 
 func TestDelete_MissIsNoOp(t *testing.T) {
 	baseDir := t.TempDir()
-	casRoot := t.TempDir()
+	casRoot := filepath.Join(t.TempDir(), "cas")
 
 	pkg := writeTestModuleWithPackage(t, baseDir)
 
