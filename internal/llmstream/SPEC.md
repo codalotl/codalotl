@@ -198,10 +198,9 @@ const (
 // By default, a ToolResult with IsError dose NOT need to present the error in Body - final formatters will automatically display an error based on IsError and SourceErr.
 // To override this, set ErrorBehavior to ErrorBehaviorPresenterOwned.
 type Presentation struct {
-	Behavior       CompletionBehavior
-	ErrorBehavior  ErrorBehavior
-	NarrowBehavior PresentationNarrowBehavior
-	Status         PresentationStatus
+	Behavior      CompletionBehavior
+	ErrorBehavior ErrorBehavior
+	Status        PresentationStatus
 
 	// Summary is usually a 1-line tool header (ex: "Read path/to/file.go"; "Update Plan"; "Running go test ./..."). When Body is a Diff, leave Summary empty and let
 	// consumers derive the header from the diff body.
@@ -234,17 +233,6 @@ const (
 
 	// PresentationStatusFailure means consumers should treat the presentation as failed.
 	PresentationStatusFailure PresentationStatus = "failure"
-)
-
-// PresentationNarrowBehavior indicates whether a presenter wants the formatter's narrow-width fallback behavior adjusted.
-type PresentationNarrowBehavior string
-
-const (
-	// PresentationNarrowBehaviorDefault keeps the formatter's default minimum-width TUI behavior for presenters.
-	PresentationNarrowBehaviorDefault PresentationNarrowBehavior = ""
-
-	// PresentationNarrowBehaviorPreferCLI asks consumers to keep using the formatter's CLI fallback at the minimum width boundary.
-	PresentationNarrowBehaviorPreferCLI PresentationNarrowBehavior = "prefer_cli"
 )
 
 // Line is a single rendered line made of styled segments. If JoinWithSpace is true, consumers should join adjacent segments with a single space. Otherwise, Segment.Text

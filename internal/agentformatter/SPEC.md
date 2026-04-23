@@ -169,7 +169,6 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - Do not keep parallel per-tool formatting specs here once a tool package owns its presentation.
 - Presenter summaries still use the tool event bullet/status behavior from this package: Accent while running, Green/Red on completion.
 - If a presenter sets an explicit `Status`, use that status for completion bullet color instead of inferring from the raw tool result.
-- If a presenter opts into CLI narrow behavior, keep using the formatter's CLI fallback at the minimum width boundary instead of forcing wrapped presenter TUI output.
 - If a presenter returns `Body` blocks, render them beneath the summary using the same `└`/continuation structure used elsewhere in this package.
 - `Paragraph` blocks render their lines in order using line/segment roles, sharing the same body indentation rules.
 - `Checklist` blocks render one item per line:

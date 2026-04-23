@@ -80,7 +80,6 @@ func TestGetPublicAPIPresenter(t *testing.T) {
 	}
 
 	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
-	assert.Equal(t, llmstream.PresentationNarrowBehaviorPreferCLI, callPresentation.NarrowBehavior)
 	assert.Equal(t, expectedSummary, callPresentation.Summary)
 	assert.Equal(t, expectedSummary, resultPresentation.Summary)
 	assert.Equal(t, expectedBody, callPresentation.Body)
@@ -164,7 +163,6 @@ func TestGetUsagePresenter(t *testing.T) {
 	resultPresentation := presenter.Present(call, result)
 
 	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
-	assert.Equal(t, llmstream.PresentationNarrowBehaviorPreferCLI, callPresentation.NarrowBehavior)
 	assert.Equal(t, llmstream.Line{
 		JoinWithSpace: true,
 		Segments: []llmstream.Segment{
@@ -237,7 +235,6 @@ func TestModuleInfoPresenter(t *testing.T) {
 	}
 
 	assert.Equal(t, llmstream.CompletionBehaviorReplace, callPresentation.Behavior)
-	assert.Equal(t, llmstream.PresentationNarrowBehaviorPreferCLI, callPresentation.NarrowBehavior)
 	assert.Equal(t, expectedSummary, callPresentation.Summary)
 	assert.Equal(t, expectedSummary, resultPresentation.Summary)
 	assert.Equal(t, expectedBody, callPresentation.Body)

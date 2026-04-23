@@ -136,8 +136,7 @@ func TestPresentationModel_CanRepresentAppendPresentationWithOutputBody(t *testi
 
 func TestPresentationModel_CanRepresentReplacePresentationWithParagraphBodyAndDefaultErrorBehavior(t *testing.T) {
 	presentation := Presentation{
-		Behavior:       CompletionBehaviorReplace,
-		NarrowBehavior: PresentationNarrowBehaviorPreferCLI,
+		Behavior: CompletionBehaviorReplace,
 		Summary: Line{
 			JoinWithSpace: true,
 			Segments: []Segment{
@@ -155,7 +154,6 @@ func TestPresentationModel_CanRepresentReplacePresentationWithParagraphBodyAndDe
 
 	assert.Equal(t, CompletionBehaviorReplace, presentation.Behavior)
 	assert.Equal(t, ErrorBehaviorDefault, presentation.ErrorBehavior)
-	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, presentation.NarrowBehavior)
 	assert.Equal(t, Line{
 		JoinWithSpace: true,
 		Segments: []Segment{
@@ -267,10 +265,9 @@ func TestPresentationModel_LineJoinModes(t *testing.T) {
 
 func TestPresentationModel_ErrorBehavior(t *testing.T) {
 	presentation := Presentation{
-		Behavior:       CompletionBehaviorReplace,
-		ErrorBehavior:  ErrorBehaviorPresenterOwned,
-		NarrowBehavior: PresentationNarrowBehaviorPreferCLI,
-		Status:         PresentationStatusFailure,
+		Behavior:      CompletionBehaviorReplace,
+		ErrorBehavior: ErrorBehaviorPresenterOwned,
+		Status:        PresentationStatusFailure,
 		Summary: Line{
 			Segments: []Segment{{Text: "Apply Patch", Role: RoleAction}},
 		},
@@ -278,7 +275,6 @@ func TestPresentationModel_ErrorBehavior(t *testing.T) {
 
 	assert.Equal(t, CompletionBehaviorReplace, presentation.Behavior)
 	assert.Equal(t, ErrorBehaviorPresenterOwned, presentation.ErrorBehavior)
-	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, presentation.NarrowBehavior)
 	assert.Equal(t, PresentationStatusFailure, presentation.Status)
 }
 
@@ -291,11 +287,6 @@ func TestPresentationModel_Status(t *testing.T) {
 func TestPresentationModel_Behavior(t *testing.T) {
 	assert.Equal(t, CompletionBehaviorReplace, Presentation{Behavior: CompletionBehaviorReplace}.Behavior)
 	assert.Equal(t, CompletionBehaviorAppend, Presentation{Behavior: CompletionBehaviorAppend}.Behavior)
-}
-
-func TestPresentationModel_NarrowBehavior(t *testing.T) {
-	assert.Equal(t, PresentationNarrowBehaviorDefault, Presentation{}.NarrowBehavior)
-	assert.Equal(t, PresentationNarrowBehaviorPreferCLI, Presentation{NarrowBehavior: PresentationNarrowBehaviorPreferCLI}.NarrowBehavior)
 }
 
 func TestPresentationModel_SubagentFinalMessagePresenterIsOptional(t *testing.T) {

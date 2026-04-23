@@ -69,14 +69,13 @@ func NewTUIFormatter(c Config) Formatter {
 }
 
 func (f *textTUIFormatter) FormatEvent(e agent.Event, terminalWidth int) string {
-	requestedWidth := terminalWidth
 	if terminalWidth <= 0 {
 		terminalWidth = MinTerminalWidth
 	}
 
 	indentWidth := e.Agent.Depth * 2
 
-	if requestedWidth <= 0 || (terminalWidth <= MinTerminalWidth && !presenterWidthConstrainedTUI(e)) {
+	if terminalWidth <= MinTerminalWidth {
 		out := f.formatCLI(e)
 		if indentWidth > 0 && out != "" {
 			return indentLines(out, indentWidth)
@@ -94,24 +93,6 @@ func (f *textTUIFormatter) FormatEvent(e agent.Event, terminalWidth int) string 
 		return indentLines(out, indentWidth)
 	}
 	return out
-}
-
-// Replace presenters describe fixed-width TUI output, so an explicit width still wins at the narrow boundary.
-func presenterWidthConstrainedTUI(e agent.Event) bool {
-	presentation, ok := presenterPresentation(e)
-	if !ok {
-		return false
-	}
-	if presentation.Behavior != llmstream.CompletionBehaviorReplace {
-		return false
-	}
-	if presentation.NarrowBehavior == llmstream.PresentationNarrowBehaviorPreferCLI {
-		return false
-	}
-	if _, ok := presentationDiffBody(presentation); ok {
-		return false
-	}
-	return true
 }
 
 func indentLines(content string, indentWidth int) string {

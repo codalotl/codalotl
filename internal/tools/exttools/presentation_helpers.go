@@ -26,8 +26,7 @@ func extToolSummaryPresentation(action string, target string) llmstream.Presenta
 	}
 
 	return llmstream.Presentation{
-		Behavior:       llmstream.CompletionBehaviorReplace,
-		NarrowBehavior: llmstream.PresentationNarrowBehaviorPreferCLI,
+		Behavior: llmstream.CompletionBehaviorReplace,
 		Summary: llmstream.Line{
 			JoinWithSpace: true,
 			Segments:      segments,

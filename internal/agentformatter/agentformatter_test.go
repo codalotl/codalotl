@@ -602,8 +602,7 @@ func TestPresentedToolCompleteSuccessShowsOutputBody(t *testing.T) {
 		require.NotEmpty(t, out)
 		assert.Equal(t, []string{
 			"• Ran go test .",
-			"  └ first output line wraps",
-			"    around cleanly",
+			"  └ first output line wraps around cleanly",
 			"    second output line",
 			"    … +2 lines",
 		}, strings.Split(stripANSI(out), "\n"))
@@ -841,26 +840,7 @@ func TestPresentedUpdatePlanMatchesExpectedFormatting(t *testing.T) {
 	})
 
 	t.Run("call cli", func(t *testing.T) {
-		assert.Equal(t, []string{
-			"• Update Plan",
-			"  └ Need to align CodeUnit",
-			"    authorizer with updated",
-			"    SPEC behavior for",
-			"    read-only restrictions and",
-			"    adjust tests accordingly.",
-			"    ✔ Inspect SPEC changes and",
-			"    current CodeUnit",
-			"    authorizer implementation",
-			"    □ Update codeunit",
-			"    authorizer logic to apply",
-			"    read restrictions only to",
-			"    read_file tool and keep",
-			"    write restrictions for all",
-			"    tools",
-			"    □ Revise tests to cover",
-			"    new behavior and run go",
-			"    test for package",
-		}, strings.Split(stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)), "\n"))
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(callEvent, MinTerminalWidth)), "\n"))
 	})
 
 	t.Run("complete tui", func(t *testing.T) {
@@ -868,26 +848,7 @@ func TestPresentedUpdatePlanMatchesExpectedFormatting(t *testing.T) {
 	})
 
 	t.Run("complete cli", func(t *testing.T) {
-		assert.Equal(t, []string{
-			"• Update Plan",
-			"  └ Need to align CodeUnit",
-			"    authorizer with updated",
-			"    SPEC behavior for",
-			"    read-only restrictions and",
-			"    adjust tests accordingly.",
-			"    ✔ Inspect SPEC changes and",
-			"    current CodeUnit",
-			"    authorizer implementation",
-			"    □ Update codeunit",
-			"    authorizer logic to apply",
-			"    read restrictions only to",
-			"    read_file tool and keep",
-			"    write restrictions for all",
-			"    tools",
-			"    □ Revise tests to cover",
-			"    new behavior and run go",
-			"    test for package",
-		}, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)), "\n"))
+		assert.Equal(t, expected, strings.Split(stripANSI(formatter.FormatEvent(completeEvent, MinTerminalWidth)), "\n"))
 	})
 }
 
@@ -1326,11 +1287,13 @@ func TestPresentedToolTUIWidthLimit(t *testing.T) {
 		assertWidthLimit(t, 36, out)
 	})
 
-	t.Run("summary wraps at minimum tui width", func(t *testing.T) {
+	t.Run("summary uses cli fallback at minimum width", func(t *testing.T) {
 		event := makeEvent(presentedReplaceSummary("Read", "some/really/long/path/that/needs/to/wrap/in/the/tui/output.go"))
 		out := formatter.FormatEvent(event, MinTerminalWidth)
+		zeroWidthOut := formatter.FormatEvent(event, 0)
 		require.NotEmpty(t, out)
-		assertWidthLimit(t, MinTerminalWidth, out)
+		assert.Equal(t, stripANSI(zeroWidthOut), stripANSI(out))
+		assert.NotContains(t, out, "\n")
 	})
 
 	t.Run("zero width still uses cli fallback", func(t *testing.T) {
@@ -1359,7 +1322,7 @@ func TestPresentedToolTUIWidthLimit(t *testing.T) {
 		assertWidthLimit(t, 36, out)
 	})
 
-	t.Run("paragraph body wraps at minimum tui width", func(t *testing.T) {
+	t.Run("paragraph uses cli fallback at minimum width", func(t *testing.T) {
 		event := makeEvent(presentedReplaceSummaryWithBody(
 			"Update Plan",
 			"",
@@ -1373,8 +1336,9 @@ func TestPresentedToolTUIWidthLimit(t *testing.T) {
 			},
 		))
 		out := formatter.FormatEvent(event, MinTerminalWidth)
+		zeroWidthOut := formatter.FormatEvent(event, 0)
 		require.NotEmpty(t, out)
-		assertWidthLimit(t, MinTerminalWidth, out)
+		assert.Equal(t, stripANSI(zeroWidthOut), stripANSI(out))
 	})
 
 	t.Run("checklist body wraps", func(t *testing.T) {
@@ -1429,7 +1393,7 @@ func TestPresentedToolTUIWidthLimit(t *testing.T) {
 		}, strings.Split(stripANSI(out), "\n"))
 	})
 
-	t.Run("checklist body wraps at minimum tui width", func(t *testing.T) {
+	t.Run("checklist uses cli fallback at minimum width", func(t *testing.T) {
 		event := makeEvent(presentedReplaceSummaryWithBody(
 			"Update Plan",
 			"",
@@ -1446,8 +1410,9 @@ func TestPresentedToolTUIWidthLimit(t *testing.T) {
 			},
 		))
 		out := formatter.FormatEvent(event, MinTerminalWidth)
+		zeroWidthOut := formatter.FormatEvent(event, 0)
 		require.NotEmpty(t, out)
-		assertWidthLimit(t, MinTerminalWidth, out)
+		assert.Equal(t, stripANSI(zeroWidthOut), stripANSI(out))
 	})
 }
 

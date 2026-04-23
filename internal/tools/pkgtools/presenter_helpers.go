@@ -47,9 +47,8 @@ func pkgToolPresenterOutput(content string) (llmstream.Output, bool) {
 
 func pkgToolReplaceSummaryPresentation(summary llmstream.Line) llmstream.Presentation {
 	return llmstream.Presentation{
-		Behavior:       llmstream.CompletionBehaviorReplace,
-		NarrowBehavior: llmstream.PresentationNarrowBehaviorPreferCLI,
-		Summary:        summary,
+		Behavior: llmstream.CompletionBehaviorReplace,
+		Summary:  summary,
 	}
 }
 
