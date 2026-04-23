@@ -524,6 +524,22 @@ func TestDelayedToolCallPrinterCloseStopsPendingPrints(t *testing.T) {
 	}
 }
 
+func TestDelayedToolCallPrinterForcePrintsOnlyRequestedPendingCall(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	out := &lockedWriter{w: &buf}
+
+	p := newDelayedToolCallPrinter(out, time.Second)
+	defer p.Close()
+
+	p.Schedule("call_1", "• Check SPEC conformance")
+	p.Schedule("call_2", "• Read file")
+	p.Force("call_1")
+
+	require.Equal(t, "• Check SPEC conformance\n", buf.String())
+}
+
 func TestApplyGrantsFromUserPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -1502,7 +1518,7 @@ func TestSessionSendUserMessageDoesNotPrintStartSubagentInHumanReadableOutput(t 
 	require.NotContains(t, buf.String(), "START SUBAGENT")
 }
 
-func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
+func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextOutsideLabeledHumanReadableOutput(t *testing.T) {
 	originalDelay := toolCallPrintDelay
 	toolCallPrintDelay = 0
 	t.Cleanup(func() {
@@ -1552,7 +1568,7 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInHumanRead
 						StartSubagent: agent.StartSubagent{
 							CallingAgentID: "reviewer",
 							ToolCallID:     "call_clarify",
-							Label:          "clarify_public_api",
+							Label:          "",
 						},
 					},
 					{
@@ -1815,6 +1831,121 @@ func TestSessionSendUserMessageSuppressesDescendantFinalAssistantTextInJSONOutpu
 	}, outerToolComplete.Tool)
 }
 
+func TestSessionSendUserMessageUsesLabeledSubagentLifecycleInHumanReadableOutput(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := namedTestTool{name: "review"}
+	clarifyTool := namedTestTool{name: "clarify_public_api"}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+	grandchildAgent := agent.AgentMeta{ID: "clarifier", Depth: 2, Parent: "reviewer"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "internal/foo",
+						},
+					},
+					{
+						Type:        agent.EventTypeAssistantText,
+						Agent:       childAgent,
+						TextContent: llmstream.TextContent{Content: "looked at files"},
+					},
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: childAgent,
+						Tool:  &clarifyTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_clarify",
+							Name:   "ignored_clarify_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: grandchildAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "reviewer",
+							ToolCallID:     "call_clarify",
+							Label:          "nested worker",
+						},
+					},
+					{
+						Type:                    agent.EventTypeAssistantText,
+						Agent:                   grandchildAgent,
+						AssistantTextFinalizing: true,
+						TextContent:             llmstream.TextContent{Content: "checked docs"},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: grandchildAgent,
+					},
+					{
+						Type:                    agent.EventTypeAssistantText,
+						Agent:                   childAgent,
+						AssistantTextFinalizing: true,
+						TextContent:             llmstream.TextContent{Content: "does not conform"},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "> review this change\n")
+	require.Contains(t, output, "CALL review\n")
+	require.Contains(t, output, "TEXT internal/foo: started\n")
+	require.Contains(t, output, "TEXT internal/foo: does not conform\n")
+	require.Contains(t, output, "DONE review\n")
+	require.NotContains(t, output, "TEXT looked at files\n")
+	require.NotContains(t, output, "CALL clarify_public_api\n")
+	require.NotContains(t, output, "TEXT checked docs\n")
+	require.NotContains(t, output, "nested worker")
+}
+
 func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInHumanReadableOutput(t *testing.T) {
 	originalDelay := toolCallPrintDelay
 	toolCallPrintDelay = 0
@@ -1894,8 +2025,301 @@ func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInHumanReadabl
 	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
 
 	output := buf.String()
-	require.Contains(t, output, "TEXT Verdict: approve\nNo actionable findings.\n")
+	require.Contains(t, output, "TEXT review worker: started\n")
+	require.Contains(t, output, "TEXT review worker: Verdict: approve\nNo actionable findings.\n")
 	require.NotContains(t, output, `TEXT {"decision":"approve"}`)
+}
+
+func TestSessionSendUserMessageFallsBackToFinishedForLabeledSubagentWithoutVisibleFinalText(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := finalMessageBackedTestTool{name: "review"}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review worker",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "TEXT review worker: started\n")
+	require.Contains(t, output, "TEXT review worker: finished\n")
+}
+
+func TestSessionSendUserMessagePrintsLabeledSubagentErrorInsteadOfFinished(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := finalMessageBackedTestTool{
+		name: "review",
+		block: llmstream.Output{
+			Lines: []string{"Verdict: approve"},
+		},
+	}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review worker",
+						},
+					},
+					{
+						Type:  agent.EventTypeError,
+						Agent: childAgent,
+						Error: errors.New("context deadline exceeded"),
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "TEXT review worker: started\n")
+	require.Contains(t, output, "TEXT review worker: error: context deadline exceeded\n")
+	require.NotContains(t, output, "TEXT review worker: finished\n")
+	require.NotContains(t, output, "Verdict: approve")
+}
+
+func TestSessionSendUserMessagePrintsLabeledSubagentCanceledInsteadOfFinished(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = 0
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := finalMessageBackedTestTool{
+		name: "review",
+		block: llmstream.Output{
+			Lines: []string{"Verdict: approve"},
+		},
+	}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "review worker",
+						},
+					},
+					{
+						Type:  agent.EventTypeCanceled,
+						Agent: childAgent,
+						Error: errors.New("timed out waiting for reply"),
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "TEXT review worker: started\n")
+	require.Contains(t, output, "TEXT review worker: canceled: timed out waiting for reply\n")
+	require.NotContains(t, output, "TEXT review worker: finished\n")
+	require.NotContains(t, output, "Verdict: approve")
+}
+
+func TestSessionSendUserMessagePrintsOwningToolCallBeforeLabeledSubagentLifecycle(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = time.Hour
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	reviewTool := namedTestTool{name: "review"}
+	childAgent := agent.AgentMeta{ID: "reviewer", Depth: 1, Parent: "root"}
+
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &reviewTool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_review",
+							Name:   "ignored_review_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeStartSubagent,
+						Agent: childAgent,
+						StartSubagent: agent.StartSubagent{
+							CallingAgentID: "root",
+							ToolCallID:     "call_review",
+							Label:          "internal/foo",
+						},
+					},
+					{
+						Type:                    agent.EventTypeAssistantText,
+						Agent:                   childAgent,
+						AssistantTextFinalizing: true,
+						TextContent:             llmstream.TextContent{Content: "conforms"},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: childAgent,
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &reviewTool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_review",
+							Name:   "ignored_review_result",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "review this change")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "CALL review\n")
+	require.Contains(t, output, "TEXT internal/foo: started\n")
+	require.Contains(t, output, "TEXT internal/foo: conforms\n")
+	require.Less(t, strings.Index(output, "CALL review\n"), strings.Index(output, "TEXT internal/foo: started\n"))
 }
 
 func TestSessionSendUserMessageFormatsDescendantFinalAssistantTextInJSONOutput(t *testing.T) {

@@ -78,35 +78,56 @@ type agentDisplayScope struct {
 	subagentLabel         string
 }
 
+type labeledSubagentState struct {
+	agent     agent.AgentMeta
+	scope     agentDisplayScope
+	finalText string
+}
+
 type subagentDisplayFilter struct {
-	activeTools map[string]activeToolDisplayState
-	agentScopes map[string]agentDisplayScope
+	humanReadable         bool
+	activeTools           map[string]activeToolDisplayState
+	agentScopes           map[string]agentDisplayScope
+	agentParents          map[string]string
+	activeLabeledSubagent map[string]labeledSubagentState
 }
 
-func newSubagentDisplayFilter() *subagentDisplayFilter {
+func newSubagentDisplayFilter(humanReadable bool) *subagentDisplayFilter {
 	return &subagentDisplayFilter{
-		activeTools: make(map[string]activeToolDisplayState),
-		agentScopes: make(map[string]agentDisplayScope),
+		humanReadable:         humanReadable,
+		activeTools:           make(map[string]activeToolDisplayState),
+		agentScopes:           make(map[string]agentDisplayScope),
+		agentParents:          make(map[string]string),
+		activeLabeledSubagent: make(map[string]labeledSubagentState),
 	}
 }
 
-func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
+func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, string, bool) {
 	if f == nil {
-		return nil, false
+		return nil, "", false
 	}
 
+	f.rememberAgent(ev.Agent)
 	f.updateToolState(ev)
+
+	if f.humanReadable {
+		flush, forceToolCallID, hide, handled := f.prepareLabeledSubagentEvent(ev)
+		if handled {
+			return flush, forceToolCallID, hide
+		}
+	}
+
 	if ev.Type == agent.EventTypeStartSubagent {
-		return nil, true
+		return nil, "", true
 	}
 
 	if ev.Type != agent.EventTypeAssistantText || ev.Agent.Depth == 0 || !ev.AssistantTextFinalizing {
-		return nil, false
+		return nil, "", false
 	}
 
 	scope := f.scopeForAgent(ev.Agent)
 	if scope.finalMessagePresenter == nil {
-		return nil, false
+		return nil, "", false
 	}
 
 	block := scope.finalMessagePresenter.SubagentFinalMessage(
@@ -115,12 +136,12 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
 		ev.TextContent.Content,
 	)
 	if block == nil {
-		return nil, true
+		return nil, "", true
 	}
 
 	content := agentformatter.RenderPlainTextBlock(block)
 	if content == "" {
-		return nil, true
+		return nil, "", true
 	}
 
 	return []agent.Event{{
@@ -129,7 +150,14 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, bool) {
 		TextContent: llmstream.TextContent{
 			Content: content,
 		},
-	}}, true
+	}}, "", true
+}
+
+func (f *subagentDisplayFilter) rememberAgent(meta agent.AgentMeta) {
+	if f == nil || meta.ID == "" {
+		return
+	}
+	f.agentParents[meta.ID] = meta.Parent
 }
 
 func (f *subagentDisplayFilter) scopeForAgent(meta agent.AgentMeta) agentDisplayScope {
@@ -174,6 +202,130 @@ func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
 		}
 		f.agentScopes[ev.Agent.ID] = f.scopeFromStartSubagent(ev)
 	}
+}
+
+func (f *subagentDisplayFilter) prepareLabeledSubagentEvent(ev agent.Event) ([]agent.Event, string, bool, bool) {
+	if f == nil {
+		return nil, "", false, false
+	}
+
+	switch ev.Type {
+	case agent.EventTypeStartSubagent:
+		if strings.TrimSpace(ev.StartSubagent.Label) == "" {
+			if _, _, ok := f.activeLabeledOwner(ev.Agent); ok {
+				return nil, "", true, true
+			}
+			return nil, "", false, false
+		}
+		if _, _, ok := f.activeLabeledOwner(ev.Agent); ok {
+			return nil, "", true, true
+		}
+		scope := f.scopeFromStartSubagent(ev)
+		state := labeledSubagentState{
+			agent: ev.Agent,
+			scope: scope,
+		}
+		f.activeLabeledSubagent[ev.Agent.ID] = state
+		return []agent.Event{f.syntheticAssistantText(ev.Agent, buildLabeledSubagentMessage(scope.subagentLabel, "started"))}, scope.launcherToolCall, true, true
+	default:
+		ownerID, state, ok := f.activeLabeledOwner(ev.Agent)
+		if !ok {
+			return nil, "", false, false
+		}
+		if ev.Agent.ID == ownerID && ev.Type == agent.EventTypeAssistantText && ev.AssistantTextFinalizing {
+			state.finalText = ev.TextContent.Content
+			f.activeLabeledSubagent[ownerID] = state
+			return nil, "", true, true
+		}
+		if ev.Agent.ID == ownerID && isSubagentTerminalEvent(ev.Type) {
+			delete(f.activeLabeledSubagent, ownerID)
+			return []agent.Event{f.syntheticAssistantText(ev.Agent, f.labeledSubagentCompletionText(state, ev))}, "", true, true
+		}
+		return nil, "", true, true
+	}
+}
+
+func (f *subagentDisplayFilter) activeLabeledOwner(meta agent.AgentMeta) (string, labeledSubagentState, bool) {
+	if f == nil || meta.ID == "" {
+		return "", labeledSubagentState{}, false
+	}
+	if state, ok := f.activeLabeledSubagent[meta.ID]; ok {
+		return meta.ID, state, true
+	}
+
+	parentID := meta.Parent
+	for parentID != "" {
+		if state, ok := f.activeLabeledSubagent[parentID]; ok {
+			return parentID, state, true
+		}
+		parentID = f.agentParents[parentID]
+	}
+	return "", labeledSubagentState{}, false
+}
+
+func (f *subagentDisplayFilter) labeledSubagentCompletionText(state labeledSubagentState, terminal agent.Event) string {
+	switch terminal.Type {
+	case agent.EventTypeError, agent.EventTypeCanceled:
+		status := string(terminal.Type)
+		msg := errorString(terminal.Error)
+		if strings.TrimSpace(msg) == "" {
+			return buildLabeledSubagentMessage(state.scope.subagentLabel, status)
+		}
+		return buildLabeledSubagentMessage(state.scope.subagentLabel, status+": "+msg)
+	}
+
+	content := ""
+	if state.scope.finalMessagePresenter != nil {
+		block := state.scope.finalMessagePresenter.SubagentFinalMessage(
+			state.scope.call,
+			state.scope.subagentLabel,
+			state.finalText,
+		)
+		if block != nil {
+			content = agentformatter.RenderPlainTextBlock(block)
+		}
+	}
+	if strings.TrimSpace(content) == "" {
+		content = state.finalText
+	}
+	if strings.TrimSpace(content) == "" {
+		return buildLabeledSubagentMessage(state.scope.subagentLabel, "finished")
+	}
+	return prefixLabeledSubagentContent(state.scope.subagentLabel, content)
+}
+
+func (f *subagentDisplayFilter) syntheticAssistantText(meta agent.AgentMeta, content string) agent.Event {
+	return agent.Event{
+		Agent: meta,
+		Type:  agent.EventTypeAssistantText,
+		TextContent: llmstream.TextContent{
+			Content: content,
+		},
+	}
+}
+
+func isSubagentTerminalEvent(eventType agent.EventType) bool {
+	switch eventType {
+	case agent.EventTypeDoneSuccess, agent.EventTypeError, agent.EventTypeCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+func buildLabeledSubagentMessage(label string, status string) string {
+	return label + ": " + status
+}
+
+func prefixLabeledSubagentContent(label string, content string) string {
+	firstLine, rest, found := strings.Cut(content, "\n")
+	if !found {
+		return buildLabeledSubagentMessage(label, firstLine)
+	}
+	if firstLine == "" {
+		return label + ":\n" + rest
+	}
+	return buildLabeledSubagentMessage(label, firstLine) + "\n" + rest
 }
 
 func subagentFinalMessagePresenterFromToolEvent(ev agent.Event) llmstream.SubagentFinalMessagePresenter {
@@ -392,10 +544,13 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 
 	result := Result{}
 	var terminalErr error
-	displayFilter := newSubagentDisplayFilter()
+	displayFilter := newSubagentDisplayFilter(!s.opts.OutputJSON)
 
 	for ev := range s.agent.SendUserMessage(ctx, userPrompt) {
-		flush, hide := displayFilter.Prepare(ev)
+		flush, forceToolCallID, hide := displayFilter.Prepare(ev)
+		if toolCallPrinter != nil && forceToolCallID != "" {
+			toolCallPrinter.Force(forceToolCallID)
+		}
 		if err := s.writeFilteredEvents(flush); err != nil {
 			return result, err
 		}

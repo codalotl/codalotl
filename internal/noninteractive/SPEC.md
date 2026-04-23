@@ -6,13 +6,27 @@ The `noninteractive` package implements a noninteractive agent. It's the analogu
 
 The agent issues events for tool calls and tool call results. Usually running the tool is fast, so the Call -> Result takes just milliseconds (for instance, reading a file).
 
-To avoid printing "duplicate messages" serially (ex: `• Read foo/bar.go`, first with a grey bullet, then a green bullet), we do the following:
+To avoid printing "duplicate tool calls" serially (ex: `• Read foo/bar.go`, first with a grey bullet, then a green bullet), we do the following:
 - Upon getting a tool call, start a 3 second timer.
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
-- If the three seconds elapses without getting the result, print the tool call. When the result comes in, print that as well.
-- Descendant non-final assistant text streams immediately.
-- Descendant finalizing assistant-text output respects optional `llmstream.SubagentFinalMessagePresenter`.
-- When a tool presenter does not implement that interface, descendant finalizing assistant text is printed as plain text.
+- If the three seconds elapses without getting the result, print the tool call. When the result comes in, immediately print that as well.
+- This 3 second rule only applies to tool calls/results.
+- See exception below re: Concurrent Labeled Subagents.
+
+Some tools launch subagents. If that tool's presenter implements the optional `llmstream.SubagentFinalMessagePresenter`, respect it (otherwise print plain text).
+- Reason: some subagents end with raw JSON or other machine formatted text. We don't want to show JSON to the user.
+- NOTE: subagents can call tools which launch subagents, etc. `llmstream.SubagentFinalMessagePresenter` format's the final message of the directly calling tool.
+
+### Concurrent Labeled Subagents
+
+When a subagent starts with `EventTypeStartSubagent` with a non-empty label, we display that tool call with a special Concurrent Labeled Subagents UI.
+- Display parent tool call immediately if it hasn't been displayed yet (breaking 3 second rule above).
+- Print a nested, labeled text like `<label>: started`
+- While active, hide all other descendent events in the tool call's scope.
+	- Includes deeper descendants. They route into the nearest active labeled ancestor; they do not create their own visible event stream inside that scope.
+- When that labeled subagent finishes, print one label-prefixed terminal entry.
+- On `EventTypeDoneSuccess`, terminal entry uses presenter-customized finalizing assistant text when available, otherwise plain finalizing assistant text, otherwise fallback text like `<label>: finished`.
+- On `EventTypeError` or `EventTypeCanceled`, terminal entry must explicitly say `error` or `canceled` and include the error text when present.
 
 ## Finishing a session
 

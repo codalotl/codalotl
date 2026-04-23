@@ -209,6 +209,39 @@ func (p *delayedToolCallPrinter) Cancel(callID string) {
 	delete(p.pending, callID)
 }
 
+func (p *delayedToolCallPrinter) Force(callID string) {
+	if p == nil || p.out == nil {
+		return
+	}
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return
+	}
+
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return
+	}
+	entry := p.pending[callID]
+	if entry == nil || entry.canceled {
+		p.mu.Unlock()
+		return
+	}
+	entry.canceled = true
+	if entry.timer != nil {
+		entry.timer.Stop()
+	}
+	delete(p.pending, callID)
+	line := entry.line
+	p.mu.Unlock()
+
+	if !strings.HasSuffix(line, "\n") {
+		line += "\n"
+	}
+	_, _ = io.WriteString(p.out, line)
+}
+
 func (p *delayedToolCallPrinter) Close() {
 	if p == nil {
 		return
