@@ -46,6 +46,28 @@ func TestReplace_NewlineNormalizedKeepsCRLFStyle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "gamma\r\ndelta\r\n", string(data))
 }
+func TestReplace_LiteralNormalizesCRLFReplacementToLFStyle(t *testing.T) {
+	td := t.TempDir()
+	path := filepath.Join(td, "file.txt")
+	require.NoError(t, os.WriteFile(path, []byte("alpha\nbeta\n"), 0o644))
+	got, err := Replace(path, "alpha\n", "gamma\r\n", false)
+	require.NoError(t, err)
+	require.Equal(t, "gamma\nbeta\n", got)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "gamma\nbeta\n", string(data))
+}
+func TestReplace_NewlineNormalizedNormalizesMixedReplacementToCRLFStyle(t *testing.T) {
+	td := t.TempDir()
+	path := filepath.Join(td, "file.txt")
+	require.NoError(t, os.WriteFile(path, []byte("alpha\r\nbeta\r\n"), 0o644))
+	got, err := Replace(path, "alpha\nbeta\n", "gamma\r\ndelta\n", false)
+	require.NoError(t, err)
+	require.Equal(t, "gamma\r\ndelta\r\n", got)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "gamma\r\ndelta\r\n", string(data))
+}
 func TestReplace_NotFoundReturnsInvalidPatch(t *testing.T) {
 	td := t.TempDir()
 	path := filepath.Join(td, "file.txt")
