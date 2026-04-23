@@ -201,7 +201,7 @@ func (t *toolCheckSpecConformance) Info() llmstream.ToolInfo {
 			},
 			"packages": map[string]any{
 				"type":        "array",
-				"description": "Optional package list. Entries may be current-module import paths or module-relative package paths. Omit, null, or empty to use default discovery.",
+				"description": "Optional package list. Entries may be current-module import paths or sandbox-relative package paths.",
 				"items": map[string]any{
 					"type": "string",
 				},
