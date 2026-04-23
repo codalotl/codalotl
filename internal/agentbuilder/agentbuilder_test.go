@@ -146,6 +146,7 @@ func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
 		coretools.ToolNameApplyPatch,
 		coretools.ToolNameShell,
 		coretools.ToolNameUpdatePlan,
+		spectools.ToolNameCheckSpecConformance,
 	}, gotTools)
 }
 
@@ -160,6 +161,7 @@ func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) 
 		coretools.ToolNameDelete,
 		coretools.ToolNameShell,
 		coretools.ToolNameUpdatePlan,
+		spectools.ToolNameCheckSpecConformance,
 	}, gotTools)
 }
 

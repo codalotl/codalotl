@@ -9,6 +9,7 @@ agents:
       - edit_files
       - shell
       - update_plan
+      - check_spec_conformance
     mode: generic
     skills: true
   - name: package_mode_no_context
@@ -169,4 +170,3 @@ tools:
       name: package_mode_default_context
       package: path
       message: "{{ .instructions }}"
-

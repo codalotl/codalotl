@@ -43,6 +43,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 		yamlToolVirtualEditFiles,
 		coretools.ToolNameShell,
 		coretools.ToolNameUpdatePlan,
+		spectools.ToolNameCheckSpecConformance,
 	}, agentsByName[AgentGeneric].Tools)
 
 	require.Contains(t, agentsByName, AgentPackageModeDefaultContext)
@@ -1263,6 +1264,7 @@ func TestBuildRegistry_YAMLBackedBuiltInAgentsPreserveToolsets(t *testing.T) {
 				coretools.ToolNameApplyPatch,
 				coretools.ToolNameShell,
 				coretools.ToolNameUpdatePlan,
+				spectools.ToolNameCheckSpecConformance,
 			},
 		},
 		{
