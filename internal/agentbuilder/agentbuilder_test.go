@@ -278,6 +278,7 @@ func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testi
 		spectools.ToolNameCheckSpecConformance,
 		"review",
 		"implement",
+		"review_spec_changes",
 	}, gotTools)
 }
 

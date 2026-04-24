@@ -84,6 +84,7 @@ agents:
       - check_spec_conformance
       - review
       - implement
+      - review_spec_changes
     mode: generic
     skills: true
   - name: pr-review
@@ -170,3 +171,35 @@ tools:
       name: package_mode_default_context
       package: path
       message: "{{ .instructions }}"
+  - name: review_spec_changes
+    description: Reviews the latest SPEC.md changes in a specific package and returns plain-text feedback.
+    parameters:
+      package:
+        type: string
+        description: A Go package directory (relative to the sandbox) or a Go import path.
+        required: true
+      message:
+        type: string
+        description: Context for the review request, including why the SPEC.md changed and anything specific to check.
+        required: true
+    presenter:
+      preset:
+        name: subagent_q_and_a
+        call_action: Reviewing SPEC changes in
+        result_action: Reviewed SPEC changes in
+        summary_items:
+          - param: package
+        call_body: message
+        result_body: result
+    subagent:
+      name: limited_package_mode
+      package: package
+      message: |
+        Review the latest `SPEC.md` changes in your package for best practices from `$spec-md`, using the user's message as context.
+
+        User context:
+        {{ .message }}
+
+        This is feedback-only. Do not edit files or implement code.
+        Use `skill_shell` if you need `git diff` or similar commands to inspect the latest `SPEC.md` changes.
+        Return concise plain-text feedback about the spec edits. Suggestions are expected and can be wrong.
