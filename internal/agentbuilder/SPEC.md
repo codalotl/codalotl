@@ -25,6 +25,8 @@
 - clarify_public_api: toolset_simple_read_only
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
+- pr-orchestrator: toolset_core + toolset_spec + {`review`, `implement`, `review_spec_changes`}
+    - Prompt that documents a workflow that plans PR work, delegates implementation, reviews committed implementation state, and manages commits.
 
 ## Data-Driven Agent/Tool Construction
 
