@@ -275,16 +275,7 @@ func eventToolName(e agent.Event) string {
 }
 
 func normalizedToolName(e agent.Event) string {
-	normalize := func(name string) string {
-		name = strings.ToLower(strings.TrimSpace(name))
-		// `skill_shell` behaves like `shell` for logic that groups them together.
-		if name == "skill_shell" {
-			return "shell"
-		}
-		return name
-	}
-
-	return normalize(eventToolName(e))
+	return strings.ToLower(strings.TrimSpace(eventToolName(e)))
 }
 
 func toolDisplayName(e agent.Event) string {
@@ -1156,16 +1147,6 @@ func summarizeToolContentWithMaxLines(content string, maxLines int) []toolOutput
 	content = sanitizeText(content)
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")
-
-	start := 0
-	for i, line := range lines {
-		if strings.TrimSpace(line) == "Output:" {
-			start = i + 1
-			break
-		}
-	}
-
-	lines = lines[start:]
 	lines = trimEmpty(lines)
 	if len(lines) == 0 {
 		return nil

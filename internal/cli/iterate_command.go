@@ -108,7 +108,6 @@ func newIterateCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 				SlashCommand: normalizedSlashCommand,
 				ModelID:      modelID,
 				LintSteps:    steps,
-				ReflowWidth:  cfg.ReflowWidth,
 				AutoYes:      cfg.AutoYes || *yes,
 				NoFormatting: *noColor,
 				OutputJSON:   *outputJSON,

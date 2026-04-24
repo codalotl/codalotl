@@ -107,7 +107,6 @@ func RunCaseDir(caseDir string) error {
 		PackagePath: cfg.PackagePath,
 		ModelID:     modelID,
 		LintSteps:   lintSteps,
-		ReflowWidth: cfg.ReflowWidth,
 		OutputJSON:  true,
 		AutoYes:     true,
 		Out:         &out,

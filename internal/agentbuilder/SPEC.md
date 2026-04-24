@@ -10,9 +10,10 @@
 
 ## Agents
 
-- generic: toolset_core
+- generic: toolset_core + toolset_spec
 - package_mode_no_context: toolset_package
-    - No built-in context, even with context builders. Callers must supply it (reason: to support TUI's eager initialcontext generation).
+    - No built-in env or package initial context. Callers must supply it when needed (reason: to support TUI's eager initialcontext generation).
+    - May still include AGENTS.md initial-turn context.
 - package_mode_default_context: toolset_package
     - The same as package_mode_no_context, except:
     - Uses `InitialTurnsBuilder` to add env + package initial context.
@@ -170,6 +171,8 @@ Toolsets are just a device used in this SPEC.md to factor the file (and may be u
 - toolset_edit_files:
     - when the model provider is openai: {`apply_patch`}
     - otherwise: {`write`, `edit`, `delete`}
+- toolset_spec:
+    - {`check_spec_conformance`}
 - toolset_simple_read_only:
     - {`ls`, `read_file`}
 - toolset_core:

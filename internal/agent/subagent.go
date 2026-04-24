@@ -42,6 +42,9 @@ type subAgentFactory struct {
 	defaultModel llmmodel.ModelID
 	tools        []llmstream.Tool
 	closed       bool
+	children     map[*Agent]struct{}
+	active       map[*Agent]chan Event
+	wg           sync.WaitGroup
 }
 
 func newSubAgentFactory(parent *Agent, toolCallID string) *subAgentFactory {
@@ -99,17 +102,89 @@ func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, to
 		return nil, err
 	}
 
+	lifetimeCtx, lifetimeCancel := context.WithCancel(context.Background())
 	child, err := newAgentInstance(model, systemPrompt, tools, parent.sessionID, agentID, parent, parent.depth+1, parentOut, subagentLabel, toolCallID)
 	if err != nil {
+		lifetimeCancel()
 		return nil, err
 	}
+	child.subagentFactory = f
+	child.lifetimeCtx = lifetimeCtx
+	child.lifetimeCancel = lifetimeCancel
+
+	f.registerChild(child)
 	return child, nil
 }
 
-func (f *subAgentFactory) Close() {
+func (f *subAgentFactory) registerChild(child *Agent) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
+		if child.lifetimeCancel != nil {
+			child.lifetimeCancel()
+		}
+		panic("agent: subagent creator used after tool run completed")
+	}
+	if f.children == nil {
+		f.children = make(map[*Agent]struct{})
+	}
+	f.children[child] = struct{}{}
+}
+
+func (f *subAgentFactory) registerRun(child *Agent, out chan Event) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
+		return false
+	}
+	if f.active == nil {
+		f.active = make(map[*Agent]chan Event)
+	}
+	f.active[child] = out
+	f.wg.Add(1)
+	return true
+}
+
+func (f *subAgentFactory) finishRun(child *Agent) {
+	f.mu.Lock()
+	if _, ok := f.active[child]; ok {
+		delete(f.active, child)
+		f.wg.Done()
+	}
+	f.mu.Unlock()
+}
+
+func (f *subAgentFactory) CloseAndWait() {
 	f.mu.Lock()
 	f.closed = true
+	children := make([]*Agent, 0, len(f.children))
+	for child := range f.children {
+		children = append(children, child)
+	}
+	active := make([]chan Event, 0, len(f.active))
+	for _, out := range f.active {
+		active = append(active, out)
+	}
 	f.mu.Unlock()
+
+	for _, child := range children {
+		if child.lifetimeCancel != nil {
+			child.lifetimeCancel()
+		}
+	}
+
+	var drainWG sync.WaitGroup
+	for _, out := range active {
+		drainWG.Add(1)
+		go func() {
+			defer drainWG.Done()
+			for range out {
+			}
+		}()
+	}
+
+	f.wg.Wait()
+	drainWG.Wait()
 }
 
 func withSubAgentContext(ctx context.Context, factory *subAgentFactory, depth int) context.Context {

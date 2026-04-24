@@ -130,6 +130,36 @@ func TestLoadSkill_Errors(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid YAML")
 	})
+
+	t.Run("metadata values must be strings", func(t *testing.T) {
+		cases := []string{
+			"  version: 1",
+			"  enabled: true",
+			"  nullable: null",
+			"  tags: [a, b]",
+		}
+
+		for _, metadataLine := range cases {
+			t.Run(metadataLine, func(t *testing.T) {
+				dir := filepath.Join(t.TempDir(), "alpha")
+				require.NoError(t, os.MkdirAll(dir, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(strings.Join([]string{
+					"---",
+					"name: alpha",
+					"description: Alpha skill",
+					"metadata:",
+					metadataLine,
+					"---",
+					"Body",
+				}, "\n")), 0o644))
+
+				_, err := LoadSkill(dir)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "metadata value")
+				assert.Contains(t, err.Error(), "must be a string")
+			})
+		}
+	})
 }
 
 func TestSkillValidate_Table(t *testing.T) {
@@ -703,6 +733,43 @@ func TestInstallDefault_OverwritesSameNameOnly(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(systemDir, defaultSkillName, "extra.txt"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestInstallDefault_OverwritesOnlyStaleDefaultSkill(t *testing.T) {
+	tmp := t.TempDir()
+
+	home := filepath.Join(tmp, "home")
+	require.NoError(t, os.MkdirAll(home, 0o755))
+	t.Setenv("HOME", home)
+
+	skillNames, err := embeddedDefaultSkillNames()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(skillNames), 2)
+
+	staleSkillName := skillNames[0]
+	currentSkillName := skillNames[1]
+
+	require.NoError(t, InstallDefault())
+
+	systemDir := filepath.Join(home, ".codalotl", "skills", ".system")
+	currentSkillMD := filepath.Join(systemDir, currentSkillName, "SKILL.md")
+	oldTime := time.Unix(1_700_000_000, 0)
+	require.NoError(t, os.Chtimes(currentSkillMD, oldTime, oldTime))
+
+	staleSkillMD := filepath.Join(systemDir, staleSkillName, "SKILL.md")
+	require.NoError(t, os.WriteFile(staleSkillMD, []byte("wrong"), 0o644))
+
+	require.NoError(t, InstallDefault())
+
+	gotCurrentInfo, err := os.Stat(currentSkillMD)
+	require.NoError(t, err)
+	assert.True(t, gotCurrentInfo.ModTime().Equal(oldTime))
+
+	wantStaleSkillMD, err := fs.ReadFile(defaultSkillsFS, path.Join("default", staleSkillName, "SKILL.md"))
+	require.NoError(t, err)
+	gotStaleSkillMD, err := os.ReadFile(staleSkillMD)
+	require.NoError(t, err)
+	assert.Equal(t, string(wantStaleSkillMD), string(gotStaleSkillMD))
 }
 
 func TestWithDefaultInstallLock_SerializesConcurrentCallers(t *testing.T) {

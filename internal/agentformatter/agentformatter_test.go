@@ -398,55 +398,6 @@ func TestGenericToolCallFallsBackToGenericFormatting(t *testing.T) {
 	assert.Equal(t, `• Tool some_tool {"path":"codeai"}`, stripANSI(out))
 }
 
-func TestToolCallShellFormatting(t *testing.T) {
-	cfg := Config{
-		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
-		ForegroundColor: termformat.NewRGBColor(245, 245, 245),
-	}
-	pal := newPalette(cfg)
-
-	call := llmstream.ToolCall{
-		Name:  "shell",
-		Input: `{"command":["go","test","."]}`,
-	}
-	event := agent.Event{
-		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("shell"),
-		ToolCall: &call,
-	}
-
-	out := NewTUIFormatter(cfg).FormatEvent(event, 120)
-	require.NotEmpty(t, out)
-
-	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "), "bullet should use accent palette")
-	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true), "verb should be bold and colorful")
-	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, stripANSI(out))
-}
-
-func TestToolCallSkillShellFormatting(t *testing.T) {
-	cfg := Config{
-		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
-		ForegroundColor: termformat.NewRGBColor(245, 245, 245),
-	}
-	pal := newPalette(cfg)
-
-	call := llmstream.ToolCall{
-		Name:  "skill_shell",
-		Input: `{"command":["go","test","."],"skill":"spec-md","timeout_ms":120000}`,
-	}
-	event := agent.Event{
-		Type:     agent.EventTypeToolCall,
-		Tool:     testTool("skill_shell"),
-		ToolCall: &call,
-	}
-
-	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
-	require.NotEmpty(t, out)
-
-	assert.True(t, strings.HasPrefix(out, ansiWrap("•", pal, colorAccent, false, false)+" "))
-	assert.Equal(t, `• Tool skill_shell {"command":["go","test","."],"skill":"spec-md","timeout_ms":120000}`, stripANSI(out))
-}
-
 func TestToolCompleteOutputSummarization(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
@@ -455,15 +406,15 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 	pal := newPalette(cfg)
 
 	lines := []string{
-		"ok  	axi/codeai/agentformatter    0.002s",
-		"?   	axi/codeai/agentformatter/cache    [no test files]",
-		"ok  	axi/codeai/agentformatter/extra    0.004s",
-		"ok  	axi/codeai/agentformatter/more    0.006s",
-		"ok  	axi/codeai/agentformatter/andmore    0.008s",
-		"ok  	axi/codeai/agentformatter/overflow    0.010s",
-		"ok  	axi/codeai/agentformatter/thelast    0.012s",
+		"line 1",
+		"line 2",
+		"line 3",
+		"line 4",
+		"line 5",
+		"line 6",
+		"line 7",
 	}
-	content := "Command: go test .\nProcess State: exit status 0\nTimeout: false\nDuration: 20ms\nOutput:\n" + strings.Join(lines, "\n")
+	content := strings.Join(lines, "\n")
 	payload := map[string]any{
 		"success": true,
 		"content": content,
@@ -476,12 +427,12 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 		IsError: false,
 	}
 	call := llmstream.ToolCall{
-		Name:  "shell",
-		Input: `{"command":["go","test","."]}`,
+		Name:  "some_tool",
+		Input: `{"path":"codeai"}`,
 	}
 	event := agent.Event{
 		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("shell"),
+		Tool:       testTool("some_tool"),
 		ToolCall:   &call,
 		ToolResult: &result,
 	}
@@ -492,60 +443,7 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 
 	linesOut := strings.Split(stripped, "\n")
 	require.GreaterOrEqual(t, len(linesOut), 3)
-	assert.Equal(t, `• Tool shell {"command":["go","test","."]}`, linesOut[0])
-	assert.Equal(t, "  └ "+termformat.Sanitize(lines[0], 4), linesOut[1])
-	assert.Contains(t, linesOut, "    … +2 lines")
-
-	assert.Contains(t, out, ansiWrap("•", pal, colorGreen, false, false))
-	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true))
-}
-
-func TestToolCompleteSkillShellOutputSummarization(t *testing.T) {
-	cfg := Config{
-		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
-		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
-	}
-	pal := newPalette(cfg)
-
-	lines := []string{
-		"ok  	axi/codeai/agentformatter    0.002s",
-		"?   	axi/codeai/agentformatter/cache    [no test files]",
-		"ok  	axi/codeai/agentformatter/extra    0.004s",
-		"ok  	axi/codeai/agentformatter/more    0.006s",
-		"ok  	axi/codeai/agentformatter/andmore    0.008s",
-		"ok  	axi/codeai/agentformatter/overflow    0.010s",
-		"ok  	axi/codeai/agentformatter/thelast    0.012s",
-	}
-	content := "Command: go test .\nProcess State: exit status 0\nTimeout: false\nDuration: 20ms\nOutput:\n" + strings.Join(lines, "\n")
-	payload := map[string]any{
-		"success": true,
-		"content": content,
-	}
-	b, err := json.Marshal(payload)
-	require.NoError(t, err)
-
-	result := llmstream.ToolResult{
-		Result:  string(b),
-		IsError: false,
-	}
-	call := llmstream.ToolCall{
-		Name:  "skill_shell",
-		Input: `{"command":["go","test","."],"skill":"spec-md"}`,
-	}
-	event := agent.Event{
-		Type:       agent.EventTypeToolComplete,
-		Tool:       testTool("skill_shell"),
-		ToolCall:   &call,
-		ToolResult: &result,
-	}
-
-	out := NewTUIFormatter(cfg).FormatEvent(event, 160)
-	stripped := stripANSI(out)
-	require.NotEmpty(t, stripped)
-
-	linesOut := strings.Split(stripped, "\n")
-	require.GreaterOrEqual(t, len(linesOut), 3)
-	assert.Equal(t, `• Tool skill_shell {"command":["go","test","."],"skill":"spec-md"}`, linesOut[0])
+	assert.Equal(t, `• Tool some_tool {"path":"codeai"}`, linesOut[0])
 	assert.Equal(t, "  └ "+termformat.Sanitize(lines[0], 4), linesOut[1])
 	assert.Contains(t, linesOut, "    … +2 lines")
 
@@ -3167,7 +3065,7 @@ func TestGetUsageToolCallIgnoresLegacyParams(t *testing.T) {
 func TestToolNamePrecedence(t *testing.T) {
 	t.Run("prefers tool object name", func(t *testing.T) {
 		event := agent.Event{
-			Tool: testTool("skill_shell"),
+			Tool: testTool("review"),
 			ToolCall: &llmstream.ToolCall{
 				Name: "read_file",
 			},
@@ -3176,8 +3074,8 @@ func TestToolNamePrecedence(t *testing.T) {
 			},
 		}
 
-		assert.Equal(t, "shell", normalizedToolName(event))
-		assert.Equal(t, "skill_shell", toolDisplayName(event))
+		assert.Equal(t, "review", normalizedToolName(event))
+		assert.Equal(t, "review", toolDisplayName(event))
 	})
 
 	t.Run("falls back to tool call name", func(t *testing.T) {

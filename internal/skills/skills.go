@@ -580,15 +580,10 @@ func convertMetadataMapAnyAny(m map[any]any) (map[string]string, error) {
 }
 
 func toMetadataScalar(key string, v any) (string, error) {
-	if v == nil {
-		return "", nil
-	}
 	switch vv := v.(type) {
 	case string:
 		return vv, nil
-	case int, int64, float64, bool:
-		return fmt.Sprint(vv), nil
 	default:
-		return "", fmt.Errorf("SKILL.md frontmatter metadata value for %q must be a scalar", key)
+		return "", fmt.Errorf("SKILL.md frontmatter metadata value for %q must be a string", key)
 	}
 }

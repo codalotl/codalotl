@@ -7,9 +7,8 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
-// RenderPlainTextBlock converts a semantic llmstream.Block into unstyled text.
-// It is used by consumers that need to substitute a descendant subagent final
-// message without introducing a separate presentation pipeline.
+// RenderPlainTextBlock converts a semantic llmstream.Block into unstyled text. It is used by consumers that need to substitute a descendant subagent final message
+// without introducing a separate presentation pipeline.
 func RenderPlainTextBlock(block llmstream.Block) string {
 	switch body := block.(type) {
 	case llmstream.Paragraph:

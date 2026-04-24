@@ -171,7 +171,7 @@ func TestYAMLReviewPresenterPresent_FormatsFindingsAndTruncates(t *testing.T) {
 				"[P2] Finding 08",
 				"[P2] Finding 09",
 				"[P2] Finding 10",
-				"... +2 findings",
+				"… +2 findings",
 			},
 		},
 	}, resultPresentation)

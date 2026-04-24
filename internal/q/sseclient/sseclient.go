@@ -449,7 +449,7 @@ func (l *lineReader) ReadLine() (string, error) {
 }
 
 func (l *lineReader) finishLine(b []byte) string {
-	line := string(b)
+	line := strings.ToValidUTF8(string(b), "\uFFFD")
 	if l.atStart {
 		l.atStart = false
 		line = strings.TrimPrefix(line, "\uFEFF")

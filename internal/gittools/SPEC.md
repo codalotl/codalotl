@@ -31,7 +31,7 @@ This package offers a function to obtain a heuristic base:
 
 User scenarios:
 - Primary branch:
-    - if current checkout is repo primary branch, return `HEAD` and `""`
+    - if current checkout is identifiable as repo primary branch, return `HEAD` and `""`
 - Simple feature branch off `main`:
     - user creates `users-feature-branch` from `main`
     - co-workers continue merging into `main`
@@ -59,7 +59,7 @@ This package offers a function to identify changed repo paths relative to a base
     - Return sorted unique repo-relative paths
     - For committed history, report net path delta from `baseCommit` to `HEAD`, not every path touched by intermediate commits
     - Include deleted paths
-    - For renames and copies, include both old and new paths
+    - For renames, include both old and new paths
 
 Primary use-case:
 - determine which files or directories the current line of work touches
@@ -75,8 +75,8 @@ User scenarios:
 ## Public API
 
 ```go
-// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from the repo's primary branch, it returns
-// HEAD and an empty ref.
+// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from an identifiable repo primary branch,
+// it returns HEAD and an empty ref.
 func HeuristicMergeBase(repoDir string) (commit string, ref string, err error)
 
 // ChangedPathsSince returns sorted unique repo-relative paths changed since baseCommit.

@@ -187,16 +187,11 @@ func preferredNewlineStyle(content string) string {
 	return "\n"
 }
 func adaptReplacementNewlines(replacement string, preferred string) string {
+	normalized := strings.ReplaceAll(replacement, "\r\n", "\n")
 	if preferred != "\r\n" {
-		return replacement
+		return normalized
 	}
-	if strings.Contains(replacement, "\r\n") {
-		return replacement
-	}
-	if !strings.Contains(replacement, "\n") {
-		return replacement
-	}
-	return strings.ReplaceAll(replacement, "\n", "\r\n")
+	return strings.ReplaceAll(normalized, "\n", "\r\n")
 }
 func preserveFinalNewlineStyle(original string, updated string, findText string, replacementText string, preferred string) string {
 	origFinal := hasFinalNewline(original)

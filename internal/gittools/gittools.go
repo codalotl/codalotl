@@ -1,15 +1,19 @@
 package gittools
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from the repo's primary branch, it returns
-// HEAD and an empty ref.
+// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from an identifiable repo primary branch,
+// it returns HEAD and an empty ref.
 func HeuristicMergeBase(repoDir string) (commit string, ref string, err error) {
 	repoDir, err = repoRoot(repoDir)
 	if err != nil {
@@ -31,7 +35,8 @@ func HeuristicMergeBase(repoDir string) (commit string, ref string, err error) {
 		return strings.TrimSpace(headCommit), "", nil
 	}
 
-	candidates, err := candidateRefs(repoDir, currentBranch, currentUpstream, defaultRefs)
+	prBaseBranch := detectPRBaseBranch(repoDir, currentBranch)
+	candidates, err := candidateRefs(repoDir, currentBranch, currentUpstream, defaultRefs, prBaseBranch)
 	if err != nil {
 		return "", "", err
 	}
@@ -105,6 +110,7 @@ type candidateRef struct {
 	logicalKey  string
 	isLocal     bool
 	isDefault   bool
+	isPRBase    bool
 }
 
 type candidateScore struct {
@@ -129,7 +135,7 @@ func repoRoot(repoDir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs map[string]bool) ([]candidateRef, error) {
+func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs map[string]bool, prBaseBranch string) ([]candidateRef, error) {
 	locals, err := gitLines(repoDir, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {
 		return nil, err
@@ -148,18 +154,20 @@ func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs m
 			logicalKey:  "local:" + local,
 			isLocal:     true,
 			isDefault:   defaultRefs[local],
+			isPRBase:    local == prBaseBranch,
 		})
 	}
 
-	remotes, err := gitLines(repoDir, "for-each-ref", "--format=%(refname:short)", "refs/remotes")
+	remotes, err := gitLines(repoDir, "for-each-ref", "--format=%(refname)", "refs/remotes")
 	if err != nil {
 		return nil, err
 	}
 
-	for _, remote := range remotes {
-		if strings.HasSuffix(remote, "/HEAD") {
+	for _, remoteRef := range remotes {
+		if isRemoteHeadRef(remoteRef) {
 			continue
 		}
+		remote := remoteDisplayName(remoteRef)
 		if remote == currentUpstream && remoteBranchName(remote) == currentBranch {
 			continue
 		}
@@ -173,10 +181,11 @@ func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs m
 		}
 
 		candidates = append(candidates, candidateRef{
-			gitRef:      remote,
+			gitRef:      remoteRef,
 			displayName: remote,
 			logicalKey:  "remote:" + remote,
 			isDefault:   defaultRefs[remote],
+			isPRBase:    shortName == prBaseBranch,
 		})
 	}
 
@@ -184,14 +193,10 @@ func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs m
 }
 
 func defaultRefSet(repoDir string) map[string]bool {
-	defaults := map[string]bool{
-		"main":   true,
-		"master": true,
-		"trunk":  true,
-	}
+	defaults := primaryBranchNameSet()
 
-	if out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		defaults[strings.TrimSpace(out)] = true
+	for _, ref := range remoteDefaultRefs(repoDir) {
+		defaults[ref] = true
 	}
 
 	return defaults
@@ -202,11 +207,47 @@ func isPrimaryBranch(repoDir, currentBranch string) bool {
 		return false
 	}
 
-	if out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		return remoteBranchName(strings.TrimSpace(out)) == currentBranch
+	for _, ref := range remoteDefaultRefs(repoDir) {
+		if remoteBranchName(ref) == currentBranch {
+			return true
+		}
 	}
 
-	return currentBranch == "main" || currentBranch == "master" || currentBranch == "trunk"
+	return primaryBranchNameSet()[currentBranch]
+}
+
+func primaryBranchNameSet() map[string]bool {
+	return map[string]bool{
+		"main":    true,
+		"master":  true,
+		"trunk":   true,
+		"develop": true,
+	}
+}
+
+func remoteDefaultRefs(repoDir string) []string {
+	refs, err := gitLines(repoDir, "for-each-ref", "--format=%(refname)", "refs/remotes")
+	if err != nil {
+		return nil
+	}
+
+	defaults := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if !isRemoteHeadRef(ref) {
+			continue
+		}
+
+		out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", ref)
+		if err != nil {
+			continue
+		}
+
+		defaultRef := remoteDisplayName(strings.TrimSpace(out))
+		if defaultRef != "" {
+			defaults = append(defaults, defaultRef)
+		}
+	}
+	return defaults
 }
 
 func scoreCandidate(repoDir string, candidate candidateRef) (candidateScore, bool) {
@@ -247,6 +288,13 @@ func scoreCandidate(repoDir string, candidate candidateRef) (candidateScore, boo
 }
 
 func compareScores(a, b candidateScore) int {
+	if a.candidate.isPRBase != b.candidate.isPRBase {
+		if a.candidate.isPRBase {
+			return -1
+		}
+		return 1
+	}
+
 	if a.candidateAncestor != b.candidateAncestor {
 		if a.candidateAncestor {
 			return -1
@@ -293,7 +341,8 @@ func compareScores(a, b candidateScore) int {
 }
 
 func equivalentScore(a, b candidateScore) bool {
-	return a.candidateAncestor == b.candidateAncestor &&
+	return a.candidate.isPRBase == b.candidate.isPRBase &&
+		a.candidateAncestor == b.candidateAncestor &&
 		a.mergeBaseUnixTime == b.mergeBaseUnixTime &&
 		a.candidate.isDefault == b.candidate.isDefault &&
 		a.candidate.isLocal == b.candidate.isLocal &&
@@ -426,4 +475,75 @@ func remoteBranchName(ref string) string {
 		return ref[i+1:]
 	}
 	return ""
+}
+
+func isRemoteHeadRef(ref string) bool {
+	return strings.HasPrefix(ref, "refs/remotes/") && strings.HasSuffix(ref, "/HEAD")
+}
+
+func remoteDisplayName(ref string) string {
+	const prefix = "refs/remotes/"
+	if strings.HasPrefix(ref, prefix) {
+		return strings.TrimPrefix(ref, prefix)
+	}
+	return ref
+}
+
+var detectPRBaseBranch = detectGitHubPRBaseBranch
+
+type ghPRView struct {
+	BaseRefName string `json:"baseRefName"`
+	HeadRefName string `json:"headRefName"`
+	State       string `json:"state"`
+}
+
+func detectGitHubPRBaseBranch(repoDir, currentBranch string) string {
+	if currentBranch == "" || !repoHasGitHubRemote(repoDir) {
+		return ""
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "gh", "pr", "view", "--json", "baseRefName,headRefName,state")
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	baseBranch, ok := parseOpenPRBaseBranch(out, currentBranch)
+	if !ok {
+		return ""
+	}
+	return baseBranch
+}
+
+func repoHasGitHubRemote(repoDir string) bool {
+	out, err := gitOutput(repoDir, "remote", "-v")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(out, "github.com/") || strings.Contains(out, "github.com:")
+}
+
+func parseOpenPRBaseBranch(out []byte, currentBranch string) (string, bool) {
+	var pr ghPRView
+	if err := json.Unmarshal(out, &pr); err != nil {
+		return "", false
+	}
+	if pr.State != "" && pr.State != "OPEN" {
+		return "", false
+	}
+	if pr.HeadRefName != "" && pr.HeadRefName != currentBranch {
+		return "", false
+	}
+	if pr.BaseRefName == "" {
+		return "", false
+	}
+	return pr.BaseRefName, true
 }

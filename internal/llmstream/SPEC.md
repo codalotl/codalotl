@@ -10,7 +10,8 @@ llmstream is an abstraction over LLM providers, offering a unified interface. St
 
 ### Anthropic
 
-- Only supports Opus/Sonnet 4.6+.
+- Uses Anthropic Messages API.
+- Opus/Sonnet 4.6+ are primary supported/tested models (but registered `llmmodel` Anthropic API-shape models may be dispatched, including custom aliases).
 - Uses model metadata `MaxOutput` for `max_tokens` (falls back to 32k when unknown)
 - Uses "adaptive" thinking type (budget omitted).
 - `Options.ReasoningEffort` maps appropriately to `output_config { effort }`.

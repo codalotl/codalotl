@@ -83,9 +83,10 @@ func Authorize(skills []Skill, authorizer authdomain.Authorizer) error
 // If no paths are found, it returns nil. Errors are ignored.
 func SearchPaths(startDir string) []string
 
-// InstallDefault installs built-in (system) skills to `~/.codalotl/skills/.system`.
+// InstallDefault ensures built-in (system) skills are installed to `~/.codalotl/skills/.system`.
 //
-// It creates the destination directory if needed. It overwrites any existing skill dirs of the same name, but must not delete or modify other skill dirs under `~/.codalotl/skills`.
+// It creates the destination directory if needed. If an installed built-in skill differs from the embedded version, it overwrites that skill dir. It must not delete
+// or modify other skill dirs under `~/.codalotl/skills`.
 func InstallDefault() error
 ```
 

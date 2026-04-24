@@ -140,13 +140,12 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			}
 
 			return runTUIWithConfig(tui.Config{
-				Palette:     tui.PaletteName(cfg.Theme),
-				ModelID:     modelID,
-				LintSteps:   steps,
-				ReflowWidth: cfg.ReflowWidth,
-				AutoYes:     cfg.AutoYes,
-				CASDB:       casDB,
-				Monitor:     m,
+				Palette:   tui.PaletteName(cfg.Theme),
+				ModelID:   modelID,
+				LintSteps: steps,
+				AutoYes:   cfg.AutoYes,
+				CASDB:     casDB,
+				Monitor:   m,
 				PersistModelID: func(newModelID llmmodel.ModelID) error {
 					return persistPreferredModelID(cfg, newModelID)
 				},
@@ -197,7 +196,6 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			SlashCommand: slashCommand,
 			ModelID:      modelID,
 			LintSteps:    steps,
-			ReflowWidth:  cfg.ReflowWidth,
 			AutoYes:      cfg.AutoYes || *execYes,
 			NoFormatting: *execNoColor,
 			OutputJSON:   *execJSON,
