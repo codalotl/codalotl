@@ -23,7 +23,6 @@ type Config struct {
 	ColorProfile termformat.ColorProfile // ColorProfile overrides the detected color profile when non-empty.
 	ModelID      llmmodel.ModelID        // ModelID selects the LLM model to use. If empty, the TUI uses llmmodel.DefaultModel.
 	LintSteps    []lints.Step            // LintSteps controls which lint steps the agent runs.
-	ReflowWidth  int                     // ReflowWidth is the width for reflowing documentation with the `updatedocs` package.
 	AutoYes      bool                    // AutoYes auto-approves permission checks for the session.
 	CASDB        *cas.DB                 // CASDB, when set, enables reading CAS-backed metadata for UI checks (ex: SPEC.md conformance).
 

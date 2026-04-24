@@ -101,7 +101,6 @@ func CreateCase(opts CreateOptions) error {
 		PackagePath: opts.PackagePath,
 		ModelID:     opts.ModelID,
 		LintSteps:   lintSteps,
-		ReflowWidth: opts.ReflowWidth,
 		OutputJSON:  true,
 		AutoYes:     true,
 		Out:         runOut,
