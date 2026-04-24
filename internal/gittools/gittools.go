@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from the repo's primary branch, it returns
-// HEAD and an empty ref.
+// HeuristicMergeBase returns a best-effort base commit/ref for isolating commits on the current line of work. When called from an identifiable repo primary branch,
+// it returns HEAD and an empty ref.
 func HeuristicMergeBase(repoDir string) (commit string, ref string, err error) {
 	repoDir, err = repoRoot(repoDir)
 	if err != nil {
@@ -184,14 +184,10 @@ func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs m
 }
 
 func defaultRefSet(repoDir string) map[string]bool {
-	defaults := map[string]bool{
-		"main":   true,
-		"master": true,
-		"trunk":  true,
-	}
+	defaults := primaryBranchNameSet()
 
-	if out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		defaults[strings.TrimSpace(out)] = true
+	for _, ref := range remoteDefaultRefs(repoDir) {
+		defaults[ref] = true
 	}
 
 	return defaults
@@ -202,11 +198,47 @@ func isPrimaryBranch(repoDir, currentBranch string) bool {
 		return false
 	}
 
-	if out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		return remoteBranchName(strings.TrimSpace(out)) == currentBranch
+	for _, ref := range remoteDefaultRefs(repoDir) {
+		if remoteBranchName(ref) == currentBranch {
+			return true
+		}
 	}
 
-	return currentBranch == "main" || currentBranch == "master" || currentBranch == "trunk"
+	return primaryBranchNameSet()[currentBranch]
+}
+
+func primaryBranchNameSet() map[string]bool {
+	return map[string]bool{
+		"main":    true,
+		"master":  true,
+		"trunk":   true,
+		"develop": true,
+	}
+}
+
+func remoteDefaultRefs(repoDir string) []string {
+	refs, err := gitLines(repoDir, "for-each-ref", "--format=%(refname:short)", "refs/remotes")
+	if err != nil {
+		return nil
+	}
+
+	defaults := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if !strings.HasSuffix(ref, "/HEAD") {
+			continue
+		}
+
+		out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/"+ref)
+		if err != nil {
+			continue
+		}
+
+		defaultRef := strings.TrimSpace(out)
+		if defaultRef != "" {
+			defaults = append(defaults, defaultRef)
+		}
+	}
+	return defaults
 }
 
 func scoreCandidate(repoDir string, candidate candidateRef) (candidateScore, bool) {

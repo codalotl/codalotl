@@ -110,6 +110,48 @@ func TestHeuristicMergeBaseOnPrimaryBranchReturnsHeadAndEmptyRef(t *testing.T) {
 	assert.Empty(t, ref)
 }
 
+func TestHeuristicMergeBaseOnDevelopBranchWithoutRemoteHeadReturnsHeadAndEmptyRef(t *testing.T) {
+	t.Parallel()
+
+	repoDir := newTestRepoWithInitialBranch(t, "develop")
+	commitFile(t, repoDir, "base.txt", "base\n", "base commit")
+
+	git(t, repoDir, "checkout", "-b", "my-feature-branch")
+	commitFile(t, repoDir, "feature.txt", "feature\n", "feature commit")
+
+	git(t, repoDir, "checkout", "develop")
+	headCommit := commitFile(t, repoDir, "develop.txt", "develop\n", "develop commit")
+
+	commit, ref, err := HeuristicMergeBase(repoDir)
+	require.NoError(t, err)
+	assert.Equal(t, headCommit, commit)
+	assert.Empty(t, ref)
+}
+
+func TestHeuristicMergeBaseUsesNonOriginRemoteHeadForPrimaryBranch(t *testing.T) {
+	t.Parallel()
+
+	repoDir := newTestRepoWithInitialBranch(t, "stable")
+	commitFile(t, repoDir, "base.txt", "base\n", "base commit")
+
+	remoteDir := filepath.Join(t.TempDir(), "upstream.git")
+	git(t, "", "init", "--bare", "--initial-branch=stable", remoteDir)
+	git(t, repoDir, "remote", "add", "upstream", remoteDir)
+	git(t, repoDir, "push", "-u", "upstream", "stable")
+	git(t, repoDir, "symbolic-ref", "refs/remotes/upstream/HEAD", "refs/remotes/upstream/stable")
+
+	git(t, repoDir, "checkout", "-b", "my-feature-branch")
+	commitFile(t, repoDir, "feature.txt", "feature\n", "feature commit")
+
+	git(t, repoDir, "checkout", "stable")
+	headCommit := commitFile(t, repoDir, "stable.txt", "stable\n", "stable commit")
+
+	commit, ref, err := HeuristicMergeBase(repoDir)
+	require.NoError(t, err)
+	assert.Equal(t, headCommit, commit)
+	assert.Empty(t, ref)
+}
+
 func TestChangedPathsSinceCommittedOnly(t *testing.T) {
 	t.Parallel()
 
@@ -170,8 +212,14 @@ func TestChangedPathsSinceIncludesDeletedAndRenamedPaths(t *testing.T) {
 func newTestRepo(t *testing.T) string {
 	t.Helper()
 
+	return newTestRepoWithInitialBranch(t, "main")
+}
+
+func newTestRepoWithInitialBranch(t *testing.T, branch string) string {
+	t.Helper()
+
 	repoDir := t.TempDir()
-	git(t, "", "init", "--initial-branch=main", repoDir)
+	git(t, "", "init", "--initial-branch="+branch, repoDir)
 	git(t, repoDir, "config", "user.name", "Test User")
 	git(t, repoDir, "config", "user.email", "test@example.com")
 	return repoDir
