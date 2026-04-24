@@ -254,6 +254,36 @@ func TestStream_StripsOnlyLeadingBOM(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF)
 }
 
+func TestStream_ReplacesInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	body := "data: valid\xfftext\n\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithHTTPClient(srv.Client()))
+	stream, err := c.OpenURL(context.Background(), srv.URL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = stream.Close()
+	})
+
+	ev, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, Event{
+		ID:   "",
+		Type: "message",
+		Data: "valid\uFFFDtext",
+	}, ev)
+
+	_, err = stream.Recv()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
 func TestStream_DataFieldWithoutColonDispatchesEmptyData(t *testing.T) {
 	t.Parallel()
 
