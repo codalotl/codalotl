@@ -18,7 +18,7 @@ In this PR:
 
 ## Plan
 
-### Package internal/agentbuilder
+### [DONE] Package internal/agentbuilder
 - Add a `review_spec_changes` YAML subagent tool to the built-in agentbuilder config.
     - Parameters: `package` and `message`.
     - Launch one package-mode subagent for the requested package.
@@ -41,3 +41,7 @@ In this PR:
 
 - Scope is `internal/agentbuilder`: built-in YAML config, PR orchestrator prompt, agentbuilder tests, and `internal/agentbuilder/SPEC.md`.
 - `review_spec_changes` is feedback-only, one package per call, and should be used for every orchestrator-authored `SPEC.md` change during planning.
+- Landed in `internal/agentbuilder/data/config.yml`, `internal/agentbuilder/data/pr-orchestrator.prompt.md`, `internal/agentbuilder/doc.go`, `internal/agentbuilder/SPEC.md`, and focused tests.
+- Tool uses `limited_package_mode` with `subagent_q_and_a`; placeholder prompt tells the reviewer to inspect latest `SPEC.md` changes with `$spec-md` and `skill_shell`.
+- `go test ./internal/agentbuilder` passed after implementation commit.
+- Next step: run `review` and `check_spec_conformance` for the changed package state.
