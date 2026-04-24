@@ -45,16 +45,16 @@ func InstallDefault() error {
 			return err
 		}
 
-		current, err := installedDefaultSkillsAreCurrent(systemSkillsDir, skillNames)
-		if err != nil {
-			return err
-		}
-		if current {
-			return nil
-		}
-
 		for _, skillName := range skillNames {
 			destSkillDir := filepath.Join(systemSkillsDir, skillName)
+
+			current, err := installedDefaultSkillIsCurrent(destSkillDir, skillName)
+			if err != nil {
+				return err
+			}
+			if current {
+				continue
+			}
 
 			// Overwrite by skill dir name only; do not touch unrelated skill dirs.
 			if err := os.RemoveAll(destSkillDir); err != nil {
@@ -132,19 +132,6 @@ func embeddedDefaultSkillNames() ([]string, error) {
 		return nil, errors.New("no embedded default skills are available")
 	}
 	return skillNames, nil
-}
-
-func installedDefaultSkillsAreCurrent(systemSkillsDir string, skillNames []string) (bool, error) {
-	for _, skillName := range skillNames {
-		current, err := installedDefaultSkillIsCurrent(filepath.Join(systemSkillsDir, skillName), skillName)
-		if err != nil {
-			return false, err
-		}
-		if !current {
-			return false, nil
-		}
-	}
-	return true, nil
 }
 
 type defaultSkillManifestEntry struct {
