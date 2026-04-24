@@ -158,15 +158,16 @@ func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs m
 		})
 	}
 
-	remotes, err := gitLines(repoDir, "for-each-ref", "--format=%(refname:short)", "refs/remotes")
+	remotes, err := gitLines(repoDir, "for-each-ref", "--format=%(refname)", "refs/remotes")
 	if err != nil {
 		return nil, err
 	}
 
-	for _, remote := range remotes {
-		if strings.HasSuffix(remote, "/HEAD") {
+	for _, remoteRef := range remotes {
+		if isRemoteHeadRef(remoteRef) {
 			continue
 		}
+		remote := remoteDisplayName(remoteRef)
 		if remote == currentUpstream && remoteBranchName(remote) == currentBranch {
 			continue
 		}
@@ -180,7 +181,7 @@ func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs m
 		}
 
 		candidates = append(candidates, candidateRef{
-			gitRef:      remote,
+			gitRef:      remoteRef,
 			displayName: remote,
 			logicalKey:  "remote:" + remote,
 			isDefault:   defaultRefs[remote],
@@ -225,23 +226,23 @@ func primaryBranchNameSet() map[string]bool {
 }
 
 func remoteDefaultRefs(repoDir string) []string {
-	refs, err := gitLines(repoDir, "for-each-ref", "--format=%(refname:short)", "refs/remotes")
+	refs, err := gitLines(repoDir, "for-each-ref", "--format=%(refname)", "refs/remotes")
 	if err != nil {
 		return nil
 	}
 
 	defaults := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		if !strings.HasSuffix(ref, "/HEAD") {
+		if !isRemoteHeadRef(ref) {
 			continue
 		}
 
-		out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/"+ref)
+		out, err := gitOutput(repoDir, "symbolic-ref", "--quiet", ref)
 		if err != nil {
 			continue
 		}
 
-		defaultRef := strings.TrimSpace(out)
+		defaultRef := remoteDisplayName(strings.TrimSpace(out))
 		if defaultRef != "" {
 			defaults = append(defaults, defaultRef)
 		}
@@ -474,6 +475,18 @@ func remoteBranchName(ref string) string {
 		return ref[i+1:]
 	}
 	return ""
+}
+
+func isRemoteHeadRef(ref string) bool {
+	return strings.HasPrefix(ref, "refs/remotes/") && strings.HasSuffix(ref, "/HEAD")
+}
+
+func remoteDisplayName(ref string) string {
+	const prefix = "refs/remotes/"
+	if strings.HasPrefix(ref, prefix) {
+		return strings.TrimPrefix(ref, prefix)
+	}
+	return ref
 }
 
 var detectPRBaseBranch = detectGitHubPRBaseBranch
