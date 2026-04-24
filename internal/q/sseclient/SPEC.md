@@ -7,6 +7,7 @@ sseclient implements a minimal SSE client to consume HTTP APIs that stream data 
 Follows the SSE wire format parsing rules defined at https://html.spec.whatwg.org/multipage/server-sent-events.html
 - Saved locally as: `./whatwg.org.sse_spec.html` (on 2026-02-25)
 - Converted to markdown as: `./whatwg.org.sse_spec.md`
+- Invalid UTF-8 is replaced with U+FFFD; exact malformed-byte replacement granularity need not match WHATWG decoding.
 
 ## Scope
 
