@@ -59,7 +59,7 @@ This package offers a function to identify changed repo paths relative to a base
     - Return sorted unique repo-relative paths
     - For committed history, report net path delta from `baseCommit` to `HEAD`, not every path touched by intermediate commits
     - Include deleted paths
-    - For renames and copies, include both old and new paths
+    - For renames, include both old and new paths
 
 Primary use-case:
 - determine which files or directories the current line of work touches
