@@ -117,7 +117,8 @@ type KeyEvent struct {
 	// key on a keyboard, but rather, control characters in general (ex: ENTER, ESC, NEWLINE, Left Arrow, etc).
 	ControlKey ControlKey
 
-	// Runes pressed. Cannot contain control characters. Runes is usually a single rune, but may be mulitple (if multiple runes are available to read, or paste was used).
+	// Runes pressed. Cannot contain control characters, except pasted text may contain \n and \t. Runes is usually a single rune, but may be mulitple (if multiple runes
+	// are available to read, or paste was used).
 	Runes []rune
 
 	// A control key or rune was pressed when Alt was held.
