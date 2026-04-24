@@ -18,7 +18,7 @@ const (
 	yamlPresenterBodyResult       = "result"
 	yamlReviewBodyNoFindings      = "No actionable findings."
 	yamlReviewMaxFindings         = 10
-	yamlReviewBodyMoreFormat      = "... +%d findings"
+	yamlReviewBodyMoreFormat      = "\u2026 +%d findings"
 )
 
 type yamlPresenterSpec struct {
