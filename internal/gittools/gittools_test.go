@@ -25,6 +25,22 @@ func TestHeuristicMergeBaseSimpleFeatureBranch(t *testing.T) {
 	assert.Equal(t, "main", ref)
 }
 
+func TestHeuristicMergeBaseUsesOpenPRBaseBranchAsStrongHint(t *testing.T) {
+	repoDir := newTestRepo(t)
+	baseCommit := commitFile(t, repoDir, "base.txt", "base\n", "base commit")
+
+	git(t, repoDir, "checkout", "-b", "release/1.2")
+	git(t, repoDir, "checkout", "main")
+	git(t, repoDir, "checkout", "-b", "my-feature-branch")
+	commitFile(t, repoDir, "feature.txt", "feature\n", "feature commit")
+	withDetectedPRBaseBranch(t, "release/1.2")
+
+	commit, ref, err := HeuristicMergeBase(repoDir)
+	require.NoError(t, err)
+	assert.Equal(t, baseCommit, commit)
+	assert.Equal(t, "release/1.2", ref)
+}
+
 func TestHeuristicMergeBaseAfterMergingMainIntoFeature(t *testing.T) {
 	t.Parallel()
 
@@ -209,10 +225,34 @@ func TestChangedPathsSinceIncludesDeletedAndRenamedPaths(t *testing.T) {
 	assert.Equal(t, []string{"deleted.txt", "new/file.txt", "old/file.txt"}, paths)
 }
 
+func TestParseOpenPRBaseBranch(t *testing.T) {
+	base, ok := parseOpenPRBaseBranch([]byte(`{"baseRefName":"release/1.2","headRefName":"my-feature-branch","state":"OPEN"}`), "my-feature-branch")
+	assert.True(t, ok)
+	assert.Equal(t, "release/1.2", base)
+
+	_, ok = parseOpenPRBaseBranch([]byte(`{"baseRefName":"release/1.2","headRefName":"my-feature-branch","state":"CLOSED"}`), "my-feature-branch")
+	assert.False(t, ok)
+
+	_, ok = parseOpenPRBaseBranch([]byte(`{"baseRefName":"release/1.2","headRefName":"other-branch","state":"OPEN"}`), "my-feature-branch")
+	assert.False(t, ok)
+}
+
 func newTestRepo(t *testing.T) string {
 	t.Helper()
 
 	return newTestRepoWithInitialBranch(t, "main")
+}
+
+func withDetectedPRBaseBranch(t *testing.T, base string) {
+	t.Helper()
+
+	previous := detectPRBaseBranch
+	detectPRBaseBranch = func(string, string) string {
+		return base
+	}
+	t.Cleanup(func() {
+		detectPRBaseBranch = previous
+	})
 }
 
 func newTestRepoWithInitialBranch(t *testing.T, branch string) string {
