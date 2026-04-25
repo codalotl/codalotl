@@ -167,7 +167,7 @@ func newSessionBlock(width int, pal colorPalette, cfg sessionConfig) string {
 		appendWrapped(bodyStyle, "Start by describing a task below, or use one of the commands:")
 		appendWrapped(hintStyle, "• /package path/to/pkg")
 		appendWrapped(hintStyle, "• /orchestrate plan a cross-package change")
-		appendWrapped(hintStyle, "• /model gpt-5.4-high")
+		appendWrapped(hintStyle, "• /model gpt-5.5-high")
 		appendWrapped(hintStyle, "• /quit")
 	}
 
