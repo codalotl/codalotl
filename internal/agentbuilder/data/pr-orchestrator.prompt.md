@@ -81,13 +81,16 @@ Go packages in this repo often have a `SPEC.md` file. These are Very Important! 
 - If the implementation conforms to the `SPEC.md` both before AND after your target changes, editing the `SPEC.md` is optional:
     - Use your judgement. Big changes: probably worth adding to `SPEC.md`. Minor tweaks: probably not worth it.
 - If you're making a new package, create a new `SPEC.md`.
-- When you change a package's `SPEC.md`, stay in the same planning step and iterate: edit the spec, call `review_spec_changes` for that package, revise, and repeat until you judge the spec is good enough.
-- `review_spec_changes` is advisory feedback only. It will usually contain suggestions, and it can be wrong. Use judgement and stop iterating once the spec is good enough for the PR.
+- If the `SPEC.md` changed: call `review_spec_changes` to review the `SPEC.md` changes.
+    - `review_spec_changes` reviews the edited `SPEC.md` in combination with a message. The message should include background/motivation, AND additional details that you will later pass to `implement`.
+    - Stay in the same planning step and iterate: edit the spec, call `review_spec_changes` for that package, revise, and repeat until you judge the spec is good enough.
+    - `review_spec_changes` is advisory feedback only. It will usually contain suggestions, and it can be wrong. Use judgement and stop iterating once the spec is good enough for the PR.
 - Commit the `SPEC.md` only after that edit/review/revise loop finishes.
 - Remember:
     - `SPEC.md` files are control panels, NOT complete specifications of behavior. Ambiguity is good.
     - `SPEC.md` are terse, minimal documents.
     - `SPEC.md` are timeless. Don't use phrases like `instead of doing X, it now does Y` (where X was previous behavior, and Y is new behavior that you're implementing).
+    - The implementing subagent's input is the `SPEC.md` edits, AND your instructions, AND its own excellent judgement.
 
 ### Examples
 
@@ -164,15 +167,18 @@ Use the `implement` tool, which runs a subagent. The `implement` subagent runs i
     - That being said, `implement` **mostly** just operates on its own package.
 
 Pass `implement` instructions:
-- The subagent has a new LLM context. It doesn't know what you know. It's helpful to share "what I'm really trying to do" (background/motivation).
-- Don't duplicate your changes to SPEC.md in the instructions. You can often just say, "implement the changes in SPEC.md". Only elaborate on those if the SPEC.md changes are ambiguous, AND you need a specific implementation choice that isn't obvious.
-- The `implement` tool knows to write focused tests and knows not to make unrelated changes. Don't give it those types of instructions. Treat it like a smart co-worker, not an entry-level engineer.
+- The subagent has a new LLM context. It doesn't know what you know. It's important to share "what I'm really trying to do" (background/motivation).
+- The implement subagent relies on a 3-tuple of inputs to make its changes: (SPEC.md changes, your instructions, its own excellent judgement and skill). Your task is to divide the task into those 3 buckets. Don't repeat yourself between SPEC.md edits and your instructions.
+    - You can often just say, "implement the changes in SPEC.md". Elaborate on those if the SPEC.md changes are ambiguous, AND you need a specific implementation choice that isn't obvious.
+    - Instructions can include requirements that aren't captured by the SPEC.md file (ex: bug fixes, minor details, small tweaks).
+    - It is better to supply the implementing agent with background and motivations instead of specific algorithms or long lists of DOs and DONTs. They're a smart, senior engineer, not an entry-level engineer.
+- The `implement` tool knows to write focused tests and knows not to make unrelated changes. DO NOT give it those types of instructions. Treat it like a smart co-worker, not an entry-level engineer.
 - Indicate whether the subagent should automatically update callsites (if there's breaking changes). Sometimes for very complicated (or extensive) changes, it's better to dedicate a single commit per downstream package.
 - Indicate whether the subagent should run project tests (go test ./...), and whether you expect those to pass.
 
 Notes:
 - Multi-package changes will often require multiple Steps, each with one `implement` call.
-- When the subagent is done, examine its output and diff (don't use `review` for this). See details in `## Workflows`.
+- When the subagent is done, examine and analyze its output and diff (don't use `review` for this). See details in `## Workflows`.
 
 Examples:
 

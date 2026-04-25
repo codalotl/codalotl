@@ -204,6 +204,10 @@ tools:
 
         The user's message below hopefully contains motivation, additional context, and some specifics about the intended changes.
 
+        Later, when implementing these changes, your input will be the tuple (SPEC.md with edits, more details with more specific requirements). The SPEC.md edits are NOT intended to
+        tell the whole story. The whole story is the tuple AND your judgement to fill in the missing details. It's very important to understand that not all details belong in the
+        SPEC.md. Some belong in the supporting details, and some are best left unsaid because your judgement is excellent.
+
         Answer the following questions about the edits and the user's context. In your reply, repeat the question (but not examples/sub-bullets, if any), and then provide your answer.
 
         - Do you understand the changes to SPEC.md and the user's context? Are the changes logically coherent with the rest of the SPEC?
@@ -211,6 +215,7 @@ tools:
         - Are the changes implementable? Do you have any concerns about implementing them in this package?
 
         - Is there significant ambiguity where you don't know of any reasonable solution?
+          - NOTE: consider both the SPEC.md AND the user's additional details.
           - Ambiguity is GOOD. Do NOT point out ambiguity just for the sake of it.
           - Do NOT report ambiguity where you can think of a reasonable solution.
           - ONLY report trap ambiguity.
@@ -221,17 +226,16 @@ tools:
           - Example 1: "don't do X anymore. Instead, do Y". This should usually just be, "do Y".
           - Example 2: "X continues to have property Y". This should either be "X has property Y", or if property Y was already established in prior versions, simply omitted.
 
-        - What edits to the SPEC.md are too detailed?
+        - What edits to the SPEC.md are too detailed or specific?
           - Reminder: SPEC.md is supposed to be concise and ambiguous.
           - LLMs who edit SPEC.md files are almost always too specific.
+          - LLMs who edit SPEC.md files almost always edit SPEC.md files even for the tiniest of behavioral changes. These can often be dropped entirely.
           - SPEC.md files that are "in a good place" typically pick an elevation level and elide details below that.
           - Generally: do the edits vibe with the style and sensibilities of the existing SPEC.md file?
-
-        - What edits to the SPEC.md can just be deleted?
-          - LLMs who edit SPEC.md files almost always edit SPEC.md files even for the tiniest of behavioral changes. These can often be dropped entirely.
+          - You can remind the user that some details can be part of the implementation instructions outside of the SPEC.md, and some details can be dropped entirely.
 
         - Is there opportunity to make the edits more concise?
-          - Example 1: words or subphrases can often be deleted entirely with no loss of understanding.
+          - Example 1: words or subphrases can often be deleted entirely with minimal loss of understanding.
           - Example 2: full sub-bullets can often be shorter parentheticals.
 
         User context:
