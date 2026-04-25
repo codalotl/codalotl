@@ -91,7 +91,7 @@ Initialization happens in two phases:
 
 Construction of `modelsByID` during initialization:
 - OpenAI:
-	- Both `gpt-5.4` and `gpt-5.3-codex`: Add {`-medium`, `-high`, `-xhigh`} variants (and don't add the non-reasoning-effort version).
+	- Provider default large GPT-5 model and `gpt-5.3-codex`: Add {`-medium`, `-high`, `-xhigh`} variants (and don't add the non-reasoning-effort version).
 - Anthropic:
 	- Strip any timestamp (ex: `claude-sonnet-4-5-20250929` has `-20250929` suffix).
 	- Strip `claude-` prefix.
@@ -199,7 +199,8 @@ type ModelInfo struct {
 	APIEndpointURL  string
 
 	// Note on pricing: uniformly modeling pricing across all providers is fraught. These numbers serve as rough guidelines. Some providers might be modeled very poorly.
-	// As of 2025/10/23:
+	// Some providers have pricing tiers that this flat schema cannot represent:
+	//   - OpenAI GPT-5 prompt pricing can increase for very large contexts; record the short-context prompt rates here.
 	//   - Gemini has tiered CostPer1MInCached rates by token count (cost increases for tokens past 200k)
 	//   - Anthropic has a cost to write to cache, based on cache TTL. They also require developers specifically insert cache commands into API requests to use it.
 
