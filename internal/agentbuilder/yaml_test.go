@@ -76,16 +76,20 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 		spectools.ToolNameCheckSpecConformance,
 		"review",
 		"implement",
+		"review_spec_changes",
 	}, agentsByName["pr-orchestrator"].Tools)
 
 	var implementSpec *yamlToolSpec
 	var reviewSpec *yamlToolSpec
+	var reviewSpecChangesSpec *yamlToolSpec
 	for i := range spec.Tools {
 		switch spec.Tools[i].Name {
 		case "implement":
 			implementSpec = &spec.Tools[i]
 		case "review":
 			reviewSpec = &spec.Tools[i]
+		case "review_spec_changes":
+			reviewSpecChangesSpec = &spec.Tools[i]
 		}
 	}
 
@@ -104,6 +108,26 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	assert.Equal(t, yamlPresenterBodyResult, implementSpec.Presenter.Preset.ResultBody)
 	require.Len(t, implementSpec.Presenter.Preset.SummaryItems, 1)
 	assert.Equal(t, "path", implementSpec.Presenter.Preset.SummaryItems[0].Param)
+
+	require.NotNil(t, reviewSpecChangesSpec)
+	assert.Equal(t, "Reviews the latest SPEC.md changes in a specific package and returns plain-text feedback. The SPEC.md changes can be an uncommitted edit to SPEC.md or the latest commit.", reviewSpecChangesSpec.Description)
+	assert.Equal(t, yamlAgentModePackage, agentsByName[AgentLimitedPackageMode].Mode)
+	require.Contains(t, reviewSpecChangesSpec.Parameters, "package")
+	require.Contains(t, reviewSpecChangesSpec.Parameters, "message")
+	require.NotNil(t, reviewSpecChangesSpec.Presenter)
+	require.NotNil(t, reviewSpecChangesSpec.Presenter.Preset)
+	assert.Equal(t, yamlPresenterPresetSubagentQA, reviewSpecChangesSpec.Presenter.Preset.Name)
+	assert.Equal(t, "Reviewing SPEC changes in", reviewSpecChangesSpec.Presenter.Preset.CallAction)
+	assert.Equal(t, "Reviewed SPEC changes in", reviewSpecChangesSpec.Presenter.Preset.ResultAction)
+	assert.Equal(t, "message", reviewSpecChangesSpec.Presenter.Preset.CallBody)
+	assert.Equal(t, yamlPresenterBodyResult, reviewSpecChangesSpec.Presenter.Preset.ResultBody)
+	require.Len(t, reviewSpecChangesSpec.Presenter.Preset.SummaryItems, 1)
+	assert.Equal(t, "package", reviewSpecChangesSpec.Presenter.Preset.SummaryItems[0].Param)
+	require.NotNil(t, reviewSpecChangesSpec.Subagent)
+	assert.Equal(t, AgentLimitedPackageMode, reviewSpecChangesSpec.Subagent.Name)
+	assert.Equal(t, "package", reviewSpecChangesSpec.Subagent.Package)
+	assert.Contains(t, reviewSpecChangesSpec.Subagent.Message, "$spec-md")
+	assert.Contains(t, reviewSpecChangesSpec.Subagent.Message, "Do not make edits yourself; do not implement.")
 }
 
 func TestAddYAMLToRegistry_AddsAgentsAndTools(t *testing.T) {
@@ -1243,6 +1267,63 @@ func TestBuildRegistry_PROrchestratorImplementTool_PrepareSupportsEmptyTargetDir
 	assert.Contains(t, prepared.InitialTurns[1], `Package relative path: "targetpkg"`)
 	assert.Contains(t, prepared.InitialTurns[1], "fallback package context; target directory does not currently load as a Go package")
 	assert.Contains(t, prepared.InitialTurns[1], "SPEC.md")
+}
+
+func TestBuildRegistry_PROrchestratorReviewSpecChangesTool_InvokesLimitedPackageSubagent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sandbox := t.TempDir()
+	targetPkgDir := filepath.Join(sandbox, "targetpkg")
+	ensureGoPackageFixture(t, sandbox, targetPkgDir)
+	require.NoError(t, os.WriteFile(filepath.Join(targetPkgDir, "SPEC.md"), []byte("# targetpkg\n"), 0o644))
+
+	invoker := &captureAgentInvoker{
+		events: []agent.Event{
+			{
+				Type: agent.EventTypeAssistantTurnComplete,
+				Turn: &llmstream.Turn{
+					Role:  llmstream.RoleAssistant,
+					Parts: []llmstream.ContentPart{llmstream.TextContent{Content: "Tighten the wording around implicit requirements."}},
+				},
+			},
+			{Type: agent.EventTypeDoneSuccess},
+		},
+	}
+
+	reviewSpecTool := requireTool(t, invokeAgentTools(
+		t,
+		"pr-orchestrator",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		sandbox,
+		"",
+		nil,
+	), "review_spec_changes")
+	require.IsType(t, &yamlSubagentTool{}, reviewSpecTool)
+	reviewSpecTool.(*yamlSubagentTool).opts.AgentInvoker = invoker
+
+	result := reviewSpecTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "review-spec-call",
+		Name:   "review_spec_changes",
+		Type:   "function_call",
+		Input:  `{"package":"targetpkg","message":"I edited SPEC.md while planning the new orchestrator workflow. Focus on whether the spec stays terse and leaves obvious implementation details unstated."}`,
+	})
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "review-spec-call", result.CallID)
+	assert.Equal(t, "review_spec_changes", result.Name)
+	assert.Equal(t, "function_call", result.Type)
+	assert.Equal(t, "Tighten the wording around implicit requirements.", result.Result)
+
+	assert.Equal(t, AgentLimitedPackageMode, invoker.lastAgentName)
+	assert.Equal(t, targetPkgDir, invoker.lastRequest.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, sandbox, invoker.lastRequest.CallerSandboxDir)
+	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.SandboxDir)
+
+	require.Len(t, invoker.lastRequest.Messages, 1)
+	assert.Contains(t, invoker.lastRequest.Messages[0], "A user has made changes to the SPEC.md in your package")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "$spec-md")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "Do not make edits yourself; do not implement.")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "stays terse")
 }
 
 func TestBuildRegistry_YAMLBackedBuiltInAgentsPreserveToolsets(t *testing.T) {

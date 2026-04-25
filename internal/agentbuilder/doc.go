@@ -7,7 +7,7 @@
 //   - limited_package_mode: package-mode agent with a narrower toolset for targeted package work.
 //   - clarify_public_api: read-only agent that explains public API docs for one identifier.
 //   - pr-review: generic review agent that emits structured JSON review findings.
-//   - pr-orchestrator: generic agent that reviews a branch and delegates package implementation work.
+//   - pr-orchestrator: generic agent that reviews a branch, reviews SPEC.md edits, and delegates package implementation work.
 //
 // AddYAMLToRegistry loads YAML with top-level `agents` and `tools` arrays.
 //

@@ -84,6 +84,7 @@ agents:
       - check_spec_conformance
       - review
       - implement
+      - review_spec_changes
     mode: generic
     skills: true
   - name: pr-review
@@ -170,3 +171,66 @@ tools:
       name: package_mode_default_context
       package: path
       message: "{{ .instructions }}"
+  - name: review_spec_changes
+    description: Reviews the latest SPEC.md changes in a specific package and returns plain-text feedback. The SPEC.md changes can be an uncommitted edit to SPEC.md or the latest commit.
+    parameters:
+      package:
+        type: string
+        description: A Go package directory (relative to the sandbox) or a Go import path.
+        required: true
+      message:
+        type: string
+        description: "Context for the review request. Include: whether the SPEC.md changes to review are an uncommitted edit or something else; why you're making the change; if relevant, an @mention of the corresponding PR file; details of what needs to change in the package that aren't covered by the SPEC.md edits."
+        required: true
+    presenter:
+      preset:
+        name: subagent_q_and_a
+        call_action: Reviewing SPEC changes in
+        result_action: Reviewed SPEC changes in
+        summary_items:
+          - param: package
+        call_body: message
+        result_body: result
+    subagent:
+      name: limited_package_mode
+      package: package
+      message: |
+        A user has made changes to the SPEC.md in your package (or created a new SPEC.md when none existed). Your job is to give feedback to the user
+        about the changes they made. Do not make edits yourself; do not implement. NOTE: the edited SPEC.md likely precedes implementation - do not complain that the package's code does
+        not implement the changes yet.
+
+        First, read about SPEC.md files with the $spec-md skill. Then locate the user's changes - they might be an uncommitted edit or a recent commit to the SPEC.md.
+        Use $spec-md and git to isolate the changes.
+
+        The user's message below hopefully contains motivation, additional context, and some specifics about the intended changes.
+
+        Answer the following questions about the edits and the user's context. In your reply, repeat the question (but not examples/sub-bullets, if any), and then provide your answer.
+
+        - Do you understand the changes to SPEC.md and the user's context? Are the changes logically coherent with the rest of the SPEC?
+
+        - Are the changes implementable? Do you have any concerns about implementing them in this package?
+
+        - Is there significant ambiguity where you don't know of any reasonable solution?
+          - Ambiguity is GOOD. Do NOT point out ambiguity just for the sake of it.
+          - Do NOT report ambiguity where you can think of a reasonable solution.
+          - ONLY report trap ambiguity.
+
+        - Are the changes correctly located in this package? Or should they belong in an upstream package?
+
+        - Are there non-timeless phrases in the SPEC.md edits?
+          - Example 1: "don't do X anymore. Instead, do Y". This should usually just be, "do Y".
+          - Example 2: "X continues to have property Y". This should either be "X has property Y", or if property Y was already established in prior versions, simply omitted.
+
+        - What edits to the SPEC.md are too detailed?
+          - Reminder: SPEC.md is supposed to be concise and ambiguous.
+          - LLMs who edit SPEC.md files are almost always too verbose.
+
+        - What edits to the SPEC.md can just be deleted?
+          - LLMs who edit SPEC.md files almost always edit SPEC.md files even for the tiniest of behavioral changes. These can often be dropped entirely.
+
+        - Is there opportunity to make the edits more concise?
+          - Example 1: words or subphrases can often be deleted entirely with no loss of understanding.
+          - Example 2: full sub-bullets can often be shorter parentheticals.
+
+        User context:
+        {{ .message }}
