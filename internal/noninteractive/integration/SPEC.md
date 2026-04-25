@@ -63,7 +63,7 @@ Recommended workflow:
 ```sh
 go run ./internal/noninteractive/integration/cmd/create \
   --repo=./internal/noninteractive/integration/testdata/repo \
-  --model=gpt-5.4-high \
+  --model=gpt-5.5-high \
   --package='' \
   --prompt='Read catalog/query.go, then make the smallest possible change so ProductsWithTag returns nil immediately when tag is empty. Do not run tests or read any other files.' \
   --output=./internal/noninteractive/integration/testdata/cases/simple-tool-call-generic-mode
@@ -136,7 +136,7 @@ Run:
 ```sh
 go run ./internal/noninteractive/integration/cmd/create \
   --repo=path/to/repo \
-  --model="gpt-5.4-high" \
+  --model="gpt-5.5-high" \
   --package="path/to/pkg" \
   --prompt="fix bug..." \
   --output="path/to/output/dir" \

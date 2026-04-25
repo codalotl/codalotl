@@ -19,7 +19,7 @@ func TestBuildExpectedEventsOmitsUnstableFields(t *testing.T) {
 			"type":         "start",
 			"cwd":          "/tmp/work",
 			"package_path": ".",
-			"model_id":     "gpt-5.4-high",
+			"model_id":     "gpt-5.5-high",
 		},
 		{
 			"type": "assistant_reasoning",
@@ -123,7 +123,7 @@ func TestBuildGeneratedCaseNormalizesPromptAbsolutePaths(t *testing.T) {
 	turns := []recordedTurn{
 		{
 			Request: map[string]any{
-				"model": "gpt-5.4-high",
+				"model": "gpt-5.5-high",
 				"input": []any{
 					map[string]any{
 						"type": "message",
@@ -168,7 +168,7 @@ func TestBuildHTTPFixturePrunesNestedFirstTurnInputText(t *testing.T) {
 	turns := []recordedTurn{
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.4-high",
+				"model": "gpt-5.5-high",
 				"input": [
 					{
 						"type": "message",
@@ -191,7 +191,7 @@ func TestBuildHTTPFixturePrunesNestedFirstTurnInputText(t *testing.T) {
 		},
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.4-high",
+				"model": "gpt-5.5-high",
 				"input": [
 					{
 						"type": "message",
@@ -328,7 +328,7 @@ func TestBuildHTTPFixtureRequestPreservesStructuredRequestAndNormalizesPaths(t *
 	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
 	turn := recordedTurn{
 		Request: map[string]any{
-			"model":               "gpt-5.4-high",
+			"model":               "gpt-5.5-high",
 			"temperature":         float64(0),
 			"prompt_cache_key":    "cache-key",
 			"reasoning":           map[string]any{"effort": "medium"},
@@ -432,7 +432,7 @@ func TestBuildHTTPFixtureRequestPreservesStructuredRequestAndNormalizesPaths(t *
 func TestBuildHTTPFixtureRequestOmitTextKeysFromFirstTwoMessagesOnly(t *testing.T) {
 	turn := recordedTurn{
 		Request: map[string]any{
-			"model": "gpt-5.4-high",
+			"model": "gpt-5.5-high",
 			"input": []any{
 				map[string]any{
 					"type": "message",
@@ -500,7 +500,7 @@ func TestBuildHTTPFixtureRequestOmitTextKeysFromFirstTwoMessagesOnly(t *testing.
 func TestBuildHTTPFixtureRequestDoesNotPruneLaterTurnInput(t *testing.T) {
 	turn := recordedTurn{
 		Request: map[string]any{
-			"model": "gpt-5.4-high",
+			"model": "gpt-5.5-high",
 			"input": []any{
 				map[string]any{"type": "message", "role": "system"},
 				map[string]any{"type": "message", "role": "system"},
@@ -735,7 +735,7 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 			"type":         "start",
 			"cwd":          workDir,
 			"package_path": "",
-			"model_id":     "gpt-5.4-high",
+			"model_id":     "gpt-5.5-high",
 		},
 		{
 			"type": "user_message",
@@ -791,7 +791,7 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 	turns := []recordedTurn{
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.4-high",
+				"model": "gpt-5.5-high",
 				"input": [
 					{
 						"type": "message",
@@ -829,7 +829,7 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 		},
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.4-high",
+				"model": "gpt-5.5-high",
 				"previous_response_id": "resp_real_1",
 				"input": [
 					{

@@ -226,7 +226,7 @@ func TestShouldSuppressFormattedOutput(t *testing.T) {
 func TestFormatAgentFinishedTurnLineIncludesTokens(t *testing.T) {
 	t.Parallel()
 
-	line := formatAgentFinishedTurnLine(llmmodel.ModelID("gpt-5.4-high"), llmstream.TokenUsage{
+	line := formatAgentFinishedTurnLine(llmmodel.ModelID("gpt-5.5-high"), llmstream.TokenUsage{
 		TotalInputTokens:  10,
 		CachedInputTokens: 3,
 		TotalOutputTokens: 7,
@@ -319,8 +319,8 @@ func TestBuildDoneSuccessReport_IdealCachingPrintsActualAndIdealAndDoesNotAffect
 		TotalOutputTokens: 7,
 	}
 
-	withoutIdeal := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.4-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, false)
-	withIdeal := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.4-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
+	withoutIdeal := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.5-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, false)
+	withIdeal := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.5-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
 
 	require.Contains(t, withoutIdeal.UsageAndCaching, "resp_actual")
 	require.Equal(t, withoutIdeal.UsageAndCaching, withIdeal.UsageAndCaching)
@@ -396,7 +396,7 @@ func TestBuildDoneSuccessReport_IdealCachingResetsAcrossAgents(t *testing.T) {
 		TotalOutputTokens: 15,
 	}
 
-	report := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.4-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
+	report := buildDoneSuccessReport(llmmodel.ModelID("gpt-5.5-high"), actualTurns, completedAssistantTurnsByAgent, actualUsage, true)
 	require.Contains(t, report.UsageAndCaching, "resp_actual")
 	require.Len(t, report.Lines, 2)
 	require.Equal(t, "• actual token usage: input=214 cached_input=0 output=15 total=229", report.Lines[0])
@@ -423,7 +423,7 @@ func TestModelReportsCacheWrites(t *testing.T) {
 
 	require.True(t, modelReportsCacheWrites(llmmodel.ModelID("opus-4.6")))
 	require.False(t, modelReportsCacheWrites(llmmodel.ModelID("sonnet-4.6")))
-	require.False(t, modelReportsCacheWrites(llmmodel.ModelID("gpt-5.4-high")))
+	require.False(t, modelReportsCacheWrites(llmmodel.ModelID("gpt-5.5-high")))
 }
 
 func TestEffectiveModelID(t *testing.T) {

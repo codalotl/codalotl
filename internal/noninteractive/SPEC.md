@@ -123,7 +123,7 @@ JSON mode is a structured log, not a 1:1 dump of every internal `agent.Event`. I
 Example Output:
 
 ```json
-{"type": "start", "cwd": "/some/path", "package_path": "internal/somepkg", "model_id": "gpt-5.4-high"}
+{"type": "start", "cwd": "/some/path", "package_path": "internal/somepkg", "model_id": "gpt-5.5-high"}
 {"type": "user_message", "text": "fix failing test"}
 {"type": "tool_call", "agent": {"id": "root", "depth": 0}, "tool": {"call_id": "call_1", "name": "read_file", "type": "function_call", "input": "{\"path\":\"foo.go\"}"}}
 {"type": "tool_complete", "agent": {"id": "root", "depth": 0}, "tool": {"call_id": "call_1", "name": "read_file", "type": "function_call"}, "result": {"output": "package foo\n...", "is_error": false}}
@@ -151,9 +151,9 @@ type Options struct {
 	// PackagePath is ignored for orchestrate mode.
 	SlashCommand string
 
-	ModelID     llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
-	LintSteps   []lints.Step     // LintSteps controls which lint steps the agent runs.
-	AutoYes     bool             // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
+	ModelID   llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
+	LintSteps []lints.Step     // LintSteps controls which lint steps the agent runs.
+	AutoYes   bool             // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
 
 	// NoFormatting=true means any prints do NOT use colors or other ANSI control codes to format. Only outputs plain text. Otherwise, we default to the color scheme
 	// of the terminal and print colorized/formatted text.

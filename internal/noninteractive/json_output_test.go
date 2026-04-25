@@ -295,7 +295,7 @@ func TestJSONEventWriterWriteStartAndUserMessage(t *testing.T) {
 	var buf bytes.Buffer
 	w := newJSONEventWriter(&buf)
 
-	require.NoError(t, w.WriteStart("/tmp/sandbox", "internal/noninteractive", llmmodel.ModelID("gpt-5.4-high")))
+	require.NoError(t, w.WriteStart("/tmp/sandbox", "internal/noninteractive", llmmodel.ModelID("gpt-5.5-high")))
 	require.NoError(t, w.WriteUserMessage("fix failing test"))
 
 	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
@@ -307,7 +307,7 @@ func TestJSONEventWriterWriteStartAndUserMessage(t *testing.T) {
 		"type":         "start",
 		"cwd":          "/tmp/sandbox",
 		"package_path": "internal/noninteractive",
-		"model_id":     "gpt-5.4-high",
+		"model_id":     "gpt-5.5-high",
 	}, start)
 
 	var msg map[string]any
@@ -327,7 +327,7 @@ func TestWriteSessionStartOutputJSON_OnlyEmitsEndUserPrompt(t *testing.T) {
 		var buf bytes.Buffer
 		require.NoError(t, writeStepStartOutput(&buf, newJSONEventWriter(&buf), true, stepStartOutput{
 			sandboxDir: "/tmp/sandbox",
-			modelID:    llmmodel.ModelID("gpt-5.4-high"),
+			modelID:    llmmodel.ModelID("gpt-5.5-high"),
 		}, ""))
 
 		lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
@@ -339,7 +339,7 @@ func TestWriteSessionStartOutputJSON_OnlyEmitsEndUserPrompt(t *testing.T) {
 			"type":         "start",
 			"cwd":          "/tmp/sandbox",
 			"package_path": "",
-			"model_id":     "gpt-5.4-high",
+			"model_id":     "gpt-5.5-high",
 		}, event)
 	})
 
@@ -349,7 +349,7 @@ func TestWriteSessionStartOutputJSON_OnlyEmitsEndUserPrompt(t *testing.T) {
 		var buf bytes.Buffer
 		require.NoError(t, writeStepStartOutput(&buf, newJSONEventWriter(&buf), true, stepStartOutput{
 			sandboxDir: "/tmp/sandbox",
-			modelID:    llmmodel.ModelID("gpt-5.4-high"),
+			modelID:    llmmodel.ModelID("gpt-5.5-high"),
 		}, "fix failing test"))
 
 		lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
