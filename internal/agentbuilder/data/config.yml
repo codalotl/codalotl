@@ -223,7 +223,9 @@ tools:
 
         - What edits to the SPEC.md are too detailed?
           - Reminder: SPEC.md is supposed to be concise and ambiguous.
-          - LLMs who edit SPEC.md files are almost always too verbose.
+          - LLMs who edit SPEC.md files are almost always too specific.
+          - SPEC.md files that are "in a good place" typically pick an elevation level and elide details below that.
+          - Generally: do the edits vibe with the style and sensibilities of the existing SPEC.md file?
 
         - What edits to the SPEC.md can just be deleted?
           - LLMs who edit SPEC.md files almost always edit SPEC.md files even for the tiniest of behavioral changes. These can often be dropped entirely.
