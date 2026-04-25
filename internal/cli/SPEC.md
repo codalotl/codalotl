@@ -143,7 +143,7 @@ Current Configuration:
 
 Current Config Location(s): /home/someuser/.codalotl/config.json
 
-Effective Model: gpt-5.4-high
+Effective Model: gpt-5.5-high
 
 To set LLM provider API keys, set one of these ENV variables:
 - OPENAI_API_KEY

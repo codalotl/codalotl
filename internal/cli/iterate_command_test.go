@@ -108,7 +108,7 @@ func TestRun_Iterate_PromptFileLoadsPromptAndUsesExecLikeConfigDefaults(t *testi
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
-	writeProjectConfig(t, tmp, "{\n  \"autoyes\": true,\n  \"preferredmodel\": \"gpt-5.4-high\"\n}\n")
+	writeProjectConfig(t, tmp, "{\n  \"autoyes\": true,\n  \"preferredmodel\": \"gpt-5.5-high\"\n}\n")
 	chdirForTest(t, tmp)
 
 	promptPath := filepath.Join(tmp, "prompt.md")
@@ -136,7 +136,7 @@ func TestRun_Iterate_PromptFileLoadsPromptAndUsesExecLikeConfigDefaults(t *testi
 	require.Equal(t, 0, code)
 	require.Equal(t, []string{promptContents}, session.sends)
 	require.True(t, gotOpts.AutoYes)
-	require.Equal(t, "gpt-5.4-high", string(gotOpts.ModelID))
+	require.Equal(t, "gpt-5.5-high", string(gotOpts.ModelID))
 	require.Empty(t, errOut.String())
 }
 
