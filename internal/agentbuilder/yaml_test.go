@@ -110,7 +110,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	assert.Equal(t, "path", implementSpec.Presenter.Preset.SummaryItems[0].Param)
 
 	require.NotNil(t, reviewSpecChangesSpec)
-	assert.Equal(t, "Reviews the latest SPEC.md changes in a specific package and returns plain-text feedback.", reviewSpecChangesSpec.Description)
+	assert.Equal(t, "Reviews the latest SPEC.md changes in a specific package and returns plain-text feedback. The SPEC.md changes can be an uncommitted edit to SPEC.md or the latest commit.", reviewSpecChangesSpec.Description)
 	assert.Equal(t, yamlAgentModePackage, agentsByName[AgentLimitedPackageMode].Mode)
 	require.Contains(t, reviewSpecChangesSpec.Parameters, "package")
 	require.Contains(t, reviewSpecChangesSpec.Parameters, "message")
@@ -127,7 +127,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	assert.Equal(t, AgentLimitedPackageMode, reviewSpecChangesSpec.Subagent.Name)
 	assert.Equal(t, "package", reviewSpecChangesSpec.Subagent.Package)
 	assert.Contains(t, reviewSpecChangesSpec.Subagent.Message, "$spec-md")
-	assert.Contains(t, reviewSpecChangesSpec.Subagent.Message, "feedback-only")
+	assert.Contains(t, reviewSpecChangesSpec.Subagent.Message, "Do not make edits yourself; do not implement.")
 }
 
 func TestAddYAMLToRegistry_AddsAgentsAndTools(t *testing.T) {
@@ -1320,9 +1320,9 @@ func TestBuildRegistry_PROrchestratorReviewSpecChangesTool_InvokesLimitedPackage
 	assert.Equal(t, sandbox, invoker.lastRequest.ToolOptions.SandboxDir)
 
 	require.Len(t, invoker.lastRequest.Messages, 1)
-	assert.Contains(t, invoker.lastRequest.Messages[0], "Review the latest `SPEC.md` changes in your package")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "A user has made changes to the SPEC.md in your package")
 	assert.Contains(t, invoker.lastRequest.Messages[0], "$spec-md")
-	assert.Contains(t, invoker.lastRequest.Messages[0], "feedback-only")
+	assert.Contains(t, invoker.lastRequest.Messages[0], "Do not make edits yourself; do not implement.")
 	assert.Contains(t, invoker.lastRequest.Messages[0], "stays terse")
 }
 
