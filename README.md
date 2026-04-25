@@ -35,7 +35,7 @@ Codalotl requires an LLM provider API key. The best way to do that is to set one
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
 
-OpenAI, Anthropic, and Gemini models are supported. I recommend starting with `gpt-5.4-high`. As of 2026/03/13:
+OpenAI, Anthropic, and Gemini models are supported. I recommend starting with `gpt-5.5-high`. As of 2026/03/13:
 - OpenAI reasoning models have performed best for me on the benchmark above.
 - But Gemini 3.1 has reasonable intelligence, and is faster and cheaper.
 - Anthropic has good intelligence but is slow and expensive.
