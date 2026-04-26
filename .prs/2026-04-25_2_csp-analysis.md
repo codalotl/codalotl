@@ -57,26 +57,26 @@ In order to do this, I believe we'll need to add `Create` to the interface `Agen
 
 ## Plan
 
-### Phase 0: Design two-turn conformance analysis
+### Phase 0: Design two-turn conformance analysis [DONE]
 
-#### Package internal/tools/spectools
+#### Package internal/tools/spectools [DONE]
 - Update `check_spec_conformance` contract so nonconformance results include hidden `analysis` details for orchestrator decision-making.
 - Preserve first-turn conformance detection as the source of truth; only after nonconformances are identified should the checker ask a follow-up turn for analysis.
 - Keep presenter output compact and omit analysis from user-facing tool presentation.
 - Spec changes live in `internal/tools/spectools/SPEC.md`.
 
-#### Package internal/tools/toolsetinterface
+#### Package internal/tools/toolsetinterface [DONE]
 - Add `Create(ctx, agentName, req)` to `AgentInvoker` so tools can create an idle agent and conduct multi-turn subagent workflows.
 - Keep `Invoke` as the convenience one-shot API.
 - No `SPEC.md` exists for this package; rely on `agentregistry` public API/spec plus implementation tests.
 
-#### Package internal/agentregistry
+#### Package internal/agentregistry [DONE]
 - Registry already exposes `Create`; make it satisfy the expanded `AgentInvoker` interface.
 - Update tests if needed after the interface change.
 
-### Phase 1: Implement two-turn analysis
+### Phase 1: Implement two-turn analysis [DONE]
 
-#### Package internal/tools/spectools
+#### Package internal/tools/spectools [DONE]
 - Use `AgentInvoker.Create` in `check_spec_conformance` to run package checks as:
   1. Send initial check-conformance instructions and parse strict verdict JSON.
   2. If `conforms=false`, send follow-up instructions that include the first verdict and request analysis for each issue.
@@ -85,13 +85,13 @@ In order to do this, I believe we'll need to add `Create` to the interface `Agen
 - Keep CAS writes keyed only to final conformance verdict.
 - Add/update focused tests around result parsing, presenter hiding, and two-turn invocation.
 
-#### Package internal/tools/toolsetinterface and downstream fakes
+#### Package internal/tools/toolsetinterface and downstream fakes [DONE]
 - Expand `AgentInvoker` and update fake/test implementations across packages.
 - If compile breakages appear in downstream packages, update callsites in the same implementation step.
 
 ## Review
 
-Not run yet.
+Not run yet after implementation.
 
 ## Summary
 
@@ -106,3 +106,13 @@ TBD
   - `internal/tools/spectools`: `check_spec_conformance` implementation and SPEC.
   - `internal/tools/toolsetinterface`: `AgentInvoker` interface and `InvokeRequest`.
   - `internal/agentregistry`: already has `Registry.Create` and `Registry.Invoke`; `Registry` is assigned into `ToolOptions.AgentInvoker`.
+- Implementation commit: `8d19136 spectools: analyze conformance findings`
+- Implementation details:
+  - `AgentInvoker` now includes `Create`.
+  - `check_spec_conformance` creates an idle package-check subagent, sends first-turn conformance instructions, then sends follow-up analysis instructions only for nonconforming packages.
+  - Follow-up result must preserve first-turn issue count/order/severity/latent/message; only `analysis` is merged.
+  - Raw JSON includes nonconformance `analysis`; compact presentation hides it.
+- Validation run after implementation:
+  - `go test ./internal/tools/spectools`
+  - `go test ./internal/tools/toolsetinterface ./internal/tools/pkgtools ./internal/agentbuilder ./internal/agentregistry`
+  - `go test ./...`
