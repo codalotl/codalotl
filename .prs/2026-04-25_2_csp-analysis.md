@@ -2,9 +2,11 @@
 
 ## User Summary
 
-Checking spec conformance is a key piece of the codalotl workflow. <todo: summarize the tool, the motivation, and the workflow>
+Checking spec conformance is a key piece of the codalotl workflow. codalotl uses package-level SPEC.md files as the contract for what the code is supposed to do, then asks an AI reviewer to compare the implementation against that contract. The result is a list of possible nonconformances, categorized by severity and by whether the issue appears to be new or latent.
 
-Problem: when the orchestrator gets a nonconformance report, it's mostly just a 1-liner like "[new][minor] When X happens, Z doesn't happen because Y." (for some X, Z, and Y). The orchestrator takes all this at face value and spins up an implementor to fix it. However, in my experience, "just fixing the code" is the solution maybe 33% of the time. The other 33% is to change the SPEC.md (loosening some requirement, or simply bringing the spec up-to-date). The last 33% might be a pragmatic compromise between spec fix and code change.
+That check is useful because it gives the orchestrator a concrete bridge between "the spec says X" and "the code appears to do Y." In the broader workflow, those findings drive the next step: either assign implementation work, update the spec to match intended behavior, or choose a compromise when the spec and code are both partly right.
+
+Problem: when the orchestrator gets a nonconformance report, it's mostly just a one-liner like "[new][minor] When X happens, Z doesn't happen because Y." (for some X, Z, and Y). The orchestrator takes all this at face value and spins up an implementor to fix it. However, in my experience, "just fixing the code" is the solution roughly one-third of the time. Another third is to change the SPEC.md (loosening some requirement, or simply bringing the spec up-to-date). The last third might be a pragmatic compromise between spec fix and code change.
 
 Solution: I want to start by having the spec conformance check return additional information. I have asked the AI to answer these questions:
 
@@ -16,15 +18,15 @@ Answer the following questions (they might not all apply, depending on the nonco
   - What is the UX if this nonconformance is "triggered" by the user?
   - How likely is the user to actually experience this?
   - What should the UX be here?
-- Does fixing this introduce even worse UX, or some other not-good tradeoff?
+- Does fixing this introduce even worse UX, or some other bad tradeoff?
 - How likely is the bug (if this is a bug) to occur?
-- An AI generated this non-conformance report. Is the AI just being nitpicky? Would a sr. engineer w/ good judgement care about this?
+- An AI generated this nonconformance report. Is the AI just being nitpicky? Would a senior engineer with good judgment care about this?
 - What is the ROI of fixing the code?
 - Overall, what is your recommendation? Should we fix the code, or update the SPEC to allow current behavior?
 
-These questions guide the AI to think about the right types of things vs blindly fixing something.
+These questions guide the AI to think about the right types of things rather than blindly fixing something.
 
-Instead of prompting the AI to think about these up-from when determining conformance vs nonconformance, I instead want to ask these during a follow-up turn. Basically (this is the gist, not the actual prompts):
+Instead of prompting the AI to think about these upfront when determining conformance vs nonconformance, I want to ask these during a follow-up turn. Basically (this is the gist, not the actual prompts):
 
 ```
 Tool: Find spec conformance issues. List in plain text. Categorize by minor/etc and new vs latent.
@@ -40,7 +42,7 @@ AI: {
             "summary": "When X happens, Z doesn't happen because Y",
             "severity": "minor",
             "type": "new",
-            "analysis": "<answer to my qusetions>"
+            "analysis": "<answer to my questions>"
         }, ...
     ]
 }
@@ -50,3 +52,5 @@ The 2-turn approach is important so that the AI doesn't change what it considers
 
 From a user perspective:
 - The analysis is hidden. The overall tool presenter does not write the analysis.
+
+In order to do this, I believe we'll need to add `Create` to the interface `AgentInvoker`.
