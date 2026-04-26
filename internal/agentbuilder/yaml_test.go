@@ -1440,8 +1440,22 @@ func invokeAgentForModelWithRegistryDetailed(t *testing.T, registry *agentregist
 type captureAgentInvoker struct {
 	lastAgentName string
 	lastRequest   toolsetinterface.InvokeRequest
+	createFunc    func(context.Context, string, toolsetinterface.InvokeRequest) (*agent.Agent, error)
 	events        []agent.Event
 	err           error
+}
+
+func (c *captureAgentInvoker) Create(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
+	c.lastAgentName = agentName
+	c.lastRequest = req
+
+	if c.createFunc != nil {
+		return c.createFunc(ctx, agentName, req)
+	}
+	if c.err != nil {
+		return nil, c.err
+	}
+	return nil, errors.New("captureAgentInvoker.Create unexpectedly called")
 }
 
 func (c *captureAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {

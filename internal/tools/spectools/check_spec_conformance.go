@@ -59,6 +59,7 @@ type toolCheckSpecConformance struct {
 	changedPaths               func(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error)
 	runPackageCheck            packageCheckRunner
 	subAgentCreatorFromContext func(ctx context.Context) (agent.SubAgentCreator, error)
+	runAgentTurn               func(ctx context.Context, agent *agent.Agent, message string) (string, error)
 }
 
 type checkSpecConformanceParams struct {
@@ -112,6 +113,7 @@ type packageIssue struct {
 	Severity string `json:"severity"`
 	Latent   bool   `json:"latent"`
 	Message  string `json:"message"`
+	Analysis string `json:"analysis,omitempty"`
 }
 
 // CheckSpecConformancePackageResult is one package entry in a check_spec_conformance tool result.
@@ -143,6 +145,7 @@ type CheckSpecConformancePostcheckError struct {
 type packageResultValidationOptions struct {
 	allowError          bool
 	allowPostcheckError bool
+	requireAnalysis     bool
 	hasDiff             *bool
 }
 
@@ -177,6 +180,7 @@ func NewCheckSpecConformanceTool(authorizer authdomain.Authorizer, options ...Ch
 		heuristicBase:              gittools.HeuristicMergeBase,
 		changedPaths:               gittools.ChangedPathsSince,
 		subAgentCreatorFromContext: subAgentCreatorFromContextSafe,
+		runAgentTurn:               runPackageCheckAgentTurn,
 	}
 	tool.runPackageCheck = tool.runPackageCheckWithSubagent
 	return tool
@@ -486,7 +490,7 @@ func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDi
 		return packageErrorResult(err)
 	}
 
-	result, err := parsePackageCheckResult(answer, pkg.HasDiff)
+	result, err := parseFinalPackageCheckResult(answer, pkg.HasDiff)
 	if err != nil {
 		return packageErrorResult(err)
 	}
@@ -537,8 +541,7 @@ func (t *toolCheckSpecConformance) runPackageCheckWithSubagent(ctx context.Conte
 		return "", err
 	}
 
-	instructions := buildPackageCheckInstructions(req)
-	events, err := t.agentInvoker.Invoke(ctx, checkSpecConformanceAgentName, toolsetinterface.InvokeRequest{
+	subagent, err := t.agentInvoker.Create(ctx, checkSpecConformanceAgentName, toolsetinterface.InvokeRequest{
 		AgentCreator:     labeledSubAgentCreator{base: agentCreator, label: req.Key},
 		CallerAuthorizer: pkgAuthorizer,
 		CallerSandboxDir: t.sandboxAbsDir,
@@ -548,13 +551,51 @@ func (t *toolCheckSpecConformance) runPackageCheckWithSubagent(ctx context.Conte
 			Model:        t.model,
 			AgentInvoker: t.agentInvoker,
 		},
-		Messages: []string{instructions},
 	})
 	if err != nil {
 		return "", err
 	}
 
-	return agent.CollectFinalAssistantText(ctx, events)
+	runAgentTurn := t.runAgentTurn
+	if runAgentTurn == nil {
+		runAgentTurn = runPackageCheckAgentTurn
+	}
+
+	verdictAnswer, err := runAgentTurn(ctx, subagent, buildPackageCheckInstructions(req))
+	if err != nil {
+		return "", err
+	}
+
+	verdict, err := parsePackageCheckResult(verdictAnswer, req.HasDiff)
+	if err != nil {
+		return "", err
+	}
+	verdict = clearPackageCheckAnalysis(verdict)
+	if verdict.Conforms != nil && *verdict.Conforms {
+		return marshalPackageCheckResult(verdict)
+	}
+
+	analysisAnswer, err := runAgentTurn(ctx, subagent, buildPackageAnalysisInstructions(req, verdict))
+	if err != nil {
+		return "", err
+	}
+
+	analysisResult, err := parsePackageAnalysisResult(analysisAnswer, verdict)
+	if err != nil {
+		return "", err
+	}
+	finalResult, err := mergePackageCheckAnalysis(verdict, analysisResult)
+	if err != nil {
+		return "", err
+	}
+	return marshalPackageCheckResult(finalResult)
+}
+
+func runPackageCheckAgentTurn(ctx context.Context, subagent *agent.Agent, message string) (string, error) {
+	if subagent == nil {
+		return "", fmt.Errorf("check_spec_conformance agent unavailable")
+	}
+	return agent.CollectFinalAssistantText(ctx, subagent.SendUserMessage(ctx, message))
 }
 
 type labeledSubAgentCreator struct {
@@ -618,6 +659,36 @@ func buildPackageCheckInstructions(req packageCheckRequest) string {
 		}
 		body.WriteString("```\n")
 	}
+	return body.String()
+}
+
+func buildPackageAnalysisInstructions(req packageCheckRequest, verdict packageCheckResult) string {
+	verdictJSON, err := marshalPackageCheckResult(verdict)
+	if err != nil {
+		verdictJSON = `{"conforms":false,"nonconformances":[]}`
+	}
+
+	var body strings.Builder
+	body.WriteString("Analyze the nonconformances from your previous verdict.\n")
+	body.WriteString("Do not add, remove, reorder, reword, recategorize, or change latent status for any nonconformance. The first-turn verdict is the source of truth.\n")
+	body.WriteString("For each reported nonconformance, add only an `analysis` field.\n")
+	body.WriteString("Return STRICT JSON only. No prose. No markdown fences.\n")
+	body.WriteString("Required JSON shape:\n")
+	body.WriteString(`{"conforms":false,"nonconformances":[{"severity":"trivial|minor|major","latent":true,"message":"same explanation","analysis":"decision-oriented analysis"}]}` + "\n")
+	body.WriteString("For each `analysis`, answer the relevant questions:\n")
+	body.WriteString("- 1-2 paragraph issue summary, with an example if useful.\n")
+	body.WriteString("- Is this a real nonconformance?\n")
+	body.WriteString("- If fixing code: size, risk, blast radius, package isolation, and public API impact.\n")
+	body.WriteString("- End-user value, likely UX if triggered, likelihood users experience it, and desired UX.\n")
+	body.WriteString("- Bad tradeoffs from fixing, bug likelihood, whether this is nitpicky, ROI, and recommendation: fix code, update SPEC.md, or compromise.\n")
+	body.WriteString("\n")
+	body.WriteString("Package: ")
+	body.WriteString(req.Key)
+	body.WriteString("\n")
+	body.WriteString("First-turn verdict JSON (preserve all fields exactly except add `analysis`):\n")
+	body.WriteString("```json\n")
+	body.WriteString(verdictJSON)
+	body.WriteString("\n```\n")
 	return body.String()
 }
 
@@ -1079,6 +1150,7 @@ func ParseCheckSpecConformanceResults(raw string) (CheckSpecConformanceResults, 
 		validated, err := validatePackageCheckResult(packageCheckResult(result), packageResultValidationOptions{
 			allowError:          true,
 			allowPostcheckError: true,
+			requireAnalysis:     true,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
@@ -1163,6 +1235,53 @@ func parsePackageCheckResult(answer string, hasDiff bool) (packageCheckResult, e
 		allowError:          false,
 		allowPostcheckError: false,
 	})
+}
+
+func parseFinalPackageCheckResult(answer string, hasDiff bool) (packageCheckResult, error) {
+	payload := extractJSONObject(answer)
+	if payload == "" {
+		return packageCheckResult{}, fmt.Errorf("subagent returned non-JSON result")
+	}
+
+	result, err := decodePackageCheckResult(payload)
+	if err != nil {
+		return packageCheckResult{}, err
+	}
+
+	return validatePackageCheckResult(result, packageResultValidationOptions{
+		hasDiff:             &hasDiff,
+		allowError:          false,
+		allowPostcheckError: false,
+		requireAnalysis:     true,
+	})
+}
+
+func parsePackageAnalysisResult(answer string, verdict packageCheckResult) (packageCheckResult, error) {
+	payload := extractJSONObject(answer)
+	if payload == "" {
+		return packageCheckResult{}, fmt.Errorf("subagent returned non-JSON analysis result")
+	}
+
+	result, err := decodePackageCheckResult(payload)
+	if err != nil {
+		return packageCheckResult{}, err
+	}
+
+	analysisResult, err := validatePackageCheckResult(result, packageResultValidationOptions{
+		allowError:          false,
+		allowPostcheckError: false,
+		requireAnalysis:     true,
+	})
+	if err != nil {
+		return packageCheckResult{}, err
+	}
+	if analysisResult.Conforms == nil || *analysisResult.Conforms {
+		return packageCheckResult{}, fmt.Errorf("analysis result must preserve conforms=false")
+	}
+	if err := validateAnalysisMatchesVerdict(verdict, analysisResult); err != nil {
+		return packageCheckResult{}, err
+	}
+	return analysisResult, nil
 }
 
 func extractJSONObject(answer string) string {
@@ -1261,12 +1380,63 @@ func validatePackageCheckResult(result packageCheckResult, options packageResult
 		if result.Nonconformances[i].Message == "" {
 			return packageCheckResult{}, fmt.Errorf("subagent returned a nonconformance with an empty message")
 		}
+		if options.requireAnalysis && result.Nonconformances[i].Analysis == "" {
+			return packageCheckResult{}, fmt.Errorf("subagent returned a nonconformance without analysis")
+		}
 		if options.hasDiff != nil && !*options.hasDiff {
 			result.Nonconformances[i].Latent = true
 		}
 	}
 
 	return result, nil
+}
+
+func validateAnalysisMatchesVerdict(verdict packageCheckResult, analysisResult packageCheckResult) error {
+	if verdict.Conforms == nil || *verdict.Conforms {
+		return fmt.Errorf("analysis requested for conforming verdict")
+	}
+	if len(verdict.Nonconformances) != len(analysisResult.Nonconformances) {
+		return fmt.Errorf("analysis result changed nonconformance count")
+	}
+	for i := range verdict.Nonconformances {
+		original := verdict.Nonconformances[i]
+		analyzed := analysisResult.Nonconformances[i]
+		if analyzed.Severity != original.Severity {
+			return fmt.Errorf("analysis result changed severity for nonconformance %d", i+1)
+		}
+		if analyzed.Latent != original.Latent {
+			return fmt.Errorf("analysis result changed latent status for nonconformance %d", i+1)
+		}
+		if analyzed.Message != original.Message {
+			return fmt.Errorf("analysis result changed message for nonconformance %d", i+1)
+		}
+	}
+	return nil
+}
+
+func mergePackageCheckAnalysis(verdict packageCheckResult, analysisResult packageCheckResult) (packageCheckResult, error) {
+	if err := validateAnalysisMatchesVerdict(verdict, analysisResult); err != nil {
+		return packageCheckResult{}, err
+	}
+
+	merged := verdict
+	merged.Nonconformances = append([]packageIssue(nil), verdict.Nonconformances...)
+	for i := range merged.Nonconformances {
+		merged.Nonconformances[i].Analysis = analysisResult.Nonconformances[i].Analysis
+	}
+	return merged, nil
+}
+
+func clearPackageCheckAnalysis(result packageCheckResult) packageCheckResult {
+	if len(result.Nonconformances) == 0 {
+		return result
+	}
+
+	result.Nonconformances = append([]packageIssue(nil), result.Nonconformances...)
+	for i := range result.Nonconformances {
+		result.Nonconformances[i].Analysis = ""
+	}
+	return result
 }
 
 func formatPackageCheckResultBlock(result packageCheckResult) llmstream.Block {
@@ -1310,6 +1480,14 @@ func formatPackageCheckResultBlock(result packageCheckResult) llmstream.Block {
 
 func packageErrorResult(err error) packageCheckResult {
 	return packageCheckResult{Error: err.Error()}
+}
+
+func marshalPackageCheckResult(result packageCheckResult) (string, error) {
+	b, err := json.MarshalIndent(result, "", "    ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func marshalPackageResults(results map[string]packageCheckResult) (string, error) {

@@ -19,9 +19,13 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
-// AgentInvoker is an interface that can invoke subagents by name.
+// AgentInvoker is an interface that can create or invoke subagents by name.
 type AgentInvoker interface {
-	// Invoke invokes a named agent with req, and returns a channel from which to read events.
+	// Create creates a named agent with req.
+	Create(ctx context.Context, agentName string, req InvokeRequest) (*agent.Agent, error)
+
+	// Invoke creates and starts a named agent with req, returning a channel from which to read events. Use it as the one-shot convenience API when callers do not need
+	// access to the created Agent.
 	Invoke(ctx context.Context, agentName string, req InvokeRequest) (<-chan agent.Event, error)
 }
 
@@ -29,8 +33,7 @@ type AgentInvoker interface {
 type Options struct {
 	// AgentName is the name of the agent currently being constructed.
 	//
-	// Tool constructors can use this to preserve agent-specific behavior when the
-	// same tool name is shared across multiple registered agents.
+	// Tool constructors can use this to preserve agent-specific behavior when the same tool name is shared across multiple registered agents.
 	AgentName string
 
 	// SandboxDir is the sandbox root used to resolve relative paths provided by the LLM into absolute paths. The authorizer implements the actual access constraints
@@ -48,7 +51,7 @@ type Options struct {
 	// LintSteps are the linting steps that can be used by tools that need to check/fix formatting or other repo conventions.
 	LintSteps []lints.Step
 
-	// AgentInvoker allows a tool to invoke other agents.
+	// AgentInvoker allows a tool to create or invoke other agents.
 	AgentInvoker AgentInvoker
 }
 
@@ -58,7 +61,7 @@ type Toolset func(opts Options) ([]llmstream.Tool, error)
 // Tool returns a single tool configured by opts.
 type Tool func(opts Options) (llmstream.Tool, error)
 
-// InvokeRequest is the data needed to invoke an agent.
+// InvokeRequest is the data needed to create or invoke an agent.
 type InvokeRequest struct {
 	// ToolOptions supplies information needed to construct tools, such as GoPkgAbsDir, Authorizer, SandboxDir, Model.
 	//

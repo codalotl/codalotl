@@ -310,7 +310,17 @@ type fakeAgentInvoker struct {
 	err              error
 	invokedAgentName string
 	req              toolsetinterface.InvokeRequest
+	createFn         func(context.Context, string, toolsetinterface.InvokeRequest) (*agent.Agent, error)
 	invokeFn         func(context.Context, string, toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
+}
+
+func (f *fakeAgentInvoker) Create(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
+	f.invokedAgentName = agentName
+	f.req = req
+	if f.createFn != nil {
+		return f.createFn(ctx, agentName, req)
+	}
+	return nil, errors.New("not implemented")
 }
 
 func (f *fakeAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {

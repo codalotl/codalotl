@@ -127,6 +127,25 @@ func TestParsePackageCheckResultMarksNoDiffIssuesLatent(t *testing.T) {
 	assert.True(t, result.Nonconformances[0].Latent)
 }
 
+func TestParseFinalPackageCheckResultRequiresAnalysis(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseFinalPackageCheckResult(`{"conforms":false,"nonconformances":[{"severity":"minor","latent":false,"message":"mismatch"}]}`, true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "without analysis")
+}
+
+func TestParsePackageAnalysisResultRejectsVerdictChanges(t *testing.T) {
+	t.Parallel()
+
+	verdict, err := parsePackageCheckResult(`{"conforms":false,"nonconformances":[{"severity":"minor","latent":false,"message":"mismatch"}]}`, true)
+	require.NoError(t, err)
+
+	_, err = parsePackageAnalysisResult(`{"conforms":false,"nonconformances":[{"severity":"major","latent":false,"message":"mismatch","analysis":"Fix code."}]}`, verdict)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "changed severity")
+}
+
 func TestParsePackageCheckResultRejectsInvalidResultShapes(t *testing.T) {
 	t.Parallel()
 
@@ -197,8 +216,8 @@ func TestPresentCheckSpecConformanceBodyUsesCompactCompletion(t *testing.T) {
 		"internal/bar": {
 			"conforms": false,
 			"nonconformances": [
-				{"severity": "major", "latent": false, "message": "missing Foo docs"},
-				{"severity": "minor", "latent": true, "message": "Bar usage example is stale"}
+				{"severity": "major", "latent": false, "message": "missing Foo docs", "analysis": "Fix code; the API docs are missing."},
+				{"severity": "minor", "latent": true, "message": "Bar usage example is stale", "analysis": "Update SPEC.md; this is stale only in docs."}
 			]
 		},
 		"internal/baz": {
@@ -218,6 +237,8 @@ func TestPresentCheckSpecConformanceBodyUsesCompactCompletion(t *testing.T) {
 	assert.NotContains(t, rendered, "internal/bar:")
 	assert.NotContains(t, rendered, "missing Foo docs")
 	assert.NotContains(t, rendered, "Bar usage example is stale")
+	assert.NotContains(t, rendered, "Fix code")
+	assert.NotContains(t, rendered, "Update SPEC.md")
 	assert.NotContains(t, rendered, "Errors:")
 	assert.NotContains(t, rendered, "Post-check errors:")
 }
@@ -236,7 +257,7 @@ func TestFormatCheckSpecConformanceCompactCompletion(t *testing.T) {
 			"internal/bar": {
 				"conforms": false,
 				"nonconformances": [
-					{"severity": "major", "latent": false, "message": "missing Foo docs"}
+					{"severity": "major", "latent": false, "message": "missing Foo docs", "analysis": "Fix code; the API docs are missing."}
 				]
 			},
 			"internal/baz": {
@@ -250,6 +271,7 @@ func TestFormatCheckSpecConformanceCompactCompletion(t *testing.T) {
 		assert.NotContains(t, rendered, "Non-conforming:")
 		assert.NotContains(t, rendered, "internal/bar:")
 		assert.NotContains(t, rendered, "missing Foo docs")
+		assert.NotContains(t, rendered, "Fix code")
 		assert.NotContains(t, rendered, "Errors:")
 	})
 
@@ -272,7 +294,7 @@ func TestParseAndSummarizeCheckSpecConformanceResults(t *testing.T) {
 		"internal/bar": {
 			"conforms": false,
 			"nonconformances": [
-				{"severity": "major", "latent": false, "message": "missing Foo docs"}
+				{"severity": "major", "latent": false, "message": "missing Foo docs", "analysis": "Fix code; the API docs are missing."}
 			]
 		},
 		"internal/baz": {
@@ -330,9 +352,9 @@ func TestRunPackageCheckWithSubagentLabelsSubagentWithPackageKey(t *testing.T) {
 	require.NoError(t, err)
 
 	creator := &recordingSubAgentCreator{}
-	expectedErr := errors.New("stop after invoke")
+	expectedErr := errors.New("stop after create")
 	invoker := funcAgentInvoker{
-		invoke: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+		create: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
 			assert.Equal(t, checkSpecConformanceAgentName, agentName)
 
 			_, err := req.AgentCreator.New("system", nil, agent.NewOptions{SubagentLabel: "wrong"})
@@ -369,12 +391,12 @@ func TestRunPackageCheckWithSubagentKeepsConcurrentLabelsPerRequest(t *testing.T
 	require.NoError(t, err)
 
 	creator := &recordingSubAgentCreator{}
-	expectedErr := errors.New("stop after invoke")
+	expectedErr := errors.New("stop after create")
 	var invokerMu sync.Mutex
 	invokerCalls := 0
 	release := make(chan struct{})
 	invoker := funcAgentInvoker{
-		invoke: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+		create: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
 			invokerMu.Lock()
 			invokerCalls++
 			if invokerCalls == 2 {
@@ -423,6 +445,64 @@ func TestRunPackageCheckWithSubagentKeepsConcurrentLabelsPerRequest(t *testing.T
 		require.ErrorIs(t, err, expectedErr)
 	}
 	assert.ElementsMatch(t, []string{"internal/foo", "internal/bar"}, creator.labels())
+}
+
+func TestRunPackageCheckWithSubagentAddsAnalysisInSecondTurn(t *testing.T) {
+	t.Parallel()
+
+	moduleDir := setupModuleRepo(t)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+
+	creator := &recordingSubAgentCreator{}
+	invoker := funcAgentInvoker{
+		create: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
+			assert.Equal(t, checkSpecConformanceAgentName, agentName)
+			assert.Empty(t, req.Messages)
+
+			_, err := req.AgentCreator.New("system", nil)
+			require.NoError(t, err)
+			return nil, nil
+		},
+	}
+
+	var messages []string
+	tool := &toolCheckSpecConformance{
+		sandboxAbsDir: moduleDir,
+		agentInvoker:  invoker,
+		subAgentCreatorFromContext: func(context.Context) (agent.SubAgentCreator, error) {
+			return creator, nil
+		},
+		runAgentTurn: func(ctx context.Context, subagent *agent.Agent, message string) (string, error) {
+			messages = append(messages, message)
+			switch len(messages) {
+			case 1:
+				return `{"conforms":false,"nonconformances":[{"severity":"minor","latent":false,"message":"mismatch"}]}`, nil
+			case 2:
+				assert.Contains(t, message, "First-turn verdict JSON")
+				assert.Contains(t, message, `"message": "mismatch"`)
+				return `{"conforms":false,"nonconformances":[{"severity":"minor","latent":false,"message":"mismatch","analysis":"Fix code; the mismatch affects users."}]}`, nil
+			default:
+				return "", errors.New("unexpected extra turn")
+			}
+		},
+	}
+
+	answer, err := tool.runPackageCheckWithSubagent(context.Background(), packageCheckRequest{
+		Key:     "internal/foo",
+		Package: fooPkg,
+		HasDiff: true,
+	})
+	require.NoError(t, err)
+
+	result, err := parseFinalPackageCheckResult(answer, true)
+	require.NoError(t, err)
+	require.Len(t, result.Nonconformances, 1)
+	assert.Equal(t, "Fix code; the mismatch affects users.", result.Nonconformances[0].Analysis)
+	assert.Len(t, messages, 2)
+	assert.Equal(t, []string{"internal/foo"}, creator.labels())
 }
 
 func TestDefaultGoCodeUnitIncludesReachableTestdataAndExcludesNestedPackagesAndHiddenDirs(t *testing.T) {
@@ -605,7 +685,7 @@ func TestRunWithPackagesClearsStaleCASConformanceForNonconformingPackage(t *test
 	require.NoError(t, tool.storeConformanceState(fooPkg))
 
 	tool.runPackageCheck = func(ctx context.Context, req packageCheckRequest) (string, error) {
-		return `{"conforms":false,"nonconformances":[{"severity":"major","latent":false,"message":"missing docs"}]}`, nil
+		return `{"conforms":false,"nonconformances":[{"severity":"major","latent":false,"message":"missing docs","analysis":"Fix code; docs are required."}]}`, nil
 	}
 
 	result := tool.Run(context.Background(), llmstream.ToolCall{
@@ -1241,6 +1321,14 @@ func (c *recordingSubAgentCreator) labels() []string {
 
 type funcAgentInvoker struct {
 	invoke func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
+	create func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error)
+}
+
+func (f funcAgentInvoker) Create(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
+	if f.create != nil {
+		return f.create(ctx, agentName, req)
+	}
+	panic("unexpected call to funcAgentInvoker.Create")
 }
 
 func (f funcAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
