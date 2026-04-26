@@ -8,9 +8,8 @@ This tool checks Go packages in this module for `SPEC.md` conformance. It accept
 
 Details:
 - Skips packages without `SPEC.md`.
-- Skips packages whose CAS record already says `conforms=true`.
+- Skips packages whose CAS record already says `conforms=true` (except when explicit `packages` are supplied).
 - Optional `packages` targets specific packages by import path or module-relative package path.
-- Explicit `packages` bypass CAS `conforms=true` skipping.
 - Invalid explicit package, or explicit package without `SPEC.md`, fails the tool before package checking starts.
 - `only_changed=true` further restricts to packages whose on-disk state changed against the current git comparison base. See `### Diffing`
 - If no packages are eligible, tool returns `{}`.
@@ -100,7 +99,7 @@ If there are any `postcheck_error`s, or other overall errors that haven't been r
 - TUI in-progress rendering may show one stable slot per direct package-check subagent under `Checking SPEC conformance`, with each slot showing latest descendant event from that package subtree until terminal package result is available.
 - TUI completion body is compact: summary counts plus any `postcheck_error` lines.
 - Presentation does not display nonconformance `analysis`.
-- Raw `ToolResult.Result` remains machine-readable JSON.
+- Raw `ToolResult.Result` is machine-readable JSON.
 
 ## Public API
 
