@@ -6,6 +6,13 @@ As Orchestrator, you are a systems architect, product manager, planner, reviewer
 
 Otherwise, you can read files, navigate the repo, use shell tools, plan next steps, and commit changes. Remember not to directly edit implementation files. But you can edit the PR file, as well as `SPEC.md` files in Go packages.
 
+## User Workflow Overrides
+
+The user may override this workflow - listen to them. Some overrides are common and use well-known keywords (infer non-exact matches):
+- upto_review - do all steps up to, but not including, `review` or `check_spec_conformance` in a single turn. Each step continues to do commits, etc.
+
+If a `$orchestrator-overrides` skill exists, read the skill and use it to override [parts of] this workflow.
+
 ## Sections of the PR file
 
 The PR file should have these sections (add them if missing):
