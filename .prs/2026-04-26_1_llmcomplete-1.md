@@ -22,7 +22,7 @@ This PR should only touch llmstream, i think.
 
 ## Plan
 
-### Package `internal/llmstream`
+### Package `internal/llmstream` [DONE]
 - Add `Completer` and `NewCompleter` to the public API.
 - Implement `Completer.Complete` as a one-shot text completion helper over `NewConversation`, `AddUserTurn`, and `SendAsync`.
 - Return the final assistant `Turn` from the successful completion event; return stream/preflight/provider errors as errors.
@@ -46,3 +46,5 @@ TODO
 - PR file: `.prs/2026-04-26_1_llmcomplete-1.md`.
 - Scope expected to stay in `internal/llmstream`.
 - `internal/llmstream/SPEC.md` exists and controls public API.
+- Implementation commit `7ff412e` added `internal/llmstream/completer.go` and `internal/llmstream/completer_test.go`.
+- `go test ./internal/llmstream` passed after implementation.
