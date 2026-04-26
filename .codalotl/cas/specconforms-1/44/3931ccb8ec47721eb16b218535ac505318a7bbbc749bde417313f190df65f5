@@ -1,0 +1,1 @@
+{"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{"unix_timestamp":1777168850,"paths":["internal/agentregistry/SPEC.md","internal/agentregistry/registry.go","internal/agentregistry/registry_test.go"],"git_clean":false,"git_commit":"5ac0f2a5f0f6f0e43418a47e3e82d5ac091ede76","git_merge_base":""}}

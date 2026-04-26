@@ -91,7 +91,14 @@ In order to do this, I believe we'll need to add `Create` to the interface `Agen
 
 ## Review
 
-Not run yet after implementation.
+### SPEC conformance: 2026-04-25 [DONE]
+
+`check_spec_conformance({"only_changed":true})` passed.
+
+- `internal/agentbuilder`: conforms
+- `internal/agentregistry`: conforms
+- `internal/tools/pkgtools`: conforms
+- `internal/tools/spectools`: conforms
 
 ## Summary
 
@@ -116,3 +123,6 @@ TBD
   - `go test ./internal/tools/spectools`
   - `go test ./internal/tools/toolsetinterface ./internal/tools/pkgtools ./internal/agentbuilder ./internal/agentregistry`
   - `go test ./...`
+- SPEC conformance run:
+  - `check_spec_conformance({"only_changed":true})`
+  - Passed for `internal/agentbuilder`, `internal/agentregistry`, `internal/tools/pkgtools`, `internal/tools/spectools`.
