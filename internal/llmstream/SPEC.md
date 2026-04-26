@@ -1,6 +1,6 @@
 # llmstream
 
-llmstream is an abstraction over LLM providers, offering a unified interface. Streaming only.
+llmstream is an abstraction over LLM providers, offering a unified interface. Provider calls are streaming-based.
 
 ## Providers
 
@@ -61,6 +61,15 @@ func AddDiagnosticHook(recv DiagnosticHookReceiver) (unregister func())
 ## Public API
 
 ```go
+// Completer provides one-shot completions.
+type Completer interface {
+	// Complete sends systemMessage and userMessage to modelID, returning the final assistant turn.
+	Complete(ctx context.Context, modelID llmmodel.ModelID, systemMessage, userMessage string, options ...SendOptions) (Turn, error)
+}
+
+// NewCompleter returns a Completer.
+func NewCompleter() Completer
+
 type StreamingConversation interface {
 	LastTurn() Turn
 	Turns() []Turn
