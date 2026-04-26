@@ -4,7 +4,7 @@ Tools for `SPEC.md` workflows.
 
 ## check_spec_conformance
 
-This tool checks Go packages in this module for `SPEC.md` conformance. It accepts `only_changed` and optional `packages`. It returns JSON that indicates which checked packages conform and which do not. It has the side-effect of automatically doing CAS writes for any conforming package.
+This tool checks Go packages in this module for `SPEC.md` conformance. It accepts `only_changed` and optional `packages`. It returns JSON that indicates which checked packages conform and which do not. Nonconformances include hidden analysis for orchestrator fix-vs-spec-update decisions. It has the side-effect of automatically doing CAS writes for any conforming package.
 
 Details:
 - Skips packages without `SPEC.md`.
@@ -18,6 +18,7 @@ Details:
 - Labels each package-check subagent with the module-relative package dir.
 - Supplies package diff and programmatic `spec diff` context to each subagent.
 - Subagent instructions are read-only in intent and use the `$spec-md` check-conformance workflow (strict read-only guardrails unnecessary).
+- Package-check subagents first identify conformance/nonconformances, then analyze reported issues in a follow-up turn only when nonconforming.
 - Package scope is the default Go code unit rooted at the package dir.
     - This same scope is used for the subagent authorizer, changed-path attribution, and conforming-package CAS reuse / invalidation.
 - Tool result is raw JSON keyed by module-relative package dir. Only checked packages appear.
@@ -42,8 +43,8 @@ Example:
     "internal/bar": {
         "conforms": false,
         "nonconformances": [
-            {"severity": "trivial", "latent": true, "message": "The spec demands X, but instead we have Y"},
-            {"severity": "major", "latent": false, "message": "explanation"}
+            {"severity": "trivial", "latent": true, "message": "The spec demands X, but instead we have Y", "analysis": "This is a real nonconformance, but low-value to fix..."},
+            {"severity": "major", "latent": false, "message": "explanation", "analysis": "Fixing code is medium-sized and worthwhile..."}
         ]
     },
     "internal/baz": {
@@ -64,6 +65,7 @@ Notes:
 - `severity`: `trivial`, `minor`, or `major`
 - `latent`: `true` when issue predates comparison base; `false` when current diff introduced it
 - `message`: human-readable explanation
+- `analysis`: human-readable follow-up analysis for orchestrator decision-making
 - `error`: only if package checking for that package fails before producing a valid verdict. Value is a string error message.
 - `postcheck_error`: only if per-package work after a valid verdict fails. Value is a string error message.
 
@@ -97,6 +99,7 @@ If there are any `postcheck_error`s, or other overall errors that haven't been r
 - `SubagentFinalMessage` formats direct package-check final JSON into human-readable package-slot output. It never prints raw JSON.
 - TUI in-progress rendering may show one stable slot per direct package-check subagent under `Checking SPEC conformance`, with each slot showing latest descendant event from that package subtree until terminal package result is available.
 - TUI completion body is compact: summary counts plus any `postcheck_error` lines.
+- Presentation does not display nonconformance `analysis`.
 - Raw `ToolResult.Result` remains machine-readable JSON.
 
 ## Public API

@@ -1,6 +1,6 @@
 # PR
 
-## User Summary
+## User Summary (do not modify)
 
 Checking spec conformance is a key piece of the codalotl workflow. codalotl uses package-level SPEC.md files as the contract for what the code is supposed to do, then asks an AI reviewer to compare the implementation against that contract. The result is a list of possible nonconformances, categorized by severity and by whether the issue appears to be new or latent.
 
@@ -54,3 +54,55 @@ From a user perspective:
 - The analysis is hidden. The overall tool presenter does not write the analysis.
 
 In order to do this, I believe we'll need to add `Create` to the interface `AgentInvoker`.
+
+## Plan
+
+### Phase 0: Design two-turn conformance analysis
+
+#### Package internal/tools/spectools
+- Update `check_spec_conformance` contract so nonconformance results include hidden `analysis` details for orchestrator decision-making.
+- Preserve first-turn conformance detection as the source of truth; only after nonconformances are identified should the checker ask a follow-up turn for analysis.
+- Keep presenter output compact and omit analysis from user-facing tool presentation.
+- Spec changes live in `internal/tools/spectools/SPEC.md`.
+
+#### Package internal/tools/toolsetinterface
+- Add `Create(ctx, agentName, req)` to `AgentInvoker` so tools can create an idle agent and conduct multi-turn subagent workflows.
+- Keep `Invoke` as the convenience one-shot API.
+- No `SPEC.md` exists for this package; rely on `agentregistry` public API/spec plus implementation tests.
+
+#### Package internal/agentregistry
+- Registry already exposes `Create`; make it satisfy the expanded `AgentInvoker` interface.
+- Update tests if needed after the interface change.
+
+### Phase 1: Implement two-turn analysis
+
+#### Package internal/tools/spectools
+- Use `AgentInvoker.Create` in `check_spec_conformance` to run package checks as:
+  1. Send initial check-conformance instructions and parse strict verdict JSON.
+  2. If `conforms=false`, send follow-up instructions that include the first verdict and request analysis for each issue.
+  3. Return final raw JSON with `analysis` on each nonconformance.
+- Validate and parse the expanded result shape.
+- Keep CAS writes keyed only to final conformance verdict.
+- Add/update focused tests around result parsing, presenter hiding, and two-turn invocation.
+
+#### Package internal/tools/toolsetinterface and downstream fakes
+- Expand `AgentInvoker` and update fake/test implementations across packages.
+- If compile breakages appear in downstream packages, update callsites in the same implementation step.
+
+## Review
+
+Not run yet.
+
+## Summary
+
+TBD
+
+## State
+
+- Active PR file: `.prs/2026-04-25_2_csp-analysis.md`
+- Branch: `jn/csc-analysis`
+- Workspace was clean at start of orchestration.
+- Relevant packages:
+  - `internal/tools/spectools`: `check_spec_conformance` implementation and SPEC.
+  - `internal/tools/toolsetinterface`: `AgentInvoker` interface and `InvokeRequest`.
+  - `internal/agentregistry`: already has `Registry.Create` and `Registry.Invoke`; `Registry` is assigned into `ToolOptions.AgentInvoker`.

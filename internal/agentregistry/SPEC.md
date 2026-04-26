@@ -38,7 +38,7 @@ Session-style callers should be able to resolve the same definition/auth/tool/pr
 - add their own user turns or call `QueueUserMessage`
 - let registry-provided initial turns/context exist before first real user message
 
-`Invoke` remains convenience API for immediate execution. It may preserve legacy behavior that is specific to invocation flow.
+`Invoke` remains convenience API for immediate execution. It may preserve legacy behavior that is specific to invocation flow. Tools needing multi-turn subagent workflows can create idle agents through the invoker abstraction and send turns themselves.
 
 Because of this, the `toolsetinterface` package contains `AgentInvoker` and `InvokeRequest` - types that conceptually belong here.
 - TODO: should we merge toolsetinterface into this package?
