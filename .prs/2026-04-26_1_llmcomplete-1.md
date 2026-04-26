@@ -30,7 +30,12 @@ This PR should only touch llmstream, i think.
 
 ## Review
 
-Not started.
+Code review not run; user requested conformance only.
+
+### SPEC conformance [DONE]
+
+- `check_spec_conformance({"only_changed":true})` passed.
+- Conforming changed packages reported: `internal/agentbuilder`, `internal/llmstream`.
 
 ## Summary
 
@@ -48,3 +53,4 @@ TODO
 - `internal/llmstream/SPEC.md` exists and controls public API.
 - Implementation commit `7ff412e` added `internal/llmstream/completer.go` and `internal/llmstream/completer_test.go`.
 - `go test ./internal/llmstream` passed after implementation.
+- SPEC conformance passed for changed packages; CAS entries added under `.codalotl/cas/specconforms-1/`.
