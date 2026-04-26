@@ -709,6 +709,68 @@ func TestRunWithPackagesClearsStaleCASConformanceForNonconformingPackage(t *test
 	assert.False(t, conforms)
 }
 
+func TestRunWithPackagesClearsStaleCASWhenAnalysisFailsAfterNonconformingVerdict(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+
+	creator := &recordingSubAgentCreator{}
+	tool := NewCheckSpecConformanceTool(allowAllAuthorizer{sandboxDir: moduleDir}, CheckSpecConformanceToolOptions{
+		AgentInvoker: funcAgentInvoker{
+			create: func(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
+				assert.Equal(t, checkSpecConformanceAgentName, agentName)
+				_, err := req.AgentCreator.New("system", nil)
+				require.NoError(t, err)
+				return nil, nil
+			},
+		},
+	}).(*toolCheckSpecConformance)
+	tool.subAgentCreatorFromContext = func(context.Context) (agent.SubAgentCreator, error) {
+		return creator, nil
+	}
+
+	turns := 0
+	tool.runAgentTurn = func(ctx context.Context, subagent *agent.Agent, message string) (string, error) {
+		turns++
+		switch turns {
+		case 1:
+			return `{"conforms":false,"nonconformances":[{"severity":"major","latent":false,"message":"missing docs"}]}`, nil
+		case 2:
+			return `not json`, nil
+		default:
+			return "", errors.New("unexpected extra turn")
+		}
+	}
+
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+
+	result := tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-explicit-clear-stale-cas-analysis-failure",
+		Name:   ToolNameCheckSpecConformance,
+		Type:   "function_call",
+		Input:  `{"only_changed":false,"packages":["internal/foo"]}`,
+	})
+	require.False(t, result.IsError)
+
+	var parsed map[string]packageCheckResult
+	require.NoError(t, json.Unmarshal([]byte(result.Result), &parsed))
+	require.Len(t, parsed, 1)
+	require.Contains(t, parsed, "internal/foo")
+	require.NotNil(t, parsed["internal/foo"].Conforms)
+	assert.False(t, *parsed["internal/foo"].Conforms)
+	require.Len(t, parsed["internal/foo"].Nonconformances, 1)
+	assert.Equal(t, "Analysis unavailable: subagent returned non-JSON analysis result", parsed["internal/foo"].Nonconformances[0].Analysis)
+	assert.Contains(t, parsed["internal/foo"].PostcheckError, "analyze nonconformances: subagent returned non-JSON analysis result")
+	assert.Equal(t, 2, turns)
+
+	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.False(t, conforms)
+}
+
 func TestRunWithPackagesSupportsImportPathsRelativePathsAndDedupes(t *testing.T) {
 	moduleDir := setupModuleRepo(t)
 

@@ -498,11 +498,11 @@ func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDi
 	if result.Conforms != nil {
 		if *result.Conforms {
 			if err := t.storeConformanceState(pkg.Package); err != nil {
-				result.PostcheckError = fmt.Sprintf("store CAS conformance: %s", err)
+				result.PostcheckError = appendPackagePostcheckError(result.PostcheckError, fmt.Sprintf("store CAS conformance: %s", err))
 			}
 		} else {
 			if err := t.deleteConformanceState(pkg.Package); err != nil {
-				result.PostcheckError = fmt.Sprintf("delete CAS conformance: %s", err)
+				result.PostcheckError = appendPackagePostcheckError(result.PostcheckError, fmt.Sprintf("delete CAS conformance: %s", err))
 			}
 		}
 	}
@@ -577,18 +577,29 @@ func (t *toolCheckSpecConformance) runPackageCheckWithSubagent(ctx context.Conte
 
 	analysisAnswer, err := runAgentTurn(ctx, subagent, buildPackageAnalysisInstructions(req, verdict))
 	if err != nil {
-		return "", err
+		return marshalPackageCheckResultWithAnalysisFailure(verdict, err)
 	}
 
 	analysisResult, err := parsePackageAnalysisResult(analysisAnswer, verdict)
 	if err != nil {
-		return "", err
+		return marshalPackageCheckResultWithAnalysisFailure(verdict, err)
 	}
 	finalResult, err := mergePackageCheckAnalysis(verdict, analysisResult)
 	if err != nil {
-		return "", err
+		return marshalPackageCheckResultWithAnalysisFailure(verdict, err)
 	}
 	return marshalPackageCheckResult(finalResult)
+}
+
+func marshalPackageCheckResultWithAnalysisFailure(verdict packageCheckResult, failure error) (string, error) {
+	result := verdict
+	result.Nonconformances = append([]packageIssue(nil), verdict.Nonconformances...)
+	analysis := fmt.Sprintf("Analysis unavailable: %s", failure)
+	for i := range result.Nonconformances {
+		result.Nonconformances[i].Analysis = analysis
+	}
+	result.PostcheckError = appendPackagePostcheckError(result.PostcheckError, fmt.Sprintf("analyze nonconformances: %s", failure))
+	return marshalPackageCheckResult(result)
 }
 
 func runPackageCheckAgentTurn(ctx context.Context, subagent *agent.Agent, message string) (string, error) {
@@ -1251,7 +1262,7 @@ func parseFinalPackageCheckResult(answer string, hasDiff bool) (packageCheckResu
 	return validatePackageCheckResult(result, packageResultValidationOptions{
 		hasDiff:             &hasDiff,
 		allowError:          false,
-		allowPostcheckError: false,
+		allowPostcheckError: true,
 		requireAnalysis:     true,
 	})
 }
@@ -1480,6 +1491,16 @@ func formatPackageCheckResultBlock(result packageCheckResult) llmstream.Block {
 
 func packageErrorResult(err error) packageCheckResult {
 	return packageCheckResult{Error: err.Error()}
+}
+
+func appendPackagePostcheckError(existing string, next string) string {
+	if existing == "" {
+		return next
+	}
+	if next == "" {
+		return existing
+	}
+	return existing + "; " + next
 }
 
 func marshalPackageCheckResult(result packageCheckResult) (string, error) {
