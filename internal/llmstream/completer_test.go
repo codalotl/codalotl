@@ -60,7 +60,7 @@ func TestCompleterComplete_ReturnsAddUserTurnError(t *testing.T) {
 	assert.False(t, conv.sendCalled)
 }
 
-func TestCompleterComplete_PreservesFirstStreamError(t *testing.T) {
+func TestCompleterComplete_ReturnsTerminalStreamError(t *testing.T) {
 	t.Parallel()
 
 	retryErr := errors.New("temporary stream failure")
@@ -68,6 +68,23 @@ func TestCompleterComplete_PreservesFirstStreamError(t *testing.T) {
 	events := make(chan Event, 2)
 	events <- Event{Type: EventTypeRetry, Error: retryErr}
 	events <- Event{Type: EventTypeError, Error: finalErr}
+	close(events)
+
+	completer := completer{newConversation: func(llmmodel.ModelID, string) StreamingConversation {
+		return &fakeCompleterConversation{events: events}
+	}}
+
+	_, err := completer.Complete(context.Background(), llmmodel.ModelID("test-model"), "system", "user")
+
+	require.ErrorIs(t, err, finalErr)
+}
+
+func TestCompleterComplete_ReturnsRetryErrorWhenStreamClosesWithoutTerminalError(t *testing.T) {
+	t.Parallel()
+
+	retryErr := errors.New("temporary stream failure")
+	events := make(chan Event, 1)
+	events <- Event{Type: EventTypeRetry, Error: retryErr}
 	close(events)
 
 	completer := completer{newConversation: func(llmmodel.ModelID, string) StreamingConversation {

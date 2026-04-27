@@ -33,18 +33,15 @@ func (c completer) Complete(ctx context.Context, modelID llmmodel.ModelID, syste
 		return Turn{}, err
 	}
 
-	var firstErr error
+	var retryErr error
 	for events := conv.SendAsync(ctx, options...); ; {
 		select {
 		case <-ctx.Done():
-			if firstErr != nil {
-				return Turn{}, firstErr
-			}
 			return Turn{}, ctx.Err()
 		case ev, ok := <-events:
 			if !ok {
-				if firstErr != nil {
-					return Turn{}, firstErr
+				if retryErr != nil {
+					return Turn{}, retryErr
 				}
 				if err := ctx.Err(); err != nil {
 					return Turn{}, err
@@ -52,17 +49,20 @@ func (c completer) Complete(ctx context.Context, modelID llmmodel.ModelID, syste
 				return Turn{}, errors.New("llmstream completion stream closed without successful completion")
 			}
 
-			if ev.Error != nil && firstErr == nil {
-				firstErr = ev.Error
+			if ev.Type == EventTypeError {
+				if ev.Error == nil {
+					return Turn{}, errors.New("llmstream completion stream emitted an error event without an error")
+				}
+				return Turn{}, ev.Error
+			}
+			if ev.Type == EventTypeRetry && ev.Error != nil {
+				retryErr = ev.Error
 			}
 			if ev.Type != EventTypeCompletedSuccess {
 				continue
 			}
 			if ev.Turn == nil {
-				if firstErr == nil {
-					firstErr = errors.New("llmstream completion completed without a turn")
-				}
-				continue
+				return Turn{}, errors.New("llmstream completion completed without a turn")
 			}
 			return *ev.Turn, nil
 		}
