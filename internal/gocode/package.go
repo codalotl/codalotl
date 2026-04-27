@@ -431,7 +431,7 @@ func (p *Package) WriteDocumentationTo(w io.Writer) (int64, error) {
 			}
 
 			// Write the type
-			ps, err := s.PublicSnippet()
+			ps, err := s.PublicSnippet(false)
 			if err != nil {
 				return totalBytes, err
 			}
@@ -458,7 +458,7 @@ func (p *Package) WriteDocumentationTo(w io.Writer) (int64, error) {
 							continue
 						}
 
-						ps, err := methodSnippet.PublicSnippet()
+						ps, err := methodSnippet.PublicSnippet(false)
 						if err != nil {
 							return totalBytes, err
 						}
@@ -496,7 +496,7 @@ func (p *Package) WriteDocumentationTo(w io.Writer) (int64, error) {
 				continue
 			}
 
-			ps, err := s.PublicSnippet()
+			ps, err := s.PublicSnippet(false)
 			if err != nil {
 				return totalBytes, err
 			}
@@ -531,7 +531,7 @@ func (p *Package) WriteDocumentationTo(w io.Writer) (int64, error) {
 				continue
 			}
 
-			ps, err := s.PublicSnippet()
+			ps, err := s.PublicSnippet(false)
 			if err != nil {
 				return totalBytes, err
 			}

@@ -22,9 +22,22 @@ type Snippet interface {
 	// Bytes returns the snippet's bytes, both exported and unexported. A function's snippet bytes are its docs + signature; for types/values, it's the full code.
 	Bytes() []byte
 
-	// PublicSnippet returns the snippet for public documentation (similar to godoc). Unexported fields or variables are elided. If nothing is public in the snippet,
-	// nil is returned.
-	PublicSnippet() ([]byte, error)
+	// PublicSnippet returns a public documentation view of the snippet. If nothing public is present, nil is returned.
+	//
+	// When preserveMixed is false, mixed exported/unexported declarations are filtered like godoc: unexported names are removed from mixed specs and fields.
+	//
+	// When preserveMixed is true, mixed specs/fields are kept intact when at least one exported name is present. Fully unexported specs/fields are still elided.
+	//
+	// Examples:
+	//
+	//	preserveMixed=false:
+	//	    var Public, private = 1, 2 -> var Public = 1
+	//	    Public, private int        -> Public int
+	//
+	//	preserveMixed=true:
+	//	    var Public, private = 1, 2 -> var Public, private = 1, 2
+	//	    Public, private int        -> Public, private int
+	PublicSnippet(preserveMixed bool) ([]byte, error)
 
 	// FullBytes returns all bytes (docs + signature + function bodies, including exported and unexported fields).
 	FullBytes() []byte

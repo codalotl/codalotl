@@ -68,7 +68,7 @@ func (t *TypeSnippet) FullBytes() []byte {
 }
 
 // Implemention of Snippet interface.
-func (t *TypeSnippet) PublicSnippet() ([]byte, error) {
+func (t *TypeSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
 	if !t.HasExported() {
 		return nil, nil
 	}
@@ -76,7 +76,7 @@ func (t *TypeSnippet) PublicSnippet() ([]byte, error) {
 	var buf bytes.Buffer
 	cfg := printer.Config{Mode: printer.TabIndent | printer.UseSpaces, Tabwidth: 8}
 
-	filtered := filterExportedTypes(t.decl)
+	filtered := filterExportedTypes(t.decl, preserveMixed)
 
 	if err := cfg.Fprint(&buf, t.fileSet, filtered); err != nil {
 		return nil, err

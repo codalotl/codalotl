@@ -51,7 +51,7 @@ func (p *PackageDocSnippet) FullBytes() []byte {
 }
 
 // Implemention of Snippet interface.
-func (p *PackageDocSnippet) PublicSnippet() ([]byte, error) {
+func (p *PackageDocSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
 	// Package documentation is always public
 	return p.Snippet, nil
 }

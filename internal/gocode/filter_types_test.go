@@ -59,7 +59,7 @@ func TestFilterTypesBasic(t *testing.T) {
 	`)
 
 	gd, fset := mustTypeDecl(t, src)
-	filtered := filterExportedTypes(gd)
+	filtered := filterExportedTypes(gd, false)
 	formatted := mustFormatTypeDecl(t, filtered, fset)
 
 	expected := dedent(`
@@ -84,7 +84,7 @@ func TestFilterTypesInterface(t *testing.T) {
 		}
 	`)
 	gd, fset := mustTypeDecl(t, src)
-	filtered := filterExportedTypes(gd)
+	filtered := filterExportedTypes(gd, false)
 	formatted := mustFormatTypeDecl(t, filtered, fset)
 
 	expected := dedent(`
@@ -102,7 +102,7 @@ func TestFilterTypesAlias(t *testing.T) {
 	src := `type ID = string`
 
 	gd, fset := mustTypeDecl(t, src)
-	filtered := filterExportedTypes(gd)
+	filtered := filterExportedTypes(gd, false)
 	formatted := mustFormatTypeDecl(t, filtered, fset)
 
 	assert.Equal(t, strings.TrimSpace(src), strings.TrimSpace(formatted))
