@@ -42,7 +42,7 @@ type AddDocsOptions struct {
 	DocumentTestFiles  bool     // Document helpers, types, and variables in test code. TestXxx/BenchXxx/etc. functions are not documented.
 	TokenBudget        int      // Maximum token budget for one LLM request (prompt + code context + instructions). Zero uses defaultTokenBudget.
 	ExcludeIdentifiers []string // ExcludeIdentifiers marks identifiers as already documented, skipping them during documentation.
-	BaseOptions                 // Shared configuration and dependencies (ex: model, conversationalist, logging) for LLM-backed operations.
+	BaseOptions                 // Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
 }
 
 // AddDocs adds documentation to undocumented identifiers in the package and returns the set of documentation changes (if DocumentTestFiles, it includes _test package

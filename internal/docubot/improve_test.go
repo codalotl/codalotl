@@ -28,14 +28,14 @@ func TestImproveDocs(t *testing.T) {
 	// First LLM call (generateAndApplyDocs) returns the new documentation
 	// snippet; second call (chooseBetterDocsForIdentifiers) votes for option A
 	// (the new docs) over option B (the original docs).
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + improvedSnippet,
 		`{"Foo":{"best":"A","reason":"Clearer"}}`,
 	}}
 
 	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
 		changes, err := ImproveDocs(pkg, []string{"Foo"}, ImproveDocsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv},
+			BaseOptions: BaseOptions{Completer: conv},
 		})
 		assert.NoError(t, err)
 
@@ -63,7 +63,7 @@ func TestImproveDocs(t *testing.T) {
 func TestChooseBetterDocsForIdentifiers(t *testing.T) {
 	// Prepare canned LLM JSON response. Foo prefers option A, Bar prefers option B.
 	mockResponse := `{"Foo":{"best":"A","reason":"Clearer description"},"Bar":{"best":"B","reason":"More concise"}}`
-	conv := &responsesConversationalist{responses: []string{mockResponse}}
+	conv := &responsesCompleter{responses: []string{mockResponse}}
 
 	// Define the two documentation options for each identifier.
 	fooA := "// Foo option A\nfunc Foo() {}"
@@ -80,7 +80,7 @@ func TestChooseBetterDocsForIdentifiers(t *testing.T) {
 	// needs ctx.Code(), which returns an empty string on a zero-value Context.
 	ctx := &gocodecontext.Context{}
 
-	updated, err := chooseBetterDocsForIdentifiers(ctx, choices, ImproveDocsOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+	updated, err := chooseBetterDocsForIdentifiers(ctx, choices, ImproveDocsOptions{BaseOptions: BaseOptions{Completer: conv}})
 	assert.NoError(t, err)
 
 	// Verify that the best field for each identifier was populated as expected.

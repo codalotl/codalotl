@@ -21,7 +21,7 @@ func TestGenerateAndApplyDocs_Basic(t *testing.T) {
         func Foo()
     `)
 
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + docSnippet,
 	}}
 
@@ -29,7 +29,7 @@ func TestGenerateAndApplyDocs_Basic(t *testing.T) {
 		// A minimal, empty code context is sufficient for the happy-path test.
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Foo"}, false, BaseOptions{Conversationalist: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Foo"}, false, BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")
@@ -67,7 +67,7 @@ func TestGenerateAndApplyDocs_RedocumentFalse(t *testing.T) {
     	`),
 	}
 
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + strings.Join(docSnippets, "\n\n"),
 	}}
 
@@ -75,7 +75,7 @@ func TestGenerateAndApplyDocs_RedocumentFalse(t *testing.T) {
 		// A minimal, empty code context is sufficient for the happy-path test.
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, false, BaseOptions{Conversationalist: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, false, BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")
@@ -103,7 +103,7 @@ func TestGenerateAndApplyDocs_RedocumentTrue(t *testing.T) {
     	`),
 	}
 
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + strings.Join(docSnippets, "\n\n"),
 	}}
 
@@ -111,7 +111,7 @@ func TestGenerateAndApplyDocs_RedocumentTrue(t *testing.T) {
 		// A minimal, empty code context is sufficient for the happy-path test.
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, true, BaseOptions{Conversationalist: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, true, BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")
@@ -168,13 +168,13 @@ func TestGenerateAndApplyDocs_Fix(t *testing.T) {
 
 	secondResponse := "Here are the documentation snippets:\n\n" + goodFoo1Snippet
 
-	conv := &responsesConversationalist{responses: []string{firstResponse, secondResponse}}
+	conv := &responsesCompleter{responses: []string{firstResponse, secondResponse}}
 
 	gocodetesting.WithMultiCode(t, fileToCode, func(pkg *gocode.Package) {
 		codeCtx := gocodecontext.NewContext(nil)
 
 		identifiers := []string{"Foo1", "Bar1", "Foo2", "Bar2"}
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Conversationalist: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 
@@ -206,7 +206,7 @@ func TestGenerateAndApplyDocs_FixDoesntFix(t *testing.T) {
         type Foo1 int // Foo1 is a foo type.
     `)
 
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + badSnippet,
 		"Here are the documentation snippets:\n\n" + badSnippet,
 	}}
@@ -215,7 +215,7 @@ func TestGenerateAndApplyDocs_FixDoesntFix(t *testing.T) {
 		codeCtx := gocodecontext.NewContext(nil)
 
 		identifiers := []string{"Foo1"}
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Conversationalist: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Completer: conv})
 
 		assert.ErrorIs(t, err, errSomeSnippetsFailed)
 		assert.NotNil(t, updatedPkg)
@@ -261,13 +261,13 @@ func TestGenerateAndApplyDocs_FixDoesntFixAfterPartialSuccess(t *testing.T) {
 		badFoo3Snippet,
 	}, "\n\n")
 
-	conv := &responsesConversationalist{responses: []string{firstResponse, secondResponse}}
+	conv := &responsesCompleter{responses: []string{firstResponse, secondResponse}}
 
 	gocodetesting.WithCode(t, originalCode, func(pkg *gocode.Package) {
 		codeCtx := gocodecontext.NewContext(nil)
 
 		identifiers := []string{"Foo1", "Foo2", "Foo3"}
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Conversationalist: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Completer: conv})
 
 		assert.ErrorIs(t, err, errSomeSnippetsFailed)
 		require.NotNil(t, updatedPkg)
@@ -305,14 +305,14 @@ func TestGenerateAndApplyDocs_SendsFieldInstructions(t *testing.T) {
         }
     `)
 
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + docSnippet,
 	}}
 
 	gocodetesting.WithCode(t, originalCode, func(pkg *gocode.Package) {
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Person"}, false, BaseOptions{Conversationalist: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Person"}, false, BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")

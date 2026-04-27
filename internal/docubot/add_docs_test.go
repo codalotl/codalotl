@@ -81,7 +81,7 @@ func TestAddDocs(t *testing.T) {
 	}
 
 	// Create a mock conversationalist that will return the snippets.
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + strings.Join(snippets, "\n\n"),
 	}}
 
@@ -89,7 +89,7 @@ func TestAddDocs(t *testing.T) {
 	withCodeFixture(t, func(pkg *gocode.Package) {
 		// Ensure documentation is added.
 		changes, err := AddDocs(pkg, AddDocsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv},
+			BaseOptions: BaseOptions{Completer: conv},
 		})
 		assert.NoError(t, err)
 		updatedFiles := filenamesFromChanges(changes)
@@ -222,7 +222,7 @@ func TestAddDocs_DocumentTestFiles(t *testing.T) {
 		"Here are the documentation snippets:\n\n" + strings.Join(mainPkgTestSnippets, "\n\n"),
 	}
 
-	conv := &responsesConversationalist{responses: responses}
+	conv := &responsesCompleter{responses: responses}
 
 	// ---------------------------------------------------------------------
 	// Run the fixture including the test files and invoke AddDocs with
@@ -230,7 +230,7 @@ func TestAddDocs_DocumentTestFiles(t *testing.T) {
 	// ---------------------------------------------------------------------
 	withCodeFixture(t, func(pkg *gocode.Package) {
 		changes, err := AddDocs(pkg, AddDocsOptions{
-			BaseOptions:       BaseOptions{Conversationalist: conv},
+			BaseOptions:       BaseOptions{Completer: conv},
 			DocumentTestFiles: true,
 			// Ctx:               health.NewCtx(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))),
 		})
@@ -355,11 +355,11 @@ func TestAddDocs_Fix(t *testing.T) {
 	// Second response (fix attempt): only the corrected Temperature snippet.
 	secondResponse := "Here are the documentation snippets:\n\n" + goodTemperatureSnippet
 
-	conv := &responsesConversationalist{responses: []string{firstResponse, secondResponse}}
+	conv := &responsesCompleter{responses: []string{firstResponse, secondResponse}}
 
 	withCodeFixture(t, func(pkg *gocode.Package) {
 		changes, err := AddDocs(pkg, AddDocsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv},
+			BaseOptions: BaseOptions{Completer: conv},
 		})
 		assert.NoError(t, err)
 		// We expect at least temperature.go to have been updated.
@@ -451,7 +451,7 @@ func TestAddDocs_SendsContext(t *testing.T) {
 
 	// Provide the same canned response for multiple conversations to avoid
 	// running out of responses if AddDocs needs several iterations.
-	conv := &responsesConversationalist{responses: []string{responseText, responseText, responseText}}
+	conv := &responsesCompleter{responses: []string{responseText, responseText, responseText}}
 
 	withCodeFixture(t, func(pkg *gocode.Package) {
 		// ------------------------------------------------------------------
@@ -497,7 +497,7 @@ func UseDep(d otherpkg.DepType) otherpkg.DepType {
 		// Invoke AddDocs and capture the context sent to the LLM.
 		// ------------------------------------------------------------------
 		_, err = AddDocs(pkg, AddDocsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv},
+			BaseOptions: BaseOptions{Completer: conv},
 		})
 		assert.NoError(t, err)
 
@@ -565,11 +565,11 @@ func TestAddDocs_ExcludeIdentifiers(t *testing.T) {
                // Foo does something.
                func Foo()
        `)
-	conv := &responsesConversationalist{responses: []string{"Here are the documentation snippets:\n\n" + snippet}}
+	conv := &responsesCompleter{responses: []string{"Here are the documentation snippets:\n\n" + snippet}}
 
 	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
 		changes, err := AddDocs(pkg, AddDocsOptions{
-			BaseOptions:        BaseOptions{Conversationalist: conv},
+			BaseOptions:        BaseOptions{Completer: conv},
 			ExcludeIdentifiers: []string{"Bar", gocode.PackageIdentifier},
 		})
 		assert.NoError(t, err)
@@ -588,7 +588,7 @@ func TestAddDocs_SkipGeneratedFiles(t *testing.T) {
                // Foo does something.
                func Foo()
        `)
-	conv := &responsesConversationalist{responses: []string{"Here are the documentation snippets:\n\n" + snippetFoo}}
+	conv := &responsesCompleter{responses: []string{"Here are the documentation snippets:\n\n" + snippetFoo}}
 
 	tmpDir, err := os.MkdirTemp("", "doc-test-")
 	assert.NoError(t, err)
@@ -614,7 +614,7 @@ func TestAddDocs_SkipGeneratedFiles(t *testing.T) {
 	pkg, err := module.LoadPackageByRelativeDir("mypkg")
 	assert.NoError(t, err)
 
-	changes, err := AddDocs(pkg, AddDocsOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+	changes, err := AddDocs(pkg, AddDocsOptions{BaseOptions: BaseOptions{Completer: conv}})
 	assert.NoError(t, err)
 	files := filenamesFromChanges(changes)
 	assert.Contains(t, files, "code.go")

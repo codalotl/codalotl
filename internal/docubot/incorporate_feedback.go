@@ -4,7 +4,6 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
-	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 	"slices"
 	"strings"
@@ -50,12 +49,6 @@ func incorporateFeedback(pkg *gocode.Package, identifierFeedback []IdentifierFee
 	}
 	defer clonedForDiff.Module.DeleteClone()
 
-	// Get conversationalist to talk to LLM:
-	conv := options.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-
 	prompt := promptIncorperateFeedback()
 
 	//
@@ -72,17 +65,13 @@ func incorporateFeedback(pkg *gocode.Package, identifierFeedback []IdentifierFee
 
 		options.userMessagef("> Requesting docs for %d identifiers: %s (%s)", len(ids), strings.Join(ids, ", "), formatTokenCount(countTokens([]byte(llmUserMessage))))
 
-		conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(options.Model), prompt)
-		conversation.SetLogger(options.Logger)
-		conversation.AddUserMessage(llmUserMessage)
-
-		response, err := conversation.Send()
+		responseText, err := completeText(prompt, llmUserMessage, options.BaseOptions)
 		if err != nil {
 			options.userMessagef("< Got error: %v", err)
 			return nil, options.LogWrappedErr("failed to incorporate feedback with LLM", err)
 		}
 
-		snippets := extractSnippets(response.Text)
+		snippets := extractSnippets(responseText)
 
 		options.userMessagef("< Got %d snippets", len(snippets))
 

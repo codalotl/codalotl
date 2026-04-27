@@ -3,14 +3,13 @@ package docubot
 import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
-	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 	"strings"
 )
 
 // PolishOptions configures Polish().
 type PolishOptions struct {
-	BaseOptions // BaseOptions configures model selection, logging/health, and parallelism, and lets callers inject a Conversationalist.
+	BaseOptions // BaseOptions configures model selection, logging/health, and parallelism, and lets callers inject a Completer.
 }
 
 // Maximum number of unique snippets included in a single LLM request.
@@ -261,28 +260,18 @@ func polishSnippets(snippets []string, options PolishOptions) ([]string, error) 
 	}
 	context := b.String()
 
-	// Get conversationalist to talk to LLM:
-	conv := options.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-
 	prompt := promptPolish()
 
 	// Send snippets to provider. Retry maxAttempts times if snippet count mismatches:
 	const maxAttempts = 2
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(options.Model), prompt)
-		conversation.SetLogger(options.Logger)
-		conversation.AddUserMessage(context)
-
-		response, err := conversation.Send()
+		responseText, err := completeText(prompt, context, options.BaseOptions)
 		if err != nil {
 			return nil, options.LogWrappedErr("failed to polish documentation with LLM", err)
 		}
 
 		// Extract snippets and drop the rubber duckies, which are implementation details.
-		extracted := extractSnippets(response.Text)
+		extracted := extractSnippets(responseText)
 		filtered := make([]string, 0, len(extracted))
 		sentinelFailureGood := false
 		sentinelFailureBad := false
