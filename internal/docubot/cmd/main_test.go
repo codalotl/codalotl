@@ -19,6 +19,7 @@ func TestResolveAddDocsConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 0, cfg.reflowWidth)
 	assert.Empty(t, cfg.logFile)
 	assert.False(t, cfg.documentTestFiles)
+	assert.False(t, cfg.onlyPublicAPI)
 	assert.Nil(t, cfg.excludeIdentifiers)
 	assert.Equal(t, 0, cfg.tokenBudget)
 }
@@ -29,6 +30,7 @@ func TestResolveAddDocsConfig_Flags(t *testing.T) {
 		reflowWidth:        80,
 		logFile:            "flags.log",
 		documentTestFiles:  true,
+		onlyPublicAPI:      true,
 		excludeIdentifiers: "Foo, Bar,,Baz",
 		tokenBudget:        100,
 	})
@@ -37,6 +39,7 @@ func TestResolveAddDocsConfig_Flags(t *testing.T) {
 	assert.Equal(t, 80, cfg.reflowWidth)
 	assert.Equal(t, "flags.log", cfg.logFile)
 	assert.True(t, cfg.documentTestFiles)
+	assert.True(t, cfg.onlyPublicAPI)
 	assert.Equal(t, []string{"Foo", "Bar", "Baz"}, cfg.excludeIdentifiers)
 	assert.Equal(t, 100, cfg.tokenBudget)
 }

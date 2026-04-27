@@ -26,5 +26,6 @@ go run . doc path/to/pkg
 
 Additional options:
 - `--test-files` - indicates that we document test files as well
+- `--only-public-api` - only apply documentation for public/exported identifiers
 - `--exclude-identifiers` - comma-separated list of identifiers to avoid documenting
 - `--token-budget` - token limit to use

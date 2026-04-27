@@ -2,12 +2,13 @@ package docubot
 
 import (
 	"errors"
-	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gocodetesting"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -120,6 +121,390 @@ func TestAddDocs(t *testing.T) {
 			}
 		}
 		assert.True(t, packageDocFound, "package documentation was not found in any file")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_DocumentsFixturePublicOnly(t *testing.T) {
+	snippets := []string{
+		dedentWithBackticks(`
+			// Temperature represents a temperature value in degrees Celsius.
+			type Temperature int
+		`),
+
+		dedentWithBackticks(`
+			const (
+				// Freezing represents the freezing point of water (0°C).
+				Freezing Temperature = 0
+				// Boiling represents the boiling point of water (100°C).
+				Boiling  Temperature = 100
+			)
+		`),
+
+		dedentWithBackticks(`
+			// AboveFreezing reports whether the temperature is above freezing.
+			func (t Temperature) AboveFreezing() bool
+		`),
+
+		dedentWithBackticks(`
+			// above reports whether the temperature is above the threshold.
+			func (t Temperature) above(threshold Temperature) bool
+		`),
+
+		dedentWithBackticks(`
+			// Reading represents a temperature measurement.
+			type Reading struct {
+				// Value is the measured temperature.
+				Value     Temperature
+				// Timestamp is when the measurement was taken.
+				Timestamp time.Time
+				// location is where the measurement was taken.
+				location  string
+			}
+		`),
+
+		dedentWithBackticks(`
+			// DefaultLocation is the fallback location for new readings.
+			var DefaultLocation = "Unknown"
+		`),
+
+		dedentWithBackticks(`
+			// NewReading creates a reading with the provided temperature and location.
+			func NewReading(t Temperature, location string) Reading
+		`),
+
+		dedentWithBackticks(`
+			// Average returns the mean of the supplied temperatures.
+			func Average(values []Temperature) Temperature
+		`),
+
+		dedentWithBackticks(`
+			// sumTemp returns the sum of the supplied temperatures.
+			func sumTemp(values []Temperature) Temperature
+		`),
+
+		dedentWithBackticks(`
+			// Package mypkg provides temperature helpers.
+			package mypkg
+		`),
+	}
+
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + strings.Join(snippets, "\n\n"),
+	}}
+
+	withCodeFixture(t, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+
+		updatedFiles := filenamesFromChanges(changes)
+		assert.Contains(t, updatedFiles, "temperature.go")
+		assert.Contains(t, updatedFiles, "reading.go")
+		assert.Contains(t, updatedFiles, "average.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		tempContent := string(pkg.Files["temperature.go"].Contents)
+		assert.Contains(t, tempContent, "// Temperature represents a temperature value in degrees Celsius.")
+		assert.Contains(t, tempContent, "// Freezing represents the freezing point of water (0°C).")
+		assert.Contains(t, tempContent, "// Boiling represents the boiling point of water (100°C).")
+		assert.Contains(t, tempContent, "// AboveFreezing reports whether the temperature is above freezing.")
+		assert.NotContains(t, tempContent, "// above reports whether the temperature is above the threshold.")
+
+		readingContent := string(pkg.Files["reading.go"].Contents)
+		assert.Contains(t, readingContent, "// Reading represents a temperature measurement.")
+		assert.Contains(t, readingContent, "// Value is the measured temperature.")
+		assert.Contains(t, readingContent, "// Timestamp is when the measurement was taken.")
+		assert.Contains(t, readingContent, "// DefaultLocation is the fallback location for new readings.")
+		assert.Contains(t, readingContent, "// NewReading creates a reading with the provided temperature and location.")
+		assert.NotContains(t, readingContent, "// location is where the measurement was taken.")
+
+		averageContent := string(pkg.Files["average.go"].Contents)
+		assert.Contains(t, averageContent, "// Average returns the mean of the supplied temperatures.")
+		assert.NotContains(t, averageContent, "// sumTemp returns the sum of the supplied temperatures.")
+
+		packageDocFound := false
+		for _, file := range pkg.Files {
+			if strings.Contains(string(file.Contents), "// Package mypkg provides temperature helpers.") {
+				packageDocFound = true
+				break
+			}
+		}
+		assert.True(t, packageDocFound)
+
+		userText := conv.allUserText()
+		assert.Contains(t, userText, "- Temperature.above")
+		assert.Contains(t, userText, "- sumTemp")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_ConvertsMixedValueBlockDoc(t *testing.T) {
+	code := dedent(`
+		const (
+			Public = 1
+			private = 2
+		)
+	`)
+	snippet := dedentWithBackticks(`
+		// Values define package constants.
+		const (
+			Public = 1
+			private = 2
+		)
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			ExcludeIdentifiers:              []string{gocode.PackageIdentifier},
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Values define package constants.\nconst (\n\tPublic  = 1\n\tprivate = 2\n)")
+		assert.NotContains(t, content, "private = 2 // Values define package constants.")
+		assert.Contains(t, conv.allUserText(), "- private")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_DocumentsMixedValueSpecWithoutSplitting(t *testing.T) {
+	code := dedent(`
+		var Public, private = 1, 2
+
+		func Other() {}
+	`)
+	snippets := []string{
+		dedentWithBackticks(`
+			// Values hold package state.
+			var Public, private = 1, 2
+		`),
+		dedentWithBackticks(`
+			// Other performs another public operation.
+			func Other()
+		`),
+	}
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + strings.Join(snippets, "\n\n"),
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			ExcludeIdentifiers:              []string{gocode.PackageIdentifier},
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Values hold package state.\nvar Public, private = 1, 2")
+		assert.Contains(t, content, "// Other performs another public operation.\nfunc Other() {}")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_DocumentsMixedStructFieldListWithoutSplitting(t *testing.T) {
+	code := dedent(`
+		type Foo struct {
+			Public, private int
+		}
+	`)
+	snippet := dedentWithBackticks(`
+		// Foo stores visible and private fields.
+		type Foo struct {
+			// Public is visible.
+			Public, private int
+		}
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			ExcludeIdentifiers:              []string{gocode.PackageIdentifier},
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Foo stores visible and private fields.\ntype Foo struct")
+		assert.Contains(t, content, "Public, private int")
+		assert.Contains(t, content, "// Public is visible.")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_FiltersNestedPrivateStructFieldDocs(t *testing.T) {
+	code := dedent(`
+		type Foo struct {
+			Inner struct {
+				Public string
+				private string
+			}
+		}
+	`)
+	snippet := dedentWithBackticks(`
+		// Foo stores nested state.
+		type Foo struct {
+			// Inner stores child state.
+			Inner struct {
+				// Public is visible nested state.
+				Public string
+				// private is hidden nested state.
+				private string
+			}
+		}
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			ExcludeIdentifiers:              []string{gocode.PackageIdentifier},
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Foo stores nested state.")
+		assert.Contains(t, content, "// Inner stores child state.")
+		assert.Contains(t, content, "// Public is visible nested state.")
+		assert.NotContains(t, content, "// private is hidden nested state.")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_PreservesMixedValueBlockDocWhenSpecHasComment(t *testing.T) {
+	code := dedent(`
+		const (
+			A = 1
+			// B already has docs.
+			B = 2
+			private = 3
+		)
+	`)
+	snippet := dedentWithBackticks(`
+		// Values define package constants.
+		const (
+			A = 1
+			// B already has docs.
+			B = 2
+			private = 3
+		)
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			ExcludeIdentifiers:              []string{gocode.PackageIdentifier},
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Values define package constants.\nconst (")
+		assert.Contains(t, content, "// B already has docs.\n\tB = 2")
+		assert.NotContains(t, content, "// Values define package constants.\n\tprivate = 3")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_UsesOriginalModuleForScratchContext(t *testing.T) {
+	code := dedent(`
+		import "mymodule/otherpkg"
+
+		type Public struct {
+			Dep otherpkg.DepType
+			hidden string
+		}
+
+		func UseDep(d otherpkg.DepType) Public {
+			return Public{Dep: d}
+		}
+
+		func private(d otherpkg.DepType) {}
+	`)
+	response := "Here are the documentation snippets:\n\n" + strings.Join([]string{
+		dedentWithBackticks(`
+			// Public holds dependency state.
+			type Public struct {
+				// Dep is the dependency value.
+				Dep otherpkg.DepType
+				// hidden is internal state.
+				hidden string
+			}
+		`),
+		dedentWithBackticks(`
+			// UseDep wraps a dependency value.
+			func UseDep(d otherpkg.DepType) Public
+		`),
+		dedentWithBackticks(`
+			// private observes a dependency value.
+			func private(d otherpkg.DepType)
+		`),
+		dedentWithBackticks(`
+			// Package mypkg exercises dependency context.
+			package mypkg
+		`),
+	}, "\n\n")
+	conv := &responsesCompleter{responses: []string{response}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		err := gocodetesting.AddPackage(t, pkg.Module, "otherpkg", map[string]string{
+			"other.go": dedent(`
+				// DepType is a dependency type.
+				type DepType struct{}
+			`),
+		})
+		require.NoError(t, err)
+		_, err = pkg.Module.LoadPackageByRelativeDir("otherpkg")
+		require.NoError(t, err)
+
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Public holds dependency state.")
+		assert.Contains(t, content, "// Dep is the dependency value.")
+		assert.Contains(t, content, "// UseDep wraps a dependency value.")
+		assert.NotContains(t, content, "// hidden is internal state.")
+		assert.NotContains(t, content, "// private observes a dependency value.")
+		assert.Contains(t, conv.allUserText(), "// mymodule/otherpkg:")
 	})
 }
 
@@ -270,6 +655,95 @@ func TestAddDocs_DocumentTestFiles(t *testing.T) {
 		assert.Contains(t, combinedMsgs, "assertAboutNow")
 		assert.NotContains(t, combinedMsgs, "- TestAverage") // TestAverage appears (as context), but "- TestAverage" would only appear if we list it as an identifier to document
 		assert.NotContains(t, combinedMsgs, "- TestReading")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_DocumentTestFiles(t *testing.T) {
+	files := map[string]string{
+		"code.go": dedent(`
+			// Package mypkg exercises public-only test documentation.
+			package mypkg
+		`),
+		"whitebox_test.go": dedent(`
+			package mypkg
+
+			import "testing"
+
+			func TestWhitebox(t *testing.T) {
+				ExportedSamePackageHelper()
+				unexportedSamePackageHelper()
+			}
+
+			func ExportedSamePackageHelper() {}
+
+			func unexportedSamePackageHelper() {}
+		`),
+		"blackbox_test.go": dedent(`
+			package mypkg_test
+
+			import "testing"
+
+			func TestBlackbox(t *testing.T) {
+				ExportedBlackBoxHelper()
+				unexportedBlackBoxHelper()
+			}
+
+			func ExportedBlackBoxHelper() {}
+
+			func unexportedBlackBoxHelper() {}
+		`),
+	}
+
+	blackBoxSnippets := []string{
+		dedentWithBackticks(`
+			// ExportedBlackBoxHelper supports external package tests.
+			func ExportedBlackBoxHelper()
+		`),
+		dedentWithBackticks(`
+			// unexportedBlackBoxHelper supports external package tests privately.
+			func unexportedBlackBoxHelper()
+		`),
+	}
+	samePackageSnippets := []string{
+		dedentWithBackticks(`
+			// ExportedSamePackageHelper supports same-package tests.
+			func ExportedSamePackageHelper()
+		`),
+		dedentWithBackticks(`
+			// unexportedSamePackageHelper supports same-package tests privately.
+			func unexportedSamePackageHelper()
+		`),
+	}
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + strings.Join(blackBoxSnippets, "\n\n"),
+		"Here are the documentation snippets:\n\n" + strings.Join(samePackageSnippets, "\n\n"),
+	}}
+
+	gocodetesting.WithMultiCode(t, files, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			DocumentTestFiles:               true,
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+
+		updatedFiles := filenamesFromChanges(changes)
+		assert.Contains(t, updatedFiles, "whitebox_test.go")
+		assert.Contains(t, updatedFiles, "blackbox_test.go")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+		require.NotNil(t, pkg.TestPackage)
+
+		whiteboxContent := string(pkg.Files["whitebox_test.go"].Contents)
+		assert.Contains(t, whiteboxContent, "// ExportedSamePackageHelper supports same-package tests.")
+		assert.NotContains(t, whiteboxContent, "// unexportedSamePackageHelper supports same-package tests privately.")
+		assert.NotContains(t, whiteboxContent, "// TestWhitebox")
+
+		blackboxContent := string(pkg.TestPackage.Files["blackbox_test.go"].Contents)
+		assert.Contains(t, blackboxContent, "// ExportedBlackBoxHelper supports external package tests.")
+		assert.NotContains(t, blackboxContent, "// unexportedBlackBoxHelper supports external package tests privately.")
+		assert.NotContains(t, blackboxContent, "// TestBlackbox")
 	})
 }
 
@@ -628,6 +1102,56 @@ func TestAddDocs_SkipGeneratedFiles(t *testing.T) {
 
 	gen := string(pkg.Files["generated.go"].Contents)
 	assert.NotContains(t, gen, "// Bar does something.")
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_SkipGeneratedFiles(t *testing.T) {
+	snippets := []string{
+		dedentWithBackticks(`
+			// Foo does something.
+			func Foo()
+		`),
+		dedentWithBackticks(`
+			// Bar does something.
+			func Bar()
+		`),
+	}
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + strings.Join(snippets, "\n\n"),
+	}}
+
+	files := map[string]string{
+		"code.go": dedent(`
+			func Foo() {}
+		`),
+		"generated.go": dedent(`
+			// Code generated by x; DO NOT EDIT.
+			package mypkg
+
+			func Bar() {}
+		`),
+	}
+	gocodetesting.WithMultiCode(t, files, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			ExcludeIdentifiers:              []string{gocode.PackageIdentifier},
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+
+		updatedFiles := filenamesFromChanges(changes)
+		assert.Contains(t, updatedFiles, "code.go")
+		assert.NotContains(t, updatedFiles, "generated.go")
+		assert.NotContains(t, conv.allUserText(), "- Bar")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Foo does something.")
+
+		generatedContent := string(pkg.Files["generated.go"].Contents)
+		assert.NotContains(t, generatedContent, "// Bar does something.")
+	})
 }
 
 func TestContextForAddDocsPartial(t *testing.T) {

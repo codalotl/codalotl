@@ -21,6 +21,7 @@ type addDocsFlagValues struct {
 	reflowWidth        int
 	logFile            string
 	documentTestFiles  bool
+	onlyPublicAPI      bool
 	excludeIdentifiers string
 	tokenBudget        int
 }
@@ -30,6 +31,7 @@ type addDocsConfig struct {
 	reflowWidth        int
 	logFile            string
 	documentTestFiles  bool
+	onlyPublicAPI      bool
 	excludeIdentifiers []string
 	tokenBudget        int
 }
@@ -66,6 +68,7 @@ func newRootCommand() *cli.Command {
 	}
 	docFlags := docCmd.Flags()
 	documentTestFiles := docFlags.Bool("test-files", 0, false, "Document test files as well.")
+	onlyPublicAPI := docFlags.Bool("only-public-api", 0, false, "Only apply documentation for public/exported identifiers.")
 	excludeIdentifiers := docFlags.String("exclude-identifiers", 0, "", "Comma-separated identifiers to avoid documenting.")
 	tokenBudget := docFlags.Int("token-budget", 0, 0, "Token limit to use.")
 
@@ -75,6 +78,7 @@ func newRootCommand() *cli.Command {
 			reflowWidth:        *reflowWidth,
 			logFile:            *logFile,
 			documentTestFiles:  *documentTestFiles,
+			onlyPublicAPI:      *onlyPublicAPI,
 			excludeIdentifiers: *excludeIdentifiers,
 			tokenBudget:        *tokenBudget,
 		})
@@ -111,6 +115,7 @@ func resolveAddDocsConfig(flags addDocsFlagValues) (addDocsConfig, error) {
 		reflowWidth:        flags.reflowWidth,
 		logFile:            flags.logFile,
 		documentTestFiles:  flags.documentTestFiles,
+		onlyPublicAPI:      flags.onlyPublicAPI,
 		excludeIdentifiers: parseIdentifierList(flags.excludeIdentifiers),
 		tokenBudget:        flags.tokenBudget,
 	}, nil
@@ -145,9 +150,10 @@ func runAddDocs(c *cli.Context, target string, cfg addDocsConfig) error {
 	}
 
 	changes, err := docubot.AddDocs(pkg, docubot.AddDocsOptions{
-		DocumentTestFiles:  cfg.documentTestFiles,
-		TokenBudget:        cfg.tokenBudget,
-		ExcludeIdentifiers: cfg.excludeIdentifiers,
+		DocumentTestFiles:               cfg.documentTestFiles,
+		OnlyDocumentExportedIdentifiers: cfg.onlyPublicAPI,
+		TokenBudget:                     cfg.tokenBudget,
+		ExcludeIdentifiers:              cfg.excludeIdentifiers,
 		BaseOptions: docubot.BaseOptions{
 			ReflowMaxWidth: cfg.reflowWidth,
 			Model:          cfg.model,

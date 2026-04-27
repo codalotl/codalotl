@@ -3,11 +3,13 @@ package docubot
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
+
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
 	"github.com/codalotl/codalotl/internal/updatedocs"
-	"strings"
 )
 
 // defaultTokenBudget is used when AddDocsOptions.TokenBudget is zero.
@@ -39,21 +41,30 @@ var ErrTriesExceeded = fmt.Errorf("attempts to doc with no progress have been ex
 
 // AddDocsOptions controls how AddDocs documents identifiers in a package.
 type AddDocsOptions struct {
-	DocumentTestFiles  bool     // Document helpers, types, and variables in test code. TestXxx/BenchXxx/etc. functions are not documented.
-	TokenBudget        int      // Maximum token budget for one LLM request (prompt + code context + instructions). Zero uses defaultTokenBudget.
-	ExcludeIdentifiers []string // ExcludeIdentifiers marks identifiers as already documented, skipping them during documentation.
-	BaseOptions                 // Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
+	DocumentTestFiles               bool     // Document helpers, types, and variables in test code. TestXxx/BenchXxx/etc. functions are not documented.
+	OnlyDocumentExportedIdentifiers bool     // Only documents publicly exported identifiers.
+	TokenBudget                     int      // Maximum token budget for one LLM request (prompt + code context + instructions). Zero uses defaultTokenBudget.
+	ExcludeIdentifiers              []string // ExcludeIdentifiers marks identifiers as already documented, skipping them during documentation.
+	BaseOptions                              // Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
 }
 
 // AddDocs adds documentation to undocumented identifiers in the package and returns the set of documentation changes (if DocumentTestFiles, it includes _test package
 // changes if pkg has one). If an error occurs, no changes are returned, except for non-fatal errors like errNoSnippets or errSomeSnippetsFailed, where processing
 // continues and changes may be returned.
 func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Change, error) {
+	return addDocs(pkg, options, nil)
+}
+
+func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module) ([]*gopackagediff.Change, error) {
 	if options.TokenBudget == 0 {
 		options.TokenBudget = defaultTokenBudget
 	}
 
-	options.Log("Entering AddDocs", "DocumentTestFiles", options.DocumentTestFiles, "TokenBudget", options.TokenBudget)
+	options.Log("Entering AddDocs", "DocumentTestFiles", options.DocumentTestFiles, "OnlyDocumentExportedIdentifier", options.OnlyDocumentExportedIdentifiers, "TokenBudget", options.TokenBudget)
+
+	if options.OnlyDocumentExportedIdentifiers {
+		return addDocsOnlyDocumentExportedIdentifier(pkg, options, contextModule)
+	}
 
 	options.ExcludeIdentifiers = appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg)
 
@@ -77,7 +88,7 @@ func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Chan
 		optionsPrime.DocumentTestFiles = false
 
 		options.Log("Documenting non-test identifiers first...")
-		_, err := AddDocs(pkg, optionsPrime)
+		_, err := addDocs(pkg, optionsPrime, contextModule)
 		if err != nil {
 			return nil, options.LogWrappedErr("error documenting non-test identifiers", err)
 		}
@@ -92,7 +103,7 @@ func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Chan
 		if pkg.HasTestPackage() {
 			options.Log("Now documenting _test-package identifiers...")
 			var err error
-			testPkgChanges, err = AddDocs(pkg.TestPackage, options)
+			testPkgChanges, err = addDocs(pkg.TestPackage, options, contextModule)
 			if err != nil {
 				return nil, options.LogWrappedErr("error documenting _test package identifiers", err)
 			}
@@ -131,7 +142,7 @@ func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Chan
 	for {
 		// addDocsPartial does one round of doc applications to pkg based on what's needed in idents and options.
 		// It may decide to do big batches, or it may decide to do small targeted leaves first.
-		updatedPkg, _, err := addDocsPartial(pkg, idents, options)
+		updatedPkg, _, err := addDocsPartial(pkg, idents, options, contextModule)
 
 		// If errNoSnippets or errSomeSnippetsFailed, the LLM or the Fix probably returned something dumb, so keep on going.
 		// If we keep getting errors like this, the noProgressCount failsafe will bail us out.
@@ -199,11 +210,153 @@ func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Chan
 	return merged, nil
 }
 
+// addDocsOnlyDocumentExportedIdentifier documents the entire package in a scratch clone, then applies only the public snippets from that scratch package to the
+// caller's real package. This lets private declarations inform generated public docs without writing private docs to the real source tree.
+func addDocsOnlyDocumentExportedIdentifier(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module) ([]*gopackagediff.Change, error) {
+	clonedPkg, err := pkg.Clone()
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.clone", err)
+	}
+	defer clonedPkg.Module.DeleteClone()
+
+	scratchPkg, err := pkg.Clone()
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.scratch_clone", err)
+	}
+	defer scratchPkg.Module.DeleteClone()
+
+	scratchOptions := options
+	scratchOptions.OnlyDocumentExportedIdentifiers = false
+	if contextModule == nil {
+		contextModule = pkg.Module
+	}
+
+	_, err = addDocs(scratchPkg, scratchOptions, contextModule)
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.scratch_add_docs", err)
+	}
+
+	scratchPkg, err = scratchPkg.Reload()
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.scratch_reload", err)
+	}
+
+	pkg, err = applyPublicDocsFromScratchPackage(pkg, scratchPkg, options, options.DocumentTestFiles, "public-only application of scratch snippets")
+	if err != nil {
+		return nil, err
+	}
+
+	if options.DocumentTestFiles && pkg.HasTestPackage() && scratchPkg.HasTestPackage() {
+		testPkg, err := applyPublicDocsFromScratchPackage(pkg.TestPackage, scratchPkg.TestPackage, options, true, "public-only application of scratch _test snippets")
+		if err != nil {
+			return nil, err
+		}
+		pkg.TestPackage = testPkg
+	}
+
+	pkgChanges, err := gopackagediff.Diff(clonedPkg, pkg, nil, nil, true)
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.diff", err)
+	}
+
+	if !options.DocumentTestFiles || !clonedPkg.HasTestPackage() || !pkg.HasTestPackage() {
+		return pkgChanges, nil
+	}
+
+	testPkgChanges, err := gopackagediff.Diff(clonedPkg.TestPackage, pkg.TestPackage, nil, nil, true)
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.test_diff", err)
+	}
+	if len(testPkgChanges) == 0 {
+		return pkgChanges, nil
+	}
+	merged := make([]*gopackagediff.Change, 0, len(testPkgChanges)+len(pkgChanges))
+	merged = append(merged, testPkgChanges...)
+	merged = append(merged, pkgChanges...)
+	return merged, nil
+}
+
+func applyPublicDocsFromScratchPackage(pkg *gocode.Package, scratchPkg *gocode.Package, options AddDocsOptions, includeTestSnippets bool, logContext string) (*gocode.Package, error) {
+	publicSnippets, err := publicDocumentationSnippets(scratchPkg, includeTestSnippets)
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.public_snippets", err)
+	}
+	if len(publicSnippets) == 0 {
+		return pkg, nil
+	}
+
+	options.userMessagef("Applying public docs from scratch copy: %d snippets", len(publicSnippets))
+	updatedPkg, _, snippetErrors, err := updatedocs.UpdateDocumentation(pkg, publicSnippets, options.updatedocsOptions(true))
+	if err != nil {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.update_documentation", err)
+	}
+	logSnippetErrors(options.Logger, logContext, snippetErrors)
+	hardSnippetErrors := removePartiallyRejectedSnippetErrors(snippetErrors)
+	if len(hardSnippetErrors) > 0 {
+		return nil, options.LogWrappedErr("ensure_docs.public_only.update_documentation.snippet_errors", errSomeSnippetsFailed)
+	}
+	if updatedPkg != nil {
+		pkg = updatedPkg
+	}
+	return pkg, nil
+}
+
+// publicDocumentationSnippets returns parseable Go snippets containing only public declarations and public members from pkg. Mixed public/private specs and fields
+// are preserved so updatedocs can attach the docs without splitting declarations. Snippets without real documentation comments are skipped so filtered public views
+// that only contain "contains filtered or unexported ..." comments are not applied.
+func publicDocumentationSnippets(pkg *gocode.Package, includeTestSnippets bool) ([]string, error) {
+	var snippets []string
+	for _, snippet := range pkg.Snippets() {
+		if fileName := filepath.Base(snippet.Position().Filename); fileName != "." {
+			if file := pkg.Files[fileName]; file != nil && file.IsCodeGenerated() {
+				continue
+			}
+		}
+		if snippet.Test() && !includeTestSnippets {
+			continue
+		}
+		if funcSnippet, ok := snippet.(*gocode.FuncSnippet); ok && funcSnippet.IsTestFunc() {
+			continue
+		}
+		if !snippet.HasExported() {
+			continue
+		}
+
+		publicSnippet, err := snippet.PublicSnippet(true)
+		if err != nil {
+			return nil, err
+		}
+		if len(publicSnippet) == 0 {
+			continue
+		}
+
+		publicText := string(publicSnippet)
+		if hasDocumentationComment(publicText) {
+			snippets = append(snippets, publicText)
+		}
+	}
+	return snippets, nil
+}
+
+// hasDocumentationComment reports whether snippet contains a real doc comment. It ignores godoc-style "contains filtered..." comments emitted by public snippets.
+func hasDocumentationComment(snippet string) bool {
+	for _, line := range strings.Split(snippet, "\n") {
+		line = strings.TrimLeft(line, " \t")
+		if strings.Contains(line, "contains filtered or unexported") {
+			continue
+		}
+		if strings.HasPrefix(line, "//") || strings.HasPrefix(line, "/*") || strings.Contains(line, " //") || strings.Contains(line, "\t//") {
+			return true
+		}
+	}
+	return false
+}
+
 // addDocsPartial performs a single documentation pass sized to the current token budget. It estimates overhead (prompt and instructions), builds an LLM context
 // and target identifier list, requests snippets, applies successful updates, and returns the possibly updated package, the set of files changed, and any error.
 //
 // On error, the returned package is nil; updatedFiles still reflects any files modified before the error occurred. Existing docs are never overwritten (redocument=false).
-func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOptions) (*gocode.Package, map[string]struct{}, error) {
+func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOptions, contextModule *gocode.Module) (*gocode.Package, map[string]struct{}, error) {
 
 	// Reduce the token budget by the size of the prompt and instructions:
 	// NOTE: instructions size isn't known until we already have identifiers to document, but newContextForDocumentation (and gocodecontext.Context's .Cost()) doesn't have knowledge of
@@ -218,7 +371,7 @@ func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOpt
 	fakeInstructions := llmInstructionsForIdentifiers(pkg, fakeIdentifiers, nil)
 	tokenBudget -= countTokens([]byte(fakeInstructions))
 
-	codeCtx, identifiers, err := contextForAddDocsPartial(pkg, idents, tokenBudget, options.DocumentTestFiles, options.BaseOptions)
+	codeCtx, identifiers, err := contextForAddDocsPartialWithModule(pkg, idents, tokenBudget, options.DocumentTestFiles, contextModule, options.BaseOptions)
 	if err != nil {
 		return nil, nil, options.LogWrappedErr("add_docs_partial.new_context_for_documentation", err)
 	}
@@ -234,6 +387,13 @@ func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOpt
 // contextForAddDocsPartial returns a context and identifiers to document for use in generateAndApplyDocs. If no groups initially fit the budget, it selects the
 // smallest-cost group and attempts to prune. On success, it returns a non-nil context. On failure, it returns an error (ex: tokenBudgetExceededError).
 func contextForAddDocsPartial(pkg *gocode.Package, idents *Identifiers, tokenBudget int, documentTestFiles bool, options BaseOptions) (*gocodecontext.Context, []string, error) {
+	return contextForAddDocsPartialWithModule(pkg, idents, tokenBudget, documentTestFiles, nil, options)
+}
+
+func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers, tokenBudget int, documentTestFiles bool, contextModule *gocode.Module, options BaseOptions) (*gocodecontext.Context, []string, error) {
+	if contextModule == nil {
+		contextModule = pkg.Module
+	}
 
 	// Build contexts for the package:
 	groupOptions := gocodecontext.GroupOptions{
@@ -245,7 +405,7 @@ func contextForAddDocsPartial(pkg *gocode.Package, idents *Identifiers, tokenBud
 		ConsiderTestFuncsDocumented:    true,
 		ConsiderConstBlocksDocumenting: true,
 	}
-	groups, err := gocodecontext.Groups(pkg.Module, pkg, groupOptions)
+	groups, err := gocodecontext.Groups(contextModule, pkg, groupOptions)
 	if err != nil {
 		return nil, nil, options.LogWrappedErr("new_context_for_documentation.groups", err)
 	}
