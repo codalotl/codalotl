@@ -1,8 +1,8 @@
 # docubot/cmd
 
-This package is a minimal `main` runner for `docubot` for development/test purposes. It offers simple entrypoints into some of docubot's primary functions.
+This package is a minimal command runner for `docubot` for development/test purposes. It offers simple entry points into some of docubot's primary functions.
 
-All options are via CLI flags or ENV - no config file is read.
+All options are via CLI flags (or environment variables, in the case of API keys) - no config file is read.
 
 ## Dependencies
 
@@ -18,13 +18,13 @@ All relevant commands accept:
 
 ## Commands
 
-### Add documention to a package:
+### Add documentation to a package:
 
 ```sh
 go run . doc path/to/pkg
 ```
 
-Additional Options:
-- `--test-files` - indicates that we document test file as well
-- `--exclude-identifiers` - comma separated list of identifiers to avoid documenting
+Additional options:
+- `--test-files` - indicates that we document test files as well
+- `--exclude-identifiers` - comma-separated list of identifiers to avoid documenting
 - `--token-budget` - token limit to use
