@@ -101,7 +101,7 @@ func PublicPackageDocumentation(pkg *gocode.Package, identifiers ...string) (str
 				continue
 			}
 
-			publicBytes, err := snip.PublicSnippet()
+			publicBytes, err := snip.PublicSnippet(false)
 			if err != nil {
 				return "", fmt.Errorf("public snippet for %s in %s: %w", strings.Join(snip.IDs(), ","), fileName, err)
 			}

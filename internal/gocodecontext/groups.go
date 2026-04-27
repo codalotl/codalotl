@@ -443,7 +443,7 @@ func addExternalGroups(mod *gocode.Module, graph *gograph.Graph, internalGroups 
 						continue
 					}
 
-					publicBytes, err := snippet.PublicSnippet()
+					publicBytes, err := snippet.PublicSnippet(false)
 					if err != nil {
 						return fmt.Errorf("failed to get public snippet for %v: %w", extID, err)
 					}

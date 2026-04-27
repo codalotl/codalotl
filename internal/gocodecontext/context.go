@@ -323,7 +323,7 @@ func (c *Context) Code() string {
 				b.WriteString(":\n\n")
 			}
 
-			publicBytes, err := si.snippet.PublicSnippet()
+			publicBytes, err := si.snippet.PublicSnippet(false)
 			if err != nil {
 				panic(fmt.Errorf("Code: could not get public snippet for %s in %s: %w", si.snippet.IDs()[0], si.importPath, err))
 			}
