@@ -65,10 +65,73 @@ func filterTypeWithIncomplete(typeExpr ast.Expr, preserveMixed bool, markIncompl
 			return filterInterface(t, preserveMixed)
 		}
 		return filterInterfaceWithIncomplete(t, preserveMixed, markIncomplete)
+	case *ast.StarExpr:
+		dup := *t
+		dup.X = filterTypeWithIncomplete(t.X, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.ParenExpr:
+		dup := *t
+		dup.X = filterTypeWithIncomplete(t.X, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.ArrayType:
+		dup := *t
+		dup.Elt = filterTypeWithIncomplete(t.Elt, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.Ellipsis:
+		dup := *t
+		dup.Elt = filterTypeWithIncomplete(t.Elt, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.MapType:
+		dup := *t
+		dup.Key = filterTypeWithIncomplete(t.Key, preserveMixed, markIncomplete)
+		dup.Value = filterTypeWithIncomplete(t.Value, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.ChanType:
+		dup := *t
+		dup.Value = filterTypeWithIncomplete(t.Value, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.FuncType:
+		dup := *t
+		dup.Params = filterFieldListTypes(t.Params, preserveMixed, markIncomplete)
+		dup.Results = filterFieldListTypes(t.Results, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.IndexExpr:
+		dup := *t
+		dup.Index = filterTypeWithIncomplete(t.Index, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.IndexListExpr:
+		dup := *t
+		dup.Indices = make([]ast.Expr, len(t.Indices))
+		for i, index := range t.Indices {
+			dup.Indices[i] = filterTypeWithIncomplete(index, preserveMixed, markIncomplete)
+		}
+		return &dup
 	default:
 		// For other types (aliases, primitives, etc.), return as-is
 		return typeExpr
 	}
+}
+
+func filterFieldListTypes(fields *ast.FieldList, preserveMixed bool, markIncomplete bool) *ast.FieldList {
+	if fields == nil {
+		return nil
+	}
+
+	dup := &ast.FieldList{
+		Opening: fields.Opening,
+		Closing: fields.Closing,
+	}
+	if len(fields.List) == 0 {
+		return dup
+	}
+
+	dup.List = make([]*ast.Field, len(fields.List))
+	for i, field := range fields.List {
+		fieldDup := *field
+		fieldDup.Type = filterTypeWithIncomplete(field.Type, preserveMixed, markIncomplete)
+		dup.List[i] = &fieldDup
+	}
+	return dup
 }
 
 // filterStruct returns a copy of orig that retains only exported fields and embedded types. Unexported fields (and unexported embedded types) are removed. For fields
