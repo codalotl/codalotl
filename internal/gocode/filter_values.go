@@ -6,31 +6,14 @@ import (
 )
 
 // filterExportedValue takes an *ast.GenDecl whose Tok is token.CONST or token.VAR and returns a new *ast.GenDecl containing public specs. Declaration docs remain
-// attached to the declaration. If preserveMixed is true, parenthesized blocks with at least one exported name are kept intact, and non-block specs with at least
-// one exported name are kept intact. If preserveMixed is false, only exported names are kept within mixed specs. If nothing is exported, it returns nil.
+// attached to the declaration. If preserveMixed is true, specs with at least one exported name are kept intact. Fully unexported specs are still elided. If preserveMixed
+// is false, only exported names are kept within mixed specs. If nothing is exported, it returns nil.
 func filterExportedValue(gen *ast.GenDecl, preserveMixed bool) *ast.GenDecl {
 	if gen == nil {
 		return gen
 	}
 	if gen.Tok != token.CONST && gen.Tok != token.VAR {
 		panic("unexpected token type")
-	}
-
-	if preserveMixed && gen.Lparen.IsValid() {
-		for _, sp := range gen.Specs {
-			vs, ok := sp.(*ast.ValueSpec)
-			if !ok {
-				continue
-			}
-			for _, n := range vs.Names {
-				if ast.IsExported(n.Name) {
-					clone := *gen
-					clone.Specs = append([]ast.Spec(nil), gen.Specs...)
-					return &clone
-				}
-			}
-		}
-		return nil
 	}
 
 	out := &ast.GenDecl{

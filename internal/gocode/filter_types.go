@@ -120,7 +120,7 @@ func filterStructWithIncomplete(orig *ast.StructType, preserveMixed bool, markIn
 		if len(names) != len(fld.Names) {
 			dup := *fld
 			dup.Names = names
-			dup.Type = filterTypeWithIncomplete(fld.Type, preserveMixed, false)
+			dup.Type = filterType(fld.Type, preserveMixed)
 			keep = append(keep, &dup)
 			skipped = true
 		} else {
@@ -138,7 +138,7 @@ func filterStructWithIncomplete(orig *ast.StructType, preserveMixed bool, markIn
 
 func cloneFieldWithFilteredType(fld *ast.Field, preserveMixed bool) *ast.Field {
 	dup := *fld
-	dup.Type = filterTypeWithIncomplete(fld.Type, preserveMixed, false)
+	dup.Type = filterType(fld.Type, preserveMixed)
 	return &dup
 }
 
@@ -199,7 +199,7 @@ func filterInterfaceWithIncomplete(orig *ast.InterfaceType, preserveMixed bool, 
 		} else {
 			dup := *m
 			dup.Names = names
-			dup.Type = filterTypeWithIncomplete(m.Type, preserveMixed, false)
+			dup.Type = filterType(m.Type, preserveMixed)
 			keep = append(keep, &dup)
 			skipped = true
 		}
