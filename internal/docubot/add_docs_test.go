@@ -271,6 +271,40 @@ func TestAddDocs_OnlyDocumentExportedIdentifier_SkipsWorkWhenOnlyPrivateDocsAreM
 	})
 }
 
+func TestAddDocs_OnlyDocumentExportedIdentifier_SkipsWorkWhenOnlyPrivateStructFieldsAreMissing(t *testing.T) {
+	code := dedent(`
+		// Package mypkg exercises public-only struct no-op behavior.
+		package mypkg
+
+		// Foo stores public and private state.
+		type Foo struct {
+			// Public is visible state.
+			Public string
+
+			private string
+		}
+	`)
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, changes)
+		assert.Empty(t, conv.convs)
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Foo stores public and private state.")
+		assert.Contains(t, content, "// Public is visible state.")
+		assert.NotContains(t, content, "// private")
+	})
+}
+
 func TestAddDocs_OnlyDocumentExportedIdentifier_ConvertsMixedValueBlockDoc(t *testing.T) {
 	code := dedent(`
 		const (

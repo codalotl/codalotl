@@ -25,6 +25,7 @@ type Identifiers struct {
 	// is considered documented if the type and all fields are documented.
 	withDocs map[string]struct{}
 
+	typeDocs   map[string]struct{} // typeDocs tracks whether the type declaration itself has docs, independent of whether all of its fields are documented.
 	isExported map[string]struct{} // Identifier is exported (capitalized). Only top-level idents (no fields).
 	isTest     map[string]struct{} // Identifier occurs in a test file. Only top-level idents (no fields).
 	isTestPkg  bool                // True if pkg is a _test package (and so wouldn't need package docs).
@@ -37,6 +38,7 @@ func NewIdentifiersFromPackage(pkg *gocode.Package) *Identifiers {
 		allTypes:     make([]string, 0),
 		allValues:    make([]string, 0),
 		withDocs:     make(map[string]struct{}),
+		typeDocs:     make(map[string]struct{}),
 		isExported:   make(map[string]struct{}),
 		isTest:       make(map[string]struct{}),
 		typeToFields: make(map[string][]string),
@@ -108,8 +110,11 @@ func NewIdentifiersFromPackage(pkg *gocode.Package) *Identifiers {
 				id.typeToFields[identifier] = fields
 			}
 
-			// A type is considered documented only if the type identifier itself AND all of its fields have documentation.
+			// Track whether the type declaration itself has docs, independent of fields.
 			if doc, ok := typ.IdentifierDocs[identifier]; ok && doc != "" {
+				id.typeDocs[identifier] = struct{}{}
+
+				// A type is considered fully documented only if the type identifier itself AND all of its fields have documentation.
 				if allFieldsDocumented {
 					id.withDocs[identifier] = struct{}{}
 				}
@@ -426,7 +431,16 @@ func (ids *Identifiers) countUndocumentedTypes(includeTest bool, publicOnly bool
 			continue
 		}
 
-		if _, hasDoc := ids.withDocs[typ]; !hasDoc {
+		hasTypeDoc := false
+		if publicOnly {
+			if _, hasDoc := ids.typeDocs[typ]; hasDoc {
+				hasTypeDoc = true
+			}
+		}
+		if _, hasDoc := ids.withDocs[typ]; hasDoc {
+			hasTypeDoc = true
+		}
+		if !hasTypeDoc {
 			count++
 			continue
 		}
