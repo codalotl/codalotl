@@ -219,3 +219,22 @@ func TestNewIdentifiersFromPackage(t *testing.T) {
 		assert.EqualValues(t, 0, testID.TotalPublicUndocumented(true))
 	})
 }
+
+func TestTotalPublicUndocumentedCountsExportedSelectorEmbeddedField(t *testing.T) {
+	id := &Identifiers{
+		allTypes: []string{"Foo"},
+		typeToFields: map[string][]string{
+			"Foo": {"Foo.otherpkg.DepType"},
+		},
+		withDocs: map[string]struct{}{
+			gocode.PackageIdentifier: {},
+			"Foo":                   {},
+		},
+		isExported: map[string]struct{}{
+			"Foo": {},
+		},
+		isTest: make(map[string]struct{}),
+	}
+
+	assert.Equal(t, 1, id.TotalPublicUndocumented(false))
+}
