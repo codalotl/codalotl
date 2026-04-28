@@ -241,6 +241,36 @@ func TestAddDocs_OnlyDocumentExportedIdentifier_DocumentsFixturePublicOnly(t *te
 	})
 }
 
+func TestAddDocs_OnlyDocumentExportedIdentifier_SkipsWorkWhenOnlyPrivateDocsAreMissing(t *testing.T) {
+	code := dedent(`
+		// Package mypkg exercises public-only no-op behavior.
+		package mypkg
+
+		// Foo does something.
+		func Foo() {}
+
+		func bar() {}
+	`)
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, changes)
+		assert.Empty(t, conv.convs)
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Foo does something.")
+		assert.NotContains(t, content, "// bar")
+	})
+}
+
 func TestAddDocs_OnlyDocumentExportedIdentifier_ConvertsMixedValueBlockDoc(t *testing.T) {
 	code := dedent(`
 		const (

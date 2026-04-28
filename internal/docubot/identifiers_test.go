@@ -168,6 +168,9 @@ func TestNewIdentifiersFromPackage(t *testing.T) {
 		totalUndoc := id.TotalUndocumented(false)
 		assert.Equal(t, 11, totalUndoc)
 
+		totalPublicUndoc := id.TotalPublicUndocumented(false)
+		assert.Equal(t, 9, totalPublicUndoc)
+
 		// Test String method
 		summary := id.String()
 		assert.Contains(t, summary, "Package doc: ✗")
@@ -213,5 +216,6 @@ func TestNewIdentifiersFromPackage(t *testing.T) {
 
 		assert.EqualValues(t, 1, testID.TotalUndocumented(true))
 		assert.EqualValues(t, 0, testID.TotalUndocumented(false))
+		assert.EqualValues(t, 0, testID.TotalPublicUndocumented(true))
 	})
 }

@@ -213,6 +213,25 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 // addDocsOnlyDocumentExportedIdentifier documents the entire package in a scratch clone, then applies only the public snippets from that scratch package to the
 // caller's real package. This lets private declarations inform generated public docs without writing private docs to the real source tree.
 func addDocsOnlyDocumentExportedIdentifier(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module) ([]*gopackagediff.Change, error) {
+	idents := NewIdentifiersFromPackage(pkg)
+	for _, identifier := range appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg) {
+		idents.MarkDocumented(identifier)
+	}
+
+	publicUndocumented := idents.TotalPublicUndocumented(options.DocumentTestFiles)
+	if options.DocumentTestFiles && !pkg.IsTestPackage() && pkg.HasTestPackage() {
+		testIdents := NewIdentifiersFromPackage(pkg.TestPackage)
+		for _, identifier := range appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg.TestPackage) {
+			testIdents.MarkDocumented(identifier)
+		}
+		publicUndocumented += testIdents.TotalPublicUndocumented(true)
+	}
+
+	if publicUndocumented == 0 {
+		options.userMessagef("Everything public is already documented")
+		return nil, nil
+	}
+
 	clonedPkg, err := pkg.Clone()
 	if err != nil {
 		return nil, options.LogWrappedErr("ensure_docs.clone", err)

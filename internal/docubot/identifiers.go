@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/codalotl/codalotl/internal/gocode"
 )
@@ -61,8 +62,8 @@ func NewIdentifiersFromPackage(pkg *gocode.Package) *Identifiers {
 			id.withDocs[identifier] = struct{}{}
 		}
 
-		// Check if exported (function name and receiver must be exported)
-		if fn.HasExported() && !fn.Test() {
+		// Check if exported (function name and receiver must be exported).
+		if fn.HasExported() {
 			id.isExported[identifier] = struct{}{}
 		}
 
@@ -80,8 +81,8 @@ func NewIdentifiersFromPackage(pkg *gocode.Package) *Identifiers {
 			}
 			id.allTypes = append(id.allTypes, identifier)
 
-			// Check if exported (type name starts with capital letter)
-			if ast.IsExported(identifier) && !typ.Test() {
+			// Check if exported (type name starts with capital letter).
+			if ast.IsExported(identifier) {
 				id.isExported[identifier] = struct{}{}
 			}
 
@@ -135,8 +136,8 @@ func NewIdentifiersFromPackage(pkg *gocode.Package) *Identifiers {
 				}
 			}
 
-			// Check if exported (value name starts with capital letter)
-			if ast.IsExported(identifier) && !val.Test() {
+			// Check if exported (value name starts with capital letter).
+			if ast.IsExported(identifier) {
 				id.isExported[identifier] = struct{}{}
 			}
 
@@ -376,47 +377,24 @@ func (ids *Identifiers) IDsNeedingDocs(includeTest bool) ([]string, map[string][
 // TotalUndocumented returns the total number of undocumented top-level identifiers, plus missing package-level documentation for non-_test packages. A type is counted
 // as undocumented if it has undocumented fields or if the type itself lacks documentation.
 func (ids *Identifiers) TotalUndocumented(includeTest bool) int {
+	return ids.totalUndocumented(includeTest, false)
+}
+
+// TotalPublicUndocumented returns the total number of undocumented exported identifiers, plus missing package documentation for non-_test packages. An exported
+// type is counted as undocumented if it lacks type docs or if any exported field reachable through exported field paths lacks docs.
+func (ids *Identifiers) TotalPublicUndocumented(includeTest bool) int {
+	return ids.totalUndocumented(includeTest, true)
+}
+
+func (ids *Identifiers) totalUndocumented(includeTest bool, publicOnly bool) int {
 	count := 0
 
 	// Count undocumented functions
-	undocFuncs := ids.FuncIDs(false, includeTest)
-	count += len(undocFuncs)
+	count += ids.countUndocumentedTopLevel(ids.allFuncs, includeTest, publicOnly)
 
 	// Count undocumented values
-	undocValues := ids.ValueIDs(false, includeTest)
-	count += len(undocValues)
-
-	// Count types - a type is undocumented if either:
-	// 1. The type itself lacks documentation, OR
-	// 2. The type has any undocumented fields
-
-	// Get all types that match our criteria
-	matchingTypesWithDocs := ids.TypeIDs(true, includeTest)
-	matchingTypesWithoutDocs := ids.TypeIDs(false, includeTest)
-
-	// Types without documentation are automatically counted
-	count += len(matchingTypesWithoutDocs)
-
-	// For types with documentation, check if they have undocumented fields
-	for _, typ := range matchingTypesWithDocs {
-		fields, hasFields := ids.typeToFields[typ]
-		if !hasFields {
-			continue
-		}
-
-		// Check if any field lacks documentation
-		hasUndocumentedField := false
-		for _, fieldID := range fields {
-			if _, hasDoc := ids.withDocs[fieldID]; !hasDoc {
-				hasUndocumentedField = true
-				break
-			}
-		}
-
-		if hasUndocumentedField {
-			count++
-		}
-	}
+	count += ids.countUndocumentedTopLevel(ids.allValues, includeTest, publicOnly)
+	count += ids.countUndocumentedTypes(includeTest, publicOnly)
 
 	// Overall package docs:
 	if !ids.isTestPkg {
@@ -426,6 +404,79 @@ func (ids *Identifiers) TotalUndocumented(includeTest bool) int {
 	}
 
 	return count
+}
+
+func (ids *Identifiers) countUndocumentedTopLevel(identifiers []string, includeTest bool, publicOnly bool) int {
+	count := 0
+	for _, identifier := range identifiers {
+		if !ids.includeIdentifier(identifier, includeTest, publicOnly) {
+			continue
+		}
+		if _, hasDoc := ids.withDocs[identifier]; !hasDoc {
+			count++
+		}
+	}
+	return count
+}
+
+func (ids *Identifiers) countUndocumentedTypes(includeTest bool, publicOnly bool) int {
+	count := 0
+	for _, typ := range ids.allTypes {
+		if !ids.includeIdentifier(typ, includeTest, publicOnly) {
+			continue
+		}
+
+		if _, hasDoc := ids.withDocs[typ]; !hasDoc {
+			count++
+			continue
+		}
+
+		for _, fieldID := range ids.typeToFields[typ] {
+			if publicOnly && !publicFieldPath(strings.TrimPrefix(fieldID, typ+".")) {
+				continue
+			}
+			if _, hasDoc := ids.withDocs[fieldID]; !hasDoc {
+				count++
+				break
+			}
+		}
+	}
+	return count
+}
+
+func (ids *Identifiers) includeIdentifier(identifier string, includeTest bool, publicOnly bool) bool {
+	if _, inTest := ids.isTest[identifier]; inTest && !includeTest {
+		return false
+	}
+	if publicOnly {
+		if _, exported := ids.isExported[identifier]; !exported {
+			return false
+		}
+	}
+	return true
+}
+
+func publicFieldPath(fieldPath string) bool {
+	if fieldPath == "" {
+		return false
+	}
+	for _, segment := range strings.Split(fieldPath, ".") {
+		identifier := leadingIdentifier(segment)
+		if identifier == "" || !ast.IsExported(identifier) {
+			return false
+		}
+	}
+	return true
+}
+
+func leadingIdentifier(s string) string {
+	s = strings.TrimLeft(s, "*")
+	for i, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+			return s[:i]
+		}
+	}
+	return s
 }
 
 // DocumentedSince returns the set of top-level identifiers that have gained documentation since older was measured. For types with fields, the type is included
