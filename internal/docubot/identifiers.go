@@ -431,8 +431,14 @@ func (ids *Identifiers) countUndocumentedTypes(includeTest bool, publicOnly bool
 			continue
 		}
 
+		fieldPaths := make(map[string]struct{}, len(ids.typeToFields[typ]))
 		for _, fieldID := range ids.typeToFields[typ] {
-			if publicOnly && !publicFieldPath(strings.TrimPrefix(fieldID, typ+".")) {
+			fieldPaths[strings.TrimPrefix(fieldID, typ+".")] = struct{}{}
+		}
+
+		for _, fieldID := range ids.typeToFields[typ] {
+			fieldPath := strings.TrimPrefix(fieldID, typ+".")
+			if publicOnly && !publicFieldPath(fieldPath, fieldPaths) {
 				continue
 			}
 			if _, hasDoc := ids.withDocs[fieldID]; !hasDoc {
@@ -456,17 +462,48 @@ func (ids *Identifiers) includeIdentifier(identifier string, includeTest bool, p
 	return true
 }
 
-func publicFieldPath(fieldPath string) bool {
+func publicFieldPath(fieldPath string, allFieldPaths map[string]struct{}) bool {
 	if fieldPath == "" {
 		return false
 	}
-	for _, segment := range strings.Split(fieldPath, ".") {
-		identifier := leadingIdentifier(segment)
-		if identifier == "" || !ast.IsExported(identifier) {
+
+	segments := strings.Split(fieldPath, ".")
+	var prefix []string
+	for i := 0; i < len(segments); {
+		singlePrefix := append(prefix, segments[i])
+		if _, ok := allFieldPaths[strings.Join(singlePrefix, ".")]; ok {
+			if !exportedFieldPathComponent(segments[i]) {
+				return false
+			}
+			prefix = singlePrefix
+			i++
+			continue
+		}
+
+		if i+1 >= len(segments) {
 			return false
 		}
+
+		selectorPrefix := append(prefix, segments[i], segments[i+1])
+		if _, ok := allFieldPaths[strings.Join(selectorPrefix, ".")]; !ok {
+			return false
+		}
+		if !exportedFieldPathComponent(segments[i+1]) {
+			return false
+		}
+		prefix = selectorPrefix
+		i += 2
 	}
 	return true
+}
+
+func exportedFieldPathComponent(component string) bool {
+	identifier := component
+	if idx := strings.LastIndex(identifier, "."); idx >= 0 {
+		identifier = identifier[idx+1:]
+	}
+	identifier = leadingIdentifier(identifier)
+	return identifier != "" && ast.IsExported(identifier)
 }
 
 func leadingIdentifier(s string) string {
