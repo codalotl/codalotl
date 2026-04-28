@@ -4,9 +4,9 @@ Docubot offers functions to add documentation to Go packages, improve existing d
 
 ## Dependencies
 
-- `internal/gocode` owns the Go parsing, snippets, and identifier handling.
+- `internal/gocode` owns the Go parsing, snippets, and identifier handling (`type Identifiers` in this package is allowed).
 - `internal/updatedocs` owns applying doc edits to source code and reflowing doc comments. Reflowing means controlling placement (eol vs Doc), and changes comment width.
-    - NOTE: `docubot`, but extension, should NOT directly be doing these things.
+- NOTE: `docubot`, by extension, should NOT directly be doing these things.
 
 ## AddDocs
 
