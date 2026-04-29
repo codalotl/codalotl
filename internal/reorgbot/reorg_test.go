@@ -51,15 +51,15 @@ func TestReorg_AppliesOrganization(t *testing.T) {
 		resp3 := func() string { // external tests
 			return jsonOrg("external_reorg_test.go", extTests)
 		}()
-		conv := &responsesConversationalist{responses: []string{resp1, resp2, resp3}}
+		conv := &responsesCompleter{responses: []string{resp1, resp2, resp3}}
 
 		// Clone the package onto disk to allow file rewrites safely in temp space.
 		cloned, err := pkg.Clone()
 		require.NoError(t, err)
 		defer cloned.Module.DeleteClone()
 
-		// Run Reorg on the cloned package using the stubbed conversationalist.
-		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+		// Run Reorg on the cloned package using the stubbed completer.
+		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Completer: conv}})
 		require.NoError(t, err)
 
 		// Discover new files by re-reading from disk.
@@ -90,7 +90,7 @@ func TestReorg_SendsContext(t *testing.T) {
 	withReorgFixture(t, func(pkg *gocode.Package) {
 		nonTest, mainTests, extTests := partitionIDs(pkg)
 		// Provide responses for all phases, including external tests.
-		conv := &responsesConversationalist{responses: []string{
+		conv := &responsesCompleter{responses: []string{
 			jsonOrg("non_test_file.go", nonTest),
 			jsonOrg("main_tests_test.go", mainTests),
 			jsonOrg("ext_tests_test.go", extTests),
@@ -99,7 +99,7 @@ func TestReorg_SendsContext(t *testing.T) {
 		cloned, err := pkg.Clone()
 		require.NoError(t, err)
 		defer cloned.Module.DeleteClone()
-		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Completer: conv}})
 		require.NoError(t, err)
 
 		// Inspect captured user messages
@@ -205,7 +205,7 @@ func TestReorg_Explicit(t *testing.T) {
 			b.WriteString("\n}")
 			return b.String()
 		}
-		conv := &responsesConversationalist{responses: []string{
+		conv := &responsesCompleter{responses: []string{
 			toJSON(nonTestOrg),
 			toJSON(mainTestsOrg),
 			toJSON(extTestsOrg),
@@ -215,7 +215,7 @@ func TestReorg_Explicit(t *testing.T) {
 		cloned, err := pkg.Clone()
 		require.NoError(t, err)
 		defer cloned.Module.DeleteClone()
-		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Completer: conv}})
 		require.NoError(t, err)
 		cloned, err = cloned.Module.ReadPackage(cloned.RelativeDir, nil)
 		require.NoError(t, err)
@@ -457,7 +457,7 @@ func TestReorg_EmbedAndSideEffectImports(t *testing.T) {
 
 		// Arrange the LLM to put all non-test ids into a single file so that
 		// embed and side-effect behaviors can be verified together.
-		conv := &responsesConversationalist{responses: []string{
+		conv := &responsesCompleter{responses: []string{
 			jsonOrg("reorg.go", ids),
 		}}
 
@@ -466,7 +466,7 @@ func TestReorg_EmbedAndSideEffectImports(t *testing.T) {
 		require.NoError(t, err)
 		defer cloned.Module.DeleteClone()
 
-		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+		err = Reorg(cloned, true, ReorgOptions{BaseOptions: BaseOptions{Completer: conv}})
 		require.NoError(t, err)
 
 		cloned, err = cloned.Module.ReadPackage(cloned.RelativeDir, nil)
@@ -531,15 +531,15 @@ func TestReorg_TwoPhase(t *testing.T) {
 		respOrgMain := jsonOrg("internal_reorg_test.go", mainTests)
 		respOrgExt := jsonOrg("external_reorg_test.go", extTests)
 
-		// stagedConversationalist: 3 initial org responses, then dynamic arrays for resort
-		conv := &stagedConversationalist{initial: []string{respOrgNon, respOrgMain, respOrgExt}}
+		// stagedCompleter: 3 initial org responses, then dynamic arrays for resort
+		conv := &stagedCompleter{initial: []string{respOrgNon, respOrgMain, respOrgExt}}
 
 		// Clone, run with oneShot=false (two-phase), then reload
 		cloned, err := pkg.Clone()
 		require.NoError(t, err)
 		defer cloned.Module.DeleteClone()
 
-		err = Reorg(cloned, false, ReorgOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+		err = Reorg(cloned, false, ReorgOptions{BaseOptions: BaseOptions{Completer: conv}})
 		require.NoError(t, err)
 
 		cloned, err = cloned.Module.ReadPackage(cloned.RelativeDir, nil)
@@ -621,8 +621,8 @@ func TestResortFile_NoDuplicatePreCommentsFromPreservedPrefix(t *testing.T) {
 
 		// Ask ResortFile to emit same order (single snippet). It should not duplicate the block.
 		resp := "[\"" + fooID + "\"]"
-		conv := &responsesConversationalist{responses: []string{resp}}
-		err = ResortFile(pkg, "a.go", ReorgOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+		conv := &responsesCompleter{responses: []string{resp}}
+		err = ResortFile(pkg, "a.go", ReorgOptions{BaseOptions: BaseOptions{Completer: conv}})
 		require.NoError(t, err)
 
 		// Reload and validate that the big block appears exactly once, above Foo, not twice.
