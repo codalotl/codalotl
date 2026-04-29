@@ -59,11 +59,17 @@ func updatePackageDoc(pkg *gocode.Package, ps *parsedSnippet, options Options) (
 		return newFile, nil, nil
 	} else {
 		const docFileName = "doc.go"
+		var buf bytes.Buffer
+		buf.WriteString(commentBlock)
+		buf.WriteString("package ")
+		buf.WriteString(pkg.Name)
+		buf.WriteByte('\n')
+
 		newFile := &gocode.File{
 			FileName:         docFileName,
 			RelativeFileName: filepath.Join(pkg.RelativeDir, docFileName),
 			AbsolutePath:     filepath.Join(pkg.Module.AbsolutePath, pkg.RelativeDir, docFileName),
-			Contents:         []byte(ps.unwrappedSnippet),
+			Contents:         buf.Bytes(),
 			PackageName:      pkg.Name,
 			IsTest:           false,
 			AST:              ps.ast,
