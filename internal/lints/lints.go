@@ -28,11 +28,12 @@ var SpecDiffInstructions = strings.TrimRight(embeddedSpecDiffInstructions, "\n")
 // map to action `fix`.
 type Situation string
 
+// The Situation constants name the contexts in which lint steps can run.
 const (
-	SituationInitial Situation = "initial"
-	SituationPatch   Situation = "patch"
-	SituationFix     Situation = "fix"
-	SituationTests   Situation = "tests"
+	SituationInitial Situation = "initial" // SituationInitial runs check-mode lints during initial context creation. Reflow is always skipped in this situation.
+	SituationPatch   Situation = "patch"   // SituationPatch runs fix-mode lints during patch application.
+	SituationFix     Situation = "fix"     // SituationFix runs fix-mode lints during an explicit fix run.
+	SituationTests   Situation = "tests"   // SituationTests runs check-mode lints during test validation.
 )
 
 type action string
@@ -45,16 +46,22 @@ const (
 // ConfigMode represents the configuration mode of specifying steps: do we extend existing steps, or replace them all with the given steps?
 type ConfigMode string
 
+// The ConfigMode constants define how configured lint steps combine with defaults.
 const (
-	ConfigModeExtend  ConfigMode = "extend"
-	ConfigModeReplace ConfigMode = "replace"
+	ConfigModeExtend  ConfigMode = "extend"  // ConfigModeExtend keeps default steps and appends configured steps.
+	ConfigModeReplace ConfigMode = "replace" // ConfigModeReplace uses configured steps instead of defaults.
 )
 
 // Lints is the user-configurable lint pipeline. It is intended to live under the top-level `lints` key in config JSON.
 type Lints struct {
-	Mode    ConfigMode `json:"mode,omitempty"`
-	Disable []string   `json:"disable,omitempty"`
-	Steps   []Step     `json:"steps,omitempty"`
+	// Mode controls how Steps combine with the default steps. An empty mode is treated as ConfigModeExtend.
+	Mode ConfigMode `json:"mode,omitempty"`
+
+	// Disable lists step IDs to remove after defaults and configured steps are combined. Empty IDs are ignored, and steps without IDs are not disabled by this list.
+	Disable []string `json:"disable,omitempty"`
+
+	// Steps lists additional or replacement lint steps, depending on Mode. A step with only a recognized ID expands to that preconfigured step.
+	Steps []Step `json:"steps,omitempty"`
 }
 
 // Reflows returns true if the lint configuration runs reflow.
@@ -78,6 +85,7 @@ func (l Lints) Reflows() bool {
 	return false
 }
 
+// Step configures one lint pipeline step. A step may be a fully specified command pair or a recognized preconfigured step ID.
 type Step struct {
 	// Optional. Empty string means "unset". Multiple steps may have an unset ID.
 	ID string `json:"id,omitempty"`
@@ -91,8 +99,11 @@ type Step struct {
 	// is inactive. Otherwise, active.
 	Active *cmdrunner.Command `json:"active,omitempty"`
 
+	// Check is the command used when the step runs in check mode. Steps enabled for SituationInitial or SituationTests must have a Check command.
 	Check *cmdrunner.Command `json:"check,omitempty"`
-	Fix   *cmdrunner.Command `json:"fix,omitempty"`
+
+	// Fix is the command preferred when the step runs in fix mode. If Fix is nil, fix mode falls back to Check so check-only lints can still run.
+	Fix *cmdrunner.Command `json:"fix,omitempty"`
 }
 
 const defaultReflowWidth = 120
