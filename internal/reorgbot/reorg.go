@@ -1,27 +1,24 @@
 package reorgbot
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/llmcomplete"
+	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/health"
 	"strings"
 	"sync"
 )
 
-// BaseOptions carries shared configuration and dependencies for LLM-backed documentation operations.
+// BaseOptions carries shared configuration and dependencies for LLM-backed reorganization operations.
 type BaseOptions struct {
-	// Model enables callers to choose an explicit model (this can, in theory, also be accomplished by Conversationalist, but is less ergonomic to callers).
-	Model llmcomplete.ModelID
-
-	// Conversationalist allows callers to inject their own LLM implementations, including mock implementations for testing.
-	Conversationalist llmcomplete.Conversationalist
-
-	// Logging and health context for operations.
-	health.Ctx
+	Model      llmmodel.ModelID    // Model enables callers to choose an explicit model.
+	Completer  llmstream.Completer // Completer allows callers to inject their own LLM implementations, including mock implementations for testing.
+	health.Ctx                     // Logging and health context for operations.
 }
 
 // ReorgOptions configures package reorganization.
@@ -150,7 +147,6 @@ func Reorg(pkg *gocode.Package, oneShot bool, options ReorgOptions) error {
 
 // askLLMForOrganization queries the LLM to get a package reorganization map.
 func askLLMForOrganization(ctx string, oneshot bool, opts BaseOptions) (map[string][]string, error) {
-
 	prompt := ""
 	if oneshot {
 		prompt = promptAskForOrgOneshot
@@ -158,20 +154,13 @@ func askLLMForOrganization(ctx string, oneshot bool, opts BaseOptions) (map[stri
 		prompt = promptAskForOrgGroup
 	}
 
-	conv := opts.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-	conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(opts.Model), prompt)
-	conversation.SetLogger(opts.Logger)
-	conversation.AddUserMessage(ctx)
-	resp, err := conversation.Send()
+	resp, err := completeText(prompt, ctx, opts)
 	if err != nil {
 		return nil, opts.LogWrappedErr("reorgbot.ask_llm_for_organization", err)
 	}
 
 	var org map[string][]string
-	if err := json.Unmarshal([]byte(strings.TrimSpace(resp.Text)), &org); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(resp)), &org); err != nil {
 		return nil, opts.LogWrappedErr("reorgbot.unmarshal_llm_response", err)
 	}
 	return org, nil
@@ -228,24 +217,29 @@ func ResortFile(pkg *gocode.Package, fileName string, options ReorgOptions) erro
 
 // askLLMForFileSort queries the LLM to get a sorted order of snippets for a single file.
 func askLLMForFileSort(ctx string, opts BaseOptions) ([]string, error) {
-
-	conv := opts.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-	conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(opts.Model), promptSortFile)
-	conversation.SetLogger(opts.Logger)
-	conversation.AddUserMessage(ctx)
-	resp, err := conversation.Send()
+	resp, err := completeText(promptSortFile, ctx, opts)
 	if err != nil {
 		return nil, opts.LogWrappedErr("reorgbot.ask_llm_for_file_sort", err)
 	}
 
 	var fileSort []string
-	if err := json.Unmarshal([]byte(strings.TrimSpace(resp.Text)), &fileSort); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(resp)), &fileSort); err != nil {
 		return nil, opts.LogWrappedErr("reorgbot.unmarshal_llm_response_file_sort", err)
 	}
 	return fileSort, nil
+}
+
+func completeText(systemMessage, userMessage string, opts BaseOptions) (string, error) {
+	completer := opts.Completer
+	if completer == nil {
+		completer = llmstream.NewCompleter()
+	}
+
+	turn, err := completer.Complete(context.Background(), llmmodel.ModelIDOrFallback(opts.Model), systemMessage, userMessage)
+	if err != nil {
+		return "", err
+	}
+	return turn.TextContent(), nil
 }
 
 // applyResort rewrites a single file in p by preserving its header (package doc and clause) and import section verbatim, and re-emitting all other snippets in sortedIDs

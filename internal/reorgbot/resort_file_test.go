@@ -39,7 +39,7 @@ func TestResortFile_ReordersWithinFileAndPreservesHeader(t *testing.T) {
 		}
 		b.WriteString("]")
 
-		conv := &responsesConversationalist{responses: []string{b.String()}}
+		conv := &responsesCompleter{responses: []string{b.String()}}
 
 		// Clone the package on disk to allow file rewrite
 		cloned, err := pkg.Clone()
@@ -47,7 +47,7 @@ func TestResortFile_ReordersWithinFileAndPreservesHeader(t *testing.T) {
 		defer cloned.Module.DeleteClone()
 
 		// Execute
-		err = ResortFile(cloned, "helpers.go", ReorgOptions{BaseOptions: BaseOptions{Conversationalist: conv}})
+		err = ResortFile(cloned, "helpers.go", ReorgOptions{BaseOptions: BaseOptions{Completer: conv}})
 		require.NoError(t, err)
 
 		// Reload to reflect disk changes
