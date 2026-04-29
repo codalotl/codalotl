@@ -12,8 +12,9 @@ Docubot offers functions to add documentation to Go packages, improve existing d
 
 `BaseOptions` carries shared settings for LLM-backed operations, including model / completer selection, health / logger context, and optional writer for user-facing progress output.
 
-- Progress/status text goes to the configured writer, or stdout if nil.
-- Structured logs use logger / health context, not the progress writer.
+- User-facing progress/status text goes to the configured writer, or stdout if nil.
+    - Also written to logs, so that logs have context about what is happening.
+- Debug/digansotic/error logs use logger / health context.
 
 ## Definitions and Mechanics
 
