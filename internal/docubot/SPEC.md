@@ -1,6 +1,6 @@
 # docubot
 
-Docubot offers functions to add documentation to Go packages, improve existing documentation, find errors in documentation, etc. Documentation here is just Go doc-style comments.
+Docubot offers functions to add documentation to Go packages, improve existing documentation, find errors in documentation, etc. Documentation here is just Go doc-style comments (but does not include intra-function comments).
 
 ## Dependencies
 
@@ -20,18 +20,25 @@ Definitions:
 - A field identifier is any field or method in a struct or interface.
 
 Mechanics:
+- Generally, when a primary method like `AddDocs` accepts a package, it means that package as well as a blackbox `_test` package, if present.
 - Overall package documentation counts as a piece of public documentation (comment above `package`, preferrably in `doc.go` file).
 - `init` functions are not documentable (but don't count against us as undocumented). They have identifiers like `init:file.go:15:6`.
 - Anonymous identifiers (ex: `var _ Foo`; `func _()`) are not documentable (but don't count against us as undocumented). They have identifiers like `_:file.go:15:5`.
-- For consts in a block: if the block is documented, each containing const is considered documented.
 - The prompts generally recommend documenting the block as well as the specs. But if each spec is documented, documenting the block itself is optional.
+- For consts in a block: if the block is documented, each containing const is considered documented.
+- Comments inside of functions are out of scope for this package, including for specs and functions defined inside functions.
+- structs (e.g., `type foo struct { ... }`) are fully documented if the overall type is commented and each field is commented, including nested anonymous structs.
+    - These nested anonymous structs can be basic (ex: `type foo struct { bar struct { baz int } }`), as well as pointers thereof, slices thereof, etc.
+- interfaces are fully documented if the overall type is documented, and each method is documented.
+- Embeded structs/interfaces need documentation on that field. Ex: `type foo struct { otherpkg.Bar }` where `otherpkg.Bar` is some other struct.
+- Do not edit generated files.
+- Do not clobber special comments like `//go:embed` directives.
 
 ## AddDocs
 
 The `AddDocs` function adds missing documentation to a package by directly editing the package's files.
 - By default, it documents all identifiers, excluding test files. It does not document generated identifiers.
 - It never removes, fixes, or edits an existing comment (other than reflowing).
-- For structs, documents the struct type itself, and recursively documents the fields. `OnlyDocumentExportedIdentifiers` below applies recursively to nested structs and their fields.
 
 Options include:
 - `DocumentTestFiles`: if true, we also document test files, including black-box tests (package somepkg_test). Does not document TestXxx/BenchmarkXxx/etc functions.
@@ -43,6 +50,6 @@ Notes:
     - In "ensuring `Public` has docs": the decl must have a comment (its contents are not considered, and may not actually mention `Public`).
     - This also applies to things like a struct's fields with mixed public/private. Ex: `type Foo struct { Public, private int }`.
 - If `OnlyDocumentExportedIdentifiers`, private structs' public fields are NOT documented.
-- If `OnlyDocumentExportedIdentifiers`, public structs' private fields are NOT documented.
+- If `OnlyDocumentExportedIdentifiers`, public structs' private fields are NOT documented (unless it shares a spec with a public field, as per above).
 - If `OnlyDocumentExportedIdentifiers`, similar rules applies to interfaces. Private interfaces's methods are not documented, and public interface's private methods are also not documented.
-- `OnlyDocumentExportedIdentifiers` and `DocumentTestFiles` should combine as spected: documents main package public identifiers, and exported (capitalized) identifiers in the test package(s), but not the TestXxx/etc ones.
+- `OnlyDocumentExportedIdentifiers` and `DocumentTestFiles` should combine as expected: documents main package exported identifiers, and exported identifiers in the test package(s), but not the TestXxx/etc ones.
