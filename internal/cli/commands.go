@@ -283,6 +283,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			OnlyDocumentExportedIdentifiers: *addPublicOnly,
 			BaseOptions: docubot.BaseOptions{
 				ReflowMaxWidth: cfg.ReflowWidth,
+				Out:            c.Out,
 				Model:          effectiveModel(cfg),
 				Ctx:            health.NewCtx(slog.New(slog.NewTextHandler(io.Discard, nil))),
 			},
