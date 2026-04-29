@@ -21,7 +21,7 @@ Definitions:
 
 Mechanics:
 - Generally, when a primary method like `AddDocs` accepts a package, it means that package as well as a black-box `_test` package, if present.
-- Overall package documentation counts as a piece of public documentation (comment above `package`, preferably in a `doc.go` file) and has an identifier (see `gocode.PackageIdentifier`).
+- Overall package documentation counts as a piece of public documentation (comment above `package`, preferably in a `doc.go` file) and has an identifier (see `gocode.PackageIdentifier`). Only for main packages (not _test packages).
 - `init` functions are not documentable (but don't count against us as undocumented). They have identifiers like `init:file.go:15:6`.
 - Anonymous identifiers (ex: `var _ Foo`; `func _()`) are not documentable (but don't count against us as undocumented). They have identifiers like `_:file.go:15:5`.
 - The prompts generally recommend documenting the block as well as the specs. But if each spec is documented, documenting the block itself is optional.
@@ -45,7 +45,9 @@ The `AddDocs` function adds missing documentation to a package by directly editi
 Options include:
 - `DocumentTestFiles`: if true, we also document test files, including black-box tests (package somepkg_test). Does not document TestXxx/BenchmarkXxx/etc functions.
 - `OnlyDocumentExportedIdentifiers`: if true, we only document exported identifiers.
-- `ExcludeIdentifiers`: any identifiers here are not documented.
+- `ExcludeIdentifiers`: any identifiers here are not documented. Notes:
+    - Excluding a type also excludes all of the type's fields (for structs). Same for interfaces and methods.
+    - If an excluded identifier is part of a multi-identifier spec/field (ex: `var Foo, Bar int`), and at least one of the identifiers is not excluded, a comment may still be added.
 
 Notes:
 - If `OnlyDocumentExportedIdentifiers`, source like `var Public, private = 0, 1` may document both `Public` and `private` (but must at least ensure `Public` has docs). The snippet may never be split into multiple decls.
