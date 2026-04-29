@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/codalotl/codalotl/internal/docubot"
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -21,6 +23,7 @@ import (
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcas "github.com/codalotl/codalotl/internal/q/cas"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
+	"github.com/codalotl/codalotl/internal/q/health"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/specmd"
 	"github.com/codalotl/codalotl/internal/tui"
@@ -29,6 +32,7 @@ import (
 
 var runTUIWithConfig = tui.RunWithConfig
 var runNoninteractiveExec = noninteractive.Exec
+var runDocubotAddDocs = docubot.AddDocs
 
 type configState struct {
 	once sync.Once
@@ -260,6 +264,36 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Short: "Documentation tools.",
 	}
 
+	addCmd := &qcli.Command{
+		Name:  "add",
+		Short: "Add missing documentation comments to a package.",
+		Args:  qcli.ExactArgs(1),
+	}
+	addFlags := addCmd.Flags()
+	addPublicOnly := addFlags.Bool("public-only", 0, false, "Only document exported identifiers.")
+	addIncludeTest := addFlags.Bool("include-test", 0, false, "Include test files, including black-box _test packages.")
+	addCmd.Run = runWithConfig("docs_add", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
+		pkg, _, err := loadPackageArg(c.Args[0])
+		if err != nil {
+			return err
+		}
+
+		changes, err := runDocubotAddDocs(pkg, docubot.AddDocsOptions{
+			DocumentTestFiles:               *addIncludeTest,
+			OnlyDocumentExportedIdentifiers: *addPublicOnly,
+			BaseOptions: docubot.BaseOptions{
+				ReflowMaxWidth: cfg.ReflowWidth,
+				Model:          effectiveModel(cfg),
+				Ctx:            health.NewCtx(slog.New(slog.NewTextHandler(io.Discard, nil))),
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		return writeStringln(c.Out, fmt.Sprintf("Applied %d documentation change(s).", len(changes)))
+	})
+
 	reflowCmd := &qcli.Command{
 		Name:  "reflow",
 		Short: "Reflow documentation in one or more paths.",
@@ -344,7 +378,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		}
 		return nil
 	})
-	docsCmd.AddCommand(reflowCmd)
+	docsCmd.AddCommand(addCmd, reflowCmd)
 
 	specCmd := &qcli.Command{
 		Name:  "spec",

@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/docubot"
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gopackagediff"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
@@ -417,6 +420,72 @@ func TestRun_ContextPackages_ExtraArg_IsUsageError(t *testing.T) {
 	if errOut.Len() == 0 {
 		t.Fatalf("expected stderr output for usage error")
 	}
+}
+
+func TestRun_DocsAdd_MissingArg_IsUsageError(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "docs", "add"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.NotEmpty(t, errOut.String())
+}
+
+func TestRun_DocsAdd_UsesPackageLoadingFlagsAndConfig(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(`{
+  "providerkeys": { "openai": "sk-from-config" },
+  "preferredprovider": "anthropic",
+  "reflowwidth": 77
+}`), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc Foo() {}\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origRunDocubotAddDocs := runDocubotAddDocs
+	t.Cleanup(func() { runDocubotAddDocs = origRunDocubotAddDocs })
+
+	var gotPkg *gocode.Package
+	var gotOpts docubot.AddDocsOptions
+	runDocubotAddDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) ([]*gopackagediff.Change, error) {
+		gotPkg = pkg
+		gotOpts = opts
+		return nil, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{
+		"codalotl", "docs", "add",
+		"--public-only",
+		"--include-test",
+		"example.com/tmpmod/p/",
+	}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.NotNil(t, gotPkg)
+	require.Equal(t, "example.com/tmpmod/p", gotPkg.ImportPath)
+	gotPkgDir, err := filepath.EvalSymlinks(gotPkg.AbsolutePath())
+	require.NoError(t, err)
+	wantPkgDir, err := filepath.EvalSymlinks(filepath.Join(tmp, "p"))
+	require.NoError(t, err)
+	require.Equal(t, wantPkgDir, gotPkgDir)
+	require.True(t, gotOpts.OnlyDocumentExportedIdentifiers)
+	require.True(t, gotOpts.DocumentTestFiles)
+	require.Equal(t, 77, gotOpts.ReflowMaxWidth)
+	require.Equal(t, llmmodel.ProviderIDAnthropic.DefaultModel(), gotOpts.Model)
+	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
 }
 
 func TestRun_Config_PrintsJSON(t *testing.T) {
