@@ -120,7 +120,7 @@ func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool
 	//   - generate new docs, apply to clone (generateAndApplyDocs)
 	//   - generate choices: current docs, or new ones. let LLM choose (chooseBetterDocsForIdentifiers)
 	//   - apply the best one (updatedocs.UpdateDocumentation)
-	baseOpts := BaseOptions{Completer: options.Completer, Ctx: options.Ctx, Model: options.Model, ReflowMaxWidth: options.ReflowMaxWidth}
+	baseOpts := options.BaseOptions
 	for ctx, ids := range contexts {
 		idsStr := strings.Join(ids, ", ") // for logging and messaging
 

@@ -66,6 +66,46 @@ func TestGenerateAndApplyDocs_UsesInjectedProgressWriter(t *testing.T) {
 	})
 }
 
+func TestImproveDocs_UsesInjectedProgressWriter(t *testing.T) {
+	code := dedent(`
+		// Foo does something.
+		func Foo() {}
+	`)
+
+	improvedSnippet := dedentWithBackticks(`
+		// Foo does something better.
+		func Foo()
+	`)
+
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + improvedSnippet,
+		`{"Foo":{"best":"A","reason":"Clearer"}}`,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		var outBuf bytes.Buffer
+
+		stdout := captureStdout(t, func() {
+			changes, err := ImproveDocs(pkg, []string{"Foo"}, ImproveDocsOptions{
+				BaseOptions: BaseOptions{
+					Completer: conv,
+					Out:       &outBuf,
+				},
+			})
+			require.NoError(t, err)
+			require.Len(t, changes, 1)
+		})
+
+		assert.Empty(t, stdout)
+
+		output := outBuf.String()
+		assert.Contains(t, output, "Improving docs for Foo...")
+		assert.Contains(t, output, "> Requesting docs for 1 identifiers: Foo")
+		assert.Contains(t, output, "< Got 1 snippets. 1/1 successful")
+		assert.Contains(t, output, "New docs for Foo are better. Using...")
+	})
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 
