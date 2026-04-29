@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -83,4 +86,56 @@ func TestRunDocRejectsInvalidTokenBudgetBeforeLoadingPackage(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Empty(t, stdout.String())
 	assert.Contains(t, stderr.String(), "--token-budget must be >= 0")
+}
+
+func TestRunDocSendsDocubotProgressToCLIWriter(t *testing.T) {
+	pkgDir := writeDocumentedPackage(t)
+	root := newRootCommand()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	var code int
+	processStdout := captureStdout(t, func() {
+		code = cli.Run(context.Background(), root, cli.Options{
+			Args: []string{"doc", pkgDir},
+			Out:  &stdout,
+			Err:  &stderr,
+		})
+	})
+
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stderr.String())
+	assert.Contains(t, stdout.String(), "Everything is already documented")
+	assert.Contains(t, stdout.String(), "Applied 0 documentation change(s).")
+	assert.Empty(t, processStdout)
+}
+
+func writeDocumentedPackage(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/docubotcmdtest\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "example.go"), []byte("// Package example is a documented package used by docubot cmd tests.\npackage example\n\n// Answer returns the answer.\nfunc Answer() int { return 42 }\n"), 0644))
+	return dir
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	originalStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+
+	os.Stdout = writer
+	defer func() {
+		os.Stdout = originalStdout
+	}()
+
+	fn()
+
+	require.NoError(t, writer.Close())
+	output, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	return string(output)
 }

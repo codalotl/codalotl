@@ -8,6 +8,14 @@ Docubot offers functions to add documentation to Go packages, improve existing d
 - `internal/updatedocs` owns applying doc edits to source code and reflowing doc comments. Reflowing means controlling placement (EOL vs `Doc`) and changing comment width.
 - NOTE: `docubot`, by extension, should NOT directly be doing these things.
 
+## BaseOptions
+
+`BaseOptions` carries shared settings for LLM-backed operations, including model / completer selection, health / logger context, and optional writer for user-facing progress output.
+
+- User-facing progress/status text goes to the configured writer, or stdout if nil.
+    - Also written to logs, so that logs have context about what is happening.
+- Debug/digansotic/error logs use logger / health context.
+
 ## Definitions and Mechanics
 
 Definitions:

@@ -8,7 +8,11 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/health"
 	"github.com/codalotl/codalotl/internal/updatedocs"
+	"io"
+	"os"
+	"reflect"
 	"strings"
+	"sync"
 )
 
 // BaseOptions carries shared configuration and dependencies for LLM-backed documentation operations.
@@ -19,6 +23,7 @@ type BaseOptions struct {
 	// ReflowMaxWidth sets the desired wrap width when reflowing documentation comments. A value of zero uses a sensible default of 180 to preserve previous behavior.
 	ReflowMaxWidth int
 
+	Out        io.Writer           // Out receives user-facing progress and status messages. Nil falls back to stdout.
 	Model      llmmodel.ModelID    // Model enables callers to choose an explicit model.
 	Completer  llmstream.Completer // Completer allows callers to inject their own LLM implementations, including mock implementations for testing.
 	health.Ctx                     // Logging and health context for operations.
@@ -26,6 +31,9 @@ type BaseOptions struct {
 
 // defaultReflowMaxWidth is the single source of truth for the fallback wrap width.
 const defaultReflowMaxWidth = 180
+
+// userMessageWriterLocks serializes progress writes per configured writer so copied BaseOptions values still coordinate around the same output destination.
+var userMessageWriterLocks sync.Map
 
 // effectiveReflowMaxWidth returns the configured width, or a consistent default when unset.
 func (o BaseOptions) effectiveReflowMaxWidth() int {
@@ -40,13 +48,43 @@ func (o BaseOptions) updatedocsOptions(rejectUpdates bool) updatedocs.Options {
 	return updatedocs.Options{Reflow: true, ReflowMaxWidth: o.effectiveReflowMaxWidth(), RejectUpdates: rejectUpdates}
 }
 
-// userMessagef writes msg/args (in printf format) to stdout. If o.Logger is set, it also logs the message there.
-//
-// Design Note: This lets us, in the future, add BaseOptions#Verbose or a BaseOptions#Println func to control if and where the message is written to.
+func (o *BaseOptions) userMessageWriter() io.Writer {
+	if o != nil && o.Out != nil {
+		return o.Out
+	}
+	return os.Stdout
+}
+
+func userMessageWriterLock(w io.Writer) *sync.Mutex {
+	if w == nil {
+		return nil
+	}
+
+	t := reflect.TypeOf(w)
+	if t == nil || !t.Comparable() {
+		return nil
+	}
+
+	if existing, ok := userMessageWriterLocks.Load(w); ok {
+		return existing.(*sync.Mutex)
+	}
+
+	mu := &sync.Mutex{}
+	actual, _ := userMessageWriterLocks.LoadOrStore(w, mu)
+	return actual.(*sync.Mutex)
+}
+
+// userMessagef writes msg/args (in printf format) to the configured user-facing writer, or stdout if none is configured. If o.Logger is set, it also logs the message
+// there.
 func (o *BaseOptions) userMessagef(msg string, args ...any) {
 	str := fmt.Sprintf(strings.TrimRight(msg, "\n"), args...)
-	fmt.Println(str)
-	if o.Logger != nil {
+	writer := o.userMessageWriter()
+	if mu := userMessageWriterLock(writer); mu != nil {
+		mu.Lock()
+		defer mu.Unlock()
+	}
+	_, _ = fmt.Fprintln(writer, str)
+	if o != nil && o.Logger != nil {
 		o.Logger.Info(str)
 	}
 }

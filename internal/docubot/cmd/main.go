@@ -156,6 +156,7 @@ func runAddDocs(c *cli.Context, target string, cfg addDocsConfig) error {
 		ExcludeIdentifiers:              cfg.excludeIdentifiers,
 		BaseOptions: docubot.BaseOptions{
 			ReflowMaxWidth: cfg.reflowWidth,
+			Out:            c.Out,
 			Model:          cfg.model,
 			Ctx:            health.NewCtx(logger),
 		},

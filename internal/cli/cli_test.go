@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gopackagediff"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/noninteractive"
+	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/stretchr/testify/require"
 )
@@ -486,6 +488,77 @@ func TestRun_DocsAdd_UsesPackageLoadingFlagsAndConfig(t *testing.T) {
 	require.Equal(t, 77, gotOpts.ReflowMaxWidth)
 	require.Equal(t, llmmodel.ProviderIDAnthropic.DefaultModel(), gotOpts.Model)
 	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
+}
+
+func TestDocsAddCommand_PassesCLIOutputWriterToDocubot(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc Foo() {}\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origRunDocubotAddDocs := runDocubotAddDocs
+	t.Cleanup(func() { runDocubotAddDocs = origRunDocubotAddDocs })
+
+	var gotOpts docubot.AddDocsOptions
+	runDocubotAddDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) ([]*gopackagediff.Change, error) {
+		gotOpts = opts
+		return nil, nil
+	}
+
+	root, _ := newRootCommand(true)
+	addCmd := requireCommand(t, root, "docs", "add")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err = addCmd.Run(&qcli.Context{
+		Context: context.Background(),
+		Command: addCmd,
+		Args:    []string{"./p"},
+		Out:     &out,
+		Err:     &errOut,
+	})
+	require.NoError(t, err)
+	require.Same(t, &out, gotOpts.BaseOptions.Out)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
+}
+
+func TestRun_DocsAdd_WritesDocubotProgressToCLIOutput(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc Foo() {}\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origRunDocubotAddDocs := runDocubotAddDocs
+	t.Cleanup(func() { runDocubotAddDocs = origRunDocubotAddDocs })
+
+	runDocubotAddDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) ([]*gopackagediff.Change, error) {
+		_, err := opts.BaseOptions.Out.Write([]byte("Generating docs...\n"))
+		require.NoError(t, err)
+		return nil, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "docs", "add", "./p"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "Generating docs...\nApplied 0 documentation change(s).\n", out.String())
 }
 
 func TestRun_Config_PrintsJSON(t *testing.T) {
@@ -1094,4 +1167,23 @@ func keys(m map[string]bool) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func requireCommand(t *testing.T, root *qcli.Command, names ...string) *qcli.Command {
+	t.Helper()
+
+	cmd := root
+	for _, name := range names {
+		var next *qcli.Command
+		for _, child := range cmd.Commands() {
+			if child.Name == name {
+				next = child
+				break
+			}
+		}
+		require.NotNil(t, next)
+		cmd = next
+	}
+
+	return cmd
 }
