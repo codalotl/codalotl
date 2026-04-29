@@ -188,9 +188,21 @@ func TestAddDocs_OnlyDocumentExportedIdentifier_DocumentsFixturePublicOnly(t *te
 		`),
 	}
 
-	conv := &responsesCompleter{responses: []string{
-		"Here are the documentation snippets:\n\n" + strings.Join(snippets, "\n\n"),
-	}}
+	conv := &identifierSnippetsCompleter{
+		snippetsByIdentifier: map[string]string{
+			"Temperature":               snippets[0],
+			"Freezing":                  snippets[1],
+			"Boiling":                   snippets[1],
+			"Temperature.AboveFreezing": snippets[2],
+			"Temperature.above":         snippets[3],
+			"Reading":                   snippets[4],
+			"DefaultLocation":           snippets[5],
+			"NewReading":                snippets[6],
+			"Average":                   snippets[7],
+			"sumTemp":                   snippets[8],
+			gocode.PackageIdentifier:    snippets[9],
+		},
+	}
 
 	withCodeFixture(t, func(pkg *gocode.Package) {
 		changes, err := AddDocs(pkg, AddDocsOptions{
@@ -238,6 +250,15 @@ func TestAddDocs_OnlyDocumentExportedIdentifier_DocumentsFixturePublicOnly(t *te
 		userText := conv.allUserText()
 		assert.Contains(t, userText, "- Temperature.above")
 		assert.Contains(t, userText, "- sumTemp")
+
+		secondConv := &responsesCompleter{responses: []string{"unexpected"}}
+		changes, err = AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: secondConv},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, changes)
+		assert.Empty(t, secondConv.convs)
 	})
 }
 
@@ -268,6 +289,114 @@ func TestAddDocs_OnlyDocumentExportedIdentifier_SkipsWorkWhenOnlyPrivateDocsAreM
 		content := string(pkg.Files["code.go"].Contents)
 		assert.Contains(t, content, "// Foo does something.")
 		assert.NotContains(t, content, "// bar")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_CreatesAndPreservesPackageDoc(t *testing.T) {
+	files := map[string]string{
+		"a.go": dedent(`
+			package mypkg
+
+			// Foo does something.
+			func Foo() {}
+		`),
+		"b.go": dedent(`
+			package mypkg
+
+			// Bar does something else.
+			func Bar() {}
+		`),
+	}
+	snippet := dedentWithBackticks(`
+		// Package mypkg provides package documentation.
+		package mypkg
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithMultiCode(t, files, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "doc.go")
+
+		pkg, err = pkg.Module.ReadPackage(pkg.RelativeDir, nil)
+		require.NoError(t, err)
+
+		docFile := pkg.Files["doc.go"]
+		require.NotNil(t, docFile)
+		assert.Contains(t, string(docFile.Contents), "// Package mypkg provides package documentation.")
+
+		secondConv := &responsesCompleter{responses: []string{"unexpected"}}
+		changes, err = AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: secondConv},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, changes)
+		assert.Empty(t, secondConv.convs)
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_PackageDocOnlyWithPrivateDocsRemaining(t *testing.T) {
+	code := dedent(`
+		package mypkg
+
+		// Foo does something.
+		func Foo() {}
+
+		func bar() {}
+
+		type privateType struct{}
+	`)
+	snippets := []string{
+		dedentWithBackticks(`
+			// bar does something privately.
+			func bar()
+		`),
+		dedentWithBackticks(`
+			// privateType stores private state.
+			type privateType struct{}
+		`),
+		dedentWithBackticks(`
+			// Package mypkg provides package documentation.
+			package mypkg
+		`),
+	}
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + strings.Join(snippets, "\n\n"),
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "doc.go")
+
+		pkg, err = pkg.Module.ReadPackage(pkg.RelativeDir, nil)
+		require.NoError(t, err)
+
+		docFile := pkg.Files["doc.go"]
+		require.NotNil(t, docFile)
+		assert.Contains(t, string(docFile.Contents), "// Package mypkg provides package documentation.")
+
+		content := string(pkg.Files["code.go"].Contents)
+		assert.NotContains(t, content, "// bar does something privately.")
+		assert.NotContains(t, content, "// privateType stores private state.")
+
+		secondConv := &responsesCompleter{responses: []string{"unexpected"}}
+		changes, err = AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			BaseOptions:                     BaseOptions{Completer: secondConv},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, changes)
+		assert.Empty(t, secondConv.convs)
 	})
 }
 

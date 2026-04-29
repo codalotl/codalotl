@@ -255,7 +255,7 @@ func addDocsOnlyDocumentExportedIdentifier(pkg *gocode.Package, options AddDocsO
 		return nil, options.LogWrappedErr("ensure_docs.public_only.scratch_add_docs", err)
 	}
 
-	scratchPkg, err = scratchPkg.Reload()
+	scratchPkg, err = reloadPackageDiscoveringNewFiles(scratchPkg)
 	if err != nil {
 		return nil, options.LogWrappedErr("ensure_docs.public_only.scratch_reload", err)
 	}
@@ -318,6 +318,20 @@ func applyPublicDocsFromScratchPackage(pkg *gocode.Package, scratchPkg *gocode.P
 		pkg = updatedPkg
 	}
 	return pkg, nil
+}
+
+func reloadPackageDiscoveringNewFiles(pkg *gocode.Package) (*gocode.Package, error) {
+	reloadedPkg, err := pkg.Module.ReadPackage(pkg.RelativeDir, nil)
+	if err != nil {
+		return nil, err
+	}
+	if pkg.IsTestPackage() {
+		if reloadedPkg.TestPackage == nil {
+			return nil, fmt.Errorf("reloaded package missing test package")
+		}
+		return reloadedPkg.TestPackage, nil
+	}
+	return reloadedPkg, nil
 }
 
 // publicDocumentationSnippets returns parseable Go snippets containing only public declarations and public members from pkg. Mixed public/private specs and fields
