@@ -179,6 +179,19 @@ If `--check` is provided, reflow is run as a dry-run: no files are modified on d
 Output:
 - Prints the list of modified `.go` files (one per line) to stdout, similar to `gofmt -l`. The paths are module-relative when available.
 
+### codalotl docs add [--public-only] [--include-test] <path/to/pkg>
+
+Adds missing package documentation comments using `docubot.AddDocs`.
+
+Notes:
+- `<path/to/pkg>` follows the usual single-package argument semantics described above.
+- `--public-only` only documents exported identifiers.
+- `--include-test` includes test files, including black-box `_test` packages.
+- Uses the effective model and configured `reflowwidth`.
+
+Output:
+- Prints a concise summary of the applied documentation changes.
+
 ### codalotl spec diff <path/to/pkg_or_SPEC.md>
 
 Prints a human/LLM-friendly diff between the public API declared in `SPEC.md` and the public API implemented in the corresponding `.go` files, using `internal/specmd`.
