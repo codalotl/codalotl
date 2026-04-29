@@ -73,6 +73,38 @@ func TestUpdateDocumentationPackagesTableDriven(t *testing.T) {
 			},
 		},
 		{
+			name: "package comment - create new file adds trailing newline for raw snippet",
+			existingSource: map[string]string{
+				"existing.go": dedent(`
+					package mypkg
+				`),
+			},
+			snippets: []string{
+				"// Package comment\npackage mypkg",
+			},
+			newSource: map[string]string{
+				"doc.go": "// Package comment\npackage mypkg\n",
+			},
+		},
+		{
+			name: "package comment - create new file uses reflowed docs",
+			existingSource: map[string]string{
+				"existing.go": dedent(`
+					package mypkg
+				`),
+			},
+			snippets: []string{
+				"// Package comment.\n// Second line.\npackage mypkg",
+			},
+			options: Options{Reflow: true},
+			newSource: map[string]string{
+				"doc.go": dedent(`
+					// Package comment. Second line.
+					package mypkg
+				`),
+			},
+		},
+		{
 			name: "package comment - update docs",
 			existingSource: map[string]string{
 				"doc.go": dedent(`

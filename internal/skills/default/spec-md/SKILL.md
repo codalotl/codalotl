@@ -74,15 +74,15 @@ In all of the following tasks, follow the user's instructions, as their request 
 
 ### Review a SPEC.md
 
-When asked to "review":
+When asked to "review" or similar:
 - Avoid commenting on the implementation. It may be missing, incomplete, out of date, etc. The user wants you to focus on the spec.
     - You can look at the implementation and other supporting files/packages, but don't give feedback that the implementation is missing, out of date, non-conforming, etc.
     - However, you can assume that dependency packages are fully baked: if the design relies on a dep, and the dep doesn't support how the SPEC.md wants to use it, that's worth flagging.
-- Fix obvious typos and misspellings (use apply_patch; don't just report it).
-- Fix grammar, but keep in mind we want terse specs, so missing articles are fine (use apply_patch; don't just report it).
+- Fix obvious typos and misspellings (actually edit the files; don't just report it).
+- Fix grammar, but keep in mind we want terse specs, so missing articles are fine (actually edit the files; don't just report it).
     - Also fix documentation typos/grammar in Public API (even if it introduces divergence with the implementation).
 - Do these, but don't autofix unless otherwise instructed to (instead, just tell the user):
-    - Check for internal consistency (but very important: not all exceptions/aspects of a design should be repeated in all sentences/sections).
+    - Check for internal consistency (but very important: consider totality of doc, not just a sentence in isolation. See `## Consistent`).
     - Check for ambiguous design aspects that are worth flagging or specifying:
         - The documentation in the Public API is a good place to reduce ambiguity - it's not just SPEC.md ambiguity, it's interface ambiguity. Suggesting high-leverage clarifications here is fine.
         - Trap ambiguity ("no good solution"): any reasonable clarification leads to a materially bad outcome. In these cases, the underlying design likely needs to change; merely "clarifying" won't fix it.

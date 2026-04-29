@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
-	"github.com/codalotl/codalotl/internal/llmcomplete"
+	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/health"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 	"strings"
@@ -18,14 +19,9 @@ type BaseOptions struct {
 	// ReflowMaxWidth sets the desired wrap width when reflowing documentation comments. A value of zero uses a sensible default of 180 to preserve previous behavior.
 	ReflowMaxWidth int
 
-	// Model enables callers to choose an explicit model (this can, in theory, also be accomplished by Conversationalist, but is less ergonomic to callers).
-	Model llmcomplete.ModelID
-
-	// Conversationalist allows callers to inject their own LLM implementations, including mock implementations for testing.
-	Conversationalist llmcomplete.Conversationalist
-
-	// Logging and health context for operations.
-	health.Ctx
+	Model      llmmodel.ModelID    // Model enables callers to choose an explicit model.
+	Completer  llmstream.Completer // Completer allows callers to inject their own LLM implementations, including mock implementations for testing.
+	health.Ctx                     // Logging and health context for operations.
 }
 
 // defaultReflowMaxWidth is the single source of truth for the fallback wrap width.
@@ -80,12 +76,6 @@ func generateAndApplyDocs(pkg *gocode.Package, codeCtx *gocodecontext.Context, i
 		return nil, nil, health.LogNewErr(options.Logger, "generateAndApplyDocs called with no identifiers")
 	}
 
-	// Get conversationalist to talk to LLM:
-	conv := options.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-
 	// Make prompt:
 	prompt := promptAddDocumentation()
 	codeContextStr := codeCtx.Code()
@@ -98,17 +88,14 @@ func generateAndApplyDocs(pkg *gocode.Package, codeCtx *gocodecontext.Context, i
 	options.Log("counting tokens", "prompt", promptToks, "code", codeContextToks, "instructions", instructionsToks)
 	options.userMessagef("> Requesting docs for %d identifiers: %s (%s)", len(identifiers), strings.Join(identifiers, ", "), formatTokenCount(promptToks+codeContextToks+instructionsToks))
 
-	// Create a conversation and get documentation snippets from LLM:
-	conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(options.Model), prompt)
-	conversation.SetLogger(options.Logger)
-	conversation.AddUserMessage(codeContextStr + targetIdentifiersInstructions)
-	response, err := conversation.Send()
+	// Get documentation snippets from LLM:
+	responseText, err := completeText(prompt, codeContextStr+targetIdentifiersInstructions, options)
 	if err != nil {
 		return nil, nil, health.LogWrappedErr(options.Logger, "failed to get documentation from LLM", err)
 	}
 
 	// Extract snippets from response:
-	snippets := extractSnippets(response.Text)
+	snippets := extractSnippets(responseText)
 	if len(snippets) == 0 {
 		options.userMessagef("< Got 0 snippets")
 		return nil, nil, errNoSnippets

@@ -5,9 +5,9 @@ import (
 	"go/token"
 )
 
-// filterExportedTypes takes a type declaration and returns a cloned decl without unexported types or unexported fields or methods in structs or interfaces. If a
-// struct or interface has elided members, it will contain `// contains filtered or unexported fields`.
-func filterExportedTypes(genDecl *ast.GenDecl) *ast.GenDecl {
+// filterExportedTypes takes a type declaration and returns a cloned decl without unexported types or unexported fields or methods in structs or interfaces. If preserveMixed
+// is true, mixed named fields are kept intact when at least one name is exported. If a struct or interface has elided members, it will contain `// contains filtered or unexported fields`.
+func filterExportedTypes(genDecl *ast.GenDecl, preserveMixed bool) *ast.GenDecl {
 	if genDecl == nil {
 		return genDecl
 	}
@@ -36,7 +36,7 @@ func filterExportedTypes(genDecl *ast.GenDecl) *ast.GenDecl {
 					Name:       typeSpec.Name,
 					TypeParams: typeSpec.TypeParams,
 					Assign:     typeSpec.Assign,
-					Type:       filterType(typeSpec.Type),
+					Type:       filterType(typeSpec.Type, preserveMixed),
 					Comment:    typeSpec.Comment,
 				}
 				filteredSpecs = append(filteredSpecs, filteredTypeSpec)
@@ -49,22 +49,99 @@ func filterExportedTypes(genDecl *ast.GenDecl) *ast.GenDecl {
 }
 
 // filterType filters a type expression, removing unexported struct fields and, for interfaces, unexported methods and embedded interfaces.
-func filterType(typeExpr ast.Expr) ast.Expr {
+func filterType(typeExpr ast.Expr, preserveMixed bool) ast.Expr {
+	return filterTypeWithIncomplete(typeExpr, preserveMixed, true)
+}
+
+func filterTypeWithIncomplete(typeExpr ast.Expr, preserveMixed bool, markIncomplete bool) ast.Expr {
 	switch t := typeExpr.(type) {
 	case *ast.StructType:
-		return filterStruct(t)
+		if markIncomplete {
+			return filterStruct(t, preserveMixed)
+		}
+		return filterStructWithIncomplete(t, preserveMixed, markIncomplete)
 	case *ast.InterfaceType:
-		return filterInterface(t)
+		if markIncomplete {
+			return filterInterface(t, preserveMixed)
+		}
+		return filterInterfaceWithIncomplete(t, preserveMixed, markIncomplete)
+	case *ast.StarExpr:
+		dup := *t
+		dup.X = filterTypeWithIncomplete(t.X, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.ParenExpr:
+		dup := *t
+		dup.X = filterTypeWithIncomplete(t.X, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.ArrayType:
+		dup := *t
+		dup.Elt = filterTypeWithIncomplete(t.Elt, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.Ellipsis:
+		dup := *t
+		dup.Elt = filterTypeWithIncomplete(t.Elt, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.MapType:
+		dup := *t
+		dup.Key = filterTypeWithIncomplete(t.Key, preserveMixed, markIncomplete)
+		dup.Value = filterTypeWithIncomplete(t.Value, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.ChanType:
+		dup := *t
+		dup.Value = filterTypeWithIncomplete(t.Value, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.FuncType:
+		dup := *t
+		dup.Params = filterFieldListTypes(t.Params, preserveMixed, markIncomplete)
+		dup.Results = filterFieldListTypes(t.Results, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.IndexExpr:
+		dup := *t
+		dup.Index = filterTypeWithIncomplete(t.Index, preserveMixed, markIncomplete)
+		return &dup
+	case *ast.IndexListExpr:
+		dup := *t
+		dup.Indices = make([]ast.Expr, len(t.Indices))
+		for i, index := range t.Indices {
+			dup.Indices[i] = filterTypeWithIncomplete(index, preserveMixed, markIncomplete)
+		}
+		return &dup
 	default:
 		// For other types (aliases, primitives, etc.), return as-is
 		return typeExpr
 	}
 }
 
+func filterFieldListTypes(fields *ast.FieldList, preserveMixed bool, markIncomplete bool) *ast.FieldList {
+	if fields == nil {
+		return nil
+	}
+
+	dup := &ast.FieldList{
+		Opening: fields.Opening,
+		Closing: fields.Closing,
+	}
+	if len(fields.List) == 0 {
+		return dup
+	}
+
+	dup.List = make([]*ast.Field, len(fields.List))
+	for i, field := range fields.List {
+		fieldDup := *field
+		fieldDup.Type = filterTypeWithIncomplete(field.Type, preserveMixed, markIncomplete)
+		dup.List[i] = &fieldDup
+	}
+	return dup
+}
+
 // filterStruct returns a copy of orig that retains only exported fields and embedded types. Unexported fields (and unexported embedded types) are removed. For fields
-// that declare multiple names, only exported names are kept; their ast.Field is duplicated with the remaining names while preserving type, tag, and comments. The
-// result preserves field order and positions, and sets Incomplete to true if anything was removed. orig is not mutated.
-func filterStruct(orig *ast.StructType) *ast.StructType {
+// that declare multiple names, preserveMixed controls whether mixed exported/unexported fields are kept intact or duplicated with only exported names. The result
+// preserves field order and positions, and sets Incomplete to true if anything was removed. orig is not mutated.
+func filterStruct(orig *ast.StructType, preserveMixed bool) *ast.StructType {
+	return filterStructWithIncomplete(orig, preserveMixed, true)
+}
+
+func filterStructWithIncomplete(orig *ast.StructType, preserveMixed bool, markIncomplete bool) *ast.StructType {
 	if orig.Fields == nil { // nothing to filter
 		return orig
 	}
@@ -81,7 +158,7 @@ func filterStruct(orig *ast.StructType) *ast.StructType {
 		// Embedded field (fld.Names == nil)
 		if len(fld.Names) == 0 {
 			if isExportedEmbedded(fld.Type) {
-				keep = append(keep, fld)
+				keep = append(keep, cloneFieldWithFilteredType(fld, preserveMixed))
 			} else {
 				skipped = true
 			}
@@ -99,28 +176,43 @@ func filterStruct(orig *ast.StructType) *ast.StructType {
 			skipped = true
 			continue
 		}
+		if preserveMixed {
+			keep = append(keep, cloneFieldWithFilteredType(fld, preserveMixed))
+			continue
+		}
 		if len(names) != len(fld.Names) {
 			dup := *fld
 			dup.Names = names
+			dup.Type = filterType(fld.Type, preserveMixed)
 			keep = append(keep, &dup)
 			skipped = true
 		} else {
-			keep = append(keep, fld)
+			keep = append(keep, cloneFieldWithFilteredType(fld, preserveMixed))
 		}
 	}
 
 	out.Fields.List = keep
-	if orig.Fields != nil && skipped {
+	if orig.Fields != nil && skipped && markIncomplete {
 		out.Incomplete = true
 	}
 
 	return out
 }
 
+func cloneFieldWithFilteredType(fld *ast.Field, preserveMixed bool) *ast.Field {
+	dup := *fld
+	dup.Type = filterType(fld.Type, preserveMixed)
+	return &dup
+}
+
 // filterInterface returns a copy of orig that retains only exported interface API. Exported methods and exported embedded interfaces are kept; unexported ones are
 // removed. Type-set terms used by constraints (e.g., union/tilde expressions) are always preserved. The result preserves order and positions, and sets Incomplete
 // to true if anything was removed. orig is not mutated.
-func filterInterface(orig *ast.InterfaceType) *ast.InterfaceType {
+func filterInterface(orig *ast.InterfaceType, preserveMixed bool) *ast.InterfaceType {
+	return filterInterfaceWithIncomplete(orig, preserveMixed, true)
+}
+
+func filterInterfaceWithIncomplete(orig *ast.InterfaceType, preserveMixed bool, markIncomplete bool) *ast.InterfaceType {
 	if orig.Methods == nil { // nothing to filter
 		return orig
 	}
@@ -143,27 +235,41 @@ func filterInterface(orig *ast.InterfaceType) *ast.InterfaceType {
 			switch m.Type.(type) {
 			case *ast.BinaryExpr, *ast.UnaryExpr, *ast.ParenExpr:
 				// Always keep – they represent type sets/union constraints.
-				keep = append(keep, m)
+				keep = append(keep, cloneFieldWithFilteredType(m, preserveMixed))
 				continue
 			}
 
 			if isExportedEmbedded(m.Type) {
-				keep = append(keep, m)
+				keep = append(keep, cloneFieldWithFilteredType(m, preserveMixed))
 			} else {
 				skipped = true
 			}
 			continue
 		}
 
-		if ast.IsExported(m.Names[0].Name) {
-			keep = append(keep, m)
+		var names []*ast.Ident
+		for _, n := range m.Names {
+			if ast.IsExported(n.Name) {
+				names = append(names, n)
+			}
+		}
+		if len(names) == 0 {
+			skipped = true
+			continue
+		}
+		if preserveMixed || len(names) == len(m.Names) {
+			keep = append(keep, cloneFieldWithFilteredType(m, preserveMixed))
 		} else {
+			dup := *m
+			dup.Names = names
+			dup.Type = filterType(m.Type, preserveMixed)
+			keep = append(keep, &dup)
 			skipped = true
 		}
 	}
 
 	out.Methods.List = keep
-	if orig.Methods != nil && skipped {
+	if orig.Methods != nil && skipped && markIncomplete {
 		out.Incomplete = true
 	}
 

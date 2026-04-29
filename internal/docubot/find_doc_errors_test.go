@@ -13,7 +13,7 @@ import (
 func TestFindDocErrorsBatch(t *testing.T) {
 	// Mock LLM response: only Foo has an error, Bar is fine (empty string).
 	mockResponse := `{"Foo":"Missing details","Bar":""}`
-	conv := &responsesConversationalist{responses: []string{mockResponse}}
+	conv := &responsesCompleter{responses: []string{mockResponse}}
 
 	// Minimal code fixture containing the identifiers we will query.
 	code := dedent(`
@@ -26,7 +26,7 @@ func TestFindDocErrorsBatch(t *testing.T) {
 
 	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
 		feedback, err := findDocErrorsBatch(pkg, &gocodecontext.Context{}, []string{"Foo", "Bar"}, FindFixDocErrorsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv},
+			BaseOptions: BaseOptions{Completer: conv},
 		})
 		assert.NoError(t, err)
 
@@ -47,7 +47,7 @@ func TestFindAllDocErrors(t *testing.T) {
 	// Mock LLM response indicating problems for both Foo and Bar.
 	mockResponse := `{"Foo":"Bad docs","Bar":"Bad docs"}`
 	// Provide multiple identical responses in case FindAllDocErrors invokes the LLM more than once.
-	conv := &responsesConversationalist{responses: []string{mockResponse, mockResponse, mockResponse}}
+	conv := &responsesCompleter{responses: []string{mockResponse, mockResponse, mockResponse}}
 
 	code := dedent(`
         // Foo does something.
@@ -59,7 +59,7 @@ func TestFindAllDocErrors(t *testing.T) {
 
 	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
 		feedbacks, err := findDocErrorsForIDs(pkg, []string{"Foo", "Bar"}, false, FindFixDocErrorsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv, MaxParallelism: 1}, // ensure single goroutine to simplify assertions
+			BaseOptions: BaseOptions{Completer: conv, MaxParallelism: 1}, // ensure single goroutine to simplify assertions
 		})
 		assert.NoError(t, err)
 

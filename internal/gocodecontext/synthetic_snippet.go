@@ -37,7 +37,7 @@ func (s *syntheticPackageSnippet) Bytes() []byte {
 }
 
 // PublicSnippet returns the source bytes for the synthetic snippet; always succeeds.
-func (s *syntheticPackageSnippet) PublicSnippet() ([]byte, error) {
+func (s *syntheticPackageSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
 	return s.Bytes(), nil
 }
 

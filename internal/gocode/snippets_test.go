@@ -11,13 +11,15 @@ import (
 )
 
 type expectedSnippet struct {
-	hasExported      bool
-	test             bool
-	hasPublicSnippet bool
-	publicSnippet    []byte
-	fullBytes        []byte
-	docs             []IdentifierDocumentation
-	missingDocs      []IdentifierDocumentation
+	hasExported                   bool
+	test                          bool
+	hasPublicSnippet              bool
+	publicSnippet                 []byte
+	hasPreserveMixedPublicSnippet bool
+	preserveMixedPublicSnippet    []byte
+	fullBytes                     []byte
+	docs                          []IdentifierDocumentation
+	missingDocs                   []IdentifierDocumentation
 }
 
 // expectedSnippet implements Snippet
@@ -46,7 +48,10 @@ func (e *expectedSnippet) FullBytes() []byte {
 }
 
 // PublicSnippet returns the publicSnippet field and any error.
-func (e *expectedSnippet) PublicSnippet() ([]byte, error) {
+func (e *expectedSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
+	if preserveMixed && e.hasPreserveMixedPublicSnippet {
+		return e.preserveMixedPublicSnippet, nil
+	}
 	return e.publicSnippet, nil
 }
 
@@ -146,11 +151,21 @@ func assertSnippetInterface(t *testing.T, got Snippet, want *expectedSnippet) {
 	assert.Equal(t, want.test, got.Test(), "Test mismatch")
 
 	if want.hasPublicSnippet {
-		actualPublicSnippet, err := got.PublicSnippet()
+		actualPublicSnippet, err := got.PublicSnippet(false)
 		require.NoError(t, err, "PublicSnippet() should not return an error")
 		if !assert.Equal(t, want.publicSnippet, actualPublicSnippet, "PublicSnippet() mismatch") {
 			fmt.Println("Want:")
 			fmt.Println(string(want.publicSnippet))
+			fmt.Println("Got:")
+			fmt.Println(string(actualPublicSnippet))
+		}
+	}
+	if want.hasPreserveMixedPublicSnippet {
+		actualPublicSnippet, err := got.PublicSnippet(true)
+		require.NoError(t, err, "PublicSnippet(true) should not return an error")
+		if !assert.Equal(t, want.preserveMixedPublicSnippet, actualPublicSnippet, "PublicSnippet(true) mismatch") {
+			fmt.Println("Want:")
+			fmt.Println(string(want.preserveMixedPublicSnippet))
 			fmt.Println("Got:")
 			fmt.Println(string(actualPublicSnippet))
 		}
@@ -801,6 +816,73 @@ func TestExtractSnippets(t *testing.T) {
 			},
 		},
 		{
+			name: "const block with block doc and private spec",
+			source: "package testpkg\n\n" + dedent(`
+				// Values define package constants.
+				const (
+					Public = 1
+					private = 2
+				)
+			`),
+			wantValues: []expectedValue{
+				{
+					identifiers:      []string{"Public", "private"},
+					isVar:            false,
+					isBlock:          true,
+					hasBlockDoc:      true,
+					blockDocContains: "Values define package constants.",
+					snippet: &expectedSnippet{
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("// Values define package constants.\nconst (\n\tPublic = 1\n)"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("// Values define package constants.\nconst (\n\tPublic = 1\n)"),
+						docs: []IdentifierDocumentation{
+							{Identifier: "", Doc: "// Values define package constants.\n"},
+						},
+						missingDocs: []IdentifierDocumentation{
+							{Identifier: "Public"},
+							{Identifier: "private"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "const block with multi-line block doc and private spec",
+			source: "package testpkg\n\n" + dedent(`
+				// Values define package constants.
+				// They are used by callers.
+				const (
+					Public = 1
+					private = 2
+				)
+			`),
+			wantValues: []expectedValue{
+				{
+					identifiers:      []string{"Public", "private"},
+					isVar:            false,
+					isBlock:          true,
+					hasBlockDoc:      true,
+					blockDocContains: "Values define package constants.",
+					snippet: &expectedSnippet{
+						hasExported:                   true,
+						test:                          false,
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("// Values define package constants.\n// They are used by callers.\nconst (\n\tPublic = 1\n)"),
+						docs: []IdentifierDocumentation{
+							{Identifier: "", Doc: "// Values define package constants.\n// They are used by callers.\n"},
+						},
+						missingDocs: []IdentifierDocumentation{
+							{Identifier: "Public"},
+							{Identifier: "private"},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "const block with iota and mixed exported/unexported",
 			source: dedent(`
 				const (
@@ -835,6 +917,76 @@ func TestExtractSnippets(t *testing.T) {
 			},
 		},
 		{
+			name: "const block preserve mixed keeps mixed public spec and elides private spec",
+			source: dedent(`
+				const (
+					Public = 1
+					private = 2
+					Some, thing = "a", "b" // some and thing
+				)
+			`),
+			wantValues: []expectedValue{
+				{
+					identifiers: []string{"Public", "private", "Some", "thing"},
+					isVar:       false,
+					isBlock:     true,
+					identifierDocs: map[string]string{
+						"Some":  "// some and thing\n",
+						"thing": "// some and thing\n",
+					},
+					snippet: &expectedSnippet{
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("const (\n\tPublic = 1\n\n\tSome = \"a\" // some and thing\n)"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("const (\n\tPublic = 1\n\n\tSome, thing = \"a\", \"b\" // some and thing\n)"),
+						docs: []IdentifierDocumentation{
+							{Identifier: "Some", Doc: "// some and thing\n"},
+							{Identifier: "thing", Doc: "// some and thing\n"},
+						},
+						missingDocs: []IdentifierDocumentation{
+							{Identifier: "Public"},
+							{Identifier: "private"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "single spec var with declaration doc and mixed identifiers",
+			source: "package testpkg\n\n" + dedent(`
+				// Values hold package state.
+				var Public, private = 1, 2
+			`),
+			wantValues: []expectedValue{
+				{
+					identifiers:  []string{"Public", "private"},
+					isVar:        true,
+					isBlock:      false,
+					snippetBytes: "// Values hold package state.\nvar Public, private = 1, 2",
+					identifierDocs: map[string]string{
+						"Public":  "// Values hold package state.\n",
+						"private": "// Values hold package state.\n",
+					},
+					snippet: &expectedSnippet{
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("// Values hold package state.\nvar Public = 1"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("// Values hold package state.\nvar Public, private = 1, 2"),
+						fullBytes:                     []byte("// Values hold package state.\nvar Public, private = 1, 2"),
+						docs: []IdentifierDocumentation{
+							{Identifier: "Public", Doc: "// Values hold package state.\n"},
+							{Identifier: "private", Doc: "// Values hold package state.\n"},
+						},
+						missingDocs: nil,
+					},
+				},
+			},
+		},
+		{
 			name:   "single spec var with multiple mixed-exported identifiers",
 			source: `var PublicVar, privateVar, AnotherPublic int = 1, 2, 3 // PublicVar and AnotherPublic are exported, privateVar is not`,
 			wantValues: []expectedValue{
@@ -849,11 +1001,13 @@ func TestExtractSnippets(t *testing.T) {
 						"privateVar":    "// PublicVar and AnotherPublic are exported, privateVar is not\n",
 					},
 					snippet: &expectedSnippet{
-						hasExported:      true,
-						test:             false,
-						hasPublicSnippet: true,
-						publicSnippet:    []byte("var PublicVar, AnotherPublic int = 1, 3 // PublicVar and AnotherPublic are exported, privateVar is not\n"),
-						fullBytes:        []byte(`var PublicVar, privateVar, AnotherPublic int = 1, 2, 3 // PublicVar and AnotherPublic are exported, privateVar is not`),
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("var PublicVar, AnotherPublic int = 1, 3 // PublicVar and AnotherPublic are exported, privateVar is not\n"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("var PublicVar, privateVar, AnotherPublic int = 1, 2, 3 // PublicVar and AnotherPublic are exported, privateVar is not\n"),
+						fullBytes:                     []byte(`var PublicVar, privateVar, AnotherPublic int = 1, 2, 3 // PublicVar and AnotherPublic are exported, privateVar is not`),
 						docs: []IdentifierDocumentation{
 							{Identifier: "PublicVar", Doc: "// PublicVar and AnotherPublic are exported, privateVar is not\n"},
 							{Identifier: "privateVar", Doc: "// PublicVar and AnotherPublic are exported, privateVar is not\n"},
@@ -944,10 +1098,12 @@ func TestExtractSnippets(t *testing.T) {
 						"PublicTimeout": "// PublicTimeout is the default request timeout\n// seconds\n",
 					},
 					snippet: &expectedSnippet{
-						hasExported:      true,
-						test:             false,
-						hasPublicSnippet: true,
-						publicSnippet:    []byte("const (\n\tDefaultPort = 8080 // DefaultPort and maxPort define port range\n\n\t// PublicTimeout is the default request timeout\n\tPublicTimeout = 30 // seconds\n\n)"),
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("// Network configuration constants\nconst (\n\tDefaultPort = 8080 // DefaultPort and maxPort define port range\n\n\t// PublicTimeout is the default request timeout\n\tPublicTimeout = 30 // seconds\n\n)"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("// Network configuration constants\nconst (\n\tDefaultPort, maxPort = 8080, 9999 // DefaultPort and maxPort define port range\n\n\t// PublicTimeout is the default request timeout\n\tPublicTimeout = 30 // seconds\n\n)"),
 						docs: []IdentifierDocumentation{
 							{Identifier: "", Doc: "// Network configuration constants\n"},
 							{Identifier: "DefaultPort", Doc: "// DefaultPort and maxPort define port range\n"},
@@ -956,6 +1112,46 @@ func TestExtractSnippets(t *testing.T) {
 						},
 						missingDocs: []IdentifierDocumentation{
 							{Identifier: "bufferSize"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "const block with block doc and mixed documented exported specs",
+			source: "package testpkg\n\n" + dedent(`
+				// Values define package constants.
+				const (
+					A = 1
+					// B already has docs.
+					B = 2
+					private = 3
+				)
+			`),
+			wantValues: []expectedValue{
+				{
+					identifiers:      []string{"A", "B", "private"},
+					isVar:            false,
+					isBlock:          true,
+					hasBlockDoc:      true,
+					blockDocContains: "Values define package constants.",
+					identifierDocs: map[string]string{
+						"B": "// B already has docs.\n",
+					},
+					snippet: &expectedSnippet{
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("// Values define package constants.\nconst (\n\tA = 1\n\t// B already has docs.\n\tB = 2\n)"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("// Values define package constants.\nconst (\n\tA = 1\n\t// B already has docs.\n\tB = 2\n)"),
+						docs: []IdentifierDocumentation{
+							{Identifier: "", Doc: "// Values define package constants.\n"},
+							{Identifier: "B", Doc: "// B already has docs.\n"},
+						},
+						missingDocs: []IdentifierDocumentation{
+							{Identifier: "A"},
+							{Identifier: "private"},
 						},
 					},
 				},
@@ -978,6 +1174,50 @@ func TestExtractSnippets(t *testing.T) {
 						fullBytes:        []byte("var M MyType[int]"),
 						docs:             nil,
 						missingDocs:      []IdentifierDocumentation{{Identifier: "M"}},
+					},
+				},
+			},
+		},
+		{
+			name: "nested struct with private field docs",
+			source: dedent(`
+				// Foo stores nested state.
+				type Foo struct {
+					// Inner stores child state.
+					Inner struct {
+						// Public is visible nested state.
+						Public string
+						// private is hidden nested state.
+						private string
+					}
+				}
+			`),
+			wantTypes: []expectedType{
+				{
+					identifiers: []string{"Foo"},
+					isBlock:     false,
+					identifierDocs: map[string]string{
+						"Foo": "// Foo stores nested state.\n",
+					},
+					fieldDocs: map[string]string{
+						"Foo.Inner":         "// Inner stores child state.\n",
+						"Foo.Inner.Public":  "// Public is visible nested state.\n",
+						"Foo.Inner.private": "// private is hidden nested state.\n",
+					},
+					snippet: &expectedSnippet{
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("// Foo stores nested state.\ntype Foo struct {\n\t// Inner stores child state.\n\tInner struct {\n\t\t// Public is visible nested state.\n\t\tPublic string\n\t\t// contains filtered or unexported fields\n\t}\n}"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("// Foo stores nested state.\ntype Foo struct {\n\t// Inner stores child state.\n\tInner struct {\n\t\t// Public is visible nested state.\n\t\tPublic string\n\t\t// contains filtered or unexported fields\n\t}\n}"),
+						docs: []IdentifierDocumentation{
+							{Identifier: "Foo", Doc: "// Foo stores nested state.\n"},
+							{Identifier: "Foo", Field: "Inner", Doc: "// Inner stores child state.\n"},
+							{Identifier: "Foo", Field: "Inner.Public", Doc: "// Public is visible nested state.\n"},
+							{Identifier: "Foo", Field: "Inner.private", Doc: "// private is hidden nested state.\n"},
+						},
+						missingDocs: nil,
 					},
 				},
 			},
@@ -1069,6 +1309,41 @@ func TestExtractSnippets(t *testing.T) {
 						"Foo": "// Foo represents an integer type used for counting.\n// Foo is exported for external use\n",
 					},
 					snippetBytes: "// Foo represents an integer type used for counting.\ntype Foo int // Foo is exported for external use",
+				},
+			},
+		},
+		{
+			name: "struct with mixed exported and unexported field names",
+			source: dedent(`
+				type Mixed struct {
+					Public, private int
+					hidden string
+				}
+			`),
+			wantTypes: []expectedType{
+				{
+					identifiers: []string{"Mixed"},
+					isBlock:     false,
+					fieldDocs: map[string]string{
+						"Mixed.Public":  "",
+						"Mixed.private": "",
+						"Mixed.hidden":  "",
+					},
+					snippet: &expectedSnippet{
+						hasExported:                   true,
+						test:                          false,
+						hasPublicSnippet:              true,
+						publicSnippet:                 []byte("type Mixed struct {\n\tPublic int\n\t// contains filtered or unexported fields\n}"),
+						hasPreserveMixedPublicSnippet: true,
+						preserveMixedPublicSnippet:    []byte("type Mixed struct {\n\tPublic, private int\n\t// contains filtered or unexported fields\n}"),
+						docs:                          nil,
+						missingDocs: []IdentifierDocumentation{
+							{Identifier: "Mixed"},
+							{Identifier: "Mixed", Field: "Public"},
+							{Identifier: "Mixed", Field: "private"},
+							{Identifier: "Mixed", Field: "hidden"},
+						},
+					},
 				},
 			},
 		},

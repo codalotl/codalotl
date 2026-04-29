@@ -25,13 +25,13 @@ func TestPolish_UpdatesDocumentation(t *testing.T) {
     `)
 
 	// Mock conversationalist that returns the polished snippet.
-	conv := &responsesConversationalist{responses: []string{
+	conv := &responsesCompleter{responses: []string{
 		"Here are the documentation snippets:\n\n" + polishedSnippet,
 	}}
 
 	gocodetesting.WithCode(t, originalCode, func(pkg *gocode.Package) {
 		// Invoke Polish to update the documentation for Foo.
-		changes, err := Polish(pkg, []string{"Foo"}, PolishOptions{BaseOptions: BaseOptions{Conversationalist: conv, MaxParallelism: 1}})
+		changes, err := Polish(pkg, []string{"Foo"}, PolishOptions{BaseOptions: BaseOptions{Completer: conv, MaxParallelism: 1}})
 		assert.NoError(t, err)
 		assert.True(t, changeSetContains(changes, "Foo"))
 
@@ -71,11 +71,11 @@ func TestPolish_RetryOnSnippetCountMismatch(t *testing.T) {
 	secondResponse := "Here are the documentation snippets:\n\n" + polishedFoo + "\n\n" + polishedBar
 
 	// Mock conversationalist set up with the two responses.
-	conv := &responsesConversationalist{responses: []string{firstResponse, secondResponse}}
+	conv := &responsesCompleter{responses: []string{firstResponse, secondResponse}}
 
 	gocodetesting.WithCode(t, originalCode, func(pkg *gocode.Package) {
 		// Request polishing for both identifiers. The first attempt will fail the count check, so Polish must retry.
-		changes, err := Polish(pkg, []string{"Foo", "Bar"}, PolishOptions{BaseOptions: BaseOptions{Conversationalist: conv, MaxParallelism: 1}})
+		changes, err := Polish(pkg, []string{"Foo", "Bar"}, PolishOptions{BaseOptions: BaseOptions{Completer: conv, MaxParallelism: 1}})
 		assert.NoError(t, err)
 		assert.True(t, changeSetContains(changes, "Foo"))
 		assert.True(t, changeSetContains(changes, "Bar"))
@@ -164,7 +164,7 @@ func TestPolish_MultiGroupWithVarBlock(t *testing.T) {
 	firstResponse := "Here are the documentation snippets:\n\n" + polishedVarBlock + "\n\n" + strings.Join(polishedFuncs[:9], "\n\n")
 	secondResponse := "Here are the documentation snippets:\n\n" + strings.Join(polishedFuncs[9:], "\n\n")
 
-	conv := &responsesConversationalist{responses: []string{firstResponse, secondResponse}}
+	conv := &responsesCompleter{responses: []string{firstResponse, secondResponse}}
 
 	gocodetesting.WithCode(t, originalCode, func(pkg *gocode.Package) {
 		// Prepare the list of identifiers to polish (includes both identifiers from the var block).
@@ -173,7 +173,7 @@ func TestPolish_MultiGroupWithVarBlock(t *testing.T) {
 			identifiers = append(identifiers, fmt.Sprintf("F%d", i))
 		}
 
-		changes, err := Polish(pkg, identifiers, PolishOptions{BaseOptions: BaseOptions{Conversationalist: conv, MaxParallelism: 1}})
+		changes, err := Polish(pkg, identifiers, PolishOptions{BaseOptions: BaseOptions{Completer: conv, MaxParallelism: 1}})
 		assert.NoError(t, err)
 
 		// Expect that all identifiers were reported as changed.

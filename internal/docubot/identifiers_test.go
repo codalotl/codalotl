@@ -168,6 +168,9 @@ func TestNewIdentifiersFromPackage(t *testing.T) {
 		totalUndoc := id.TotalUndocumented(false)
 		assert.Equal(t, 11, totalUndoc)
 
+		totalPublicUndoc := id.TotalPublicUndocumented(false)
+		assert.Equal(t, 9, totalPublicUndoc)
+
 		// Test String method
 		summary := id.String()
 		assert.Contains(t, summary, "Package doc: ✗")
@@ -213,5 +216,66 @@ func TestNewIdentifiersFromPackage(t *testing.T) {
 
 		assert.EqualValues(t, 1, testID.TotalUndocumented(true))
 		assert.EqualValues(t, 0, testID.TotalUndocumented(false))
+		assert.EqualValues(t, 0, testID.TotalPublicUndocumented(true))
 	})
+}
+
+func TestTotalPublicUndocumentedCountsExportedSelectorEmbeddedField(t *testing.T) {
+	id := &Identifiers{
+		allTypes: []string{"Foo"},
+		typeToFields: map[string][]string{
+			"Foo": {"Foo.otherpkg.DepType"},
+		},
+		withDocs: map[string]struct{}{
+			gocode.PackageIdentifier: {},
+			"Foo":                    {},
+		},
+		isExported: map[string]struct{}{
+			"Foo": {},
+		},
+		isTest: make(map[string]struct{}),
+	}
+
+	assert.Equal(t, 1, id.TotalPublicUndocumented(false))
+}
+
+func TestTotalPublicUndocumentedCountsExportedPointerSelectorEmbeddedField(t *testing.T) {
+	id := &Identifiers{
+		allTypes: []string{"Foo"},
+		typeToFields: map[string][]string{
+			"Foo": {"Foo.*otherpkg.DepType"},
+		},
+		withDocs: map[string]struct{}{
+			gocode.PackageIdentifier: {},
+			"Foo":                    {},
+		},
+		isExported: map[string]struct{}{
+			"Foo": {},
+		},
+		isTest: make(map[string]struct{}),
+	}
+
+	assert.Equal(t, 1, id.TotalPublicUndocumented(false))
+}
+
+func TestTotalPublicUndocumentedDoesNotTreatPrivateInlineFieldAsSelector(t *testing.T) {
+	id := &Identifiers{
+		allTypes: []string{"Foo"},
+		typeToFields: map[string][]string{
+			"Foo": {
+				"Foo.foo",
+				"Foo.foo.Bar",
+			},
+		},
+		withDocs: map[string]struct{}{
+			gocode.PackageIdentifier: {},
+			"Foo":                    {},
+		},
+		isExported: map[string]struct{}{
+			"Foo": {},
+		},
+		isTest: make(map[string]struct{}),
+	}
+
+	assert.Equal(t, 0, id.TotalPublicUndocumented(false))
 }

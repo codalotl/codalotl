@@ -78,7 +78,7 @@ func (f *FuncSnippet) Bytes() []byte {
 }
 
 // Implemention of Snippet interface.
-func (f *FuncSnippet) PublicSnippet() ([]byte, error) {
+func (f *FuncSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
 	if !f.HasExported() {
 		return nil, nil
 	}

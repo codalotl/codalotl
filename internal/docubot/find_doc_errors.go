@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
-	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"strings"
 	"sync"
 )
 
 // FindFixDocErrorsOptions configures FindAndFixDocErrors.
 type FindFixDocErrorsOptions struct {
-	BaseOptions // BaseOptions configures model selection, logging/health, and parallelism, and lets callers inject a Conversationalist.
+	BaseOptions // BaseOptions configures model selection, logging/health, and parallelism, and lets callers inject a Completer.
 }
 
 // FindAndFixDocErrors scans pkg for documentation problems on documented functions, methods, and types and applies automatic fixes. It processes the package's non-test
@@ -143,14 +142,7 @@ func findDocErrorsBatch(pkg *gocode.Package, ctx *gocodecontext.Context, identif
 	}
 
 	// Talk to LLM:
-	conv := options.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-	conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(options.Model), prompt)
-	conversation.SetLogger(options.Logger)
-	conversation.AddUserMessage(codeContext + instructionsFindIdentifiers)
-	response, err := conversation.Send()
+	responseText, err := completeText(prompt, codeContext+instructionsFindIdentifiers, options.BaseOptions)
 	if err != nil {
 		return nil, options.LogWrappedErr("failed to polish documentation with LLM", err)
 	}
@@ -158,7 +150,7 @@ func findDocErrorsBatch(pkg *gocode.Package, ctx *gocodecontext.Context, identif
 	// Parse JSON returned by the LLM. It should be a mapping of identifier -> error string.
 	// NOTE: Opus-4 likes to wrap response in ```json fences even if instructed not to.
 	var raw map[string]string
-	if err := json.Unmarshal([]byte(strings.TrimSpace(unwrapSingleSnippet(response.Text))), &raw); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(unwrapSingleSnippet(responseText))), &raw); err != nil {
 		return nil, options.LogWrappedErr("failed to unmarshal LLM response", err)
 	}
 

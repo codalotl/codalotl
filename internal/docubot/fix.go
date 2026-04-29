@@ -3,7 +3,6 @@ package docubot
 import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"github.com/codalotl/codalotl/internal/q/health"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
@@ -32,25 +31,16 @@ func fixDocumentation(pkg *gocode.Package, snippetErrors []updatedocs.SnippetErr
 		panic("no snippet errors")
 	}
 
-	// Create a conversationalist if one wasn't provided:
-	conv := options.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-
 	options.userMessagef("> Attempting to fix %d snippets", len(snippetErrors))
 
-	// Create a conversation with the fix snippet errors prompt:
-	conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(options.Model), promptFixSnippetErrors(snippetErrors))
-	conversation.SetLogger(options.Logger)
-	conversation.AddUserMessage(codeContext)
-	response, err := conversation.Send()
+	// Request fixed snippets from the LLM:
+	responseText, err := completeText(promptFixSnippetErrors(snippetErrors), codeContext, options)
 	if err != nil {
 		return nil, nil, nil, nil, health.LogWrappedErr(options.Logger, "failed to get fixed documentation from LLM", err)
 	}
 
 	// Extract snippets from response:
-	snippets := extractSnippets(response.Text)
+	snippets := extractSnippets(responseText)
 
 	if len(snippets) == 0 {
 		options.userMessagef("< Got %d snippets from fix attempt", len(snippets))

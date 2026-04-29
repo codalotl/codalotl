@@ -5,7 +5,6 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
-	"github.com/codalotl/codalotl/internal/llmcomplete"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 	"strings"
 )
@@ -16,7 +15,7 @@ type ImproveDocsOptions struct {
 	// which can result in unnecessarily large diffs.
 	HideCurrentDocs bool
 
-	// Shared configuration and dependencies (ex: model, conversationalist, logging) for LLM-backed operations.
+	// Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
 	BaseOptions
 }
 
@@ -121,7 +120,7 @@ func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool
 	//   - generate new docs, apply to clone (generateAndApplyDocs)
 	//   - generate choices: current docs, or new ones. let LLM choose (chooseBetterDocsForIdentifiers)
 	//   - apply the best one (updatedocs.UpdateDocumentation)
-	baseOpts := BaseOptions{Conversationalist: options.Conversationalist, Ctx: options.Ctx, ReflowMaxWidth: options.ReflowMaxWidth}
+	baseOpts := BaseOptions{Completer: options.Completer, Ctx: options.Ctx, Model: options.Model, ReflowMaxWidth: options.ReflowMaxWidth}
 	for ctx, ids := range contexts {
 		idsStr := strings.Join(ids, ", ") // for logging and messaging
 
@@ -257,18 +256,9 @@ func chooseBetterDocsForIdentifiers(ctx *gocodecontext.Context, choices []better
 	// Combine the code context with the instructions that list the choices.
 	llmUserMessage := ctx.Code() + instructions
 
-	// Ensure we have a conversationalist to talk to the LLM.
-	conv := options.Conversationalist
-	if conv == nil {
-		conv = llmcomplete.NewConversationalist()
-	}
-
 	// Send to LLM:
 	prompt := promptChooseBestDocs()
-	conversation := conv.NewConversation(llmcomplete.ModelIDOrDefault(options.Model), prompt)
-	conversation.SetLogger(options.Logger)
-	conversation.AddUserMessage(llmUserMessage)
-	response, err := conversation.Send()
+	responseText, err := completeText(prompt, llmUserMessage, options.BaseOptions)
 	if err != nil {
 		return nil, options.LogWrappedErr("choose_better_docs.llm_send", err)
 	}
@@ -279,7 +269,7 @@ func chooseBetterDocsForIdentifiers(ctx *gocodecontext.Context, choices []better
 	}
 
 	var raw map[string]pick
-	if err := json.Unmarshal([]byte(strings.TrimSpace(unwrapSingleSnippet(response.Text))), &raw); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(unwrapSingleSnippet(responseText))), &raw); err != nil {
 		return nil, options.LogWrappedErr("choose_better_docs.json_unmarshal", err)
 	}
 

@@ -16,7 +16,7 @@ func TestIncorporateFeedbackSuccess(t *testing.T) {
         func Foo() {}
     `)
 
-	conv := &responsesConversationalist{responses: []string{snippet}}
+	conv := &responsesCompleter{responses: []string{snippet}}
 
 	// Original code with an incorrect/outdated doc comment.
 	code := dedent(`
@@ -26,7 +26,7 @@ func TestIncorporateFeedbackSuccess(t *testing.T) {
 
 	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
 		inc, err := incorporateFeedback(pkg, []IdentifierFeedback{{Identifier: "Foo", Feedback: "Comment should say hello not hi"}}, false, FindFixDocErrorsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv},
+			BaseOptions: BaseOptions{Completer: conv},
 		})
 		assert.NoError(t, err)
 
@@ -69,7 +69,7 @@ func TestIncorporateFeedbackSuccess(t *testing.T) {
 }
 
 func TestIncorporateFeedbackNoSnippets(t *testing.T) {
-	conv := &responsesConversationalist{responses: []string{"No code to update"}}
+	conv := &responsesCompleter{responses: []string{"No code to update"}}
 
 	code := dedent(`
         // Foo prints hi.
@@ -78,7 +78,7 @@ func TestIncorporateFeedbackNoSnippets(t *testing.T) {
 
 	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
 		inc, err := incorporateFeedback(pkg, []IdentifierFeedback{{Identifier: "Foo", Feedback: "Doc should say hello not hi"}}, false, FindFixDocErrorsOptions{
-			BaseOptions: BaseOptions{Conversationalist: conv},
+			BaseOptions: BaseOptions{Completer: conv},
 		})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "no snippets to apply")

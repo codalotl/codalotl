@@ -69,7 +69,7 @@ func (v *ValueSnippet) FullBytes() []byte {
 }
 
 // Implemention of Snippet interface.
-func (v *ValueSnippet) PublicSnippet() ([]byte, error) {
+func (v *ValueSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
 	if !v.HasExported() {
 		return nil, nil
 	}
@@ -86,7 +86,7 @@ func (v *ValueSnippet) PublicSnippet() ([]byte, error) {
 	}
 
 	// For mixed exported/unexported, we need to filter
-	filteredDecl := filterExportedValue(v.decl)
+	filteredDecl := filterExportedValue(v.decl, preserveMixed)
 	if filteredDecl == nil {
 		return nil, nil
 	}
@@ -96,7 +96,32 @@ func (v *ValueSnippet) PublicSnippet() ([]byte, error) {
 		return nil, err
 	}
 
-	return buf.Bytes(), nil
+	rendered := buf.String()
+	if v.IsBlock && v.BlockDoc != "" {
+		rendered = normalizeInlineValueBlockDoc(rendered, v.BlockDoc)
+	}
+
+	return []byte(rendered), nil
+}
+
+func normalizeInlineValueBlockDoc(rendered string, blockDoc string) string {
+	inline := "(" + blockDoc + "\n"
+	if !strings.Contains(rendered, inline) {
+		return rendered
+	}
+	return strings.Replace(rendered, inline, "(\n"+indentValueBlockDoc(blockDoc), 1)
+}
+
+func indentValueBlockDoc(blockDoc string) string {
+	var b strings.Builder
+	for _, line := range strings.SplitAfter(blockDoc, "\n") {
+		if line == "" {
+			continue
+		}
+		b.WriteByte('\t')
+		b.WriteString(line)
+	}
+	return b.String()
 }
 
 // Implemention of Snippet interface.

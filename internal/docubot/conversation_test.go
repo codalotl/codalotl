@@ -1,23 +1,23 @@
 package docubot
 
 import (
-	"github.com/codalotl/codalotl/internal/llmcomplete"
-	"log/slog"
+	"context"
+	"slices"
 	"strings"
+
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
-// responsesConversationalist returns canned responses in the order they are requested. It matches any user message and records conversations for inspection when
-// needed.
-//
-// NOTE: This unified implementation supersedes the old orderedResponsesConversationalist, interceptingConversationalist, and flexibleResponsesConversationalist
-// types that previously existed in this file. Those names are now kept as type aliases for backward compatibility so the actual test code does not need to change.
-type responsesConversationalist struct {
+// responsesCompleter returns canned responses in the order they are requested. It records completions for inspection when needed.
+type responsesCompleter struct {
 	responses []string
-	convs     []*interceptingConversation
+	convs     []*interceptingCompletion
 }
 
-// allUserText returns the concatenation of all user messages sent across every conversation.
-func (o *responsesConversationalist) allUserText() string {
+// allUserText returns the concatenation of all user messages sent across every completion.
+func (o *responsesCompleter) allUserText() string {
 	var b strings.Builder
 	for _, c := range o.convs {
 		for _, msg := range c.userMessagesText {
@@ -28,46 +28,102 @@ func (o *responsesConversationalist) allUserText() string {
 	return b.String()
 }
 
-// NewConversation implements llmcomplete.Conversationalist by returning a mock conversation that replies with the next canned response.
-func (o *responsesConversationalist) NewConversation(model llmcomplete.ModelID, systemMessage string) llmcomplete.Conversation {
+// Complete implements llmstream.Completer by returning the next canned response.
+func (o *responsesCompleter) Complete(_ context.Context, _ llmmodel.ModelID, systemMessage, userMessage string, _ ...llmstream.SendOptions) (llmstream.Turn, error) {
 	if len(o.responses) == 0 {
-		panic("unexpected conversation; add more responses as needed")
+		panic("unexpected completion; add more responses as needed")
 	}
 
 	// Pop the next canned response.
 	resp := o.responses[0]
 	o.responses = o.responses[1:]
 
-	// Match any user message by using an empty key "" which is contained in
-	// every string.
-	inner := llmcomplete.NewMockConversation(model, systemMessage, map[string]string{"": resp})
+	o.convs = append(o.convs, &interceptingCompletion{
+		systemMessage:    systemMessage,
+		userMessagesText: []string{userMessage},
+	})
 
-	// Always wrap with interceptingConversation so tests can inspect the user
-	// messages that are being sent to the LLM.
-	ic := &interceptingConversation{inner: inner}
-	o.convs = append(o.convs, ic)
-	return ic
+	return llmstream.Turn{
+		Role: llmstream.RoleAssistant,
+		Parts: []llmstream.ContentPart{
+			llmstream.TextContent{Content: resp},
+		},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}, nil
 }
 
-// interceptingConversation wraps a Conversation and records added user messages for inspection.
-type interceptingConversation struct {
-	inner            llmcomplete.Conversation
+// interceptingCompletion records one completion request for inspection.
+type interceptingCompletion struct {
+	systemMessage    string
 	userMessagesText []string
 }
 
-func (c *interceptingConversation) LastMessage() *llmcomplete.Message { return c.inner.LastMessage() }
-
-func (c *interceptingConversation) Messages() []*llmcomplete.Message { return c.inner.Messages() }
-
-func (c *interceptingConversation) LastError() *llmcomplete.ResponseError { return c.inner.LastError() }
-
-func (c *interceptingConversation) Usage() []llmcomplete.Usage { return c.inner.Usage() }
-
-func (c *interceptingConversation) SetLogger(l *slog.Logger) { c.inner.SetLogger(l) }
-
-func (c *interceptingConversation) AddUserMessage(msg string) *llmcomplete.Message {
-	c.userMessagesText = append(c.userMessagesText, msg)
-	return c.inner.AddUserMessage(msg)
+// identifierSnippetsCompleter returns snippets only for identifiers explicitly requested in the user message.
+type identifierSnippetsCompleter struct {
+	snippetsByIdentifier map[string]string
+	convs                []*interceptingCompletion
 }
 
-func (c *interceptingConversation) Send() (*llmcomplete.Message, error) { return c.inner.Send() }
+// allUserText returns the concatenation of all user messages sent across every completion.
+func (o *identifierSnippetsCompleter) allUserText() string {
+	var b strings.Builder
+	for _, c := range o.convs {
+		for _, msg := range c.userMessagesText {
+			b.WriteString(msg)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+// Complete implements llmstream.Completer by returning snippets only for explicitly requested identifiers.
+func (o *identifierSnippetsCompleter) Complete(_ context.Context, _ llmmodel.ModelID, systemMessage, userMessage string, _ ...llmstream.SendOptions) (llmstream.Turn, error) {
+	o.convs = append(o.convs, &interceptingCompletion{
+		systemMessage:    systemMessage,
+		userMessagesText: []string{userMessage},
+	})
+
+	var snippets []string
+	for _, identifier := range requestedIdentifiers(userMessage) {
+		snippet, ok := o.snippetsByIdentifier[identifier]
+		if !ok || slices.Contains(snippets, snippet) {
+			continue
+		}
+		snippets = append(snippets, snippet)
+	}
+
+	resp := "Here are the documentation snippets:"
+	if len(snippets) > 0 {
+		resp += "\n\n" + strings.Join(snippets, "\n\n")
+	}
+
+	return llmstream.Turn{
+		Role: llmstream.RoleAssistant,
+		Parts: []llmstream.ContentPart{
+			llmstream.TextContent{Content: resp},
+		},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}, nil
+}
+
+func requestedIdentifiers(userMessage string) []string {
+	var identifiers []string
+	for _, line := range strings.Split(userMessage, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "- ") {
+			continue
+		}
+
+		identifier := strings.TrimPrefix(line, "- ")
+		if strings.HasPrefix(identifier, "package ") {
+			identifiers = append(identifiers, gocode.PackageIdentifier)
+			continue
+		}
+
+		if idx := strings.Index(identifier, " ("); idx >= 0 {
+			identifier = identifier[:idx]
+		}
+		identifiers = append(identifiers, identifier)
+	}
+	return identifiers
+}

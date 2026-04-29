@@ -59,7 +59,7 @@ func TestFilterTypesBasic(t *testing.T) {
 	`)
 
 	gd, fset := mustTypeDecl(t, src)
-	filtered := filterExportedTypes(gd)
+	filtered := filterExportedTypes(gd, false)
 	formatted := mustFormatTypeDecl(t, filtered, fset)
 
 	expected := dedent(`
@@ -68,6 +68,58 @@ func TestFilterTypesBasic(t *testing.T) {
 			// Name is exported
 			Name string
 			// contains filtered or unexported fields
+		}
+	`)
+
+	assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(formatted))
+}
+
+func TestFilterTypesNestedAnonymousStruct(t *testing.T) {
+	src := dedent(`
+		type Config struct {
+			Database struct {
+				URL string
+				password string
+			}
+		}
+	`)
+
+	gd, fset := mustTypeDecl(t, src)
+	filtered := filterExportedTypes(gd, false)
+	formatted := mustFormatTypeDecl(t, filtered, fset)
+
+	expected := dedent(`
+		type Config struct {
+			Database struct {
+				URL string
+				// contains filtered or unexported fields
+			}
+		}
+	`)
+
+	assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(formatted))
+}
+
+func TestFilterTypesNestedWrappedAnonymousStruct(t *testing.T) {
+	src := dedent(`
+		type Config struct {
+			Database *struct {
+				URL string
+				password string
+			}
+		}
+	`)
+
+	gd, fset := mustTypeDecl(t, src)
+	filtered := filterExportedTypes(gd, false)
+	formatted := mustFormatTypeDecl(t, filtered, fset)
+
+	expected := dedent(`
+		type Config struct {
+			Database *struct {
+				URL string
+				// contains filtered or unexported fields
+			}
 		}
 	`)
 
@@ -84,7 +136,7 @@ func TestFilterTypesInterface(t *testing.T) {
 		}
 	`)
 	gd, fset := mustTypeDecl(t, src)
-	filtered := filterExportedTypes(gd)
+	filtered := filterExportedTypes(gd, false)
 	formatted := mustFormatTypeDecl(t, filtered, fset)
 
 	expected := dedent(`
@@ -102,7 +154,7 @@ func TestFilterTypesAlias(t *testing.T) {
 	src := `type ID = string`
 
 	gd, fset := mustTypeDecl(t, src)
-	filtered := filterExportedTypes(gd)
+	filtered := filterExportedTypes(gd, false)
 	formatted := mustFormatTypeDecl(t, filtered, fset)
 
 	assert.Equal(t, strings.TrimSpace(src), strings.TrimSpace(formatted))
