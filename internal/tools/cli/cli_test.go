@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/llmstream"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
@@ -65,6 +67,46 @@ func TestRunNormalInvocationCapturesStdoutAndStderr(t *testing.T) {
 	assert.Equal(t, 0, result.cliResult.ExitCode)
 	assert.Equal(t, "public_only=true args=internal/cli\n", result.cliResult.Stdout)
 	assert.Equal(t, "docs add stderr\n", result.cliResult.Stderr)
+}
+
+func TestRunStreamsStdoutAsSingleVisibleChunkAndKeepsResultComplete(t *testing.T) {
+	capture := installVisibleOutputCapture(t)
+	tool := NewCodalotlCLITool(visibleOutputCommandTree)
+
+	result := runCodalotlCLITool(t, tool, Params{Subcommand: "report", Argv: []string{}})
+
+	require.True(t, result.cliResult.Success)
+	assert.Equal(t, "data:\n- field1: x\n- field2: y\n", result.cliResult.Stdout)
+	assert.Equal(t, "stderr stays result-only\n", result.cliResult.Stderr)
+	assert.Equal(t, []string{"data:\n- field1: x\n- field2: y\n"}, capture.contents())
+}
+
+func TestRunFlushesPartialVisibleStdoutWhileCommandRuns(t *testing.T) {
+	capture := installVisibleOutputCapture(t)
+	setVisibleOutputFlushWaits(t, time.Millisecond, 20*time.Millisecond)
+	tool := NewCodalotlCLITool(func() *qcli.Command {
+		return partialVisibleOutputCommandTree(capture.emitted)
+	})
+
+	result := runCodalotlCLITool(t, tool, Params{Subcommand: "partial", Argv: []string{}})
+
+	require.True(t, result.cliResult.Success)
+	assert.Equal(t, "partial done\n", result.cliResult.Stdout)
+	outputs := capture.contents()
+	require.NotEmpty(t, outputs)
+	assert.Equal(t, "partial", outputs[0])
+	assert.Contains(t, strings.Join(outputs, ""), " done\n")
+}
+
+func TestRunSanitizesVisibleStdoutWithoutChangingResultStdout(t *testing.T) {
+	capture := installVisibleOutputCapture(t)
+	tool := NewCodalotlCLITool(sanitizedVisibleOutputCommandTree)
+
+	result := runCodalotlCLITool(t, tool, Params{Subcommand: "unsafe", Argv: []string{}})
+
+	require.True(t, result.cliResult.Success)
+	assert.Equal(t, "safe\t\x1b[31mred\x1b[0m\x00\n", result.cliResult.Stdout)
+	assert.Equal(t, []string{"safe    red?\n"}, capture.contents())
 }
 
 func TestRunNullArgvBehavesLikeEmptyArgv(t *testing.T) {
@@ -301,6 +343,107 @@ func cancellationCommandTree() *qcli.Command {
 	}
 	root.AddCommand(wait)
 	return root
+}
+
+func visibleOutputCommandTree() *qcli.Command {
+	root := &qcli.Command{Name: "internal-test-root"}
+	report := &qcli.Command{
+		Name:             "report",
+		Short:            "Report.",
+		NoPositionalArgs: true,
+		Args:             qcli.NoArgs,
+		Run: func(c *qcli.Context) error {
+			fmt.Fprint(c.Out, "data:\n- field1: x\n- field2: y\n")
+			fmt.Fprint(c.Err, "stderr stays result-only\n")
+			return nil
+		},
+	}
+	root.AddCommand(report)
+	return root
+}
+
+func partialVisibleOutputCommandTree(emitted <-chan string) *qcli.Command {
+	root := &qcli.Command{Name: "internal-test-root"}
+	partial := &qcli.Command{
+		Name:             "partial",
+		Short:            "Partial.",
+		NoPositionalArgs: true,
+		Args:             qcli.NoArgs,
+		Run: func(c *qcli.Context) error {
+			fmt.Fprint(c.Out, "partial")
+			select {
+			case <-emitted:
+				fmt.Fprint(c.Out, " done\n")
+				return nil
+			case <-time.After(time.Second):
+				return errors.New("timed out waiting for visible partial output")
+			case <-c.Context.Done():
+				return c.Context.Err()
+			}
+		},
+	}
+	root.AddCommand(partial)
+	return root
+}
+
+func sanitizedVisibleOutputCommandTree() *qcli.Command {
+	root := &qcli.Command{Name: "internal-test-root"}
+	unsafe := &qcli.Command{
+		Name:             "unsafe",
+		Short:            "Unsafe.",
+		NoPositionalArgs: true,
+		Args:             qcli.NoArgs,
+		Run: func(c *qcli.Context) error {
+			fmt.Fprint(c.Out, "safe\t\x1b[31mred\x1b[0m\x00\n")
+			return nil
+		},
+	}
+	root.AddCommand(unsafe)
+	return root
+}
+
+type visibleOutputCapture struct {
+	emitted chan string
+
+	mu     sync.Mutex
+	chunks []string
+}
+
+func installVisibleOutputCapture(t *testing.T) *visibleOutputCapture {
+	t.Helper()
+
+	capture := &visibleOutputCapture{emitted: make(chan string, 16)}
+	previous := emitToolOutput
+	emitToolOutput = func(ctx context.Context, content string) {
+		capture.mu.Lock()
+		capture.chunks = append(capture.chunks, content)
+		capture.mu.Unlock()
+		capture.emitted <- content
+	}
+	t.Cleanup(func() {
+		emitToolOutput = previous
+	})
+	return capture
+}
+
+func (c *visibleOutputCapture) contents() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return append([]string(nil), c.chunks...)
+}
+
+func setVisibleOutputFlushWaits(t *testing.T, newlineWait, partialWait time.Duration) {
+	t.Helper()
+
+	previousNewlineWait := visibleOutputNewlineFlushWait
+	previousPartialWait := visibleOutputPartialFlushWait
+	visibleOutputNewlineFlushWait = newlineWait
+	visibleOutputPartialFlushWait = partialWait
+	t.Cleanup(func() {
+		visibleOutputNewlineFlushWait = previousNewlineWait
+		visibleOutputPartialFlushWait = previousPartialWait
+	})
 }
 
 func lineText(line llmstream.Line) string {
