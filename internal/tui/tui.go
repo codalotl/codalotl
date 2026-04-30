@@ -67,6 +67,7 @@ type chatMessage struct {
 	userMessage         string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
 	event               agent.Event
 	toolCallID          string
+	toolOutputs         []agent.Event
 	contextStatus       *contextStatusLine
 	contextDetails      string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
 	contextError        string
@@ -1651,6 +1652,12 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 			return
 		}
 	}
+	if ev.Type == agent.EventTypeToolOutput {
+		if m.appendToolOutput(ev) {
+			m.refreshViewport(autoScroll)
+		}
+		return
+	}
 
 	m.appendAgentEvent(ev)
 	m.refreshViewport(autoScroll)
@@ -1730,12 +1737,30 @@ func (m *model) appendAgentEvent(ev agent.Event) {
 	m.messages = append(m.messages, msg)
 }
 
+func (m *model) appendToolOutput(ev agent.Event) bool {
+	callID := eventToolCallID(ev)
+	if callID == "" || !toolOutputVisible(ev) {
+		return false
+	}
+	for i := len(m.messages) - 1; i >= 0; i-- {
+		msg := &m.messages[i]
+		if msg.kind != messageKindAgent || msg.toolCallID != callID || msg.event.Type != agent.EventTypeToolCall {
+			continue
+		}
+		msg.toolOutputs = append(msg.toolOutputs, ev)
+		msg.formatted = ""
+		msg.formattedWidth = 0
+		return true
+	}
+	return false
+}
+
 func (m *model) replaceToolEvent(callID string, ev agent.Event) bool {
 	if callID == "" {
 		return false
 	}
 	for i := len(m.messages) - 1; i >= 0; i-- {
-		if m.messages[i].toolCallID == callID {
+		if m.messages[i].toolCallID == callID && m.messages[i].event.Type == agent.EventTypeToolCall {
 			m.messages[i].event = ev
 			m.messages[i].formatted = "" // clear formatted cache
 			return true
@@ -1768,12 +1793,32 @@ func toolName(ev agent.Event) string {
 }
 
 func (m *model) shouldReplaceToolCallWithResult(ev agent.Event) bool {
+	if callID := eventToolCallID(ev); callID != "" && m.toolCallHasVisibleOutput(callID) {
+		return false
+	}
 	switch m.toolCompletionBehavior(ev) {
 	case llmstream.CompletionBehaviorAppend:
 		return false
 	default:
 		return true
 	}
+}
+
+func (m *model) toolCallHasVisibleOutput(callID string) bool {
+	if callID == "" {
+		return false
+	}
+	for i := len(m.messages) - 1; i >= 0; i-- {
+		msg := &m.messages[i]
+		if msg.kind == messageKindAgent && msg.toolCallID == callID && len(msg.toolOutputs) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func toolOutputVisible(ev agent.Event) bool {
+	return strings.TrimSpace(ev.ToolOutput.Content) != ""
 }
 
 func (m *model) toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {

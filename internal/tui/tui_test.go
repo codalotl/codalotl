@@ -34,6 +34,8 @@ func (descriptiveFormatter) FormatEvent(ev agent.Event, _ int) string {
 		return fmt.Sprintf("tool-call(depth=%d): %s", ev.Agent.Depth, toolName(ev))
 	case agent.EventTypeToolComplete:
 		return fmt.Sprintf("tool-result(depth=%d): %s", ev.Agent.Depth, toolName(ev))
+	case agent.EventTypeToolOutput:
+		return fmt.Sprintf("tool-output(depth=%d): %s", ev.Agent.Depth, ev.ToolOutput.Content)
 	case agent.EventTypeAssistantText:
 		return fmt.Sprintf("assistant(depth=%d): %s", ev.Agent.Depth, ev.TextContent.Content)
 	case agent.EventTypeError:
@@ -58,23 +60,6 @@ func (errorAwareFormatter) FormatEvent(ev agent.Event, _ int) string {
 		return fmt.Sprintf("tool-result: %s", toolName(ev))
 	default:
 		return fmt.Sprintf("event: %s", ev.Type)
-	}
-}
-
-type verboseCheckSpecFormatter struct{}
-
-func (verboseCheckSpecFormatter) FormatEvent(ev agent.Event, _ int) string {
-	switch ev.Type {
-	case agent.EventTypeToolCall:
-		return fmt.Sprintf("tool-call(depth=%d): %s", ev.Agent.Depth, toolName(ev))
-	case agent.EventTypeToolComplete:
-		return strings.Join([]string{
-			fmt.Sprintf("tool-result(depth=%d): %s", ev.Agent.Depth, toolName(ev)),
-			"detailed package results that should stay out of TUI completion",
-			"internal/foo: non-conforming",
-		}, "\n")
-	default:
-		return ""
 	}
 }
 
@@ -708,6 +693,70 @@ func TestToolResultReplacesCallByDefault(t *testing.T) {
 	require.Equal(t, agent.EventTypeToolComplete, m.messages[0].event.Type)
 	require.NotNil(t, m.messages[0].event.ToolResult)
 	require.Equal(t, callID, m.messages[0].event.ToolResult.CallID)
+}
+
+func TestToolOutputRendersUnderCallAndResultAppends(t *testing.T) {
+	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	callID := "call-1"
+	call := &llmstream.ToolCall{CallID: callID, Name: "codalotl_cli"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "codalotl_cli"}
+	tool := newNamedTool("codalotl_cli")
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+	m.handleAgentEvent(agent.Event{
+		Type:       agent.EventTypeToolOutput,
+		Tool:       tool,
+		ToolCall:   call,
+		ToolOutput: agent.ToolOutput{Content: "first chunk"},
+	})
+	m.handleAgentEvent(agent.Event{
+		Type:       agent.EventTypeToolOutput,
+		Tool:       tool,
+		ToolCall:   call,
+		ToolOutput: agent.ToolOutput{Content: "second chunk"},
+	})
+
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	text := renderAgentMessageText(t, m, 0, 120)
+	callPos := strings.Index(text, "tool-call(depth=0): codalotl_cli")
+	firstPos := strings.Index(text, "tool-output(depth=0): first chunk")
+	secondPos := strings.Index(text, "tool-output(depth=0): second chunk")
+	require.NotEqual(t, -1, callPos)
+	require.NotEqual(t, -1, firstPos)
+	require.NotEqual(t, -1, secondPos)
+	require.Less(t, callPos, firstPos)
+	require.Less(t, firstPos, secondPos)
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+	require.Len(t, m.messages, 2)
+	require.Equal(t, agent.EventTypeToolCall, m.messages[0].event.Type)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[1].event.Type)
+	resultText := renderAgentMessageText(t, m, 1, 120)
+	require.Contains(t, resultText, "tool-result(depth=0): codalotl_cli")
+}
+
+func TestBlankToolOutputDoesNotPreventReplacement(t *testing.T) {
+	m := newModel(colorPalette{}, descriptiveFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	callID := "call-1"
+	call := &llmstream.ToolCall{CallID: callID, Name: "read_file"}
+	result := &llmstream.ToolResult{CallID: callID, Name: "read_file"}
+	tool := newNamedTool("read_file")
+
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: tool, ToolCall: call})
+	m.handleAgentEvent(agent.Event{
+		Type:       agent.EventTypeToolOutput,
+		Tool:       tool,
+		ToolCall:   call,
+		ToolOutput: agent.ToolOutput{Content: " \n\t "},
+	})
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: tool, ToolCall: call, ToolResult: result})
+
+	require.Len(t, m.messages, 1)
+	require.Equal(t, agent.EventTypeToolComplete, m.messages[0].event.Type)
 }
 
 func TestSubAgentToolResultDoesNotReplaceCall(t *testing.T) {
