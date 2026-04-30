@@ -15,6 +15,7 @@ const (
 	EventTypeAssistantText         EventType = "assistant_text"
 	EventTypeAssistantReasoning    EventType = "assistant_reasoning"
 	EventTypeToolCall              EventType = "tool_call"
+	EventTypeToolOutput            EventType = "tool_output"
 	EventTypeToolComplete          EventType = "tool_complete"
 	EventTypeAssistantTurnComplete EventType = "assistant_turn_complete"
 	EventTypeWarning               EventType = "warning"
@@ -33,6 +34,7 @@ type Event struct {
 	ReasoningContent        llmstream.ReasoningContent
 	Tool                    llmstream.Tool
 	ToolCall                *llmstream.ToolCall
+	ToolOutput              ToolOutput
 	ToolResult              *llmstream.ToolResult
 	Turn                    *llmstream.Turn
 }
@@ -49,4 +51,9 @@ type StartSubagent struct {
 	CallingAgentID string
 	ToolCallID     string
 	Label          string
+}
+
+// ToolOutput is display-only output emitted by a running tool.
+type ToolOutput struct {
+	Content string
 }

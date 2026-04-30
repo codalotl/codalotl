@@ -230,7 +230,22 @@ func (a *Agent) QueueUserMessage(message string) error
 ```
 
 ```go
-const EventTypeToolOutput EventType = "tool_output"
+const (
+	EventTypeError                 EventType = "error"
+	EventTypeCanceled              EventType = "canceled"
+	EventTypeDoneSuccess           EventType = "done_success"
+	EventTypeUserMessageQueued     EventType = "user_message_queued"
+	EventTypeQueuedUserMessageSent EventType = "queued_user_message_sent"
+	EventTypeStartSubagent         EventType = "start_subagent"
+	EventTypeAssistantText         EventType = "assistant_text"
+	EventTypeAssistantReasoning    EventType = "assistant_reasoning"
+	EventTypeToolCall              EventType = "tool_call"
+	EventTypeToolOutput            EventType = "tool_output"
+	EventTypeToolComplete          EventType = "tool_complete"
+	EventTypeAssistantTurnComplete EventType = "assistant_turn_complete"
+	EventTypeWarning               EventType = "warning"
+	EventTypeRetry                 EventType = "retry"
+)
 
 // ToolOutput is display-only output emitted by a running tool.
 type ToolOutput struct {
