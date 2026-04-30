@@ -735,6 +735,52 @@ func TestWriteHelp_UsageFallbacks(t *testing.T) {
 		cli.WriteHelp(&rootHelp, root, root, cli.HelpOptions{})
 		require.Contains(t, rootHelp.String(), "  prog topic [command] [args]\tTopic command\n")
 	})
+
+	t.Run("NoPositionalArgs suppresses generic args fallback", func(t *testing.T) {
+		root := &cli.Command{Name: "prog"}
+		version := &cli.Command{
+			Name:             "version",
+			Short:            "Print version",
+			NoPositionalArgs: true,
+			Run:              func(*cli.Context) error { return nil },
+		}
+		root.AddCommand(version)
+
+		var out bytes.Buffer
+		cli.WriteHelp(&out, root, version, cli.HelpOptions{})
+
+		text := out.String()
+		require.Contains(t, text, "\nUsage:\n  prog version\n")
+		require.NotContains(t, text, "[args]")
+
+		var rootHelp bytes.Buffer
+		cli.WriteHelp(&rootHelp, root, root, cli.HelpOptions{})
+		require.Contains(t, rootHelp.String(), "  prog version\tPrint version\n")
+	})
+
+	t.Run("Usage is the complete non-option fragment and does not combine with command fragment", func(t *testing.T) {
+		root := &cli.Command{Name: "prog"}
+		topic := &cli.Command{
+			Name:  "topic",
+			Short: "Topic command",
+			Usage: "<name> [<detail>]",
+			Run:   func(*cli.Context) error { return nil },
+		}
+		topic.AddCommand(&cli.Command{Name: "list", Short: "List topics", Run: func(*cli.Context) error { return nil }})
+		root.AddCommand(topic)
+
+		var out bytes.Buffer
+		cli.WriteHelp(&out, root, topic, cli.HelpOptions{})
+
+		text := out.String()
+		require.Contains(t, text, "\nUsage:\n  prog topic <name> [<detail>]\n")
+		require.NotContains(t, text, "[command]")
+
+		// In a parent listing, Usage replaces [command] too.
+		var rootHelp bytes.Buffer
+		cli.WriteHelp(&rootHelp, root, root, cli.HelpOptions{})
+		require.Contains(t, rootHelp.String(), "  prog topic <name> [<detail>]\tTopic command\n")
+	})
 }
 
 func TestWriteHelp_LeafCommandCatalog(t *testing.T) {

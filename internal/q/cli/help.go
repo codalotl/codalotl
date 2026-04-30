@@ -170,6 +170,10 @@ func commandSynopsis(root, cmd *Command) string {
 }
 
 func usageFragment(cmd *Command) string {
+	// Usage, if set, is the complete non-option fragment.
+	if cmd.Usage != "" {
+		return cmd.Usage
+	}
 	command := commandUsageFragment(cmd)
 	positional := positionalUsageFragment(cmd)
 	switch {
@@ -196,9 +200,6 @@ func positionalUsageFragment(cmd *Command) string {
 	if cmd.Run == nil {
 		return ""
 	}
-	if cmd.Usage != "" {
-		return cmd.Usage
-	}
 	if len(cmd.ArgHelp) > 0 {
 		displays := make([]string, 0, len(cmd.ArgHelp))
 		for _, arg := range cmd.ArgHelp {
@@ -209,6 +210,9 @@ func positionalUsageFragment(cmd *Command) string {
 		if len(displays) > 0 {
 			return strings.Join(displays, " ")
 		}
+	}
+	if cmd.NoPositionalArgs {
+		return ""
 	}
 	return "[args]"
 }

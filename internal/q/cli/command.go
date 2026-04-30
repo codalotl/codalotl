@@ -8,20 +8,21 @@ type ArgsFunc func(args []string) error
 
 // Command defines one CLI command in a command tree.
 type Command struct {
-	Name            string    // Name is the token used to invoke this command (e.g. "add" in "doc add").
-	Aliases         []string  // Aliases are additional tokens that invoke this command.
-	Hidden          bool      // Hidden hides this command from parent help listings, but it may still be invoked normally by name or alias.
-	Short           string    // Short is a concise one-line description.
-	Long            string    // Long is a longer description for detailed help.
-	Usage           string    // Usage is usage text appended after the resolved command path.
-	ArgHelp         []ArgHelp // ArgHelp describes positional args in detailed help.
-	Example         string    // Example is example text shown in detailed help.
-	Args            ArgsFunc  // optional
-	Run             RunFunc   // optional
-	parent          *Command
-	children        []*Command
-	localFlags      *FlagSet
-	persistentFlags *FlagSet
+	Name             string    // Name is the token used to invoke this command (e.g. "add" in "doc add").
+	Aliases          []string  // Aliases are additional tokens that invoke this command.
+	Hidden           bool      // Hidden hides this command from parent help listings, but it may still be invoked normally by name or alias.
+	Short            string    // Short is a concise one-line description.
+	Long             string    // Long is a longer description for detailed help.
+	Usage            string    // Usage is the complete non-option fragment after the resolved command path.
+	ArgHelp          []ArgHelp // ArgHelp describes positional args in detailed help.
+	Example          string    // Example is example text shown in detailed help.
+	NoPositionalArgs bool      // NoPositionalArgs suppresses generic [args] help.
+	Args             ArgsFunc  // optional
+	Run              RunFunc   // optional
+	parent           *Command
+	children         []*Command
+	localFlags       *FlagSet
+	persistentFlags  *FlagSet
 }
 
 // ArgHelp describes one positional argument in help output.

@@ -248,7 +248,7 @@ type Command struct {
 	Usage            string    // Usage is the complete non-option fragment after the resolved command path.
 	ArgHelp          []ArgHelp // ArgHelp describes positional args in detailed help.
 	Example          string    // Example is example text shown in detailed help.
-	NoPositionalArgs bool // NoPositionalArgs suppresses generic [args] help.
+	NoPositionalArgs bool      // NoPositionalArgs suppresses generic [args] help.
 	Args             ArgsFunc  // optional
 	Run              RunFunc   // optional
 
