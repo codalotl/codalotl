@@ -121,8 +121,7 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	root := &qcli.Command{
 		Name:  "codalotl",
 		Short: "LLM-assisted Go coding agent.",
-		Long:  "Launch the codalotl TUI, or run one of the codalotl subcommands.",
-		Usage: "[.]",
+		Long:  "Launch the codalotl TUI, or run one of the codalotl subcommands. Use `codalotl .` as an alias for launching the TUI.",
 		Args: func(args []string) error {
 			// Allow `codalotl .` as an alias for launching the TUI (muscle memory
 			// with tools like `code .`). Any other path continues to be invalid.
@@ -244,10 +243,11 @@ codalotl exec --yes --slash-command=orchestrate "Plan this refactor"
 	}
 
 	versionCmd := &qcli.Command{
-		Name:  "version",
-		Short: "Print the codalotl version.",
-		Long:  "Prints update status when available, followed by the current codalotl version on the last line.",
-		Args:  qcli.NoArgs,
+		Name:             "version",
+		Short:            "Print the codalotl version.",
+		Long:             "Prints update status when available, followed by the current codalotl version on the last line.",
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
 		Example: strings.TrimSpace(`
 codalotl version
 `),
@@ -275,10 +275,11 @@ codalotl version
 	}
 
 	configCmd := &qcli.Command{
-		Name:  "config",
-		Short: "Print codalotl configuration.",
-		Long:  "Prints the effective codalotl configuration, redacting provider keys and showing config locations, effective model, and provider API key environment variables.",
-		Args:  qcli.NoArgs,
+		Name:             "config",
+		Short:            "Print codalotl configuration.",
+		Long:             "Prints the effective codalotl configuration, redacting provider keys and showing config locations, effective model, and provider API key environment variables.",
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
 		Example: strings.TrimSpace(`
 codalotl config
 `),
@@ -540,10 +541,11 @@ codalotl spec ls-mismatch ./internal/...
 		}),
 	}
 	statusCmd := &qcli.Command{
-		Name:  "status",
-		Short: "Print per-package SPEC.md status (implies ./...).",
-		Long:  "Prints a table showing package, whether SPEC.md exists, whether Public API matches implementation, and whether the CAS conformance result is set.",
-		Args:  qcli.NoArgs,
+		Name:             "status",
+		Short:            "Print per-package SPEC.md status (implies ./...).",
+		Long:             "Prints a table showing package, whether SPEC.md exists, whether Public API matches implementation, and whether the CAS conformance result is set.",
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
 		Example: strings.TrimSpace(`
 codalotl spec status
 `),
@@ -674,9 +676,10 @@ codalotl cas ls-unset specconforms-1
 	casCmd.AddCommand(setCmd, getCmd, lsUnsetCmd)
 
 	panicCmd := &qcli.Command{
-		Name:   "panic",
-		Hidden: true,
-		Args:   qcli.NoArgs,
+		Name:             "panic",
+		Hidden:           true,
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
 		Run: runWithConfig("panic", func(*qcli.Context, Config, *remotemonitor.Monitor) error {
 			panic("intentional panic")
 		}),
@@ -747,10 +750,11 @@ codalotl context initial ./internal/cli
 	}
 
 	packagesCmd := &qcli.Command{
-		Name:  "packages",
-		Short: "Print an LLM-friendly list of packages available in the current module.",
-		Long:  "Prints packages available from the module containing the current working directory as LLM-ready context. The output is intentionally text-oriented and may change; do not parse it as a stable machine format.",
-		Args:  qcli.NoArgs,
+		Name:             "packages",
+		Short:            "Print an LLM-friendly list of packages available in the current module.",
+		Long:             "Prints packages available from the module containing the current working directory as LLM-ready context. The output is intentionally text-oriented and may change; do not parse it as a stable machine format.",
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
 		Example: strings.TrimSpace(`
 codalotl context packages
 codalotl context packages --search 'internal/(cli|q)'
