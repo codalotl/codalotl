@@ -119,6 +119,8 @@ func (f *textTUIFormatter) formatCLI(e agent.Event) string {
 		return f.cliAssistantReasoning(e.ReasoningContent.Content)
 	case agent.EventTypeToolCall:
 		return f.cliToolCall(e)
+	case agent.EventTypeToolOutput:
+		return f.cliToolOutput(e.ToolOutput.Content)
 	case agent.EventTypeToolComplete:
 		return f.cliToolComplete(e)
 	case agent.EventTypeWarning:
@@ -150,6 +152,8 @@ func (f *textTUIFormatter) formatTUI(e agent.Event, terminalWidth int) string {
 		return f.tuiAssistantReasoning(e.ReasoningContent.Content, terminalWidth)
 	case agent.EventTypeToolCall:
 		return f.tuiToolCall(e, terminalWidth)
+	case agent.EventTypeToolOutput:
+		return f.tuiToolOutput(e.ToolOutput.Content, terminalWidth)
 	case agent.EventTypeToolComplete:
 		return f.tuiToolComplete(e, terminalWidth)
 	case agent.EventTypeWarning:
@@ -284,6 +288,28 @@ func toolDisplayName(e agent.Event) string {
 		return "tool call"
 	}
 	return sanitizeText(name)
+}
+
+func (f *textTUIFormatter) tuiToolOutput(content string, width int) string {
+	content = sanitizeText(content)
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+	runes := f.buildStyledRunes(content, runeStyle{color: colorNormal}, nil)
+	return f.wrapStyledText(runes, width, f.nestedToolOutputPrefix(), "    ")
+}
+
+func (f *textTUIFormatter) cliToolOutput(content string) string {
+	content = sanitizeText(content)
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+	runes := f.buildStyledRunes(content, runeStyle{color: colorNormal}, nil)
+	return f.wrapStyledText(runes, 1<<30, f.nestedToolOutputPrefix(), "    ")
+}
+
+func (f *textTUIFormatter) nestedToolOutputPrefix() string {
+	return "  " + f.bulletPrefix(colorAccent)
 }
 
 type presentedBodyLineKind int

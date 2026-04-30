@@ -451,6 +451,77 @@ func TestToolCompleteOutputSummarization(t *testing.T) {
 	assert.Contains(t, out, ansiWrap("Tool", pal, colorColorful, false, true))
 }
 
+func TestToolOutputFormatsAsNestedMessage(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	pal := newPalette(cfg)
+	formatter := NewTUIFormatter(cfg)
+	event := agent.Event{
+		Type: agent.EventTypeToolOutput,
+		ToolOutput: agent.ToolOutput{
+			Content: "data:\n- field1: value\n- field2: value\n",
+		},
+	}
+	expected := []string{
+		"  • data:",
+		"    - field1: value",
+		"    - field2: value",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.Equal(t, 1, strings.Count(stripANSI(out), "•"))
+		assert.Contains(t, out, ansiWrap("•", pal, colorAccent, false, false))
+		assert.Contains(t, out, ansiWrap("data:", pal, colorNormal, false, false))
+		assert.NotContains(t, stripANSI(out), "└")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.Equal(t, 1, strings.Count(stripANSI(out), "•"))
+		assert.NotContains(t, stripANSI(out), "└")
+	})
+}
+
+func TestToolOutputSanitizesAndAppliesSubagentIndent(t *testing.T) {
+	cfg := Config{
+		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
+		ForegroundColor: termformat.NewRGBColor(255, 255, 255),
+	}
+	formatter := NewTUIFormatter(cfg)
+	event := agent.Event{
+		Agent: agent.AgentMeta{Depth: 1},
+		Type:  agent.EventTypeToolOutput,
+		ToolOutput: agent.ToolOutput{
+			Content: "data:\n- value\t\x03",
+		},
+	}
+	expected := []string{
+		"    • data:",
+		"      - value    \\x03",
+	}
+
+	t.Run("tui", func(t *testing.T) {
+		out := formatter.FormatEvent(event, 120)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "\t")
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		out := formatter.FormatEvent(event, MinTerminalWidth)
+		require.NotEmpty(t, out)
+		assert.Equal(t, expected, strings.Split(stripANSI(out), "\n"))
+		assert.NotContains(t, stripANSI(out), "\t")
+	})
+}
+
 func TestPresentedToolCompleteSuccessShowsOutputBody(t *testing.T) {
 	cfg := Config{
 		BackgroundColor: termformat.NewRGBColor(0, 0, 0),
