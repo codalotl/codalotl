@@ -157,6 +157,11 @@ Command listings are one-line summaries:
 - Usage fragment, if any
 - Short description
 
+Usage fragments:
+- Prefer `Usage`, then non-empty `ArgHelp.Display` values.
+- If neither is present, runnable commands show `[args]`.
+- Commands with children additionally show `<command>` when namespace-only, or `[command]` when runnable.
+
 When a command has many options, listings may use `[OPTIONS]`. When it has a few options, listings may include the individual option forms. Built-in `-h`/`--help` is never listed as an ordinary option.
 
 Help rendering can also be reused outside `Run` to build leaf-command catalogs. Leaf-command catalogs list executable leaf descendants.

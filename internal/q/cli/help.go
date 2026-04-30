@@ -170,6 +170,32 @@ func commandSynopsis(root, cmd *Command) string {
 }
 
 func usageFragment(cmd *Command) string {
+	command := commandUsageFragment(cmd)
+	positional := positionalUsageFragment(cmd)
+	switch {
+	case command != "" && positional != "":
+		return command + " " + positional
+	case command != "":
+		return command
+	default:
+		return positional
+	}
+}
+
+func commandUsageFragment(cmd *Command) string {
+	if len(cmd.children) == 0 {
+		return ""
+	}
+	if cmd.Run == nil {
+		return "<command>"
+	}
+	return "[command]"
+}
+
+func positionalUsageFragment(cmd *Command) string {
+	if cmd.Run == nil {
+		return ""
+	}
 	if cmd.Usage != "" {
 		return cmd.Usage
 	}
@@ -184,13 +210,7 @@ func usageFragment(cmd *Command) string {
 			return strings.Join(displays, " ")
 		}
 	}
-	if len(cmd.children) > 0 {
-		if cmd.Run == nil {
-			return "<command>"
-		}
-		return "[command]"
-	}
-	return ""
+	return "[args]"
 }
 
 func optionUsageFragment(flags []flagHelp) string {
