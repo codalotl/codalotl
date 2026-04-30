@@ -179,6 +179,7 @@ func (s *Spec) FormatGoCodeBlocks(reflowWidth int) (bool, error) {
 	return true, nil
 }
 
+// DiffType identifies the primary reason a SPEC.md public API snippet differs from its implementation.
 type DiffType int
 
 const (
