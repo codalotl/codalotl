@@ -45,6 +45,9 @@ Basic controls:
     - When a Call comes in, we print it.
     - When a paired Result in, we replace the Call message with the Result.
     - Exception: tools whose presenter uses `Append` should NOT replace the Call with Result (they print both).
+- Tool output events are display-only content bound to a running tool call.
+    - Display them under the Call in arrival order.
+    - Once a Call has visible tool output, append the paired Result after the output instead of replacing the Call, preserving Call -> Output -> Result.
 - Some tools launch subagents (which run tools which may launch more subagents). Generally, these are displayed in one of two ways: nested event streams or stable slots.
 - Each `agent` event has `AgentMeta` like ID, Depth, and Parent, which informs how we keep track of this hierarchy.
 - Stable slots are used only if the subagent fires `EventTypeStartSubagent` and has a label. Otherwise, display nested event streams.

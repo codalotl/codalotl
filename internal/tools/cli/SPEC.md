@@ -20,6 +20,7 @@ The tool runs an in-process, whitelisted `internal/q/cli` command tree. It does 
 - Built-in `-h`/`--help` is supported but not listed as an ordinary option.
 - Only commands present in the supplied command tree are invokable.
 - Command stdout and stderr are captured separately and returned to the LLM.
+- If the run context provides tool-output emission, command stdout is also streamed as display-only tool output while the command runs.
 - Context cancellation is propagated to command handlers.
 
 ## Whitelisted Command Tree
@@ -29,6 +30,16 @@ Callers supply a command-tree factory. Each invocation uses a fresh command tree
 The supplied tree is the whitelist. The package does not know about `internal/cli` or decide which codalotl commands belong in the tool.
 
 Command handlers intended for `codalotl_cli` write user-visible output through `qcli.Context.Out`.
+
+## Visible stdout streaming
+
+Streaming display is a convenience for users, separate from the LLM-facing result.
+
+- Stdout is teed: captured for `Result.Stdout` and streamed visibly when tool-output emission is available.
+- Visible output is flushed on newline, after about one second of partial output, and when command execution finishes.
+- Each flush emits one tool-output message, preserving embedded newlines.
+- Visible output is sanitized, bounded, and may be elided more aggressively than result capture.
+- Stderr is captured in `Result.Stderr`; it is not streamed as visible tool output.
 
 ## Result
 

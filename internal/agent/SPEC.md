@@ -31,6 +31,8 @@ for ev := range out {
         fmt.Println("reasoning: ", ev.ReasoningContent.Content)
     case agent.EventTypeToolCall:
         fmt.Println("tool call: ", ev.Tool.Name(), ev.ToolCall)
+    case agent.EventTypeToolOutput:
+        fmt.Println("tool output: ", ev.Tool.Name(), ev.ToolCall, ev.ToolOutput.Content)
     case agent.EventTypeToolComplete:
         fmt.Println("tool: ", ev.Tool.Name(), ev.ToolCall, ev.ToolResult) // ev.Tool is the concrete llmstream.Tool
     case agent.EventTypeStartSubagent:
@@ -125,6 +127,7 @@ type Event struct {
 	Agent                   AgentMeta
 	Tool                    llmstream.Tool // nil on non-tool events
 	StartSubagent           StartSubagent
+	ToolOutput              ToolOutput
 	AssistantTextFinalizing bool // only meaningful when Type == EventTypeAssistantText
 
 	// ... other fields
@@ -147,6 +150,15 @@ type StartSubagent struct {
 - `Event.AssistantTextFinalizing` is only meaningful when `Event.Type == EventTypeAssistantText`.
 - `AssistantTextFinalizing=true` means this assistant text is the trailing assistant text of the completed turn. If any reasoning, tool call, or other turn content follows the text, it is not finalizing.
 - `EventTypeAssistantTurnComplete` remains canonical completed-turn history. `EventTypeAssistantText` is for streaming and presentation.
+
+## Tool output events
+
+Tools may emit display-only output while handling a tool call.
+
+- Tool output is not conversation history; `ToolResult` is the LLM-facing output.
+- `EmitToolOutput` is available to tool code through the `Run` context. Outside an agent tool run, it is a no-op.
+- `EventTypeToolOutput` carries `Tool`, `ToolCall`, and `ToolOutput` for the active tool call.
+- The agent does not interpret or transform output content. Tools own any stream-specific sanitization or elision before emission.
 
 ## Notes
 
@@ -215,4 +227,16 @@ func (a *Agent) ContextUsagePercent() int
 // It returns ErrNotRunning when the agent is idle, or when a run is finishing and no longer accepting queued messages (to avoid races where the message would be
 // accepted but never delivered).
 func (a *Agent) QueueUserMessage(message string) error
+```
+
+```go
+const EventTypeToolOutput EventType = "tool_output"
+
+// ToolOutput is display-only output emitted by a running tool.
+type ToolOutput struct {
+	Content string
+}
+
+// EmitToolOutput emits display-only output for the active tool run. It is safe to call with any context.
+func EmitToolOutput(ctx context.Context, content string)
 ```
