@@ -633,6 +633,15 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 			if err := writeOutputLine(s.out, formatted); err != nil {
 				return result, err
 			}
+		case agent.EventTypeToolOutput:
+			toolCallPrinter.Force(toolCallIDFromEvent(ev))
+			formatted := s.formatter.FormatEvent(ev, s.terminalWidth)
+			if shouldSuppressFormattedOutput(formatted) || formatted == "" {
+				continue
+			}
+			if err := writeOutputLine(s.out, formatted); err != nil {
+				return result, err
+			}
 		case agent.EventTypeStartSubagent:
 			continue
 		default:

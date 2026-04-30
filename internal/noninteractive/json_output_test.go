@@ -136,6 +136,35 @@ func TestJSONEventWriterWriteAgentEvent(t *testing.T) {
 			wantOut: true,
 		},
 		{
+			name: "tool output",
+			event: agent.Event{
+				Type:  agent.EventTypeToolOutput,
+				Agent: agent.AgentMeta{ID: "root", Depth: 0},
+				Tool:  namedTestTool{name: "codalotl_cli"},
+				ToolCall: &llmstream.ToolCall{
+					CallID: "call_1",
+					Name:   "ignored_call_name",
+					Type:   "function_call",
+					Input:  `{"subcommand":"docs add","argv":["internal/noninteractive"]}`,
+				},
+				ToolOutput: agent.ToolOutput{Content: "Need docs for 3 identifiers"},
+			},
+			want: map[string]any{
+				"type":    "tool_output",
+				"content": "Need docs for 3 identifiers",
+				"agent": map[string]any{
+					"id":    "root",
+					"depth": float64(0),
+				},
+				"tool": map[string]any{
+					"call_id": "call_1",
+					"name":    "codalotl_cli",
+					"type":    "function_call",
+				},
+			},
+			wantOut: true,
+		},
+		{
 			name: "tool call falls back to tool result name when tool call missing",
 			event: agent.Event{
 				Type:  agent.EventTypeToolCall,

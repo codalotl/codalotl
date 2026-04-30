@@ -74,6 +74,13 @@ type jsonToolCompleteEvent struct {
 	Result jsonResult `json:"result"`
 }
 
+type jsonToolOutputEvent struct {
+	Type    string    `json:"type"`
+	Agent   jsonAgent `json:"agent"`
+	Tool    jsonTool  `json:"tool"`
+	Content string    `json:"content"`
+}
+
 type jsonPermissionEvent struct {
 	Type      string `json:"type"`
 	Prompt    string `json:"prompt"`
@@ -149,6 +156,13 @@ func (w *jsonEventWriter) WriteAgentEvent(ev agent.Event) error {
 			Tool:   jsonToolFromEvent(ev),
 			Result: jsonResultFromToolResult(ev.ToolResult),
 		})
+	case agent.EventTypeToolOutput:
+		return w.writeLine(jsonToolOutputEvent{
+			Type:    "tool_output",
+			Agent:   jsonAgentFromMeta(ev.Agent),
+			Tool:    jsonToolFromEvent(ev),
+			Content: ev.ToolOutput.Content,
+		})
 	case agent.EventTypeWarning, agent.EventTypeRetry, agent.EventTypeError, agent.EventTypeCanceled:
 		return w.writeLine(jsonStatusEvent{
 			Type:    string(ev.Type),
@@ -191,6 +205,18 @@ func jsonToolFromEvent(ev agent.Event) jsonTool {
 				Name:   name,
 				Type:   ev.ToolCall.Type,
 			}
+		}
+	case agent.EventTypeToolOutput:
+		if ev.ToolCall != nil {
+			tool := jsonToolFromCall(ev.ToolCall)
+			tool.Name = name
+			tool.Input = ""
+			return tool
+		}
+		if ev.ToolResult != nil {
+			tool := jsonToolFromResult(ev.ToolResult)
+			tool.Name = name
+			return tool
 		}
 	}
 
