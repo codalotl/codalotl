@@ -167,6 +167,9 @@ func flagsForHelp(cmd *Command) []flagHelp {
 	active := cmd.activeFlags()
 	var helps []flagHelp
 	for _, def := range active.byLong {
+		if def.name == "help" || def.shorthand == 'h' {
+			continue
+		}
 		kind := ""
 		switch def.kind {
 		case flagBool:

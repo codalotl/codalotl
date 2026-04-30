@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/q/cli"
+	"github.com/stretchr/testify/require"
 )
 
 type call struct {
@@ -614,6 +615,97 @@ func TestRun_Help_ResolutionAndStreams(t *testing.T) {
 	})
 }
 
+func TestWriteHelp_RichCommandHelp(t *testing.T) {
+	root := &cli.Command{Name: "codalotl", Short: "A coding agent"}
+	root.PersistentFlags().Bool("help", 'h', false, "Show help.")
+	root.PersistentFlags().Bool("verbose", 'v', false, "Enable verbose logging.")
+
+	docs := &cli.Command{Name: "docs", Short: "Documentation tools"}
+	add := &cli.Command{
+		Name:  "add",
+		Short: "Add docs",
+		Long:  "Add missing documentation comments to a package. Never edits comments.",
+		Usage: "<pkg>",
+		ArgHelp: []cli.ArgHelp{
+			{Display: "<pkg>", Description: "Package path or Go import path to document."},
+		},
+		Example: "codalotl docs add internal/mypkg\ncodalotl docs add --public-only internal/mypkg",
+		Run:     func(*cli.Context) error { return nil },
+	}
+	add.Flags().Bool("include-test", 0, false, "Include test files.")
+	add.Flags().Bool("public-only", 0, false, "Only document exported identifiers.")
+	docs.AddCommand(add)
+	root.AddCommand(docs)
+
+	var out bytes.Buffer
+	cli.WriteHelp(&out, root, add, cli.HelpOptions{})
+
+	text := out.String()
+	require.Contains(t, text, "Add missing documentation comments to a package. Never edits comments.\n")
+	require.Contains(t, text, "\nUsage:\n  codalotl docs add [--include-test] [--public-only] [--verbose] <pkg>\n")
+	require.Contains(t, text, "\nOptions:\n")
+	requireOrdered(t, text, "--include-test", "--public-only", "--verbose")
+	require.Contains(t, text, "--include-test\tInclude test files.")
+	require.Contains(t, text, "--public-only\tOnly document exported identifiers.")
+	require.NotContains(t, text, "--help")
+	require.Contains(t, text, "\nArgs:\n  <pkg>\tPackage path or Go import path to document.\n")
+	require.Contains(t, text, "\nExamples:\n")
+	require.Contains(t, text, "  codalotl docs add internal/mypkg\n")
+	require.Contains(t, text, "  codalotl docs add --public-only internal/mypkg\n")
+	requireTrailingNewline(t, text)
+	requireNoANSI(t, text)
+}
+
+func TestWriteHelp_LeafCommandCatalog(t *testing.T) {
+	root := &cli.Command{Name: "codalotl", Short: "A coding agent"}
+
+	docs := &cli.Command{Name: "docs", Short: "Documentation tools"}
+	add := &cli.Command{Name: "add", Short: "Add docs", Usage: "<pkg>", Run: func(*cli.Context) error { return nil }}
+	add.Flags().Bool("public-only", 0, false, "Only document exported identifiers.")
+
+	fix := &cli.Command{Name: "fix", Short: "Fix docs", Usage: "<pkg>", Run: func(*cli.Context) error { return nil }}
+	fix.Flags().Bool("include-test", 0, false, "")
+	fix.Flags().Bool("public-only", 0, false, "")
+	fix.Flags().Bool("dry-run", 0, false, "")
+	fix.Flags().String("mode", 0, "", "")
+
+	docs.AddCommand(add, fix)
+
+	contextCmd := &cli.Command{Name: "context", Short: "Context tools"}
+	initial := &cli.Command{Name: "initial", Short: "Initial context", Run: func(*cli.Context) error { return nil }}
+	contextCmd.AddCommand(initial)
+
+	secret := &cli.Command{Name: "secret", Short: "Hidden", Hidden: true, Run: func(*cli.Context) error { return nil }}
+
+	root.AddCommand(docs, contextCmd, secret)
+
+	t.Run("standalone catalog lists executable visible leaves", func(t *testing.T) {
+		var out bytes.Buffer
+		cli.WriteHelp(&out, root, root, cli.HelpOptions{LeafCommands: true})
+
+		text := out.String()
+		require.Contains(t, text, "\nCommands:\n")
+		require.Contains(t, text, "  codalotl context initial\tInitial context\n")
+		require.Contains(t, text, "  codalotl docs add [--public-only] <pkg>\tAdd docs\n")
+		require.Contains(t, text, "  codalotl docs fix [OPTIONS] <pkg>\tFix docs\n")
+		require.NotContains(t, text, "codalotl docs\t")
+		require.NotContains(t, text, "codalotl secret")
+		require.NotContains(t, text, "--help")
+		requireOrdered(t, text, "codalotl context initial", "codalotl docs add", "codalotl docs fix")
+	})
+
+	t.Run("ordinary root help remains direct-child oriented", func(t *testing.T) {
+		code, out, err := runCLI(t, context.Background(), root, "--help")
+
+		require.Equal(t, 0, code)
+		require.Empty(t, err)
+		require.Contains(t, out, "  codalotl context <command>\tContext tools\n")
+		require.Contains(t, out, "  codalotl docs <command>\tDocumentation tools\n")
+		require.NotContains(t, out, "codalotl docs add")
+		require.NotContains(t, out, "codalotl context initial")
+	})
+}
+
 func TestRun_UsageErrors_ExitCodesAndWhereUsagePrints(t *testing.T) {
 	const (
 		rootLong = "ROOT_USAGE_MARKER"
@@ -837,7 +929,7 @@ func TestHelpOutput_HiddenCommands_NotListedButInvokable(t *testing.T) {
 			t.Fatalf("expected exit=0 and empty Err, got exit=%d err=%q (out=%q)", code, err, out)
 		}
 		requireContains(t, out, "\nCommands:\n")
-		requireContains(t, out, "\n  visible\tvisible command\n")
+		requireContains(t, out, "\n  prog visible\tvisible command\n")
 		requireNotContains(t, out, "\n  secret")
 		requireNotContains(t, out, secretLong)
 	})
