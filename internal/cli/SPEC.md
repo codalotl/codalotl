@@ -26,6 +26,9 @@ Notes:
 - Any argument <path/to/pkg> can either use a Go-style package path (ex: `.`; `..`; `./internal/cli`) to a single package OR a relative/absolute dir (ex: `internal/cli`; `/home/proj/codalotl/internal/cli`), with optional trailing `/`.
     - It may NOT use `...` package patterns (if we need this, we'll invent a new identifier for it, for instance: <package_pattern>).
 - The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (for muscle memory with tools like `code .`).
+- Command definitions provide q/cli help metadata: short/long descriptions, usage, positional args, and useful examples.
+- `codalotl --help` is root-oriented. Tool-facing command catalogs may request q/cli leaf-command help from the same command tree.
+- Tool-facing commands write user-visible stdout through `qcli.Context.Out`.
 
 ### codalotl -h, codalotl --help
 
@@ -188,6 +191,7 @@ Notes:
 - `--public-only` only documents exported identifiers.
 - `--include-test` includes test files, including black-box `_test` packages.
 - Uses the effective model and configured `reflowwidth`.
+- Detailed help covers options, `<path/to/pkg>`, and common examples.
 
 Output:
 - Prints a concise summary of the applied documentation changes.
