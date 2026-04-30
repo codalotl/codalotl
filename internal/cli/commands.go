@@ -34,6 +34,12 @@ var runTUIWithConfig = tui.RunWithConfig
 var runNoninteractiveExec = noninteractive.Exec
 var runDocubotAddDocs = docubot.AddDocs
 
+const packagePathArgDescription = "Go-style package path (for example ., .., ./internal/cli), " +
+	"relative/absolute package directory, or import path for a package in the current module. Package patterns with ... are not supported."
+
+const specPathArgDescription = "Package directory, import path, or SPEC.md file path. " +
+	"Package patterns with ... are not supported."
+
 type configState struct {
 	once sync.Once
 	cfg  Config
@@ -114,7 +120,9 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 
 	root := &qcli.Command{
 		Name:  "codalotl",
-		Short: "codalotl is an LLM-assisted Go coding agent.",
+		Short: "LLM-assisted Go coding agent.",
+		Long:  "Launch the codalotl TUI, or run one of the codalotl subcommands.",
+		Usage: "[.]",
 		Args: func(args []string) error {
 			// Allow `codalotl .` as an alias for launching the TUI (muscle memory
 			// with tools like `code .`). Any other path continues to be invalid.
@@ -159,7 +167,21 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 
 	execCmd := &qcli.Command{
 		Name:  "exec",
-		Short: "Run codalotl noninteractively with a prompt.",
+		Short: "Run the noninteractive agent with a prompt.",
+		Long: "Runs codalotl's noninteractive agent once. The prompt is sent as the user message. " +
+			"Use --package to enter package mode, --yes to auto-approve permission checks, and --slash-command=orchestrate to start the built-in orchestrator flow.",
+		Usage: "[<prompt> ...]",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "[<prompt> ...]",
+				Description: "User message to send to the agent. Required unless --slash-command starts a session that can run without an initial message.",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl exec "Summarize this repository"
+codalotl exec --package internal/cli "Explain the CLI commands"
+codalotl exec --yes --slash-command=orchestrate "Plan this refactor"
+`),
 	}
 	execFlags := execCmd.Flags()
 	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode, rooted at this package path (must be within cwd).")
@@ -218,12 +240,17 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	contextCmd := &qcli.Command{
 		Name:  "context",
 		Short: "Print code contexts suitable for sending to an LLM.",
+		Long:  "Print LLM-ready context derived from Go packages. These commands are intended for humans and tools that want to copy codalotl's package context into an LLM prompt.",
 	}
 
 	versionCmd := &qcli.Command{
 		Name:  "version",
-		Short: "Print codalotl version.",
+		Short: "Print the codalotl version.",
+		Long:  "Prints update status when available, followed by the current codalotl version on the last line.",
 		Args:  qcli.NoArgs,
+		Example: strings.TrimSpace(`
+codalotl version
+`),
 		Run: func(c *qcli.Context) error {
 			m := newCLIMonitor(Version)
 			if m != nil {
@@ -250,7 +277,11 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	configCmd := &qcli.Command{
 		Name:  "config",
 		Short: "Print codalotl configuration.",
+		Long:  "Prints the effective codalotl configuration, redacting provider keys and showing config locations, effective model, and provider API key environment variables.",
 		Args:  qcli.NoArgs,
+		Example: strings.TrimSpace(`
+codalotl config
+`),
 		Run: runWithConfig("config", func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error {
 			if err := maybeWriteUpdateNotice(c.Out, m, Version, defaultNoticeWaitTimeout); err != nil {
 				return err
@@ -262,12 +293,27 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	docsCmd := &qcli.Command{
 		Name:  "docs",
 		Short: "Documentation tools.",
+		Long:  "Commands for adding or reflowing Go documentation comments.",
 	}
 
 	addCmd := &qcli.Command{
 		Name:  "add",
 		Short: "Add missing documentation comments to a package.",
-		Args:  qcli.ExactArgs(1),
+		Long: "Adds missing package documentation comments using an LLM. Existing comments are preserved. " +
+			"By default, the command documents exported and unexported package-level identifiers in non-test files.",
+		Usage: "<path/to/pkg>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path/to/pkg>",
+				Description: packagePathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl docs add internal/mypkg
+codalotl docs add --public-only internal/mypkg
+codalotl docs add --include-test ./internal/mypkg
+`),
+		Args: qcli.ExactArgs(1),
 	}
 	addFlags := addCmd.Flags()
 	addPublicOnly := addFlags.Bool("public-only", 0, false, "Only document exported identifiers.")
@@ -298,7 +344,20 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	reflowCmd := &qcli.Command{
 		Name:  "reflow",
 		Short: "Reflow documentation in one or more paths.",
-		Args:  qcli.MinimumArgs(1),
+		Long: "Reflows Go documentation comments in the specified files or directories. " +
+			"Prints changed .go files, one per line, using module-relative paths when possible.",
+		Usage: "<path> ...",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path> ...",
+				Description: "One or more Go source files or directories to reflow.",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl docs reflow internal/mypkg
+codalotl docs reflow --width=100 --check internal/mypkg pkg/foo.go
+`),
+		Args: qcli.MinimumArgs(1),
 	}
 	reflowFlags := reflowCmd.Flags()
 	reflowWidth := reflowFlags.Int("width", 'w', 0, "Override reflow width (default: config reflowwidth).")
@@ -384,11 +443,24 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	specCmd := &qcli.Command{
 		Name:  "spec",
 		Short: "SPEC.md tools.",
+		Long:  "Commands for formatting, comparing, and reporting package SPEC.md files.",
 	}
 	fmtCmd := &qcli.Command{
 		Name:  "fmt",
 		Short: "Format Go code blocks in SPEC.md.",
-		Args:  qcli.ExactArgs(1),
+		Long:  "Formats Go code blocks in a SPEC.md file. Prints the SPEC.md path when the file was modified.",
+		Usage: "<path/to/pkg_or_SPEC.md>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path/to/pkg_or_SPEC.md>",
+				Description: specPathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl spec fmt internal/mypkg
+codalotl spec fmt internal/mypkg/SPEC.md
+`),
+		Args: qcli.ExactArgs(1),
 		Run: runWithConfig("spec_fmt", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 			specPath, err := resolveSpecPathArg(c.Args[0])
 			if err != nil {
@@ -415,7 +487,19 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	diffCmd := &qcli.Command{
 		Name:  "diff",
 		Short: "Print diffs between SPEC.md and the package implementation.",
-		Args:  qcli.ExactArgs(1),
+		Long:  "Compares the Public API declared in SPEC.md with the package's implemented public API and prints human/LLM-friendly diffs. Prints nothing when there are no differences.",
+		Usage: "<path/to/pkg_or_SPEC.md>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path/to/pkg_or_SPEC.md>",
+				Description: specPathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl spec diff internal/mypkg
+codalotl spec diff internal/mypkg/SPEC.md
+`),
+		Args: qcli.ExactArgs(1),
 		Run: runWithConfig("spec_diff", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			specPath, err := resolveSpecPathArg(c.Args[0])
 			if err != nil {
@@ -438,7 +522,19 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	lsMismatchCmd := &qcli.Command{
 		Name:  "ls-mismatch",
 		Short: "List packages where SPEC.md differs from the implementation.",
-		Args:  qcli.ExactArgs(1),
+		Long:  "Lists packages in a Go package pattern where codalotl spec diff would print a diff. Packages without SPEC.md, invalid packages, or packages with errors but no diff are omitted.",
+		Usage: "<pkg/pattern>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<pkg/pattern>",
+				Description: "Go package pattern to scan, such as ./... or ./internal/...",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl spec ls-mismatch ./...
+codalotl spec ls-mismatch ./internal/...
+`),
+		Args: qcli.ExactArgs(1),
 		Run: runWithConfig("spec_ls_mismatch", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			return runSpecLsMismatch(c.Context, c.Out, c.Args[0])
 		}),
@@ -446,7 +542,11 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	statusCmd := &qcli.Command{
 		Name:  "status",
 		Short: "Print per-package SPEC.md status (implies ./...).",
+		Long:  "Prints a table showing package, whether SPEC.md exists, whether Public API matches implementation, and whether the CAS conformance result is set.",
 		Args:  qcli.NoArgs,
+		Example: strings.TrimSpace(`
+codalotl spec status
+`),
 		Run: runWithConfig("spec_status", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			return runSpecStatus(c.Context, c.Out)
 		}),
@@ -455,11 +555,32 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	casCmd := &qcli.Command{
 		Name:  "cas",
 		Short: "Content-addressable metadata storage (CAS).",
+		Long:  "Commands for reading and writing content-addressed metadata keyed by package source contents.",
 	}
 	setCmd := &qcli.Command{
 		Name:  "set",
 		Short: "Set a JSON value for (package, namespace).",
-		Args:  qcli.ExactArgs(3),
+		Long:  "Stores a JSON value for a package and namespace under a key derived from the package's source file paths, contents, and namespace.",
+		Usage: "<namespace> <path/to/pkg> <value>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<namespace>",
+				Description: "Filesystem-safe schema/version name used to separate stored CAS values.",
+			},
+			{
+				Display:     "<path/to/pkg>",
+				Description: packagePathArgDescription,
+			},
+			{
+				Display:     "<value>",
+				Description: `JSON value to store, such as "OK" or {"result":"ok"}.`,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl cas set specconforms-1 internal/mypkg '{"conforms":true}'
+codalotl cas set review-state internal/mypkg '"OK"'
+`),
+		Args: qcli.ExactArgs(3),
 		Run: runWithConfig("cas_set", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			namespace := c.Args[0]
 			if err := validateCASNamespace(namespace); err != nil {
@@ -483,7 +604,22 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	getCmd := &qcli.Command{
 		Name:  "get",
 		Short: "Get a JSON value for (package, namespace).",
-		Args:  qcli.ExactArgs(2),
+		Long:  "Retrieves the stored CAS value and associated metadata for the current source contents of a package. Prints nothing and exits non-zero when no value is set.",
+		Usage: "<namespace> <path/to/pkg>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<namespace>",
+				Description: "Filesystem-safe schema/version name used to separate stored CAS values.",
+			},
+			{
+				Display:     "<path/to/pkg>",
+				Description: packagePathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl cas get specconforms-1 internal/mypkg
+`),
+		Args: qcli.ExactArgs(2),
 		Run: runWithConfig("cas_get", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			namespace := c.Args[0]
 			if err := validateCASNamespace(namespace); err != nil {
@@ -519,7 +655,18 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	lsUnsetCmd := &qcli.Command{
 		Name:  "ls-unset",
 		Short: "List packages in the current module missing a CAS entry for a namespace.",
-		Args:  qcli.ExactArgs(1),
+		Long:  "Lists module packages, one per line, that do not have a CAS value set for the given namespace and current package contents.",
+		Usage: "<namespace>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<namespace>",
+				Description: "Filesystem-safe schema/version name used to separate stored CAS values.",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl cas ls-unset specconforms-1
+`),
+		Args: qcli.ExactArgs(1),
 		Run: runWithConfig("cas_ls_unset", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			return runCASLsUnset(c.Context, c.Out, c.Args[0])
 		}),
@@ -538,7 +685,19 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	publicCmd := &qcli.Command{
 		Name:  "public",
 		Short: "Print the public API of a package.",
-		Args:  qcli.ExactArgs(1),
+		Long:  "Prints godoc-like public API context for a package, grouped by source file and formatted for use in an LLM prompt.",
+		Usage: "<path/to/pkg>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path/to/pkg>",
+				Description: packagePathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl context public internal/cli
+codalotl context public ./internal/cli
+`),
+		Args: qcli.ExactArgs(1),
 		Run: runWithConfig("context_public", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			pkg, _, err := loadPackageArg(c.Args[0])
 			if err != nil {
@@ -555,7 +714,19 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	initialCmd := &qcli.Command{
 		Name:  "initial",
 		Short: "Print the initial context for an LLM starting to work on a package.",
-		Args:  qcli.ExactArgs(1),
+		Long:  "Prints the package lay of the land used when an LLM starts working on a package: files, identifiers, used-by packages, diagnostics, tests, and lints.",
+		Usage: "<path/to/pkg>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path/to/pkg>",
+				Description: packagePathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl context initial internal/cli
+codalotl context initial ./internal/cli
+`),
+		Args: qcli.ExactArgs(1),
 		Run: runWithConfig("context_initial", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 			pkg, _, err := loadPackageArg(c.Args[0])
 			if err != nil {
@@ -578,7 +749,13 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	packagesCmd := &qcli.Command{
 		Name:  "packages",
 		Short: "Print an LLM-friendly list of packages available in the current module.",
+		Long:  "Prints packages available from the module containing the current working directory as LLM-ready context. The output is intentionally text-oriented and may change; do not parse it as a stable machine format.",
 		Args:  qcli.NoArgs,
+		Example: strings.TrimSpace(`
+codalotl context packages
+codalotl context packages --search 'internal/(cli|q)'
+codalotl context packages --deps
+`),
 	}
 	fs := packagesCmd.Flags()
 	search := fs.String("search", 's', "", "Filter packages by Go regexp.")

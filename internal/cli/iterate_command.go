@@ -46,6 +46,20 @@ func newIterateCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	iterateCmd := &qcli.Command{
 		Name:  "iterate",
 		Short: "Run repeated noninteractive agent steps until iteration policy stops.",
+		Long: "Runs repeated noninteractive agent prompt steps until a step limit, time limit, retry limit, or stop decision ends the loop. " +
+			"Use --orchestrate or --slash-command=orchestrate to run the built-in orchestrator flow.",
+		Usage: "[<prompt> ...]",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "[<prompt> ...]",
+				Description: "Initial user prompt. Use this or --prompt-file, unless --orchestrate or --slash-command starts a session that can run without an initial message.",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl iterate --max-steps=3 "Fix the failing tests"
+codalotl iterate --prompt-file prompt.md --max-minutes=20
+codalotl iterate --orchestrate --yes "Implement this plan"
+`),
 	}
 
 	flags := iterateCmd.Flags()

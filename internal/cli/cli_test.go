@@ -112,6 +112,86 @@ func TestRun_Help(t *testing.T) {
 	}
 }
 
+func TestRun_Help_StaysRootOriented(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	got := out.String()
+	require.Contains(t, got, "codalotl docs")
+	require.Contains(t, got, "Documentation tools.")
+	require.NotContains(t, got, "codalotl docs add")
+	require.NotContains(t, got, "codalotl context public")
+}
+
+func TestRun_CommandHelp_IsDetailedAndSkipsStartupValidation(t *testing.T) {
+	isolateUserConfig(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PATH", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "docs", "add", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	got := out.String()
+	require.Contains(t, got, "codalotl docs add")
+	require.Contains(t, got, "Adds missing package documentation comments")
+	require.Contains(t, got, "--public-only")
+	require.Contains(t, got, "--include-test")
+	require.Contains(t, got, "<path/to/pkg>")
+	require.Contains(t, got, "codalotl docs add --public-only internal/mypkg")
+}
+
+func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
+	root, _ := newRootCommand(false)
+
+	for _, names := range [][]string{
+		{"context", "public"},
+		{"context", "initial"},
+		{"context", "packages"},
+		{"docs", "add"},
+		{"docs", "reflow"},
+		{"spec", "fmt"},
+		{"spec", "diff"},
+		{"spec", "ls-mismatch"},
+		{"spec", "status"},
+		{"cas", "get"},
+		{"cas", "ls-unset"},
+	} {
+		cmd := requireCommand(t, root, names...)
+		require.NotEmpty(t, cmd.Short)
+		require.NotEmpty(t, cmd.Long)
+		require.NotEmpty(t, cmd.Example)
+		switch strings.Join(names, " ") {
+		case "context packages", "spec status":
+		default:
+			require.NotEmpty(t, cmd.Usage)
+		}
+	}
+}
+
+func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {
+	root, _ := newRootCommand(false)
+
+	var out bytes.Buffer
+	qcli.WriteHelp(&out, root, root, qcli.HelpOptions{LeafCommands: true})
+
+	got := out.String()
+	require.Contains(t, got, "codalotl docs add")
+	require.Contains(t, got, "codalotl context public")
+	require.Contains(t, got, "codalotl spec diff")
+	require.Contains(t, got, "Add missing documentation comments to a package.")
+	require.NotContains(t, got, "codalotl docs\n")
+}
+
 func TestRun_Help_IgnoresStartupValidation(t *testing.T) {
 	isolateUserConfig(t)
 
