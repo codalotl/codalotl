@@ -123,10 +123,29 @@ func TestRun_Help_StaysRootOriented(t *testing.T) {
 	require.Empty(t, errOut.String())
 
 	got := out.String()
+	require.Contains(t, got, "Usage:\n  codalotl [command]\n")
+	require.NotContains(t, got, "codalotl [command] [args]")
 	require.Contains(t, got, "codalotl docs")
 	require.Contains(t, got, "Documentation tools.")
 	require.NotContains(t, got, "codalotl docs add")
 	require.NotContains(t, got, "codalotl context public")
+}
+
+func TestRun_RootUnsupportedArg_IsHelpfulUsageError(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "foo"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+
+	got := errOut.String()
+	require.Contains(t, got, "unknown command: foo")
+	require.Contains(t, got, "Usage:\n  codalotl [command]\n")
+	require.NotContains(t, got, "expected no args")
+	require.NotContains(t, got, "codalotl [command] [args]")
 }
 
 func TestRun_CommandHelp_IsDetailedAndSkipsStartupValidation(t *testing.T) {

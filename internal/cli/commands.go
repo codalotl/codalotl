@@ -122,13 +122,17 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 		Name:  "codalotl",
 		Short: "LLM-assisted Go coding agent.",
 		Long:  "Launch the codalotl TUI, or run one of the codalotl subcommands. Use `codalotl .` as an alias for launching the TUI.",
+		Usage: "[command]",
 		Args: func(args []string) error {
 			// Allow `codalotl .` as an alias for launching the TUI (muscle memory
 			// with tools like `code .`). Any other path continues to be invalid.
 			if len(args) == 1 && args[0] == "." {
 				return nil
 			}
-			return qcli.NoArgs(args)
+			if len(args) == 0 {
+				return nil
+			}
+			return qcli.UsageError{Message: fmt.Sprintf("unknown command: %s", args[0])}
 		},
 		Run: runWithConfig("start_tui", func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error {
 			// If PreferredModel is empty, pass the zero value so TUI keeps its
