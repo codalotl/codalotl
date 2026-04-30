@@ -293,10 +293,7 @@ type Config struct {
 type ProviderKeys struct {
 	OpenAI    string `json:"openai"`
 	Anthropic string `json:"anthropic"`
-
-	// NOTE: in the future, we may add these:
-	// XAI       string `json:"xai"`
-	// Gemini    string `json:"gemini"`
+	Gemini    string `json:"gemini"`
 }
 
 type CustomModel struct {
