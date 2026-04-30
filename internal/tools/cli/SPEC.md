@@ -36,8 +36,8 @@ Command handlers intended for `codalotl_cli` write user-visible output through `
 Streaming display is a convenience for users, separate from the LLM-facing result.
 
 - Stdout is teed: captured for `Result.Stdout` and streamed visibly when tool-output emission is available.
-- Visible output is flushed on newline, after about one second of partial output, and when command execution finishes.
-- Each flush emits one tool-output message, preserving embedded newlines.
+- Visible stdout is chunked into user-facing messages; newline can trigger a flush, but chunks may contain embedded newlines.
+- Partial chunks flush after about one second, and remaining output flushes when command execution finishes.
 - Visible output is sanitized, bounded, and may be elided more aggressively than result capture.
 - Stderr is captured in `Result.Stderr`; it is not streamed as visible tool output.
 
