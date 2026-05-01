@@ -30,6 +30,14 @@ Notes:
 - `codalotl --help` is root-oriented. Tool-facing command catalogs may request q/cli leaf-command help from the same command tree.
 - Tool-facing commands write user-visible stdout through `qcli.Context.Out`.
 
+## Agent Session Wiring
+
+- CLI startup installs `codalotl_cli` into `internal/agentbuilder`.
+- `internal/agentbuilder` is the source of truth for which built-in agents expose `codalotl_cli`.
+	- Generic agents expose it.
+	- Package-mode agents do not.
+- `codalotl_cli` exposes only `codalotl docs add`.
+
 ### codalotl -h, codalotl --help
 
 Prints standard usage.
