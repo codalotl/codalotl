@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/codalotl/codalotl/internal/agentbuilder"
 	"github.com/codalotl/codalotl/internal/docubot"
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/goclitools"
@@ -20,12 +21,15 @@ import (
 	"github.com/codalotl/codalotl/internal/initialcontext"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcas "github.com/codalotl/codalotl/internal/q/cas"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/health"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/specmd"
+	toolcli "github.com/codalotl/codalotl/internal/tools/cli"
+	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/codalotl/codalotl/internal/tui"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
@@ -65,7 +69,13 @@ func (s *startupState) validate(cfg Config) error {
 	return s.err
 }
 
-func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
+func installAgentToolOverrides() {
+	agentbuilder.OverrideTool(toolcli.ToolNameCodalotlCLI, func(toolsetinterface.Options) (llmstream.Tool, error) {
+		return toolcli.NewCodalotlCLITool(newCodalotlCLICommandTree), nil
+	})
+}
+
+func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunState) {
 	cfgState := &configState{}
 	startup := &startupState{}
 	runState := &cliRunState{}
@@ -117,7 +127,11 @@ func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 			})
 		}
 	}
+	return runWithConfig, runState
+}
 
+func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
+	runWithConfig, runState := newCLIRunWithConfig(loadConfigForRuns)
 	root := &qcli.Command{
 		Name:  "codalotl",
 		Short: "LLM-assisted Go coding agent.",
@@ -294,156 +308,6 @@ codalotl config
 			return writeConfig(c.Out, cfg)
 		}),
 	}
-
-	docsCmd := &qcli.Command{
-		Name:  "docs",
-		Short: "Documentation tools.",
-		Long:  "Commands for adding or reflowing Go documentation comments.",
-	}
-
-	addCmd := &qcli.Command{
-		Name:  "add",
-		Short: "Add missing documentation comments to a package.",
-		Long: "Adds missing package documentation comments using an LLM. Existing comments are preserved. " +
-			"By default, the command documents exported and unexported package-level identifiers in non-test files.",
-		Usage: "<path/to/pkg>",
-		ArgHelp: []qcli.ArgHelp{
-			{
-				Display:     "<path/to/pkg>",
-				Description: packagePathArgDescription,
-			},
-		},
-		Example: strings.TrimSpace(`
-codalotl docs add internal/mypkg
-codalotl docs add --public-only internal/mypkg
-codalotl docs add --include-test ./internal/mypkg
-`),
-		Args: qcli.ExactArgs(1),
-	}
-	addFlags := addCmd.Flags()
-	addPublicOnly := addFlags.Bool("public-only", 0, false, "Only document exported identifiers.")
-	addIncludeTest := addFlags.Bool("include-test", 0, false, "Include test files, including black-box _test packages.")
-	addCmd.Run = runWithConfig("docs_add", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
-		pkg, _, err := loadPackageArg(c.Args[0])
-		if err != nil {
-			return err
-		}
-
-		changes, err := runDocubotAddDocs(pkg, docubot.AddDocsOptions{
-			DocumentTestFiles:               *addIncludeTest,
-			OnlyDocumentExportedIdentifiers: *addPublicOnly,
-			BaseOptions: docubot.BaseOptions{
-				ReflowMaxWidth: cfg.ReflowWidth,
-				Out:            c.Out,
-				Model:          effectiveModel(cfg),
-				Ctx:            health.NewCtx(slog.New(slog.NewTextHandler(io.Discard, nil))),
-			},
-		})
-		if err != nil {
-			return err
-		}
-
-		return writeStringln(c.Out, fmt.Sprintf("Applied %d documentation change(s).", len(changes)))
-	})
-
-	reflowCmd := &qcli.Command{
-		Name:  "reflow",
-		Short: "Reflow documentation in one or more paths.",
-		Long: "Reflows Go documentation comments in the specified files or directories. " +
-			"Prints changed .go files, one per line, using module-relative paths when possible.",
-		Usage: "<path> ...",
-		ArgHelp: []qcli.ArgHelp{
-			{
-				Display:     "<path> ...",
-				Description: "One or more Go source files or directories to reflow.",
-			},
-		},
-		Example: strings.TrimSpace(`
-codalotl docs reflow internal/mypkg
-codalotl docs reflow --width=100 --check internal/mypkg pkg/foo.go
-`),
-		Args: qcli.MinimumArgs(1),
-	}
-	reflowFlags := reflowCmd.Flags()
-	reflowWidth := reflowFlags.Int("width", 'w', 0, "Override reflow width (default: config reflowwidth).")
-	reflowCheck := reflowFlags.Bool("check", 0, false, "Don't write files; only print which files would change.")
-	reflowCmd.Run = runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
-		width := cfg.ReflowWidth
-		if *reflowWidth != 0 {
-			if *reflowWidth <= 0 {
-				return qcli.UsageError{Message: fmt.Sprintf("invalid --width: must be > 0 (got %d)", *reflowWidth)}
-			}
-			width = *reflowWidth
-		}
-
-		findModuleRoot := func(dir string) string {
-			for {
-				modPath := filepath.Join(dir, "go.mod")
-				if fi, err := os.Stat(modPath); err == nil && !fi.IsDir() {
-					return dir
-				}
-				parent := filepath.Dir(dir)
-				if parent == dir {
-					return ""
-				}
-				dir = parent
-			}
-		}
-
-		displayPathForModifiedFile := func(absPath string) string {
-			modRoot := findModuleRoot(filepath.Dir(absPath))
-			if modRoot != "" {
-				if rel, err := filepath.Rel(modRoot, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
-					return rel
-				}
-			}
-
-			// Fallback: prefer cwd-relative when it doesn't escape.
-			if wd, err := os.Getwd(); err == nil {
-				if rel, err := filepath.Rel(wd, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
-					return rel
-				}
-			}
-
-			return absPath
-		}
-
-		modifiedFiles, skipped, err := updatedocs.ReflowDocumentationPaths(c.Args, *reflowCheck, updatedocs.Options{
-			ReflowMaxWidth: width,
-		})
-		if err != nil {
-			return err
-		}
-
-		uniqModified := map[string]struct{}{}
-		for _, abs := range modifiedFiles {
-			uniqModified[displayPathForModifiedFile(abs)] = struct{}{}
-		}
-		var displayModified []string
-		for p := range uniqModified {
-			displayModified = append(displayModified, p)
-		}
-		sort.Strings(displayModified)
-		for _, p := range displayModified {
-			if _, err := fmt.Fprintln(c.Out, p); err != nil {
-				return err
-			}
-		}
-
-		if len(skipped) == 0 {
-			return nil
-		}
-		if _, err := fmt.Fprintln(c.Err, "Warning: some identifiers could not be reflowed:"); err != nil {
-			return err
-		}
-		for _, id := range skipped {
-			if _, err := fmt.Fprintf(c.Err, "- %s\n", strings.TrimSpace(id)); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	docsCmd.AddCommand(addCmd, reflowCmd)
 
 	specCmd := &qcli.Command{
 		Name:  "spec",
@@ -781,8 +645,183 @@ codalotl context packages --deps
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, docsCmd, specCmd, casCmd, panicCmd)
+	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, newDocsCommand(runWithConfig, true), specCmd, casCmd, panicCmd)
 	return root, runState
+}
+
+func newCodalotlCLICommandTree() *qcli.Command {
+	runWithConfig, _ := newCLIRunWithConfig(true)
+	root := &qcli.Command{
+		Name:  "codalotl",
+		Short: "Whitelisted codalotl CLI commands.",
+		Long:  "Run whitelisted codalotl CLI commands in-process.",
+		Usage: "[command]",
+	}
+	root.AddCommand(newDocsCommand(runWithConfig, false))
+	return root
+}
+
+func newDocsCommand(runWithConfig runWithConfigFunc, includeReflow bool) *qcli.Command {
+	docsCmd := &qcli.Command{
+		Name:  "docs",
+		Short: "Documentation tools.",
+		Long:  "Commands for adding or reflowing Go documentation comments.",
+	}
+	children := []*qcli.Command{newDocsAddCommand(runWithConfig)}
+	if includeReflow {
+		children = append(children, newDocsReflowCommand(runWithConfig))
+	}
+	docsCmd.AddCommand(children...)
+	return docsCmd
+}
+
+func newDocsAddCommand(runWithConfig runWithConfigFunc) *qcli.Command {
+	addCmd := &qcli.Command{
+		Name:  "add",
+		Short: "Add missing documentation comments to a package.",
+		Long: "Adds missing package documentation comments using an LLM. Existing comments are preserved. " +
+			"By default, the command documents exported and unexported package-level identifiers in non-test files.",
+		Usage: "<path/to/pkg>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path/to/pkg>",
+				Description: packagePathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl docs add internal/mypkg
+codalotl docs add --public-only internal/mypkg
+codalotl docs add --include-test ./internal/mypkg
+`),
+		Args: qcli.ExactArgs(1),
+	}
+	addFlags := addCmd.Flags()
+	addPublicOnly := addFlags.Bool("public-only", 0, false, "Only document exported identifiers.")
+	addIncludeTest := addFlags.Bool("include-test", 0, false, "Include test files, including black-box _test packages.")
+	addCmd.Run = runWithConfig("docs_add", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
+		pkg, _, err := loadPackageArg(c.Args[0])
+		if err != nil {
+			return err
+		}
+
+		changes, err := runDocubotAddDocs(pkg, docubot.AddDocsOptions{
+			DocumentTestFiles:               *addIncludeTest,
+			OnlyDocumentExportedIdentifiers: *addPublicOnly,
+			BaseOptions: docubot.BaseOptions{
+				ReflowMaxWidth: cfg.ReflowWidth,
+				Out:            c.Out,
+				Model:          effectiveModel(cfg),
+				Ctx:            health.NewCtx(slog.New(slog.NewTextHandler(io.Discard, nil))),
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		return writeStringln(c.Out, fmt.Sprintf("Applied %d documentation change(s).", len(changes)))
+	})
+	return addCmd
+}
+
+func newDocsReflowCommand(runWithConfig runWithConfigFunc) *qcli.Command {
+	reflowCmd := &qcli.Command{
+		Name:  "reflow",
+		Short: "Reflow documentation in one or more paths.",
+		Long: "Reflows Go documentation comments in the specified files or directories. " +
+			"Prints changed .go files, one per line, using module-relative paths when possible.",
+		Usage: "<path> ...",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path> ...",
+				Description: "One or more Go source files or directories to reflow.",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl docs reflow internal/mypkg
+codalotl docs reflow --width=100 --check internal/mypkg pkg/foo.go
+`),
+		Args: qcli.MinimumArgs(1),
+	}
+	reflowFlags := reflowCmd.Flags()
+	reflowWidth := reflowFlags.Int("width", 'w', 0, "Override reflow width (default: config reflowwidth).")
+	reflowCheck := reflowFlags.Bool("check", 0, false, "Don't write files; only print which files would change.")
+	reflowCmd.Run = runWithConfig("docs_reflow", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
+		width := cfg.ReflowWidth
+		if *reflowWidth != 0 {
+			if *reflowWidth <= 0 {
+				return qcli.UsageError{Message: fmt.Sprintf("invalid --width: must be > 0 (got %d)", *reflowWidth)}
+			}
+			width = *reflowWidth
+		}
+
+		findModuleRoot := func(dir string) string {
+			for {
+				modPath := filepath.Join(dir, "go.mod")
+				if fi, err := os.Stat(modPath); err == nil && !fi.IsDir() {
+					return dir
+				}
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					return ""
+				}
+				dir = parent
+			}
+		}
+
+		displayPathForModifiedFile := func(absPath string) string {
+			modRoot := findModuleRoot(filepath.Dir(absPath))
+			if modRoot != "" {
+				if rel, err := filepath.Rel(modRoot, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+					return rel
+				}
+			}
+
+			// Fallback: prefer cwd-relative when it doesn't escape.
+			if wd, err := os.Getwd(); err == nil {
+				if rel, err := filepath.Rel(wd, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+					return rel
+				}
+			}
+
+			return absPath
+		}
+
+		modifiedFiles, skipped, err := updatedocs.ReflowDocumentationPaths(c.Args, *reflowCheck, updatedocs.Options{
+			ReflowMaxWidth: width,
+		})
+		if err != nil {
+			return err
+		}
+
+		uniqModified := map[string]struct{}{}
+		for _, abs := range modifiedFiles {
+			uniqModified[displayPathForModifiedFile(abs)] = struct{}{}
+		}
+		var displayModified []string
+		for p := range uniqModified {
+			displayModified = append(displayModified, p)
+		}
+		sort.Strings(displayModified)
+		for _, p := range displayModified {
+			if _, err := fmt.Fprintln(c.Out, p); err != nil {
+				return err
+			}
+		}
+
+		if len(skipped) == 0 {
+			return nil
+		}
+		if _, err := fmt.Fprintln(c.Err, "Warning: some identifiers could not be reflowed:"); err != nil {
+			return err
+		}
+		for _, id := range skipped {
+			if _, err := fmt.Fprintf(c.Err, "- %s\n", strings.TrimSpace(id)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return reflowCmd
 }
 
 func writeStringln(w io.Writer, s string) error {
