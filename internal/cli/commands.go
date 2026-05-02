@@ -709,6 +709,7 @@ codalotl docs add --include-test ./internal/mypkg
 			OnlyDocumentExportedIdentifiers: *addPublicOnly,
 			BaseOptions: docubot.BaseOptions{
 				ReflowMaxWidth: cfg.ReflowWidth,
+				Context:        c.Context,
 				Out:            c.Out,
 				Model:          effectiveModel(cfg),
 				Ctx:            health.NewCtx(slog.New(slog.NewTextHandler(io.Discard, nil))),

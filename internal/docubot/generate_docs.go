@@ -1,6 +1,7 @@
 package docubot
 
 import (
+	"context"
 	"fmt"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
@@ -23,6 +24,7 @@ type BaseOptions struct {
 	// ReflowMaxWidth sets the desired wrap width when reflowing documentation comments. A value of zero uses a sensible default of 180 to preserve previous behavior.
 	ReflowMaxWidth int
 
+	Context    context.Context     // Context carries cancellation and deadlines for LLM work. Nil falls back to context.Background().
 	Out        io.Writer           // Out receives user-facing progress and status messages. Nil falls back to stdout.
 	Model      llmmodel.ModelID    // Model enables callers to choose an explicit model.
 	Completer  llmstream.Completer // Completer allows callers to inject their own LLM implementations, including mock implementations for testing.

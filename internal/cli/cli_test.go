@@ -629,6 +629,53 @@ func TestDocsAddCommand_PassesCLIOutputWriterToDocubot(t *testing.T) {
 	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
 }
 
+func TestDocsAddCommand_PassesCLIContextToDocubot(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc Foo() {}\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origRunDocubotAddDocs := runDocubotAddDocs
+	t.Cleanup(func() { runDocubotAddDocs = origRunDocubotAddDocs })
+
+	type contextKey string
+
+	ctxKey := contextKey("docs-add-test")
+	ctxValue := "sentinel"
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxKey, ctxValue))
+	cancel()
+
+	runDocubotAddDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) ([]*gopackagediff.Change, error) {
+		require.Same(t, ctx, opts.BaseOptions.Context)
+		require.Equal(t, ctxValue, opts.BaseOptions.Context.Value(ctxKey))
+		require.ErrorIs(t, opts.BaseOptions.Context.Err(), context.Canceled)
+		return nil, nil
+	}
+
+	root, _ := newRootCommand(true)
+	addCmd := requireCommand(t, root, "docs", "add")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err = addCmd.Run(&qcli.Context{
+		Context: ctx,
+		Command: addCmd,
+		Args:    []string{"./p"},
+		Out:     &out,
+		Err:     &errOut,
+	})
+	require.NoError(t, err)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
+}
+
 func TestRun_DocsAdd_WritesDocubotProgressToCLIOutput(t *testing.T) {
 	isolateUserConfig(t)
 
