@@ -634,11 +634,11 @@ func (s *Session) SendUserMessage(ctx context.Context, userPrompt string) (Resul
 				return result, err
 			}
 		case agent.EventTypeToolOutput:
-			toolCallPrinter.Force(toolCallIDFromEvent(ev))
 			formatted := s.formatter.FormatEvent(ev, s.terminalWidth)
 			if shouldSuppressFormattedOutput(formatted) || formatted == "" {
 				continue
 			}
+			toolCallPrinter.Force(toolCallIDFromEvent(ev))
 			if err := writeOutputLine(s.out, formatted); err != nil {
 				return result, err
 			}

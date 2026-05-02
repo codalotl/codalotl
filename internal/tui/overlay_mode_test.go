@@ -170,12 +170,148 @@ func TestOverlayModeDetailsOpensDialogForToolMessage(t *testing.T) {
 	view := stripAnsi(m.View())
 	require.Contains(t, view, "Read main.go")
 	require.Contains(t, view, "Tool: read_file")
-	require.Contains(t, view, `"path": "main.go"`)
 	require.Contains(t, view, `"content": "hi"`)
+	require.NotContains(t, view, `"path": "main.go"`)
 	require.Contains(t, view, "ESC to close")
 
 	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyEsc})
 	require.Nil(t, m.detailsDialog)
+}
+
+func TestOverlayModeToolCallDetailsShowOnlyCallInput(t *testing.T) {
+	palette := colorPalette{
+		colorized:          true,
+		primaryBackground:  termformat.ANSIColor(0),
+		accentBackground:   termformat.ANSIColor(1),
+		primaryForeground:  termformat.ANSIColor(7),
+		accentForeground:   termformat.ANSIColor(7),
+		colorfulForeground: termformat.ANSIColor(6),
+		borderColor:        termformat.ANSIColor(7),
+	}
+
+	m := newModel(palette, stubToolFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 30})
+
+	callID := "call-123"
+	call := &llmstream.ToolCall{CallID: callID, Name: "read_file", Type: "function", Input: `{"path":"call.txt"}`}
+	m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolCall, Tool: newNamedTool("read_file"), ToolCall: call})
+	m.handleAgentEvent(agent.Event{
+		Type: agent.EventTypeToolOutput,
+		Tool: newNamedTool("read_file"),
+		ToolCall: &llmstream.ToolCall{
+			CallID: callID,
+			Name:   "read_file",
+			Type:   "function",
+		},
+		ToolOutput: agent.ToolOutput{Content: "streamed progress"},
+	})
+	m.handleAgentEvent(agent.Event{
+		Type: agent.EventTypeToolComplete,
+		Tool: newNamedTool("read_file"),
+		ToolResult: &llmstream.ToolResult{
+			CallID: callID,
+			Name:   "read_file",
+			Type:   "function",
+			Result: `{"content":"result payload"}`,
+		},
+	})
+	m.refreshViewport(true)
+
+	m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
+	require.True(t, m.overlayMode)
+
+	openOverlayDetails(t, m, 0)
+
+	require.NotNil(t, m.detailsDialog)
+	view := stripAnsi(m.View())
+	require.Contains(t, view, "Tool: read_file")
+	require.Contains(t, view, `"path": "call.txt"`)
+	require.NotContains(t, view, "result payload")
+	require.NotContains(t, view, "streamed progress")
+}
+
+func TestOverlayModeToolResultDetailsShowOnlyResult(t *testing.T) {
+	palette := colorPalette{
+		colorized:          true,
+		primaryBackground:  termformat.ANSIColor(0),
+		accentBackground:   termformat.ANSIColor(1),
+		primaryForeground:  termformat.ANSIColor(7),
+		accentForeground:   termformat.ANSIColor(7),
+		colorfulForeground: termformat.ANSIColor(6),
+		borderColor:        termformat.ANSIColor(7),
+	}
+
+	t.Run("replaced result", func(t *testing.T) {
+		m := newModel(palette, stubToolFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+		m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 30})
+
+		callID := "call-123"
+		call := &llmstream.ToolCall{CallID: callID, Name: "read_file", Type: "function", Input: `{"path":"call.txt"}`}
+		result := &llmstream.ToolResult{CallID: callID, Name: "read_file", Type: "function", Result: `{"content":"result payload"}`}
+		m.handleAgentEvent(agent.Event{Type: agent.EventTypeToolComplete, Tool: newNamedTool("read_file"), ToolCall: call, ToolResult: result})
+		m.refreshViewport(true)
+
+		m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
+		require.True(t, m.overlayMode)
+
+		openOverlayDetails(t, m, 0)
+
+		require.NotNil(t, m.detailsDialog)
+		view := stripAnsi(m.View())
+		require.Contains(t, view, "Tool: read_file")
+		require.Contains(t, view, `"content": "result payload"`)
+		require.NotContains(t, view, `"path": "call.txt"`)
+	})
+
+	t.Run("appended result after output", func(t *testing.T) {
+		m := newModel(palette, stubToolFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+		m.Update(nil, qtui.ResizeEvent{Width: 80, Height: 30})
+
+		callID := "call-456"
+		m.handleAgentEvent(agent.Event{
+			Type: agent.EventTypeToolCall,
+			Tool: newNamedTool("read_file"),
+			ToolCall: &llmstream.ToolCall{
+				CallID: callID,
+				Name:   "read_file",
+				Type:   "function",
+				Input:  `{"path":"call.txt"}`,
+			},
+		})
+		m.handleAgentEvent(agent.Event{
+			Type: agent.EventTypeToolOutput,
+			Tool: newNamedTool("read_file"),
+			ToolCall: &llmstream.ToolCall{
+				CallID: callID,
+				Name:   "read_file",
+				Type:   "function",
+			},
+			ToolOutput: agent.ToolOutput{Content: "streamed progress"},
+		})
+		m.handleAgentEvent(agent.Event{
+			Type: agent.EventTypeToolComplete,
+			Tool: newNamedTool("read_file"),
+			ToolResult: &llmstream.ToolResult{
+				CallID: callID,
+				Name:   "read_file",
+				Type:   "function",
+				Result: `{"content":"result payload"}`,
+			},
+		})
+		m.refreshViewport(true)
+
+		m.Update(nil, qtui.KeyEvent{ControlKey: qtui.ControlKeyCtrlO})
+		require.True(t, m.overlayMode)
+
+		openOverlayDetails(t, m, 1)
+
+		require.NotNil(t, m.detailsDialog)
+		view := stripAnsi(m.View())
+		require.Contains(t, view, "Tool: read_file")
+		require.Contains(t, view, `"content": "result payload"`)
+		require.NotContains(t, view, `"path": "call.txt"`)
+		require.NotContains(t, view, "streamed progress")
+	})
 }
 
 func TestOverlayModeDetailsOpensDialogForContextStatusMessage(t *testing.T) {
@@ -276,4 +412,31 @@ func TestDetailsDialogScrollKeepsForegroundColor(t *testing.T) {
 	scrolledView := m.detailsDialog.view.View()
 	require.GreaterOrEqual(t, termformat.BlockHeight(scrolledView), 2)
 	requireColorEqual(t, palette.primaryForeground, colorAt(scrolledView, 0, 1, false))
+}
+
+func openOverlayDetails(t *testing.T, m *model, messageIndex int) {
+	t.Helper()
+
+	var detailsTarget overlayTarget
+	found := false
+	for _, target := range m.overlayTargets {
+		if target.kind != overlayTargetDetails || target.messageIndex != messageIndex {
+			continue
+		}
+		detailsTarget = target
+		found = true
+		break
+	}
+	require.True(t, found)
+
+	y := detailsTarget.contentLine - m.viewport.Offset()
+	require.GreaterOrEqual(t, y, 0)
+	require.Less(t, y, m.viewportHeight)
+
+	m.Update(nil, qtui.MouseEvent{
+		Action: qtui.MouseActionPress,
+		Button: qtui.MouseButtonLeft,
+		X:      detailsTarget.xStart,
+		Y:      y,
+	})
 }

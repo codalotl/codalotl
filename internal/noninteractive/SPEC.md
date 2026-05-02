@@ -10,7 +10,7 @@ To avoid printing "duplicate tool calls" serially (ex: `• Read foo/bar.go`, fi
 - Upon getting a tool call, start a 3 second timer.
 - If we get the corresponding result within 3 seconds, only print the result and cancel the timer.
 - If the three seconds elapses without getting the result, print the tool call. When the result comes in, immediately print that as well.
-- If display-only tool output arrives before the call has printed, print the call immediately, then print the output in arrival order.
+- If visible display-only tool output arrives before the call has printed, print the call immediately, then print the output in arrival order.
 - This 3 second rule only applies to tool calls/results.
 - See exception below re: Concurrent Labeled Subagents.
 
