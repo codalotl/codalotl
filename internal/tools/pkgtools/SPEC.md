@@ -29,6 +29,7 @@ Presentation specs for Go package tools.
 - Complete body: answer text
 - Clarification answer is produced by a read-only subagent.
 - For sandbox packages, run a package-jailed docs-improvement subagent before returning the original answer.
+- Docs-improvement subagent activity may appear as nested events.
 - Do not edit packages outside the sandbox.
 
 ### change_api
