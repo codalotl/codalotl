@@ -31,17 +31,18 @@ import (
 )
 
 const (
-	yamlAgentModeGeneric       = "generic"
-	yamlAgentModePackage       = "package"
-	yamlDefaultConfigPath      = "data/config.yml"
-	yamlPromptBase             = "base"
-	yamlPromptPackageBase      = "package-base"
-	yamlPromptLimitedPkgBase   = "limited-package-base"
-	yamlToolVirtualEditFiles   = "edit_files"
-	yamlRelationDirectImport   = "direct_import_of_caller"
-	yamlRelationDirectImporter = "direct_importer_of_caller"
-	yamlResultFormatText       = "text"
-	yamlResultFormatJSON       = "json"
+	yamlAgentModeGeneric        = "generic"
+	yamlAgentModePackage        = "package"
+	yamlDefaultConfigPath       = "data/config.yml"
+	yamlPromptBase              = "base"
+	yamlPromptPackageBase       = "package-base"
+	yamlPromptLimitedPkgBase    = "limited-package-base"
+	yamlToolVirtualEditFiles    = "edit_files"
+	yamlRelationDirectImport    = "direct_import_of_caller"
+	yamlRelationDirectImporter  = "direct_importer_of_caller"
+	yamlResultFormatText        = "text"
+	yamlResultFormatJSON        = "json"
+	yamlOptionalToolCodalotlCLI = "codalotl_cli"
 )
 
 //go:embed data/*
@@ -537,10 +538,10 @@ func prepareYAMLAgent(spec yamlAgentSpec, yamlFS fs.FS, yamlDir string, existing
 		Name:        spec.Name,
 		Description: "YAML-defined " + spec.Mode + " agent.",
 		ToolsBuilder: func(opts toolsetinterface.Options) ([]string, error) {
-			return expandYAMLToolNames(spec.Tools, opts.Model), nil
+			return expandYAMLToolNames(resolvedToolNames, opts.Model), nil
 		},
 		SystemPromptBuilder: func(options agentregistry.BuildOptions) (string, error) {
-			return buildYAMLAgentSystemPrompt(options, resolvedPrompt, enableSkills, spec.Mode == yamlAgentModePackage, spec.Tools)
+			return buildYAMLAgentSystemPrompt(options, resolvedPrompt, enableSkills, spec.Mode == yamlAgentModePackage, resolvedToolNames)
 		},
 	}
 	if spec.Mode == yamlAgentModePackage {
@@ -642,10 +643,22 @@ func validateYAMLAgentTools(toolNames []string, existingToolNames map[string]str
 				resolved = append(resolved, name)
 				continue
 			}
+			if yamlOptionalExternalTool(name) {
+				continue
+			}
 			return nil, fmt.Errorf("tool %q is not registered", name)
 		}
 	}
 	return resolved, nil
+}
+
+func yamlOptionalExternalTool(name string) bool {
+	switch name {
+	case yamlOptionalToolCodalotlCLI:
+		return true
+	default:
+		return false
+	}
 }
 
 func buildYAMLAgentSystemPrompt(options agentregistry.BuildOptions, basePrompt string, enableSkills bool, isPackageMode bool, toolNames []string) (string, error) {

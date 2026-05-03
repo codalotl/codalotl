@@ -150,6 +150,26 @@ func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
 	}, gotTools)
 }
 
+func TestBuildRegistry_InvokeGeneric_UsesOptionalExternalToolWhenOverridden(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	overrideToolForTest(t, yamlOptionalToolCodalotlCLI, func(toolsetinterface.Options) (llmstream.Tool, error) {
+		return fakeNamedTool{name: yamlOptionalToolCodalotlCLI}, nil
+	})
+
+	_, gotTools := invokeAgentForModel(t, AgentGeneric, llmmodel.ProviderIDOpenAI.DefaultModel())
+
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameApplyPatch,
+		yamlOptionalToolCodalotlCLI,
+		coretools.ToolNameShell,
+		coretools.ToolNameUpdatePlan,
+		spectools.ToolNameCheckSpecConformance,
+	}, gotTools)
+}
+
 func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) {
 	_, gotTools := invokeAgentForModel(t, AgentGeneric, llmmodel.ProviderIDAnthropic.DefaultModel())
 
@@ -295,6 +315,19 @@ func TestGenericTools_RegistersCheckSpecConformance(t *testing.T) {
 
 	assert.Equal(t, spectools.ToolNameCheckSpecConformance, tool.Name())
 	assert.NotNil(t, tool.Presenter())
+}
+
+func TestSimpleReadOnlyTools_UsesOverrideAwareBuilders(t *testing.T) {
+	overrideToolForTest(t, coretools.ToolNameReadFile, func(toolsetinterface.Options) (llmstream.Tool, error) {
+		return fakeNamedTool{name: coretools.ToolNameReadFile}, nil
+	})
+
+	tools, err := simpleReadOnlyTools(toolsetinterface.Options{
+		Authorizer: authdomain.NewAutoApproveAuthorizer(t.TempDir()),
+	})
+	require.NoError(t, err)
+
+	require.IsType(t, fakeNamedTool{}, requireTool(t, tools, coretools.ToolNameReadFile))
 }
 
 func TestBuildRegistry_PROrchestratorReviewTool_InvokesReviewSubagentAndReturnsJSON(t *testing.T) {
@@ -1239,4 +1272,23 @@ func TestAgentbuilderCodexHelperProcess(t *testing.T) {
 
 	_, _ = os.Stdout.WriteString("codex helper saw args: " + strings.Join(args[delimiter+1:], " "))
 	os.Exit(0)
+}
+
+func overrideToolForTest(t *testing.T, toolName string, tool toolsetinterface.Tool) {
+	t.Helper()
+
+	toolOverridesMu.Lock()
+	snapshot := make(map[string]toolsetinterface.Tool, len(toolOverrides))
+	for name, builder := range toolOverrides {
+		snapshot[name] = builder
+	}
+	toolOverridesMu.Unlock()
+
+	OverrideTool(toolName, tool)
+
+	t.Cleanup(func() {
+		toolOverridesMu.Lock()
+		toolOverrides = snapshot
+		toolOverridesMu.Unlock()
+	})
 }

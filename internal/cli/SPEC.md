@@ -26,6 +26,17 @@ Notes:
 - Any argument <path/to/pkg> can either use a Go-style package path (ex: `.`; `..`; `./internal/cli`) to a single package OR a relative/absolute dir (ex: `internal/cli`; `/home/proj/codalotl/internal/cli`), with optional trailing `/`.
     - It may NOT use `...` package patterns (if we need this, we'll invent a new identifier for it, for instance: <package_pattern>).
 - The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (for muscle memory with tools like `code .`).
+- Command definitions provide q/cli help metadata: short/long descriptions, usage, positional args, and useful examples.
+- `codalotl --help` is root-oriented. Tool-facing command catalogs may request q/cli leaf-command help from the same command tree.
+- Tool-facing commands write user-visible stdout through `qcli.Context.Out`.
+
+## Agent Session Wiring
+
+- CLI startup installs `codalotl_cli` into `internal/agentbuilder`.
+- `internal/agentbuilder` is the source of truth for which built-in agents expose `codalotl_cli`.
+	- Generic agents expose it.
+	- Package-mode agents do not.
+- `codalotl_cli` exposes only `codalotl docs add`.
 
 ### codalotl -h, codalotl --help
 
@@ -188,6 +199,7 @@ Notes:
 - `--public-only` only documents exported identifiers.
 - `--include-test` includes test files, including black-box `_test` packages.
 - Uses the effective model and configured `reflowwidth`.
+- Detailed help covers options, `<path/to/pkg>`, and common examples.
 
 Output:
 - Prints a concise summary of the applied documentation changes.
@@ -289,10 +301,7 @@ type Config struct {
 type ProviderKeys struct {
 	OpenAI    string `json:"openai"`
 	Anthropic string `json:"anthropic"`
-
-	// NOTE: in the future, we may add these:
-	// XAI       string `json:"xai"`
-	// Gemini    string `json:"gemini"`
+	Gemini    string `json:"gemini"`
 }
 
 type CustomModel struct {

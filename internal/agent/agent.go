@@ -547,9 +547,12 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 			toolCtx, cancel := context.WithCancel(ctx)
 			factory := newSubAgentFactory(a, callCopy.CallID)
 			toolCtx = withSubAgentContext(toolCtx, factory, a.depth)
+			outputEmitter := newToolOutputEmitter(a, out, tool, callCopy)
+			toolCtx = withToolOutputContext(toolCtx, outputEmitter)
 
 			func() {
 				defer func() {
+					outputEmitter.close()
 					factory.CloseAndWait()
 					cancel()
 				}()

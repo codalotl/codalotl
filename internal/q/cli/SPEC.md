@@ -31,6 +31,10 @@ doc := &cli.Command{
 add := &cli.Command{
 	Name:  "add",
 	Short: "Add docs for a package",
+	Usage: "<path/to/pkg>",
+	ArgHelp: []cli.ArgHelp{
+		{Display: "<path/to/pkg>", Description: "Package path or directory to document."},
+	},
 	Args:  cli.ExactArgs(1),
 	Run: func(c *cli.Context) error {
 		pkg := c.Args[0]
@@ -132,13 +136,36 @@ If it returns a non-nil error, the error is treated as a usage error by default 
 
 Every command supports `-h` / `--help`. When requested, `cli.Run` prints help for the relevant command and does not run a handler.
 
-By default, help/usage is generated from the command tree (names, short/long descriptions, flags, and direct subcommands).
+By default, help/usage is generated from the command tree (names, short/long descriptions, usage, args, examples, flags, and direct subcommands).
 
 Help resolution:
 - If `-h/--help` is encountered while parsing, help is printed for the deepest command selected *so far*.
 - Help output is written to `Options.Out`.
 - `-h`/`--help` are built-in and reserved (they do not need to be registered on a `FlagSet`).
 - After `--`, `-h/--help` are treated as positional args (i.e. they do not trigger help).
+
+Detailed command help includes, when available:
+- Description from `Long` or `Short`
+- Usage
+- Direct child commands
+- Options
+- Args
+- Examples
+
+Command listings are one-line summaries:
+- Full command path from root command name to listed command
+- Usage fragment, if any
+- Short description
+
+Usage fragments:
+- `Usage`, if set, is the complete non-option fragment after command path.
+- Otherwise, commands with children show `<command>` when namespace-only, or `[command]` when runnable.
+- Otherwise, prefer non-empty `ArgHelp.Display` values for positional args.
+- If no positional metadata is present, runnable commands show `[args]` unless `NoPositionalArgs` is set.
+
+When a command has many options, listings may use `[OPTIONS]`. When it has a few options, listings may include the individual option forms. Built-in `-h`/`--help` is never listed as an ordinary option.
+
+Help rendering can also be reused outside `Run` to build leaf-command catalogs. Leaf-command catalogs list executable leaf descendants.
 
 Usage errors:
 - Usage/error output is written to `Options.Err`.
@@ -213,16 +240,25 @@ type ArgsFunc func(args []string) error
 ```go {api}
 // Command defines one CLI command in a command tree.
 type Command struct {
-	Name    string   // Name is the token used to invoke this command (e.g. "add" in "doc add").
-	Aliases []string // Aliases are additional tokens that invoke this command.
-	Hidden  bool     // Hidden hides this command from parent help listings, but it may still be invoked normally by name or alias.
-	Short   string
-	Long    string
-	Example string
-	Args    ArgsFunc // optional
-	Run     RunFunc  // optional
+	Name             string    // Name is the token used to invoke this command (e.g. "add" in "doc add").
+	Aliases          []string  // Aliases are additional tokens that invoke this command.
+	Hidden           bool      // Hidden hides this command from parent help listings, but it may still be invoked normally by name or alias.
+	Short            string    // Short is a concise one-line description.
+	Long             string    // Long is a longer description for detailed help.
+	Usage            string    // Usage is the complete non-option fragment after the resolved command path.
+	ArgHelp          []ArgHelp // ArgHelp describes positional args in detailed help.
+	Example          string    // Example is example text shown in detailed help.
+	NoPositionalArgs bool      // NoPositionalArgs suppresses generic [args] help.
+	Args             ArgsFunc  // optional
+	Run              RunFunc   // optional
 
 	// ...
+}
+
+// ArgHelp describes one positional argument in help output.
+type ArgHelp struct {
+	Display     string // Display is the arg token shown in help, such as "<pkg>" or "[<prompt> ...]".
+	Description string // Description explains the argument.
 }
 
 // AddCommand adds child commands under c.
@@ -236,6 +272,16 @@ func (c *Command) Flags() *FlagSet
 
 // PersistentFlags returns flags inherited by c and its descendants.
 func (c *Command) PersistentFlags() *FlagSet
+```
+
+```go {api}
+// HelpOptions controls standalone help rendering.
+type HelpOptions struct {
+	LeafCommands bool // LeafCommands lists executable leaf descendants instead of direct child commands.
+}
+
+// WriteHelp writes generated help for cmd. root supplies the program name and command path.
+func WriteHelp(w io.Writer, root, cmd *Command, opts HelpOptions)
 ```
 
 ```go {api}

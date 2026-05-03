@@ -870,6 +870,8 @@ func (f *recordingFormatter) FormatEvent(e agent.Event, _ int) string {
 			return "DONE"
 		}
 		return "DONE " + e.ToolResult.Name
+	case agent.EventTypeToolOutput:
+		return "OUT " + e.ToolOutput.Content
 	default:
 		return ""
 	}
@@ -893,6 +895,31 @@ func (verboseRecordingFormatter) FormatEvent(e agent.Event, _ int) string {
 			return "DONE"
 		}
 		return "DONE " + e.ToolResult.Name
+	case agent.EventTypeToolOutput:
+		return "OUT " + e.ToolOutput.Content
+	default:
+		return ""
+	}
+}
+
+type toolOutputVisibilityFormatter struct {
+	toolOutput string
+}
+
+func (f toolOutputVisibilityFormatter) FormatEvent(e agent.Event, _ int) string {
+	switch e.Type {
+	case agent.EventTypeToolCall:
+		if e.ToolCall == nil {
+			return "CALL"
+		}
+		return "CALL " + e.ToolCall.Name
+	case agent.EventTypeToolComplete:
+		if e.ToolResult == nil {
+			return "DONE"
+		}
+		return "DONE " + e.ToolResult.Name
+	case agent.EventTypeToolOutput:
+		return f.toolOutput
 	default:
 		return ""
 	}
@@ -1481,6 +1508,264 @@ func TestSessionSendUserMessageJSONToolEventsRemainUnchanged(t *testing.T) {
 			"is_error": false,
 		},
 	}, toolComplete)
+}
+
+func TestSessionSendUserMessagePrintsPendingToolCallBeforeToolOutput(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = time.Hour
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	tool := namedTestTool{name: "codalotl_cli"}
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_cli",
+							Name:   "ignored_call_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeToolOutput,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_cli",
+							Name:   "ignored_call_name",
+						},
+						ToolOutput: agent.ToolOutput{Content: "Need docs for 3 identifiers"},
+					},
+					{
+						Type:  agent.EventTypeToolOutput,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_cli",
+							Name:   "ignored_call_name",
+						},
+						ToolOutput: agent.ToolOutput{Content: "Applied 1 documentation change"},
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolResult: &llmstream.ToolResult{
+							CallID: "call_cli",
+							Name:   "ignored_result_name",
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  7,
+					TotalOutputTokens: 3,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+	session.formatter = verboseRecordingFormatter{}
+
+	step, err := session.SendUserMessage(context.Background(), "run docs")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	output := buf.String()
+	require.Contains(t, output, "CALL codalotl_cli\n")
+	require.Contains(t, output, "OUT Need docs for 3 identifiers\n")
+	require.Contains(t, output, "OUT Applied 1 documentation change\n")
+	require.Contains(t, output, "DONE codalotl_cli\n")
+	require.Less(t, strings.Index(output, "CALL codalotl_cli\n"), strings.Index(output, "OUT Need docs for 3 identifiers\n"))
+	require.Less(t, strings.Index(output, "OUT Need docs for 3 identifiers\n"), strings.Index(output, "OUT Applied 1 documentation change\n"))
+	require.Less(t, strings.Index(output, "OUT Applied 1 documentation change\n"), strings.Index(output, "DONE codalotl_cli\n"))
+}
+
+func TestSessionSendUserMessageDoesNotForcePendingToolCallForInvisibleToolOutput(t *testing.T) {
+	originalDelay := toolCallPrintDelay
+	toolCallPrintDelay = time.Hour
+	t.Cleanup(func() {
+		toolCallPrintDelay = originalDelay
+	})
+
+	testCases := []struct {
+		name                string
+		formattedToolOutput string
+	}{
+		{
+			name:                "empty formatted output",
+			formattedToolOutput: "",
+		},
+		{
+			name:                "suppressed formatted output",
+			formattedToolOutput: "• Turn complete: finish=tool_use input=4789 output=100 reasoning=65 cached_input=0",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			tool := namedTestTool{name: "codalotl_cli"}
+			fake := &fakeSessionAgent{
+				sends: []fakeSessionSend{
+					{
+						events: []agent.Event{
+							{
+								Type:  agent.EventTypeToolCall,
+								Agent: agent.AgentMeta{ID: "root", Depth: 0},
+								Tool:  &tool,
+								ToolCall: &llmstream.ToolCall{
+									CallID: "call_cli",
+									Name:   "ignored_call_name",
+								},
+							},
+							{
+								Type:  agent.EventTypeToolOutput,
+								Agent: agent.AgentMeta{ID: "root", Depth: 0},
+								Tool:  &tool,
+								ToolCall: &llmstream.ToolCall{
+									CallID: "call_cli",
+									Name:   "ignored_call_name",
+								},
+								ToolOutput: agent.ToolOutput{Content: "Need docs for 3 identifiers"},
+							},
+							{
+								Type:  agent.EventTypeToolComplete,
+								Agent: agent.AgentMeta{ID: "root", Depth: 0},
+								Tool:  &tool,
+								ToolResult: &llmstream.ToolResult{
+									CallID: "call_cli",
+									Name:   "ignored_result_name",
+								},
+							},
+							{
+								Type:  agent.EventTypeDoneSuccess,
+								Agent: agent.AgentMeta{ID: "root", Depth: 0},
+							},
+						},
+						tokenUsage: llmstream.TokenUsage{
+							TotalInputTokens:  7,
+							TotalOutputTokens: 3,
+						},
+					},
+				},
+			}
+
+			var buf bytes.Buffer
+			session := newTestSession(Options{NoFormatting: true}, fake, &buf)
+			session.formatter = toolOutputVisibilityFormatter{toolOutput: tc.formattedToolOutput}
+
+			step, err := session.SendUserMessage(context.Background(), "run docs")
+			require.NoError(t, err)
+			require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+			output := buf.String()
+			require.NotContains(t, output, "CALL codalotl_cli\n")
+			require.NotContains(t, output, "Need docs for 3 identifiers")
+			require.NotContains(t, output, "Turn complete:")
+			require.Contains(t, output, "DONE codalotl_cli\n")
+		})
+	}
+}
+
+func TestSessionSendUserMessageJSONToolOutputEmitsStableObject(t *testing.T) {
+	t.Parallel()
+
+	tool := namedTestTool{name: "codalotl_cli"}
+	fake := &fakeSessionAgent{
+		sends: []fakeSessionSend{
+			{
+				events: []agent.Event{
+					{
+						Type:  agent.EventTypeToolCall,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_cli",
+							Name:   "ignored_call_name",
+							Type:   "function_call",
+							Input:  `{"subcommand":"docs add","argv":["internal/noninteractive"]}`,
+						},
+					},
+					{
+						Type:  agent.EventTypeToolOutput,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolCall: &llmstream.ToolCall{
+							CallID: "call_cli",
+							Name:   "ignored_call_name",
+							Type:   "function_call",
+						},
+						ToolOutput: agent.ToolOutput{Content: "Need docs for 3 identifiers"},
+					},
+					{
+						Type:  agent.EventTypeToolComplete,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+						Tool:  &tool,
+						ToolResult: &llmstream.ToolResult{
+							CallID:  "call_cli",
+							Name:    "ignored_result_name",
+							Type:    "function_call",
+							Result:  `{"stdout":"Need docs for 3 identifiers\n"}`,
+							IsError: false,
+						},
+					},
+					{
+						Type:  agent.EventTypeDoneSuccess,
+						Agent: agent.AgentMeta{ID: "root", Depth: 0},
+					},
+				},
+				tokenUsage: llmstream.TokenUsage{
+					TotalInputTokens:  7,
+					TotalOutputTokens: 3,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	session := newTestSession(Options{OutputJSON: true}, fake, &buf)
+
+	step, err := session.SendUserMessage(context.Background(), "run docs")
+	require.NoError(t, err)
+	require.Equal(t, agent.EventTypeDoneSuccess, step.TerminalEventType)
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte{'\n'})
+	require.Len(t, lines, 6)
+
+	var toolOutput map[string]any
+	require.NoError(t, json.Unmarshal(lines[3], &toolOutput))
+	require.Equal(t, map[string]any{
+		"type":    "tool_output",
+		"content": "Need docs for 3 identifiers",
+		"agent": map[string]any{
+			"id":    "root",
+			"depth": float64(0),
+		},
+		"tool": map[string]any{
+			"call_id": "call_cli",
+			"name":    "codalotl_cli",
+			"type":    "function_call",
+		},
+	}, toolOutput)
+
+	var toolComplete jsonToolCompleteEvent
+	require.NoError(t, json.Unmarshal(lines[4], &toolComplete))
+	require.Equal(t, "tool_complete", toolComplete.Type)
+	require.Equal(t, jsonResult{
+		Output:  `{"stdout":"Need docs for 3 identifiers\n"}`,
+		IsError: false,
+	}, toolComplete.Result)
 }
 
 func TestSessionSendUserMessageDoesNotPrintStartSubagentInHumanReadableOutput(t *testing.T) {

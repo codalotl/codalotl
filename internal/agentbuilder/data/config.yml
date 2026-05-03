@@ -7,6 +7,7 @@ agents:
       - read_file
       - ls
       - edit_files
+      - codalotl_cli
       - shell
       - update_plan
       - check_spec_conformance

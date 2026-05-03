@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/agentformatter"
 	"github.com/codalotl/codalotl/internal/q/termformat"
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
@@ -349,39 +350,58 @@ func (m *model) detailsBodyForMessage(messageIndex int) string {
 		return strings.TrimSuffix(b.String(), "\n")
 
 	case messageKindAgent:
-		// Tool call details.
 		if msg.toolCallID == "" {
 			return ""
 		}
-		ev := msg.event
-
-		var b strings.Builder
-		fmt.Fprintf(&b, "Tool: %s\n", termformat.Sanitize(toolName(ev), 4))
-		if ev.ToolCall != nil {
-			fmt.Fprintf(&b, "Call ID: %s\n", termformat.Sanitize(ev.ToolCall.CallID, 4))
-			if ev.ToolCall.Type != "" {
-				fmt.Fprintf(&b, "Type: %s\n", termformat.Sanitize(ev.ToolCall.Type, 4))
-			}
-			if ev.ToolCall.ProviderID != "" {
-				fmt.Fprintf(&b, "Provider: %s\n", termformat.Sanitize(ev.ToolCall.ProviderID, 4))
-			}
-			b.WriteString("\nInput:\n")
-			b.WriteString(detailsFormatBlob(ev.ToolCall.Input))
-			b.WriteString("\n")
+		switch msg.event.Type {
+		case agent.EventTypeToolCall:
+			return detailsBodyForToolCall(msg.event)
+		case agent.EventTypeToolComplete:
+			return detailsBodyForToolResult(msg.event)
+		default:
+			return ""
 		}
-		if ev.ToolResult != nil {
-			b.WriteString("\nResult:\n")
-			if ev.ToolResult.IsError {
-				b.WriteString("(is_error=true)\n")
-			}
-			b.WriteString(detailsFormatBlob(ev.ToolResult.Result))
-			b.WriteString("\n")
-		}
-
-		return strings.TrimSuffix(b.String(), "\n")
 	default:
 		return ""
 	}
+}
+
+func detailsBodyForToolCall(ev agent.Event) string {
+	if ev.ToolCall == nil {
+		return ""
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Tool: %s\n", termformat.Sanitize(toolName(ev), 4))
+	fmt.Fprintf(&b, "Call ID: %s\n", termformat.Sanitize(ev.ToolCall.CallID, 4))
+	if ev.ToolCall.Type != "" {
+		fmt.Fprintf(&b, "Type: %s\n", termformat.Sanitize(ev.ToolCall.Type, 4))
+	}
+	if ev.ToolCall.ProviderID != "" {
+		fmt.Fprintf(&b, "Provider: %s\n", termformat.Sanitize(ev.ToolCall.ProviderID, 4))
+	}
+	b.WriteString("\nInput:\n")
+	b.WriteString(detailsFormatBlob(ev.ToolCall.Input))
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func detailsBodyForToolResult(ev agent.Event) string {
+	if ev.ToolResult == nil {
+		return ""
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Tool: %s\n", termformat.Sanitize(toolName(ev), 4))
+	fmt.Fprintf(&b, "Call ID: %s\n", termformat.Sanitize(ev.ToolResult.CallID, 4))
+	if ev.ToolResult.Type != "" {
+		fmt.Fprintf(&b, "Type: %s\n", termformat.Sanitize(ev.ToolResult.Type, 4))
+	}
+	b.WriteString("\nResult:\n")
+	if ev.ToolResult.IsError {
+		b.WriteString("(is_error=true)\n")
+	}
+	b.WriteString(detailsFormatBlob(ev.ToolResult.Result))
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func packageContextStatusString(status packageContextStatus) string {

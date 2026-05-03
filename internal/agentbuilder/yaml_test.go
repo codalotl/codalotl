@@ -41,6 +41,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
 		yamlToolVirtualEditFiles,
+		yamlOptionalToolCodalotlCLI,
 		coretools.ToolNameShell,
 		coretools.ToolNameUpdatePlan,
 		spectools.ToolNameCheckSpecConformance,
@@ -220,6 +221,64 @@ tools: []
 	require.Len(t, turns, 2)
 	assert.Equal(t, "<env>\nSandbox directory: "+sandbox+"\n</env>", turns[0])
 	assert.Contains(t, turns[1], "<current-package>")
+}
+
+func TestAddYAMLToRegistry_OmitsMissingOptionalExternalTool(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "agents.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: yaml_optional_tool
+    mode: generic
+    prompts:
+      - text: generic agent
+    tools:
+      - read_file
+      - codalotl_cli
+      - shell
+    skills: false
+tools: []
+`), 0o644))
+
+	require.NoError(t, AddYAMLToRegistry(registry, yamlPath))
+
+	_, gotTools := invokeAgentForModelWithRegistryDetailed(
+		t,
+		registry,
+		"yaml_optional_tool",
+		llmmodel.ProviderIDOpenAI.DefaultModel(),
+		"",
+		"",
+		nil,
+	)
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameShell,
+	}, toolNames(gotTools))
+}
+
+func TestAddYAMLToRegistry_MissingNonOptionalToolErrors(t *testing.T) {
+	registry, err := BuildRegistry()
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(t.TempDir(), "agents.yaml")
+	require.NoError(t, os.WriteFile(yamlPath, []byte(`
+agents:
+  - name: yaml_missing_tool
+    mode: generic
+    prompts:
+      - text: generic agent
+    tools:
+      - read_file
+      - missing_tool
+    skills: false
+tools: []
+`), 0o644))
+
+	err = AddYAMLToRegistry(registry, yamlPath)
+	require.ErrorContains(t, err, `tool "missing_tool" is not registered`)
 }
 
 func TestAddYAMLToRegistry_AgentsMD_DefaultsEnabledForGenericAgents(t *testing.T) {

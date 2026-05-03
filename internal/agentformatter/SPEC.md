@@ -145,6 +145,24 @@ If the underlying error is `errors.Is(e.ToolResult.SourceErr, authdomain.ErrCode
 - For `Output` blocks, print the provided visible lines in order, and if `OmittedLineCount > 0`, append `… +N lines`.
 - Shared tool-error rendering still wins over presenter body content when the tool result is an error, unless `ErrorBehavior` is presenter-owned.
 
+### EventTypeToolOutput
+
+Tool output is display-only output for a running tool. Render it as nested tool output, not assistant text.
+
+Example:
+
+```
+• Running codalotl docs add --public-only internal/lints
+  • data:
+    - field1: value
+    - field2: value
+```
+
+- Each `EventTypeToolOutput` renders as one nested output message; embedded newlines are continuation lines under the same nested bullet.
+- Output text is Normal under an Accent bullet.
+- Sanitize tabs/control bytes using the same rules as other text events.
+- Subagent depth indentation still applies outside the nested output indentation.
+
 #### Rendering `Diff` blocks
 
 `Diff` blocks are the shared presentation for file edits. They are rendered beneath the presenter summary line and are not specific to any one tool.

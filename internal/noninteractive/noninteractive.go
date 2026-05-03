@@ -302,6 +302,16 @@ func toolNameFromEvent(ev agent.Event) string {
 	return ""
 }
 
+func toolCallIDFromEvent(ev agent.Event) string {
+	if ev.ToolCall != nil {
+		return ev.ToolCall.CallID
+	}
+	if ev.ToolResult != nil {
+		return ev.ToolResult.CallID
+	}
+	return ""
+}
+
 func legacyFormattedToolEvent(ev agent.Event) agent.Event {
 	name := toolNameFromEvent(ev)
 	if ev.Type != agent.EventTypeToolCall && ev.Type != agent.EventTypeToolComplete {

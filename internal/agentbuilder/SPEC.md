@@ -10,7 +10,7 @@
 
 ## Agents
 
-- generic: toolset_core + toolset_spec
+- generic: toolset_core + toolset_spec (+ optional externally-supplied tools when configured)
 - package_mode_no_context: toolset_package
     - No built-in env or package initial context. Callers must supply it when needed (reason: to support TUI's eager initialcontext generation).
     - May still include AGENTS.md initial-turn context.
@@ -43,6 +43,10 @@ Agents:
     - `file`: refers to a textual file (usually a `.md` file) relative to the YAML file, which is read.
     - `text`: just use this text directly.
 - `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one virtual tool exists: `edit_files`, which refers to the `toolset_edit_files` tools.
+- Allowlisted external tools may appear in YAML without a registered builder.
+    - Allowlisted optional external tool: `codalotl_cli`.
+    - Missing allowlisted tools are omitted.
+    - Missing non-optional tools remain errors.
 - `mode` is one of `generic` or `package`.
 - `include_package_mode_context` set to true includes package env and package initial context (optional; only valid if `mode` is `package`).
     - If the selected dir already exists but does not yet load as a Go package, include fallback package-path context instead of failing startup.
@@ -196,6 +200,11 @@ Toolsets are just a device used in this SPEC.md to factor the file (and may be u
 ```go
 // BuildRegistry builds the registry.
 func BuildRegistry() (*agentregistry.Registry, error)
+
+// OverrideTool registers or replaces a named tool builder for future BuildRegistry calls.
+//
+// Process-wide startup configuration for optional YAML-listed tools such as `codalotl_cli`.
+func OverrideTool(toolName string, tool toolsetinterface.Tool)
 
 // AddYAMLToRegistry adds agents and tools to reg based on the YAML file at path. If an error occurs, reg will not be mutated.
 //

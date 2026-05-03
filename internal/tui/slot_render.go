@@ -71,10 +71,7 @@ func (m *model) handleToolSubagentDescendantEvent(ev agent.Event, autoScroll boo
 	switch ev.Type {
 	case agent.EventTypeStartSubagent:
 		if directAgentID != ev.Agent.ID {
-			if display.slot(directAgentID) == nil {
-				return false
-			}
-			return true
+			return display.slot(directAgentID) != nil
 		}
 
 		label := strings.TrimSpace(ev.StartSubagent.Label)
@@ -162,7 +159,7 @@ func (m *model) handleToolSubagentDescendantEvent(ev agent.Event, autoScroll boo
 }
 
 func (m *model) renderToolSpecificMessage(msg *chatMessage, width int) (string, bool) {
-	if msg == nil || msg.kind != messageKindAgent || msg.toolSubagentDisplay == nil {
+	if msg == nil || msg.kind != messageKindAgent {
 		return "", false
 	}
 	switch msg.event.Type {
@@ -171,23 +168,43 @@ func (m *model) renderToolSpecificMessage(msg *chatMessage, width int) (string, 
 	default:
 		return "", false
 	}
-	return m.renderToolMessageWithSlots(msg, width), true
+	if msg.toolSubagentDisplay == nil && len(msg.toolOutputs) == 0 {
+		return "", false
+	}
+	return m.renderToolMessageWithDetails(msg, width), true
 }
 
-func (m *model) renderToolMessageWithSlots(msg *chatMessage, width int) string {
+func (m *model) renderToolMessageWithDetails(msg *chatMessage, width int) string {
 	if msg == nil {
 		return ""
 	}
 	display := msg.toolSubagentDisplay
-	if display == nil || len(display.slots) == 0 {
+	if (display == nil || len(display.slots) == 0) && len(msg.toolOutputs) == 0 {
 		return m.agentFormatter.FormatEvent(msg.event, width)
 	}
-	header := m.agentFormatter.FormatEvent(msg.event, width)
-	body := m.renderToolSubagentSlots(display, width)
-	if body == "" {
-		return header
+	sections := []string{m.agentFormatter.FormatEvent(msg.event, width)}
+	if output := m.renderToolOutputs(msg.toolOutputs, width); output != "" {
+		sections = append(sections, output)
 	}
-	return header + "\n" + body
+	if slots := m.renderToolSubagentSlots(display, width); slots != "" {
+		sections = append(sections, slots)
+	}
+	return strings.Join(sections, "\n")
+}
+
+func (m *model) renderToolOutputs(outputs []agent.Event, width int) string {
+	if len(outputs) == 0 {
+		return ""
+	}
+	sections := make([]string, 0, len(outputs))
+	for _, ev := range outputs {
+		rendered := strings.TrimRight(m.agentFormatter.FormatEvent(ev, width), "\n")
+		if rendered == "" {
+			continue
+		}
+		sections = append(sections, rendered)
+	}
+	return strings.Join(sections, "\n")
 }
 
 func (m *model) renderToolSubagentSlots(display *toolSubagentDisplay, width int) string {
@@ -265,19 +282,6 @@ func (m *model) owningToolDisplayScope(meta agent.AgentMeta) (toolDisplayScopeRe
 		return owner, true
 	}
 	return nearest, true
-}
-
-func (m *model) enclosingNamedToolDisplayScope(meta agent.AgentMeta, tool string) (toolDisplayScopeRef, bool) {
-	for agentID := meta.Parent; agentID != ""; agentID = m.agentParents[agentID] {
-		scopes := m.activeToolScopes[agentID]
-		for i := len(scopes) - 1; i >= 0; i-- {
-			if scopes[i].call.Name != tool {
-				continue
-			}
-			return toolDisplayScopeRef{agentID: agentID, index: i}, true
-		}
-	}
-	return toolDisplayScopeRef{}, false
 }
 
 func (m *model) toolScopeDirectChildAgentID(scopeAgentID string, agentID string) (string, bool) {
@@ -359,10 +363,6 @@ func (m *model) indentToolSubagentBlock(block string, prefix string) string {
 
 func (m *model) styleToolSubagentLine(s string) string {
 	return termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(termformatSanitizeLine(s))
-}
-
-func (m *model) styleToolSubagentErrorLine(s string) string {
-	return termformat.Style{Foreground: m.palette.redForeground}.Wrap(termformatSanitizeLine(s))
 }
 
 func termformatSanitizeLine(s string) string {

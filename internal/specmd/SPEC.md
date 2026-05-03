@@ -110,9 +110,10 @@ func Read(path string) (*Spec, error)
 // error encountered is returned; nil if no errors.
 func (s *Spec) Validate() error
 
-// GoCodeBlocks returns all multi-line Go code blocks in a ```go``` fence.
-//   - These must be triple-backtick and multi-line, not inline `single-backtick` code spans.
-//   - The fences MUST be tagged with `go`. Go code in triple-backtick fences without the Go tag is not included.
+// GoCodeBlocks returns multi-line Go code blocks written in Go-tagged Markdown fences.
+//   - Typically, in real-world usage, these are triple-backtick ```go``` fences.
+//   - Inline `single-backtick` code spans are not included.
+//   - Fences MUST be tagged with `go`. Go code in untagged fences is not included.
 //
 // If there are any problems parsing the markdown or if there are malformed code blocks (e.g. no closing triple-backticks), an error is returned. The Go code itself
 // is not checked for errors.

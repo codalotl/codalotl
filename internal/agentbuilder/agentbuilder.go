@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/codalotl/codalotl/internal/agentregistry"
@@ -40,6 +41,28 @@ type clarifyPublicAPIRequest struct {
 	Path       string `json:"path"`
 	Identifier string `json:"identifier"`
 	Question   string `json:"question"`
+}
+
+var (
+	toolOverridesMu sync.RWMutex
+	toolOverrides   = map[string]toolsetinterface.Tool{}
+)
+
+// OverrideTool registers or replaces a named tool builder for future BuildRegistry calls.
+//
+// Process-wide startup configuration for optional YAML-listed tools such as `codalotl_cli`.
+func OverrideTool(toolName string, tool toolsetinterface.Tool) {
+	if toolName == "" {
+		panic("agentbuilder.OverrideTool: toolName is required")
+	}
+	if tool == nil {
+		panic("agentbuilder.OverrideTool: tool is required")
+	}
+
+	toolOverridesMu.Lock()
+	defer toolOverridesMu.Unlock()
+
+	toolOverrides[toolName] = tool
 }
 
 // BuildRegistry builds the registry.
@@ -77,6 +100,19 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 }
 
 func genericTools() map[string]toolsetinterface.Tool {
+	builders := builtinTools()
+
+	toolOverridesMu.RLock()
+	defer toolOverridesMu.RUnlock()
+
+	for toolName, tool := range toolOverrides {
+		builders[toolName] = tool
+	}
+
+	return builders
+}
+
+func builtinTools() map[string]toolsetinterface.Tool {
 	return map[string]toolsetinterface.Tool{
 		coretools.ToolNameApplyPatch: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			return coretools.NewApplyPatchTool(opts.Authorizer, true, packageModePostChecks(opts)), nil

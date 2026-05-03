@@ -112,6 +112,105 @@ func TestRun_Help(t *testing.T) {
 	}
 }
 
+func TestRun_Help_StaysRootOriented(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	got := out.String()
+	require.Contains(t, got, "Usage:\n  codalotl [command]\n")
+	require.NotContains(t, got, "codalotl [command] [args]")
+	require.Contains(t, got, "codalotl docs")
+	require.Contains(t, got, "Documentation tools.")
+	require.NotContains(t, got, "codalotl docs add")
+	require.NotContains(t, got, "codalotl context public")
+}
+
+func TestRun_RootUnsupportedArg_IsHelpfulUsageError(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "foo"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+
+	got := errOut.String()
+	require.Contains(t, got, "unknown command: foo")
+	require.Contains(t, got, "Usage:\n  codalotl [command]\n")
+	require.NotContains(t, got, "expected no args")
+	require.NotContains(t, got, "codalotl [command] [args]")
+}
+
+func TestRun_CommandHelp_IsDetailedAndSkipsStartupValidation(t *testing.T) {
+	isolateUserConfig(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PATH", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "docs", "add", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	got := out.String()
+	require.Contains(t, got, "codalotl docs add")
+	require.Contains(t, got, "Adds missing package documentation comments")
+	require.Contains(t, got, "--public-only")
+	require.Contains(t, got, "--include-test")
+	require.Contains(t, got, "<path/to/pkg>")
+	require.Contains(t, got, "codalotl docs add --public-only internal/mypkg")
+}
+
+func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
+	root, _ := newRootCommand(false)
+
+	for _, names := range [][]string{
+		{"context", "public"},
+		{"context", "initial"},
+		{"context", "packages"},
+		{"docs", "add"},
+		{"docs", "reflow"},
+		{"spec", "fmt"},
+		{"spec", "diff"},
+		{"spec", "ls-mismatch"},
+		{"spec", "status"},
+		{"cas", "get"},
+		{"cas", "ls-unset"},
+	} {
+		cmd := requireCommand(t, root, names...)
+		require.NotEmpty(t, cmd.Short)
+		require.NotEmpty(t, cmd.Long)
+		require.NotEmpty(t, cmd.Example)
+		switch strings.Join(names, " ") {
+		case "context packages", "spec status":
+		default:
+			require.NotEmpty(t, cmd.Usage)
+		}
+	}
+}
+
+func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {
+	root, _ := newRootCommand(false)
+
+	var out bytes.Buffer
+	qcli.WriteHelp(&out, root, root, qcli.HelpOptions{LeafCommands: true})
+
+	got := out.String()
+	require.Contains(t, got, "codalotl docs add")
+	require.Contains(t, got, "codalotl context public")
+	require.Contains(t, got, "codalotl spec diff")
+	require.Contains(t, got, "Add missing documentation comments to a package.")
+	require.NotContains(t, got, "codalotl docs\n")
+}
+
 func TestRun_Help_IgnoresStartupValidation(t *testing.T) {
 	isolateUserConfig(t)
 
@@ -526,6 +625,53 @@ func TestDocsAddCommand_PassesCLIOutputWriterToDocubot(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Same(t, &out, gotOpts.BaseOptions.Out)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
+}
+
+func TestDocsAddCommand_PassesCLIContextToDocubot(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc Foo() {}\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origRunDocubotAddDocs := runDocubotAddDocs
+	t.Cleanup(func() { runDocubotAddDocs = origRunDocubotAddDocs })
+
+	type contextKey string
+
+	ctxKey := contextKey("docs-add-test")
+	ctxValue := "sentinel"
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxKey, ctxValue))
+	cancel()
+
+	runDocubotAddDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) ([]*gopackagediff.Change, error) {
+		require.Same(t, ctx, opts.BaseOptions.Context)
+		require.Equal(t, ctxValue, opts.BaseOptions.Context.Value(ctxKey))
+		require.ErrorIs(t, opts.BaseOptions.Context.Err(), context.Canceled)
+		return nil, nil
+	}
+
+	root, _ := newRootCommand(true)
+	addCmd := requireCommand(t, root, "docs", "add")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err = addCmd.Run(&qcli.Context{
+		Context: ctx,
+		Command: addCmd,
+		Args:    []string{"./p"},
+		Out:     &out,
+		Err:     &errOut,
+	})
+	require.NoError(t, err)
 	require.Empty(t, errOut.String())
 	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
 }

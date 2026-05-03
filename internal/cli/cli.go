@@ -40,6 +40,7 @@ func Run(args []string, opts *RunOptions) (int, error) {
 		argv = argv[1:]
 	}
 
+	installAgentToolOverrides()
 	root, runState := newRootCommand(!hasHelpFlag(argv))
 
 	var in io.Reader = os.Stdin

@@ -605,6 +605,124 @@ func TestSendUserMessageWithToolUse(t *testing.T) {
 	}
 }
 
+func TestEmitToolOutputNoopsWithoutActiveToolRun(t *testing.T) {
+	var nilCtx context.Context
+	require.NotPanics(t, func() {
+		EmitToolOutput(nilCtx, "ignored")
+		EmitToolOutput(context.Background(), "ignored")
+	})
+}
+
+func TestEmitToolOutputFromToolRunEmitsDisplayOnlyEvent(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_output",
+		Name:       "stream_tool",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	turnTool := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	finalText := llmstream.TextContent{ProviderID: "text-2", Content: "Done"}
+	turnFinal := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnTool},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &finalText, Delta: finalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnFinal},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	var capturedCtx context.Context
+	tool := &funcTool{name: "stream_tool"}
+	tool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		capturedCtx = ctx
+		EmitToolOutput(context.Background(), "ignored")
+		EmitToolOutput(ctx, "visible output")
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "llm output",
+		}
+	}
+
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var events []Event
+	for ev := range a.SendUserMessage(ctx, "Use the tool") {
+		events = append(events, ev)
+	}
+
+	toolCallIndex := -1
+	toolOutputIndex := -1
+	toolCompleteIndex := -1
+	var outputEvents []Event
+	for i, ev := range events {
+		switch ev.Type {
+		case EventTypeToolCall:
+			toolCallIndex = i
+		case EventTypeToolOutput:
+			toolOutputIndex = i
+			outputEvents = append(outputEvents, ev)
+		case EventTypeToolComplete:
+			toolCompleteIndex = i
+		}
+	}
+
+	require.NotEqual(t, -1, toolCallIndex)
+	require.NotEqual(t, -1, toolOutputIndex)
+	require.NotEqual(t, -1, toolCompleteIndex)
+	require.Less(t, toolCallIndex, toolOutputIndex)
+	require.Less(t, toolOutputIndex, toolCompleteIndex)
+	require.Len(t, outputEvents, 1)
+
+	output := outputEvents[0]
+	require.Same(t, tool, output.Tool)
+	require.NotNil(t, output.ToolCall)
+	require.Equal(t, toolCall.CallID, output.ToolCall.CallID)
+	require.Equal(t, toolCall.Name, output.ToolCall.Name)
+	require.Equal(t, "visible output", output.ToolOutput.Content)
+	require.Equal(t, a.agentID, output.Agent.ID)
+	require.Equal(t, 0, output.Agent.Depth)
+	require.Empty(t, output.Agent.Parent)
+
+	turns := a.Turns()
+	require.Len(t, turns, 5)
+	require.Equal(t, llmstream.RoleUser, turns[3].Role)
+	require.Len(t, turns[3].Parts, 1)
+	result, ok := turns[3].Parts[0].(llmstream.ToolResult)
+	require.True(t, ok)
+	require.Equal(t, "llm output", result.Result)
+	require.NotContains(t, result.Result, "visible output")
+
+	require.NotPanics(t, func() {
+		EmitToolOutput(capturedCtx, "late ignored")
+	})
+}
+
 func TestSendUserMessageUnknownToolEventsHaveNilTool(t *testing.T) {
 	systemPrompt := "You are helpful."
 
