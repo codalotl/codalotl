@@ -82,12 +82,7 @@ func (t *toolClarifyPublicAPI) Presenter() llmstream.Presenter {
 	return clarifyPublicAPIPresenterInstance
 }
 
-func (p clarifyPublicAPIPresenter) SubagentFinalMessage(_ llmstream.ToolCall, subagentLabel string, finalMessage string) llmstream.Block {
-	if subagentLabel == improvePublicAPIDocsAgentName {
-		if body, ok := pkgToolPresenterOutput(finalMessage); ok {
-			return body
-		}
-	}
+func (p clarifyPublicAPIPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
 	return nil
 }
 
