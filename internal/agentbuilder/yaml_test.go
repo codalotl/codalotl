@@ -56,6 +56,22 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 	assert.Equal(t, yamlAgentModePackage, agentsByName[AgentLimitedPackageMode].Mode)
 	assert.True(t, agentsByName[AgentLimitedPackageMode].IncludePackageModeContext)
 
+	require.Contains(t, agentsByName, agentImprovePublicAPIDocs)
+	assert.Equal(t, yamlAgentModePackage, agentsByName[agentImprovePublicAPIDocs].Mode)
+	assert.True(t, agentsByName[agentImprovePublicAPIDocs].IncludePackageModeContext)
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		yamlToolVirtualEditFiles,
+		coretools.ToolNameSkillShell,
+		"diagnostics",
+		"fix_lints",
+		"run_tests",
+	}, agentsByName[agentImprovePublicAPIDocs].Tools)
+	require.Len(t, agentsByName[agentImprovePublicAPIDocs].Prompts, 2)
+	assert.Equal(t, yamlPromptPackageBase, agentsByName[agentImprovePublicAPIDocs].Prompts[0].Name)
+	assert.Equal(t, "improve-public-api-docs.prompt.md", agentsByName[agentImprovePublicAPIDocs].Prompts[1].File)
+
 	require.Contains(t, agentsByName, "pr-review")
 	assert.Equal(t, yamlAgentModeGeneric, agentsByName["pr-review"].Mode)
 	assert.Equal(t, []string{
@@ -1443,6 +1459,20 @@ func TestBuildRegistry_YAMLBackedBuiltInAgentsPreserveToolsets(t *testing.T) {
 				"run_tests",
 				"get_public_api",
 				"clarify_public_api",
+			},
+		},
+		{
+			name:      "improve docs openai",
+			agentName: agentImprovePublicAPIDocs,
+			model:     llmmodel.ProviderIDOpenAI.DefaultModel(),
+			wantTools: []string{
+				coretools.ToolNameReadFile,
+				coretools.ToolNameLS,
+				coretools.ToolNameApplyPatch,
+				coretools.ToolNameSkillShell,
+				"diagnostics",
+				"fix_lints",
+				"run_tests",
 			},
 		},
 	}

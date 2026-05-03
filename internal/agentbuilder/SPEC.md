@@ -25,6 +25,10 @@
 - clarify_public_api: toolset_simple_read_only
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
+- improve_public_api_docs: toolset_doc_edit
+    - Package-mode agent for improving public API docs using clarification Q&A.
+    - Prompt lives in `internal/agentbuilder/data`.
+    - May edit docs when Q&A reveals useful public API information; otherwise may leave files unchanged.
 - pr-orchestrator: toolset_core + toolset_spec + {`review`, `implement`, `review_spec_changes`}
     - Prompt that documents a workflow that plans PR work, iterates on `SPEC.md` edits with `review_spec_changes`, delegates implementation, reviews committed implementation state, and manages commits.
 
@@ -181,6 +185,10 @@ Toolsets are just a device used in this SPEC.md to factor the file (and may be u
     - {`check_spec_conformance`}
 - toolset_simple_read_only:
     - {`ls`, `read_file`}
+- toolset_doc_edit:
+    - {`read_file`, `ls`, `skill_shell`}
+    - toolset_edit_files
+    - {`diagnostics`, `fix_lints`, `run_tests`}
 - toolset_core:
     - {`read_file`, `ls`, `shell`, `update_plan`}
     - toolset_edit_files

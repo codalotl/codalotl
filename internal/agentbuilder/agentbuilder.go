@@ -33,6 +33,7 @@ const (
 	AgentPackageModeNoContext      string = "package_mode_no_context"
 	AgentPackageModeDefaultContext string = "package_mode_default_context" // AgentPackageModeDefaultContext adds package initial context before user messages.
 	AgentLimitedPackageMode        string = "limited_package_mode"
+	agentImprovePublicAPIDocs             = "improve_public_api_docs"
 	agentClarifyPublicAPI                 = pkgtools.ToolNameClarifyPublicAPI
 	clarifyRGLines                        = "4"
 )
@@ -147,6 +148,7 @@ func builtinTools() map[string]toolsetinterface.Tool {
 				pkgtools.ClarifyPublicAPIToolOptions{
 					AgentInvoker: opts.AgentInvoker,
 					Model:        opts.Model,
+					LintSteps:    opts.LintSteps,
 				},
 			), nil
 		},
@@ -328,7 +330,7 @@ func isFullPackageModeAgent(agentName string) bool {
 
 func isPackageModeAgent(agentName string) bool {
 	switch agentName {
-	case AgentPackageModeNoContext, AgentPackageModeDefaultContext, AgentLimitedPackageMode:
+	case AgentPackageModeNoContext, AgentPackageModeDefaultContext, AgentLimitedPackageMode, agentImprovePublicAPIDocs:
 		return true
 	default:
 		return false
