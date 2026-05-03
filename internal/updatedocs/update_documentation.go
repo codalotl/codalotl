@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+// SnippetError describes a snippet that could not be fully applied.
+//
+// A PartiallyRejected error means some requested update was blocked by Options restrictions, usually RejectUpdates. It does not distinguish a snippet with some
+// accepted changes from one with all changes rejected; callers that need to know whether anything was written should inspect UpdateDocumentation's returned package
+// and updatedFiles, which are call-level results.
 type SnippetError struct {
 	Snippet           string // the snippet passed to UpdateDocumentation
 	UserErrorMessage  string // human or AI-readable message on why the snippet is invalid
@@ -45,7 +50,7 @@ type Options struct {
 //
 // Each snippet is unwrapped, parsed, and validated for general Go correctness, then matched to the package and applied. Comment text may be reflowed when options.Reflow
 // is true (defaults: ReflowMaxWidth=80, ReflowTabWidth=4). If options.RejectUpdates is true, existing documentation for matching symbols will not be replaced; such
-// cases are reported as partial rejections.
+// cases are reported as partial rejections. A partial rejection does not indicate whether the snippet also applied any changes.
 //
 // The function can partially succeed:
 //   - newPkg is a reloaded Package when at least one file was updated; otherwise it is nil and callers should continue using the original pkg.
