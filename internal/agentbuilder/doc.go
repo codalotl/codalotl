@@ -6,6 +6,7 @@
 //   - package_mode_default_context: package-mode agent with the full package toolset plus env and initial package context.
 //   - limited_package_mode: package-mode agent with a narrower toolset for targeted package work.
 //   - clarify_public_api: read-only agent that explains public API docs for one identifier.
+//   - improve_public_api_docs: package-mode agent that may improve public API docs after a clarification answer.
 //   - pr-review: generic review agent that emits structured JSON review findings.
 //   - pr-orchestrator: generic agent that reviews a branch, reviews SPEC.md edits, and delegates package implementation work.
 //

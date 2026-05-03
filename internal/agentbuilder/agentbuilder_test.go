@@ -55,6 +55,7 @@ func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) 
 		AgentPackageModeDefaultContext,
 		AgentLimitedPackageMode,
 		agentClarifyPublicAPI,
+		agentImprovePublicAPIDocs,
 		"pr-review",
 		"pr-orchestrator",
 	} {
@@ -86,7 +87,7 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 
 	require.NoError(t, registry.ValidateTools())
 
-	require.Len(t, registry.List(), 7)
+	require.Len(t, registry.List(), 8)
 
 	genericDef, ok := registry.Lookup(AgentGeneric)
 	assert.True(t, ok)
@@ -109,6 +110,12 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	assert.Equal(t, AgentLimitedPackageMode, limitedDef.Name)
 	assert.Equal(t, agentregistry.AuthPolicyPackage, limitedDef.AuthPolicy)
 	assert.NotNil(t, limitedDef.InitialTurnsBuilder)
+
+	improveDocsDef, ok := registry.Lookup(agentImprovePublicAPIDocs)
+	require.True(t, ok)
+	assert.Equal(t, agentImprovePublicAPIDocs, improveDocsDef.Name)
+	assert.Equal(t, agentregistry.AuthPolicyPackage, improveDocsDef.AuthPolicy)
+	assert.NotNil(t, improveDocsDef.InitialTurnsBuilder)
 
 	clarifyDef, ok := registry.Lookup(agentClarifyPublicAPI)
 	require.True(t, ok)
@@ -278,6 +285,25 @@ func TestBuildRegistry_InvokeLimitedPackageMode_OpenAIUsesLimitedPromptAndTools(
 		exttools.ToolNameRunTests,
 		pkgtools.ToolNameGetPublicAPI,
 		pkgtools.ToolNameClarifyPublicAPI,
+	}, gotTools)
+}
+
+func TestBuildRegistry_InvokeImprovePublicAPIDocs_OpenAIUsesDocEditTools(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	gotPrompt, gotTools := invokeAgentForModel(t, agentImprovePublicAPIDocs, llmmodel.ProviderIDOpenAI.DefaultModel())
+
+	assert.Contains(t, gotPrompt, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull))
+	assert.Contains(t, gotPrompt, "# Improve Public API Docs")
+	assert.Contains(t, gotPrompt, "# Skills")
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameApplyPatch,
+		coretools.ToolNameSkillShell,
+		exttools.ToolNameDiagnostics,
+		exttools.ToolNameFixLints,
+		exttools.ToolNameRunTests,
 	}, gotTools)
 }
 
