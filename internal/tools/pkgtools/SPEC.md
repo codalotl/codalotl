@@ -27,6 +27,9 @@ Presentation specs for Go package tools.
 - Descendant subagent final message: hidden
 - In-progress body: question text
 - Complete body: answer text
+- Clarification answer is produced by a read-only subagent.
+- For sandbox packages, run a package-jailed docs-improvement subagent before returning the original answer.
+- Do not edit packages outside the sandbox.
 
 ### change_api
 
