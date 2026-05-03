@@ -148,6 +148,7 @@ func builtinTools() map[string]toolsetinterface.Tool {
 				pkgtools.ClarifyPublicAPIToolOptions{
 					AgentInvoker: opts.AgentInvoker,
 					Model:        opts.Model,
+					LintSteps:    opts.LintSteps,
 				},
 			), nil
 		},

@@ -11,6 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -23,11 +24,15 @@ var descriptionClarifyPublicAPI string
 
 const ToolNameClarifyPublicAPI = "clarify_public_api"
 
+// This mirrors internal/agentbuilder.AgentImprovePublicAPIDocs without importing that package and creating an import cycle.
+const improvePublicAPIDocsAgentName = "improve_public_api_docs"
+
 type toolClarifyPublicAPI struct {
 	sandboxAbsDir string
 	authorizer    authdomain.Authorizer
 	agentInvoker  toolsetinterface.AgentInvoker
 	model         llmmodel.ModelID
+	lintSteps     []lints.Step
 }
 
 type clarifyPublicAPIParams struct {
@@ -36,9 +41,17 @@ type clarifyPublicAPIParams struct {
 	Question   string `json:"question"`
 }
 
+type improvePublicAPIDocsParams struct {
+	Path       string `json:"path"`
+	Identifier string `json:"identifier"`
+	Question   string `json:"question"`
+	Answer     string `json:"answer"`
+}
+
 type ClarifyPublicAPIToolOptions struct {
 	AgentInvoker toolsetinterface.AgentInvoker
 	Model        llmmodel.ModelID
+	LintSteps    []lints.Step
 }
 
 var clarifyPublicAPIPresenterInstance llmstream.Presenter = clarifyPublicAPIPresenter{}
@@ -57,6 +70,7 @@ func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetin
 		authorizer:    authorizer,
 		agentInvoker:  option.AgentInvoker,
 		model:         option.Model,
+		lintSteps:     option.LintSteps,
 	}
 }
 
@@ -68,7 +82,12 @@ func (t *toolClarifyPublicAPI) Presenter() llmstream.Presenter {
 	return clarifyPublicAPIPresenterInstance
 }
 
-func (p clarifyPublicAPIPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
+func (p clarifyPublicAPIPresenter) SubagentFinalMessage(_ llmstream.ToolCall, subagentLabel string, finalMessage string) llmstream.Block {
+	if subagentLabel == improvePublicAPIDocsAgentName {
+		if body, ok := pkgToolPresenterOutput(finalMessage); ok {
+			return body
+		}
+	}
 	return nil
 }
 
@@ -266,6 +285,19 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
+	if isWithinDir(t.sandboxAbsDir, packageAbsDir) {
+		t.improvePublicAPIDocsBestEffort(
+			ctx,
+			agentCreator,
+			baseAuthorizer,
+			packageAbsDir,
+			params.Path,
+			params.Identifier,
+			params.Question,
+			answer,
+		)
+	}
+
 	return llmstream.ToolResult{
 		CallID: call.CallID,
 		Name:   call.Name,
@@ -303,6 +335,68 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 	}
 
 	events, err := invoker.Invoke(ctx, ToolNameClarifyPublicAPI, req)
+	if err != nil {
+		return "", err
+	}
+
+	return agent.CollectFinalAssistantText(ctx, events)
+}
+
+func (t *toolClarifyPublicAPI) improvePublicAPIDocsBestEffort(ctx context.Context, agentCreator agent.AgentCreator, baseAuthorizer authdomain.Authorizer, packageAbsDir string, path string, identifier string, question string, answer string) {
+	pkgAuthorizer, err := newClarifyTargetAuthorizer(baseAuthorizer, packageAbsDir)
+	if err != nil {
+		return
+	}
+
+	_, _ = invokeImprovePublicAPIDocsAgent(
+		ctx,
+		t.agentInvoker,
+		agentCreator,
+		t.sandboxAbsDir,
+		pkgAuthorizer,
+		packageAbsDir,
+		t.model,
+		t.lintSteps,
+		t.agentInvoker,
+		path,
+		identifier,
+		question,
+		answer,
+	)
+}
+
+func invokeImprovePublicAPIDocsAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, sandboxAbsDir string, pkgAuthorizer authdomain.Authorizer, packageAbsDir string, model llmmodel.ModelID, lintSteps []lints.Step, nestedAgentInvoker toolsetinterface.AgentInvoker, path string, identifier string, question string, answer string) (string, error) {
+	if invoker == nil {
+		return "", fmt.Errorf("improve public API docs agent unavailable")
+	}
+
+	payload, err := json.Marshal(improvePublicAPIDocsParams{
+		Path:       path,
+		Identifier: identifier,
+		Question:   question,
+		Answer:     answer,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	message := fmt.Sprintf("Package path: %s\nIdentifier: %s\n\nClarification question:\n%s\n\nClarification answer:\n%s", path, identifier, question, answer)
+	req := toolsetinterface.InvokeRequest{
+		AgentCreator:     agentCreator,
+		CallerAuthorizer: pkgAuthorizer,
+		CallerSandboxDir: sandboxAbsDir,
+		ToolOptions: toolsetinterface.Options{
+			SandboxDir:   sandboxAbsDir,
+			GoPkgAbsDir:  packageAbsDir,
+			Model:        model,
+			LintSteps:    lintSteps,
+			AgentInvoker: nestedAgentInvoker,
+		},
+		Messages: []string{message},
+		Payload:  payload,
+	}
+
+	events, err := invoker.Invoke(ctx, improvePublicAPIDocsAgentName, req)
 	if err != nil {
 		return "", err
 	}

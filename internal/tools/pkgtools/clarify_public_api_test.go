@@ -58,6 +58,9 @@ func TestClarifyPublicAPIPresenter(t *testing.T) {
 	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
 	require.True(t, ok)
 	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(call, "clarify subagent", "done"))
+	assert.Equal(t, llmstream.Output{
+		Lines: []string{"Improved docs."},
+	}, finalMessagePresenter.SubagentFinalMessage(call, improvePublicAPIDocsAgentName, "Improved docs."))
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
 	assert.Equal(t, llmstream.Line{
@@ -303,6 +306,94 @@ func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {
 		"What does Thing do?",
 	)
 	assert.EqualError(t, err, "clarify agent unavailable")
+}
+
+func TestInvokeImprovePublicAPIDocsAgent_UsesDocsAgentAndReturnsSummary(t *testing.T) {
+	sandboxDir := t.TempDir()
+	authorizer := authdomain.NewAutoApproveAuthorizer(sandboxDir)
+	creator := &fakeAgentCreator{}
+	invoker := &fakeAgentInvoker{
+		events: successfulClarifyEvents("Updated Equal docs."),
+	}
+
+	answer, err := invokeImprovePublicAPIDocsAgent(
+		context.Background(),
+		invoker,
+		creator,
+		sandboxDir,
+		authorizer,
+		filepath.Join(sandboxDir, "pkg"),
+		"mock-model",
+		nil,
+		invoker,
+		"pkg",
+		"Equal",
+		"What does Equal do?",
+		"It compares values.",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Equal docs.", answer)
+	assert.Equal(t, improvePublicAPIDocsAgentName, invoker.invokedAgentName)
+	assert.NotNil(t, invoker.req.AgentCreator)
+	assert.Equal(t, filepath.Join(sandboxDir, "pkg"), invoker.req.ToolOptions.GoPkgAbsDir)
+	assert.Equal(t, sandboxDir, invoker.req.ToolOptions.SandboxDir)
+	assert.Equal(t, llmmodel.ModelID("mock-model"), invoker.req.ToolOptions.Model)
+	assert.Equal(t, invoker, invoker.req.ToolOptions.AgentInvoker)
+	assert.Equal(t, sandboxDir, invoker.req.CallerSandboxDir)
+	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
+	require.Len(t, invoker.req.Messages, 1)
+	assert.Contains(t, invoker.req.Messages[0], "Package path: pkg")
+	assert.Contains(t, invoker.req.Messages[0], "Identifier: Equal")
+	assert.Contains(t, invoker.req.Messages[0], "Clarification question:\nWhat does Equal do?")
+	assert.Contains(t, invoker.req.Messages[0], "Clarification answer:\nIt compares values.")
+	assert.JSONEq(t, `{"path":"pkg","identifier":"Equal","question":"What does Equal do?","answer":"It compares values."}`, string(invoker.req.Payload))
+}
+
+func TestInvokeImprovePublicAPIDocsAgent_RequiresInvoker(t *testing.T) {
+	_, err := invokeImprovePublicAPIDocsAgent(
+		context.Background(),
+		nil,
+		&fakeAgentCreator{},
+		t.TempDir(),
+		nil,
+		t.TempDir(),
+		"",
+		nil,
+		nil,
+		"fmt",
+		"Thing",
+		"What does Thing do?",
+		"It does the thing.",
+	)
+	assert.EqualError(t, err, "improve public API docs agent unavailable")
+}
+
+func TestImprovePublicAPIDocsBestEffort_IgnoresImproverFailure(t *testing.T) {
+	sandboxDir := t.TempDir()
+	pkgDir := filepath.Join(sandboxDir, "pkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n"), 0o644))
+
+	invoker := &fakeAgentInvoker{err: errors.New("improver failed")}
+	tool := &toolClarifyPublicAPI{
+		sandboxAbsDir: sandboxDir,
+		authorizer:    authdomain.NewAutoApproveAuthorizer(sandboxDir),
+		agentInvoker:  invoker,
+		model:         "mock-model",
+	}
+
+	tool.improvePublicAPIDocsBestEffort(
+		context.Background(),
+		&fakeAgentCreator{},
+		tool.authorizer,
+		pkgDir,
+		"pkg",
+		"Equal",
+		"What does Equal do?",
+		"It compares values.",
+	)
+
+	assert.Equal(t, improvePublicAPIDocsAgentName, invoker.invokedAgentName)
 }
 
 type fakeAgentInvoker struct {
