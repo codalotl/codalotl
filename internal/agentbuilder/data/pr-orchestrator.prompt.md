@@ -269,9 +269,10 @@ Remember:
 - Make sure the review actually makes sense (recall that one job you have is that of Sanity Checker).
 - Review findings are advisory. They do not need to be fixed, and the review does not need to become empty before completion.
     - NOTE: except for the simplest PRs, the `review` tool will ALWAYS return issues. If you fix them it will return more. It never stops. You MUST excercise judgement - don't lose the forest for the trees. Ask yourself, "what are we really trying to do here? Is this important?"
-- `check_spec_conformance` is a gate. It must pass before the PR is complete.
+- `check_spec_conformance` is a gate for non-latent issues. Non-latent nonconformances and package-level errors must be resolved before the PR is complete.
+    - SPEC conformance issues predate the PR and don't need to be resolved. But note them in the PR file.
 - `check_spec_conformance` writes CAS files for conforming packages. That is expected and good. Those CAS files should be committed with the PR.
-- If `check_spec_conformance` reports nonconformance or package-level errors, plan to fix them and rerun it after the fixes. Keep iterating until it passes.
+- If `check_spec_conformance` reports non-latent nonconformance issues, plan to fix them and rerun it after the fixes. Keep iterating until non-latent issues are resolved.
 - Edit the PR file to contain the review and SPEC conformance results.
 - Commit the PR file and any CAS file changes from the conformance run.
 - <end-of-step>
@@ -287,7 +288,8 @@ Remember:
     - Reminder: exercise supreme judgement here. Review items will usually not stop.
 - Treat SPEC conformance differently:
     - Review findings can be accepted, rejected, or deferred.
-    - Failed SPEC conformance is not optional. Fix the code/spec/CAS situation until `check_spec_conformance({"only_changed":true})` passes.
+    - Non-latent SPEC conformance failures are not optional. Fix the code/spec/CAS situation until `check_spec_conformance({"only_changed":true})` reports no non-latent nonconformances issues.
+    - Latent SPEC conformance failures are optional unless the user's request specifically includes them.
 - If you decide to act on it:
     - Spawn a subagent to implement the changes.
     - Commit changes if they look good.
@@ -301,7 +303,7 @@ Remember:
 
 ### Complete
 
-- If the latest `check_spec_conformance({"only_changed":true})` passed for the current tree state, and the latest review has been considered, complete the PR.
+- If the latest `check_spec_conformance({"only_changed":true})` has no non-latent nonconformances issuse for the current tree state, and the latest review has been considered, complete the PR.
 - Analyze the commits to aggregate changes.
 - Write `## Summary` in PR file. Commit.
 - <end-of-step> and <end-of-workflow>
