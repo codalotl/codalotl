@@ -10,7 +10,7 @@
 
 ## Agents
 
-- generic: toolset_core + toolset_spec (+ optional externally-supplied tools when configured)
+- generic: toolset_core + toolset_spec (+ optional externally-supplied tools when configured, such as `codalotl_cli` and `refactor`)
 - package_mode_no_context: toolset_package
     - No built-in env or package initial context. Callers must supply it when needed (reason: to support TUI's eager initialcontext generation).
     - May still include AGENTS.md initial-turn context.
@@ -48,7 +48,7 @@ Agents:
     - `text`: just use this text directly.
 - `tools` is an array of strings. Each element can refer to an existing tool in the registry (ex: `ls`), or a new tool defined by the YAML file itself. Exactly one virtual tool exists: `edit_files`, which refers to the `toolset_edit_files` tools.
 - Allowlisted external tools may appear in YAML without a registered builder.
-    - Allowlisted optional external tool: `codalotl_cli`.
+    - Allowlisted optional external tools: `codalotl_cli`, `refactor`.
     - Missing allowlisted tools are omitted.
     - Missing non-optional tools remain errors.
 - `mode` is one of `generic` or `package`.
