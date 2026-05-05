@@ -84,6 +84,11 @@ func TestDryNoOpportunityWritesPostRunCAS(t *testing.T) {
 	assert.True(t, found)
 	assert.True(t, record.Applied)
 	assert.Empty(t, record.Edited)
+
+	found, metadata := retrieveDryCASMetadata(t, moduleDir, pkgDir)
+	assert.True(t, found)
+	assert.Contains(t, metadata, "edited")
+	assert.JSONEq(t, `[]`, string(metadata["edited"]))
 }
 
 func TestDryDetectsEditedFilesAndWritesCAS(t *testing.T) {
@@ -258,6 +263,17 @@ func retrieveDryCAS(t *testing.T, moduleDir string, pkgDir string) (bool, refact
 	found, _, err := newCASDB(moduleDir).RetrieveOnCodeUnit(unit, dryNamespace(), &record)
 	require.NoError(t, err)
 	return found, record
+}
+
+func retrieveDryCASMetadata(t *testing.T, moduleDir string, pkgDir string) (bool, map[string]json.RawMessage) {
+	t.Helper()
+
+	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
+	require.NoError(t, err)
+	metadata := make(map[string]json.RawMessage)
+	found, _, err := newCASDB(moduleDir).RetrieveOnCodeUnit(unit, dryNamespace(), &metadata)
+	require.NoError(t, err)
+	return found, metadata
 }
 
 func dryNamespace() gocas.Namespace {

@@ -61,7 +61,7 @@ type Options struct {
 	NewCommandTree toolcli.CommandTreeFunc
 }
 
-//go:embed *.md
+//go:embed data/*.md
 var promptFS embed.FS
 
 type casPolicy string
@@ -100,7 +100,7 @@ var refactorRegistry = []refactorConfig{
 		description: "Share helpers and combine similar helper logic within a package.",
 		kind:        refactorKindPrompt,
 		casPolicy:   casPolicyCodeUnit,
-		promptPath:  "dry.md",
+		promptPath:  "data/dry.md",
 		agentName:   "limited_package_mode",
 		generation:  1,
 	},
@@ -384,7 +384,7 @@ func loadPrompt(cfg refactorConfig, resolved resolvedPackage) (string, error) {
 
 type refactorCASRecord struct {
 	Applied bool     `json:"applied"`
-	Edited  []string `json:"edited,omitempty"`
+	Edited  []string `json:"edited"`
 }
 
 func (cfg refactorConfig) casNamespace() gocas.Namespace {
@@ -434,7 +434,7 @@ func changedFiles(before, after codeUnitSnapshot) []string {
 		seen[path] = struct{}{}
 	}
 
-	var edited []string
+	edited := make([]string, 0, len(seen))
 	for path := range seen {
 		if !bytes.Equal(before[path], after[path]) {
 			edited = append(edited, path)
