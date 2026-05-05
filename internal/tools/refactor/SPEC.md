@@ -14,33 +14,46 @@ Refactors may be prompt-style agent runs or code-driven operations. The tool kee
 - Tool description lists available refactor names and brief descriptions.
 - Unknown names are usage errors.
 - Tool results distinguish:
-	- successfully applied refactor
-	- refactor not needed
+	- "successfully applied refactor" - the refactor was done and code was edited.
+	- "no refactoring opportunities found" - the refactoring logic was applied, but not edits were made. Code was aleady in a nicely factored state.
+	- "refactor already applied" - CAS record already indicates the refactor was applied, so we didn't try again.
 	- error
+
+### CAS
+
+- Each refactor is flagged with one of: `cas-ignore` or `cas-code-unit`
+- `cas-ignore` means the refactor does not use the CAS system. For instance, `codalotl docs add` doesn't need a separate CAS record to keep track of whether docs are added - its better to look at the code itself to see if anything lacks documentation.
+- `cas-code-unit` means the refactor checks/stores a CAS cache entry to record that the refactor was done:
+	- Code unit means the CAS hash is based on code units.
+	- Before we do the refactor, check CAS. If that indicates code is nicely factored, we return "refactor already applied".
+	- After the refactor, we store a CAS entry.
+		- Namespace is is prefixed with `refactor` and suffixed with a generation, like `refactor-dry-1`.
+		- Metadata is a JSON object containing `"applied": true` and a list of files edited (package-relative). Ex: `{"applied": true, edited: ["foo.go"]}`. If no files were edited, `edited` can be `null` or `[]`.
+	- On refactor error, no CAS is written.
+	- If writing to CAS results in an error, the overall tool results in error. Do not attempt file cleanup. Files can remain edited. That's fine.
+
+### Detecting Edits
+
+Before the refactor is run, remember hash or bytes of original code unit files. Afterwards, see if any changed by re-reading. Detect deleted or added files. Moved files are just adds and removes.
 
 ## Refactors
 
 ### docs-add
 
-- Delegates to `codalotl docs add --public-only <package>`.
-- No CAS.
-- Uses `codalotl_cli` command execution and visible stdout streaming.
+- Delegates to `codalotl docs add --public-only <package>`. Uses `codalotl_cli` command execution and visible stdout streaming.
+- CAS: `cas-ignore`
 
 ### dry
 
 Prompt-style refactor.
 
-- Looks for opportunities to share helpers inside a package.
-- Can create missing helper functions, use them, and combine similar helper functions.
-- Uses `limited_package_mode`.
-- Uses code-unit CAS:
-	- already-certified current code unit is an error.
-	- after a successful run, certify post-run code unit.
-	- unchanged hash returns `not_needed`.
+- Prompt: Looks for opportunities to share helpers inside a package. Can create missing helper functions, use them, and combine similar helper functions.
+- Agent: `limited_package_mode`.
+- CAS: `cas-code-unit`.
 
 ## Prompt-style refactors
 
-Prompt-style refactors are defined by name, `data/` prompt, agent name, and CAS policy (`none` or `code-unit`).
+Prompt-style refactors are defined by name, a prompt md file in `data/`, agent name, and CAS policy.
 
 ## Presentation
 
@@ -70,8 +83,9 @@ type Params struct {
 type ResultStatus string
 
 const (
-	ResultStatusApplied   ResultStatus = "applied"
-	ResultStatusNotNeeded ResultStatus = "not_needed"
+	ResultStatusApplied        ResultStatus = "applied"
+	ResultStatusNoOpportunity  ResultStatus = "no_opportunity"
+	ResultStatusAlreadyApplied ResultStatus = "already_applied"
 )
 
 // Result is the machine-readable refactor tool result.
