@@ -43,6 +43,7 @@ const (
 	yamlResultFormatText        = "text"
 	yamlResultFormatJSON        = "json"
 	yamlOptionalToolCodalotlCLI = "codalotl_cli"
+	yamlOptionalToolRefactor    = "refactor"
 )
 
 //go:embed data/*
@@ -654,7 +655,7 @@ func validateYAMLAgentTools(toolNames []string, existingToolNames map[string]str
 
 func yamlOptionalExternalTool(name string) bool {
 	switch name {
-	case yamlOptionalToolCodalotlCLI:
+	case yamlOptionalToolCodalotlCLI, yamlOptionalToolRefactor:
 		return true
 	default:
 		return false

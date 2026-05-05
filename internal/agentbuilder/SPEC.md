@@ -211,7 +211,7 @@ func BuildRegistry() (*agentregistry.Registry, error)
 
 // OverrideTool registers or replaces a named tool builder for future BuildRegistry calls.
 //
-// Process-wide startup configuration for optional YAML-listed tools such as `codalotl_cli`.
+// Process-wide startup configuration for optional YAML-listed tools such as `codalotl_cli` and `refactor`.
 func OverrideTool(toolName string, tool toolsetinterface.Tool)
 
 // AddYAMLToRegistry adds agents and tools to reg based on the YAML file at path. If an error occurs, reg will not be mutated.

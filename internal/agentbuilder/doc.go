@@ -1,7 +1,7 @@
 // Package agentbuilder registers built-in agents and tools into agentregistry and can extend a registry from YAML files.
 //
 // BuildRegistry installs these built-in agents:
-//   - generic: generic agent with read/write/planning tools plus optional externally supplied tools such as `codalotl_cli`.
+//   - generic: generic agent with read/write/planning tools plus optional externally supplied tools such as `codalotl_cli` and `refactor`.
 //   - package_mode_no_context: package-mode agent with the full package toolset, but no precomputed package context.
 //   - package_mode_default_context: package-mode agent with the full package toolset plus env and initial package context.
 //   - limited_package_mode: package-mode agent with a narrower toolset for targeted package work.
@@ -17,8 +17,8 @@
 // Each `agents` entry includes:
 //   - `name`: agent name.
 //   - `prompts`: ordered prompt blocks; each item sets exactly one of `name`, `file`, or `text`.
-//   - `tools`: ordered tool names. The virtual tool `edit_files` expands to the provider-specific edit tools. Allowlisted external tools such as `codalotl_cli` may
-//     appear without a registered builder; missing allowlisted tools are omitted while other missing tools are errors.
+//   - `tools`: ordered tool names. The virtual tool `edit_files` expands to the provider-specific edit tools. Allowlisted external tools such as `codalotl_cli` and
+//     `refactor` may appear without a registered builder; missing allowlisted tools are omitted while other missing tools are errors.
 //   - `mode`: `generic` or `package`.
 //   - optional `include_package_mode_context`: only for package-mode agents; adds env plus initial package context.
 //   - optional `skills`: defaults to true; requires `shell` or `skill_shell`.
