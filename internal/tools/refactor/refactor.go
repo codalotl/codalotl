@@ -210,7 +210,7 @@ func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, 
 	cliTool := toolcli.NewCodalotlCLITool(t.options.NewCommandTree)
 	cliParams := toolcli.Params{
 		Subcommand: "docs",
-		Argv:       []string{"add", "--public-only", resolved.relDir},
+		Argv:       []string{"add", "--public-only", resolved.absDir},
 	}
 	input, err := json.Marshal(cliParams)
 	if err != nil {
@@ -267,7 +267,10 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	if err != nil {
 		return Result{}, err
 	}
-	db := newCASDB(resolved.moduleAbsDir)
+	db, err := t.newCASDB(resolved)
+	if err != nil {
+		return Result{}, err
+	}
 	namespace := cfg.casNamespace()
 	var casRecord refactorCASRecord
 	ok, _, err := db.RetrieveOnCodeUnit(beforeUnit, namespace, &casRecord)
@@ -402,6 +405,20 @@ func newCASDB(moduleAbsDir string) *gocas.DB {
 	}
 }
 
+func (t refactorTool) newCASDB(resolved resolvedPackage) (*gocas.DB, error) {
+	db := newCASDB(resolved.moduleAbsDir)
+	if !pathInside(t.authorizer.SandboxDir(), db.AbsRoot) {
+		return nil, fmt.Errorf("CAS root %q is outside the sandbox", db.AbsRoot)
+	}
+	if err := t.authorizer.IsAuthorizedForRead(false, "", ToolNameRefactor, db.AbsRoot); err != nil {
+		return nil, err
+	}
+	if err := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameRefactor, db.AbsRoot); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
 type codeUnitSnapshot map[string][]byte
 
 func snapshotCodeUnitFiles(pkgAbsDir string, unit *codeunit.CodeUnit) (codeUnitSnapshot, error) {
@@ -438,7 +455,9 @@ func changedFiles(before, after codeUnitSnapshot) []string {
 
 	edited := make([]string, 0, len(seen))
 	for path := range seen {
-		if !bytes.Equal(before[path], after[path]) {
+		beforeBytes, beforeOK := before[path]
+		afterBytes, afterOK := after[path]
+		if beforeOK != afterOK || !bytes.Equal(beforeBytes, afterBytes) {
 			edited = append(edited, path)
 		}
 	}
@@ -466,7 +485,7 @@ func resolvePackage(authorizer authdomain.Authorizer, packageArg string) (resolv
 	var resolved resolvedPackage
 	if filepath.IsAbs(packageArg) {
 		rel, err := filepath.Rel(module.AbsolutePath, packageArg)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		if err != nil || !relPathInside(rel) {
 			return resolvedPackage{}, fmt.Errorf("package %q is outside the current module", packageArg)
 		}
 		resolved, err = resolvePackageByRelativeDir(module, rel)
@@ -536,7 +555,11 @@ func pathInside(base, target string) bool {
 	if err != nil {
 		return false
 	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, "../"))
+	return relPathInside(rel)
+}
+
+func relPathInside(rel string) bool {
+	return rel != ".." && !strings.HasPrefix(rel, "../") && !strings.HasPrefix(rel, `..\`)
 }
 
 func parseParams(input string) (Params, error) {

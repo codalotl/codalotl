@@ -35,7 +35,7 @@ func TestInfo(t *testing.T) {
 }
 
 func TestDocsAddDelegatesToCodalotlCLI(t *testing.T) {
-	moduleDir, _ := newTestModule(t)
+	moduleDir, pkgDir := newTestModule(t)
 	var captured docsAddCapture
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		NewCommandTree: docsAddCommandTree(&captured, "Applied 1 documentation change(s).\n"),
@@ -47,7 +47,7 @@ func TestDocsAddDelegatesToCodalotlCLI(t *testing.T) {
 	assert.Equal(t, ResultStatusApplied, result.result.Status)
 	assert.Equal(t, "internal/foo", result.result.Package)
 	assert.True(t, captured.publicOnly)
-	assert.Equal(t, []string{"internal/foo"}, captured.args)
+	assert.Equal(t, []string{pkgDir}, captured.args)
 }
 
 func TestDocsAddNoOpportunity(t *testing.T) {
@@ -134,6 +134,21 @@ func TestDryDetectsEditedFilesAndWritesCAS(t *testing.T) {
 	assert.Equal(t, []string{"helper.go"}, record.Edited)
 }
 
+func TestDryRejectsCASRootOutsideSandbox(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	invoker := &fakeAgentInvoker{}
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(pkgDir), Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "dry", Package: pkgDir})
+
+	assert.True(t, result.toolResult.IsError)
+	assert.Contains(t, result.toolResult.Result, "outside the sandbox")
+	assert.Empty(t, invoker.calls)
+	assert.NoDirExists(t, filepath.Join(moduleDir, ".codalotl"))
+}
+
 func TestDryCASHitSkipsAgent(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
@@ -172,6 +187,29 @@ func TestResolvePackageRejectsOutsideCurrentModule(t *testing.T) {
 
 	assert.Error(t, stdlibErr)
 	assert.Error(t, outsideErr)
+}
+
+func TestChangedFilesDetectsAddedAndDeletedEmptyFiles(t *testing.T) {
+	assert.Equal(t, []string{"empty.go"}, changedFiles(codeUnitSnapshot{}, codeUnitSnapshot{
+		"empty.go": []byte{},
+	}))
+	assert.Equal(t, []string{"empty.go"}, changedFiles(codeUnitSnapshot{
+		"empty.go": []byte{},
+	}, codeUnitSnapshot{}))
+	assert.Empty(t, changedFiles(codeUnitSnapshot{
+		"empty.go": []byte{},
+	}, codeUnitSnapshot{
+		"empty.go": []byte{},
+	}))
+}
+
+func TestRelPathInsideRejectsParentEscapesWithEitherSeparator(t *testing.T) {
+	assert.False(t, relPathInside(".."))
+	assert.False(t, relPathInside("../sibling"))
+	assert.False(t, relPathInside(`..\sibling`))
+	assert.True(t, relPathInside("."))
+	assert.True(t, relPathInside("..sibling"))
+	assert.True(t, relPathInside(filepath.Join("child", "pkg")))
 }
 
 func TestUnknownNameIsError(t *testing.T) {
