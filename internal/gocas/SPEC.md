@@ -34,9 +34,9 @@ type Namespace string
 //
 // Most callers should use the methods on *DB, rather than calling methods on the embedded cas.DB directly.
 type DB struct {
-	// BaseDir is the project root used when hashing package file paths.
+	// BaseDir is the project root used when hashing package and code-unit file paths.
 	//
-	// BaseDir must be absolute. All package file paths must be within BaseDir.
+	// BaseDir must be absolute. All hashed package and code-unit file paths must be within BaseDir.
 	//
 	// Hashing is based on the BaseDir-relative portion of each path, so hashing the same project from different working directories produces the same keys.
 	BaseDir string
@@ -53,9 +53,14 @@ type DB struct {
 //
 // Storage key is content-addressed from the included files in unit and their file contents, plus namespace. Paths are interpreted relative to BaseDir.
 //
+// Key derivation ignores duplicate absolute paths and directories, requires all remaining files to be within BaseDir, and sorts files by their BaseDir-relative
+// paths before hashing.
+//
 // If any included file cannot be read, StoreOnCodeUnit returns an error.
 //
 // jsonable must be encodable by encoding/json (and is stored as JSON bytes).
+//
+// StoreOnCodeUnit does not return the derived hash or filesystem path of the stored record. Use RetrieveOnCodeUnit to confirm a value can be loaded later.
 //
 // StoreOnCodeUnit returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
 func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, jsonable any) error

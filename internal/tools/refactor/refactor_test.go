@@ -46,7 +46,26 @@ func TestDocsAddDelegatesToCodalotlCLI(t *testing.T) {
 	require.False(t, result.toolResult.IsError)
 	assert.Equal(t, ResultStatusApplied, result.result.Status)
 	assert.Equal(t, "internal/foo", result.result.Package)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
 	assert.True(t, captured.publicOnly)
+	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
+func TestDocsAddReportsEditedFiles(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	var captured docsAddCapture
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		NewCommandTree: docsAddEditingCommandTree(&captured, pkgDir),
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-add", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusApplied, result.result.Status)
+	assert.Equal(t, []string{"doc.go"}, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
 	assert.Equal(t, []string{pkgDir}, captured.args)
 }
 
@@ -61,6 +80,9 @@ func TestDocsAddNoOpportunity(t *testing.T) {
 	require.False(t, result.toolResult.IsError)
 	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
 	assert.Equal(t, "no refactoring opportunities found", result.result.Message)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
 }
 
 func TestDocsAddIgnoresCASRecordAndReportsActualResult(t *testing.T) {
@@ -78,6 +100,9 @@ func TestDocsAddIgnoresCASRecordAndReportsActualResult(t *testing.T) {
 	require.False(t, result.toolResult.IsError)
 	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
 	assert.Equal(t, "no refactoring opportunities found", result.result.Message)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
 	assert.Equal(t, []string{pkgDir}, captured.args)
 }
 
@@ -109,6 +134,11 @@ func TestDryNoOpportunityWritesPostRunCAS(t *testing.T) {
 
 	require.False(t, result.toolResult.IsError)
 	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.False(t, filepath.IsAbs(*result.result.SavedCASRecord))
+	assert.FileExists(t, filepath.Join(moduleDir, filepath.FromSlash(*result.result.SavedCASRecord)))
 	require.Len(t, invoker.calls, 1)
 	assert.Equal(t, "limited_package_mode", invoker.calls[0].agentName)
 	assert.Equal(t, pkgDir, invoker.calls[0].req.ToolOptions.GoPkgAbsDir)
@@ -164,6 +194,9 @@ func TestDryDetectsEditedFilesAndWritesCAS(t *testing.T) {
 
 	require.False(t, result.toolResult.IsError)
 	assert.Equal(t, ResultStatusApplied, result.result.Status)
+	assert.Equal(t, []string{"helper.go"}, result.result.EditedFiles)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.Contains(t, *result.result.SavedCASRecord, ".codalotl/cas/refactor-dry-1/")
 	found, record := retrieveDryCAS(t, moduleDir, pkgDir)
 	assert.True(t, found)
 	assert.Equal(t, []string{"helper.go"}, record.Edited)
@@ -198,7 +231,69 @@ func TestDryCASHitSkipsAgent(t *testing.T) {
 
 	require.False(t, result.toolResult.IsError)
 	assert.Equal(t, ResultStatusAlreadyApplied, result.result.Status)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
 	assert.Empty(t, invoker.calls)
+}
+
+func TestPresenterUsesSemanticSummaryRoles(t *testing.T) {
+	call := refactorToolCall(t, Params{Name: "dry", Package: "internal/foo"})
+
+	presentation := refactorPresenter{}.Present(call, nil)
+
+	assert.Equal(t, llmstream.CompletionBehaviorAppend, presentation.Behavior)
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Refactoring", Role: llmstream.RoleAction},
+			{Text: "dry", Role: llmstream.RoleCode},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "internal/foo", Role: llmstream.RoleCode},
+		},
+	}, presentation.Summary)
+}
+
+func TestPresenterCompleteIncludesStatusDetail(t *testing.T) {
+	call := refactorToolCall(t, Params{Name: "dry", Package: "internal/foo"})
+	payload, err := json.Marshal(Result{
+		Name:           "dry",
+		Package:        "internal/tools/refactor",
+		Status:         ResultStatusAlreadyApplied,
+		Message:        "refactor already applied",
+		EditedFiles:    []string{},
+		SavedCASRecord: nil,
+	})
+	require.NoError(t, err)
+	result := llmstream.ToolResult{
+		CallID: "call_1",
+		Name:   ToolNameRefactor,
+		Type:   "function_call",
+		Result: string(payload),
+	}
+
+	presentation := refactorPresenter{}.Present(call, &result)
+
+	assert.Equal(t, llmstream.Line{
+		JoinWithSpace: true,
+		Segments: []llmstream.Segment{
+			{Text: "Refactored", Role: llmstream.RoleAction},
+			{Text: "dry", Role: llmstream.RoleCode},
+			{Text: "in", Role: llmstream.RoleAccent},
+			{Text: "internal/tools/refactor", Role: llmstream.RoleCode},
+		},
+	}, presentation.Summary)
+	paragraph, ok := presentation.Body.(llmstream.Paragraph)
+	require.True(t, ok)
+	assert.Equal(t, llmstream.Paragraph{
+		Lines: []llmstream.Line{
+			{
+				Segments: []llmstream.Segment{
+					{Text: "Refactor already applied", Role: llmstream.RoleSuccess},
+				},
+			},
+		},
+	}, paragraph)
 }
 
 func TestResolvePackageAcceptsCurrentModuleImportPath(t *testing.T) {
@@ -265,14 +360,7 @@ type runResult struct {
 func runRefactorTool(t *testing.T, tool llmstream.Tool, params Params) runResult {
 	t.Helper()
 
-	input, err := json.Marshal(params)
-	require.NoError(t, err)
-	toolResult := tool.Run(context.Background(), llmstream.ToolCall{
-		CallID: "call_1",
-		Name:   ToolNameRefactor,
-		Type:   "function_call",
-		Input:  string(input),
-	})
+	toolResult := tool.Run(context.Background(), refactorToolCall(t, params))
 	if toolResult.IsError {
 		return runResult{toolResult: toolResult}
 	}
@@ -280,6 +368,19 @@ func runRefactorTool(t *testing.T, tool llmstream.Tool, params Params) runResult
 	var result Result
 	require.NoError(t, json.Unmarshal([]byte(toolResult.Result), &result))
 	return runResult{toolResult: toolResult, result: result}
+}
+
+func refactorToolCall(t *testing.T, params Params) llmstream.ToolCall {
+	t.Helper()
+
+	input, err := json.Marshal(params)
+	require.NoError(t, err)
+	return llmstream.ToolCall{
+		CallID: "call_1",
+		Name:   ToolNameRefactor,
+		Type:   "function_call",
+		Input:  string(input),
+	}
 }
 
 type docsAddCapture struct {
@@ -297,6 +398,27 @@ func docsAddCommandTree(capture *docsAddCapture, stdout string) toolcli.CommandT
 			capture.publicOnly = *publicOnly
 			capture.args = append([]string(nil), c.Args...)
 			_, err := fmt.Fprint(c.Out, stdout)
+			return err
+		}
+		root.AddCommand(docs)
+		docs.AddCommand(add)
+		return root
+	}
+}
+
+func docsAddEditingCommandTree(capture *docsAddCapture, pkgDir string) toolcli.CommandTreeFunc {
+	return func() *qcli.Command {
+		root := &qcli.Command{Name: "codalotl"}
+		docs := &qcli.Command{Name: "docs"}
+		add := &qcli.Command{Name: "add"}
+		publicOnly := add.Flags().Bool("public-only", 0, false, "document only public identifiers")
+		add.Run = func(c *qcli.Context) error {
+			capture.publicOnly = *publicOnly
+			capture.args = append([]string(nil), c.Args...)
+			if err := os.WriteFile(filepath.Join(pkgDir, "doc.go"), []byte("package foo\n\n// B returns 2.\nfunc B() int { return 2 }\n"), 0o644); err != nil {
+				return err
+			}
+			_, err := fmt.Fprint(c.Out, "Applied 1 documentation change(s).\n")
 			return err
 		}
 		root.AddCommand(docs)

@@ -42,15 +42,22 @@ type Hasher interface {
 	Hash() string
 }
 
-// NewFileSetHasher returns a Hasher for the given paths. Path order does not matter.
+// NewFileSetHasher returns a Hasher for paths and their current contents. Path order does not matter.
 //
-// Paths should be relative paths, as they are used to compute the hash (and should ideally be stable across computers).
+// NewFileSetHasher reads each path as supplied; relative paths are resolved against the current process working directory. The hash identity includes each file's
+// contents and the cleaned, slash-separated path string, so absolute paths make the hash depend on the absolute location. Prefer relative paths when the hash should
+// be stable across machines.
+//
+// Use NewDirRelativeFileSetHasher when path identity should be relative to a base directory.
 //
 // Returns an error if, for instance, a path cannot be read.
 func NewFileSetHasher(paths []string) (Hasher, error)
 
-// NewDirRelativeFileSetHasher is like NewFileSetHasher, but the hash is based on the dir-relative portion of each p in paths. Returns an error if any p in paths
-// is not in dir.
+// NewDirRelativeFileSetHasher returns a Hasher for paths whose path identity is based on each path's location relative to dir. It returns an error if any p in paths
+// is outside dir.
+//
+// The paths are read as supplied, just as in NewFileSetHasher; dir is used only to compute the path identity for the hash and to validate that paths are within
+// dir. Relative paths are resolved against the current process working directory.
 //
 // This allows the group of files to be moved as a unit without affecting their hash.
 func NewDirRelativeFileSetHasher(dir string, paths []string) (Hasher, error)

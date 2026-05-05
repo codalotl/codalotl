@@ -47,10 +47,12 @@ const (
 
 // Result is the machine-readable refactor tool result.
 type Result struct {
-	Name    string       `json:"name"`
-	Package string       `json:"package"`
-	Status  ResultStatus `json:"status"`
-	Message string       `json:"message,omitempty"`
+	Name           string       `json:"name"`
+	Package        string       `json:"package"`
+	Status         ResultStatus `json:"status"`
+	Message        string       `json:"message,omitempty"`
+	EditedFiles    []string     `json:"edited-files"`
+	SavedCASRecord *string      `json:"saved-cas-record"`
 }
 
 // Options configures the refactor tool.
@@ -210,6 +212,15 @@ func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, 
 		return Result{}, errors.New("docs-add refactor requires NewCommandTree")
 	}
 
+	beforeUnit, err := codeunit.DefaultGoCodeUnit(resolved.absDir)
+	if err != nil {
+		return Result{}, err
+	}
+	beforeFiles, err := snapshotCodeUnitFiles(resolved.absDir, beforeUnit)
+	if err != nil {
+		return Result{}, err
+	}
+
 	cliTool := toolcli.NewCodalotlCLITool(t.options.NewCommandTree)
 	cliParams := toolcli.Params{
 		Subcommand: "docs",
@@ -244,13 +255,30 @@ func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, 
 		return Result{}, errors.New(msg)
 	}
 
+	afterUnit, err := codeunit.DefaultGoCodeUnit(resolved.absDir)
+	if err != nil {
+		return Result{}, err
+	}
+	afterFiles, err := snapshotCodeUnitFiles(resolved.absDir, afterUnit)
+	if err != nil {
+		return Result{}, err
+	}
+	edited := changedFiles(beforeFiles, afterFiles)
+
 	status := ResultStatusApplied
 	message := "successfully applied refactor"
 	if docsAddNoOpportunity(parsed.Stdout) {
 		status = ResultStatusNoOpportunity
 		message = "no refactoring opportunities found"
 	}
-	return Result{Name: cfg.name, Package: resolved.relDir, Status: status, Message: message}, nil
+	return Result{
+		Name:           cfg.name,
+		Package:        resolved.relDir,
+		Status:         status,
+		Message:        message,
+		EditedFiles:    edited,
+		SavedCASRecord: nil,
+	}, nil
 }
 
 func docsAddNoOpportunity(stdout string) bool {
@@ -283,10 +311,12 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	if ok {
 		// Only CAS-backed refactors report already_applied.
 		return Result{
-			Name:    cfg.name,
-			Package: resolved.relDir,
-			Status:  ResultStatusAlreadyApplied,
-			Message: "refactor already applied",
+			Name:           cfg.name,
+			Package:        resolved.relDir,
+			Status:         ResultStatusAlreadyApplied,
+			Message:        "refactor already applied",
+			EditedFiles:    []string{},
+			SavedCASRecord: nil,
 		}, nil
 	}
 
@@ -312,9 +342,14 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 		return Result{}, err
 	}
 	edited := changedFiles(beforeFiles, afterFiles)
+	casRecordAbsPath, err := codeUnitCASRecordPath(db, afterUnit, namespace)
+	if err != nil {
+		return Result{}, err
+	}
 	if err := db.StoreOnCodeUnit(afterUnit, namespace, refactorCASRecord{Applied: true, Edited: edited}); err != nil {
 		return Result{}, err
 	}
+	savedCASRecord := resultPath(resolved.moduleAbsDir, casRecordAbsPath)
 
 	status := ResultStatusApplied
 	message := "successfully applied refactor"
@@ -322,7 +357,14 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 		status = ResultStatusNoOpportunity
 		message = "no refactoring opportunities found"
 	}
-	return Result{Name: cfg.name, Package: resolved.relDir, Status: status, Message: message}, nil
+	return Result{
+		Name:           cfg.name,
+		Package:        resolved.relDir,
+		Status:         status,
+		Message:        message,
+		EditedFiles:    edited,
+		SavedCASRecord: &savedCASRecord,
+	}, nil
 }
 
 func (t refactorTool) invokePromptAgent(ctx context.Context, resolved resolvedPackage, cfg refactorConfig, prompt string, unit *codeunit.CodeUnit) error {
@@ -421,6 +463,65 @@ func (t refactorTool) newCASDB(resolved resolvedPackage) (*gocas.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+func codeUnitCASRecordPath(db *gocas.DB, unit *codeunit.CodeUnit, namespace gocas.Namespace) (string, error) {
+	files := make([]struct {
+		abs string
+		rel string
+	}, 0)
+	seen := make(map[string]struct{})
+	for _, absPath := range unit.IncludedFiles() {
+		info, err := os.Stat(absPath)
+		if err != nil {
+			return "", err
+		}
+		if info.IsDir() {
+			continue
+		}
+		if _, ok := seen[absPath]; ok {
+			continue
+		}
+		seen[absPath] = struct{}{}
+		rel, err := filepath.Rel(db.BaseDir, absPath)
+		if err != nil {
+			return "", err
+		}
+		if !relPathInside(rel) {
+			return "", fmt.Errorf("code unit file %q is outside CAS base %q", absPath, db.BaseDir)
+		}
+		files = append(files, struct {
+			abs string
+			rel string
+		}{abs: absPath, rel: filepath.ToSlash(rel)})
+	}
+	if len(files) == 0 {
+		return "", errors.New("code unit has no files")
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].rel < files[j].rel
+	})
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.abs)
+	}
+	hasher, err := cas.NewDirRelativeFileSetHasher(db.BaseDir, paths)
+	if err != nil {
+		return "", err
+	}
+	hash := hasher.Hash()
+	if len(hash) < 2 {
+		return "", fmt.Errorf("CAS hash %q is too short", hash)
+	}
+	return filepath.Join(db.AbsRoot, string(namespace), hash[:2], hash[2:]), nil
+}
+
+func resultPath(base, target string) string {
+	rel, err := filepath.Rel(base, target)
+	if err != nil || !relPathInside(rel) {
+		return filepath.ToSlash(target)
+	}
+	return filepath.ToSlash(rel)
 }
 
 type codeUnitSnapshot map[string][]byte
