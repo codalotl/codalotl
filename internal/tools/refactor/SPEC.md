@@ -15,22 +15,22 @@ Refactors may be prompt-style agent runs or code-driven operations. The tool kee
 - Unknown names are usage errors.
 - Tool results distinguish:
 	- "successfully applied refactor" - the refactor was done and code was edited.
-	- "no refactoring opportunities found" - the refactoring logic was applied, but not edits were made. Code was aleady in a nicely factored state.
-	- "refactor already applied" - CAS record already indicates the refactor was applied, so we didn't try again.
+	- "no refactoring opportunities found" - the refactoring logic was applied, but no edits were made. Code was already in a nicely factored state.
+	- "refactor already applied" - CAS record already indicates the refactor was applied, so the refactor is skipped.
 	- error
 
 ### CAS
 
 - Each refactor is flagged with one of: `cas-ignore` or `cas-code-unit`
-- `cas-ignore` means the refactor does not use the CAS system. For instance, `codalotl docs add` doesn't need a separate CAS record to keep track of whether docs are added - its better to look at the code itself to see if anything lacks documentation.
+- `cas-ignore` means the refactor does not use the CAS system. For instance, `codalotl docs add` doesn't need a separate CAS record to keep track of whether docs are added - it's better to look at the code itself to see if anything lacks documentation.
 - `cas-code-unit` means the refactor checks/stores a CAS cache entry to record that the refactor was done:
 	- Code unit means the CAS hash is based on code units.
-	- Before we do the refactor, check CAS. If that indicates code is nicely factored, we return "refactor already applied".
+	- Before running, CAS hit returns "refactor already applied".
 	- After the refactor, we store a CAS entry.
-		- Namespace is is prefixed with `refactor` and suffixed with a generation, like `refactor-dry-1`.
-		- Metadata is a JSON object containing `"applied": true` and a list of files edited (package-relative). Ex: `{"applied": true, edited: ["foo.go"]}`. If no files were edited, `edited` can be `null` or `[]`.
+		- Namespace is prefixed with `refactor` and suffixed with a generation, like `refactor-dry-1`.
+		- Metadata is a JSON object containing `"applied": true` and a list of files edited (package-relative). Ex: `{"applied": true, "edited": ["foo.go"]}`. If no files were edited, `edited` can be `null` or `[]`.
 	- On refactor error, no CAS is written.
-	- If writing to CAS results in an error, the overall tool results in error. Do not attempt file cleanup. Files can remain edited. That's fine.
+	- If writing to CAS results in an error, the overall tool returns an error. Do not attempt file cleanup. Files can remain edited. That's fine.
 
 ### Detecting Edits
 
@@ -53,7 +53,7 @@ Prompt-style refactor.
 
 ## Prompt-style refactors
 
-Prompt-style refactors are defined by name, a prompt md file in `data/`, agent name, and CAS policy.
+Prompt-style refactors are defined by name, a Markdown prompt file in `data/`, agent name, and CAS policy.
 
 ## Presentation
 
