@@ -18,6 +18,7 @@ Refactors may be prompt-style agent runs or code-driven operations. The tool kee
 	- "no refactoring opportunities found" - the refactoring logic was applied, but no edits were made. Code was already in a nicely factored state.
 	- "refactor already applied" - for CAS-backed refactors only, a CAS record already indicates the refactor was applied, so the refactor is skipped.
 	- error
+- Tool result always includes edited file list and saved CAS record path/null.
 
 ### CAS
 
@@ -61,6 +62,8 @@ Prompt-style refactors are defined by name, a Markdown prompt file in `data/`, a
 - Summary:
 	- In progress: `Refactoring docs-add in internal/foo`
 	- Complete: `Refactored docs-add in internal/foo`
+- Summary uses semantic roles: action verb as action; refactor/package details styled.
+- Complete presentation includes a status detail line, like `Refactor already applied`.
 - Behavior: Append
 - Prompt-style refactors show normal descendant subagent events and do not hide descendant final messages.
 - `docs-add` visible stdout is owned by delegated `codalotl_cli` behavior.
@@ -91,10 +94,12 @@ const (
 
 // Result is the machine-readable refactor tool result.
 type Result struct {
-	Name    string       `json:"name"`
-	Package string       `json:"package"`
-	Status  ResultStatus `json:"status"`
-	Message string       `json:"message,omitempty"`
+	Name           string       `json:"name"`
+	Package        string       `json:"package"`
+	Status         ResultStatus `json:"status"`
+	Message        string       `json:"message,omitempty"`
+	EditedFiles    []string     `json:"edited-files"`
+	SavedCASRecord *string      `json:"saved-cas-record"`
 }
 ```
 
