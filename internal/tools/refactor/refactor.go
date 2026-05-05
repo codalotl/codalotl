@@ -292,7 +292,7 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	if err != nil {
 		return Result{}, err
 	}
-	if err := t.invokePromptAgent(ctx, resolved, cfg, prompt); err != nil {
+	if err := t.invokePromptAgent(ctx, resolved, cfg, prompt, beforeUnit); err != nil {
 		return Result{}, err
 	}
 
@@ -318,20 +318,22 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	return Result{Name: cfg.name, Package: resolved.relDir, Status: status, Message: message}, nil
 }
 
-func (t refactorTool) invokePromptAgent(ctx context.Context, resolved resolvedPackage, cfg refactorConfig, prompt string) error {
+func (t refactorTool) invokePromptAgent(ctx context.Context, resolved resolvedPackage, cfg refactorConfig, prompt string, unit *codeunit.CodeUnit) error {
+	pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, t.authorizer.WithoutCodeUnit())
+	sandboxDir := t.authorizer.SandboxDir()
 	events, err := t.options.AgentInvoker.Invoke(ctx, cfg.agentName, toolsetinterface.InvokeRequest{
 		ToolOptions: toolsetinterface.Options{
 			AgentName:    cfg.agentName,
-			SandboxDir:   t.authorizer.SandboxDir(),
-			Authorizer:   t.authorizer,
+			SandboxDir:   sandboxDir,
+			Authorizer:   pkgAuthorizer,
 			GoPkgAbsDir:  resolved.absDir,
 			Model:        t.options.Model,
 			LintSteps:    t.options.LintSteps,
 			AgentInvoker: t.options.AgentInvoker,
 		},
 		AgentCreator:     agentCreatorFromContext(ctx),
-		CallerAuthorizer: t.authorizer,
-		CallerSandboxDir: t.authorizer.SandboxDir(),
+		CallerAuthorizer: pkgAuthorizer,
+		CallerSandboxDir: sandboxDir,
 		Messages:         []string{prompt},
 	})
 	if err != nil {

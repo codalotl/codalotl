@@ -91,6 +91,28 @@ func TestDryNoOpportunityWritesPostRunCAS(t *testing.T) {
 	assert.JSONEq(t, `[]`, string(metadata["edited"]))
 }
 
+func TestDryInvokesAgentWithTargetPackageAuthorizer(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	invoker := &fakeAgentInvoker{
+		onInvoke: func(_ context.Context, _ string, req toolsetinterface.InvokeRequest) error {
+			requirePackageAuthorizer(t, req.ToolOptions.Authorizer, moduleDir, pkgDir)
+			requirePackageAuthorizer(t, req.CallerAuthorizer, moduleDir, pkgDir)
+			assert.Equal(t, moduleDir, req.ToolOptions.SandboxDir)
+			assert.Equal(t, moduleDir, req.CallerSandboxDir)
+			return nil
+		},
+	}
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "dry", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	require.Len(t, invoker.calls, 1)
+	assert.Equal(t, "limited_package_mode", invoker.calls[0].agentName)
+}
+
 func TestDryDetectsEditedFilesAndWritesCAS(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	invoker := &fakeAgentInvoker{
@@ -208,6 +230,21 @@ func docsAddCommandTree(capture *docsAddCapture, stdout string) toolcli.CommandT
 		docs.AddCommand(add)
 		return root
 	}
+}
+
+func requirePackageAuthorizer(t *testing.T, authorizer authdomain.Authorizer, moduleDir string, pkgDir string) {
+	t.Helper()
+
+	require.NotNil(t, authorizer)
+	assert.True(t, authorizer.IsCodeUnitDomain())
+	assert.Equal(t, pkgDir, authorizer.CodeUnitDir())
+	assert.Equal(t, moduleDir, authorizer.SandboxDir())
+
+	fallback := authorizer.WithoutCodeUnit()
+	require.NotNil(t, fallback)
+	assert.False(t, fallback.IsCodeUnitDomain())
+	assert.Equal(t, moduleDir, fallback.SandboxDir())
+	assert.NoError(t, authorizer.IsAuthorizedForRead(false, "", ToolNameRefactor, filepath.Join(pkgDir, "foo.go")))
 }
 
 type fakeAgentInvoker struct {
