@@ -16,13 +16,14 @@ Refactors may be prompt-style agent runs or code-driven operations. The tool kee
 - Tool results distinguish:
 	- "successfully applied refactor" - the refactor was done and code was edited.
 	- "no refactoring opportunities found" - the refactoring logic was applied, but no edits were made. Code was already in a nicely factored state.
-	- "refactor already applied" - CAS record already indicates the refactor was applied, so the refactor is skipped.
+	- "refactor already applied" - for CAS-backed refactors only, a CAS record already indicates the refactor was applied, so the refactor is skipped.
 	- error
 
 ### CAS
 
 - Each refactor is flagged with one of: `cas-ignore` or `cas-code-unit`
 - `cas-ignore` means the refactor does not use the CAS system. For instance, `codalotl docs add` doesn't need a separate CAS record to keep track of whether docs are added - it's better to look at the code itself to see if anything lacks documentation.
+- `cas-ignore` refactors never return "refactor already applied".
 - `cas-code-unit` means the refactor checks/stores a CAS cache entry to record that the refactor was done:
 	- Code unit means the CAS hash is based on code units.
 	- Before running, CAS hit returns "refactor already applied".
