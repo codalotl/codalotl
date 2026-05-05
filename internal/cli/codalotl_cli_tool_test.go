@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agentbuilder"
+	"github.com/codalotl/codalotl/internal/agentregistry"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	toolcli "github.com/codalotl/codalotl/internal/tools/cli"
+	toolrefactor "github.com/codalotl/codalotl/internal/tools/refactor"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/stretchr/testify/require"
 )
@@ -30,13 +32,7 @@ func TestRun_InstallsCodalotlCLIToolOverride(t *testing.T) {
 
 	generic, ok := reg.Lookup(agentbuilder.AgentGeneric)
 	require.True(t, ok)
-
-	toolNames := append([]string(nil), generic.ToolNames...)
-	if generic.ToolsBuilder != nil {
-		dynamicToolNames, err := generic.ToolsBuilder(toolsetinterface.Options{})
-		require.NoError(t, err)
-		toolNames = append(toolNames, dynamicToolNames...)
-	}
+	toolNames := collectAgentToolNames(t, generic)
 	require.Contains(t, toolNames, toolcli.ToolNameCodalotlCLI)
 
 	for _, agentName := range []string{
@@ -47,6 +43,36 @@ func TestRun_InstallsCodalotlCLIToolOverride(t *testing.T) {
 		def, ok := reg.Lookup(agentName)
 		require.True(t, ok)
 		require.NotContains(t, def.ToolNames, toolcli.ToolNameCodalotlCLI)
+	}
+}
+
+func TestRun_InstallsRefactorToolOverride(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.NotEmpty(t, out.String())
+	require.Empty(t, errOut.String())
+
+	reg, err := agentbuilder.BuildRegistry()
+	require.NoError(t, err)
+	require.Contains(t, reg.ListToolNames(), toolrefactor.ToolNameRefactor)
+
+	generic, ok := reg.Lookup(agentbuilder.AgentGeneric)
+	require.True(t, ok)
+	require.Contains(t, collectAgentToolNames(t, generic), toolrefactor.ToolNameRefactor)
+
+	for _, agentName := range []string{
+		agentbuilder.AgentPackageModeNoContext,
+		agentbuilder.AgentPackageModeDefaultContext,
+		agentbuilder.AgentLimitedPackageMode,
+	} {
+		def, ok := reg.Lookup(agentName)
+		require.True(t, ok)
+		require.NotContains(t, collectAgentToolNames(t, def), toolrefactor.ToolNameRefactor)
 	}
 }
 
@@ -87,6 +113,20 @@ func TestCodalotlCLITool_OnlyExposesDocsAdd(t *testing.T) {
 	require.Equal(t, 2, rejected.ExitCode)
 	require.Contains(t, rejected.Stderr, "unknown subcommand")
 	require.Contains(t, rejected.Stderr, "context")
+}
+
+func collectAgentToolNames(t *testing.T, def agentregistry.Definition) []string {
+	t.Helper()
+
+	toolNames := append([]string(nil), def.ToolNames...)
+	if def.ToolsBuilder != nil {
+		dynamicToolNames, err := def.ToolsBuilder(toolsetinterface.Options{
+			AgentName: def.Name,
+		})
+		require.NoError(t, err)
+		toolNames = append(toolNames, dynamicToolNames...)
+	}
+	return toolNames
 }
 
 func decodeCodalotlCLIToolResult(t *testing.T, result llmstream.ToolResult) toolcli.Result {
