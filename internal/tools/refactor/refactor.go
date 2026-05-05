@@ -203,6 +203,9 @@ func (t refactorTool) description() string {
 }
 
 func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, cfg refactorConfig) (Result, error) {
+	if cfg.casPolicy != casPolicyIgnore {
+		return Result{}, fmt.Errorf("docs-add refactor requires CAS policy %q", casPolicyIgnore)
+	}
 	if t.options.NewCommandTree == nil {
 		return Result{}, errors.New("docs-add refactor requires NewCommandTree")
 	}
@@ -278,6 +281,7 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 		return Result{}, err
 	}
 	if ok {
+		// Only CAS-backed refactors report already_applied.
 		return Result{
 			Name:    cfg.name,
 			Package: resolved.relDir,

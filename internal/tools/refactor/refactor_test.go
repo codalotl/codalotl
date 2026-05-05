@@ -63,6 +63,41 @@ func TestDocsAddNoOpportunity(t *testing.T) {
 	assert.Equal(t, "no refactoring opportunities found", result.result.Message)
 }
 
+func TestDocsAddIgnoresCASRecordAndReportsActualResult(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
+	require.NoError(t, err)
+	require.NoError(t, newCASDB(moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
+	var captured docsAddCapture
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		NewCommandTree: docsAddCommandTree(&captured, "Nothing left to document!\n"),
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-add", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+	assert.Equal(t, "no refactoring opportunities found", result.result.Message)
+	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
+func TestDocsAddIgnoresCASRecordAndReportsDelegateError(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
+	require.NoError(t, err)
+	require.NoError(t, newCASDB(moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
+	var captured docsAddCapture
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		NewCommandTree: failingDocsAddCommandTree(&captured, errors.New("delegate failed")),
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-add", Package: "internal/foo"})
+
+	assert.True(t, result.toolResult.IsError)
+	assert.Contains(t, result.toolResult.Result, "delegate failed")
+	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
 func TestDryNoOpportunityWritesPostRunCAS(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	invoker := &fakeAgentInvoker{}
@@ -263,6 +298,27 @@ func docsAddCommandTree(capture *docsAddCapture, stdout string) toolcli.CommandT
 			capture.args = append([]string(nil), c.Args...)
 			_, err := fmt.Fprint(c.Out, stdout)
 			return err
+		}
+		root.AddCommand(docs)
+		docs.AddCommand(add)
+		return root
+	}
+}
+
+func failingDocsAddCommandTree(capture *docsAddCapture, runErr error) toolcli.CommandTreeFunc {
+	return func() *qcli.Command {
+		root := &qcli.Command{Name: "codalotl"}
+		docs := &qcli.Command{Name: "docs"}
+		add := &qcli.Command{Name: "add"}
+		publicOnly := add.Flags().Bool("public-only", 0, false, "document only public identifiers")
+		add.Run = func(c *qcli.Context) error {
+			capture.publicOnly = *publicOnly
+			capture.args = append([]string(nil), c.Args...)
+			_, err := fmt.Fprint(c.Err, runErr.Error())
+			if err != nil {
+				return err
+			}
+			return runErr
 		}
 		root.AddCommand(docs)
 		docs.AddCommand(add)
