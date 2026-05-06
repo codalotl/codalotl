@@ -11,7 +11,7 @@ Look for opportunities to share helpers inside the package:
 - Keep changes package-local.
 - Do not chase tiny similarities that would make code harder to read.
 
-Important: do not make an edit for marginal improvements. The code will attempted to be iteratively DRY'ed up. This is the 3rd iteration. It is completely appropriate to state that DRYing opportunities are worthwhile.
+Important: do not make an edit for marginal improvements. The code will attempted to be iteratively DRY'ed up. This is the 3rd iteration. It is completely appropriate to state that no DRYing opportunities are worthwhile.
 
 After editing, run package tests when appropriate and fix lint issues surfaced by the environment.
 
