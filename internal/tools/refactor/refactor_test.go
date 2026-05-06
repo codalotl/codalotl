@@ -389,45 +389,33 @@ type docsAddCapture struct {
 }
 
 func docsAddCommandTree(capture *docsAddCapture, stdout string) toolcli.CommandTreeFunc {
-	return func() *qcli.Command {
-		root := &qcli.Command{Name: "codalotl"}
-		docs := &qcli.Command{Name: "docs"}
-		add := &qcli.Command{Name: "add"}
-		publicOnly := add.Flags().Bool("public-only", 0, false, "document only public identifiers")
-		add.Run = func(c *qcli.Context) error {
-			capture.publicOnly = *publicOnly
-			capture.args = append([]string(nil), c.Args...)
-			_, err := fmt.Fprint(c.Out, stdout)
-			return err
-		}
-		root.AddCommand(docs)
-		docs.AddCommand(add)
-		return root
-	}
+	return docsAddCommandTreeFunc(capture, func(c *qcli.Context) error {
+		_, err := fmt.Fprint(c.Out, stdout)
+		return err
+	})
 }
 
 func docsAddEditingCommandTree(capture *docsAddCapture, pkgDir string) toolcli.CommandTreeFunc {
-	return func() *qcli.Command {
-		root := &qcli.Command{Name: "codalotl"}
-		docs := &qcli.Command{Name: "docs"}
-		add := &qcli.Command{Name: "add"}
-		publicOnly := add.Flags().Bool("public-only", 0, false, "document only public identifiers")
-		add.Run = func(c *qcli.Context) error {
-			capture.publicOnly = *publicOnly
-			capture.args = append([]string(nil), c.Args...)
-			if err := os.WriteFile(filepath.Join(pkgDir, "doc.go"), []byte("package foo\n\n// B returns 2.\nfunc B() int { return 2 }\n"), 0o644); err != nil {
-				return err
-			}
-			_, err := fmt.Fprint(c.Out, "Applied 1 documentation change(s).\n")
+	return docsAddCommandTreeFunc(capture, func(c *qcli.Context) error {
+		if err := os.WriteFile(filepath.Join(pkgDir, "doc.go"), []byte("package foo\n\n// B returns 2.\nfunc B() int { return 2 }\n"), 0o644); err != nil {
 			return err
 		}
-		root.AddCommand(docs)
-		docs.AddCommand(add)
-		return root
-	}
+		_, err := fmt.Fprint(c.Out, "Applied 1 documentation change(s).\n")
+		return err
+	})
 }
 
 func failingDocsAddCommandTree(capture *docsAddCapture, runErr error) toolcli.CommandTreeFunc {
+	return docsAddCommandTreeFunc(capture, func(c *qcli.Context) error {
+		_, err := fmt.Fprint(c.Err, runErr.Error())
+		if err != nil {
+			return err
+		}
+		return runErr
+	})
+}
+
+func docsAddCommandTreeFunc(capture *docsAddCapture, run func(*qcli.Context) error) toolcli.CommandTreeFunc {
 	return func() *qcli.Command {
 		root := &qcli.Command{Name: "codalotl"}
 		docs := &qcli.Command{Name: "docs"}
@@ -436,11 +424,7 @@ func failingDocsAddCommandTree(capture *docsAddCapture, runErr error) toolcli.Co
 		add.Run = func(c *qcli.Context) error {
 			capture.publicOnly = *publicOnly
 			capture.args = append([]string(nil), c.Args...)
-			_, err := fmt.Fprint(c.Err, runErr.Error())
-			if err != nil {
-				return err
-			}
-			return runErr
+			return run(c)
 		}
 		root.AddCommand(docs)
 		docs.AddCommand(add)

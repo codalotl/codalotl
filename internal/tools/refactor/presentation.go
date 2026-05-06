@@ -67,16 +67,7 @@ func refactorStatusDetail(status ResultStatus, message string) string {
 	if message != "" {
 		return sentenceCase(message)
 	}
-	switch status {
-	case ResultStatusApplied:
-		return "Successfully applied refactor"
-	case ResultStatusNoOpportunity:
-		return "No refactoring opportunities found"
-	case ResultStatusAlreadyApplied:
-		return "Refactor already applied"
-	default:
-		return ""
-	}
+	return sentenceCase(refactorStatusMessage(status))
 }
 
 func sentenceCase(s string) string {

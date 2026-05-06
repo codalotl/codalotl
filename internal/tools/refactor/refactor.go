@@ -45,6 +45,12 @@ const (
 	ResultStatusAlreadyApplied ResultStatus = "already_applied"
 )
 
+const (
+	resultMessageApplied        = "successfully applied refactor"
+	resultMessageNoOpportunity  = "no refactoring opportunities found"
+	resultMessageAlreadyApplied = "refactor already applied"
+)
+
 // Result is the machine-readable refactor tool result.
 type Result struct {
 	Name           string       `json:"name"`
@@ -204,6 +210,37 @@ func (t refactorTool) description() string {
 	return b.String()
 }
 
+func newRefactorResult(cfg refactorConfig, resolved resolvedPackage, status ResultStatus, edited []string, savedCASRecord *string) Result {
+	return Result{
+		Name:           cfg.name,
+		Package:        resolved.relDir,
+		Status:         status,
+		Message:        refactorStatusMessage(status),
+		EditedFiles:    edited,
+		SavedCASRecord: savedCASRecord,
+	}
+}
+
+func refactorStatusMessage(status ResultStatus) string {
+	switch status {
+	case ResultStatusApplied:
+		return resultMessageApplied
+	case ResultStatusNoOpportunity:
+		return resultMessageNoOpportunity
+	case ResultStatusAlreadyApplied:
+		return resultMessageAlreadyApplied
+	default:
+		return ""
+	}
+}
+
+func refactorAppliedStatus(noOpportunity bool) ResultStatus {
+	if noOpportunity {
+		return ResultStatusNoOpportunity
+	}
+	return ResultStatusApplied
+}
+
 func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, cfg refactorConfig) (Result, error) {
 	if cfg.casPolicy != casPolicyIgnore {
 		return Result{}, fmt.Errorf("docs-add refactor requires CAS policy %q", casPolicyIgnore)
@@ -212,11 +249,7 @@ func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, 
 		return Result{}, errors.New("docs-add refactor requires NewCommandTree")
 	}
 
-	beforeUnit, err := codeunit.DefaultGoCodeUnit(resolved.absDir)
-	if err != nil {
-		return Result{}, err
-	}
-	beforeFiles, err := snapshotCodeUnitFiles(resolved.absDir, beforeUnit)
+	tracker, err := newDefaultGoCodeUnitChangeTracker(resolved.absDir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -255,30 +288,13 @@ func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, 
 		return Result{}, errors.New(msg)
 	}
 
-	afterUnit, err := codeunit.DefaultGoCodeUnit(resolved.absDir)
+	_, edited, err := tracker.changedFiles()
 	if err != nil {
 		return Result{}, err
 	}
-	afterFiles, err := snapshotCodeUnitFiles(resolved.absDir, afterUnit)
-	if err != nil {
-		return Result{}, err
-	}
-	edited := changedFiles(beforeFiles, afterFiles)
 
-	status := ResultStatusApplied
-	message := "successfully applied refactor"
-	if docsAddNoOpportunity(parsed.Stdout) {
-		status = ResultStatusNoOpportunity
-		message = "no refactoring opportunities found"
-	}
-	return Result{
-		Name:           cfg.name,
-		Package:        resolved.relDir,
-		Status:         status,
-		Message:        message,
-		EditedFiles:    edited,
-		SavedCASRecord: nil,
-	}, nil
+	status := refactorAppliedStatus(docsAddNoOpportunity(parsed.Stdout))
+	return newRefactorResult(cfg, resolved, status, edited, nil), nil
 }
 
 func docsAddNoOpportunity(stdout string) bool {
@@ -294,7 +310,7 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 		return Result{}, fmt.Errorf("unsupported CAS policy %q", cfg.casPolicy)
 	}
 
-	beforeUnit, err := codeunit.DefaultGoCodeUnit(resolved.absDir)
+	tracker, err := newDefaultGoCodeUnitChangeTracker(resolved.absDir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -304,44 +320,27 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	}
 	namespace := cfg.casNamespace()
 	var casRecord refactorCASRecord
-	ok, _, err := db.RetrieveOnCodeUnit(beforeUnit, namespace, &casRecord)
+	ok, _, err := db.RetrieveOnCodeUnit(tracker.beforeUnit, namespace, &casRecord)
 	if err != nil {
 		return Result{}, err
 	}
 	if ok {
 		// Only CAS-backed refactors report already_applied.
-		return Result{
-			Name:           cfg.name,
-			Package:        resolved.relDir,
-			Status:         ResultStatusAlreadyApplied,
-			Message:        "refactor already applied",
-			EditedFiles:    []string{},
-			SavedCASRecord: nil,
-		}, nil
-	}
-
-	beforeFiles, err := snapshotCodeUnitFiles(resolved.absDir, beforeUnit)
-	if err != nil {
-		return Result{}, err
+		return newRefactorResult(cfg, resolved, ResultStatusAlreadyApplied, []string{}, nil), nil
 	}
 
 	prompt, err := loadPrompt(cfg, resolved)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := t.invokePromptAgent(ctx, resolved, cfg, prompt, beforeUnit); err != nil {
+	if err := t.invokePromptAgent(ctx, resolved, cfg, prompt, tracker.beforeUnit); err != nil {
 		return Result{}, err
 	}
 
-	afterUnit, err := codeunit.DefaultGoCodeUnit(resolved.absDir)
+	afterUnit, edited, err := tracker.changedFiles()
 	if err != nil {
 		return Result{}, err
 	}
-	afterFiles, err := snapshotCodeUnitFiles(resolved.absDir, afterUnit)
-	if err != nil {
-		return Result{}, err
-	}
-	edited := changedFiles(beforeFiles, afterFiles)
 	casRecordAbsPath, err := codeUnitCASRecordPath(db, afterUnit, namespace)
 	if err != nil {
 		return Result{}, err
@@ -351,20 +350,8 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	}
 	savedCASRecord := resultPath(resolved.moduleAbsDir, casRecordAbsPath)
 
-	status := ResultStatusApplied
-	message := "successfully applied refactor"
-	if len(edited) == 0 {
-		status = ResultStatusNoOpportunity
-		message = "no refactoring opportunities found"
-	}
-	return Result{
-		Name:           cfg.name,
-		Package:        resolved.relDir,
-		Status:         status,
-		Message:        message,
-		EditedFiles:    edited,
-		SavedCASRecord: &savedCASRecord,
-	}, nil
+	status := refactorAppliedStatus(len(edited) == 0)
+	return newRefactorResult(cfg, resolved, status, edited, &savedCASRecord), nil
 }
 
 func (t refactorTool) invokePromptAgent(ctx context.Context, resolved resolvedPackage, cfg refactorConfig, prompt string, unit *codeunit.CodeUnit) error {
@@ -393,15 +380,9 @@ func (t refactorTool) invokePromptAgent(ctx context.Context, resolved resolvedPa
 	for event := range events {
 		switch event.Type {
 		case agent.EventTypeError:
-			if event.Error != nil {
-				return event.Error
-			}
-			return errors.New("prompt refactor agent failed")
+			return agentEventError(event, errors.New("prompt refactor agent failed"))
 		case agent.EventTypeCanceled:
-			if event.Error != nil {
-				return event.Error
-			}
-			return context.Canceled
+			return agentEventError(event, context.Canceled)
 		case agent.EventTypeDoneSuccess:
 			terminal = true
 		}
@@ -410,6 +391,13 @@ func (t refactorTool) invokePromptAgent(ctx context.Context, resolved resolvedPa
 		return errors.New("prompt refactor agent ended without success")
 	}
 	return nil
+}
+
+func agentEventError(event agent.Event, fallback error) error {
+	if event.Error != nil {
+		return event.Error
+	}
+	return fallback
 }
 
 func agentCreatorFromContext(ctx context.Context) (creator agent.AgentCreator) {
@@ -466,28 +454,25 @@ func (t refactorTool) newCASDB(resolved resolvedPackage) (*gocas.DB, error) {
 }
 
 func codeUnitCASRecordPath(db *gocas.DB, unit *codeunit.CodeUnit, namespace gocas.Namespace) (string, error) {
+	includedFiles, err := nonDirCodeUnitFiles(unit)
+	if err != nil {
+		return "", err
+	}
 	files := make([]struct {
 		abs string
 		rel string
 	}, 0)
 	seen := make(map[string]struct{})
-	for _, absPath := range unit.IncludedFiles() {
-		info, err := os.Stat(absPath)
-		if err != nil {
-			return "", err
-		}
-		if info.IsDir() {
-			continue
-		}
+	for _, absPath := range includedFiles {
 		if _, ok := seen[absPath]; ok {
 			continue
 		}
 		seen[absPath] = struct{}{}
-		rel, err := filepath.Rel(db.BaseDir, absPath)
+		rel, inside, err := relPathWithin(db.BaseDir, absPath)
 		if err != nil {
 			return "", err
 		}
-		if !relPathInside(rel) {
+		if !inside {
 			return "", fmt.Errorf("code unit file %q is outside CAS base %q", absPath, db.BaseDir)
 		}
 		files = append(files, struct {
@@ -517,8 +502,8 @@ func codeUnitCASRecordPath(db *gocas.DB, unit *codeunit.CodeUnit, namespace goca
 }
 
 func resultPath(base, target string) string {
-	rel, err := filepath.Rel(base, target)
-	if err != nil || !relPathInside(rel) {
+	rel, inside, err := relPathWithin(base, target)
+	if err != nil || !inside {
 		return filepath.ToSlash(target)
 	}
 	return filepath.ToSlash(rel)
@@ -526,16 +511,51 @@ func resultPath(base, target string) string {
 
 type codeUnitSnapshot map[string][]byte
 
+type defaultGoCodeUnitChangeTracker struct {
+	pkgAbsDir   string
+	beforeUnit  *codeunit.CodeUnit
+	beforeFiles codeUnitSnapshot
+}
+
+func newDefaultGoCodeUnitChangeTracker(pkgAbsDir string) (*defaultGoCodeUnitChangeTracker, error) {
+	beforeUnit, beforeFiles, err := snapshotDefaultGoCodeUnit(pkgAbsDir)
+	if err != nil {
+		return nil, err
+	}
+	return &defaultGoCodeUnitChangeTracker{
+		pkgAbsDir:   pkgAbsDir,
+		beforeUnit:  beforeUnit,
+		beforeFiles: beforeFiles,
+	}, nil
+}
+
+func (t defaultGoCodeUnitChangeTracker) changedFiles() (*codeunit.CodeUnit, []string, error) {
+	afterUnit, afterFiles, err := snapshotDefaultGoCodeUnit(t.pkgAbsDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return afterUnit, changedFiles(t.beforeFiles, afterFiles), nil
+}
+
+func snapshotDefaultGoCodeUnit(pkgAbsDir string) (*codeunit.CodeUnit, codeUnitSnapshot, error) {
+	unit, err := codeunit.DefaultGoCodeUnit(pkgAbsDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	files, err := snapshotCodeUnitFiles(pkgAbsDir, unit)
+	if err != nil {
+		return nil, nil, err
+	}
+	return unit, files, nil
+}
+
 func snapshotCodeUnitFiles(pkgAbsDir string, unit *codeunit.CodeUnit) (codeUnitSnapshot, error) {
+	includedFiles, err := nonDirCodeUnitFiles(unit)
+	if err != nil {
+		return nil, err
+	}
 	snap := make(codeUnitSnapshot)
-	for _, absPath := range unit.IncludedFiles() {
-		info, err := os.Stat(absPath)
-		if err != nil {
-			return nil, err
-		}
-		if info.IsDir() {
-			continue
-		}
+	for _, absPath := range includedFiles {
 		rel, err := filepath.Rel(pkgAbsDir, absPath)
 		if err != nil {
 			return nil, err
@@ -547,6 +567,21 @@ func snapshotCodeUnitFiles(pkgAbsDir string, unit *codeunit.CodeUnit) (codeUnitS
 		snap[filepath.ToSlash(rel)] = b
 	}
 	return snap, nil
+}
+
+func nonDirCodeUnitFiles(unit *codeunit.CodeUnit) ([]string, error) {
+	files := make([]string, 0)
+	for _, absPath := range unit.IncludedFiles() {
+		info, err := os.Stat(absPath)
+		if err != nil {
+			return nil, err
+		}
+		if info.IsDir() {
+			continue
+		}
+		files = append(files, absPath)
+	}
+	return files, nil
 }
 
 func changedFiles(before, after codeUnitSnapshot) []string {
@@ -589,8 +624,8 @@ func resolvePackage(authorizer authdomain.Authorizer, packageArg string) (resolv
 
 	var resolved resolvedPackage
 	if filepath.IsAbs(packageArg) {
-		rel, err := filepath.Rel(module.AbsolutePath, packageArg)
-		if err != nil || !relPathInside(rel) {
+		rel, inside, err := relPathWithin(module.AbsolutePath, packageArg)
+		if err != nil || !inside {
 			return resolvedPackage{}, fmt.Errorf("package %q is outside the current module", packageArg)
 		}
 		resolved, err = resolvePackageByRelativeDir(module, rel)
@@ -621,16 +656,18 @@ func resolvePackage(authorizer authdomain.Authorizer, packageArg string) (resolv
 	return resolved, nil
 }
 
+type packageResolver func(packageArg string) (moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath string, err error)
+
 func resolvePackageByRelativeDir(module *gocode.Module, relDir string) (resolvedPackage, error) {
-	moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath, err := module.ResolvePackageByRelativeDir(relDir)
-	if err != nil {
-		return resolvedPackage{}, err
-	}
-	return newResolvedPackage(moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath), nil
+	return resolvePackageWith(module.ResolvePackageByRelativeDir, relDir)
 }
 
 func resolvePackageByImport(module *gocode.Module, importPath string) (resolvedPackage, error) {
-	moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath, err := module.ResolvePackageByImport(importPath)
+	return resolvePackageWith(module.ResolvePackageByImport, importPath)
+}
+
+func resolvePackageWith(resolve packageResolver, packageArg string) (resolvedPackage, error) {
+	moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath, err := resolve(packageArg)
 	if err != nil {
 		return resolvedPackage{}, err
 	}
@@ -656,11 +693,16 @@ func samePath(a, b string) bool {
 }
 
 func pathInside(base, target string) bool {
+	_, inside, err := relPathWithin(base, target)
+	return err == nil && inside
+}
+
+func relPathWithin(base, target string) (string, bool, error) {
 	rel, err := filepath.Rel(base, target)
 	if err != nil {
-		return false
+		return "", false, err
 	}
-	return relPathInside(rel)
+	return rel, relPathInside(rel), nil
 }
 
 func relPathInside(rel string) bool {
