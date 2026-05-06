@@ -43,9 +43,9 @@ func (refactorPresenter) Present(call llmstream.ToolCall, result *llmstream.Tool
 			JoinWithSpace: true,
 			Segments: []llmstream.Segment{
 				{Text: verb, Role: llmstream.RoleAction},
-				{Text: name, Role: llmstream.RoleCode},
+				{Text: name, Role: llmstream.RoleNormal},
 				{Text: "in", Role: llmstream.RoleAccent},
-				{Text: pkg, Role: llmstream.RoleCode},
+				{Text: pkg, Role: llmstream.RoleNormal},
 			},
 		},
 	}
@@ -54,7 +54,7 @@ func (refactorPresenter) Present(call llmstream.ToolCall, result *llmstream.Tool
 			Lines: []llmstream.Line{
 				{
 					Segments: []llmstream.Segment{
-						{Text: statusDetail, Role: llmstream.RoleSuccess},
+						{Text: statusDetail, Role: llmstream.RoleAccent},
 					},
 				},
 			},

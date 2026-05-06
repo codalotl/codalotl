@@ -247,9 +247,9 @@ func TestPresenterUsesSemanticSummaryRoles(t *testing.T) {
 		JoinWithSpace: true,
 		Segments: []llmstream.Segment{
 			{Text: "Refactoring", Role: llmstream.RoleAction},
-			{Text: "dry", Role: llmstream.RoleCode},
+			{Text: "dry", Role: llmstream.RoleNormal},
 			{Text: "in", Role: llmstream.RoleAccent},
-			{Text: "internal/foo", Role: llmstream.RoleCode},
+			{Text: "internal/foo", Role: llmstream.RoleNormal},
 		},
 	}, presentation.Summary)
 }
@@ -278,9 +278,9 @@ func TestPresenterCompleteIncludesStatusDetail(t *testing.T) {
 		JoinWithSpace: true,
 		Segments: []llmstream.Segment{
 			{Text: "Refactored", Role: llmstream.RoleAction},
-			{Text: "dry", Role: llmstream.RoleCode},
+			{Text: "dry", Role: llmstream.RoleNormal},
 			{Text: "in", Role: llmstream.RoleAccent},
-			{Text: "internal/tools/refactor", Role: llmstream.RoleCode},
+			{Text: "internal/tools/refactor", Role: llmstream.RoleNormal},
 		},
 	}, presentation.Summary)
 	paragraph, ok := presentation.Body.(llmstream.Paragraph)
@@ -289,7 +289,7 @@ func TestPresenterCompleteIncludesStatusDetail(t *testing.T) {
 		Lines: []llmstream.Line{
 			{
 				Segments: []llmstream.Segment{
-					{Text: "Refactor already applied", Role: llmstream.RoleSuccess},
+					{Text: "Refactor already applied", Role: llmstream.RoleAccent},
 				},
 			},
 		},

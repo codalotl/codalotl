@@ -62,7 +62,7 @@ Prompt-style refactors are defined by name, a Markdown prompt file in `data/`, a
 - Summary:
 	- In progress: `Refactoring docs-add in internal/foo`
 	- Complete: `Refactored docs-add in internal/foo`
-- Summary uses semantic roles: action verb as action; refactor/package details styled.
+- Summary uses semantic roles: action verb as action; refactor/package details as normal text.
 - Complete presentation includes a status detail line, like `Refactor already applied`.
 - Behavior: Append
 - Prompt-style refactors show normal descendant subagent events and do not hide descendant final messages.
