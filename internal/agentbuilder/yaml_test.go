@@ -42,6 +42,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 		coretools.ToolNameLS,
 		yamlToolVirtualEditFiles,
 		yamlOptionalToolCodalotlCLI,
+		yamlOptionalToolRefactor,
 		coretools.ToolNameShell,
 		coretools.ToolNameUpdatePlan,
 		spectools.ToolNameCheckSpecConformance,
@@ -253,6 +254,7 @@ agents:
     tools:
       - read_file
       - codalotl_cli
+      - refactor
       - shell
     skills: false
 tools: []

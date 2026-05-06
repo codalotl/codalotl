@@ -29,6 +29,7 @@ import (
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/specmd"
 	toolcli "github.com/codalotl/codalotl/internal/tools/cli"
+	toolrefactor "github.com/codalotl/codalotl/internal/tools/refactor"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 	"github.com/codalotl/codalotl/internal/tui"
 	"github.com/codalotl/codalotl/internal/updatedocs"
@@ -72,6 +73,14 @@ func (s *startupState) validate(cfg Config) error {
 func installAgentToolOverrides() {
 	agentbuilder.OverrideTool(toolcli.ToolNameCodalotlCLI, func(toolsetinterface.Options) (llmstream.Tool, error) {
 		return toolcli.NewCodalotlCLITool(newCodalotlCLICommandTree), nil
+	})
+	agentbuilder.OverrideTool(toolrefactor.ToolNameRefactor, func(opts toolsetinterface.Options) (llmstream.Tool, error) {
+		return toolrefactor.NewRefactorTool(opts.Authorizer, toolrefactor.Options{
+			AgentInvoker:   opts.AgentInvoker,
+			Model:          opts.Model,
+			LintSteps:      opts.LintSteps,
+			NewCommandTree: newCodalotlCLICommandTree,
+		}), nil
 	})
 }
 

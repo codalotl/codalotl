@@ -32,11 +32,9 @@ Notes:
 
 ## Agent Session Wiring
 
-- CLI startup installs `codalotl_cli` into `internal/agentbuilder`.
-- `internal/agentbuilder` is the source of truth for which built-in agents expose `codalotl_cli`.
-	- Generic agents expose it.
-	- Package-mode agents do not.
-- `codalotl_cli` exposes only `codalotl docs add`.
+- CLI startup installs agent tools such as `codalotl_cli` and `refactor` into `internal/agentbuilder`.
+- `codalotl_cli` exposes these commands:
+	- `codalotl docs add`
 
 ### codalotl -h, codalotl --help
 

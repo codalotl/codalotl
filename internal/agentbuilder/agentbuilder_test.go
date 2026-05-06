@@ -157,11 +157,14 @@ func TestBuildRegistry_InvokeGeneric_OpenAIUsesApplyPatch(t *testing.T) {
 	}, gotTools)
 }
 
-func TestBuildRegistry_InvokeGeneric_UsesOptionalExternalToolWhenOverridden(t *testing.T) {
+func TestBuildRegistry_InvokeGeneric_UsesOptionalExternalToolsWhenOverridden(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	overrideToolForTest(t, yamlOptionalToolCodalotlCLI, func(toolsetinterface.Options) (llmstream.Tool, error) {
 		return fakeNamedTool{name: yamlOptionalToolCodalotlCLI}, nil
+	})
+	overrideToolForTest(t, yamlOptionalToolRefactor, func(toolsetinterface.Options) (llmstream.Tool, error) {
+		return fakeNamedTool{name: yamlOptionalToolRefactor}, nil
 	})
 
 	_, gotTools := invokeAgentForModel(t, AgentGeneric, llmmodel.ProviderIDOpenAI.DefaultModel())
@@ -171,10 +174,23 @@ func TestBuildRegistry_InvokeGeneric_UsesOptionalExternalToolWhenOverridden(t *t
 		coretools.ToolNameLS,
 		coretools.ToolNameApplyPatch,
 		yamlOptionalToolCodalotlCLI,
+		yamlOptionalToolRefactor,
 		coretools.ToolNameShell,
 		coretools.ToolNameUpdatePlan,
 		spectools.ToolNameCheckSpecConformance,
 	}, gotTools)
+}
+
+func TestBuildRegistry_InvokePackageMode_DoesNotUseRefactorOverride(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	overrideToolForTest(t, yamlOptionalToolRefactor, func(toolsetinterface.Options) (llmstream.Tool, error) {
+		return fakeNamedTool{name: yamlOptionalToolRefactor}, nil
+	})
+
+	_, gotTools := invokeAgentForModel(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel())
+
+	assert.NotContains(t, gotTools, yamlOptionalToolRefactor)
 }
 
 func TestBuildRegistry_InvokeGeneric_NonOpenAIUsesEditWriteDelete(t *testing.T) {
