@@ -24,6 +24,12 @@ type goFenceBlock struct {
 	hasAPIFlag       bool
 }
 
+type markdownHeading struct {
+	level int
+	text  string
+	start int
+}
+
 func parseMarkdown(src []byte) (*parsedMarkdown, error) {
 	if err := validateTripleBacktickFences(src); err != nil {
 		return nil, err
@@ -45,6 +51,43 @@ func parseMarkdown(src []byte) (*parsedMarkdown, error) {
 		}
 	}
 	return out, nil
+}
+func removePublicAPISections(src []byte) ([]byte, error) {
+	if err := validateTripleBacktickFences(src); err != nil {
+		return nil, err
+	}
+	md := goldmark.New()
+	root := md.Parser().Parse(text.NewReader(src))
+	if root == nil {
+		return nil, errors.New("specmd: parse markdown: nil document")
+	}
+	headings := collectMarkdownHeadings(src, root)
+	var edits []textEdit
+	for i := 0; i < len(headings); {
+		h := headings[i]
+		if h.text != "Public API" {
+			i++
+			continue
+		}
+		end := len(src)
+		next := len(headings)
+		for j := i + 1; j < len(headings); j++ {
+			if headings[j].level <= h.level {
+				end = headings[j].start
+				next = j
+				break
+			}
+		}
+		edits = append(edits, textEdit{start: h.start, end: end})
+		i = next
+	}
+	if len(edits) == 0 {
+		return append([]byte(nil), src...), nil
+	}
+	for left, right := 0, len(edits)-1; left < right; left, right = left+1, right-1 {
+		edits[left], edits[right] = edits[right], edits[left]
+	}
+	return applyTextEdits(src, edits), nil
 }
 func validateTripleBacktickFences(src []byte) error {
 	// Goldmark will happily treat an unterminated fenced code block as running to EOF.
@@ -140,6 +183,33 @@ func collectGoFencesWithContext(src []byte, root ast.Node) ([]goFenceBlock, erro
 	})
 	return blocks, nil
 }
+func collectMarkdownHeadings(src []byte, root ast.Node) []markdownHeading {
+	var headings []markdownHeading
+	ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		h, ok := n.(*ast.Heading)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		lines := h.Lines()
+		if lines == nil || lines.Len() == 0 {
+			return ast.WalkContinue, nil
+		}
+		seg := lines.At(0)
+		if seg.Start < 0 || seg.Start > len(src) {
+			return ast.WalkContinue, nil
+		}
+		headings = append(headings, markdownHeading{
+			level: h.Level,
+			text:  headingText(src, h),
+			start: lineStartOffset(src, seg.Start),
+		})
+		return ast.WalkContinue, nil
+	})
+	return headings
+}
 func headingText(src []byte, h *ast.Heading) string {
 	lines := h.Lines()
 	if lines == nil || lines.Len() == 0 {
@@ -170,6 +240,19 @@ func headingText(src []byte, h *ast.Heading) string {
 		return strings.TrimSpace(s)
 	}
 	return strings.TrimSpace(string(line))
+}
+func lineStartOffset(src []byte, off int) int {
+	if off < 0 {
+		return 0
+	}
+	if off > len(src) {
+		off = len(src)
+	}
+	prevNewline := bytes.LastIndexByte(src[:off], '\n')
+	if prevNewline == -1 {
+		return 0
+	}
+	return prevNewline + 1
 }
 func isGoInfoString(info string) bool {
 	if len(info) < 2 {

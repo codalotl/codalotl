@@ -21,6 +21,91 @@ func TestRead(t *testing.T) {
 	_, err = Read(filepath.Join(dir, "NOT_SPEC.md"))
 	require.Error(t, err)
 }
+func TestWithoutPublicAPI(t *testing.T) {
+	orig := strings.Join([]string{
+		"# Pkg",
+		"",
+		"Intro.",
+		"",
+		"## Public API",
+		"",
+		"Remove me.",
+		"",
+		"### Types",
+		"",
+		"Remove nested.",
+		"",
+		"## Usage",
+		"",
+		"Keep usage.",
+		"",
+		"### Public API",
+		"",
+		"Remove nested public API.",
+		"",
+		"#### Nested",
+		"",
+		"Remove nested too.",
+		"",
+		"### More Usage",
+		"",
+		"Keep more usage.",
+		"",
+		"## Public API",
+		"",
+		"Remove second.",
+		"",
+	}, "\n")
+	expected := strings.Join([]string{
+		"# Pkg",
+		"",
+		"Intro.",
+		"",
+		"## Usage",
+		"",
+		"Keep usage.",
+		"",
+		"### More Usage",
+		"",
+		"Keep more usage.",
+		"",
+		"",
+	}, "\n")
+	s := &Spec{
+		AbsPath: filepath.Join(t.TempDir(), "SPEC.md"),
+		Body:    orig,
+	}
+	stripped, err := s.WithoutPublicAPI()
+	require.NoError(t, err)
+	require.NotNil(t, stripped)
+	assert.Equal(t, s.AbsPath, stripped.AbsPath)
+	assert.Equal(t, expected, stripped.Body)
+	assert.Equal(t, orig, s.Body)
+}
+func TestWithoutPublicAPI_NoPublicAPI(t *testing.T) {
+	orig := strings.Join([]string{
+		"# Pkg",
+		"",
+		"```go {api}",
+		"type Kept int",
+		"```",
+		"",
+		"## Public API Reference",
+		"",
+		"Kept because heading text is not exactly Public API.",
+		"",
+	}, "\n")
+	s := &Spec{
+		AbsPath: filepath.Join(t.TempDir(), "SPEC.md"),
+		Body:    orig,
+	}
+	stripped, err := s.WithoutPublicAPI()
+	require.NoError(t, err)
+	require.NotNil(t, stripped)
+	assert.Equal(t, s.AbsPath, stripped.AbsPath)
+	assert.Equal(t, orig, stripped.Body)
+	assert.Equal(t, orig, s.Body)
+}
 func TestGoCodeBlocks(t *testing.T) {
 	s := &Spec{
 		AbsPath: filepath.Join(t.TempDir(), "SPEC.md"),

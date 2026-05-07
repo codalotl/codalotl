@@ -43,6 +43,21 @@ func Read(path string) (*Spec, error) {
 	}, nil
 }
 
+// WithoutPublicAPI returns a copy of s with Public API sections removed from Body.
+func (s *Spec) WithoutPublicAPI() (*Spec, error) {
+	if s == nil {
+		return nil, errors.New("specmd: WithoutPublicAPI: nil Spec")
+	}
+	body, err := removePublicAPISections([]byte(s.Body))
+	if err != nil {
+		return nil, err
+	}
+	return &Spec{
+		AbsPath: s.AbsPath,
+		Body:    string(body),
+	}, nil
+}
+
 // Validate parses Body as a markdown file, and ensures each Go code block has valid code without syntax errors. The code is not checked for type errors. The first
 // error encountered is returned; nil if no errors.
 func (s *Spec) Validate() error {
