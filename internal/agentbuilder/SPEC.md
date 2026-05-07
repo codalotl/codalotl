@@ -29,7 +29,7 @@
     - Package-mode agent for improving public API docs using clarification Q&A.
     - Prompt lives in `internal/agentbuilder/data`.
     - May edit docs when Q&A reveals useful public API information; otherwise may leave files unchanged.
-- pr-orchestrator: toolset_core + toolset_spec + {`review`, `implement`, `review_spec_changes`}
+- pr-orchestrator: toolset_core + toolset_spec + optional `refactor` + {`review`, `implement`, `review_spec_changes`}
     - Prompt that documents a workflow that plans PR work, iterates on `SPEC.md` edits with `review_spec_changes`, delegates implementation, reviews committed implementation state, and manages commits.
 
 ## Data-Driven Agent/Tool Construction
