@@ -1412,14 +1412,10 @@ func resolveYAMLTargetPackage(opts toolsetinterface.Options, target string) (res
 			WithinSandbox: true,
 		}
 		if module, err := gocode.NewModule(absPath); err == nil {
-			relDir, err := filepath.Rel(module.AbsolutePath, absPath)
-			if err == nil {
-				relDir = normalizeModuleRelativeDir(relDir)
-				if pkg, err := module.LoadPackageByRelativeDir(relDir); err == nil {
-					resolved.ImportPath = pkg.ImportPath
-					resolved.ModuleAbsDir = module.AbsolutePath
-					resolved.PackageRelDir = relDir
-				}
+			if pkg, relDir, err := loadPackageInModule(module, absPath); err == nil {
+				resolved.ImportPath = pkg.ImportPath
+				resolved.ModuleAbsDir = module.AbsolutePath
+				resolved.PackageRelDir = relDir
 			}
 		}
 		return resolved, nil
@@ -1459,12 +1455,8 @@ func loadCurrentPackage(opts toolsetinterface.Options) (*gocode.Package, error) 
 		return nil, err
 	}
 
-	relDir, err := filepath.Rel(module.AbsolutePath, opts.GoPkgAbsDir)
-	if err != nil {
-		return nil, fmt.Errorf("determine package relative dir: %w", err)
-	}
-
-	return module.LoadPackageByRelativeDir(normalizeModuleRelativeDir(relDir))
+	pkg, _, err := loadPackageInModule(module, opts.GoPkgAbsDir)
+	return pkg, err
 }
 
 func loadResolvedPackage(target resolvedPackageTarget) (*gocode.Package, error) {

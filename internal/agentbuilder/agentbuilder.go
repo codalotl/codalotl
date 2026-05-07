@@ -36,7 +36,8 @@ const (
 	// AgentPackageModeNoContext is the registry name for the full package-mode agent without precomputed package context.
 	AgentPackageModeNoContext string = "package_mode_no_context"
 
-	AgentPackageModeDefaultContext string = "package_mode_default_context" // AgentPackageModeDefaultContext adds package initial context before user messages.
+	// AgentPackageModeDefaultContext adds package initial context before user messages.
+	AgentPackageModeDefaultContext string = "package_mode_default_context"
 
 	// AgentLimitedPackageMode is the registry name for the limited package-mode agent for targeted package work.
 	AgentLimitedPackageMode string = "limited_package_mode"
@@ -250,15 +251,22 @@ func simpleReadOnlyTools(opts toolsetinterface.Options) ([]llmstream.Tool, error
 	})
 }
 
-// packageAgentTools builds the full package-mode toolset for package-scoped agents.
-func packageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
-	opts.AgentName = AgentPackageModeNoContext
+func buildPackageModeTools(opts toolsetinterface.Options, agentName string, extraToolNames ...string) ([]llmstream.Tool, error) {
+	opts.AgentName = agentName
 	toolNames := []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
 	}
 	toolNames = append(toolNames, buildEditFileToolNames(opts.Model)...)
-	toolNames = append(toolNames,
+	toolNames = append(toolNames, extraToolNames...)
+	return buildTools(opts, toolNames)
+}
+
+// packageAgentTools builds the full package-mode toolset for package-scoped agents.
+func packageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
+	return buildPackageModeTools(
+		opts,
+		AgentPackageModeNoContext,
 		coretools.ToolNameSkillShell,
 		coretools.ToolNameUpdatePlan,
 		exttools.ToolNameDiagnostics,
@@ -272,7 +280,6 @@ func packageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) 
 		pkgtools.ToolNameUpdateUsage,
 		pkgtools.ToolNameChangeAPI,
 	)
-	return buildTools(opts, toolNames)
 }
 
 // The limitedPackageAgentTools function builds the limited package-mode toolset for targeted package work.
@@ -280,13 +287,9 @@ func packageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) 
 // It sets the effective agent name to AgentLimitedPackageMode and includes file reading, listing, model-specific edit tools, skill shell, diagnostics, lint fixing,
 // tests, and public API inspection tools.
 func limitedPackageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
-	opts.AgentName = AgentLimitedPackageMode
-	toolNames := []string{
-		coretools.ToolNameReadFile,
-		coretools.ToolNameLS,
-	}
-	toolNames = append(toolNames, buildEditFileToolNames(opts.Model)...)
-	toolNames = append(toolNames,
+	return buildPackageModeTools(
+		opts,
+		AgentLimitedPackageMode,
 		coretools.ToolNameSkillShell,
 		exttools.ToolNameDiagnostics,
 		exttools.ToolNameFixLints,
@@ -294,7 +297,6 @@ func limitedPackageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, 
 		pkgtools.ToolNameGetPublicAPI,
 		pkgtools.ToolNameClarifyPublicAPI,
 	)
-	return buildTools(opts, toolNames)
 }
 
 func buildTools(opts toolsetinterface.Options, toolNames []string) ([]llmstream.Tool, error) {
@@ -511,13 +513,7 @@ func buildGoPackageInitialContext(goPkgAbsDir string, lintSteps []lints.Step) (s
 		return "", err
 	}
 
-	relDir, err := filepath.Rel(module.AbsolutePath, goPkgAbsDir)
-	if err != nil {
-		return "", fmt.Errorf("determine package relative dir: %w", err)
-	}
-	relDir = normalizeModuleRelativeDir(relDir)
-
-	pkg, err := module.LoadPackageByRelativeDir(relDir)
+	pkg, _, err := loadPackageInModule(module, goPkgAbsDir)
 	if err != nil {
 		return "", err
 	}
@@ -554,11 +550,10 @@ func tryBuildGoPackageFallbackInitialContext(goPkgAbsDir string, loadErr error) 
 		return "", false, nil
 	}
 
-	relDir, err := filepath.Rel(module.AbsolutePath, goPkgAbsDir)
+	relDir, err := moduleRelativeDir(module, goPkgAbsDir)
 	if err != nil {
-		return "", false, fmt.Errorf("determine package relative dir: %w", err)
+		return "", false, err
 	}
-	relDir = normalizeModuleRelativeDir(relDir)
 
 	dirListing, err := buildFallbackPackageDirListing(goPkgAbsDir)
 	if err != nil {
@@ -872,11 +867,10 @@ func tryBuildClarifyGoContext(absPath string) (string, bool, error) {
 		pkgDir = filepath.Dir(absPath)
 	}
 
-	relDir, err := filepath.Rel(module.AbsolutePath, pkgDir)
+	relDir, err := moduleRelativeDir(module, pkgDir)
 	if err != nil {
-		return "", false, fmt.Errorf("determine package relative dir: %w", err)
+		return "", false, err
 	}
-	relDir = normalizeModuleRelativeDir(relDir)
 
 	pkg, err := module.LoadPackageByRelativeDir(relDir)
 	if err != nil {
@@ -897,6 +891,27 @@ func normalizeModuleRelativeDir(relDir string) string {
 		return ""
 	}
 	return relDir
+}
+
+func moduleRelativeDir(module *gocode.Module, absDir string) (string, error) {
+	relDir, err := filepath.Rel(module.AbsolutePath, absDir)
+	if err != nil {
+		return "", fmt.Errorf("determine package relative dir: %w", err)
+	}
+	return normalizeModuleRelativeDir(relDir), nil
+}
+
+func loadPackageInModule(module *gocode.Module, absDir string) (*gocode.Package, string, error) {
+	relDir, err := moduleRelativeDir(module, absDir)
+	if err != nil {
+		return nil, "", err
+	}
+
+	pkg, err := module.LoadPackageByRelativeDir(relDir)
+	if err != nil {
+		return nil, "", err
+	}
+	return pkg, relDir, nil
 }
 
 func buildClarifyGenericContext(absPath string, stat os.FileInfo, identifier string) (string, error) {
