@@ -43,7 +43,8 @@ func Read(path string) (*Spec, error) {
 	}, nil
 }
 
-// WithoutPublicAPI returns a copy of s with Public API sections removed from Body.
+// WithoutPublicAPI returns a copy of s with Public API sections removed from Body. It parses Markdown structure and returns malformed-Markdown errors (ex: an unterminated
+// triple-backtick fence), but it does not validate Go syntax inside code fences.
 func (s *Spec) WithoutPublicAPI() (*Spec, error) {
 	if s == nil {
 		return nil, errors.New("specmd: WithoutPublicAPI: nil Spec")

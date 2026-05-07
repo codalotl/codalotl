@@ -1,13 +1,16 @@
 package docubot
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/gocodecontext"
-	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gocodecontext"
+	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFindDocErrorsBatch(t *testing.T) {
@@ -40,6 +43,60 @@ func TestFindDocErrorsBatch(t *testing.T) {
 			assert.Contains(t, combinedMsgs, "Foo")
 			assert.Contains(t, combinedMsgs, "Bar")
 		}
+	})
+}
+
+func TestFindDocErrorsBatch_SendsSpecContextWithoutPublicAPI(t *testing.T) {
+	mockResponse := `{"Foo":""}`
+	conv := &responsesCompleter{responses: []string{mockResponse}}
+
+	code := dedent(`
+		// Foo does something.
+		func Foo() {}
+	`)
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := dedent(`
+			# mypkg
+
+			FindSpecMarker should be sent.
+
+			## Public API
+
+			PublicAPIMarker should not be sent.
+		`)
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		_, err = findDocErrorsBatch(pkg, &gocodecontext.Context{}, []string{"Foo"}, FindFixDocErrorsOptions{
+			BaseOptions: BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+
+		userText := conv.allUserText()
+		assert.Contains(t, userText, "FindSpecMarker should be sent.")
+		assert.NotContains(t, userText, "PublicAPIMarker should not be sent.")
+	})
+}
+
+func TestFindDocErrorsBatch_SpecMDReadErrorIsSurfaced(t *testing.T) {
+	conv := &responsesCompleter{responses: []string{`{"Foo":""}`}}
+
+	code := dedent(`
+		// Foo does something.
+		func Foo() {}
+	`)
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		err := os.Mkdir(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), 0755)
+		require.NoError(t, err)
+
+		_, err = findDocErrorsBatch(pkg, &gocodecontext.Context{}, []string{"Foo"}, FindFixDocErrorsOptions{
+			BaseOptions: BaseOptions{Completer: conv},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "SPEC.md")
+		assert.Empty(t, conv.convs)
 	})
 }
 

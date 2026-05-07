@@ -111,7 +111,7 @@ func (o *BaseOptions) userMessagef(msg string, args ...any) {
 //
 // If callers need a "dry run" mode, they can clone pkg first. If callers need more granular diffs of what was changed, they can diff pkg's changed files with the
 // updated package.
-func generateAndApplyDocs(pkg *gocode.Package, codeCtx *gocodecontext.Context, identifiers []string, redocument bool, options BaseOptions) (*gocode.Package, []string, error) {
+func generateAndApplyDocs(pkg *gocode.Package, codeCtx *gocodecontext.Context, identifiers []string, redocument bool, additionalContext string, options BaseOptions) (*gocode.Package, []string, error) {
 	if len(identifiers) == 0 {
 		return nil, nil, health.LogNewErr(options.Logger, "generateAndApplyDocs called with no identifiers")
 	}
@@ -119,17 +119,19 @@ func generateAndApplyDocs(pkg *gocode.Package, codeCtx *gocodecontext.Context, i
 	// Make prompt:
 	prompt := promptAddDocumentation()
 	codeContextStr := codeCtx.Code()
+	llmContextStr := additionalContext + codeContextStr
 	targetIdentifiersInstructions := llmInstructionsForIdentifiers(pkg, identifiers, missingFieldDocs(pkg, identifiers))
 
 	// Logging:
 	promptToks := countTokens([]byte(prompt))
+	additionalContextToks := countTokens([]byte(additionalContext))
 	codeContextToks := countTokens([]byte(codeContextStr))
 	instructionsToks := countTokens([]byte(targetIdentifiersInstructions))
-	options.Log("counting tokens", "prompt", promptToks, "code", codeContextToks, "instructions", instructionsToks)
-	options.userMessagef("> Requesting docs for %d identifiers: %s (%s)", len(identifiers), strings.Join(identifiers, ", "), formatTokenCount(promptToks+codeContextToks+instructionsToks))
+	options.Log("counting tokens", "prompt", promptToks, "additional_context", additionalContextToks, "code", codeContextToks, "instructions", instructionsToks)
+	options.userMessagef("> Requesting docs for %d identifiers: %s (%s)", len(identifiers), strings.Join(identifiers, ", "), formatTokenCount(promptToks+additionalContextToks+codeContextToks+instructionsToks))
 
 	// Get documentation snippets from LLM:
-	responseText, err := completeText(prompt, codeContextStr+targetIdentifiersInstructions, options)
+	responseText, err := completeText(prompt, llmContextStr+targetIdentifiersInstructions, options)
 	if err != nil {
 		return nil, nil, health.LogWrappedErr(options.Logger, "failed to get documentation from LLM", err)
 	}
@@ -163,7 +165,7 @@ func generateAndApplyDocs(pkg *gocode.Package, codeCtx *gocodecontext.Context, i
 
 	// If there were non-partial-rejection snippet errors, ask the LLM to fix them:
 	if len(hardSnippetErrors) > 0 {
-		reUpdatedPkg, _, moreSnippetErrors, moreUpdatedFiles, err := fixDocumentation(pkg, hardSnippetErrors, codeContextStr, redocument, options)
+		reUpdatedPkg, _, moreSnippetErrors, moreUpdatedFiles, err := fixDocumentation(pkg, hardSnippetErrors, llmContextStr, redocument, options)
 
 		if reUpdatedPkg != nil {
 			pkg = reUpdatedPkg

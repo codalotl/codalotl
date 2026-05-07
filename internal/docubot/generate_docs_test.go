@@ -29,7 +29,7 @@ func TestGenerateAndApplyDocs_Basic(t *testing.T) {
 		// A minimal, empty code context is sufficient for the happy-path test.
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Foo"}, false, BaseOptions{Completer: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Foo"}, false, "", BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")
@@ -75,7 +75,7 @@ func TestGenerateAndApplyDocs_RedocumentFalse(t *testing.T) {
 		// A minimal, empty code context is sufficient for the happy-path test.
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, false, BaseOptions{Completer: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, false, "", BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")
@@ -111,7 +111,7 @@ func TestGenerateAndApplyDocs_RedocumentTrue(t *testing.T) {
 		// A minimal, empty code context is sufficient for the happy-path test.
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, true, BaseOptions{Completer: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"FooUndoc", "FooDoc"}, true, "", BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")
@@ -174,7 +174,7 @@ func TestGenerateAndApplyDocs_Fix(t *testing.T) {
 		codeCtx := gocodecontext.NewContext(nil)
 
 		identifiers := []string{"Foo1", "Bar1", "Foo2", "Bar2"}
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Completer: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, "", BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 
@@ -215,7 +215,7 @@ func TestGenerateAndApplyDocs_FixDoesntFix(t *testing.T) {
 		codeCtx := gocodecontext.NewContext(nil)
 
 		identifiers := []string{"Foo1"}
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Completer: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, "", BaseOptions{Completer: conv})
 
 		assert.ErrorIs(t, err, errSomeSnippetsFailed)
 		assert.NotNil(t, updatedPkg)
@@ -267,7 +267,7 @@ func TestGenerateAndApplyDocs_FixDoesntFixAfterPartialSuccess(t *testing.T) {
 		codeCtx := gocodecontext.NewContext(nil)
 
 		identifiers := []string{"Foo1", "Foo2", "Foo3"}
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, BaseOptions{Completer: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, "", BaseOptions{Completer: conv})
 
 		assert.ErrorIs(t, err, errSomeSnippetsFailed)
 		require.NotNil(t, updatedPkg)
@@ -312,7 +312,7 @@ func TestGenerateAndApplyDocs_SendsFieldInstructions(t *testing.T) {
 	gocodetesting.WithCode(t, originalCode, func(pkg *gocode.Package) {
 		codeCtx := gocodecontext.NewContext(nil)
 
-		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Person"}, false, BaseOptions{Completer: conv})
+		updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, []string{"Person"}, false, "", BaseOptions{Completer: conv})
 		require.NoError(t, err)
 		require.NotNil(t, updatedPkg)
 		assert.Contains(t, updatedFiles, "code.go")

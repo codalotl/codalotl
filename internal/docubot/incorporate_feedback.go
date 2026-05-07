@@ -27,6 +27,11 @@ func incorporateFeedback(pkg *gocode.Package, identifierFeedback []IdentifierFee
 
 	// TODO: proper handling of IncludeXxx for GroupOptions
 
+	specContext, err := specContextForPackage(pkg, nil)
+	if err != nil {
+		return nil, options.LogWrappedErr("incorporate_feedback.spec_context", err)
+	}
+
 	groups, err := gocodecontext.Groups(pkg.Module, pkg, gocodecontext.GroupOptions{IncludePackageDocs: false, IncludeTestFiles: onlyTests, IncludeExternalDeps: true})
 	if err != nil {
 		return nil, err
@@ -61,7 +66,7 @@ func incorporateFeedback(pkg *gocode.Package, identifierFeedback []IdentifierFee
 		}
 
 		instructions := instructionsForIncorporateFeedback(feedbacksForContext)
-		llmUserMessage := ctx.Code() + instructions
+		llmUserMessage := specContext + ctx.Code() + instructions
 
 		options.userMessagef("> Requesting docs for %d identifiers: %s (%s)", len(ids), strings.Join(ids, ", "), formatTokenCount(countTokens([]byte(llmUserMessage))))
 

@@ -86,6 +86,11 @@ func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool
 		}
 	}
 
+	specContext, err := specContextForPackage(pkg, nil)
+	if err != nil {
+		return nil, options.LogWrappedErr("improve_docs.spec_context", err)
+	}
+
 	// Clone the original package for diffing at the end:
 	// NOTE: Can't use clonedPkg below because those are mutated (new docs are generated/applied to them).
 	clonedForDiff, err := pkg.Clone()
@@ -129,7 +134,7 @@ func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool
 		options.userMessagef("-------------------------")
 
 		// Generate new docs, apply to clone:
-		updatedClone, _, genErr := generateAndApplyDocs(clonedPkg, ctx, ids, true, baseOpts)
+		updatedClone, _, genErr := generateAndApplyDocs(clonedPkg, ctx, ids, true, specContext, baseOpts)
 		if genErr != nil && genErr != errNoSnippets && genErr != errSomeSnippetsFailed {
 			return nil, options.LogWrappedErr("improve_docs_for_identifiers.generate_and_apply_docs", genErr, "ids", idsStr)
 		}
@@ -178,7 +183,7 @@ func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool
 		}
 
 		// Pick the better docs for each identifier:
-		updatedChoices, err := chooseBetterDocsForIdentifiers(ctx, choices, options)
+		updatedChoices, err := chooseBetterDocsForIdentifiers(ctx, choices, specContext, options)
 		if err != nil {
 			return nil, options.LogWrappedErr("improve_docs_for_identifiers.choose_better_docs_for_identifiers", err, "ids", idsStr)
 		}
@@ -248,13 +253,13 @@ func improveDocsForIDs(pkg *gocode.Package, identifiers []string, onlyTests bool
 //
 // All identifiers in choices should be in context so that the LLM can see function bodies. Callers may choose to create a context where choices' identifiers have
 // no docs to avoid tainting; this function will use context as-is.
-func chooseBetterDocsForIdentifiers(ctx *gocodecontext.Context, choices []betterDocs, options ImproveDocsOptions) ([]betterDocs, error) {
+func chooseBetterDocsForIdentifiers(ctx *gocodecontext.Context, choices []betterDocs, additionalContext string, options ImproveDocsOptions) ([]betterDocs, error) {
 
 	// Build the instructions section that enumerates the identifiers and their documentation options.
 	instructions := chooseBetterDocsInstructions(choices)
 
 	// Combine the code context with the instructions that list the choices.
-	llmUserMessage := ctx.Code() + instructions
+	llmUserMessage := additionalContext + ctx.Code() + instructions
 
 	// Send to LLM:
 	prompt := promptChooseBestDocs()

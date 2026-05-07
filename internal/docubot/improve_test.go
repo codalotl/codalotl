@@ -1,13 +1,16 @@
 package docubot
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/gocodecontext"
-	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gocodecontext"
+	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestImproveDocs(t *testing.T) {
@@ -80,7 +83,7 @@ func TestChooseBetterDocsForIdentifiers(t *testing.T) {
 	// needs ctx.Code(), which returns an empty string on a zero-value Context.
 	ctx := &gocodecontext.Context{}
 
-	updated, err := chooseBetterDocsForIdentifiers(ctx, choices, ImproveDocsOptions{BaseOptions: BaseOptions{Completer: conv}})
+	updated, err := chooseBetterDocsForIdentifiers(ctx, choices, "", ImproveDocsOptions{BaseOptions: BaseOptions{Completer: conv}})
 	assert.NoError(t, err)
 
 	// Verify that the best field for each identifier was populated as expected.
@@ -98,4 +101,53 @@ func TestChooseBetterDocsForIdentifiers(t *testing.T) {
 		assert.Contains(t, joined, "Foo")
 		assert.Contains(t, joined, "Bar")
 	}
+}
+
+func TestImproveDocs_SendsOriginalSpecContextForGenerationAndChoosing(t *testing.T) {
+	code := dedent(`
+		// Foo does something.
+		func Foo() {}
+	`)
+	improvedSnippet := dedentWithBackticks(`
+		// Foo follows the package specification.
+		func Foo()
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + improvedSnippet,
+		`{"Foo":{"best":"A","reason":"Uses the spec"}}`,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := dedent(`
+			# mypkg
+
+			OriginalSpecMarker should be sent to improve-docs requests.
+
+			## Public API
+
+			PublicAPIMarker should not be sent.
+
+			## Behavior
+
+			ImproveBehaviorMarker should be sent.
+		`)
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		_, err = ImproveDocs(pkg, []string{"Foo"}, ImproveDocsOptions{
+			BaseOptions: BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		require.Len(t, conv.convs, 2)
+
+		generationUserText := strings.Join(conv.convs[0].userMessagesText, "\n")
+		assert.Contains(t, generationUserText, "OriginalSpecMarker should be sent to improve-docs requests.")
+		assert.Contains(t, generationUserText, "ImproveBehaviorMarker should be sent.")
+		assert.NotContains(t, generationUserText, "PublicAPIMarker should not be sent.")
+
+		choosingUserText := strings.Join(conv.convs[1].userMessagesText, "\n")
+		assert.Contains(t, choosingUserText, "OriginalSpecMarker should be sent to improve-docs requests.")
+		assert.Contains(t, choosingUserText, "ImproveBehaviorMarker should be sent.")
+		assert.NotContains(t, choosingUserText, "PublicAPIMarker should not be sent.")
+	})
 }

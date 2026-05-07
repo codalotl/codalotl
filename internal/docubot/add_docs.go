@@ -412,12 +412,18 @@ func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOpt
 	fakeInstructions := llmInstructionsForIdentifiers(pkg, fakeIdentifiers, nil)
 	tokenBudget -= countTokens([]byte(fakeInstructions))
 
+	specContext, err := specContextForPackage(pkg, contextModule)
+	if err != nil {
+		return nil, nil, options.LogWrappedErr("add_docs_partial.spec_context", err)
+	}
+	tokenBudget -= countTokens([]byte(specContext))
+
 	codeCtx, identifiers, err := contextForAddDocsPartialWithModule(pkg, idents, tokenBudget, options.DocumentTestFiles, contextModule, options.BaseOptions)
 	if err != nil {
 		return nil, nil, options.LogWrappedErr("add_docs_partial.new_context_for_documentation", err)
 	}
 
-	updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, options.BaseOptions)
+	updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, specContext, options.BaseOptions)
 	if err != nil {
 		return nil, sliceToSet(updatedFiles), options.LogWrappedErr("add_docs_partial.generate_and_apply_docs", err)
 	}

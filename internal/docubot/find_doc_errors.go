@@ -133,6 +133,11 @@ type IdentifierFeedback struct {
 //
 // An error is returned if the LLM call fails or the response cannot be parsed as the expected JSON.
 func findDocErrorsBatch(pkg *gocode.Package, ctx *gocodecontext.Context, identifiers []string, options FindFixDocErrorsOptions) ([]IdentifierFeedback, error) {
+	specContext, err := specContextForPackage(pkg, nil)
+	if err != nil {
+		return nil, options.LogWrappedErr("find_doc_errors.spec_context", err)
+	}
+
 	codeContext := ctx.Code()
 	prompt := promptFindErrors()
 
@@ -142,7 +147,7 @@ func findDocErrorsBatch(pkg *gocode.Package, ctx *gocodecontext.Context, identif
 	}
 
 	// Talk to LLM:
-	responseText, err := completeText(prompt, codeContext+instructionsFindIdentifiers, options.BaseOptions)
+	responseText, err := completeText(prompt, specContext+codeContext+instructionsFindIdentifiers, options.BaseOptions)
 	if err != nil {
 		return nil, options.LogWrappedErr("failed to polish documentation with LLM", err)
 	}

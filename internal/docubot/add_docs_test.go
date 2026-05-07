@@ -1044,6 +1044,44 @@ func TestAddDocs_Fix(t *testing.T) {
 	})
 }
 
+func TestAddDocs_FixSendsSpecContext(t *testing.T) {
+	code := dedent(`
+		type Foo int
+	`)
+	badSnippet := dedentWithBackticks(`
+		// Foo follows the package specification.
+		type Foo int // Foo follows the package specification.
+	`)
+	goodSnippet := dedentWithBackticks(`
+		// Foo follows the package specification.
+		type Foo int
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + badSnippet,
+		"Here are the documentation snippets:\n\n" + goodSnippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := dedent(`
+			# mypkg
+
+			FixSpecMarker should be sent to snippet repair requests.
+		`)
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		_, err = AddDocs(pkg, AddDocsOptions{
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions:        BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		require.Len(t, conv.convs, 2)
+
+		fixUserText := strings.Join(conv.convs[1].userMessagesText, "\n")
+		assert.Contains(t, fixUserText, "FixSpecMarker should be sent to snippet repair requests.")
+	})
+}
+
 func TestAddDocs_SendsContext(t *testing.T) {
 	// ---------------------------------------------------------------------
 	// This test verifies that AddDocs sends complete context to the LLM,
@@ -1188,6 +1226,165 @@ func UseDep(d otherpkg.DepType) otherpkg.DepType {
 		assert.Contains(t, combinedMsgs, "Select documentation from dependency packages")
 		assert.Contains(t, combinedMsgs, "// "+mod.Name+"/otherpkg:")
 		assert.Contains(t, combinedMsgs, "type DepType")
+	})
+}
+
+func TestAddDocs_SendsSpecContextWithoutPublicAPI(t *testing.T) {
+	code := dedent(`
+		func Foo() {}
+	`)
+	snippet := dedentWithBackticks(`
+		// Foo follows the package specification.
+		func Foo()
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := dedent(`
+			# mypkg
+
+			SpecOverviewMarker should be sent.
+
+			## Public API
+
+			PublicAPIMarker should not be sent.
+
+			` + "```go" + `
+			func Foo()
+			` + "```" + `
+
+			## Runtime Behavior
+
+			RuntimeBehaviorMarker should be sent.
+		`)
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		_, err = AddDocs(pkg, AddDocsOptions{
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions:        BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+
+		userText := conv.allUserText()
+		assert.Contains(t, userText, "Target package SPEC.md")
+		assert.Contains(t, userText, "SpecOverviewMarker should be sent.")
+		assert.Contains(t, userText, "RuntimeBehaviorMarker should be sent.")
+		assert.NotContains(t, userText, "PublicAPIMarker should not be sent.")
+	})
+}
+
+func TestAddDocs_OnlyDocumentExportedIdentifier_UsesOriginalModuleForScratchSpecContext(t *testing.T) {
+	code := dedent(`
+		func Public() {}
+	`)
+	snippet := dedentWithBackticks(`
+		// Public follows the real package specification.
+		func Public()
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := dedent(`
+			# mypkg
+
+			RealPackageSpecMarker should be available in scratch public-only flows.
+		`)
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		_, err = AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+			ExcludeIdentifiers:              []string{gocode.PackageIdentifier},
+			BaseOptions:                     BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+
+		assert.Contains(t, conv.allUserText(), "RealPackageSpecMarker should be available in scratch public-only flows.")
+	})
+}
+
+func TestAddDocs_SpecMDReadErrorIsSurfaced(t *testing.T) {
+	code := dedent(`
+		func Foo() {}
+	`)
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		err := os.Mkdir(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), 0755)
+		require.NoError(t, err)
+
+		_, err = AddDocs(pkg, AddDocsOptions{
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions:        BaseOptions{Completer: conv},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "SPEC.md")
+		assert.Empty(t, conv.convs)
+	})
+}
+
+func TestAddDocs_SpecMDParseErrorIsSurfaced(t *testing.T) {
+	code := dedent(`
+		func Foo() {}
+	`)
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := strings.Join([]string{
+			"# mypkg",
+			"",
+			"## Public API",
+			"",
+			"```go",
+			"func Foo()",
+		}, "\n")
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		_, err = AddDocs(pkg, AddDocsOptions{
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions:        BaseOptions{Completer: conv},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unterminated")
+		assert.Empty(t, conv.convs)
+	})
+}
+
+func TestAddDocs_SpecMDCountsAgainstTokenBudget(t *testing.T) {
+	code := dedent(`
+		func Foo() {}
+	`)
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := "# mypkg\n\n" + strings.Repeat("BudgetMarker should count against the request budget.\n", 2000)
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		specContext, err := specContextForPackage(pkg, nil)
+		require.NoError(t, err)
+		require.NotEmpty(t, specContext)
+
+		fakeIdentifiers := make([]string, 0, 20)
+		for range 20 {
+			fakeIdentifiers = append(fakeIdentifiers, "someFakeIdentifier")
+		}
+		fakeInstructions := llmInstructionsForIdentifiers(pkg, fakeIdentifiers, nil)
+		tokenBudget := promptTokenLen + countTokens([]byte(fakeInstructions)) + countTokens([]byte(specContext)) + 1
+
+		_, err = AddDocs(pkg, AddDocsOptions{
+			TokenBudget:        tokenBudget,
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions:        BaseOptions{Completer: conv},
+		})
+		require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+		assert.Empty(t, conv.convs)
 	})
 }
 

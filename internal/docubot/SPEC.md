@@ -17,6 +17,10 @@ Docubot offers functions to add documentation to Go packages, improve existing d
     - Also written to logs, so that logs have context about what is happening.
 - Debug/digansotic/error logs use logger / health context.
 
+## LLM Context
+
+LLM-backed package documentation operations include the package's `SPEC.md`, if present, with `## Public API` removed.
+
 ## Definitions and Mechanics
 
 Definitions:
@@ -50,7 +54,6 @@ Mechanics:
 The `AddDocs` function adds missing documentation to a package by directly editing the package's files.
 - By default, it documents all identifiers, excluding test files. It does not document generated identifiers, anonymous identifiers, or init identifiers.
 - It never removes, fixes, or edits an existing comment (other than reflowing).
-- LLM context includes the package's `SPEC.md`, if present, with `## Public API` removed.
 
 Options include:
 - `DocumentTestFiles`: if true, we also document test files, including black-box tests (package somepkg_test). Does not document TestXxx/BenchmarkXxx/etc functions.

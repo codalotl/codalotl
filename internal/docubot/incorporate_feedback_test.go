@@ -1,12 +1,15 @@
 package docubot
 
 import (
-	"github.com/codalotl/codalotl/internal/gocode"
-	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gocodetesting"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIncorporateFeedbackSuccess(t *testing.T) {
@@ -65,6 +68,42 @@ func TestIncorporateFeedbackSuccess(t *testing.T) {
 				assert.Contains(t, docs[0].Doc, "prints hello")
 			}
 		}
+	})
+}
+
+func TestIncorporateFeedback_SendsSpecContextWithoutPublicAPI(t *testing.T) {
+	snippet := dedentWithBackticks(`
+		// Foo prints hello.
+		func Foo() {}
+	`)
+	conv := &responsesCompleter{responses: []string{snippet}}
+
+	code := dedent(`
+		// Foo prints hi.
+		func Foo() {}
+	`)
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specBody := dedent(`
+			# mypkg
+
+			IncorporateSpecMarker should be sent.
+
+			## Public API
+
+			PublicAPIMarker should not be sent.
+		`)
+		err := os.WriteFile(filepath.Join(pkg.AbsolutePath(), "SPEC.md"), []byte(specBody), 0644)
+		require.NoError(t, err)
+
+		_, err = incorporateFeedback(pkg, []IdentifierFeedback{{Identifier: "Foo", Feedback: "Comment should say hello not hi"}}, false, FindFixDocErrorsOptions{
+			BaseOptions: BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+
+		userText := conv.allUserText()
+		assert.Contains(t, userText, "IncorporateSpecMarker should be sent.")
+		assert.NotContains(t, userText, "PublicAPIMarker should not be sent.")
 	})
 }
 

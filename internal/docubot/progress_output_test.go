@@ -49,7 +49,7 @@ func TestGenerateAndApplyDocs_UsesInjectedProgressWriter(t *testing.T) {
 		var logBuf bytes.Buffer
 		logger := slog.New(slog.NewTextHandler(&logBuf, nil))
 
-		_, _, err := generateAndApplyDocs(pkg, codeCtx, []string{"Foo"}, false, BaseOptions{
+		_, _, err := generateAndApplyDocs(pkg, codeCtx, []string{"Foo"}, false, "", BaseOptions{
 			Completer: conv,
 			Out:       &outBuf,
 			Ctx:       health.NewCtx(logger),
