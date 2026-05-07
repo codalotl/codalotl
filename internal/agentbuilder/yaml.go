@@ -30,149 +30,175 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// YAML constants define built-in YAML names, modes, result formats, and optional tool names.
 const (
-	yamlAgentModeGeneric        = "generic"
-	yamlAgentModePackage        = "package"
-	yamlDefaultConfigPath       = "data/config.yml"
-	yamlPromptBase              = "base"
-	yamlPromptPackageBase       = "package-base"
-	yamlPromptLimitedPkgBase    = "limited-package-base"
-	yamlToolVirtualEditFiles    = "edit_files"
-	yamlRelationDirectImport    = "direct_import_of_caller"
-	yamlRelationDirectImporter  = "direct_importer_of_caller"
-	yamlResultFormatText        = "text"
-	yamlResultFormatJSON        = "json"
-	yamlOptionalToolCodalotlCLI = "codalotl_cli"
-	yamlOptionalToolRefactor    = "refactor"
+	yamlAgentModeGeneric        = "generic"                   // Generic mode builds an agent without package-mode authorization.
+	yamlAgentModePackage        = "package"                   // Package mode builds an agent with package-mode authorization and package tooling.
+	yamlDefaultConfigPath       = "data/config.yml"           // Default config path identifies the embedded YAML configuration.
+	yamlPromptBase              = "base"                      // Base prompt selects the generic built-in system prompt.
+	yamlPromptPackageBase       = "package-base"              // Package base prompt selects the full Go package-mode system prompt.
+	yamlPromptLimitedPkgBase    = "limited-package-base"      // Limited package base prompt selects the limited Go package-mode system prompt.
+	yamlToolVirtualEditFiles    = "edit_files"                // Edit files is a virtual tool name expanded to model-specific edit tools.
+	yamlRelationDirectImport    = "direct_import_of_caller"   // Direct import relation requires the target package to be imported by the caller package.
+	yamlRelationDirectImporter  = "direct_importer_of_caller" // Direct importer relation requires the target package to import the caller package.
+	yamlResultFormatText        = "text"                      // Text result format returns the subagent answer unchanged.
+	yamlResultFormatJSON        = "json"                      // JSON result format parses and re-emits the subagent answer as normalized JSON.
+	yamlOptionalToolCodalotlCLI = "codalotl_cli"              // Codalotl CLI is an allowlisted optional external tool.
+	yamlOptionalToolRefactor    = "refactor"                  // Refactor is an allowlisted optional external tool.
 )
 
 //go:embed data/*
 var embeddedYAMLData embed.FS
 
+// A yamlRegistrySpec is the top-level YAML registry document decoded from an agents and tools file.
 type yamlRegistrySpec struct {
-	Agents []yamlAgentSpec `yaml:"agents"`
-	Tools  []yamlToolSpec  `yaml:"tools"`
+	Agents []yamlAgentSpec `yaml:"agents"` // Agents are the agent definitions to validate and register in file order.
+	Tools  []yamlToolSpec  `yaml:"tools"`  // Tools are the tool definitions to validate and register before agents.
 }
 
+// A yamlAgentSpec describes one agent loaded from YAML.
 type yamlAgentSpec struct {
-	Name                      string          `yaml:"name"`
-	Prompts                   []yamlPromptRef `yaml:"prompts"`
-	Tools                     []string        `yaml:"tools"`
-	Mode                      string          `yaml:"mode"`
-	IncludePackageModeContext bool            `yaml:"include_package_mode_context"`
-	Skills                    *bool           `yaml:"skills"`
-	AgentsMD                  *bool           `yaml:"agentsmd"`
+	Name    string          `yaml:"name"`    // Name is the stable agent identifier.
+	Prompts []yamlPromptRef `yaml:"prompts"` // Prompts are the ordered prompt blocks used to build the system prompt.
+	Tools   []string        `yaml:"tools"`   // Tools are the ordered tool names available to the agent.
+	Mode    string          `yaml:"mode"`    // Mode selects whether the agent runs in generic or package mode.
+
+	// IncludePackageModeContext adds environment and initial package context for package-mode agents.
+	IncludePackageModeContext bool `yaml:"include_package_mode_context"`
+
+	// Skills enables skill instructions when true or omitted.
+	Skills *bool `yaml:"skills"`
+
+	// AgentsMD enables AGENTS.md initial-turn context when true or omitted.
+	AgentsMD *bool `yaml:"agentsmd"`
 }
 
+// yamlPromptRef selects one text source for a YAML agent prompt.
 type yamlPromptRef struct {
-	Name string `yaml:"name"`
-	File string `yaml:"file"`
-	Text string `yaml:"text"`
+	Name string `yaml:"name"` // Name refers to a named prompt.
+	File string `yaml:"file"` // File is a prompt file path resolved relative to the YAML file.
+	Text string `yaml:"text"` // Text is literal prompt text.
 }
 
+// A yamlToolSpec describes one tool entry loaded from a YAML registry spec.
 type yamlToolSpec struct {
-	Name        string                       `yaml:"name"`
-	Description string                       `yaml:"description"`
-	Parameters  map[string]yamlToolParameter `yaml:"parameters"`
-	Presenter   *yamlPresenterSpec           `yaml:"presenter"`
-	Command     *yamlCommandSpec             `yaml:"command"`
-	Subagent    *yamlSubagentSpec            `yaml:"subagent"`
+	Name        string                       `yaml:"name"`        // Name is the required registered tool name.
+	Description string                       `yaml:"description"` // Description is the user-facing tool description exposed to the LLM.
+	Parameters  map[string]yamlToolParameter `yaml:"parameters"`  // Parameters defines named tool parameters keyed by parameter name.
+	Presenter   *yamlPresenterSpec           `yaml:"presenter"`   // Presenter is the optional semantic presentation configuration.
+	Command     *yamlCommandSpec             `yaml:"command"`     // Command configures a command tool and is mutually exclusive with Subagent.
+	Subagent    *yamlSubagentSpec            `yaml:"subagent"`    // Subagent configures a subagent tool and is mutually exclusive with Command.
 }
 
+// yamlToolParameter describes one named parameter for a YAML-defined tool.
 type yamlToolParameter struct {
-	Type        string `yaml:"type"`
-	Description string `yaml:"description"`
-	Required    bool   `yaml:"required"`
+	Type        string `yaml:"type"`        // Type is the JSON-schema parameter type to normalize.
+	Description string `yaml:"description"` // Description is the user-facing parameter description.
+	Required    bool   `yaml:"required"`    // Required reports whether tool calls must include a non-null value.
 }
 
+// yamlCommandSpec describes a templated command to run for a YAML-defined tool or message.
 type yamlCommandSpec struct {
-	Cmd  string   `yaml:"cmd"`
-	Args []string `yaml:"args"`
-	CWD  string   `yaml:"cwd"`
+	Cmd  string   `yaml:"cmd"`  // Cmd is the required executable or command name template.
+	Args []string `yaml:"args"` // Args are optional argument templates rendered in order.
+	CWD  string   `yaml:"cwd"`  // CWD is an optional working-directory template.
 }
 
+// A yamlSubagentSpec describes a YAML tool that invokes another agent.
 type yamlSubagentSpec struct {
-	Name                string                           `yaml:"name"`
-	Package             string                           `yaml:"package"`
-	Message             string                           `yaml:"message"`
-	Messages            []yamlSubagentMessageSpec        `yaml:"messages"`
-	ResultFormat        string                           `yaml:"result_format"`
+	Name         string                    `yaml:"name"`          // Name is the target agent name.
+	Package      string                    `yaml:"package"`       // Package names the string parameter that supplies the target package.
+	Message      string                    `yaml:"message"`       // Message is a single user message template.
+	Messages     []yamlSubagentMessageSpec `yaml:"messages"`      // Messages are the ordered user message sources sent to the subagent.
+	ResultFormat string                    `yaml:"result_format"` // ResultFormat selects how the final subagent answer is normalized.
+
+	// PackageRestrictions constrains package targets for package-mode subagents.
 	PackageRestrictions *yamlSubagentPackageRestrictions `yaml:"package_restrictions"`
 }
 
+// yamlSubagentMessageSpec selects one source for a user message sent to a YAML subagent.
 type yamlSubagentMessageSpec struct {
-	Name    string           `yaml:"name"`
-	File    string           `yaml:"file"`
-	Text    string           `yaml:"text"`
-	Command *yamlCommandSpec `yaml:"command"`
+	Name    string           `yaml:"name"`    // Name refers to a named message template.
+	File    string           `yaml:"file"`    // File is a message template file resolved relative to the YAML file.
+	Text    string           `yaml:"text"`    // Text is a literal message template.
+	Command *yamlCommandSpec `yaml:"command"` // Command runs a templated command whose output becomes the message body.
 }
 
+// yamlSubagentPackageRestrictions configures package-target constraints for YAML subagent tools.
 type yamlSubagentPackageRestrictions struct {
-	DisallowSelf        bool   `yaml:"disallow_self"`
-	Relation            string `yaml:"relation"`
-	AllowOutsideSandbox bool   `yaml:"allow_outside_sandbox"`
-	RequirePackageMode  bool   `yaml:"require_package_mode"`
+	DisallowSelf        bool   `yaml:"disallow_self"`         // DisallowSelf rejects the caller package as the target package.
+	Relation            string `yaml:"relation"`              // Relation requires a direct import relationship; empty means no relationship restriction.
+	AllowOutsideSandbox bool   `yaml:"allow_outside_sandbox"` // AllowOutsideSandbox permits resolved target packages outside the sandbox.
+	RequirePackageMode  bool   `yaml:"require_package_mode"`  // RequirePackageMode requires the caller to be a package-mode agent.
 }
 
+// A yamlNormalizedToolSpec describes a validated YAML-defined tool ready for registration.
 type yamlNormalizedToolSpec struct {
-	Name              string
-	Description       string
-	Parameters        map[string]yamlNormalizedParameter
-	Presenter         *yamlNormalizedPresenterSpec
-	Command           *yamlCommandSpec
-	Subagent          *yamlNormalizedSubagentSpec
-	TargetPackageMode bool
+	Name              string                             // Name is the registered tool name.
+	Description       string                             // Description is the user-facing tool description exposed to the LLM.
+	Parameters        map[string]yamlNormalizedParameter // Parameters are normalized parameter definitions keyed by parameter name.
+	Presenter         *yamlNormalizedPresenterSpec       // Presenter is the optional normalized semantic presentation configuration.
+	Command           *yamlCommandSpec                   // Command is the command-tool configuration; it is nil for subagent tools.
+	Subagent          *yamlNormalizedSubagentSpec        // Subagent is the subagent-tool configuration; it is nil for command tools.
+	TargetPackageMode bool                               // TargetPackageMode reports whether Subagent targets a package-mode agent.
 }
 
+// yamlNormalizedParameter describes a validated YAML tool parameter.
 type yamlNormalizedParameter struct {
-	Type        string
-	Description string
-	Required    bool
+	Type        string // Type is the normalized JSON-schema parameter type.
+	Description string // Description is the user-facing parameter description.
+	Required    bool   // Required reports whether tool calls must include a non-null value.
 }
 
+// A yamlNormalizedSubagentSpec describes a validated YAML subagent tool target.
 type yamlNormalizedSubagentSpec struct {
-	Name                string
-	Package             string
-	Messages            []yamlNormalizedSubagentMessageSpec
-	ResultFormat        string
-	PackageRestrictions *yamlSubagentPackageRestrictions
+	Name                string                              // Name is the target agent name.
+	Package             string                              // Package names the string parameter that supplies the target package.
+	Messages            []yamlNormalizedSubagentMessageSpec // Messages are the ordered user messages sent to the subagent.
+	ResultFormat        string                              // ResultFormat is the normalized format applied to the final subagent answer.
+	PackageRestrictions *yamlSubagentPackageRestrictions    // PackageRestrictions constrains package targets for package-mode subagents.
 }
 
+// yamlNormalizedSubagentMessageSpec is a validated subagent message source.
 type yamlNormalizedSubagentMessageSpec struct {
-	Text    string
-	Command *yamlCommandSpec
+	Text    string           // Text is the resolved message template used when Command is nil.
+	Command *yamlCommandSpec // Command is the validated command used to produce the message body when non-nil.
 }
 
+// A yamlPreparedAgent contains a validated YAML agent ready for registry registration.
 type yamlPreparedAgent struct {
-	Definition agentregistry.Definition
+	Definition agentregistry.Definition // Definition is the agent registry definition built from the YAML agent spec.
 }
 
+// yamlCommandTool implements a command-backed YAML-defined tool.
 type yamlCommandTool struct {
-	info      llmstream.ToolInfo
-	presenter llmstream.Presenter
-	spec      *yamlCommandSpec
-	params    map[string]yamlNormalizedParameter
-	opts      toolsetinterface.Options
+	info      llmstream.ToolInfo                 // Info is the tool metadata exposed to the model.
+	presenter llmstream.Presenter                // Presenter formats tool calls and results when the YAML spec configures one.
+	spec      *yamlCommandSpec                   // Spec is the command template to render and run.
+	params    map[string]yamlNormalizedParameter // Params are the normalized parameter definitions used to parse tool calls.
+	opts      toolsetinterface.Options           // Opts are the toolset options used while rendering templates and running the command.
 }
 
+// A yamlSubagentTool implements a YAML-defined tool by invoking another agent.
 type yamlSubagentTool struct {
-	info              llmstream.ToolInfo
-	presenter         llmstream.Presenter
-	spec              *yamlNormalizedSubagentSpec
-	params            map[string]yamlNormalizedParameter
-	opts              toolsetinterface.Options
-	targetPackageMode bool
+	info              llmstream.ToolInfo                 // Info is the metadata advertised to the LLM.
+	presenter         llmstream.Presenter                // Presenter renders semantic call and result output, or nil for default presentation.
+	spec              *yamlNormalizedSubagentSpec        // Spec is the normalized target-agent configuration.
+	params            map[string]yamlNormalizedParameter // Params are the normalized parameter definitions used to parse and render tool calls.
+	opts              toolsetinterface.Options           // Opts are the toolset options inherited from the calling agent.
+	targetPackageMode bool                               // TargetPackageMode reports whether the target agent requires package-mode invocation.
 }
 
 var _ llmstream.Tool = (*yamlCommandTool)(nil)
 var _ llmstream.Tool = (*yamlSubagentTool)(nil)
 
+// resolvedPackageTarget identifies a package selected for a YAML subagent invocation.
 type resolvedPackageTarget struct {
-	AbsDir        string
-	ImportPath    string
-	ModuleAbsDir  string
-	PackageRelDir string
-	WithinSandbox bool
+	AbsDir        string // AbsDir is the absolute directory of the resolved package.
+	ImportPath    string // ImportPath is the fully qualified import path, when known.
+	ModuleAbsDir  string // ModuleAbsDir is the absolute module root, when known.
+	PackageRelDir string // PackageRelDir is the module-relative package directory, when known.
+	WithinSandbox bool   // WithinSandbox reports whether AbsDir is inside the caller sandbox.
 }
 
 // AddYAMLToRegistry adds agents and tools to reg based on the YAML file at path. If an error occurs, reg will not be mutated.
@@ -199,6 +225,10 @@ func addEmbeddedYAMLToRegistry(reg *agentregistry.Registry) error {
 	return addYAMLToRegistryFS(reg, embeddedYAMLData, yamlDefaultConfigPath, yamlDefaultConfigPath)
 }
 
+// The addYAMLToRegistryFS function loads one YAML registry document from yamlFS and registers its tools and agents in reg.
+//
+// The yamlPath argument is resolved within yamlFS, and displayPath is used only in diagnostics. reg and yamlFS must be non-nil. Tools are registered before agents,
+// preserving YAML order; loading and validation errors occur before registration and leave reg unchanged.
 func addYAMLToRegistryFS(reg *agentregistry.Registry, yamlFS fs.FS, yamlPath string, displayPath string) error {
 	spec, yamlDir, err := loadYAMLRegistrySpecFS(yamlFS, yamlPath, displayPath)
 	if err != nil {
@@ -279,6 +309,9 @@ func loadYAMLRegistrySpec(path string) (yamlRegistrySpec, string, error) {
 	return loadYAMLRegistrySpecFS(os.DirFS(filepath.Dir(absPath)), filepath.Base(absPath), absPath)
 }
 
+// The loadYAMLRegistrySpecFS function reads one YAML registry document from yamlFS and returns the decoded spec and the directory containing path.
+//
+// The path argument is resolved within yamlFS, and displayPath is used only in diagnostics. The decoder rejects unknown fields and multiple YAML documents.
 func loadYAMLRegistrySpecFS(yamlFS fs.FS, path string, displayPath string) (yamlRegistrySpec, string, error) {
 	content, err := fs.ReadFile(yamlFS, path)
 	if err != nil {
@@ -316,6 +349,9 @@ func validateYAMLAgentHeader(spec yamlAgentSpec) (string, error) {
 	return spec.Mode, nil
 }
 
+// normalizeYAMLToolSpec validates a YAML tool definition and returns a normalized tool specification ready for registration. It normalizes parameters and presentation,
+// requires exactly one of command or subagent, validates subagent package targeting against known agent modes, and resolves subagent messages relative to yamlFS
+// and yamlDir.
 func normalizeYAMLToolSpec(spec yamlToolSpec, yamlFS fs.FS, yamlDir string, existingAgentModes map[string]string, newAgentModes map[string]string) (yamlNormalizedToolSpec, error) {
 	if strings.TrimSpace(spec.Description) == "" {
 		return yamlNormalizedToolSpec{}, errors.New("description is required")
@@ -417,6 +453,8 @@ func normalizeYAMLToolSpec(spec yamlToolSpec, yamlFS fs.FS, yamlDir string, exis
 	}, nil
 }
 
+// normalizeYAMLSubagentSpec validates and normalizes a YAML subagent spec. It requires spec to be non-nil, resolves subagent messages against yamlFS and yamlDir,
+// defaults an empty result_format to text, and returns an error for invalid messages or unsupported result formats.
 func normalizeYAMLSubagentSpec(spec *yamlSubagentSpec, yamlFS fs.FS, yamlDir string) (yamlNormalizedSubagentSpec, error) {
 	if spec == nil {
 		return yamlNormalizedSubagentSpec{}, errors.New("subagent is required")
@@ -441,6 +479,8 @@ func normalizeYAMLSubagentSpec(spec *yamlSubagentSpec, yamlFS fs.FS, yamlDir str
 	}, nil
 }
 
+// normalizeYAMLSubagentMessages validates and normalizes the user messages for a YAML subagent. A subagent must set exactly one of message or messages; message
+// becomes a single inline template, while messages entries are resolved from their selected source.
 func normalizeYAMLSubagentMessages(spec *yamlSubagentSpec, yamlFS fs.FS, yamlDir string) ([]yamlNormalizedSubagentMessageSpec, error) {
 	hasMessage := strings.TrimSpace(spec.Message) != ""
 	hasMessages := len(spec.Messages) > 0
@@ -463,6 +503,9 @@ func normalizeYAMLSubagentMessages(spec *yamlSubagentSpec, yamlFS fs.FS, yamlDir
 	return normalized, nil
 }
 
+// normalizeYAMLSubagentMessageSpec validates one YAML subagent message source and resolves it to a normalized message. It returns an error unless exactly one of
+// name, file, text, or command is set; command sources must include command.cmd. Name, file, and text sources are resolved to Text, while command sources are preserved
+// for execution at call time.
 func normalizeYAMLSubagentMessageSpec(spec yamlSubagentMessageSpec, yamlFS fs.FS, yamlDir string) (yamlNormalizedSubagentMessageSpec, error) {
 	count := 0
 	if strings.TrimSpace(spec.Name) != "" {
@@ -507,6 +550,8 @@ func normalizeYAMLSubagentResultFormat(raw string) (string, error) {
 	}
 }
 
+// prepareYAMLAgent validates and resolves a YAML agent spec into a registry-ready prepared agent. It resolves prompt and tool references against yamlFS and yamlDir,
+// applies YAML defaults for skills and AGENTS.md, configures package-mode behavior, and returns errors for invalid or unresolved configuration.
 func prepareYAMLAgent(spec yamlAgentSpec, yamlFS fs.FS, yamlDir string, existingToolNames map[string]struct{}, newToolNames map[string]struct{}) (yamlPreparedAgent, error) {
 	if len(spec.Prompts) == 0 {
 		return yamlPreparedAgent{}, errors.New("prompts is required")
@@ -586,6 +631,8 @@ func resolveYAMLAgentPrompt(yamlFS fs.FS, yamlDir string, prompts []yamlPromptRe
 	return joinContextBlocks(blocks...), nil
 }
 
+// resolveYAMLTextSource resolves exactly one YAML text source to text. It treats name as a built-in prompt name, file as a path relative to yamlDir in yamlFS, and
+// text as inline content. It returns an error unless exactly one source is set and that source can be resolved.
 func resolveYAMLTextSource(yamlFS fs.FS, yamlDir string, name string, file string, text string) (string, error) {
 	count := 0
 	if strings.TrimSpace(name) != "" {
@@ -629,6 +676,9 @@ func resolveBuiltinYAMLPrompt(name string) (string, error) {
 	}
 }
 
+// validateYAMLAgentTools checks a YAML agent tool list and returns the ordered tool names to attach to the agent.
+//
+// The returned names keep the virtual edit-files tool for later expansion and omit missing optional external tools. Unknown non-optional tools are errors.
 func validateYAMLAgentTools(toolNames []string, existingToolNames map[string]struct{}, newToolNames map[string]struct{}) ([]string, error) {
 	resolved := make([]string, 0, len(toolNames))
 	for _, name := range toolNames {
@@ -678,6 +728,10 @@ func buildYAMLAgentSystemPrompt(options agentregistry.BuildOptions, basePrompt s
 	return buildSkillsEnabledSystemPrompt(options, basePrompt, shellToolName, isPackageMode)
 }
 
+// The buildSkillsEnabledSystemPrompt function appends available skill instructions to basePrompt.
+//
+// It ensures built-in skills are installed, loads skills from GoPkgAbsDir or SandboxDir, authorizes loaded skill directories when an authorizer is configured, and
+// uses shellToolName in the generated skill instructions. Skill discovery failures are treated as no available skills.
 func buildSkillsEnabledSystemPrompt(options agentregistry.BuildOptions, basePrompt string, shellToolName string, isPackageMode bool) (string, error) {
 	if err := skills.InstallDefault(); err != nil {
 		return "", fmt.Errorf("install default skills: %w", err)
@@ -709,6 +763,8 @@ func buildSkillsEnabledSystemPrompt(options agentregistry.BuildOptions, baseProm
 	), nil
 }
 
+// buildYAMLToolBuilder returns a tool constructor for a normalized YAML tool specification. The returned constructor builds metadata, required parameter names,
+// and any configured presenter, then creates either a command-backed or subagent-backed tool.
 func buildYAMLToolBuilder(spec yamlNormalizedToolSpec) toolsetinterface.Tool {
 	return func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 		info := llmstream.ToolInfo{
@@ -825,6 +881,9 @@ func registryAgentModes(reg *agentregistry.Registry) map[string]string {
 	return modes
 }
 
+// runYAMLCommand renders, authorizes, and executes a YAML command spec. The supplied context controls command execution. data supplies template values, and opts
+// supplies the sandbox root and optional authorizer. The returned result describes the attempted command execution, and errors report rendering, authorization,
+// or runner failures.
 func runYAMLCommand(ctx context.Context, spec *yamlCommandSpec, data map[string]any, opts toolsetinterface.Options) (cmdrunner.Result, error) {
 	renderedCmd, renderedArgs, cwd, err := renderYAMLCommandSpec(spec, data, opts.SandboxDir)
 	if err != nil {
@@ -853,6 +912,9 @@ func runYAMLCommand(ctx context.Context, spec *yamlCommandSpec, data map[string]
 	return runner.Run(ctx, rootDir, nil)
 }
 
+// renderYAMLCommandSpec renders a YAML command spec with data and returns the command, arguments, and working directory to execute. defaultCWD is used when the
+// spec has no cwd; if defaultCWD is empty, the current process working directory is used. It returns an error when the spec is nil, a template cannot be rendered,
+// or no working directory can be determined.
 func renderYAMLCommandSpec(spec *yamlCommandSpec, data map[string]any, defaultCWD string) (string, []string, string, error) {
 	if spec == nil {
 		return "", nil, "", errors.New("command is required")
@@ -889,18 +951,23 @@ func renderYAMLCommandSpec(spec *yamlCommandSpec, data map[string]any, defaultCW
 	return renderedCmd, renderedArgs, cwd, nil
 }
 
+// Info returns the tool metadata exposed to the model.
 func (t *yamlCommandTool) Info() llmstream.ToolInfo {
 	return t.info
 }
 
+// Name returns the registered tool name.
 func (t *yamlCommandTool) Name() string {
 	return t.info.Name
 }
 
+// Presenter returns the optional semantic presenter for the tool.
 func (t *yamlCommandTool) Presenter() llmstream.Presenter {
 	return t.presenter
 }
 
+// Run executes the configured YAML command for call. It decodes call.Input with the tool's parameter schema, renders command templates with call parameters and
+// context data, and returns either an error ToolResult or the command result serialized as XML.
 func (t *yamlCommandTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	params, err := parseYAMLToolCallParams(call.Input, t.params)
 	if err != nil {
@@ -926,18 +993,26 @@ func (t *yamlCommandTool) Run(ctx context.Context, call llmstream.ToolCall) llms
 	}
 }
 
+// Info returns the metadata advertised for the YAML subagent tool.
 func (t *yamlSubagentTool) Info() llmstream.ToolInfo {
 	return t.info
 }
 
+// Name returns the registered tool name.
 func (t *yamlSubagentTool) Name() string {
 	return t.info.Name
 }
 
+// Presenter returns the semantic presenter configured for the tool, or nil when default presentation should be used.
 func (t *yamlSubagentTool) Presenter() llmstream.Presenter {
 	return t.presenter
 }
 
+// Run executes the YAML subagent tool call and returns the final subagent answer as a tool result.
+//
+// Options.AgentInvoker must be set, and ctx controls message rendering, agent invocation, and final-answer collection. Run parses call.Input as JSON using the tool's
+// parameter definitions, renders the configured messages with parameter and caller-context template data, invokes the target agent, and normalizes the answer according
+// to the configured result format. Rendering may execute command-backed message sources. Any error is returned as an error ToolResult that preserves the call identifiers.
 func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	if t.opts.AgentInvoker == nil {
 		return yamlToolErrorResult(call, errors.New("agent invoker is required"))
@@ -990,6 +1065,8 @@ func (t *yamlSubagentTool) Run(ctx context.Context, call llmstream.ToolCall) llm
 	}
 }
 
+// renderMessages renders the configured subagent message sources into ordered user messages. Text sources are rendered with templateData, and command sources are
+// executed with ctx and the tool options; command sources must succeed and return exactly one result.
 func (t *yamlSubagentTool) renderMessages(ctx context.Context, templateData map[string]any) ([]string, error) {
 	messages := make([]string, 0, len(t.spec.Messages))
 	for i, messageSpec := range t.spec.Messages {
@@ -1036,6 +1113,11 @@ func normalizeYAMLSubagentResult(answer string, resultFormat string) (string, er
 	}
 }
 
+// The buildInvokeRequest method builds the invocation request for the configured target agent.
+//
+// It copies messages, passes through agentCreator, and inherits the caller's tool options and authorization context. For package-mode targets, params must contain
+// the configured package parameter; the request is retargeted to the resolved package and uses an authorizer constrained to that package. It returns an error if
+// package resolution, restriction checks, or authorizer construction fails.
 func (t *yamlSubagentTool) buildInvokeRequest(messages []string, params map[string]any, agentCreator agent.AgentCreator) (toolsetinterface.InvokeRequest, error) {
 	req := toolsetinterface.InvokeRequest{
 		Messages: append([]string(nil), messages...),
@@ -1087,6 +1169,8 @@ func (t *yamlSubagentTool) buildInvokeRequest(messages []string, params map[stri
 	return req, nil
 }
 
+// resolveTargetPackage resolves the subagent package parameter and applies the tool's package restrictions. It requires a non-empty string value for the configured
+// package parameter, rejects packages outside the sandbox unless allowed, and for package-mode callers can enforce self-package and direct-import relationship constraints.
 func (t *yamlSubagentTool) resolveTargetPackage(params map[string]any) (resolvedPackageTarget, error) {
 	if t.spec.Package == "" {
 		return resolvedPackageTarget{}, errors.New("subagent package parameter is required")
@@ -1151,6 +1235,7 @@ func (t *yamlSubagentTool) resolveTargetPackage(params map[string]any) (resolved
 	return target, nil
 }
 
+// buildTargetPackageAuthorizer returns an authorizer that restricts access to the resolved target package.
 func (t *yamlSubagentTool) buildTargetPackageAuthorizer(target resolvedPackageTarget, sandboxDir string) (authdomain.Authorizer, error) {
 	unit, err := codeunit.DefaultGoCodeUnit(target.AbsDir)
 	if err != nil {
@@ -1165,6 +1250,7 @@ func (t *yamlSubagentTool) buildTargetPackageAuthorizer(target resolvedPackageTa
 	return authdomain.NewCodeUnitAuthorizer(unit, fallback), nil
 }
 
+// parseYAMLToolCallParams decodes and validates a YAML-defined tool call's JSON input.
 func parseYAMLToolCallParams(raw string, paramSpecs map[string]yamlNormalizedParameter) (map[string]any, error) {
 	if strings.TrimSpace(raw) == "" {
 		raw = "{}"
@@ -1206,6 +1292,10 @@ func parseYAMLToolCallParams(raw string, paramSpecs map[string]yamlNormalizedPar
 	return params, nil
 }
 
+// The parseYAMLParameterValue function decodes one raw JSON tool parameter according to a YAML parameter type.
+//
+// Supported types are "string", "boolean", and "integer"; the returned value has type string, bool, or int. It returns an error for unsupported types or JSON that
+// cannot be decoded as the requested type.
 func parseYAMLParameterValue(raw json.RawMessage, paramType string) (any, error) {
 	switch paramType {
 	case "string":
@@ -1303,6 +1393,9 @@ func yamlSubAgentCreatorFromContextSafe(ctx context.Context) agent.AgentCreator 
 	return agent.SubAgentCreatorFromContext(ctx)
 }
 
+// resolveYAMLTargetPackage resolves a YAML subagent package argument to a package target. It first accepts existing directories inside opts.SandboxDir, then falls
+// back to resolving target as an import path from opts.GoPkgAbsDir or the sandbox. The returned target records any known module and import metadata and whether
+// the package directory is inside the sandbox; it does not enforce subagent package restrictions.
 func resolveYAMLTargetPackage(opts toolsetinterface.Options, target string) (resolvedPackageTarget, error) {
 	sandboxDir := opts.SandboxDir
 	if strings.TrimSpace(sandboxDir) == "" {

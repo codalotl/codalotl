@@ -28,20 +28,29 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
+// Built-in agent names recognized by agentbuilder.
 const (
-	AgentGeneric                   string = "generic"
-	AgentPackageModeNoContext      string = "package_mode_no_context"
+	// AgentGeneric is the registry name for the general-purpose agent.
+	AgentGeneric string = "generic"
+
+	// AgentPackageModeNoContext is the registry name for the full package-mode agent without precomputed package context.
+	AgentPackageModeNoContext string = "package_mode_no_context"
+
 	AgentPackageModeDefaultContext string = "package_mode_default_context" // AgentPackageModeDefaultContext adds package initial context before user messages.
-	AgentLimitedPackageMode        string = "limited_package_mode"
-	agentImprovePublicAPIDocs             = "improve_public_api_docs"
-	agentClarifyPublicAPI                 = pkgtools.ToolNameClarifyPublicAPI
-	clarifyRGLines                        = "4"
+
+	// AgentLimitedPackageMode is the registry name for the limited package-mode agent for targeted package work.
+	AgentLimitedPackageMode string = "limited_package_mode"
+
+	agentImprovePublicAPIDocs = "improve_public_api_docs"
+	agentClarifyPublicAPI     = pkgtools.ToolNameClarifyPublicAPI
+	clarifyRGLines            = "4"
 )
 
+// clarifyPublicAPIRequest describes one request for the clarify_public_api agent.
 type clarifyPublicAPIRequest struct {
-	Path       string `json:"path"`
-	Identifier string `json:"identifier"`
-	Question   string `json:"question"`
+	Path       string `json:"path"`       // Path is the target source path used to build API context.
+	Identifier string `json:"identifier"` // Identifier is the public API symbol to clarify.
+	Question   string `json:"question"`   // Question is the user question about the identifier.
 }
 
 var (
@@ -113,6 +122,8 @@ func genericTools() map[string]toolsetinterface.Tool {
 	return builders
 }
 
+// builtinTools returns a new map of built-in tool builders keyed by tool name. Each builder constructs its tool from the supplied toolset options, including package-mode
+// post-checks and subagent options where applicable.
 func builtinTools() map[string]toolsetinterface.Tool {
 	return map[string]toolsetinterface.Tool{
 		coretools.ToolNameApplyPatch: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
@@ -239,6 +250,7 @@ func simpleReadOnlyTools(opts toolsetinterface.Options) ([]llmstream.Tool, error
 	})
 }
 
+// packageAgentTools builds the full package-mode toolset for package-scoped agents.
 func packageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
 	opts.AgentName = AgentPackageModeNoContext
 	toolNames := []string{
@@ -263,6 +275,10 @@ func packageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) 
 	return buildTools(opts, toolNames)
 }
 
+// The limitedPackageAgentTools function builds the limited package-mode toolset for targeted package work.
+//
+// It sets the effective agent name to AgentLimitedPackageMode and includes file reading, listing, model-specific edit tools, skill shell, diagnostics, lint fixing,
+// tests, and public API inspection tools.
 func limitedPackageAgentTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
 	opts.AgentName = AgentLimitedPackageMode
 	toolNames := []string{
@@ -378,6 +394,7 @@ func buildGenericAgentsMDInitialTurns(ctx context.Context, options agentregistry
 	return []string{agentsTurn}, nil
 }
 
+// buildPackageModeAgentsMDInitialTurns returns an AGENTS.md initial turn for a package-mode agent.
 func buildPackageModeAgentsMDInitialTurns(ctx context.Context, options agentregistry.BuildOptions) ([]string, error) {
 	sandboxAbsDir := strings.TrimSpace(options.ToolOptions.SandboxDir)
 	if sandboxAbsDir == "" {
@@ -408,6 +425,8 @@ func buildPackageModeDefaultContextInitialTurns(ctx context.Context, options age
 	return buildPackageModeContextInitialTurns(ctx, options, true)
 }
 
+// buildPackageModeContextInitialTurns builds the ordered initial user turns for a package-mode agent. It requires SandboxDir and GoPkgAbsDir in options.ToolOptions,
+// always includes the sandbox environment turn, optionally includes AGENTS.md when available, and appends package context built with the configured lint steps.
 func buildPackageModeContextInitialTurns(ctx context.Context, options agentregistry.BuildOptions, includeAgentsMD bool) ([]string, error) {
 	sandboxAbsDir := strings.TrimSpace(options.ToolOptions.SandboxDir)
 	if sandboxAbsDir == "" {
@@ -443,6 +462,8 @@ func buildPackageModeContextInitialTurns(ctx context.Context, options agentregis
 	return turns, nil
 }
 
+// buildPackageModeInitialContextTurn builds the initial context turn for a package-mode invocation of goPkgAbsDir. It observes ctx cancellation, uses lintSteps
+// in the generated Go package context, and falls back to module-level context when the directory cannot be loaded as a package.
 func buildPackageModeInitialContextTurn(ctx context.Context, sandboxAbsDir string, goPkgAbsDir string, lintSteps []lints.Step) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -483,6 +504,7 @@ func buildAgentsMDInitialTurn(sandboxAbsDir string, cwd string) (string, error) 
 	return strings.TrimSpace(text), nil
 }
 
+// buildGoPackageInitialContext returns the initial LLM context for a Go package directory.
 func buildGoPackageInitialContext(goPkgAbsDir string, lintSteps []lints.Step) (string, error) {
 	module, err := gocode.NewModule(goPkgAbsDir)
 	if err != nil {
@@ -508,6 +530,9 @@ func buildGoPackageInitialContext(goPkgAbsDir string, lintSteps []lints.Step) (s
 	return initial, nil
 }
 
+// tryBuildGoPackageFallbackInitialContext attempts to build package-mode context for a directory that could not be loaded as a Go package. It returns ok false without
+// error when goPkgAbsDir does not exist, is not a directory, or is not inside a Go module. When it succeeds, the context includes module and package identity, a
+// shallow directory listing, and loadErr as the package-load diagnostic.
 func tryBuildGoPackageFallbackInitialContext(goPkgAbsDir string, loadErr error) (string, bool, error) {
 	if strings.TrimSpace(goPkgAbsDir) == "" {
 		return "", false, errors.New("go package dir is required")
@@ -552,6 +577,10 @@ func tryBuildGoPackageFallbackInitialContext(goPkgAbsDir string, loadErr error) 
 	return buildFallbackPackageInitialContext(module.Name, relDir, goPkgAbsDir, importPath, dirListing, loadErr), true, nil
 }
 
+// The buildFallbackPackageDirListing function returns an XML-style listing of the non-hidden entries in a Go package directory.
+//
+// The listing is filename-sorted, non-recursive, uses ls -1p formatting, appends "/" to directories, and includes goPkgAbsDir as the cwd. It returns an error if
+// the directory cannot be read.
 func buildFallbackPackageDirListing(goPkgAbsDir string) (string, error) {
 	entries, err := os.ReadDir(goPkgAbsDir)
 	if err != nil {
@@ -576,6 +605,8 @@ func buildFallbackPackageDirListing(goPkgAbsDir string) (string, error) {
 	return builder.String(), nil
 }
 
+// buildFallbackPackageInitialContext builds initial package-mode context for a directory that cannot yet be loaded as a Go package. The context includes package
+// identity, the supplied directory listing, and placeholder package, diagnostics, test, lint, and used-by sections that explain the load failure.
 func buildFallbackPackageInitialContext(modulePath string, relDir string, goPkgAbsDir string, importPath string, dirListing string, loadErr error) string {
 	loadMessage := "target directory does not currently load as a Go package"
 	if loadErr != nil {
@@ -640,6 +671,10 @@ func buildClarifyPublicAPIInitialTurns(ctx context.Context, options agentregistr
 	}, nil
 }
 
+// parseClarifyPublicAPIRequest parses and validates a clarify_public_api request from a payload or messages.
+//
+// If payload is non-empty, it must contain a JSON request. Otherwise, the first message may contain either JSON or a text request with Path, Identifier, and Question
+// labels.
 func parseClarifyPublicAPIRequest(payload json.RawMessage, messages []string) (clarifyPublicAPIRequest, error) {
 	if len(payload) > 0 {
 		var request clarifyPublicAPIRequest
@@ -672,6 +707,10 @@ func parseClarifyPublicAPIRequest(payload json.RawMessage, messages []string) (c
 	return request, nil
 }
 
+// parseClarifyPublicAPITextRequest parses a labeled text clarify_public_api request.
+//
+// The text form uses Path, Identifier, and Question labels. The question includes the text after the Question label and any following lines; missing fields are
+// left empty for caller validation.
 func parseClarifyPublicAPITextRequest(raw string) clarifyPublicAPIRequest {
 	var request clarifyPublicAPIRequest
 
@@ -713,6 +752,8 @@ func validateClarifyPublicAPIRequest(request clarifyPublicAPIRequest) error {
 	return nil
 }
 
+// buildClarifyPublicAPIContext builds the initial context for a clarify_public_api request. It resolves path inside sandboxAbsDir and returns the resolved absolute
+// path with context text. Go paths use package context when available; other paths, and Go paths without package context, use generic search context for identifier.
 func buildClarifyPublicAPIContext(ctx context.Context, sandboxAbsDir string, path string, identifier string) (string, string, error) {
 	absPath, stat, err := normalizeClarifyPublicAPIPath(sandboxAbsDir, path)
 	if err != nil {
@@ -741,6 +782,8 @@ func buildClarifyPublicAPIContext(ctx context.Context, sandboxAbsDir string, pat
 	return absPath, initial, nil
 }
 
+// normalizeClarifyPublicAPIPath resolves path to an existing file or directory inside sandboxAbsDir and returns its absolute path and file information. sandboxAbsDir
+// may be absolute or relative but must name an existing directory. The function rejects paths that leave the sandbox, including through symlinks.
 func normalizeClarifyPublicAPIPath(sandboxAbsDir string, path string) (string, os.FileInfo, error) {
 	if strings.TrimSpace(sandboxAbsDir) == "" {
 		return "", nil, errors.New("sandbox dir is required")
@@ -812,6 +855,7 @@ func buildClarifyPublicAPIContextTurn(absPath string, identifier string, initial
 	return builder.String()
 }
 
+// tryBuildClarifyGoContext returns Go package context for a clarification path when it can be built.
 func tryBuildClarifyGoContext(absPath string) (string, bool, error) {
 	module, err := gocode.NewModule(absPath)
 	if err != nil {
@@ -866,6 +910,10 @@ func buildClarifyGenericContext(absPath string, stat os.FileInfo, identifier str
 	return runClarifyRipgrep(dir, target, identifier), nil
 }
 
+// The runClarifyRipgrep function searches target for identifier with ripgrep and returns the result as ripgrep XML.
+//
+// It runs in cwd with line numbers, no color, clarifyRGLines lines of context, and a 10-second timeout. If ripgrep cannot be run or times out, it returns a textual
+// failure message.
 func runClarifyRipgrep(cwd string, target string, identifier string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
