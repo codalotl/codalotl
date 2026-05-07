@@ -59,6 +59,17 @@ func addDocsOnlyDocumentImportantIdentifiers(pkg *gocode.Package, options AddDoc
 
 	scratchOptions := options
 	scratchOptions.OnlyDocumentImportantIdentifiers = false
+	scratchOptions.ExcludeIdentifiers = importantScratchExclusions(options.ExcludeIdentifiers, scratchPkg, importantIDs)
+	if options.DocumentTestFiles && scratchPkg.HasTestPackage() {
+		scratchImportantIDs := make(map[string]struct{}, len(importantIDs)+len(testImportantIDs))
+		for identifier := range importantIDs {
+			scratchImportantIDs[identifier] = struct{}{}
+		}
+		for identifier := range testImportantIDs {
+			scratchImportantIDs[identifier] = struct{}{}
+		}
+		scratchOptions.ExcludeIdentifiers = importantScratchExclusions(scratchOptions.ExcludeIdentifiers, scratchPkg.TestPackage, scratchImportantIDs)
+	}
 	if contextModule == nil {
 		contextModule = pkg.Module
 	}
@@ -210,6 +221,33 @@ func (p importantIdentifierPolicy) identifiers(pkg *gocode.Package, includeTest 
 	}
 
 	return important, nil
+}
+
+func importantScratchExclusions(exclude []string, pkg *gocode.Package, importantIDs map[string]struct{}) []string {
+	excludeSet := sliceToSet(exclude)
+	ids := NewIdentifiersFromPackage(pkg)
+
+	addIfUnimportant := func(identifier string) {
+		if _, important := importantIDs[identifier]; important {
+			return
+		}
+		excludeSet[identifier] = struct{}{}
+	}
+
+	if !pkg.IsTestPackage() {
+		addIfUnimportant(gocode.PackageIdentifier)
+	}
+	for _, identifier := range ids.allFuncs {
+		addIfUnimportant(identifier)
+	}
+	for _, identifier := range ids.allTypes {
+		addIfUnimportant(identifier)
+	}
+	for _, identifier := range ids.allValues {
+		addIfUnimportant(identifier)
+	}
+
+	return setToSlice(excludeSet)
 }
 
 func removeExcludedImportantIdentifiers(importantIDs map[string]struct{}, excluded []string, pkg *gocode.Package) {

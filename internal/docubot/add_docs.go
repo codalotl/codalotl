@@ -452,7 +452,7 @@ func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers
 	}
 
 	// Filter and sort the groups to determine the best order for documentation.
-	groupsNeedingDocs := prioritizeGroupsForDocumentation(groups)
+	groupsNeedingDocs := prioritizeGroupsForDocumentation(groups, idents)
 
 	groupsNeedingDocsSet := make(map[*gocodecontext.IdentifierGroup]bool)
 	for _, g := range groupsNeedingDocs {
@@ -469,7 +469,7 @@ func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers
 				continue
 			}
 
-			if g.AllDirectDepsDocumented() || codeCtx.HasFullBytes(g) {
+			if allDirectDepsDocumentedForTargets(g, idents) || codeCtx.HasFullBytes(g) {
 				additionalCost := codeCtx.AdditionalCostForGroup(g)
 				if codeCtx.Cost()+additionalCost <= tokenBudget {
 					codeCtx.AddGroup(g)
@@ -526,15 +526,8 @@ func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers
 	var idsToDocument []string
 	for _, g := range codeCtx.AddedGroups() {
 		for _, id := range g.IDs {
-			// only document an id if it doesn't have docs (groups can have a mix of doc'ed and undoc'ed ids)
-			if _, ok := idents.withDocs[id]; !ok {
-				// Don't document TestXxx functions, but let them be part of the context.
-				snippet := g.GetSnippet(id)
-				if snippet != nil {
-					if fs, ok := snippet.(*gocode.FuncSnippet); ok && fs.IsTestFunc() {
-						continue
-					}
-				}
+			// Only document an id if it doesn't have docs (groups can have a mix of doc'ed and undoc'ed ids).
+			if identifierNeedsDocs(g, id, idents) {
 				idsToDocument = append(idsToDocument, id)
 			}
 		}

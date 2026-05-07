@@ -183,6 +183,63 @@ func TestAddDocs_OnlyDocumentImportantIdentifiers_DocumentsImportantOnly(t *test
 	})
 }
 
+func TestAddDocs_OnlyDocumentImportantIdentifiers_UnimportantIdentifiersDoNotBlockScratchPass(t *testing.T) {
+	code := dedent(`
+		func Public() {}
+
+		func small() {}
+	`)
+	conv := &identifierSnippetsCompleter{
+		snippetsByIdentifier: map[string]string{
+			"Public": dedentWithBackticks(`
+				// Public performs an important operation.
+				func Public()
+			`),
+		},
+	}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentImportantIdentifiers: true,
+			ExcludeIdentifiers:               []string{gocode.PackageIdentifier},
+			BaseOptions:                      BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+		assert.Len(t, conv.convs, 1)
+
+		userText := conv.allUserText()
+		assert.Contains(t, userText, "- Public")
+		assert.NotContains(t, userText, "- small")
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+		content := string(pkg.Files["code.go"].Contents)
+		assert.Contains(t, content, "// Public performs an important operation.")
+		assert.NotContains(t, content, "// small")
+	})
+}
+
+func TestImportantScratchExclusions_PreservesImportantAndExistingExclusions(t *testing.T) {
+	code := dedent(`
+		func Public() {}
+
+		func small() {}
+	`)
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		exclusions := importantScratchExclusions([]string{"Existing"}, pkg, map[string]struct{}{
+			"Public":                 {},
+			gocode.PackageIdentifier: {},
+		})
+
+		assert.Contains(t, exclusions, "Existing")
+		assert.Contains(t, exclusions, "small")
+		assert.NotContains(t, exclusions, "Public")
+		assert.NotContains(t, exclusions, gocode.PackageIdentifier)
+	})
+}
+
 func TestAddDocs_ImportantAndExportedOnlyAreMutuallyExclusive(t *testing.T) {
 	conv := &responsesCompleter{responses: []string{"unexpected"}}
 	gocodetesting.WithCode(t, "func Foo() {}", func(pkg *gocode.Package) {
