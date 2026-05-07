@@ -97,6 +97,7 @@ agents:
       - ls
       - shell
       - edit_files
+      - refactor
       - update_plan
       - check_spec_conformance
       - review

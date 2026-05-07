@@ -8,7 +8,7 @@
 //   - clarify_public_api: read-only agent that explains public API docs for one identifier.
 //   - improve_public_api_docs: package-mode agent that may improve public API docs after a clarification answer.
 //   - pr-review: generic review agent that emits structured JSON review findings.
-//   - pr-orchestrator: generic agent that reviews a branch, reviews SPEC.md edits, and delegates package implementation work.
+//   - pr-orchestrator: generic agent that reviews a branch, reviews SPEC.md edits, delegates package implementation work, and may use optional `refactor`.
 //
 // OverrideTool installs a process-wide named tool builder that future BuildRegistry calls register before YAML agents are loaded.
 //

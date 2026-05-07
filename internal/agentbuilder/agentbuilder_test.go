@@ -344,6 +344,29 @@ func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testi
 	}, gotTools)
 }
 
+func TestBuildRegistry_InvokePROrchestrator_UsesRefactorOverride(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	overrideToolForTest(t, yamlOptionalToolRefactor, func(toolsetinterface.Options) (llmstream.Tool, error) {
+		return fakeNamedTool{name: yamlOptionalToolRefactor}, nil
+	})
+
+	_, gotTools := invokeAgentForModel(t, "pr-orchestrator", llmmodel.ProviderIDOpenAI.DefaultModel())
+
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		coretools.ToolNameShell,
+		coretools.ToolNameApplyPatch,
+		yamlOptionalToolRefactor,
+		coretools.ToolNameUpdatePlan,
+		spectools.ToolNameCheckSpecConformance,
+		"review",
+		"implement",
+		"review_spec_changes",
+	}, gotTools)
+}
+
 func TestGenericTools_RegistersCheckSpecConformance(t *testing.T) {
 	toolBuilder, ok := genericTools()[spectools.ToolNameCheckSpecConformance]
 	require.True(t, ok)
