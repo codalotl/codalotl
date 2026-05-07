@@ -67,6 +67,7 @@ Notes:
 - If `OnlyDocumentExportedIdentifiers`, similar rules apply to interfaces. Private interfaces' methods are not documented, and public interfaces' private methods are also not documented.
 - `OnlyDocumentExportedIdentifiers` and `DocumentTestFiles` should combine as expected: documents main package exported identifiers, and exported identifiers in the test package(s), but not the TestXxx/etc ones.
 - `OnlyDocumentImportantIdentifiers` and `OnlyDocumentExportedIdentifiers` are mutually exclusive selection modes.
-- Important identifiers are package docs, exported identifiers, all types and their fields/methods, functions/methods with at least 20 source lines, and identifiers in cyclic groups with fan-in >= 3, fan-out >= 4, or size >= 3.
-- Important fan-in, fan-out, and group size are based on `gocodecontext.IdentifierGroup` after cyclic grouping. A group's edge counts apply to every identifier selected from that group.
+- Important identifiers are package docs, exported identifiers, all types and their fields/methods, functions/methods with at least 20 source lines, and identifiers in cyclic groups with fan-in >= 10 or fan-out >= 12.
+- Important fan-in and fan-out are based on `gocodecontext.IdentifierGroup` after cyclic grouping. A group's edge counts apply to every identifier selected from that group.
+- If all important identifiers are already documented, `OnlyDocumentImportantIdentifiers` returns without making LLM requests.
 - `OnlyDocumentImportantIdentifiers` and `DocumentTestFiles` should combine as expected: documents important identifiers in main package and test package(s), but not TestXxx/etc functions.
