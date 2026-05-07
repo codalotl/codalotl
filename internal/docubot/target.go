@@ -2,8 +2,10 @@ package docubot
 
 import (
 	"fmt"
-	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"sort"
+
+	"github.com/codalotl/codalotl/internal/gocode"
+	"github.com/codalotl/codalotl/internal/gocodecontext"
 )
 
 // groupWithCost pairs an identifier group with its token cost when considering it for inclusion in an LLM context.
@@ -12,13 +14,13 @@ type groupWithCost struct {
 	cost  int                            // Estimated tokens required to add the group to the context.
 }
 
-// prioritizeGroupsForDocumentation filters for undocumented groups and sorts them by "easiness/helpfulness" for documentation. A small function that everything
-// uses (few undocumented deps, high fan-in, small size) should come first, enabling its callers to be documented. Note: algorithms using this do not depend on a
-// particular sort; better ordering can simply make them faster or pick better targets.
-func prioritizeGroupsForDocumentation(groups []*gocodecontext.IdentifierGroup) []*gocodecontext.IdentifierGroup {
+// prioritizeGroupsForDocumentation filters for groups with identifiers still targeted for documentation and sorts them by "easiness/helpfulness" for documentation.
+// A small function that everything uses (few undocumented deps, high fan-in, small size) should come first, enabling its callers to be documented. Note: algorithms
+// using this do not depend on a particular sort; better ordering can simply make them faster or pick better targets.
+func prioritizeGroupsForDocumentation(groups []*gocodecontext.IdentifierGroup, idents *Identifiers) []*gocodecontext.IdentifierGroup {
 	var groupsNeedingDocs []*gocodecontext.IdentifierGroup
 	for _, group := range groups {
-		if !group.IsDocumented {
+		if groupHasIdentifierNeedingDocs(group, idents) {
 			groupsNeedingDocs = append(groupsNeedingDocs, group)
 		}
 	}
@@ -34,7 +36,7 @@ func prioritizeGroupsForDocumentation(groups []*gocodecontext.IdentifierGroup) [
 	for i, group := range groupsNeedingDocs {
 		undocDeps := 0
 		for _, dep := range group.DirectDeps {
-			if !dep.IsDocumented {
+			if groupHasIdentifierNeedingDocs(dep, idents) {
 				undocDeps++
 			}
 		}
@@ -78,6 +80,65 @@ func prioritizeGroupsForDocumentation(groups []*gocodecontext.IdentifierGroup) [
 	}
 
 	return groupsNeedingDocs
+}
+
+func groupHasIdentifierNeedingDocs(group *gocodecontext.IdentifierGroup, idents *Identifiers) bool {
+	if group.IsExternal {
+		return false
+	}
+	for _, id := range group.IDs {
+		if identifierNeedsDocs(group, id, idents) {
+			return true
+		}
+	}
+	return false
+}
+
+func identifierNeedsDocs(group *gocodecontext.IdentifierGroup, id string, idents *Identifiers) bool {
+	if !identifierTrackedByIdentifiers(id, idents) {
+		return false
+	}
+	if _, ok := idents.withDocs[id]; ok {
+		return false
+	}
+	snippet := group.GetSnippet(id)
+	if snippet != nil {
+		if fs, ok := snippet.(*gocode.FuncSnippet); ok && fs.IsTestFunc() {
+			return false
+		}
+	}
+	return true
+}
+
+func identifierTrackedByIdentifiers(id string, idents *Identifiers) bool {
+	if id == gocode.PackageIdentifier {
+		return !idents.isTestPkg
+	}
+	for _, candidate := range idents.allFuncs {
+		if candidate == id {
+			return true
+		}
+	}
+	for _, candidate := range idents.allTypes {
+		if candidate == id {
+			return true
+		}
+	}
+	for _, candidate := range idents.allValues {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}
+
+func allDirectDepsDocumentedForTargets(group *gocodecontext.IdentifierGroup, idents *Identifiers) bool {
+	for _, dep := range group.DirectDeps {
+		if groupHasIdentifierNeedingDocs(dep, idents) {
+			return false
+		}
+	}
+	return true
 }
 
 // countTokens estimates the token count of code.

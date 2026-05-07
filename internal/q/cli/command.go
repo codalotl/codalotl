@@ -3,7 +3,10 @@ package cli
 // RunFunc is a command handler.
 type RunFunc func(c *Context) error
 
-// ArgsFunc validates positional args. It should return a UsageError (or any ExitCoder with code 2) for user-facing usage mistakes.
+// ArgsFunc validates command usage after argv parsing and before Run.
+//
+// It receives the selected command's positional args. Flags accepted during parsing have already been written to the pointers returned by FlagSet methods, so ArgsFunc
+// may also validate flag combinations. It should return a UsageError (or any ExitCoder with code 2) for user-facing usage mistakes.
 type ArgsFunc func(args []string) error
 
 // Command defines one CLI command in a command tree.
@@ -17,8 +20,8 @@ type Command struct {
 	ArgHelp          []ArgHelp // ArgHelp describes positional args in detailed help.
 	Example          string    // Example is example text shown in detailed help.
 	NoPositionalArgs bool      // NoPositionalArgs suppresses generic [args] help.
-	Args             ArgsFunc  // optional
-	Run              RunFunc   // optional
+	Args             ArgsFunc  // Args validates usage after flag parsing and before Run.
+	Run              RunFunc   // Run handles the command after Args succeeds.
 	parent           *Command
 	children         []*Command
 	localFlags       *FlagSet

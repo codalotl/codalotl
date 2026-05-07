@@ -41,11 +41,12 @@ var ErrTriesExceeded = fmt.Errorf("attempts to doc with no progress have been ex
 
 // AddDocsOptions controls how AddDocs documents identifiers in a package.
 type AddDocsOptions struct {
-	DocumentTestFiles               bool     // Document helpers, types, and variables in test code. TestXxx/BenchXxx/etc. functions are not documented.
-	OnlyDocumentExportedIdentifiers bool     // Only documents publicly exported identifiers.
-	TokenBudget                     int      // Maximum token budget for one LLM request (prompt + code context + instructions). Zero uses defaultTokenBudget.
-	ExcludeIdentifiers              []string // ExcludeIdentifiers marks identifiers as already documented, skipping them during documentation.
-	BaseOptions                              // Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
+	DocumentTestFiles                bool     // Document helpers, types, and variables in test code. TestXxx/BenchXxx/etc. functions are not documented.
+	OnlyDocumentExportedIdentifiers  bool     // Only documents publicly exported identifiers.
+	OnlyDocumentImportantIdentifiers bool     // Only documents public identifiers and other identifiers selected by the important-identifier policy.
+	TokenBudget                      int      // Maximum token budget for one LLM request (prompt + code context + instructions). Zero uses defaultTokenBudget.
+	ExcludeIdentifiers               []string // ExcludeIdentifiers marks identifiers as already documented, skipping them during documentation.
+	BaseOptions                               // Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
 }
 
 // AddDocs adds documentation to undocumented identifiers in the package and returns the set of documentation changes (if DocumentTestFiles, it includes _test package
@@ -60,10 +61,17 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 		options.TokenBudget = defaultTokenBudget
 	}
 
-	options.Log("Entering AddDocs", "DocumentTestFiles", options.DocumentTestFiles, "OnlyDocumentExportedIdentifier", options.OnlyDocumentExportedIdentifiers, "TokenBudget", options.TokenBudget)
+	if options.OnlyDocumentExportedIdentifiers && options.OnlyDocumentImportantIdentifiers {
+		return nil, options.LogNewErr("OnlyDocumentImportantIdentifiers and OnlyDocumentExportedIdentifiers are mutually exclusive")
+	}
+
+	options.Log("Entering AddDocs", "DocumentTestFiles", options.DocumentTestFiles, "OnlyDocumentExportedIdentifier", options.OnlyDocumentExportedIdentifiers, "OnlyDocumentImportantIdentifiers", options.OnlyDocumentImportantIdentifiers, "TokenBudget", options.TokenBudget)
 
 	if options.OnlyDocumentExportedIdentifiers {
 		return addDocsOnlyDocumentExportedIdentifier(pkg, options, contextModule)
+	}
+	if options.OnlyDocumentImportantIdentifiers {
+		return addDocsOnlyDocumentImportantIdentifiers(pkg, options, contextModule)
 	}
 
 	options.ExcludeIdentifiers = appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg)
@@ -444,7 +452,7 @@ func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers
 	}
 
 	// Filter and sort the groups to determine the best order for documentation.
-	groupsNeedingDocs := prioritizeGroupsForDocumentation(groups)
+	groupsNeedingDocs := prioritizeGroupsForDocumentation(groups, idents)
 
 	groupsNeedingDocsSet := make(map[*gocodecontext.IdentifierGroup]bool)
 	for _, g := range groupsNeedingDocs {
@@ -461,7 +469,7 @@ func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers
 				continue
 			}
 
-			if g.AllDirectDepsDocumented() || codeCtx.HasFullBytes(g) {
+			if allDirectDepsDocumentedForTargets(g, idents) || codeCtx.HasFullBytes(g) {
 				additionalCost := codeCtx.AdditionalCostForGroup(g)
 				if codeCtx.Cost()+additionalCost <= tokenBudget {
 					codeCtx.AddGroup(g)
@@ -518,15 +526,8 @@ func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers
 	var idsToDocument []string
 	for _, g := range codeCtx.AddedGroups() {
 		for _, id := range g.IDs {
-			// only document an id if it doesn't have docs (groups can have a mix of doc'ed and undoc'ed ids)
-			if _, ok := idents.withDocs[id]; !ok {
-				// Don't document TestXxx functions, but let them be part of the context.
-				snippet := g.GetSnippet(id)
-				if snippet != nil {
-					if fs, ok := snippet.(*gocode.FuncSnippet); ok && fs.IsTestFunc() {
-						continue
-					}
-				}
+			// Only document an id if it doesn't have docs (groups can have a mix of doc'ed and undoc'ed ids).
+			if identifierNeedsDocs(g, id, idents) {
 				idsToDocument = append(idsToDocument, id)
 			}
 		}

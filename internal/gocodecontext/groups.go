@@ -32,16 +32,22 @@ func FilterGroupsForIdentifiers(groups []*IdentifierGroup, ids []string) []*Iden
 	return matched
 }
 
-// IdentifierGroup represents a set of identifiers treated as a single unit. Identifiers are grouped for two reasons:
+// IdentifierGroup represents a set of package-level identifiers treated as a single unit. Identifiers are grouped for two reasons:
 //  1. They appear together in the same var/const/type block (ex: `var ( ... )`).
 //  2. The identifiers form a strongly connected component (SCC), meaning they are cyclically dependent.
 //
+// IDs may name functions, methods, types, vars, consts, and, when package docs are included, gocode.PackageIdentifier. Struct and interface fields are not separate
+// IDs; they are part of the owning type's snippet. Method IDs use the same receiver-qualified form as gocode.FuncSnippet identifiers, such as "T.M" or "*T.M".
+//
+// The construction reason is not retained or exposed; a group may contain identifiers from a block, an SCC, or an overlapping combination. Use len(g.IDs) for the
+// number of identifiers in the group. Use token fields or Context cost methods for context-size decisions, because a snippet shared by multiple IDs is counted once.
+//
 // These identifier groups form a graph that can be analyzed for purposes such as constructing contexts to send to an LLM.
 type IdentifierGroup struct {
-	IDs           []string                  // all identifiers this group describes.
+	IDs           []string                  // All identifiers this group describes.
 	Snippets      map[string]gocode.Snippet // map of id->snippet. All IDs in this struct must be in Snippets.
-	BodyTokens    int                       // number of tokens in the docs, signatures, and function bodies of the identifiers
-	SnippetTokens int                       // number of tokens in the docs and signatures only (excludes function bodies)
+	BodyTokens    int                       // Number of tokens in full snippets, including docs, signatures, and function bodies. Shared snippets are counted once.
+	SnippetTokens int                       // Number of tokens in snippet bytes, including docs and signatures only. Shared snippets are counted once.
 	IsDocumented  bool                      // true if all identifiers have full documentation; external groups are always considered documented
 	IsTestFile    bool                      // true if these identifiers come from test files
 

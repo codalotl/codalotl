@@ -53,6 +53,7 @@ The `AddDocs` function adds missing documentation to a package by directly editi
 Options include:
 - `DocumentTestFiles`: if true, we also document test files, including black-box tests (package somepkg_test). Does not document TestXxx/BenchmarkXxx/etc functions.
 - `OnlyDocumentExportedIdentifiers`: if true, we only document exported identifiers.
+- `OnlyDocumentImportantIdentifiers`: if true, we only document important identifiers.
 - `ExcludeIdentifiers`: any identifiers here are not documented. Notes:
     - Excluding a type also excludes all of the type's fields (for structs). Same for interfaces and methods.
     - If an excluded identifier is part of a multi-identifier spec/field (ex: `var Foo, Bar int`), and at least one of the identifiers is not excluded, a comment may still be added.
@@ -65,3 +66,8 @@ Notes:
 - If `OnlyDocumentExportedIdentifiers`, public structs' private fields are NOT documented (unless they share a spec with a public field, as per above).
 - If `OnlyDocumentExportedIdentifiers`, similar rules apply to interfaces. Private interfaces' methods are not documented, and public interfaces' private methods are also not documented.
 - `OnlyDocumentExportedIdentifiers` and `DocumentTestFiles` should combine as expected: documents main package exported identifiers, and exported identifiers in the test package(s), but not the TestXxx/etc ones.
+- `OnlyDocumentImportantIdentifiers` and `OnlyDocumentExportedIdentifiers` are mutually exclusive selection modes.
+- Important identifiers are package docs, exported identifiers, all types and their fields/methods, functions/methods with at least 20 source lines, and identifiers in cyclic groups with fan-in >= 10 or fan-out >= 12.
+- Important fan-in and fan-out are based on `gocodecontext.IdentifierGroup` after cyclic grouping. A group's edge counts apply to every identifier selected from that group.
+- If all important identifiers are already documented, `OnlyDocumentImportantIdentifiers` returns without making LLM requests.
+- `OnlyDocumentImportantIdentifiers` and `DocumentTestFiles` should combine as expected: documents important identifiers in main package and test package(s), but not TestXxx/etc functions.

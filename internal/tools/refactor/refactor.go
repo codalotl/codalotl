@@ -32,16 +32,22 @@ const ToolNameRefactor = "refactor"
 
 // Params are the refactor tool parameters.
 type Params struct {
-	Name    string `json:"name"`
-	Package string `json:"package"`
+	Name    string `json:"name"`    // Name is the registered refactor name to run.
+	Package string `json:"package"` // Package is the target package as an absolute directory, current-module-relative directory, or current-module import path.
 }
 
 // ResultStatus describes the outcome of a refactor run.
 type ResultStatus string
 
+// ResultStatus values describe the outcome of a refactor run.
 const (
-	ResultStatusApplied        ResultStatus = "applied"
-	ResultStatusNoOpportunity  ResultStatus = "no_opportunity"
+	// ResultStatusApplied means the refactor was applied.
+	ResultStatusApplied ResultStatus = "applied"
+
+	// ResultStatusNoOpportunity means the refactor found no applicable change.
+	ResultStatusNoOpportunity ResultStatus = "no_opportunity"
+
+	// ResultStatusAlreadyApplied means a CAS-backed refactor had already been applied to the code unit.
 	ResultStatusAlreadyApplied ResultStatus = "already_applied"
 )
 
@@ -53,25 +59,26 @@ const (
 
 // Result is the machine-readable refactor tool result.
 type Result struct {
-	Name           string       `json:"name"`
-	Package        string       `json:"package"`
-	Status         ResultStatus `json:"status"`
-	Message        string       `json:"message,omitempty"`
-	EditedFiles    []string     `json:"edited-files"`
-	SavedCASRecord *string      `json:"saved-cas-record"`
+	Name           string       `json:"name"`              // Name is the refactor name that ran.
+	Package        string       `json:"package"`           // Package is the resolved package directory relative to the module root.
+	Status         ResultStatus `json:"status"`            // Status is the machine-readable outcome of the refactor run.
+	Message        string       `json:"message,omitempty"` // Message is a human-readable description of Status.
+	EditedFiles    []string     `json:"edited-files"`      // EditedFiles lists package-relative, slash-separated files whose contents or existence changed.
+	SavedCASRecord *string      `json:"saved-cas-record"`  // SavedCASRecord is the path to the CAS record written for the run, or nil when no record was written.
 }
 
 // Options configures the refactor tool.
 type Options struct {
-	AgentInvoker   toolsetinterface.AgentInvoker
-	Model          llmmodel.ModelID
-	LintSteps      []lints.Step
-	NewCommandTree toolcli.CommandTreeFunc
+	AgentInvoker   toolsetinterface.AgentInvoker // AgentInvoker invokes subagents for prompt-style refactors.
+	Model          llmmodel.ModelID              // Model is the model used by prompt-style refactor agents.
+	LintSteps      []lints.Step                  // LintSteps configures linting for prompt-style refactor agents.
+	NewCommandTree toolcli.CommandTreeFunc       // NewCommandTree creates the whitelisted codalotl command tree used by docs-add refactors.
 }
 
 //go:embed data/*.md
 var promptFS embed.FS
 
+// casPolicy selects how a refactor uses content-addressable storage.
 type casPolicy string
 
 const (
@@ -79,6 +86,7 @@ const (
 	casPolicyCodeUnit casPolicy = "cas-code-unit"
 )
 
+// refactorKind selects the implementation strategy for a refactor.
 type refactorKind string
 
 const (
@@ -86,14 +94,15 @@ const (
 	refactorKindPrompt  refactorKind = "prompt"
 )
 
+// refactorConfig describes one registered canned refactor.
 type refactorConfig struct {
-	name        string
-	description string
-	kind        refactorKind
-	casPolicy   casPolicy
-	promptPath  string
-	agentName   string
-	generation  int
+	name        string       // name is the refactor name accepted in tool parameters.
+	description string       // description is the human-readable summary shown in tool metadata.
+	kind        refactorKind // kind selects the implementation strategy for the refactor.
+	casPolicy   casPolicy    // casPolicy selects how the refactor uses CAS.
+	promptPath  string       // promptPath is the embedded prompt path for prompt-style refactors.
+	agentName   string       // agentName is the subagent name used for prompt-style refactors.
+	generation  int          // generation versions CAS records for this refactor configuration.
 }
 
 var refactorRegistry = []refactorConfig{
@@ -114,10 +123,11 @@ var refactorRegistry = []refactorConfig{
 	},
 }
 
+// refactorTool applies registered package-local refactors.
 type refactorTool struct {
-	authorizer authdomain.Authorizer
-	options    Options
-	registry   map[string]refactorConfig
+	authorizer authdomain.Authorizer     // authorizer controls package and CAS filesystem access.
+	options    Options                   // options supplies runtime dependencies for refactor execution.
+	registry   map[string]refactorConfig // registry maps refactor names to their configurations.
 }
 
 // NewRefactorTool creates the refactor tool.
@@ -133,6 +143,7 @@ func NewRefactorTool(authorizer authdomain.Authorizer, options Options) llmstrea
 	}
 }
 
+// Info returns the LLM-facing metadata and parameter schema for the refactor tool.
 func (t refactorTool) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameRefactor,
@@ -151,14 +162,17 @@ func (t refactorTool) Info() llmstream.ToolInfo {
 	}
 }
 
+// Name returns the refactor tool name.
 func (t refactorTool) Name() string {
 	return ToolNameRefactor
 }
 
+// Presenter returns the presenter used to render refactor calls and results.
 func (t refactorTool) Presenter() llmstream.Presenter {
 	return refactorPresenter{}
 }
 
+// Run executes the requested refactor and returns its tool result.
 func (t refactorTool) Run(ctx context.Context, toolCall llmstream.ToolCall) llmstream.ToolResult {
 	params, err := parseParams(toolCall.Input)
 	if err != nil {
@@ -200,6 +214,7 @@ func (t refactorTool) Run(ctx context.Context, toolCall llmstream.ToolCall) llms
 	}
 }
 
+// description returns the LLM-facing description of available refactors and package constraints.
 func (t refactorTool) description() string {
 	var b strings.Builder
 	b.WriteString("Apply a package-local canned refactor. Available refactors:\n")
@@ -241,6 +256,7 @@ func refactorAppliedStatus(noOpportunity bool) ResultStatus {
 	return ResultStatusApplied
 }
 
+// runDocsAdd runs the docs-add refactor for resolved.
 func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, cfg refactorConfig) (Result, error) {
 	if cfg.casPolicy != casPolicyIgnore {
 		return Result{}, fmt.Errorf("docs-add refactor requires CAS policy %q", casPolicyIgnore)
@@ -302,6 +318,7 @@ func docsAddNoOpportunity(stdout string) bool {
 		!strings.Contains(stdout, "Applied ")
 }
 
+// runPromptRefactor runs a CAS-backed prompt-style refactor for resolved.
 func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPackage, cfg refactorConfig) (Result, error) {
 	if t.options.AgentInvoker == nil {
 		return Result{}, errors.New("prompt-style refactor requires AgentInvoker")
@@ -354,6 +371,7 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	return newRefactorResult(cfg, resolved, status, edited, &savedCASRecord), nil
 }
 
+// invokePromptAgent runs cfg's prompt agent for resolved and waits for successful completion.
 func (t refactorTool) invokePromptAgent(ctx context.Context, resolved resolvedPackage, cfg refactorConfig, prompt string, unit *codeunit.CodeUnit) error {
 	pkgAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, t.authorizer.WithoutCodeUnit())
 	sandboxDir := t.authorizer.SandboxDir()
@@ -421,11 +439,13 @@ func loadPrompt(cfg refactorConfig, resolved resolvedPackage) (string, error) {
 	return fmt.Sprintf("%s\n\nTarget package: `%s`.\n", string(b), resolved.relDir), nil
 }
 
+// refactorCASRecord records prompt-style refactor metadata stored in CAS.
 type refactorCASRecord struct {
-	Applied bool     `json:"applied"`
-	Edited  []string `json:"edited"`
+	Applied bool     `json:"applied"` // Applied reports whether the refactor was applied for the code unit.
+	Edited  []string `json:"edited"`  // Edited lists package-relative files changed when the record was created.
 }
 
+// casNamespace returns the CAS namespace for cfg.
 func (cfg refactorConfig) casNamespace() gocas.Namespace {
 	return gocas.Namespace(fmt.Sprintf("refactor-%s-%d", cfg.name, cfg.generation))
 }
@@ -439,6 +459,7 @@ func newCASDB(moduleAbsDir string) *gocas.DB {
 	}
 }
 
+// newCASDB returns an authorized CAS database for resolved's module.
 func (t refactorTool) newCASDB(resolved resolvedPackage) (*gocas.DB, error) {
 	db := newCASDB(resolved.moduleAbsDir)
 	if !pathInside(t.authorizer.SandboxDir(), db.AbsRoot) {
@@ -453,6 +474,7 @@ func (t refactorTool) newCASDB(resolved resolvedPackage) (*gocas.DB, error) {
 	return db, nil
 }
 
+// codeUnitCASRecordPath returns the absolute CAS record path for unit in namespace.
 func codeUnitCASRecordPath(db *gocas.DB, unit *codeunit.CodeUnit, namespace gocas.Namespace) (string, error) {
 	includedFiles, err := nonDirCodeUnitFiles(unit)
 	if err != nil {
@@ -509,12 +531,14 @@ func resultPath(base, target string) string {
 	return filepath.ToSlash(rel)
 }
 
+// codeUnitSnapshot maps package-relative file paths to their captured contents.
 type codeUnitSnapshot map[string][]byte
 
+// defaultGoCodeUnitChangeTracker tracks changes to a package's default Go code unit.
 type defaultGoCodeUnitChangeTracker struct {
-	pkgAbsDir   string
-	beforeUnit  *codeunit.CodeUnit
-	beforeFiles codeUnitSnapshot
+	pkgAbsDir   string             // pkgAbsDir is the absolute path to the tracked package directory.
+	beforeUnit  *codeunit.CodeUnit // beforeUnit is the default Go code unit captured before changes.
+	beforeFiles codeUnitSnapshot   // beforeFiles is the file snapshot captured before changes.
 }
 
 func newDefaultGoCodeUnitChangeTracker(pkgAbsDir string) (*defaultGoCodeUnitChangeTracker, error) {
@@ -529,6 +553,7 @@ func newDefaultGoCodeUnitChangeTracker(pkgAbsDir string) (*defaultGoCodeUnitChan
 	}, nil
 }
 
+// changedFiles returns the current code unit and files changed since the tracker was created.
 func (t defaultGoCodeUnitChangeTracker) changedFiles() (*codeunit.CodeUnit, []string, error) {
 	afterUnit, afterFiles, err := snapshotDefaultGoCodeUnit(t.pkgAbsDir)
 	if err != nil {
@@ -584,6 +609,7 @@ func nonDirCodeUnitFiles(unit *codeunit.CodeUnit) ([]string, error) {
 	return files, nil
 }
 
+// changedFiles returns sorted paths that were added, removed, or modified between snapshots.
 func changedFiles(before, after codeUnitSnapshot) []string {
 	seen := make(map[string]struct{}, len(before)+len(after))
 	for path := range before {
@@ -605,13 +631,15 @@ func changedFiles(before, after codeUnitSnapshot) []string {
 	return edited
 }
 
+// resolvedPackage describes a Go package resolved within the current module and sandbox.
 type resolvedPackage struct {
-	moduleAbsDir string
-	absDir       string
-	relDir       string
-	importPath   string
+	moduleAbsDir string // moduleAbsDir is the absolute path to the module root.
+	absDir       string // absDir is the absolute path to the package directory.
+	relDir       string // relDir is the slash-separated package directory relative to moduleAbsDir, or "." for the module root.
+	importPath   string // importPath is the package's fully qualified Go import path.
 }
 
+// resolvePackage resolves and authorizes packageArg within the current module and sandbox.
 func resolvePackage(authorizer authdomain.Authorizer, packageArg string) (resolvedPackage, error) {
 	if authorizer == nil {
 		return resolvedPackage{}, errors.New("authorizer is required")
@@ -656,6 +684,7 @@ func resolvePackage(authorizer authdomain.Authorizer, packageArg string) (resolv
 	return resolved, nil
 }
 
+// packageResolver resolves a package argument to module, package, and import-path metadata.
 type packageResolver func(packageArg string) (moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath string, err error)
 
 func resolvePackageByRelativeDir(module *gocode.Module, relDir string) (resolvedPackage, error) {
@@ -709,6 +738,7 @@ func relPathInside(rel string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, "../") && !strings.HasPrefix(rel, `..\`)
 }
 
+// parseParams decodes and validates a refactor tool JSON input object.
 func parseParams(input string) (Params, error) {
 	dec := json.NewDecoder(strings.NewReader(input))
 	dec.DisallowUnknownFields()
