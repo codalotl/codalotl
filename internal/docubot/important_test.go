@@ -1,6 +1,7 @@
 package docubot
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,20 +27,9 @@ func TestImportantIdentifiersForPackage_SelectsPolicyCategories(t *testing.T) {
 		func small() {}
 
 		func highFanIn() {}
-		func fanInCaller1() { highFanIn() }
-		func fanInCaller2() { highFanIn() }
-		func fanInCaller3() { highFanIn() }
-
-		func highFanOut() {
-			fanOutDep1()
-			fanOutDep2()
-			fanOutDep3()
-			fanOutDep4()
-		}
-		func fanOutDep1() {}
-		func fanOutDep2() {}
-		func fanOutDep3() {}
-		func fanOutDep4() {}
+	`) + fanInCallersSource("highFanIn", 10) + dedent(`
+		func almostHighFanIn() {}
+	`) + fanInCallersSource("almostHighFanIn", 9) + fanOutSource("highFanOut", "fanOutDep", 12) + fanOutSource("almostHighFanOut", "almostFanOutDep", 11) + dedent(`
 
 		func cycleA() { cycleB() }
 		func cycleB() { cycleC() }
@@ -58,13 +48,15 @@ func TestImportantIdentifiersForPackage_SelectsPolicyCategories(t *testing.T) {
 		assert.Contains(t, important, "big")
 		assert.Contains(t, important, "highFanIn")
 		assert.Contains(t, important, "highFanOut")
-		assert.Contains(t, important, "cycleA")
-		assert.Contains(t, important, "cycleB")
-		assert.Contains(t, important, "cycleC")
 
 		assert.NotContains(t, important, "privateValue")
 		assert.NotContains(t, important, "small")
-		assert.NotContains(t, important, "fanInCaller1")
+		assert.NotContains(t, important, "almostHighFanIn")
+		assert.NotContains(t, important, "almostHighFanOut")
+		assert.NotContains(t, important, "cycleA")
+		assert.NotContains(t, important, "cycleB")
+		assert.NotContains(t, important, "cycleC")
+		assert.NotContains(t, important, "highFanInCaller1")
 		assert.NotContains(t, important, "fanOutDep1")
 	})
 }
@@ -220,6 +212,38 @@ func TestAddDocs_OnlyDocumentImportantIdentifiers_UnimportantIdentifiersDoNotBlo
 	})
 }
 
+func TestAddDocs_OnlyDocumentImportantIdentifiers_NoopsWhenImportantAlreadyDocumented(t *testing.T) {
+	code := dedent(`
+		// Package mypkg already has package documentation.
+		package mypkg
+
+		// Public is already documented.
+		func Public() {}
+
+		// privateType is already documented.
+		type privateType struct {
+			// field is already documented.
+			field string
+		}
+
+		// helper is already documented.
+		func (privateType) helper() {}
+
+		func small() {}
+	`) + "\n// big is already documented.\n" + bigFunctionSource("big")
+
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			OnlyDocumentImportantIdentifiers: true,
+			BaseOptions:                      BaseOptions{Completer: conv},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, changes)
+		assert.Empty(t, conv.convs)
+	})
+}
+
 func TestImportantScratchExclusions_PreservesImportantAndExistingExclusions(t *testing.T) {
 	code := dedent(`
 		func Public() {}
@@ -257,4 +281,25 @@ func TestAddDocs_ImportantAndExportedOnlyAreMutuallyExclusive(t *testing.T) {
 
 func bigFunctionSource(name string) string {
 	return "func " + name + "() {\n" + strings.Repeat("\tprintln(1)\n", 18) + "}\n"
+}
+
+func fanInCallersSource(target string, count int) string {
+	var b strings.Builder
+	for i := 1; i <= count; i++ {
+		fmt.Fprintf(&b, "func %sCaller%d() { %s() }\n", target, i, target)
+	}
+	return b.String()
+}
+
+func fanOutSource(name string, depPrefix string, count int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "func %s() {\n", name)
+	for i := 1; i <= count; i++ {
+		fmt.Fprintf(&b, "\t%s%d()\n", depPrefix, i)
+	}
+	b.WriteString("}\n")
+	for i := 1; i <= count; i++ {
+		fmt.Fprintf(&b, "func %s%d() {}\n", depPrefix, i)
+	}
+	return b.String()
 }

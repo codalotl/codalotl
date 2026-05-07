@@ -14,14 +14,12 @@ type importantIdentifierPolicy struct {
 	BigFunctionSourceLines int
 	GroupFanInThreshold    int
 	GroupFanOutThreshold   int
-	GroupSizeThreshold     int
 }
 
 var defaultImportantIdentifierPolicy = importantIdentifierPolicy{
 	BigFunctionSourceLines: 20,
-	GroupFanInThreshold:    3,
-	GroupFanOutThreshold:   4,
-	GroupSizeThreshold:     3,
+	GroupFanInThreshold:    10,
+	GroupFanOutThreshold:   12,
 }
 
 func addDocsOnlyDocumentImportantIdentifiers(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module) ([]*gopackagediff.Change, error) {
@@ -264,8 +262,7 @@ func removeExcludedImportantIdentifiers(importantIDs map[string]struct{}, exclud
 
 func (p importantIdentifierPolicy) importantGroup(group *gocodecontext.IdentifierGroup) bool {
 	return len(group.UsedByDeps) >= p.GroupFanInThreshold ||
-		len(group.DirectDeps) >= p.GroupFanOutThreshold ||
-		len(group.IDs) >= p.GroupSizeThreshold
+		len(group.DirectDeps) >= p.GroupFanOutThreshold
 }
 
 func totalImportantUndocumented(ids *Identifiers, important map[string]struct{}, includeTest bool) int {
