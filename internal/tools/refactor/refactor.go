@@ -108,7 +108,7 @@ type refactorConfig struct {
 var refactorRegistry = []refactorConfig{
 	{
 		name:        "docs-add",
-		description: "Add missing public Go documentation with codalotl docs add.",
+		description: "Add missing important Go documentation with codalotl docs add.",
 		kind:        refactorKindDocsAdd,
 		casPolicy:   casPolicyIgnore,
 	},
@@ -273,7 +273,7 @@ func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, 
 	cliTool := toolcli.NewCodalotlCLITool(t.options.NewCommandTree)
 	cliParams := toolcli.Params{
 		Subcommand: "docs",
-		Argv:       []string{"add", "--public-only", resolved.absDir},
+		Argv:       []string{"add", "--important", resolved.absDir},
 	}
 	input, err := json.Marshal(cliParams)
 	if err != nil {

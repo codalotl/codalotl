@@ -42,7 +42,7 @@ Before the refactor is run, remember hash or bytes of original code unit files. 
 
 ### docs-add
 
-- Delegates to `codalotl docs add --public-only <package>`. Uses `codalotl_cli` command execution and visible stdout streaming.
+- Delegates to `codalotl docs add --important <package>`. Uses `codalotl_cli` command execution and visible stdout streaming.
 - CAS: `cas-ignore`
 
 ### dry

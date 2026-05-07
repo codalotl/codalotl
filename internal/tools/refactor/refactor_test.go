@@ -31,6 +31,7 @@ func TestInfo(t *testing.T) {
 	assert.Contains(t, info.Parameters, "name")
 	assert.Contains(t, info.Parameters, "package")
 	assert.Contains(t, info.Description, "docs-add")
+	assert.Contains(t, info.Description, "important")
 	assert.Contains(t, info.Description, "dry")
 }
 
@@ -49,7 +50,7 @@ func TestDocsAddDelegatesToCodalotlCLI(t *testing.T) {
 	require.NotNil(t, result.result.EditedFiles)
 	assert.Empty(t, result.result.EditedFiles)
 	assert.Nil(t, result.result.SavedCASRecord)
-	assert.True(t, captured.publicOnly)
+	assert.True(t, captured.important)
 	assert.Equal(t, []string{pkgDir}, captured.args)
 }
 
@@ -384,8 +385,8 @@ func refactorToolCall(t *testing.T, params Params) llmstream.ToolCall {
 }
 
 type docsAddCapture struct {
-	publicOnly bool
-	args       []string
+	important bool
+	args      []string
 }
 
 func docsAddCommandTree(capture *docsAddCapture, stdout string) toolcli.CommandTreeFunc {
@@ -420,9 +421,9 @@ func docsAddCommandTreeFunc(capture *docsAddCapture, run func(*qcli.Context) err
 		root := &qcli.Command{Name: "codalotl"}
 		docs := &qcli.Command{Name: "docs"}
 		add := &qcli.Command{Name: "add"}
-		publicOnly := add.Flags().Bool("public-only", 0, false, "document only public identifiers")
+		important := add.Flags().Bool("important", 0, false, "document only important identifiers")
 		add.Run = func(c *qcli.Context) error {
-			capture.publicOnly = *publicOnly
+			capture.important = *important
 			capture.args = append([]string(nil), c.Args...)
 			return run(c)
 		}
