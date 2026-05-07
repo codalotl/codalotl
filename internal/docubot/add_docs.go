@@ -41,11 +41,12 @@ var ErrTriesExceeded = fmt.Errorf("attempts to doc with no progress have been ex
 
 // AddDocsOptions controls how AddDocs documents identifiers in a package.
 type AddDocsOptions struct {
-	DocumentTestFiles               bool     // Document helpers, types, and variables in test code. TestXxx/BenchXxx/etc. functions are not documented.
-	OnlyDocumentExportedIdentifiers bool     // Only documents publicly exported identifiers.
-	TokenBudget                     int      // Maximum token budget for one LLM request (prompt + code context + instructions). Zero uses defaultTokenBudget.
-	ExcludeIdentifiers              []string // ExcludeIdentifiers marks identifiers as already documented, skipping them during documentation.
-	BaseOptions                              // Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
+	DocumentTestFiles                bool     // Document helpers, types, and variables in test code. TestXxx/BenchXxx/etc. functions are not documented.
+	OnlyDocumentExportedIdentifiers  bool     // Only documents publicly exported identifiers.
+	OnlyDocumentImportantIdentifiers bool     // Only documents public identifiers and other identifiers selected by the important-identifier policy.
+	TokenBudget                      int      // Maximum token budget for one LLM request (prompt + code context + instructions). Zero uses defaultTokenBudget.
+	ExcludeIdentifiers               []string // ExcludeIdentifiers marks identifiers as already documented, skipping them during documentation.
+	BaseOptions                               // Shared configuration and dependencies (ex: model, completer, logging) for LLM-backed operations.
 }
 
 // AddDocs adds documentation to undocumented identifiers in the package and returns the set of documentation changes (if DocumentTestFiles, it includes _test package
@@ -60,10 +61,17 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 		options.TokenBudget = defaultTokenBudget
 	}
 
-	options.Log("Entering AddDocs", "DocumentTestFiles", options.DocumentTestFiles, "OnlyDocumentExportedIdentifier", options.OnlyDocumentExportedIdentifiers, "TokenBudget", options.TokenBudget)
+	if options.OnlyDocumentExportedIdentifiers && options.OnlyDocumentImportantIdentifiers {
+		return nil, options.LogNewErr("OnlyDocumentImportantIdentifiers and OnlyDocumentExportedIdentifiers are mutually exclusive")
+	}
+
+	options.Log("Entering AddDocs", "DocumentTestFiles", options.DocumentTestFiles, "OnlyDocumentExportedIdentifier", options.OnlyDocumentExportedIdentifiers, "OnlyDocumentImportantIdentifiers", options.OnlyDocumentImportantIdentifiers, "TokenBudget", options.TokenBudget)
 
 	if options.OnlyDocumentExportedIdentifiers {
 		return addDocsOnlyDocumentExportedIdentifier(pkg, options, contextModule)
+	}
+	if options.OnlyDocumentImportantIdentifiers {
+		return addDocsOnlyDocumentImportantIdentifiers(pkg, options, contextModule)
 	}
 
 	options.ExcludeIdentifiers = appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg)

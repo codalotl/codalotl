@@ -21,6 +21,8 @@ To do this, we use an `IdentifierGroup`. The `IdentifierGroup` is a bundle of id
 
 Identifiers are grouped because `gocode.Snippet`s are the things we add to contexts, and because once SCCs go into groups, the `IdentifierGroup`s form a DAG, making things easier.
 
+The public `IdentifierGroup` API does not retain why a group was formed. Callers should use `len(group.IDs)` for identifier-count criteria regardless of whether members came from a block, an SCC, or both. For context-size criteria, prefer token counts or `Context` cost methods because multiple IDs can share one snippet.
+
 ### Usage
 
 Basic usage:
