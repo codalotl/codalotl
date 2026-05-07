@@ -15,6 +15,7 @@ type AgentCreator interface {
 
 // SubAgentCreator constructs SubAgents while servicing a tool call.
 type SubAgentCreator interface {
+	// AgentCreator provides New for child agents bound to the active tool call.
 	AgentCreator
 }
 
@@ -25,28 +26,35 @@ func NewAgentCreator() AgentCreator {
 	}
 }
 
+// defaultAgentCreator constructs root agents using a default model.
 type defaultAgentCreator struct {
-	defaultModel llmmodel.ModelID
+	defaultModel llmmodel.ModelID // defaultModel is used when NewOptions.Model is empty.
 }
 
+// New constructs a root Agent using the creator's default model unless options specify another model.
 func (c *defaultAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error) {
 	opts := append([]NewOptions{{Model: llmmodel.ModelIDOrFallback(c.defaultModel)}}, options...)
 	return New(systemPrompt, tools, opts...)
 }
 
+// A subAgentFactory creates subagents for one active tool call and manages their lifetime.
+//
+// The factory is valid only while its owning tool call is running. Closing it prevents new subagents, cancels existing children, and waits for active child runs
+// to finish.
 type subAgentFactory struct {
-	mu           sync.Mutex
-	parent       *Agent
-	parentOut    chan<- Event
-	toolCallID   string
-	defaultModel llmmodel.ModelID
-	tools        []llmstream.Tool
-	closed       bool
-	children     map[*Agent]struct{}
-	active       map[*Agent]chan Event
-	wg           sync.WaitGroup
+	mu           sync.Mutex            // The mutex protects mutable factory lifecycle state.
+	parent       *Agent                // The parent owns the tool call that may create subagents.
+	parentOut    chan<- Event          // The parent output stream receives relayed child events.
+	toolCallID   string                // The tool-call ID identifies the parent tool call that created child agents.
+	defaultModel llmmodel.ModelID      // The default model is used when subagent options do not specify a model.
+	tools        []llmstream.Tool      // The tools list stores the inherited tool set exposed to tool contexts.
+	closed       bool                  // The closed flag prevents new child agents and runs after shutdown begins.
+	children     map[*Agent]struct{}   // The children set tracks all created child agents for cancellation on close.
+	active       map[*Agent]chan Event // The active map tracks running child agents and the streams CloseAndWait must drain.
+	wg           sync.WaitGroup        // The wait group waits for active child runs to finish.
 }
 
+// newSubAgentFactory creates a factory for subagents scoped to toolCallID on parent.
 func newSubAgentFactory(parent *Agent, toolCallID string) *subAgentFactory {
 	if parent == nil {
 		return nil
@@ -72,6 +80,7 @@ func newSubAgentFactory(parent *Agent, toolCallID string) *subAgentFactory {
 	}
 }
 
+// New creates a subagent scoped to the factory's active tool call.
 func (f *subAgentFactory) New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error) {
 	resolved := mergeNewOptions(options)
 	model := resolved.Model
@@ -81,6 +90,7 @@ func (f *subAgentFactory) New(systemPrompt string, tools []llmstream.Tool, optio
 	return f.create(model, systemPrompt, tools, resolved.SubagentLabel)
 }
 
+// create constructs and registers a child Agent for the factory's active tool call. It panics if the factory is closed or missing its parent output channel.
 func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, subagentLabel string) (*Agent, error) {
 	f.mu.Lock()
 	if f.closed {
@@ -116,6 +126,7 @@ func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, to
 	return child, nil
 }
 
+// registerChild records child for factory lifecycle tracking. It cancels child and panics if the factory has already been closed.
 func (f *subAgentFactory) registerChild(child *Agent) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -131,6 +142,8 @@ func (f *subAgentFactory) registerChild(child *Agent) {
 	f.children[child] = struct{}{}
 }
 
+// registerRun records child and its event stream as an active subagent run. It returns false if the factory has been closed; a successful registration must be finished
+// so CloseAndWait can unblock.
 func (f *subAgentFactory) registerRun(child *Agent, out chan Event) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -145,6 +158,7 @@ func (f *subAgentFactory) registerRun(child *Agent, out chan Event) bool {
 	return true
 }
 
+// finishRun marks child as no longer active so CloseAndWait can return when all child runs have ended.
 func (f *subAgentFactory) finishRun(child *Agent) {
 	f.mu.Lock()
 	if _, ok := f.active[child]; ok {
@@ -154,6 +168,8 @@ func (f *subAgentFactory) finishRun(child *Agent) {
 	f.mu.Unlock()
 }
 
+// CloseAndWait closes the factory to new subagent runs, cancels all child agents, and waits for active runs to finish. It drains active child event streams while
+// waiting so children can finish emitting cancellation and terminal events.
 func (f *subAgentFactory) CloseAndWait() {
 	f.mu.Lock()
 	f.closed = true
@@ -237,12 +253,14 @@ func AgentToolsFromContext(ctx context.Context) []llmstream.Tool {
 	return nil
 }
 
+// toolContextKey is the private context key for agent tool-invocation values.
 type toolContextKey struct{}
 
+// toolContextValues stores agent metadata and helpers attached to the context passed to a tool run.
 type toolContextValues struct {
-	depth   int
-	tools   []llmstream.Tool
-	creator *subAgentFactory
+	depth   int              // Depth is the nesting depth of the agent running the tool; root-agent tools use 0.
+	tools   []llmstream.Tool // Tools contains the tool set available to the agent running the tool.
+	creator *subAgentFactory // Creator creates subagents scoped to the active tool call.
 }
 
 var _ AgentCreator = (*defaultAgentCreator)(nil)

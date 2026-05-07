@@ -28,36 +28,36 @@ var newConversation = llmstream.NewConversation
 
 // Agent orchestrates the conversation loop between llmstream and tools.
 type Agent struct {
-	sessionID           string
-	agentID             string
-	model               llmmodel.ModelID
-	subagentLabel       string
-	callingToolCallID   string
-	conv                llmstream.StreamingConversation
-	mu                  sync.Mutex
-	status              Status
-	turns               []llmstream.Turn
-	tokenUsage          llmstream.TokenUsage
-	contextUsageTokens  int64
-	startSubagentSent   bool
-	tools               map[string]llmstream.Tool
-	toolList            []llmstream.Tool
-	pendingUserMessages []string
-	pendingQueuedEvents []string
-	acceptingQueue      bool
-	parent              *Agent
-	depth               int
-	parentOut           chan<- Event
-	currentOut          chan<- Event
-	subagentFactory     *subAgentFactory
-	lifetimeCtx         context.Context
-	lifetimeCancel      context.CancelFunc
+	sessionID           string                          // The session ID identifies the root session shared by this agent and its subagents.
+	agentID             string                          // The agent ID identifies this agent in emitted Event.Agent metadata.
+	model               llmmodel.ModelID                // The model selects the provider model used for sends and context estimates.
+	subagentLabel       string                          // The subagent label is emitted with the start-subagent event for this agent.
+	callingToolCallID   string                          // The calling tool-call ID records the parent tool call that created this subagent.
+	conv                llmstream.StreamingConversation // The conversation stores turns, tools, and provider send state.
+	mu                  sync.Mutex                      // The mutex protects mutable state shared by callers, run loops, and event relay.
+	status              Status                          // The status reports whether a run is active.
+	turns               []llmstream.Turn                // The turns mirror the conversation for snapshot access.
+	tokenUsage          llmstream.TokenUsage            // The token usage accumulates provider-reported usage for this agent and descendant subagents.
+	contextUsageTokens  int64                           // The context usage tokens store the latest token count used by ContextUsagePercent.
+	startSubagentSent   bool                            // The start-subagent flag prevents duplicate EventTypeStartSubagent events.
+	tools               map[string]llmstream.Tool       // The tools map registered tool names to tool implementations.
+	toolList            []llmstream.Tool                // The tool list preserves the registered tool set for subagent inheritance.
+	pendingUserMessages []string                        // The pending user messages wait for the next safe insertion boundary.
+	pendingQueuedEvents []string                        // The pending queued events wait for EventTypeUserMessageQueued notification.
+	acceptingQueue      bool                            // The accepting queue flag allows QueueUserMessage during eligible parts of an active run.
+	parent              *Agent                          // The parent points to the owning agent for subagents and is nil for root agents.
+	depth               int                             // The depth records nesting depth, with root agents at depth 0.
+	parentOut           chan<- Event                    // The parent output stream relays subagent events to ancestor streams.
+	currentOut          chan<- Event                    // The current output stream receives events for the active run.
+	subagentFactory     *subAgentFactory                // The subagent factory owns this agent when it is a subagent.
+	lifetimeCtx         context.Context                 // The lifetime context is canceled when the creating tool call ends.
+	lifetimeCancel      context.CancelFunc              // The lifetime cancel function cancels lifetimeCtx during subagent shutdown.
 }
 
 // NewOptions controls optional agent construction behavior.
 type NewOptions struct {
-	Model         llmmodel.ModelID
-	SubagentLabel string
+	Model         llmmodel.ModelID // Model selects the model for the new agent; the zero value uses the applicable default.
+	SubagentLabel string           // SubagentLabel is emitted in EventTypeStartSubagent events for subagents created with these options.
 }
 
 // New constructs a root Agent.
@@ -262,6 +262,8 @@ func (a *Agent) SendUserMessage(ctx context.Context, message string) <-chan Even
 	return out
 }
 
+// run drives provider sends, tool execution, and queued-message injection for the current active run. The caller must have appended the initial user turn and marked
+// the agent running. run emits a terminal event, marks the agent idle, and closes out before returning.
 func (a *Agent) run(ctx context.Context, out chan<- Event) {
 	defer func() {
 		a.finishRun()
@@ -459,6 +461,7 @@ func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn
 	return completedTurn, seenToolCallIDs, nil
 }
 
+// assistantTextRuns returns contiguous text runs from turn and the index of the trailing text run. If turn does not end with text, the trailing run index is -1.
 func assistantTextRuns(turn llmstream.Turn) ([][]llmstream.TextContent, int) {
 	var runs [][]llmstream.TextContent
 	var current []llmstream.TextContent
@@ -487,6 +490,7 @@ func assistantTextRuns(turn llmstream.Turn) ([][]llmstream.TextContent, int) {
 	return runs, trailingRunIndex
 }
 
+// coalesceTextContent returns one TextContent by concatenating parts in order. It preserves ProviderID only when every part has the same ProviderID.
 func coalesceTextContent(parts []llmstream.TextContent) llmstream.TextContent {
 	if len(parts) == 0 {
 		return llmstream.TextContent{}
@@ -522,6 +526,7 @@ func coalesceTextContent(parts []llmstream.TextContent) llmstream.TextContent {
 	}
 }
 
+// handleToolUse runs the requested tools and appends their results to the conversation.
 func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llmstream.ToolCall, seen map[string]struct{}) error {
 	if len(calls) == 0 {
 		return errNoToolCallsPresent
@@ -589,6 +594,7 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 	return nil
 }
 
+// emitTerminalEvent emits EventTypeCanceled for context cancellation and EventTypeError for other errors.
 func (a *Agent) emitTerminalEvent(out chan<- Event, err error) {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		a.dispatchEvent(out, Event{Type: EventTypeCanceled, Error: err})
@@ -632,6 +638,7 @@ func cloneTurn(t llmstream.Turn) llmstream.Turn {
 	return cp
 }
 
+// meta returns event metadata for the agent.
 func (a *Agent) meta() AgentMeta {
 	parentID := ""
 	if a.parent != nil {
@@ -645,6 +652,8 @@ func (a *Agent) meta() AgentMeta {
 	}
 }
 
+// dispatchEvent annotates ev with this agent's metadata and sends it to local when local is non-nil. For subagents, it also relays the event to parent streams without
+// sending it twice to the same channel.
 func (a *Agent) dispatchEvent(local chan<- Event, ev Event) {
 	ev.Agent = a.meta()
 
@@ -660,6 +669,8 @@ func (a *Agent) dispatchEvent(local chan<- Event, ev Event) {
 	}
 }
 
+// relayFromChild forwards a subagent event to this agent's current run stream and any ancestor streams. It skips child to avoid sending the event back to the stream
+// that already received it.
 func (a *Agent) relayFromChild(ev Event, child chan<- Event) {
 	a.mu.Lock()
 	out := a.currentOut
@@ -681,6 +692,7 @@ func (a *Agent) relayFromChild(ev Event, child chan<- Event) {
 	}
 }
 
+// finishRun marks the agent idle and clears per-run output and queued-message state.
 func (a *Agent) finishRun() {
 	a.mu.Lock()
 	a.status = StatusIdle
@@ -691,6 +703,7 @@ func (a *Agent) finishRun() {
 	a.mu.Unlock()
 }
 
+// addUsage accumulates non-zero token usage on the agent and its ancestors.
 func (a *Agent) addUsage(usage llmstream.TokenUsage) {
 	if usage.TotalInputTokens == 0 &&
 		usage.TotalOutputTokens == 0 &&
@@ -713,6 +726,7 @@ func (a *Agent) addUsage(usage llmstream.TokenUsage) {
 	}
 }
 
+// updateContextUsage records the latest positive context-window token count for this agent.
 func (a *Agent) updateContextUsage(usage llmstream.TokenUsage) {
 	tokens := contextTokensFromUsage(usage)
 	if tokens <= 0 {
@@ -800,6 +814,8 @@ func mergeNewOptions(options []NewOptions) NewOptions {
 	return merged
 }
 
+// newAgentInstance constructs an Agent with an initialized conversation, tool registry, and system turn. It returns an error if the conversation cannot be created
+// or the tools cannot be registered.
 func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, sessionID, agentID string, parent *Agent, depth int, parentOut chan<- Event, subagentLabel, callingToolCallID string) (*Agent, error) {
 	conv := newConversation(model, systemPrompt)
 	if conv == nil {
@@ -846,12 +862,14 @@ func generateSessionID() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+// stopAcceptingQueue prevents QueueUserMessage from accepting additional messages for the current run. It does not modify messages that have already been queued.
 func (a *Agent) stopAcceptingQueue() {
 	a.mu.Lock()
 	a.acceptingQueue = false
 	a.mu.Unlock()
 }
 
+// maybeEmitStartSubagentEvent emits EventTypeStartSubagent once for a subagent.
 func (a *Agent) maybeEmitStartSubagentEvent(out chan<- Event) {
 	a.mu.Lock()
 	if a.parent == nil || a.startSubagentSent {
@@ -926,6 +944,7 @@ func (a *Agent) injectAllPending(out chan<- Event) error {
 	return nil
 }
 
+// flushQueuedUserMessageEvents emits and clears pending EventTypeUserMessageQueued notifications.
 func (a *Agent) flushQueuedUserMessageEvents(out chan<- Event) {
 	a.mu.Lock()
 	msgs := a.pendingQueuedEvents
