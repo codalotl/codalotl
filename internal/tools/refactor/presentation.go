@@ -7,8 +7,10 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
+// refactorPresenter presents refactor tool calls and results.
 type refactorPresenter struct{}
 
+// Present returns a semantic presentation for a refactor call and optional result.
 func (refactorPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	params, _ := parseParams(call.Input)
 	name := params.Name
