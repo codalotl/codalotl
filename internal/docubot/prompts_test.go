@@ -10,8 +10,6 @@ func TestPrompts(t *testing.T) {
 	t.SkipNow()
 	fmt.Println(promptAddDocumentation())
 	fmt.Println("-----")
-	fmt.Println(promptPolish())
-	fmt.Println("-----")
 	fmt.Println(promptFindErrors())
 	fmt.Println("-----")
 	fmt.Println(promptIncorperateFeedback())

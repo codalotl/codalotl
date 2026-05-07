@@ -2,21 +2,14 @@ package docubot
 
 import (
 	"bytes"
-	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
-	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
-	"github.com/codalotl/codalotl/internal/llmmodel"
-	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/q/health"
 
 	"github.com/stretchr/testify/assert"
@@ -111,98 +104,6 @@ func TestImproveDocs_UsesInjectedProgressWriter(t *testing.T) {
 		assert.Contains(t, output, "< Got 1 snippets. 1/1 successful")
 		assert.Contains(t, output, "New docs for Foo are better. Using...")
 	})
-}
-
-func TestPolish_SerializesConcurrentProgressWrites(t *testing.T) {
-	var code strings.Builder
-	for i := range 11 {
-		_, err := fmt.Fprintf(&code, "// Func%d has docs.\nfunc Func%d() {}\n\n", i, i)
-		require.NoError(t, err)
-	}
-
-	gocodetesting.WithCode(t, code.String(), func(pkg *gocode.Package) {
-		writer := newProgressProbeWriter()
-
-		type result struct {
-			changes any
-			err     error
-		}
-		done := make(chan result, 1)
-		go func() {
-			changes, err := Polish(pkg, nil, PolishOptions{
-				BaseOptions: BaseOptions{
-					Completer:      echoCompleter{},
-					MaxParallelism: 2,
-					Out:            writer,
-				},
-			})
-			done <- result{changes: changes, err: err}
-		}()
-
-		require.Eventually(t, writer.firstRequestSeen, time.Second, 10*time.Millisecond)
-		require.Never(t, writer.secondRequestSeen, 200*time.Millisecond, 10*time.Millisecond)
-
-		close(writer.releaseFirstRequest)
-
-		require.Eventually(t, writer.secondRequestSeen, time.Second, 10*time.Millisecond)
-
-		res := <-done
-		require.NoError(t, res.err)
-		assert.Empty(t, res.changes)
-	})
-}
-
-type echoCompleter struct{}
-
-func (echoCompleter) Complete(_ context.Context, _ llmmodel.ModelID, _ string, userMessage string, _ ...llmstream.SendOptions) (llmstream.Turn, error) {
-	return llmstream.Turn{
-		Role: llmstream.RoleAssistant,
-		Parts: []llmstream.ContentPart{
-			llmstream.TextContent{Content: userMessage},
-		},
-		FinishReason: llmstream.FinishReasonEndTurn,
-	}, nil
-}
-
-type progressProbeWriter struct {
-	requestWrites        atomic.Int32
-	secondRequestEntered atomic.Bool
-	releaseFirstRequest  chan struct{}
-	firstRequestEntered  chan struct{}
-}
-
-func newProgressProbeWriter() *progressProbeWriter {
-	return &progressProbeWriter{
-		releaseFirstRequest: make(chan struct{}),
-		firstRequestEntered: make(chan struct{}),
-	}
-}
-
-func (w *progressProbeWriter) Write(p []byte) (int, error) {
-	if strings.Contains(string(p), "> Requesting polishing for") {
-		switch w.requestWrites.Add(1) {
-		case 1:
-			close(w.firstRequestEntered)
-			<-w.releaseFirstRequest
-		case 2:
-			w.secondRequestEntered.Store(true)
-		}
-	}
-
-	return len(p), nil
-}
-
-func (w *progressProbeWriter) firstRequestSeen() bool {
-	select {
-	case <-w.firstRequestEntered:
-		return true
-	default:
-		return false
-	}
-}
-
-func (w *progressProbeWriter) secondRequestSeen() bool {
-	return w.secondRequestEntered.Load()
 }
 
 func captureStdout(t *testing.T, fn func()) string {
