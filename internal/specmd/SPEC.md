@@ -106,6 +106,9 @@ type Spec struct {
 // Read reads the path to create a Spec. If the path is not a "SPEC.md" file (case-sensitive), an error is returned. The file is NOT parsed, nor verified to be markdown.
 func Read(path string) (*Spec, error)
 
+// WithoutPublicAPI returns a copy of s with Public API sections removed from Body.
+func (s *Spec) WithoutPublicAPI() (*Spec, error)
+
 // Validate parses Body as a markdown file, and ensures each Go code block has valid code without syntax errors. The code is not checked for type errors. The first
 // error encountered is returned; nil if no errors.
 func (s *Spec) Validate() error

@@ -6,6 +6,7 @@ Docubot offers functions to add documentation to Go packages, improve existing d
 
 - `internal/gocode` owns the Go parsing, snippets, and identifier handling (`type Identifiers` in this package is allowed).
 - `internal/updatedocs` owns applying doc edits to source code and reflowing doc comments. Reflowing means controlling placement (EOL vs `Doc`) and changing comment width.
+- `internal/specmd` owns reading and preparing SPEC.md context for LLM prompts.
 - NOTE: `docubot`, by extension, should NOT directly be doing these things.
 
 ## BaseOptions
@@ -49,6 +50,7 @@ Mechanics:
 The `AddDocs` function adds missing documentation to a package by directly editing the package's files.
 - By default, it documents all identifiers, excluding test files. It does not document generated identifiers, anonymous identifiers, or init identifiers.
 - It never removes, fixes, or edits an existing comment (other than reflowing).
+- LLM context includes the package's `SPEC.md`, if present, with `## Public API` removed.
 
 Options include:
 - `DocumentTestFiles`: if true, we also document test files, including black-box tests (package somepkg_test). Does not document TestXxx/BenchmarkXxx/etc functions.
