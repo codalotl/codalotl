@@ -2249,11 +2249,8 @@ type sendScript struct {
 }
 
 func newScriptedConversation(systemPrompt string, scripts ...*sendScript) *scriptedConversation {
-	sysTurn := llmstream.Turn{
-		Role:  llmstream.RoleSystem,
-		Parts: []llmstream.ContentPart{llmstream.TextContent{Content: systemPrompt}},
-	}
-	turns := []llmstream.Turn{cloneTurnTest(sysTurn)}
+	sysTurn := newTextTurn(llmstream.RoleSystem, systemPrompt)
+	turns := []llmstream.Turn{cloneTurn(sysTurn)}
 	return &scriptedConversation{
 		systemTurn: sysTurn,
 		turns:      turns,
@@ -2264,17 +2261,13 @@ func newScriptedConversation(systemPrompt string, scripts ...*sendScript) *scrip
 func (c *scriptedConversation) LastTurn() llmstream.Turn {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return cloneTurnTest(c.turns[len(c.turns)-1])
+	return cloneTurn(c.turns[len(c.turns)-1])
 }
 
 func (c *scriptedConversation) Turns() []llmstream.Turn {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	out := make([]llmstream.Turn, len(c.turns))
-	for i, t := range c.turns {
-		out[i] = cloneTurnTest(t)
-	}
-	return out
+	return cloneTurns(c.turns)
 }
 
 func (c *scriptedConversation) AddTools(tools []llmstream.Tool) error {
@@ -2284,10 +2277,7 @@ func (c *scriptedConversation) AddTools(tools []llmstream.Tool) error {
 func (c *scriptedConversation) AddUserTurn(text string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.turns = append(c.turns, llmstream.Turn{
-		Role:  llmstream.RoleUser,
-		Parts: []llmstream.ContentPart{llmstream.TextContent{Content: text}},
-	})
+	c.turns = append(c.turns, newTextTurn(llmstream.RoleUser, text))
 	return nil
 }
 
@@ -2299,11 +2289,7 @@ func (c *scriptedConversation) AddToolResults(results []llmstream.ToolResult) er
 	copy(copied, results)
 	c.toolResults = append(c.toolResults, copied)
 
-	parts := make([]llmstream.ContentPart, len(results))
-	for i, r := range results {
-		parts[i] = r
-	}
-	c.turns = append(c.turns, llmstream.Turn{Role: llmstream.RoleUser, Parts: parts})
+	c.turns = append(c.turns, toolResultTurn(results))
 	return nil
 }
 
@@ -2364,7 +2350,7 @@ func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.Sen
 			}
 			if ev.Type == llmstream.EventTypeCompletedSuccess && ev.Turn != nil {
 				c.mu.Lock()
-				c.turns = append(c.turns, cloneTurnTest(*ev.Turn))
+				c.turns = append(c.turns, cloneTurn(*ev.Turn))
 				c.mu.Unlock()
 			}
 		}
@@ -2406,16 +2392,7 @@ func (s *stubTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.T
 	}
 	s.calls = append(s.calls, call)
 	res := s.result
-	if res.CallID == "" {
-		res.CallID = call.CallID
-	}
-	if res.Name == "" {
-		res.Name = call.Name
-	}
-	if res.Type == "" {
-		res.Type = call.Type
-	}
-	return res
+	return normalizeToolResult(res, call)
 }
 
 type funcTool struct {
@@ -2437,16 +2414,7 @@ func (t *funcTool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.T
 		return res
 	}
 	res := t.runFn(ctx, call)
-	if res.CallID == "" {
-		res.CallID = call.CallID
-	}
-	if res.Name == "" {
-		res.Name = call.Name
-	}
-	if res.Type == "" {
-		res.Type = call.Type
-	}
-	return res
+	return normalizeToolResult(res, call)
 }
 
 func overrideConversation(t *testing.T, conv llmstream.StreamingConversation) {
@@ -2458,16 +2426,6 @@ func overrideConversation(t *testing.T, conv llmstream.StreamingConversation) {
 	t.Cleanup(func() {
 		newConversation = prev
 	})
-}
-
-func cloneTurnTest(t llmstream.Turn) llmstream.Turn {
-	cp := t
-	if len(t.Parts) > 0 {
-		parts := make([]llmstream.ContentPart, len(t.Parts))
-		copy(parts, t.Parts)
-		cp.Parts = parts
-	}
-	return cp
 }
 
 var _ llmstream.Tool = (*stubTool)(nil)

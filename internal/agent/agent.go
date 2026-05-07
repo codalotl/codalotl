@@ -274,9 +274,7 @@ func (a *Agent) run(ctx context.Context, out chan<- Event) {
 		a.flushQueuedUserMessageEvents(out)
 		turn, seenCalls, err := a.sendOnce(ctx, out)
 		if err != nil {
-			a.flushQueuedUserMessageEvents(out)
-			a.stopAcceptingQueue()
-			a.emitTerminalEvent(out, err)
+			a.abortRun(out, err)
 			return
 		}
 		a.flushQueuedUserMessageEvents(out)
@@ -285,9 +283,7 @@ func (a *Agent) run(ctx context.Context, out chan<- Event) {
 		case llmstream.FinishReasonEndTurn:
 			finish, err := a.injectOrStopAccepting(out)
 			if err != nil {
-				a.flushQueuedUserMessageEvents(out)
-				a.stopAcceptingQueue()
-				a.emitTerminalEvent(out, err)
+				a.abortRun(out, err)
 				return
 			}
 			if !finish {
@@ -297,15 +293,11 @@ func (a *Agent) run(ctx context.Context, out chan<- Event) {
 			return
 		case llmstream.FinishReasonToolUse:
 			if err := a.handleToolUse(ctx, out, turn.ToolCalls(), seenCalls); err != nil {
-				a.flushQueuedUserMessageEvents(out)
-				a.stopAcceptingQueue()
-				a.emitTerminalEvent(out, err)
+				a.abortRun(out, err)
 				return
 			}
 			if err := a.injectAllPending(out); err != nil {
-				a.flushQueuedUserMessageEvents(out)
-				a.stopAcceptingQueue()
-				a.emitTerminalEvent(out, err)
+				a.abortRun(out, err)
 				return
 			}
 			continue
@@ -564,15 +556,7 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 				result = tool.Run(toolCtx, call)
 			}()
 
-			if result.CallID == "" {
-				result.CallID = call.CallID
-			}
-			if result.Name == "" {
-				result.Name = call.Name
-			}
-			if result.Type == "" {
-				result.Type = call.Type
-			}
+			result = normalizeToolResult(result, call)
 		}
 
 		resultCopy := result
@@ -603,6 +587,12 @@ func (a *Agent) emitTerminalEvent(out chan<- Event, err error) {
 	a.dispatchEvent(out, Event{Type: EventTypeError, Error: err})
 }
 
+func (a *Agent) abortRun(out chan<- Event, err error) {
+	a.flushQueuedUserMessageEvents(out)
+	a.stopAcceptingQueue()
+	a.emitTerminalEvent(out, err)
+}
+
 func newTextTurn(role llmstream.Role, text string) llmstream.Turn {
 	return llmstream.Turn{
 		Role: role,
@@ -618,6 +608,19 @@ func toolResultTurn(results []llmstream.ToolResult) llmstream.Turn {
 		parts[i] = r
 	}
 	return llmstream.Turn{Role: llmstream.RoleUser, Parts: parts}
+}
+
+func normalizeToolResult(result llmstream.ToolResult, call llmstream.ToolCall) llmstream.ToolResult {
+	if result.CallID == "" {
+		result.CallID = call.CallID
+	}
+	if result.Name == "" {
+		result.Name = call.Name
+	}
+	if result.Type == "" {
+		result.Type = call.Type
+	}
+	return result
 }
 
 func cloneTurns(src []llmstream.Turn) []llmstream.Turn {
@@ -830,12 +833,7 @@ func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmst
 
 	toolMap, toolList := buildToolRegistry(tools)
 
-	systemTurn := llmstream.Turn{
-		Role: llmstream.RoleSystem,
-		Parts: []llmstream.ContentPart{
-			llmstream.TextContent{Content: systemPrompt},
-		},
-	}
+	systemTurn := newTextTurn(llmstream.RoleSystem, systemPrompt)
 
 	return &Agent{
 		sessionID:         sessionID,
@@ -895,26 +893,12 @@ func (a *Agent) maybeEmitStartSubagentEvent(out chan<- Event) {
 // the agent stops accepting queued messages and the run may finish.
 func (a *Agent) injectOrStopAccepting(out chan<- Event) (bool, error) {
 	a.flushQueuedUserMessageEvents(out)
-	a.mu.Lock()
-	if len(a.pendingUserMessages) == 0 {
-		a.acceptingQueue = false
-		a.mu.Unlock()
+	msgs := a.popPendingUserMessages(true)
+	if len(msgs) == 0 {
 		return true, nil
 	}
-	msgs := a.pendingUserMessages
-	a.pendingUserMessages = nil
-	a.mu.Unlock()
-	for _, msg := range msgs {
-		a.mu.Lock()
-		err := a.conv.AddUserTurn(msg)
-		if err == nil {
-			a.turns = append(a.turns, newTextTurn(llmstream.RoleUser, msg))
-		}
-		a.mu.Unlock()
-		if err != nil {
-			return false, err
-		}
-		a.dispatchEvent(out, Event{Type: EventTypeQueuedUserMessageSent, UserMessage: msg})
+	if err := a.appendQueuedUserMessages(out, msgs); err != nil {
+		return false, err
 	}
 	return false, nil
 }
@@ -922,13 +906,29 @@ func (a *Agent) injectOrStopAccepting(out chan<- Event) (bool, error) {
 // injectAllPending appends all currently queued user messages (if any). This is used after tool results are appended, before the next provider send.
 func (a *Agent) injectAllPending(out chan<- Event) error {
 	a.flushQueuedUserMessageEvents(out)
-	a.mu.Lock()
-	msgs := a.pendingUserMessages
-	a.pendingUserMessages = nil
-	a.mu.Unlock()
+	msgs := a.popPendingUserMessages(false)
 	if len(msgs) == 0 {
 		return nil
 	}
+	return a.appendQueuedUserMessages(out, msgs)
+}
+
+func (a *Agent) popPendingUserMessages(stopAcceptingIfEmpty bool) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.pendingUserMessages) == 0 {
+		if stopAcceptingIfEmpty {
+			a.acceptingQueue = false
+		}
+		return nil
+	}
+
+	msgs := a.pendingUserMessages
+	a.pendingUserMessages = nil
+	return msgs
+}
+
+func (a *Agent) appendQueuedUserMessages(out chan<- Event, msgs []string) error {
 	for _, msg := range msgs {
 		a.mu.Lock()
 		err := a.conv.AddUserTurn(msg)
