@@ -164,9 +164,11 @@ func TestRun_CommandHelp_IsDetailedAndSkipsStartupValidation(t *testing.T) {
 	require.Contains(t, got, "codalotl docs add")
 	require.Contains(t, got, "Adds missing package documentation comments")
 	require.Contains(t, got, "--public-only")
+	require.Contains(t, got, "--important")
 	require.Contains(t, got, "--include-test")
 	require.Contains(t, got, "<path/to/pkg>")
 	require.Contains(t, got, "codalotl docs add --public-only internal/mypkg")
+	require.Contains(t, got, "codalotl docs add --important internal/mypkg")
 }
 
 func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
@@ -583,10 +585,67 @@ func TestRun_DocsAdd_UsesPackageLoadingFlagsAndConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, wantPkgDir, gotPkgDir)
 	require.True(t, gotOpts.OnlyDocumentExportedIdentifiers)
+	require.False(t, gotOpts.OnlyDocumentImportantIdentifiers)
 	require.True(t, gotOpts.DocumentTestFiles)
 	require.Equal(t, 77, gotOpts.ReflowMaxWidth)
 	require.Equal(t, llmmodel.ProviderIDAnthropic.DefaultModel(), gotOpts.Model)
 	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
+}
+
+func TestRun_DocsAdd_PassesImportantFlagAndIncludeTest(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc Foo() {}\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origRunDocubotAddDocs := runDocubotAddDocs
+	t.Cleanup(func() { runDocubotAddDocs = origRunDocubotAddDocs })
+
+	var gotOpts docubot.AddDocsOptions
+	runDocubotAddDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) ([]*gopackagediff.Change, error) {
+		gotOpts = opts
+		return nil, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "docs", "add", "--important", "--include-test", "./p"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.False(t, gotOpts.OnlyDocumentExportedIdentifiers)
+	require.True(t, gotOpts.OnlyDocumentImportantIdentifiers)
+	require.True(t, gotOpts.DocumentTestFiles)
+	require.Equal(t, "Applied 0 documentation change(s).\n", out.String())
+}
+
+func TestRun_DocsAdd_ImportantAndPublicOnlyAreMutuallyExclusive(t *testing.T) {
+	isolateUserConfig(t)
+
+	origRunDocubotAddDocs := runDocubotAddDocs
+	t.Cleanup(func() { runDocubotAddDocs = origRunDocubotAddDocs })
+
+	called := false
+	runDocubotAddDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) ([]*gopackagediff.Change, error) {
+		called = true
+		return nil, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "docs", "add", "--public-only", "--important", "."}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "--public-only and --important are mutually exclusive")
+	require.False(t, called)
 }
 
 func TestDocsAddCommand_PassesCLIOutputWriterToDocubot(t *testing.T) {

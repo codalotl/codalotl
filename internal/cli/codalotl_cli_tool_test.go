@@ -101,6 +101,7 @@ func TestCodalotlCLITool_OnlyExposesDocsAdd(t *testing.T) {
 	require.Equal(t, 0, detailedHelp.ExitCode)
 	require.Contains(t, detailedHelp.Stdout, "codalotl docs add")
 	require.Contains(t, detailedHelp.Stdout, "--public-only")
+	require.Contains(t, detailedHelp.Stdout, "--important")
 	require.Contains(t, detailedHelp.Stdout, "--include-test")
 
 	rejected := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{

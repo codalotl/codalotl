@@ -129,7 +129,8 @@ If a local flag for a descendant command appears before that descendant command 
 
 After command selection and flag parsing, the remaining tokens are positional args for the selected command.
 
-If `Command.Args` is non-nil, it is called to validate the args before `Run` is invoked.
+If `Command.Args` is non-nil, it is called after flag parsing and before `Run` is invoked.
+Flag values accepted during parsing have already been written to the pointers returned by `FlagSet` methods, so `Args` can validate flag combinations as well as positional args.
 If it returns a non-nil error, the error is treated as a usage error by default (exit code `2`, prints the executed command’s usage), unless the error implements `ExitCoder` with a non-`2` exit code.
 
 ### Help / Usage
@@ -233,7 +234,10 @@ type Context struct {
 // RunFunc is a command handler.
 type RunFunc func(c *Context) error
 
-// ArgsFunc validates positional args. It should return a UsageError (or any ExitCoder with code 2) for user-facing usage mistakes.
+// ArgsFunc validates command usage after argv parsing and before Run.
+//
+// It receives the selected command's positional args. Flags accepted during parsing have already been written to the pointers returned by FlagSet methods, so ArgsFunc
+// may also validate flag combinations. It should return a UsageError (or any ExitCoder with code 2) for user-facing usage mistakes.
 type ArgsFunc func(args []string) error
 ```
 
@@ -249,8 +253,8 @@ type Command struct {
 	ArgHelp          []ArgHelp // ArgHelp describes positional args in detailed help.
 	Example          string    // Example is example text shown in detailed help.
 	NoPositionalArgs bool      // NoPositionalArgs suppresses generic [args] help.
-	Args             ArgsFunc  // optional
-	Run              RunFunc   // optional
+	Args             ArgsFunc  // Args validates usage after flag parsing and before Run.
+	Run              RunFunc   // Run handles the command after Args succeeds.
 
 	// ...
 }

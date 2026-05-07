@@ -689,7 +689,8 @@ func newDocsAddCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 		Name:  "add",
 		Short: "Add missing documentation comments to a package.",
 		Long: "Adds missing package documentation comments using an LLM. Existing comments are preserved. " +
-			"By default, the command documents exported and unexported package-level identifiers in non-test files.",
+			"By default, the command documents exported and unexported package-level identifiers in non-test files. " +
+			"Use --public-only to document only exported identifiers, or --important to document exported identifiers plus other important identifiers.",
 		Usage: "<path/to/pkg>",
 		ArgHelp: []qcli.ArgHelp{
 			{
@@ -700,13 +701,20 @@ func newDocsAddCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 		Example: strings.TrimSpace(`
 codalotl docs add internal/mypkg
 codalotl docs add --public-only internal/mypkg
+codalotl docs add --important internal/mypkg
 codalotl docs add --include-test ./internal/mypkg
 `),
-		Args: qcli.ExactArgs(1),
 	}
 	addFlags := addCmd.Flags()
 	addPublicOnly := addFlags.Bool("public-only", 0, false, "Only document exported identifiers.")
+	addImportant := addFlags.Bool("important", 0, false, "Only document exported identifiers and other important identifiers.")
 	addIncludeTest := addFlags.Bool("include-test", 0, false, "Include test files, including black-box _test packages.")
+	addCmd.Args = func(args []string) error {
+		if *addPublicOnly && *addImportant {
+			return qcli.UsageError{Message: "--public-only and --important are mutually exclusive"}
+		}
+		return qcli.ExactArgs(1)(args)
+	}
 	addCmd.Run = runWithConfig("docs_add", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 		pkg, _, err := loadPackageArg(c.Args[0])
 		if err != nil {
@@ -714,8 +722,9 @@ codalotl docs add --include-test ./internal/mypkg
 		}
 
 		changes, err := runDocubotAddDocs(pkg, docubot.AddDocsOptions{
-			DocumentTestFiles:               *addIncludeTest,
-			OnlyDocumentExportedIdentifiers: *addPublicOnly,
+			DocumentTestFiles:                *addIncludeTest,
+			OnlyDocumentExportedIdentifiers:  *addPublicOnly,
+			OnlyDocumentImportantIdentifiers: *addImportant,
 			BaseOptions: docubot.BaseOptions{
 				ReflowMaxWidth: cfg.ReflowWidth,
 				Context:        c.Context,
