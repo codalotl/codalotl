@@ -109,6 +109,23 @@ func TestRunSanitizesVisibleStdoutWithoutChangingResultStdout(t *testing.T) {
 	assert.Equal(t, []string{"safe    red?\n"}, capture.contents())
 }
 
+func TestSanitizeVisibleOutputKeepsLineAtMaxLength(t *testing.T) {
+	line := strings.Repeat("x", visibleOutputMaxLineRunes)
+
+	output := sanitizeVisibleOutput(line)
+
+	assert.Equal(t, line, output)
+}
+
+func TestSanitizeVisibleOutputElidesLongLineWithPlainEllipsis(t *testing.T) {
+	line := strings.Repeat("x", visibleOutputMaxLineRunes) + "extra"
+
+	output := sanitizeVisibleOutput(line)
+
+	assert.Equal(t, strings.Repeat("x", visibleOutputMaxLineRunes)+"...", output)
+	assert.NotContains(t, output, "[line elided]")
+}
+
 func TestRunNullArgvBehavesLikeEmptyArgv(t *testing.T) {
 	tool := NewCodalotlCLITool(testCommandTree)
 	call := testToolCall(`{"subcommand":"context initial","argv":null}`)

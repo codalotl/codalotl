@@ -1,0 +1,1 @@
+{"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{"unix_timestamp":1778260409,"paths":["internal/tools/cli/SPEC.md","internal/tools/cli/cli.go","internal/tools/cli/cli_test.go"],"git_clean":true,"git_commit":"dd4c1781239ae9c547b27db4acf1ad523d61dcf2","git_merge_base":"156f9a856e8171113583eac7c210ef19643818ab"}}

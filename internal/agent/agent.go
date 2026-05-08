@@ -590,6 +590,7 @@ func (a *Agent) emitTerminalEvent(out chan<- Event, err error) {
 	a.dispatchEvent(out, Event{Type: EventTypeError, Error: err})
 }
 
+// abortRun emits pending queued-message notifications, stops accepting additional queued messages, and reports err as the run's terminal event.
 func (a *Agent) abortRun(out chan<- Event, err error) {
 	a.flushQueuedUserMessageEvents(out)
 	a.stopAcceptingQueue()
@@ -916,6 +917,8 @@ func (a *Agent) injectAllPending(out chan<- Event) error {
 	return a.appendQueuedUserMessages(out, msgs)
 }
 
+// popPendingUserMessages removes and returns all currently queued user messages in arrival order. If none are queued, it returns nil and, when stopAcceptingIfEmpty
+// is true, stops accepting queued messages for the current run.
 func (a *Agent) popPendingUserMessages(stopAcceptingIfEmpty bool) []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -931,6 +934,8 @@ func (a *Agent) popPendingUserMessages(stopAcceptingIfEmpty bool) []string {
 	return msgs
 }
 
+// appendQueuedUserMessages appends msgs as user turns in order and emits EventTypeQueuedUserMessageSent for each successful append. It stops at the first append
+// error and returns it.
 func (a *Agent) appendQueuedUserMessages(out chan<- Event, msgs []string) error {
 	for _, msg := range msgs {
 		a.mu.Lock()
