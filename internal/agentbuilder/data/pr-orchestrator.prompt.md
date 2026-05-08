@@ -170,11 +170,12 @@ Use the `implement` tool, which runs a subagent. The `implement` subagent runs i
 - `implement` subagent can itself invoke its own limited subagents:
     - If the primary Package Mode subagent changes the public API of the package, it may fix downstream packages' breakages.
     - Likewise, it may launch a subagent to make changes in upstream packages to accomplish its task.
-    - It cannot arbitrarily launch subagents on any package - only packages with existing deps.
+    - It cannot arbitrarily launch subagents on any package - only packages with existing deps. It cannot launch subagents on peer packages.
     - That being said, `implement` **mostly** just operates on its own package.
 
 Pass `implement` instructions:
 - The subagent has a new LLM context. It doesn't know what you know. It's important to share "what I'm really trying to do" (background/motivation).
+    - That being said, the subagent does not see the whole codebase. If you name things downstream (the foo package's Bar method), it has no idea what you're talking about. Phrase the background/motivation in terms that make sense from the perspective of this subagent.
 - The implement subagent relies on a 3-tuple of inputs to make its changes: (SPEC.md changes, your instructions, its own excellent judgement and skill). Your task is to divide the task into those 3 buckets. Don't repeat yourself between SPEC.md edits and your instructions.
     - You can often just say, "implement the changes in SPEC.md". Elaborate on those if the SPEC.md changes are ambiguous, AND you need a specific implementation choice that isn't obvious.
     - Instructions can include requirements that aren't captured by the SPEC.md file (ex: bug fixes, minor details, small tweaks).
