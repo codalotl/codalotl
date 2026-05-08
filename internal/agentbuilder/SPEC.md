@@ -22,7 +22,7 @@
     - Uses the "Package Mode Update Usage" prompt kind
     - Uses `InitialTurnsBuilder` to add env + package initial context.
     - When the target dir is an existing package-mode directory but does not yet load as a Go package, startup still succeeds with fallback package-path context.
-- clarify_public_api: toolset_simple_read_only
+- clarify_public_api: toolset_clarify_read_only
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
 - improve_public_api_docs: toolset_doc_edit
@@ -183,8 +183,8 @@ Toolsets are just a device used in this SPEC.md to factor the file (and may be u
     - otherwise: {`write`, `edit`, `delete`}
 - toolset_spec:
     - {`check_spec_conformance`}
-- toolset_simple_read_only:
-    - {`ls`, `read_file`}
+- toolset_clarify_read_only:
+    - {`ls`, `read_file`, `get_public_api`, `clarify_public_api`}
 - toolset_doc_edit:
     - {`read_file`, `ls`, `skill_shell`}
     - toolset_edit_files

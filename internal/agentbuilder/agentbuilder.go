@@ -87,12 +87,9 @@ func BuildRegistry() (*agentregistry.Registry, error) {
 	}
 
 	if err := registry.RegisterAgent(agentregistry.Definition{
-		Name:        agentClarifyPublicAPI,
-		Description: "Read-only agent for clarifying public API docs for a single identifier.",
-		ToolNames: []string{
-			coretools.ToolNameReadFile,
-			coretools.ToolNameLS,
-		},
+		Name:                agentClarifyPublicAPI,
+		Description:         "Read-only agent for clarifying public API docs for a single identifier.",
+		ToolNames:           clarifyReadOnlyToolNames(),
 		SystemPromptBuilder: buildClarifyPublicAPISystemPrompt,
 		InitialTurnsBuilder: buildClarifyPublicAPIInitialTurns,
 	}); err != nil {
@@ -156,7 +153,7 @@ func builtinTools() map[string]toolsetinterface.Tool {
 		pkgtools.ToolNameClarifyPublicAPI: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			return pkgtools.NewClarifyPublicAPITool(
 				opts.Authorizer.WithoutCodeUnit(),
-				simpleReadOnlyTools,
+				clarifyReadOnlyTools,
 				pkgtools.ClarifyPublicAPIToolOptions{
 					AgentInvoker: opts.AgentInvoker,
 					Model:        opts.Model,
@@ -226,6 +223,15 @@ func builtinTools() map[string]toolsetinterface.Tool {
 	}
 }
 
+func clarifyReadOnlyToolNames() []string {
+	return []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+	}
+}
+
 func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchPostChecks {
 	if !isPackageModeAgent(opts.AgentName) {
 		return nil
@@ -244,11 +250,8 @@ func changeAPIToolset(opts toolsetinterface.Options) toolsetinterface.Toolset {
 	return limitedPackageAgentTools
 }
 
-func simpleReadOnlyTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
-	return buildTools(opts, []string{
-		coretools.ToolNameReadFile,
-		coretools.ToolNameLS,
-	})
+func clarifyReadOnlyTools(opts toolsetinterface.Options) ([]llmstream.Tool, error) {
+	return buildTools(opts, clarifyReadOnlyToolNames())
 }
 
 func buildPackageModeTools(opts toolsetinterface.Options, agentName string, extraToolNames ...string) ([]llmstream.Tool, error) {
@@ -643,7 +646,7 @@ func buildClarifyPublicAPISystemPrompt(options agentregistry.BuildOptions) (stri
 	var builder strings.Builder
 	builder.WriteString(prompt.GetBasicPrompt())
 	builder.WriteString("\n\nYou are a read-only agent for clarifying public API documentation for a single identifier.\n")
-	builder.WriteString("Use the initial context and available tools (`ls`, `read_file`) to answer the user's question.\n")
+	builder.WriteString("Use the initial context and available read-only tools (`ls`, `read_file`, `get_public_api`, `clarify_public_api`) to answer the user's question.\n")
 	builder.WriteString("If information is missing or the identifier cannot be found, clearly say so and explain what would be needed.\n")
 	builder.WriteString("Respond concisely and directly. The questioner cannot see non-exported implementation details, so ground your answer in the docs, files, and context you can read.")
 	return builder.String(), nil
