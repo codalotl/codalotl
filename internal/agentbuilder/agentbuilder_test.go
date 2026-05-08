@@ -123,6 +123,8 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
 	}, clarifyDef.ToolNames)
 	assert.NotNil(t, clarifyDef.InitialTurnsBuilder)
 
@@ -130,6 +132,8 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(clarifyPrompt, prompt.GetBasicPrompt()))
 	assert.Contains(t, clarifyPrompt, "read-only agent for clarifying public API documentation")
+	assert.Contains(t, clarifyPrompt, "get_public_api")
+	assert.Contains(t, clarifyPrompt, "clarify_public_api")
 
 	prOrchestratorDef, ok := registry.Lookup("pr-orchestrator")
 	require.True(t, ok)
@@ -382,16 +386,22 @@ func TestGenericTools_RegistersCheckSpecConformance(t *testing.T) {
 	assert.NotNil(t, tool.Presenter())
 }
 
-func TestSimpleReadOnlyTools_UsesOverrideAwareBuilders(t *testing.T) {
+func TestClarifyReadOnlyTools_UsesOverrideAwareBuilders(t *testing.T) {
 	overrideToolForTest(t, coretools.ToolNameReadFile, func(toolsetinterface.Options) (llmstream.Tool, error) {
 		return fakeNamedTool{name: coretools.ToolNameReadFile}, nil
 	})
 
-	tools, err := simpleReadOnlyTools(toolsetinterface.Options{
+	tools, err := clarifyReadOnlyTools(toolsetinterface.Options{
 		Authorizer: authdomain.NewAutoApproveAuthorizer(t.TempDir()),
 	})
 	require.NoError(t, err)
 
+	assert.Equal(t, []string{
+		coretools.ToolNameReadFile,
+		coretools.ToolNameLS,
+		pkgtools.ToolNameGetPublicAPI,
+		pkgtools.ToolNameClarifyPublicAPI,
+	}, toolNames(tools))
 	require.IsType(t, fakeNamedTool{}, requireTool(t, tools, coretools.ToolNameReadFile))
 }
 
