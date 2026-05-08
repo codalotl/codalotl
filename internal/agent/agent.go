@@ -88,7 +88,7 @@ func (a *Agent) Status() Status {
 	return a.status
 }
 
-// TokenUsage returns the cumulative token usage across assistant turns.
+// TokenUsage returns cumulative token usage recorded for the agent.
 func (a *Agent) TokenUsage() llmstream.TokenUsage {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -546,10 +546,13 @@ func (a *Agent) handleToolUse(ctx context.Context, out chan<- Event, calls []llm
 			toolCtx = withSubAgentContext(toolCtx, factory, a.depth)
 			outputEmitter := newToolOutputEmitter(a, out, tool, callCopy)
 			toolCtx = withToolOutputContext(toolCtx, outputEmitter)
+			usageRecorder := newExternalLLMUsageRecorder(a)
+			toolCtx = withExternalLLMUsageContext(toolCtx, usageRecorder)
 
 			func() {
 				defer func() {
 					outputEmitter.close()
+					usageRecorder.close()
 					factory.CloseAndWait()
 					cancel()
 				}()

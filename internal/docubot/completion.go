@@ -3,9 +3,12 @@ package docubot
 import (
 	"context"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
 )
+
+var emitExternalLLMUsage = agent.EmitExternalLLMUsage
 
 func (o BaseOptions) completionContext() context.Context {
 	if o.Context != nil {
@@ -20,9 +23,11 @@ func completeText(systemMessage, userMessage string, options BaseOptions) (strin
 		completer = llmstream.NewCompleter()
 	}
 
-	turn, err := completer.Complete(options.completionContext(), llmmodel.ModelIDOrFallback(options.Model), systemMessage, userMessage)
+	ctx := options.completionContext()
+	turn, err := completer.Complete(ctx, llmmodel.ModelIDOrFallback(options.Model), systemMessage, userMessage)
 	if err != nil {
 		return "", err
 	}
+	emitExternalLLMUsage(ctx, turn.Usage)
 	return turn.TextContent(), nil
 }
