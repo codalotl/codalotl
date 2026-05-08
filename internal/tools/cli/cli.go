@@ -20,7 +20,7 @@ import (
 const ToolNameCodalotlCLI = "codalotl_cli"
 
 const (
-	visibleOutputMaxLineRunes  = 400
+	visibleOutputMaxLineRunes  = 1200
 	visibleOutputMaxChunkBytes = 16 * 1024
 	visibleOutputMaxTotalBytes = 64 * 1024
 )
@@ -485,7 +485,7 @@ func writeVisibleToken(out *strings.Builder, token string, lineLen *int, lineEli
 			continue
 		}
 		if !*lineElided {
-			out.WriteString(" ... [line elided]")
+			out.WriteString("...")
 			*lineElided = true
 		}
 	}
