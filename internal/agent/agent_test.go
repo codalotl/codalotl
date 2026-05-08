@@ -613,6 +613,14 @@ func TestEmitToolOutputNoopsWithoutActiveToolRun(t *testing.T) {
 	})
 }
 
+func TestEmitExternalLLMUsageNoopsWithoutActiveToolRun(t *testing.T) {
+	var nilCtx context.Context
+	require.NotPanics(t, func() {
+		EmitExternalLLMUsage(nilCtx, llmstream.TokenUsage{TotalInputTokens: 1})
+		EmitExternalLLMUsage(context.Background(), llmstream.TokenUsage{TotalInputTokens: 1})
+	})
+}
+
 func TestEmitToolOutputFromToolRunEmitsDisplayOnlyEvent(t *testing.T) {
 	systemPrompt := "You are helpful."
 
@@ -721,6 +729,258 @@ func TestEmitToolOutputFromToolRunEmitsDisplayOnlyEvent(t *testing.T) {
 	require.NotPanics(t, func() {
 		EmitToolOutput(capturedCtx, "late ignored")
 	})
+}
+
+func TestEmitExternalLLMUsageFromToolRunAccumulatesTokenUsageOnly(t *testing.T) {
+	systemPrompt := "You are helpful."
+	model := llmmodel.DefaultModel
+	info := llmmodel.GetModelInfo(model)
+	require.Positive(t, info.ContextWindow)
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_external_usage",
+		Name:       "llm_tool",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	turnTool := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+		Usage: llmstream.TokenUsage{
+			TotalInputTokens:  7,
+			TotalOutputTokens: 2,
+		},
+	}
+	finalText := llmstream.TextContent{ProviderID: "text-2", Content: "Done"}
+	finalUsage := llmstream.TokenUsage{
+		TotalInputTokens:  info.ContextWindow / 4,
+		TotalOutputTokens: 3,
+	}
+	turnFinal := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+		Usage:        finalUsage,
+	}
+	externalUsage := llmstream.TokenUsage{
+		TotalInputTokens:         info.ContextWindow * 2,
+		CachedInputTokens:        11,
+		CacheCreationInputTokens: 13,
+		ReasoningTokens:          5,
+		TotalOutputTokens:        17,
+	}
+
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnTool},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &finalText, Delta: finalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnFinal},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	var capturedCtx context.Context
+	tool := &funcTool{name: "llm_tool"}
+	tool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		capturedCtx = ctx
+		EmitExternalLLMUsage(context.Background(), llmstream.TokenUsage{TotalInputTokens: 100})
+		EmitExternalLLMUsage(ctx, externalUsage)
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "ok",
+		}
+	}
+
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{Model: model})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for range a.SendUserMessage(ctx, "Use the tool") {
+	}
+
+	require.Equal(t, sumTokenUsage(turnTool.Usage, turnFinal.Usage, externalUsage), a.TokenUsage())
+
+	expectedPercent := roundPercentFloat(float64(contextTokensFromUsage(turnFinal.Usage)), float64(info.ContextWindow))
+	require.Equal(t, expectedPercent, a.ContextUsagePercent())
+
+	turns := a.Turns()
+	require.Len(t, turns, 5)
+	require.Equal(t, llmstream.RoleUser, turns[3].Role)
+	require.Len(t, turns[3].Parts, 1)
+	result, ok := turns[3].Parts[0].(llmstream.ToolResult)
+	require.True(t, ok)
+	require.Equal(t, "ok", result.Result)
+
+	usageBeforeLateEmit := a.TokenUsage()
+	require.NotPanics(t, func() {
+		EmitExternalLLMUsage(capturedCtx, llmstream.TokenUsage{TotalInputTokens: 99, TotalOutputTokens: 99})
+	})
+	require.Equal(t, usageBeforeLateEmit, a.TokenUsage())
+}
+
+func TestEmitExternalLLMUsageFromSubAgentToolPropagatesToAncestors(t *testing.T) {
+	rootPrompt := "Root system"
+	subPrompt := "Sub system"
+
+	outerCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_outer",
+		Name:       "outer",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	rootToolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{outerCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+		Usage: llmstream.TokenUsage{
+			TotalInputTokens:  2,
+			TotalOutputTokens: 1,
+		},
+	}
+	rootFinalText := llmstream.TextContent{ProviderID: "root-final", Content: "root done"}
+	rootFinalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{rootFinalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+		Usage: llmstream.TokenUsage{
+			TotalInputTokens:  3,
+			TotalOutputTokens: 2,
+		},
+	}
+	rootConv := newScriptedConversation(rootPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &outerCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootToolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &rootFinalText, Delta: rootFinalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootFinalTurn},
+			},
+		},
+	)
+
+	innerCall := llmstream.ToolCall{
+		ProviderID: "tool-2",
+		CallID:     "call_inner",
+		Name:       "inner",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	subToolTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{innerCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+		Usage: llmstream.TokenUsage{
+			TotalInputTokens:  5,
+			TotalOutputTokens: 3,
+		},
+	}
+	subFinalText := llmstream.TextContent{ProviderID: "sub-final", Content: "sub done"}
+	subFinalTurn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{subFinalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+		Usage: llmstream.TokenUsage{
+			TotalInputTokens:  7,
+			TotalOutputTokens: 4,
+		},
+	}
+	subConv := newScriptedConversation(subPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &innerCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &subToolTurn},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &subFinalText, Delta: subFinalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &subFinalTurn},
+			},
+		},
+	)
+
+	prev := newConversation
+	convs := []llmstream.StreamingConversation{rootConv, subConv}
+	newConversation = func(model llmmodel.ModelID, systemPrompt string) llmstream.StreamingConversation {
+		if len(convs) == 0 {
+			return nil
+		}
+		conv := convs[0]
+		convs = convs[1:]
+		return conv
+	}
+	t.Cleanup(func() {
+		newConversation = prev
+	})
+
+	externalUsage := llmstream.TokenUsage{
+		TotalInputTokens:         11,
+		CachedInputTokens:        3,
+		CacheCreationInputTokens: 2,
+		ReasoningTokens:          5,
+		TotalOutputTokens:        13,
+	}
+
+	innerTool := &funcTool{name: "inner"}
+	innerTool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		EmitExternalLLMUsage(ctx, externalUsage)
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "inner ok",
+		}
+	}
+
+	var subAgent *Agent
+	outerTool := &funcTool{name: "outer"}
+	outerTool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+		creator := SubAgentCreatorFromContext(ctx)
+		created, err := creator.New(subPrompt, []llmstream.Tool{innerTool})
+		require.NoError(t, err)
+		subAgent = created
+
+		for range created.SendUserMessage(ctx, "start child") {
+		}
+
+		return llmstream.ToolResult{
+			CallID: call.CallID,
+			Name:   call.Name,
+			Type:   call.Type,
+			Result: "outer ok",
+		}
+	}
+
+	rootAgent, err := New(rootPrompt, []llmstream.Tool{outerTool}, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for range rootAgent.SendUserMessage(ctx, "start") {
+	}
+
+	require.NotNil(t, subAgent)
+	require.Equal(t, sumTokenUsage(subToolTurn.Usage, subFinalTurn.Usage, externalUsage), subAgent.TokenUsage())
+	require.Equal(t, sumTokenUsage(rootToolTurn.Usage, rootFinalTurn.Usage, subToolTurn.Usage, subFinalTurn.Usage, externalUsage), rootAgent.TokenUsage())
 }
 
 func TestSendUserMessageUnknownToolEventsHaveNilTool(t *testing.T) {
@@ -2229,6 +2489,18 @@ func roundPercentFloat(used, capacity float64) int {
 		return 100
 	}
 	return percent
+}
+
+func sumTokenUsage(usages ...llmstream.TokenUsage) llmstream.TokenUsage {
+	var total llmstream.TokenUsage
+	for _, usage := range usages {
+		total.TotalInputTokens += usage.TotalInputTokens
+		total.CachedInputTokens += usage.CachedInputTokens
+		total.CacheCreationInputTokens += usage.CacheCreationInputTokens
+		total.ReasoningTokens += usage.ReasoningTokens
+		total.TotalOutputTokens += usage.TotalOutputTokens
+	}
+	return total
 }
 
 type scriptedConversation struct {
