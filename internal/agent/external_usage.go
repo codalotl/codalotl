@@ -12,9 +12,9 @@ type externalLLMUsageContextKey struct{}
 
 // externalLLMUsageRecorder records usage for LLM calls made by a tool outside the agent conversation loop.
 type externalLLMUsageRecorder struct {
-	mu     sync.Mutex
-	agent  *Agent
-	active bool
+	mu     sync.Mutex // Mu protects agent and active.
+	agent  *Agent     // Agent is the owning agent that receives recorded usage while the recorder is active.
+	active bool       // Active reports whether future record calls should apply usage to agent.
 }
 
 // EmitExternalLLMUsage records token usage for an external LLM call. It is safe to call with any context.
@@ -43,6 +43,8 @@ func withExternalLLMUsageContext(ctx context.Context, recorder *externalLLMUsage
 	return context.WithValue(ctx, externalLLMUsageContextKey{}, recorder)
 }
 
+// record applies usage to the owning agent and its ancestors while the recorder is active. It is safe to call concurrently with close; calls after close or without
+// an agent are ignored.
 func (r *externalLLMUsageRecorder) record(usage llmstream.TokenUsage) {
 	r.mu.Lock()
 	agent := r.agent
@@ -55,6 +57,7 @@ func (r *externalLLMUsageRecorder) record(usage llmstream.TokenUsage) {
 	agent.addUsage(usage)
 }
 
+// close disables the recorder so future record calls are ignored. It is safe to call concurrently with record and to call more than once.
 func (r *externalLLMUsageRecorder) close() {
 	r.mu.Lock()
 	r.active = false
