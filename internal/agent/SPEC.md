@@ -160,6 +160,14 @@ Tools may emit display-only output while handling a tool call.
 - `EventTypeToolOutput` carries `Tool`, `ToolCall`, and `ToolOutput` for the active tool call.
 - The agent does not interpret or transform output content. Tools own any stream-specific sanitization or elision before emission.
 
+## External LLM usage
+
+Tools may report token usage for LLM calls outside the agent conversation loop.
+
+- `EmitExternalLLMUsage` is no-op without active tool context.
+- Reported usage is included in `Agent.TokenUsage()` for the owning agent and its ancestors.
+- Reported usage does not affect `ContextUsagePercent()` or agent conversation history.
+
 ## Notes
 
 - `EventTypeAssistantReasoning` is for complete reasoning parts, not deltas.
@@ -204,7 +212,7 @@ func (a *Agent) Status() Status
 // Turns returns a snapshot of the conversation turns so far.
 func (a *Agent) Turns() []llmstream.Turn
 
-// TokenUsage returns the cumulative token usage across assistant turns.
+// TokenUsage returns cumulative token usage recorded for the agent.
 func (a *Agent) TokenUsage() llmstream.TokenUsage
 
 // ContextUsagePercent estimates how much of the model's context window is consumed based on the latest assistant turn. Returns 0 when unknown.
@@ -254,4 +262,8 @@ type ToolOutput struct {
 
 // EmitToolOutput emits display-only output for the active tool run. It is safe to call with any context.
 func EmitToolOutput(ctx context.Context, content string)
+
+// EmitExternalLLMUsage records token usage for an external LLM call. It is safe to call with any context.
+func EmitExternalLLMUsage(ctx context.Context, usage llmstream.TokenUsage)
 ```
+

@@ -7,6 +7,7 @@ Docubot offers functions to add documentation to Go packages, improve existing d
 - `internal/gocode` owns the Go parsing, snippets, and identifier handling (`type Identifiers` in this package is allowed).
 - `internal/updatedocs` owns applying doc edits to source code and reflowing doc comments. Reflowing means controlling placement (EOL vs `Doc`) and changing comment width.
 - `internal/specmd` owns reading and preparing SPEC.md context for LLM prompts.
+- `internal/agent` owns agent tool-run LLM usage accounting.
 - NOTE: `docubot`, by extension, should NOT directly be doing these things.
 
 ## BaseOptions
@@ -16,6 +17,7 @@ Docubot offers functions to add documentation to Go packages, improve existing d
 - User-facing progress/status text goes to the configured writer, or stdout if nil.
     - Also written to logs, so that logs have context about what is happening.
 - Debug/digansotic/error logs use logger / health context.
+- In agent tool-run contexts, successful LLM completions report token usage for cost accounting.
 
 ## LLM Context
 
