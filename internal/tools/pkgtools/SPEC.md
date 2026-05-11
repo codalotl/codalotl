@@ -28,9 +28,7 @@ Presentation specs for Go package tools.
 - In-progress body: question text
 - Complete body: answer text
 - Clarification answer is produced by a read-only subagent.
-- Do not edit target package source files.
-- For sandbox packages, append a clarify CAS entry after a successful answer; include question, answer, origin package, target package, and identifier.
-- Do not write package CAS outside the sandbox.
+- For packages in sandbox, append a clarify CAS entry after a successful answer; include question, answer, origin package, target package, and identifier.
 
 ### change_api
 
