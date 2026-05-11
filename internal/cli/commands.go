@@ -676,7 +676,10 @@ func newDocsCommand(runWithConfig runWithConfigFunc, includeReflow bool) *qcli.C
 		Short: "Documentation tools.",
 		Long:  "Commands for adding or reflowing Go documentation comments.",
 	}
-	children := []*qcli.Command{newDocsAddCommand(runWithConfig)}
+	children := []*qcli.Command{
+		newDocsAddCommand(runWithConfig),
+		newDocsImproveFromClarifyCommand(runWithConfig),
+	}
 	if includeReflow {
 		children = append(children, newDocsReflowCommand(runWithConfig))
 	}
