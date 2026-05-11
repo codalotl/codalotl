@@ -723,18 +723,26 @@ func assertExpectedRepoFileConfigs(expected []expectedRepoFileConfig, originalRo
 		return nil
 	}
 
+	type expectedRepoFile struct {
+		path  string
+		match map[string]any
+	}
+
+	normalizedExpected := make([]expectedRepoFile, 0, len(expected))
 	expectedFiles := make([]string, 0, len(expected))
 	for _, file := range expected {
-		if file.Path == "" {
+		rel := filepath.FromSlash(file.Path)
+		if rel == "" {
 			return fmt.Errorf("expected repo file path must not be empty")
 		}
-		if filepath.IsAbs(file.Path) {
-			return fmt.Errorf("expected repo file path must be relative: %q", file.Path)
+		if filepath.IsAbs(rel) {
+			return fmt.Errorf("expected repo file path must be relative: %q", rel)
 		}
 		if file.Match == nil {
-			return fmt.Errorf("expected repo file %q match must not be empty", file.Path)
+			return fmt.Errorf("expected repo file %q match must not be empty", rel)
 		}
-		expectedFiles = append(expectedFiles, file.Path)
+		normalizedExpected = append(normalizedExpected, expectedRepoFile{path: rel, match: file.Match})
+		expectedFiles = append(expectedFiles, rel)
 	}
 	sort.Strings(expectedFiles)
 
@@ -747,13 +755,13 @@ func assertExpectedRepoFileConfigs(expected []expectedRepoFileConfig, originalRo
 		return fmt.Errorf("expected changed files %v, got %v", expectedFiles, actualChangedFiles)
 	}
 
-	for _, file := range expected {
-		actualData, err := os.ReadFile(filepath.Join(actualRoot, file.Path))
+	for _, file := range normalizedExpected {
+		actualData, err := os.ReadFile(filepath.Join(actualRoot, file.path))
 		if err != nil {
-			return fmt.Errorf("read actual file %q: %w", file.Path, err)
+			return fmt.Errorf("read actual file %q: %w", file.path, err)
 		}
-		if !matchesValue(file.Match, string(actualData), []string{actualRoot}) {
-			return fmt.Errorf("contents mismatch for %q", file.Path)
+		if !matchesValue(file.match, string(actualData), []string{actualRoot}) {
+			return fmt.Errorf("contents mismatch for %q", file.path)
 		}
 	}
 	return nil

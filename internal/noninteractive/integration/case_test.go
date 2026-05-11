@@ -287,10 +287,11 @@ func TestRunCaseDir_ThreadsLintConfigToNoninteractiveExec(t *testing.T) {
 	assert.Equal(t, []string{"custom-ran"}, capturedOpts.LintSteps[0].Fix.Args)
 }
 
-func TestAssertExpectedRepoFileConfigsMatchesText(t *testing.T) {
+func TestAssertExpectedRepoFileConfigsMatchesSlashSeparatedPath(t *testing.T) {
 	originalRoot := t.TempDir()
 	actualRoot := t.TempDir()
 	rel := filepath.Join(".codalotl", "cas", "clarify-public-api-1", "aa", "bb")
+	configPath := filepath.ToSlash(rel)
 
 	actualData := []byte(`{"additional_info":{"unix_timestamp":1770000000},"value":{"entries":[{"origin_package":"example.com/clarifyintegration/pricing","target_package":"example.com/clarifyintegration/catalog","identifier":"New","question":"Exactly how does catalog.New normalize product tags?","answer":"Does not trim whitespace. Sorts the remaining tags lexicographically."}]}}`)
 	require.NoError(t, os.MkdirAll(filepath.Join(actualRoot, filepath.Dir(rel)), 0o755))
@@ -298,7 +299,7 @@ func TestAssertExpectedRepoFileConfigsMatchesText(t *testing.T) {
 
 	err := assertExpectedRepoFileConfigs([]expectedRepoFileConfig{
 		{
-			Path: rel,
+			Path: configPath,
 			Match: map[string]any{
 				"match": "partial",
 				"texts": []any{
