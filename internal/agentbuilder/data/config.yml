@@ -73,21 +73,6 @@ agents:
     mode: package
     include_package_mode_context: true
     skills: true
-  - name: improve_public_api_docs
-    prompts:
-      - name: package-base
-      - file: improve-public-api-docs.prompt.md
-    tools:
-      - read_file
-      - ls
-      - edit_files
-      - skill_shell
-      - diagnostics
-      - fix_lints
-      - run_tests
-    mode: package
-    include_package_mode_context: true
-    skills: true
   - name: pr-orchestrator
     prompts:
       - name: base

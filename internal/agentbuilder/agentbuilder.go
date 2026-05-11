@@ -42,9 +42,8 @@ const (
 	// AgentLimitedPackageMode is the registry name for the limited package-mode agent for targeted package work.
 	AgentLimitedPackageMode string = "limited_package_mode"
 
-	agentImprovePublicAPIDocs = "improve_public_api_docs"
-	agentClarifyPublicAPI     = pkgtools.ToolNameClarifyPublicAPI
-	clarifyRGLines            = "4"
+	agentClarifyPublicAPI = pkgtools.ToolNameClarifyPublicAPI
+	clarifyRGLines        = "4"
 )
 
 // clarifyPublicAPIRequest describes one request for the clarify_public_api agent.
@@ -155,9 +154,10 @@ func builtinTools() map[string]toolsetinterface.Tool {
 				opts.Authorizer.WithoutCodeUnit(),
 				clarifyReadOnlyTools,
 				pkgtools.ClarifyPublicAPIToolOptions{
-					AgentInvoker: opts.AgentInvoker,
-					Model:        opts.Model,
-					LintSteps:    opts.LintSteps,
+					AgentInvoker:        opts.AgentInvoker,
+					Model:               opts.Model,
+					LintSteps:           opts.LintSteps,
+					OriginPackageAbsDir: opts.GoPkgAbsDir,
 				},
 			), nil
 		},
@@ -351,7 +351,7 @@ func isFullPackageModeAgent(agentName string) bool {
 
 func isPackageModeAgent(agentName string) bool {
 	switch agentName {
-	case AgentPackageModeNoContext, AgentPackageModeDefaultContext, AgentLimitedPackageMode, agentImprovePublicAPIDocs:
+	case AgentPackageModeNoContext, AgentPackageModeDefaultContext, AgentLimitedPackageMode:
 		return true
 	default:
 		return false

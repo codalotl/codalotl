@@ -10,10 +10,13 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
+	"github.com/codalotl/codalotl/internal/gocas"
+	"github.com/codalotl/codalotl/internal/gocas/casclarify"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
+	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
@@ -24,15 +27,12 @@ var descriptionClarifyPublicAPI string
 
 const ToolNameClarifyPublicAPI = "clarify_public_api"
 
-// This mirrors internal/agentbuilder.AgentImprovePublicAPIDocs without importing that package and creating an import cycle.
-const improvePublicAPIDocsAgentName = "improve_public_api_docs"
-
 type toolClarifyPublicAPI struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-	agentInvoker  toolsetinterface.AgentInvoker
-	model         llmmodel.ModelID
-	lintSteps     []lints.Step
+	sandboxAbsDir       string
+	authorizer          authdomain.Authorizer
+	agentInvoker        toolsetinterface.AgentInvoker
+	model               llmmodel.ModelID
+	originPackageAbsDir string
 }
 
 type clarifyPublicAPIParams struct {
@@ -41,36 +41,40 @@ type clarifyPublicAPIParams struct {
 	Question   string `json:"question"`
 }
 
-type improvePublicAPIDocsParams struct {
-	Path       string `json:"path"`
-	Identifier string `json:"identifier"`
-	Question   string `json:"question"`
-	Answer     string `json:"answer"`
-}
-
+// ClarifyPublicAPIToolOptions configures NewClarifyPublicAPITool.
 type ClarifyPublicAPIToolOptions struct {
-	AgentInvoker toolsetinterface.AgentInvoker
-	Model        llmmodel.ModelID
-	LintSteps    []lints.Step
+	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker invokes the clarification subagent.
+	Model        llmmodel.ModelID              // Model selects the model used by the clarification subagent.
+	LintSteps    []lints.Step                  // LintSteps are accepted for consistency with other package tools; clarify_public_api does not run lint steps.
+
+	// OriginPackageAbsDir identifies the package that initiated the clarification for CAS metadata. It does not constrain target-package reads; the clarification subagent
+	// is jailed to the resolved target package. If empty, NewClarifyPublicAPITool uses authorizer.CodeUnitDir() when present.
+	OriginPackageAbsDir string
 }
 
 var clarifyPublicAPIPresenterInstance llmstream.Presenter = clarifyPublicAPIPresenter{}
 
 type clarifyPublicAPIPresenter struct{}
 
-// authorizer is the fallback authorizer the clarify subagent should use underneath its target-package jail.
+// NewClarifyPublicAPITool returns a tool that asks a read-only subagent to clarify a package's public API. The authorizer supplies the caller sandbox, caller authorization
+// context, sandbox-package read authorization, and CAS write authorization. It may be a base authorizer or a code-unit authorizer; the subagent is run with the
+// caller code-unit removed and then jailed to the resolved target package.
 func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, options ...ClarifyPublicAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	var option ClarifyPublicAPIToolOptions
 	if len(options) > 0 {
 		option = options[0]
 	}
+	originPackageAbsDir := option.OriginPackageAbsDir
+	if originPackageAbsDir == "" && authorizer.CodeUnitDir() != "" {
+		originPackageAbsDir = authorizer.CodeUnitDir()
+	}
 	return &toolClarifyPublicAPI{
-		sandboxAbsDir: sandboxAbsDir,
-		authorizer:    authorizer,
-		agentInvoker:  option.AgentInvoker,
-		model:         option.Model,
-		lintSteps:     option.LintSteps,
+		sandboxAbsDir:       sandboxAbsDir,
+		authorizer:          authorizer,
+		agentInvoker:        option.AgentInvoker,
+		model:               option.Model,
+		originPackageAbsDir: originPackageAbsDir,
 	}
 }
 
@@ -209,9 +213,15 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	moduleAbsDir, packageAbsDir, _, importPath, err := resolvePackagePath(mod, params.Path)
+	moduleAbsDir, packageAbsDir, packageRelDir, importPath, err := resolvePackagePath(mod, params.Path)
 	if err != nil {
 		return coretools.NewToolErrorResult(call, err.Error(), err)
+	}
+	resolved := resolvedPackageRef{
+		ModuleAbsDir:  moduleAbsDir,
+		PackageAbsDir: packageAbsDir,
+		PackageRelDir: packageRelDir,
+		ImportPath:    importPath,
 	}
 
 	effectiveSandboxAbsDir := t.sandboxAbsDir
@@ -280,17 +290,8 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
-	if isWithinDir(t.sandboxAbsDir, packageAbsDir) {
-		t.improvePublicAPIDocsBestEffort(
-			ctx,
-			agentCreator,
-			baseAuthorizer,
-			packageAbsDir,
-			params.Path,
-			params.Identifier,
-			params.Question,
-			answer,
-		)
+	if err := t.recordClarifyCAS(mod, resolved, params.Identifier, params.Question, answer); err != nil {
+		return coretools.NewToolErrorResult(call, err.Error(), err)
 	}
 
 	return llmstream.ToolResult{
@@ -337,66 +338,93 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 	return agent.CollectFinalAssistantText(ctx, events)
 }
 
-func (t *toolClarifyPublicAPI) improvePublicAPIDocsBestEffort(ctx context.Context, agentCreator agent.AgentCreator, baseAuthorizer authdomain.Authorizer, packageAbsDir string, path string, identifier string, question string, answer string) {
-	pkgAuthorizer, err := newClarifyTargetAuthorizer(baseAuthorizer, packageAbsDir)
-	if err != nil {
-		return
+func (t *toolClarifyPublicAPI) recordClarifyCAS(mod *gocode.Module, resolved resolvedPackageRef, identifier string, question string, answer string) error {
+	if mod == nil {
+		return fmt.Errorf("module required")
+	}
+	if !resolved.isWithinSandbox(t.sandboxAbsDir) {
+		return nil
 	}
 
-	_, _ = invokeImprovePublicAPIDocsAgent(
-		ctx,
-		t.agentInvoker,
-		agentCreator,
-		t.sandboxAbsDir,
-		pkgAuthorizer,
-		packageAbsDir,
-		t.model,
-		t.lintSteps,
-		t.agentInvoker,
-		path,
-		identifier,
-		question,
-		answer,
-	)
+	targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+	if err != nil {
+		return err
+	}
+
+	originPackage, err := clarifyOriginPackageIdentity(mod, t.originPackageAbsDir)
+	if err != nil {
+		return err
+	}
+
+	casRootAbsDir := clarifyCASRoot(mod.AbsolutePath)
+	if err := authorizeClarifyCASWrite(t.authorizer, casRootAbsDir); err != nil {
+		return err
+	}
+
+	entry := casclarify.Entry{
+		OriginPackage: originPackage,
+		TargetPackage: targetPkg.ImportPath,
+		Identifier:    identifier,
+		Question:      question,
+		Answer:        answer,
+	}
+	if err := casclarify.Append(newClarifyCASDB(mod), targetPkg, entry); err != nil {
+		return fmt.Errorf("record clarify CAS: %w", err)
+	}
+	return nil
 }
 
-func invokeImprovePublicAPIDocsAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, sandboxAbsDir string, pkgAuthorizer authdomain.Authorizer, packageAbsDir string, model llmmodel.ModelID, lintSteps []lints.Step, nestedAgentInvoker toolsetinterface.AgentInvoker, path string, identifier string, question string, answer string) (string, error) {
-	if invoker == nil {
-		return "", fmt.Errorf("improve public API docs agent unavailable")
+func clarifyOriginPackageIdentity(mod *gocode.Module, originPackageAbsDir string) (string, error) {
+	if originPackageAbsDir == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(originPackageAbsDir) {
+		originPackageAbsDir = filepath.Join(mod.AbsolutePath, originPackageAbsDir)
+	}
+	if !isWithinDir(mod.AbsolutePath, originPackageAbsDir) {
+		return "", fmt.Errorf("origin package directory %q is outside module %q", originPackageAbsDir, mod.AbsolutePath)
 	}
 
-	payload, err := json.Marshal(improvePublicAPIDocsParams{
-		Path:       path,
-		Identifier: identifier,
-		Question:   question,
-		Answer:     answer,
-	})
+	originMod, err := gocode.NewModule(originPackageAbsDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve origin module: %w", err)
+	}
+	if !isWithinDir(mod.AbsolutePath, originMod.AbsolutePath) {
+		return "", fmt.Errorf("origin module %q is outside module %q", originMod.AbsolutePath, mod.AbsolutePath)
+	}
+
+	relDir, err := filepath.Rel(originMod.AbsolutePath, originPackageAbsDir)
 	if err != nil {
 		return "", err
 	}
+	if relDir == "." {
+		relDir = ""
+	}
+	pkg, err := originMod.LoadPackageByRelativeDir(filepath.ToSlash(relDir))
+	if err != nil {
+		return "", fmt.Errorf("load origin package: %w", err)
+	}
+	return pkg.ImportPath, nil
+}
 
-	message := fmt.Sprintf("Package path: %s\nIdentifier: %s\n\nClarification question:\n%s\n\nClarification answer:\n%s", path, identifier, question, answer)
-	req := toolsetinterface.InvokeRequest{
-		AgentCreator:     agentCreator,
-		CallerAuthorizer: pkgAuthorizer,
-		CallerSandboxDir: sandboxAbsDir,
-		ToolOptions: toolsetinterface.Options{
-			SandboxDir:   sandboxAbsDir,
-			GoPkgAbsDir:  packageAbsDir,
-			Model:        model,
-			LintSteps:    lintSteps,
-			AgentInvoker: nestedAgentInvoker,
+func authorizeClarifyCASWrite(authorizer authdomain.Authorizer, casRootAbsDir string) error {
+	if authorizer == nil {
+		return nil
+	}
+	return authorizer.WithoutCodeUnit().IsAuthorizedForWrite(true, "record clarify_public_api answer in .codalotl/cas", ToolNameClarifyPublicAPI, casRootAbsDir)
+}
+
+func clarifyCASRoot(moduleAbsDir string) string {
+	return filepath.Join(moduleAbsDir, ".codalotl", "cas")
+}
+
+func newClarifyCASDB(mod *gocode.Module) *gocas.DB {
+	return &gocas.DB{
+		BaseDir: mod.AbsolutePath,
+		DB: cas.DB{
+			AbsRoot: clarifyCASRoot(mod.AbsolutePath),
 		},
-		Messages: []string{message},
-		Payload:  payload,
 	}
-
-	events, err := invoker.Invoke(ctx, improvePublicAPIDocsAgentName, req)
-	if err != nil {
-		return "", err
-	}
-
-	return agent.CollectFinalAssistantText(ctx, events)
 }
 
 func packagePathForSandbox(sandboxAbsDir string, packageAbsDir string) (string, error) {

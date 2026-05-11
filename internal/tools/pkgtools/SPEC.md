@@ -28,9 +28,7 @@ Presentation specs for Go package tools.
 - In-progress body: question text
 - Complete body: answer text
 - Clarification answer is produced by a read-only subagent.
-- For sandbox packages, run a package-jailed docs-improvement subagent before returning the original answer.
-- Docs-improvement subagent activity may appear as nested events.
-- Do not edit packages outside the sandbox.
+- For packages in sandbox, append a clarify CAS entry after a successful answer; include question, answer, origin package, target package, and identifier.
 
 ### change_api
 

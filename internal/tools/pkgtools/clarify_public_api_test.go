@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/gocas/casclarify"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
@@ -22,6 +23,20 @@ import (
 type denyReadAuthorizer struct {
 	sandboxDir string
 	readCalls  []string
+}
+
+type authCall struct {
+	requestPermission bool
+	requestReason     string
+	toolName          string
+	absPaths          []string
+}
+
+type recordingAuthorizer struct {
+	sandboxDir string
+	readCalls  []authCall
+	writeCalls []authCall
+	writeErr   error
 }
 
 func TestClarifyPublicAPITool_ExposesPresenter(t *testing.T) {
@@ -58,7 +73,6 @@ func TestClarifyPublicAPIPresenter(t *testing.T) {
 	finalMessagePresenter, ok := presenter.(llmstream.SubagentFinalMessagePresenter)
 	require.True(t, ok)
 	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(call, "clarify subagent", "done"))
-	assert.Nil(t, finalMessagePresenter.SubagentFinalMessage(call, improvePublicAPIDocsAgentName, "Improved docs."))
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, callPresentation.Behavior)
 	assert.Equal(t, llmstream.CompletionBehaviorAppend, resultPresentation.Behavior)
 	assert.Equal(t, llmstream.Line{
@@ -139,6 +153,37 @@ func (a *denyReadAuthorizer) IsShellAuthorized(requestPermission bool, requestRe
 }
 func (a *denyReadAuthorizer) Close() {}
 
+func (a *recordingAuthorizer) SandboxDir() string { return a.sandboxDir }
+func (a *recordingAuthorizer) CodeUnitDir() string {
+	return ""
+}
+func (a *recordingAuthorizer) IsCodeUnitDomain() bool { return false }
+func (a *recordingAuthorizer) WithoutCodeUnit() authdomain.Authorizer {
+	return a
+}
+func (a *recordingAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
+	a.readCalls = append(a.readCalls, authCall{
+		requestPermission: requestPermission,
+		requestReason:     requestReason,
+		toolName:          toolName,
+		absPaths:          append([]string(nil), absPath...),
+	})
+	return nil
+}
+func (a *recordingAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
+	a.writeCalls = append(a.writeCalls, authCall{
+		requestPermission: requestPermission,
+		requestReason:     requestReason,
+		toolName:          toolName,
+		absPaths:          append([]string(nil), absPath...),
+	})
+	return a.writeErr
+}
+func (a *recordingAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
+	return nil
+}
+func (a *recordingAuthorizer) Close() {}
+
 func TestClarifyPublicAPI_RunRelativePackagePathRequestsAuth(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
 		auth := &denyReadAuthorizer{sandboxDir: pkg.Module.AbsolutePath}
@@ -180,6 +225,257 @@ func TestClarifyPublicAPI_RunDependencyImportDoesNotRequestAuth(t *testing.T) {
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Result, "unable to create subagent")
 	assert.Empty(t, auth.readCalls)
+}
+
+func TestClarifyPublicAPI_RunSandboxPackageRecordsCASWithoutDocsImprover(t *testing.T) {
+	withUpstreamFixture(t, func(pkg *gocode.Package) {
+		oldSubAgentCreatorFromContext := subAgentCreatorFromContext
+		subAgentCreatorFromContext = func(context.Context) agent.SubAgentCreator {
+			return &fakeAgentCreator{}
+		}
+		defer func() {
+			subAgentCreatorFromContext = oldSubAgentCreatorFromContext
+		}()
+
+		answer := "It returns a friendly greeting."
+		invoker := &fakeAgentInvoker{
+			invokeFn: func(context.Context, string, toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+				return successfulClarifyEvents(answer), nil
+			},
+		}
+		auth := &recordingAuthorizer{sandboxDir: pkg.Module.AbsolutePath}
+		tool := NewClarifyPublicAPITool(auth, nil, ClarifyPublicAPIToolOptions{
+			AgentInvoker:        invoker,
+			Model:               "mock-model",
+			OriginPackageAbsDir: pkg.AbsolutePath(),
+		})
+
+		res := tool.Run(context.Background(), llmstream.ToolCall{
+			CallID: "call-clarify-cas",
+			Name:   ToolNameClarifyPublicAPI,
+			Type:   "function_call",
+			Input:  `{"path":"upstream","identifier":"Hello","question":"What does Hello return?"}`,
+		})
+
+		require.False(t, res.IsError)
+		assert.Equal(t, answer, res.Result)
+		assert.Equal(t, []string{ToolNameClarifyPublicAPI}, invoker.invokedAgentNames)
+		require.NotEmpty(t, auth.writeCalls)
+		assert.True(t, auth.writeCalls[0].requestPermission)
+		assert.Contains(t, auth.writeCalls[0].requestReason, ".codalotl/cas")
+		assert.Equal(t, ToolNameClarifyPublicAPI, auth.writeCalls[0].toolName)
+		assert.Equal(t, []string{clarifyCASRoot(pkg.Module.AbsolutePath)}, auth.writeCalls[0].absPaths)
+
+		resolved, err := resolveToolPackageRef(pkg.Module, "upstream")
+		require.NoError(t, err)
+		targetPkg, err := loadPackageForResolved(pkg.Module, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+		require.NoError(t, err)
+		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(pkg.Module), targetPkg)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Equal(t, []casclarify.Entry{{
+			OriginPackage: "mymodule/mypkg",
+			TargetPackage: "mymodule/upstream",
+			Identifier:    "Hello",
+			Question:      "What does Hello return?",
+			Answer:        answer,
+		}}, metadata.Entries)
+	})
+}
+
+func TestClarifyPublicAPI_RecordClarifyCASRecordsSandboxLocalReplacePackage(t *testing.T) {
+	withSimplePackage(t, func(pkg *gocode.Package) {
+		rootModDir := pkg.Module.AbsolutePath
+		localModDir := filepath.Join(rootModDir, "localdep")
+		targetDir := filepath.Join(localModDir, "target")
+		require.NoError(t, os.MkdirAll(targetDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "go.mod"), []byte(`module mymodule
+
+go 1.18
+
+require example.com/localdep v0.0.0
+
+replace example.com/localdep => ./localdep
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(localModDir, "go.mod"), []byte(`module example.com/localdep
+
+go 1.18
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(targetDir, "target.go"), []byte(`package target
+
+// Greet returns a greeting.
+func Greet() string {
+	return "hi"
+}
+`), 0o644))
+
+		mod, err := gocode.NewModule(rootModDir)
+		require.NoError(t, err)
+		resolved, err := resolveToolPackageRef(mod, "example.com/localdep/target")
+		require.NoError(t, err)
+		require.NotEqual(t, mod.AbsolutePath, resolved.ModuleAbsDir)
+		require.True(t, isWithinDir(mod.AbsolutePath, resolved.PackageAbsDir))
+
+		auth := &recordingAuthorizer{sandboxDir: mod.AbsolutePath}
+		tool := NewClarifyPublicAPITool(auth, nil, ClarifyPublicAPIToolOptions{
+			OriginPackageAbsDir: pkg.AbsolutePath(),
+		}).(*toolClarifyPublicAPI)
+
+		err = tool.recordClarifyCAS(mod, resolved, "Greet", "What does Greet return?", "It returns hi.")
+
+		require.NoError(t, err)
+		require.NotEmpty(t, auth.writeCalls)
+		assert.Equal(t, []string{clarifyCASRoot(mod.AbsolutePath)}, auth.writeCalls[0].absPaths)
+
+		targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+		require.NoError(t, err)
+		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Equal(t, []casclarify.Entry{{
+			OriginPackage: "mymodule/mypkg",
+			TargetPackage: "example.com/localdep/target",
+			Identifier:    "Greet",
+			Question:      "What does Greet return?",
+			Answer:        "It returns hi.",
+		}}, metadata.Entries)
+	})
+}
+
+func TestClarifyPublicAPI_RecordClarifyCASUsesNestedModuleOriginPackage(t *testing.T) {
+	withSimplePackage(t, func(pkg *gocode.Package) {
+		rootModDir := pkg.Module.AbsolutePath
+		localModDir := filepath.Join(rootModDir, "localdep")
+		originDir := filepath.Join(localModDir, "origin")
+		require.NoError(t, os.MkdirAll(originDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "go.mod"), []byte(`module mymodule
+
+go 1.18
+
+require example.com/localdep v0.0.0
+
+replace example.com/localdep => ./localdep
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(localModDir, "go.mod"), []byte(`module example.com/localdep
+
+go 1.18
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(originDir, "origin.go"), []byte(`package origin
+
+// Ask clarifies APIs.
+func Ask() {}
+`), 0o644))
+
+		mod, err := gocode.NewModule(rootModDir)
+		require.NoError(t, err)
+		resolved, err := resolveToolPackageRef(mod, "mypkg")
+		require.NoError(t, err)
+
+		tool := NewClarifyPublicAPITool(&recordingAuthorizer{sandboxDir: mod.AbsolutePath}, nil, ClarifyPublicAPIToolOptions{
+			OriginPackageAbsDir: originDir,
+		}).(*toolClarifyPublicAPI)
+
+		err = tool.recordClarifyCAS(mod, resolved, "Hello", "What does Hello return?", "It returns hello.")
+
+		require.NoError(t, err)
+		targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+		require.NoError(t, err)
+		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Equal(t, []casclarify.Entry{{
+			OriginPackage: "example.com/localdep/origin",
+			TargetPackage: "mymodule/mypkg",
+			Identifier:    "Hello",
+			Question:      "What does Hello return?",
+			Answer:        "It returns hello.",
+		}}, metadata.Entries)
+	})
+}
+
+func TestClarifyPublicAPI_RecordClarifyCASUsesCanonicalRootOriginPackage(t *testing.T) {
+	rootModDir := t.TempDir()
+	targetDir := filepath.Join(rootModDir, "target")
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "go.mod"), []byte(`module example.com/root
+
+go 1.18
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "root.go"), []byte(`package rootpkg
+
+// Ask clarifies APIs.
+func Ask() {}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "target.go"), []byte(`package target
+
+// Greet returns a greeting.
+func Greet() string {
+	return "hi"
+}
+`), 0o644))
+
+	mod, err := gocode.NewModule(rootModDir)
+	require.NoError(t, err)
+	resolved, err := resolveToolPackageRef(mod, "target")
+	require.NoError(t, err)
+
+	tool := NewClarifyPublicAPITool(&recordingAuthorizer{sandboxDir: mod.AbsolutePath}, nil, ClarifyPublicAPIToolOptions{
+		OriginPackageAbsDir: rootModDir,
+	}).(*toolClarifyPublicAPI)
+
+	err = tool.recordClarifyCAS(mod, resolved, "Greet", "What does Greet return?", "It returns hi.")
+
+	require.NoError(t, err)
+	targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+	require.NoError(t, err)
+	found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, []casclarify.Entry{{
+		OriginPackage: "example.com/root",
+		TargetPackage: "example.com/root/target",
+		Identifier:    "Greet",
+		Question:      "What does Greet return?",
+		Answer:        "It returns hi.",
+	}}, metadata.Entries)
+}
+
+func TestClarifyPublicAPI_RecordClarifyCASSkipsPackagesOutsideSandboxModule(t *testing.T) {
+	withSimplePackage(t, func(pkg *gocode.Package) {
+		auth := &recordingAuthorizer{
+			sandboxDir: pkg.Module.AbsolutePath,
+			writeErr:   errors.New("deny write"),
+		}
+		tool := NewClarifyPublicAPITool(auth, nil).(*toolClarifyPublicAPI)
+		resolved, err := resolveToolPackageRef(pkg.Module, "fmt")
+		require.NoError(t, err)
+
+		err = tool.recordClarifyCAS(pkg.Module, resolved, "Printf", "What does Printf do?", "It formats output.")
+
+		require.NoError(t, err)
+		assert.Empty(t, auth.writeCalls)
+	})
+}
+
+func TestClarifyPublicAPI_RecordClarifyCASReturnsWriteError(t *testing.T) {
+	withSimplePackage(t, func(pkg *gocode.Package) {
+		auth := &recordingAuthorizer{
+			sandboxDir: pkg.Module.AbsolutePath,
+			writeErr:   errors.New("deny write"),
+		}
+		tool := NewClarifyPublicAPITool(auth, nil, ClarifyPublicAPIToolOptions{
+			OriginPackageAbsDir: pkg.AbsolutePath(),
+		}).(*toolClarifyPublicAPI)
+		resolved, err := resolveToolPackageRef(pkg.Module, "mypkg")
+		require.NoError(t, err)
+
+		err = tool.recordClarifyCAS(pkg.Module, resolved, "Hello", "What does Hello return?", "It returns hello.")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "deny write")
+		require.NotEmpty(t, auth.writeCalls)
+		assert.True(t, auth.writeCalls[0].requestPermission)
+	})
 }
 
 func TestNewClarifyTargetAuthorizer_JailsToTargetPackage(t *testing.T) {
@@ -306,105 +602,19 @@ func TestInvokeClarifyAgent_RequiresInvoker(t *testing.T) {
 	assert.EqualError(t, err, "clarify agent unavailable")
 }
 
-func TestInvokeImprovePublicAPIDocsAgent_UsesDocsAgentAndReturnsSummary(t *testing.T) {
-	sandboxDir := t.TempDir()
-	authorizer := authdomain.NewAutoApproveAuthorizer(sandboxDir)
-	creator := &fakeAgentCreator{}
-	invoker := &fakeAgentInvoker{
-		events: successfulClarifyEvents("Updated Equal docs."),
-	}
-
-	answer, err := invokeImprovePublicAPIDocsAgent(
-		context.Background(),
-		invoker,
-		creator,
-		sandboxDir,
-		authorizer,
-		filepath.Join(sandboxDir, "pkg"),
-		"mock-model",
-		nil,
-		invoker,
-		"pkg",
-		"Equal",
-		"What does Equal do?",
-		"It compares values.",
-	)
-	require.NoError(t, err)
-	assert.Equal(t, "Updated Equal docs.", answer)
-	assert.Equal(t, improvePublicAPIDocsAgentName, invoker.invokedAgentName)
-	assert.NotNil(t, invoker.req.AgentCreator)
-	assert.Equal(t, filepath.Join(sandboxDir, "pkg"), invoker.req.ToolOptions.GoPkgAbsDir)
-	assert.Equal(t, sandboxDir, invoker.req.ToolOptions.SandboxDir)
-	assert.Equal(t, llmmodel.ModelID("mock-model"), invoker.req.ToolOptions.Model)
-	assert.Equal(t, invoker, invoker.req.ToolOptions.AgentInvoker)
-	assert.Equal(t, sandboxDir, invoker.req.CallerSandboxDir)
-	assert.Equal(t, authorizer, invoker.req.CallerAuthorizer)
-	require.Len(t, invoker.req.Messages, 1)
-	assert.Contains(t, invoker.req.Messages[0], "Package path: pkg")
-	assert.Contains(t, invoker.req.Messages[0], "Identifier: Equal")
-	assert.Contains(t, invoker.req.Messages[0], "Clarification question:\nWhat does Equal do?")
-	assert.Contains(t, invoker.req.Messages[0], "Clarification answer:\nIt compares values.")
-	assert.JSONEq(t, `{"path":"pkg","identifier":"Equal","question":"What does Equal do?","answer":"It compares values."}`, string(invoker.req.Payload))
-}
-
-func TestInvokeImprovePublicAPIDocsAgent_RequiresInvoker(t *testing.T) {
-	_, err := invokeImprovePublicAPIDocsAgent(
-		context.Background(),
-		nil,
-		&fakeAgentCreator{},
-		t.TempDir(),
-		nil,
-		t.TempDir(),
-		"",
-		nil,
-		nil,
-		"fmt",
-		"Thing",
-		"What does Thing do?",
-		"It does the thing.",
-	)
-	assert.EqualError(t, err, "improve public API docs agent unavailable")
-}
-
-func TestImprovePublicAPIDocsBestEffort_IgnoresImproverFailure(t *testing.T) {
-	sandboxDir := t.TempDir()
-	pkgDir := filepath.Join(sandboxDir, "pkg")
-	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n"), 0o644))
-
-	invoker := &fakeAgentInvoker{err: errors.New("improver failed")}
-	tool := &toolClarifyPublicAPI{
-		sandboxAbsDir: sandboxDir,
-		authorizer:    authdomain.NewAutoApproveAuthorizer(sandboxDir),
-		agentInvoker:  invoker,
-		model:         "mock-model",
-	}
-
-	tool.improvePublicAPIDocsBestEffort(
-		context.Background(),
-		&fakeAgentCreator{},
-		tool.authorizer,
-		pkgDir,
-		"pkg",
-		"Equal",
-		"What does Equal do?",
-		"It compares values.",
-	)
-
-	assert.Equal(t, improvePublicAPIDocsAgentName, invoker.invokedAgentName)
-}
-
 type fakeAgentInvoker struct {
-	events           <-chan agent.Event
-	err              error
-	invokedAgentName string
-	req              toolsetinterface.InvokeRequest
-	createFn         func(context.Context, string, toolsetinterface.InvokeRequest) (*agent.Agent, error)
-	invokeFn         func(context.Context, string, toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
+	events            <-chan agent.Event
+	err               error
+	invokedAgentName  string
+	invokedAgentNames []string
+	req               toolsetinterface.InvokeRequest
+	createFn          func(context.Context, string, toolsetinterface.InvokeRequest) (*agent.Agent, error)
+	invokeFn          func(context.Context, string, toolsetinterface.InvokeRequest) (<-chan agent.Event, error)
 }
 
 func (f *fakeAgentInvoker) Create(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (*agent.Agent, error) {
 	f.invokedAgentName = agentName
+	f.invokedAgentNames = append(f.invokedAgentNames, agentName)
 	f.req = req
 	if f.createFn != nil {
 		return f.createFn(ctx, agentName, req)
@@ -414,6 +624,7 @@ func (f *fakeAgentInvoker) Create(ctx context.Context, agentName string, req too
 
 func (f *fakeAgentInvoker) Invoke(ctx context.Context, agentName string, req toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
 	f.invokedAgentName = agentName
+	f.invokedAgentNames = append(f.invokedAgentNames, agentName)
 	f.req = req
 	if f.invokeFn != nil {
 		return f.invokeFn(ctx, agentName, req)
