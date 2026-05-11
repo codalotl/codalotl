@@ -385,11 +385,19 @@ func clarifyOriginPackageIdentity(mod *gocode.Module, originPackageAbsDir string
 		return "", fmt.Errorf("origin package directory %q is outside module %q", originPackageAbsDir, mod.AbsolutePath)
 	}
 
-	relDir, err := filepath.Rel(mod.AbsolutePath, originPackageAbsDir)
+	originMod, err := gocode.NewModule(originPackageAbsDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve origin module: %w", err)
+	}
+	if !isWithinDir(mod.AbsolutePath, originMod.AbsolutePath) {
+		return "", fmt.Errorf("origin module %q is outside module %q", originMod.AbsolutePath, mod.AbsolutePath)
+	}
+
+	relDir, err := filepath.Rel(originMod.AbsolutePath, originPackageAbsDir)
 	if err != nil {
 		return "", err
 	}
-	pkg, err := mod.LoadPackageByRelativeDir(filepath.ToSlash(relDir))
+	pkg, err := originMod.LoadPackageByRelativeDir(filepath.ToSlash(relDir))
 	if err != nil {
 		return "", fmt.Errorf("load origin package: %w", err)
 	}

@@ -342,6 +342,57 @@ func Greet() string {
 	})
 }
 
+func TestClarifyPublicAPI_RecordClarifyCASUsesNestedModuleOriginPackage(t *testing.T) {
+	withSimplePackage(t, func(pkg *gocode.Package) {
+		rootModDir := pkg.Module.AbsolutePath
+		localModDir := filepath.Join(rootModDir, "localdep")
+		originDir := filepath.Join(localModDir, "origin")
+		require.NoError(t, os.MkdirAll(originDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "go.mod"), []byte(`module mymodule
+
+go 1.18
+
+require example.com/localdep v0.0.0
+
+replace example.com/localdep => ./localdep
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(localModDir, "go.mod"), []byte(`module example.com/localdep
+
+go 1.18
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(originDir, "origin.go"), []byte(`package origin
+
+// Ask clarifies APIs.
+func Ask() {}
+`), 0o644))
+
+		mod, err := gocode.NewModule(rootModDir)
+		require.NoError(t, err)
+		resolved, err := resolveToolPackageRef(mod, "mypkg")
+		require.NoError(t, err)
+
+		tool := NewClarifyPublicAPITool(&recordingAuthorizer{sandboxDir: mod.AbsolutePath}, nil, ClarifyPublicAPIToolOptions{
+			OriginPackageAbsDir: originDir,
+		}).(*toolClarifyPublicAPI)
+
+		err = tool.recordClarifyCAS(mod, resolved, "Hello", "What does Hello return?", "It returns hello.")
+
+		require.NoError(t, err)
+		targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+		require.NoError(t, err)
+		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Equal(t, []casclarify.Entry{{
+			OriginPackage: "example.com/localdep/origin",
+			TargetPackage: "mymodule/mypkg",
+			Identifier:    "Hello",
+			Question:      "What does Hello return?",
+			Answer:        "It returns hello.",
+		}}, metadata.Entries)
+	})
+}
+
 func TestClarifyPublicAPI_RecordClarifyCASSkipsPackagesOutsideSandboxModule(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
 		auth := &recordingAuthorizer{
