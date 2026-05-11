@@ -397,6 +397,9 @@ func clarifyOriginPackageIdentity(mod *gocode.Module, originPackageAbsDir string
 	if err != nil {
 		return "", err
 	}
+	if relDir == "." {
+		relDir = ""
+	}
 	pkg, err := originMod.LoadPackageByRelativeDir(filepath.ToSlash(relDir))
 	if err != nil {
 		return "", fmt.Errorf("load origin package: %w", err)

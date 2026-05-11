@@ -393,6 +393,53 @@ func Ask() {}
 	})
 }
 
+func TestClarifyPublicAPI_RecordClarifyCASUsesCanonicalRootOriginPackage(t *testing.T) {
+	rootModDir := t.TempDir()
+	targetDir := filepath.Join(rootModDir, "target")
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "go.mod"), []byte(`module example.com/root
+
+go 1.18
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "root.go"), []byte(`package rootpkg
+
+// Ask clarifies APIs.
+func Ask() {}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "target.go"), []byte(`package target
+
+// Greet returns a greeting.
+func Greet() string {
+	return "hi"
+}
+`), 0o644))
+
+	mod, err := gocode.NewModule(rootModDir)
+	require.NoError(t, err)
+	resolved, err := resolveToolPackageRef(mod, "target")
+	require.NoError(t, err)
+
+	tool := NewClarifyPublicAPITool(&recordingAuthorizer{sandboxDir: mod.AbsolutePath}, nil, ClarifyPublicAPIToolOptions{
+		OriginPackageAbsDir: rootModDir,
+	}).(*toolClarifyPublicAPI)
+
+	err = tool.recordClarifyCAS(mod, resolved, "Greet", "What does Greet return?", "It returns hi.")
+
+	require.NoError(t, err)
+	targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+	require.NoError(t, err)
+	found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, []casclarify.Entry{{
+		OriginPackage: "example.com/root",
+		TargetPackage: "example.com/root/target",
+		Identifier:    "Greet",
+		Question:      "What does Greet return?",
+		Answer:        "It returns hi.",
+	}}, metadata.Entries)
+}
+
 func TestClarifyPublicAPI_RecordClarifyCASSkipsPackagesOutsideSandboxModule(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
 		auth := &recordingAuthorizer{
