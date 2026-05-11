@@ -4,6 +4,8 @@ Stores `clarify_public_api` answers for a `*gocode.Package` via `internal/gocas`
 
 Records are keyed like `gocas.StoreOnPackage`: target package Go files plus package-local `SPEC.md`.
 
+In-play records are clarify CAS records from current git workstream: uncommitted/staged records whose hash matches current package, plus records added on current branch even after package hash drift. If git state cannot be read, no records are found.
+
 ## Public API
 
 ```go
@@ -24,6 +26,13 @@ type Metadata struct {
 	Entries []Entry `json:"entries"`
 }
 
+// InPlayRecord is a clarify CAS record selected for the current workstream.
+type InPlayRecord struct {
+	Path          string // Absolute path to the CAS record file.
+	TargetPackage string // Target package import path, when known.
+	Metadata      Metadata
+}
+
 // Append stores entry alongside any existing entries for pkg.
 func Append(db *gocas.DB, pkg *gocode.Package, entry Entry) error
 
@@ -31,4 +40,10 @@ func Append(db *gocas.DB, pkg *gocode.Package, entry Entry) error
 //
 // found reports whether a record existed.
 func Retrieve(db *gocas.DB, pkg *gocode.Package) (found bool, metadata Metadata, err error)
+
+// FindInPlay finds clarify records relevant to the current git workstream.
+func FindInPlay(db *gocas.DB, mod *gocode.Module) ([]InPlayRecord, error)
+
+// Delete removes this clarify record from disk.
+func (record InPlayRecord) Delete() error
 ```

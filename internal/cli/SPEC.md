@@ -35,6 +35,7 @@ Notes:
 - CLI startup installs agent tools such as `codalotl_cli` and `refactor` into `internal/agentbuilder`.
 - `codalotl_cli` exposes these commands:
 	- `codalotl docs add`
+	- `codalotl docs improve-from-clarify`
 
 ### codalotl -h, codalotl --help
 
@@ -203,6 +204,18 @@ Notes:
 
 Output:
 - Prints a concise summary of the applied documentation changes.
+
+### codalotl docs improve-from-clarify
+
+Improves package documentation from in-play `clarify_public_api` CAS records for current module/workstream.
+
+Notes:
+- Uses `docubot.ImproveFromClarifications` on each target package.
+- Deletes successfully processed records, including no-op documentation runs.
+- Uses effective model and configured `reflowwidth`.
+
+Output:
+- Prints a concise summary of records processed/deleted and documentation changes.
 
 ### codalotl spec diff <path/to/pkg_or_SPEC.md>
 
