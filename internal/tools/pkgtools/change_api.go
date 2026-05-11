@@ -28,6 +28,7 @@ const ToolNameChangeAPI = "change_api"
 const changeAPIAgentName = "package_mode_default_context"
 
 var changeAPIPresenterInstance llmstream.Presenter = changeAPIPresenter{}
+var subAgentCreatorFromContext = agent.SubAgentCreatorFromContext
 
 type toolChangeAPI struct {
 	sandboxAbsDir string
@@ -295,7 +296,7 @@ func subAgentCreatorFromContextSafe(ctx context.Context) (creator agent.SubAgent
 		}
 	}()
 
-	creator = agent.SubAgentCreatorFromContext(ctx)
+	creator = subAgentCreatorFromContext(ctx)
 	if creator == nil {
 		return nil, fmt.Errorf("unable to create subagent")
 	}
