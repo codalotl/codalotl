@@ -145,8 +145,6 @@ func NewSessionAuthorizer(sandboxDir string, commands *ShellAllowedCommands, aut
 }
 
 // NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback.
-//
-// The returned authorizer is not read-only: write requests must target paths included in unit, then fallback decides whether the write is authorized. Close also closes fallback.
 func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer {
 	if unit == nil {
 		panic("authdomain: code unit is nil")

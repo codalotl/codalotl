@@ -129,8 +129,6 @@ func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCom
 func NewAutoApproveAuthorizer(sandboxDir string) Authorizer
 
 // NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback.
-//
-// The returned authorizer is not read-only: write requests must target paths included in unit, then fallback decides whether the write is authorized. Close also closes fallback.
 func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer
 
 // AddGrantsFromUserMessage adds grants from userMessage to the authorizer. Grants in userMessage are of the form `@relative/path/to/file`, `@/path/to/file`, or
