@@ -26,11 +26,17 @@ const (
 )
 
 type testCaseConfig struct {
-	Prompt      string           `json:"prompt"`
-	PackagePath string           `json:"package_path,omitempty"`
-	ReflowWidth int              `json:"reflowwidth,omitempty"`
-	Lints       lints.Lints      `json:"lints,omitempty"`
-	Expected    []map[string]any `json:"expected"`
+	Prompt            string                   `json:"prompt"`
+	PackagePath       string                   `json:"package_path,omitempty"`
+	ReflowWidth       int                      `json:"reflowwidth,omitempty"`
+	Lints             lints.Lints              `json:"lints,omitempty"`
+	Expected          []map[string]any         `json:"expected"`
+	ExpectedRepoFiles []expectedRepoFileConfig `json:"expected_repo_files,omitempty"`
+}
+
+type expectedRepoFileConfig struct {
+	Path  string         `json:"path"`
+	Match map[string]any `json:"match"`
 }
 
 var runNoninteractiveExec = noninteractive.Exec
@@ -130,6 +136,9 @@ func RunCaseDir(caseDir string) error {
 		return err
 	}
 	if err := assertExpectedRepo(filepath.Join(caseDir, "expected_repo"), sourceRepoDir, workDir); err != nil {
+		return err
+	}
+	if err := assertExpectedRepoFileConfigs(cfg.ExpectedRepoFiles, sourceRepoDir, workDir); err != nil {
 		return err
 	}
 	if err := mockopenai.AssertAllConsumed(handler); err != nil {
@@ -704,6 +713,47 @@ func assertExpectedRepo(expectedRoot string, originalRoot string, actualRoot str
 
 		if !bytes.Equal(expectedData, actualData) {
 			return fmt.Errorf("contents mismatch for %q", rel)
+		}
+	}
+	return nil
+}
+
+func assertExpectedRepoFileConfigs(expected []expectedRepoFileConfig, originalRoot string, actualRoot string) error {
+	if len(expected) == 0 {
+		return nil
+	}
+
+	expectedFiles := make([]string, 0, len(expected))
+	for _, file := range expected {
+		if file.Path == "" {
+			return fmt.Errorf("expected repo file path must not be empty")
+		}
+		if filepath.IsAbs(file.Path) {
+			return fmt.Errorf("expected repo file path must be relative: %q", file.Path)
+		}
+		if file.Match == nil {
+			return fmt.Errorf("expected repo file %q match must not be empty", file.Path)
+		}
+		expectedFiles = append(expectedFiles, file.Path)
+	}
+	sort.Strings(expectedFiles)
+
+	actualChangedFiles, err := changedOrCreatedFiles(originalRoot, actualRoot)
+	if err != nil {
+		return err
+	}
+	sort.Strings(actualChangedFiles)
+	if !reflect.DeepEqual(expectedFiles, actualChangedFiles) {
+		return fmt.Errorf("expected changed files %v, got %v", expectedFiles, actualChangedFiles)
+	}
+
+	for _, file := range expected {
+		actualData, err := os.ReadFile(filepath.Join(actualRoot, file.Path))
+		if err != nil {
+			return fmt.Errorf("read actual file %q: %w", file.Path, err)
+		}
+		if !matchesValue(file.Match, string(actualData), []string{actualRoot}) {
+			return fmt.Errorf("contents mismatch for %q", file.Path)
 		}
 	}
 	return nil
