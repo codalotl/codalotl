@@ -55,7 +55,6 @@ func TestPackageDocumentation_CoversBuiltInAgentsAndYAMLStructure(t *testing.T) 
 		AgentPackageModeDefaultContext,
 		AgentLimitedPackageMode,
 		agentClarifyPublicAPI,
-		agentImprovePublicAPIDocs,
 		"pr-review",
 		"pr-orchestrator",
 	} {
@@ -87,7 +86,7 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 
 	require.NoError(t, registry.ValidateTools())
 
-	require.Len(t, registry.List(), 8)
+	require.Len(t, registry.List(), 7)
 
 	genericDef, ok := registry.Lookup(AgentGeneric)
 	assert.True(t, ok)
@@ -110,12 +109,6 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	assert.Equal(t, AgentLimitedPackageMode, limitedDef.Name)
 	assert.Equal(t, agentregistry.AuthPolicyPackage, limitedDef.AuthPolicy)
 	assert.NotNil(t, limitedDef.InitialTurnsBuilder)
-
-	improveDocsDef, ok := registry.Lookup(agentImprovePublicAPIDocs)
-	require.True(t, ok)
-	assert.Equal(t, agentImprovePublicAPIDocs, improveDocsDef.Name)
-	assert.Equal(t, agentregistry.AuthPolicyPackage, improveDocsDef.AuthPolicy)
-	assert.NotNil(t, improveDocsDef.InitialTurnsBuilder)
 
 	clarifyDef, ok := registry.Lookup(agentClarifyPublicAPI)
 	require.True(t, ok)
@@ -308,25 +301,6 @@ func TestBuildRegistry_InvokeLimitedPackageMode_OpenAIUsesLimitedPromptAndTools(
 	}, gotTools)
 }
 
-func TestBuildRegistry_InvokeImprovePublicAPIDocs_OpenAIUsesDocEditTools(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-
-	gotPrompt, gotTools := invokeAgentForModel(t, agentImprovePublicAPIDocs, llmmodel.ProviderIDOpenAI.DefaultModel())
-
-	assert.Contains(t, gotPrompt, prompt.GetGoPackageModeModePrompt(prompt.GoPackageModePromptKindFull))
-	assert.Contains(t, gotPrompt, "# Improve Public API Docs")
-	assert.Contains(t, gotPrompt, "# Skills")
-	assert.Equal(t, []string{
-		coretools.ToolNameReadFile,
-		coretools.ToolNameLS,
-		coretools.ToolNameApplyPatch,
-		coretools.ToolNameSkillShell,
-		exttools.ToolNameDiagnostics,
-		exttools.ToolNameFixLints,
-		exttools.ToolNameRunTests,
-	}, gotTools)
-}
-
 func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -403,6 +377,35 @@ func TestClarifyReadOnlyTools_UsesOverrideAwareBuilders(t *testing.T) {
 		pkgtools.ToolNameClarifyPublicAPI,
 	}, toolNames(tools))
 	require.IsType(t, fakeNamedTool{}, requireTool(t, tools, coretools.ToolNameReadFile))
+}
+
+func TestPackageAgentClarifyPublicAPI_PassesOriginPackageDir(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0o644))
+
+	originDir := filepath.Join(sandbox, "origin")
+	require.NoError(t, os.MkdirAll(originDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(originDir, "origin.go"), []byte("package origin\n\nfunc F() {}\n"), 0o644))
+
+	authorizer := authdomain.NewAutoApproveAuthorizer(sandbox)
+	unit, err := codeunit.NewCodeUnit("origin package", originDir)
+	require.NoError(t, err)
+	codeUnitAuthorizer := authdomain.NewCodeUnitAuthorizer(unit, authorizer)
+	t.Cleanup(codeUnitAuthorizer.Close)
+
+	tools, err := packageAgentTools(toolsetinterface.Options{
+		AgentName:   AgentPackageModeNoContext,
+		Model:       llmmodel.ProviderIDOpenAI.DefaultModel(),
+		Authorizer:  codeUnitAuthorizer,
+		SandboxDir:  sandbox,
+		GoPkgAbsDir: originDir,
+	})
+	require.NoError(t, err)
+	clarifyTool := requireTool(t, tools, pkgtools.ToolNameClarifyPublicAPI)
+
+	originField := reflect.ValueOf(clarifyTool).Elem().FieldByName("originPackageAbsDir")
+	require.True(t, originField.IsValid())
+	assert.Equal(t, originDir, originField.String())
 }
 
 func TestBuildRegistry_PROrchestratorReviewTool_InvokesReviewSubagentAndReturnsJSON(t *testing.T) {
