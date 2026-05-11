@@ -283,6 +283,65 @@ func TestClarifyPublicAPI_RunSandboxPackageRecordsCASWithoutDocsImprover(t *test
 	})
 }
 
+func TestClarifyPublicAPI_RecordClarifyCASRecordsSandboxLocalReplacePackage(t *testing.T) {
+	withSimplePackage(t, func(pkg *gocode.Package) {
+		rootModDir := pkg.Module.AbsolutePath
+		localModDir := filepath.Join(rootModDir, "localdep")
+		targetDir := filepath.Join(localModDir, "target")
+		require.NoError(t, os.MkdirAll(targetDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(rootModDir, "go.mod"), []byte(`module mymodule
+
+go 1.18
+
+require example.com/localdep v0.0.0
+
+replace example.com/localdep => ./localdep
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(localModDir, "go.mod"), []byte(`module example.com/localdep
+
+go 1.18
+`), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(targetDir, "target.go"), []byte(`package target
+
+// Greet returns a greeting.
+func Greet() string {
+	return "hi"
+}
+`), 0o644))
+
+		mod, err := gocode.NewModule(rootModDir)
+		require.NoError(t, err)
+		resolved, err := resolveToolPackageRef(mod, "example.com/localdep/target")
+		require.NoError(t, err)
+		require.NotEqual(t, mod.AbsolutePath, resolved.ModuleAbsDir)
+		require.True(t, isWithinDir(mod.AbsolutePath, resolved.PackageAbsDir))
+
+		auth := &recordingAuthorizer{sandboxDir: mod.AbsolutePath}
+		tool := NewClarifyPublicAPITool(auth, nil, ClarifyPublicAPIToolOptions{
+			OriginPackageAbsDir: pkg.AbsolutePath(),
+		}).(*toolClarifyPublicAPI)
+
+		err = tool.recordClarifyCAS(mod, resolved, "Greet", "What does Greet return?", "It returns hi.")
+
+		require.NoError(t, err)
+		require.NotEmpty(t, auth.writeCalls)
+		assert.Equal(t, []string{clarifyCASRoot(mod.AbsolutePath)}, auth.writeCalls[0].absPaths)
+
+		targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
+		require.NoError(t, err)
+		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Equal(t, []casclarify.Entry{{
+			OriginPackage: "mymodule/mypkg",
+			TargetPackage: "example.com/localdep/target",
+			Identifier:    "Greet",
+			Question:      "What does Greet return?",
+			Answer:        "It returns hi.",
+		}}, metadata.Entries)
+	})
+}
+
 func TestClarifyPublicAPI_RecordClarifyCASSkipsPackagesOutsideSandboxModule(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
 		auth := &recordingAuthorizer{

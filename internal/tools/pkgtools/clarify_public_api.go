@@ -43,15 +43,12 @@ type clarifyPublicAPIParams struct {
 
 // ClarifyPublicAPIToolOptions configures NewClarifyPublicAPITool.
 type ClarifyPublicAPIToolOptions struct {
-	// AgentInvoker invokes the clarification subagent.
-	AgentInvoker toolsetinterface.AgentInvoker
-	// Model selects the model used by the clarification subagent.
-	Model llmmodel.ModelID
-	// LintSteps are accepted for consistency with other package tools; clarify_public_api does not run lint steps.
-	LintSteps []lints.Step
-	// OriginPackageAbsDir identifies the package that initiated the clarification for CAS metadata.
-	// It does not constrain target-package reads; the clarification subagent is jailed to the resolved target package.
-	// If empty, NewClarifyPublicAPITool uses authorizer.CodeUnitDir() when present.
+	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker invokes the clarification subagent.
+	Model        llmmodel.ModelID              // Model selects the model used by the clarification subagent.
+	LintSteps    []lints.Step                  // LintSteps are accepted for consistency with other package tools; clarify_public_api does not run lint steps.
+
+	// OriginPackageAbsDir identifies the package that initiated the clarification for CAS metadata. It does not constrain target-package reads; the clarification subagent
+	// is jailed to the resolved target package. If empty, NewClarifyPublicAPITool uses authorizer.CodeUnitDir() when present.
 	OriginPackageAbsDir string
 }
 
@@ -59,10 +56,9 @@ var clarifyPublicAPIPresenterInstance llmstream.Presenter = clarifyPublicAPIPres
 
 type clarifyPublicAPIPresenter struct{}
 
-// NewClarifyPublicAPITool returns a tool that asks a read-only subagent to clarify a package's public API.
-// The authorizer supplies the caller sandbox, caller authorization context, sandbox-package read authorization,
-// and CAS write authorization. It may be a base authorizer or a code-unit authorizer; the subagent is run with
-// the caller code-unit removed and then jailed to the resolved target package.
+// NewClarifyPublicAPITool returns a tool that asks a read-only subagent to clarify a package's public API. The authorizer supplies the caller sandbox, caller authorization
+// context, sandbox-package read authorization, and CAS write authorization. It may be a base authorizer or a code-unit authorizer; the subagent is run with the
+// caller code-unit removed and then jailed to the resolved target package.
 func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, options ...ClarifyPublicAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	var option ClarifyPublicAPIToolOptions
@@ -346,7 +342,7 @@ func (t *toolClarifyPublicAPI) recordClarifyCAS(mod *gocode.Module, resolved res
 	if mod == nil {
 		return fmt.Errorf("module required")
 	}
-	if resolved.ModuleAbsDir != mod.AbsolutePath {
+	if !resolved.isWithinSandbox(t.sandboxAbsDir) {
 		return nil
 	}
 
