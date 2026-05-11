@@ -9,6 +9,10 @@
 //   - pr-review: generic review agent that emits structured JSON review findings.
 //   - pr-orchestrator: generic agent that reviews a branch, reviews SPEC.md edits, delegates package implementation work, and may use optional `refactor`.
 //
+// Package-mode agents configure `clarify_public_api` with the invoking package directory as the origin package. They remove any code-unit restriction from the
+// supplied authorizer before constructing that tool, so target-package access is governed by the clarify tool's target-package authorization rather than by the
+// invoking package's code-unit jail.
+//
 // OverrideTool installs a process-wide named tool builder that future BuildRegistry calls register before YAML agents are loaded.
 //
 // AddYAMLToRegistry loads YAML with top-level `agents` and `tools` arrays.

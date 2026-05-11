@@ -41,10 +41,17 @@ type clarifyPublicAPIParams struct {
 	Question   string `json:"question"`
 }
 
+// ClarifyPublicAPIToolOptions configures NewClarifyPublicAPITool.
 type ClarifyPublicAPIToolOptions struct {
-	AgentInvoker        toolsetinterface.AgentInvoker
-	Model               llmmodel.ModelID
-	LintSteps           []lints.Step
+	// AgentInvoker invokes the clarification subagent.
+	AgentInvoker toolsetinterface.AgentInvoker
+	// Model selects the model used by the clarification subagent.
+	Model llmmodel.ModelID
+	// LintSteps are accepted for consistency with other package tools; clarify_public_api does not run lint steps.
+	LintSteps []lints.Step
+	// OriginPackageAbsDir identifies the package that initiated the clarification for CAS metadata.
+	// It does not constrain target-package reads; the clarification subagent is jailed to the resolved target package.
+	// If empty, NewClarifyPublicAPITool uses authorizer.CodeUnitDir() when present.
 	OriginPackageAbsDir string
 }
 
@@ -52,7 +59,10 @@ var clarifyPublicAPIPresenterInstance llmstream.Presenter = clarifyPublicAPIPres
 
 type clarifyPublicAPIPresenter struct{}
 
-// authorizer is the fallback authorizer the clarify subagent should use underneath its target-package jail.
+// NewClarifyPublicAPITool returns a tool that asks a read-only subagent to clarify a package's public API.
+// The authorizer supplies the caller sandbox, caller authorization context, sandbox-package read authorization,
+// and CAS write authorization. It may be a base authorizer or a code-unit authorizer; the subagent is run with
+// the caller code-unit removed and then jailed to the resolved target package.
 func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, options ...ClarifyPublicAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	var option ClarifyPublicAPIToolOptions

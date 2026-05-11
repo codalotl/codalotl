@@ -189,11 +189,13 @@ Toolsets are just a device used in this SPEC.md to factor the file (and may be u
     - toolset_edit_files
     - {`diagnostics`, `fix_lints`, `run_tests`, `run_project_tests`}
     - {`module_info`, `get_public_api`, `clarify_public_api`, `get_usage`, `update_usage`, `change_api`}
+    - `clarify_public_api` receives the caller's `GoPkgAbsDir` as its origin package and an authorizer with the code-unit domain removed.
 - toolset_limited_package:
     - {`read_file`, `ls`, `skill_shell`} - NOTE: no `update_plan`
     - toolset_edit_files
     - {`diagnostics`, `fix_lints`, `run_tests`} - NOTE: no `run_project_tests`
     - {`get_public_api`, `clarify_public_api`} - NOTE: no way to spawn mutative subagents, like `update_usage` and `change_api`
+    - `clarify_public_api` receives the caller's `GoPkgAbsDir` as its origin package and an authorizer with the code-unit domain removed.
 
 ## Public API
 

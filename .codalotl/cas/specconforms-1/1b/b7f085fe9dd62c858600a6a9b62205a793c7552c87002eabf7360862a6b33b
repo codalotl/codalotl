@@ -1,0 +1,1 @@
+{"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{"unix_timestamp":1778523089,"paths":["internal/gocas/casclarify/SPEC.md","internal/gocas/casclarify/casclarify.go","internal/gocas/casclarify/casclarify_test.go"],"git_clean":true,"git_commit":"58b226a7614f59317001314053c67c5a68048d40","git_merge_base":"6e1d47cf539122a8809a923dd5f8d5aaa32e02c2"}}
