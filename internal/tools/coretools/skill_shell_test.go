@@ -69,6 +69,19 @@ func TestSkillShell_Run_OutputLimitMatchesShell(t *testing.T) {
 	assert.Contains(t, output, "bytes elided")
 }
 
+func TestSkillShell_Info_MaxOutputBytesOmitsUnsupportedNumericSchemaKeywords(t *testing.T) {
+	tool := NewSkillShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+
+	paramSchema, ok := tool.Info().Parameters["max_output_bytes"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "integer", paramSchema["type"])
+	assert.NotContains(t, paramSchema, "default")
+	assert.NotContains(t, paramSchema, "minimum")
+	assert.NotContains(t, paramSchema, "maximum")
+	assert.Contains(t, paramSchema["description"], "default 40000")
+	assert.Contains(t, paramSchema["description"], "clamped to 1024..1048576")
+}
+
 func TestSkillShell_Presenter_CommandSummary(t *testing.T) {
 	tool := NewSkillShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
 	presenter := tool.Presenter()

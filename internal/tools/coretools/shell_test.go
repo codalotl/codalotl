@@ -213,6 +213,19 @@ func TestShell_Run_CustomOutputLimit(t *testing.T) {
 	assert.Contains(t, output, "bytes elided")
 }
 
+func TestShell_Info_MaxOutputBytesOmitsUnsupportedNumericSchemaKeywords(t *testing.T) {
+	tool := NewShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+
+	paramSchema, ok := tool.Info().Parameters["max_output_bytes"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "integer", paramSchema["type"])
+	assert.NotContains(t, paramSchema, "default")
+	assert.NotContains(t, paramSchema, "minimum")
+	assert.NotContains(t, paramSchema, "maximum")
+	assert.Contains(t, paramSchema["description"], "default 40000")
+	assert.Contains(t, paramSchema["description"], "clamped to 1024..1048576")
+}
+
 func TestShell_MaxOutputBytesBounds(t *testing.T) {
 	assert.Equal(t, defaultShellMaxOutputBytes, effectiveShellMaxOutputBytes(0))
 	assert.Equal(t, defaultShellMaxOutputBytes, effectiveShellMaxOutputBytes(-1))

@@ -78,9 +78,6 @@ func (t *toolShell) Info() llmstream.ToolInfo {
 			"max_output_bytes": map[string]any{
 				"type":        "integer",
 				"description": "Optional max bytes of combined stdout+stderr returned in the result (default 40000; clamped to 1024..1048576)",
-				"default":     defaultShellMaxOutputBytes,
-				"minimum":     minShellMaxOutputBytes,
-				"maximum":     maxShellMaxOutputBytes,
 			},
 			"request_permission": map[string]any{
 				"type":        "boolean",
