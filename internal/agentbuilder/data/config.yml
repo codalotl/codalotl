@@ -82,6 +82,7 @@ agents:
       - ls
       - shell
       - edit_files
+      - codalotl_cli
       - refactor
       - update_plan
       - check_spec_conformance

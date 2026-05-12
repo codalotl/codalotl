@@ -25,8 +25,9 @@
 - clarify_public_api: toolset_clarify_read_only
     - Prompt specialized for clarification requests.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
-- pr-orchestrator: toolset_core + toolset_spec + optional `refactor` + {`review`, `implement`, `review_spec_changes`}
-    - Prompt that documents a workflow that plans PR work, iterates on `SPEC.md` edits with `review_spec_changes`, delegates implementation, reviews committed implementation state, and manages commits.
+- pr-orchestrator: toolset_core + toolset_spec + optional `codalotl_cli`/`refactor` + {`review`, `implement`, `review_spec_changes`}
+    - Prompt that documents a workflow that plans PR work, iterates on `SPEC.md` edits with `review_spec_changes`, delegates implementation, reviews committed implementation state, manages commits, and handles CAS artifacts.
+    - Prompt briefly explains CAS and directs clarify-public-api CAS records through the `codalotl docs improve-from-clarify` tool workflow.
 
 ## Data-Driven Agent/Tool Construction
 

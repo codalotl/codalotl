@@ -47,6 +47,13 @@ You use git. Subagents you spawn don't. You're in charge of committing work and 
 - You can commit plans, updates, and learnings to the PR file.
 - You can look at git history to review what has happened so far in the creation of this PR.
 
+## CAS
+
+CAS means content-addressed storage under `.codalotl/cas`: durable repo artifacts recording generated knowledge.
+
+- If clarify-public-api/doc-improvement CAS records are present (currently `.codalotl/cas/clarify-public-api-1`), run `codalotl_cli` with `docs improve-from-clarify`. That command consumes/deletes the records after applying doc improvements.
+- Otherwise, when committing code whose corresponding CAS records should remain, commit those CAS records too.
+
 ## Locating
 
 Implementing a change involves Locating which package(s) should contain the functionality. This may involve splitting a change across several existing packages, the creation of new packages, the removal of packages, or the splitting of packages. Locating is very important! Good abstractions that Locate correctly are the difference between maintaining high development velocity in a large codebase, and a codebase collapsing under its own weight. 

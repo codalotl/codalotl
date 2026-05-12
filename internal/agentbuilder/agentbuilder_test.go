@@ -309,6 +309,12 @@ func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testi
 	assert.Contains(t, gotPrompt, prompt.GetBasicPrompt())
 	assert.Contains(t, gotPrompt, "# PR Orchestrator")
 	assert.Contains(t, gotPrompt, "# Skills")
+	assert.Contains(t, gotPrompt, "content-addressed storage")
+	assert.Contains(t, gotPrompt, ".codalotl/cas/clarify-public-api-1")
+	assert.Contains(t, gotPrompt, "codalotl_cli")
+	assert.Contains(t, gotPrompt, "docs improve-from-clarify")
+	assert.Contains(t, gotPrompt, "consumes/deletes")
+	assert.Contains(t, gotPrompt, "commit those CAS records too")
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
@@ -322,9 +328,12 @@ func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testi
 	}, gotTools)
 }
 
-func TestBuildRegistry_InvokePROrchestrator_UsesRefactorOverride(t *testing.T) {
+func TestBuildRegistry_InvokePROrchestrator_UsesOptionalExternalToolOverrides(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
+	overrideToolForTest(t, yamlOptionalToolCodalotlCLI, func(toolsetinterface.Options) (llmstream.Tool, error) {
+		return fakeNamedTool{name: yamlOptionalToolCodalotlCLI}, nil
+	})
 	overrideToolForTest(t, yamlOptionalToolRefactor, func(toolsetinterface.Options) (llmstream.Tool, error) {
 		return fakeNamedTool{name: yamlOptionalToolRefactor}, nil
 	})
@@ -336,6 +345,7 @@ func TestBuildRegistry_InvokePROrchestrator_UsesRefactorOverride(t *testing.T) {
 		coretools.ToolNameLS,
 		coretools.ToolNameShell,
 		coretools.ToolNameApplyPatch,
+		yamlOptionalToolCodalotlCLI,
 		yamlOptionalToolRefactor,
 		coretools.ToolNameUpdatePlan,
 		spectools.ToolNameCheckSpecConformance,
