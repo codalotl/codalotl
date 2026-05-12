@@ -37,13 +37,13 @@ Software construction is layered and modular. We strive to allow users to operat
 
 Main layers:
 0: This is the base layer, the bread and butter of actually editing code. Has generic agent mode; package mode. You type in a box, and the agent codes something.
-1: SPEC.md in packages. Users don't have to use this. But we integrate it nicely (NOTE: this is a "layer" -- bit different than other layers -- that's okay).
+1: SPEC.md in packages. Users don't have to use this. But we integrate it nicely (NOTE: this is a "~layer" -- bit different than other layers -- that's okay).
 2: PR orchestration.
 3: ??? product definition, prioritization, PR-definer, etc
 
 Modules:
-QA: 
-Product Spec: 
+- QA: 
+- Product Spec: 
 
 These layers are respected abstraction points. For instance, the orchestrator knows about SPEC.md, but not vise versa.
 
