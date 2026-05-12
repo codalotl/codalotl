@@ -6,15 +6,68 @@ import (
 	"fmt"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestShellOutputHelper(t *testing.T) {
+	mode := os.Getenv("CORETOOLS_SHELL_OUTPUT_HELPER")
+	if mode == "" {
+		return
+	}
+
+	switch mode {
+	case "large":
+		fmt.Print("HEAD-")
+		fmt.Print(strings.Repeat("m", defaultShellMaxOutputBytes+10_000))
+		fmt.Print("-TAIL")
+	case "small":
+		fmt.Print(strings.Repeat("s", 5_000))
+	default:
+		fmt.Print(mode)
+	}
+	os.Exit(0)
+}
+
+type shellTestResultPayload struct {
+	Success bool   `json:"success"`
+	Content string `json:"content"`
+}
+
+func shellTestInput(t *testing.T, command []string, maxOutputBytes int) string {
+	t.Helper()
+	params := map[string]any{
+		"command": command,
+	}
+	if maxOutputBytes > 0 {
+		params["max_output_bytes"] = maxOutputBytes
+	}
+	b, err := json.Marshal(params)
+	require.NoError(t, err)
+	return string(b)
+}
+
+func shellTestPayload(t *testing.T, res llmstream.ToolResult) shellTestResultPayload {
+	t.Helper()
+	var payload shellTestResultPayload
+	require.NoError(t, json.Unmarshal([]byte(res.Result), &payload))
+	return payload
+}
+
+func shellTestOutputBlock(t *testing.T, content string) string {
+	t.Helper()
+	_, output, ok := strings.Cut(content, "Output:\n")
+	require.True(t, ok)
+	return output
+}
 
 func TestShell_Run_Success(t *testing.T) {
 	sandbox := t.TempDir()
@@ -102,6 +155,97 @@ func TestShell_Run_Timeout(t *testing.T) {
 		t.Fatalf("unexpected process state: %s", payload.Content)
 	}
 	assert.Contains(t, payload.Content, "Timeout: true")
+}
+
+func TestShell_Run_DefaultOutputLimit(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewShellTool(auth)
+	t.Setenv("CORETOOLS_SHELL_OUTPUT_HELPER", "large")
+
+	call := llmstream.ToolCall{
+		CallID: "limit-default",
+		Name:   ToolNameShell,
+		Type:   "function_call",
+		Input:  shellTestInput(t, []string{os.Args[0], "-test.run=TestShellOutputHelper"}, 0),
+	}
+
+	res := tool.Run(context.Background(), call)
+	assert.False(t, res.IsError)
+	assert.Nil(t, res.SourceErr)
+
+	payload := shellTestPayload(t, res)
+	assert.True(t, payload.Success)
+	assert.Contains(t, payload.Content, "Command: ")
+	assert.Contains(t, payload.Content, "Process State: exit status 0")
+	assert.Contains(t, payload.Content, "Timeout: false")
+	output := shellTestOutputBlock(t, payload.Content)
+	assert.LessOrEqual(t, len([]byte(output)), defaultShellMaxOutputBytes+1)
+	assert.Contains(t, output, "HEAD-")
+	assert.Contains(t, output, "-TAIL")
+	assert.Contains(t, output, "[...")
+	assert.Contains(t, output, "bytes elided ...]")
+}
+
+func TestShell_Run_CustomOutputLimit(t *testing.T) {
+	sandbox := t.TempDir()
+	auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+	tool := NewShellTool(auth)
+	t.Setenv("CORETOOLS_SHELL_OUTPUT_HELPER", "large")
+
+	call := llmstream.ToolCall{
+		CallID: "limit-custom",
+		Name:   ToolNameShell,
+		Type:   "function_call",
+		Input:  shellTestInput(t, []string{os.Args[0], "-test.run=TestShellOutputHelper"}, 2048),
+	}
+
+	res := tool.Run(context.Background(), call)
+	assert.False(t, res.IsError)
+	assert.Nil(t, res.SourceErr)
+
+	payload := shellTestPayload(t, res)
+	assert.True(t, payload.Success)
+	output := shellTestOutputBlock(t, payload.Content)
+	assert.LessOrEqual(t, len([]byte(output)), 2049)
+	assert.Contains(t, output, "HEAD-")
+	assert.Contains(t, output, "-TAIL")
+	assert.Contains(t, output, "bytes elided")
+}
+
+func TestShell_Info_MaxOutputBytesOmitsUnsupportedNumericSchemaKeywords(t *testing.T) {
+	tool := NewShellTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()))
+
+	paramSchema, ok := tool.Info().Parameters["max_output_bytes"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "integer", paramSchema["type"])
+	assert.NotContains(t, paramSchema, "default")
+	assert.NotContains(t, paramSchema, "minimum")
+	assert.NotContains(t, paramSchema, "maximum")
+	assert.Contains(t, paramSchema["description"], "default 40000")
+	assert.Contains(t, paramSchema["description"], "clamped to 1024..1048576")
+}
+
+func TestShell_MaxOutputBytesBounds(t *testing.T) {
+	assert.Equal(t, defaultShellMaxOutputBytes, effectiveShellMaxOutputBytes(0))
+	assert.Equal(t, defaultShellMaxOutputBytes, effectiveShellMaxOutputBytes(-1))
+	assert.Equal(t, minShellMaxOutputBytes, effectiveShellMaxOutputBytes(1))
+	assert.Equal(t, minShellMaxOutputBytes, effectiveShellMaxOutputBytes(minShellMaxOutputBytes-1))
+	assert.Equal(t, minShellMaxOutputBytes, effectiveShellMaxOutputBytes(minShellMaxOutputBytes))
+	assert.Equal(t, 2048, effectiveShellMaxOutputBytes(2048))
+	assert.Equal(t, maxShellMaxOutputBytes, effectiveShellMaxOutputBytes(maxShellMaxOutputBytes+1))
+}
+
+func TestShell_LimitOutputBytesPreservesValidUTF8(t *testing.T) {
+	output := []byte("HEAD-" + strings.Repeat("🙂", 600) + "-TAIL")
+
+	limited := limitShellOutputBytes(output, minShellMaxOutputBytes)
+
+	require.True(t, utf8.Valid(limited))
+	assert.LessOrEqual(t, len(limited), minShellMaxOutputBytes)
+	assert.True(t, strings.HasPrefix(string(limited), "HEAD-"))
+	assert.True(t, strings.HasSuffix(string(limited), "-TAIL"))
+	assert.Contains(t, string(limited), "bytes elided")
 }
 
 func TestShell_Run_Cwd(t *testing.T) {

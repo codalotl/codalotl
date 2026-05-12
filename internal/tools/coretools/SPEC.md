@@ -31,6 +31,9 @@ Presentation: `List some/path`
 
 ### shell
 
+- Tool-result output is byte-limited: default 40,000 bytes, caller-overridable within static bounds.
+- Excess output preserves head and tail around an elision marker without invalid UTF-8.
+
 Presentation:
 - In progress: `Running go test .`
 - Complete: `Ran go test .`

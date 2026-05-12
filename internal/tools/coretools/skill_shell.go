@@ -30,6 +30,7 @@ type skillShellParams struct {
 	Skill             string   `json:"skill"`
 	TimeoutMS         int64    `json:"timeout_ms"`
 	Cwd               string   `json:"cwd"`
+	MaxOutputBytes    int      `json:"max_output_bytes"`
 	RequestPermission bool     `json:"request_permission"`
 }
 
@@ -66,6 +67,10 @@ func (t *toolSkillShell) Info() llmstream.ToolInfo {
 			"cwd": map[string]any{
 				"type":        "string",
 				"description": "Optional working directory (absolute, or relative to sandbox dir; defaults to sandbox dir itself)",
+			},
+			"max_output_bytes": map[string]any{
+				"type":        "integer",
+				"description": "Optional max bytes of combined stdout+stderr returned in the result (default 40000; clamped to 1024..1048576)",
 			},
 			"request_permission": map[string]any{
 				"type":        "boolean",
@@ -124,6 +129,7 @@ func (t *toolSkillShell) Run(ctx context.Context, call llmstream.ToolCall) llmst
 	start := time.Now()
 	output, err := cmd.CombinedOutput()
 	dur := time.Since(start)
+	output = limitShellOutputBytes(output, effectiveShellMaxOutputBytes(params.MaxOutputBytes))
 
 	// Capture process state and exit code details
 	procState := cmd.ProcessState

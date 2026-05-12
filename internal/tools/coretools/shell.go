@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Requirements:
@@ -21,8 +22,11 @@ import (
 //   - no security (allowlist, blacklist, etc)
 
 const (
-	ToolNameShell       = "shell"
-	defaultShellTimeout = 120 * time.Second
+	ToolNameShell              = "shell"
+	defaultShellTimeout        = 120 * time.Second
+	defaultShellMaxOutputBytes = 40_000
+	minShellMaxOutputBytes     = 1024
+	maxShellMaxOutputBytes     = 1024 * 1024
 )
 
 //go:embed shell.md
@@ -37,6 +41,7 @@ type shellParams struct {
 	Command           []string `json:"command"`
 	TimeoutMS         int64    `json:"timeout_ms"`
 	Cwd               string   `json:"cwd"`
+	MaxOutputBytes    int      `json:"max_output_bytes"`
 	RequestPermission bool     `json:"request_permission"`
 }
 
@@ -69,6 +74,10 @@ func (t *toolShell) Info() llmstream.ToolInfo {
 			"cwd": map[string]any{
 				"type":        "string",
 				"description": "Optional working directory (absolute, or relative to sandbox dir; defaults to sandbox dir itself)",
+			},
+			"max_output_bytes": map[string]any{
+				"type":        "integer",
+				"description": "Optional max bytes of combined stdout+stderr returned in the result (default 40000; clamped to 1024..1048576)",
 			},
 			"request_permission": map[string]any{
 				"type":        "boolean",
@@ -136,6 +145,7 @@ func (t *toolShell) Run(ctx context.Context, call llmstream.ToolCall) llmstream.
 	start := time.Now()
 	output, err := cmd.CombinedOutput()
 	dur := time.Since(start)
+	output = limitShellOutputBytes(output, effectiveShellMaxOutputBytes(params.MaxOutputBytes))
 
 	// Capture process state and exit code details
 	procState := cmd.ProcessState
@@ -194,6 +204,74 @@ func (t *toolShell) Run(ctx context.Context, call llmstream.ToolCall) llmstream.
 	}
 
 	return result
+}
+
+func effectiveShellMaxOutputBytes(value int) int {
+	switch {
+	case value <= 0:
+		return defaultShellMaxOutputBytes
+	case value < minShellMaxOutputBytes:
+		return minShellMaxOutputBytes
+	case value > maxShellMaxOutputBytes:
+		return maxShellMaxOutputBytes
+	default:
+		return value
+	}
+}
+
+func limitShellOutputBytes(output []byte, maxBytes int) []byte {
+	if maxBytes <= 0 || len(output) <= maxBytes {
+		return output
+	}
+
+	budgetMarker := []byte(fmt.Sprintf("\n[... %d bytes elided ...]\n", len(output)))
+	contentBudget := maxBytes - len(budgetMarker)
+	if contentBudget <= 0 {
+		return budgetMarker
+	}
+
+	headBudget := contentBudget / 2
+	tailBudget := contentBudget - headBudget
+	headEnd := shellUTF8PrefixLen(output, headBudget)
+	tailStart := shellUTF8TailStart(output, len(output)-tailBudget)
+	if tailStart < headEnd {
+		tailStart = headEnd
+	}
+
+	elidedBytes := tailStart - headEnd
+	marker := []byte(fmt.Sprintf("\n[... %d bytes elided ...]\n", elidedBytes))
+
+	limited := make([]byte, 0, headEnd+len(marker)+len(output)-tailStart)
+	limited = append(limited, output[:headEnd]...)
+	limited = append(limited, marker...)
+	limited = append(limited, output[tailStart:]...)
+	return limited
+}
+
+func shellUTF8PrefixLen(b []byte, maxBytes int) int {
+	if maxBytes <= 0 {
+		return 0
+	}
+	if maxBytes >= len(b) {
+		return len(b)
+	}
+	for maxBytes > 0 && !utf8.RuneStart(b[maxBytes]) {
+		maxBytes--
+	}
+	return maxBytes
+}
+
+func shellUTF8TailStart(b []byte, start int) int {
+	if start <= 0 {
+		return 0
+	}
+	if start >= len(b) {
+		return len(b)
+	}
+	for start < len(b) && !utf8.RuneStart(b[start]) {
+		start++
+	}
+	return start
 }
 
 func (t *toolShell) normalizeCwd(cwd string) (string, error) {
