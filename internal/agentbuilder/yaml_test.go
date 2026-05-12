@@ -76,6 +76,7 @@ func TestEmbeddedYAMLConfig_DefinesBuiltInAgents(t *testing.T) {
 		coretools.ToolNameLS,
 		coretools.ToolNameShell,
 		yamlToolVirtualEditFiles,
+		yamlOptionalToolCodalotlCLI,
 		yamlOptionalToolRefactor,
 		coretools.ToolNameUpdatePlan,
 		spectools.ToolNameCheckSpecConformance,
