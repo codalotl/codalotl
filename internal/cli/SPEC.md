@@ -258,10 +258,7 @@ Notes:
 - Storage key is content-addressed from the Go package's source file paths + contents (plus namespace). Changing package contents changes the key.
 - `<value>` must be JSON-encodable (ex: `"OK"`, or `'{"result": "ok"}'`).
 
-The BaseDir is the package's module dir. The database dir is, by priority:
-- CODALOTL_CAS_DB, if set
-- Let `$NEAREST_GIT_DIR` = nearest dir containing a `.git` entry (dir or file); `$NEAREST_GIT_DIR/.codalotl/cas` (if `$NEAREST_GIT_DIR` is not blank)
-- BaseDir
+The BaseDir is the package's module dir. CAS root selection is delegated to `internal/gocas` and follows product CAS rules.
 
 ### codalotl cas get <namespace> <path/to/pkg>
 
