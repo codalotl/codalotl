@@ -1,1 +1,1 @@
-Run a shell command (argv array) and return combined stdout+stderr.
+Run a shell command (argv array) and return combined stdout+stderr. Output is limited by `max_output_bytes` (default 40000; clamped to 1024..1048576) with head/tail context preserved around an elision marker.
