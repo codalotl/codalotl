@@ -508,7 +508,7 @@ codalotl cas get specconforms-1 internal/mypkg
 			if err != nil {
 				return err
 			}
-			db, err := casDBForBaseDir(mod.AbsolutePath)
+			db, err := casReadDBForBaseDir(mod.AbsolutePath)
 			if err != nil {
 				return err
 			}

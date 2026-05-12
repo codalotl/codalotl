@@ -37,7 +37,7 @@ func runCASLsUnset(ctx context.Context, out io.Writer, namespace string) error {
 		return err
 	}
 
-	db, err := casDBForBaseDir(mod.AbsolutePath)
+	db, err := casReadDBForBaseDir(mod.AbsolutePath)
 	if err != nil {
 		return err
 	}

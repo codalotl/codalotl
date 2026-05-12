@@ -7,19 +7,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/tui"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRun_DotArg_LaunchesTUI(t *testing.T) {
 	isolateUserConfig(t)
-	t.Setenv("CODALOTL_CAS_DB", "")
 	tmp := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
-	// `nearestGitDir` checks for the presence of `.git`, and does not require it
-	// to be a directory.
-	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".git"), []byte(""), 0644))
+	require.NoError(t, os.Mkdir(filepath.Join(tmp, ".git"), 0755))
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "p"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n"), 0644))
 	origWD, err := os.Getwd()
 	require.NoError(t, err)
 	require.NoError(t, os.Chdir(filepath.Join(tmp, "p")))
@@ -29,6 +28,7 @@ func TestRun_DotArg_LaunchesTUI(t *testing.T) {
 	tmpReal, err := filepath.EvalSymlinks(tmp)
 	require.NoError(t, err)
 	wantCASRoot := filepath.Join(tmpReal, ".codalotl", "cas")
+	t.Setenv(gocas.EnvCASDB, wantCASRoot)
 
 	var called bool
 	orig := runTUIWithConfig
@@ -49,6 +49,9 @@ func TestRun_DotArg_LaunchesTUI(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.True(t, called)
+	_, err = os.Stat(wantCASRoot)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
 }
 
 func TestRun_PathArg_IsStillUsageError(t *testing.T) {

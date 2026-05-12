@@ -450,20 +450,11 @@ func (cfg refactorConfig) casNamespace() gocas.Namespace {
 	return gocas.Namespace(fmt.Sprintf("refactor-%s-%d", cfg.name, cfg.generation))
 }
 
-func newCASDB(moduleAbsDir string) *gocas.DB {
-	return &gocas.DB{
-		BaseDir: moduleAbsDir,
-		DB: cas.DB{
-			AbsRoot: filepath.Join(moduleAbsDir, ".codalotl", "cas"),
-		},
-	}
-}
-
 // newCASDB returns an authorized CAS database for resolved's module.
 func (t refactorTool) newCASDB(resolved resolvedPackage) (*gocas.DB, error) {
-	db := newCASDB(resolved.moduleAbsDir)
-	if !pathInside(t.authorizer.SandboxDir(), db.AbsRoot) {
-		return nil, fmt.Errorf("CAS root %q is outside the sandbox", db.AbsRoot)
+	db, err := gocas.NewDBForBaseDir(resolved.moduleAbsDir)
+	if err != nil {
+		return nil, err
 	}
 	if err := t.authorizer.IsAuthorizedForRead(false, "", ToolNameRefactor, db.AbsRoot); err != nil {
 		return nil, err

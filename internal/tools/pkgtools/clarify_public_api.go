@@ -16,7 +16,6 @@ import (
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
@@ -346,6 +345,19 @@ func (t *toolClarifyPublicAPI) recordClarifyCAS(mod *gocode.Module, resolved res
 		return nil
 	}
 
+	casRootAbsDir, err := gocas.RootDirForBaseDir(mod.AbsolutePath)
+	if err != nil {
+		return nil
+	}
+	if err := authorizeClarifyCASWrite(t.authorizer, casRootAbsDir); err != nil {
+		return err
+	}
+
+	db, err := gocas.NewDBForBaseDir(mod.AbsolutePath)
+	if err != nil {
+		return fmt.Errorf("select clarify CAS root: %w", err)
+	}
+
 	targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
 	if err != nil {
 		return err
@@ -356,11 +368,6 @@ func (t *toolClarifyPublicAPI) recordClarifyCAS(mod *gocode.Module, resolved res
 		return err
 	}
 
-	casRootAbsDir := clarifyCASRoot(mod.AbsolutePath)
-	if err := authorizeClarifyCASWrite(t.authorizer, casRootAbsDir); err != nil {
-		return err
-	}
-
 	entry := casclarify.Entry{
 		OriginPackage: originPackage,
 		TargetPackage: targetPkg.ImportPath,
@@ -368,7 +375,7 @@ func (t *toolClarifyPublicAPI) recordClarifyCAS(mod *gocode.Module, resolved res
 		Question:      question,
 		Answer:        answer,
 	}
-	if err := casclarify.Append(newClarifyCASDB(mod), targetPkg, entry); err != nil {
+	if err := casclarify.Append(db, targetPkg, entry); err != nil {
 		return fmt.Errorf("record clarify CAS: %w", err)
 	}
 	return nil
@@ -411,20 +418,7 @@ func authorizeClarifyCASWrite(authorizer authdomain.Authorizer, casRootAbsDir st
 	if authorizer == nil {
 		return nil
 	}
-	return authorizer.WithoutCodeUnit().IsAuthorizedForWrite(true, "record clarify_public_api answer in .codalotl/cas", ToolNameClarifyPublicAPI, casRootAbsDir)
-}
-
-func clarifyCASRoot(moduleAbsDir string) string {
-	return filepath.Join(moduleAbsDir, ".codalotl", "cas")
-}
-
-func newClarifyCASDB(mod *gocode.Module) *gocas.DB {
-	return &gocas.DB{
-		BaseDir: mod.AbsolutePath,
-		DB: cas.DB{
-			AbsRoot: clarifyCASRoot(mod.AbsolutePath),
-		},
-	}
+	return authorizer.WithoutCodeUnit().IsAuthorizedForWrite(true, "record clarify_public_api answer in selected CAS root", ToolNameClarifyPublicAPI, casRootAbsDir)
 }
 
 func packagePathForSandbox(sandboxAbsDir string, packageAbsDir string) (string, error) {

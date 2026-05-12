@@ -90,7 +90,7 @@ func TestDocsAddIgnoresCASRecordAndReportsActualResult(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
 	require.NoError(t, err)
-	require.NoError(t, newCASDB(moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
+	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
 	var captured docsAddCapture
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		NewCommandTree: docsAddCommandTree(&captured, "Nothing left to document!\n"),
@@ -111,7 +111,7 @@ func TestDocsAddIgnoresCASRecordAndReportsDelegateError(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
 	require.NoError(t, err)
-	require.NoError(t, newCASDB(moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
+	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
 	var captured docsAddCapture
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		NewCommandTree: failingDocsAddCommandTree(&captured, errors.New("delegate failed")),
@@ -203,7 +203,60 @@ func TestDryDetectsEditedFilesAndWritesCAS(t *testing.T) {
 	assert.Equal(t, []string{"helper.go"}, record.Edited)
 }
 
-func TestDryRejectsCASRootOutsideSandbox(t *testing.T) {
+func TestDryUsesSelectedEnvCASRoot(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	selectedRoot := filepath.Join(moduleDir, "custom-cas")
+	t.Setenv(gocas.EnvCASDB, selectedRoot)
+	invoker := &fakeAgentInvoker{}
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "dry", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.Contains(t, *result.result.SavedCASRecord, "custom-cas/refactor-dry-1/")
+	assert.NotContains(t, *result.result.SavedCASRecord, ".codalotl/cas")
+	assert.FileExists(t, filepath.Join(moduleDir, filepath.FromSlash(*result.result.SavedCASRecord)))
+	assert.NoDirExists(t, filepath.Join(moduleDir, ".codalotl", "cas"))
+
+	db := newTestCASDB(t, moduleDir)
+	assert.Equal(t, selectedRoot, db.AbsRoot)
+	found, record := retrieveDryCAS(t, moduleDir, pkgDir)
+	assert.True(t, found)
+	assert.True(t, record.Applied)
+}
+
+func TestDryUsesSelectedEnvCASRootOutsideSandboxWhenAuthorizerAllows(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	selectedRoot := filepath.Join(t.TempDir(), "cas")
+	t.Setenv(gocas.EnvCASDB, selectedRoot)
+	invoker := &fakeAgentInvoker{}
+	authorizer := &recordingAuthorizer{
+		Authorizer: authdomain.NewAutoApproveAuthorizer(moduleDir),
+	}
+	tool := NewRefactorTool(authorizer, Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "dry", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.True(t, filepath.IsAbs(filepath.FromSlash(*result.result.SavedCASRecord)))
+	assert.Contains(t, *result.result.SavedCASRecord, filepath.ToSlash(selectedRoot)+"/refactor-dry-1/")
+	assert.FileExists(t, filepath.FromSlash(*result.result.SavedCASRecord))
+	assert.Contains(t, authorizer.readPaths, selectedRoot)
+	assert.Contains(t, authorizer.writePaths, selectedRoot)
+	require.Len(t, invoker.calls, 1)
+
+	found, record := retrieveDryCAS(t, moduleDir, pkgDir)
+	assert.True(t, found)
+	assert.True(t, record.Applied)
+}
+
+func TestDryAllowsDefaultCASRootOutsideSandboxWhenAuthorizerAllows(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	invoker := &fakeAgentInvoker{}
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(pkgDir), Options{
@@ -212,17 +265,43 @@ func TestDryRejectsCASRootOutsideSandbox(t *testing.T) {
 
 	result := runRefactorTool(t, tool, Params{Name: "dry", Package: pkgDir})
 
+	require.False(t, result.toolResult.IsError)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.Contains(t, *result.result.SavedCASRecord, ".codalotl/cas/refactor-dry-1/")
+	assert.FileExists(t, filepath.Join(moduleDir, filepath.FromSlash(*result.result.SavedCASRecord)))
+	require.Len(t, invoker.calls, 1)
+
+	found, record := retrieveDryCAS(t, moduleDir, pkgDir)
+	assert.True(t, found)
+	assert.True(t, record.Applied)
+}
+
+func TestDryRejectsCASRootWhenAuthorizerDeniesRead(t *testing.T) {
+	moduleDir, _ := newTestModule(t)
+	db := newTestCASDB(t, moduleDir)
+	invoker := &fakeAgentInvoker{}
+	authorizer := &recordingAuthorizer{
+		Authorizer:   authdomain.NewAutoApproveAuthorizer(moduleDir),
+		denyReadPath: db.AbsRoot,
+	}
+	tool := NewRefactorTool(authorizer, Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "dry", Package: "internal/foo"})
+
 	assert.True(t, result.toolResult.IsError)
-	assert.Contains(t, result.toolResult.Result, "outside the sandbox")
+	assert.Contains(t, result.toolResult.Result, "cas read denied")
+	assert.Contains(t, authorizer.readPaths, db.AbsRoot)
+	assert.NotContains(t, authorizer.writePaths, db.AbsRoot)
 	assert.Empty(t, invoker.calls)
-	assert.NoDirExists(t, filepath.Join(moduleDir, ".codalotl"))
 }
 
 func TestDryCASHitSkipsAgent(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
 	require.NoError(t, err)
-	require.NoError(t, newCASDB(moduleDir).StoreOnCodeUnit(unit, dryNamespace(), refactorCASRecord{Applied: true}))
+	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, dryNamespace(), refactorCASRecord{Applied: true}))
 	invoker := &fakeAgentInvoker{}
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		AgentInvoker: invoker,
@@ -318,6 +397,18 @@ func TestResolvePackageRejectsOutsideCurrentModule(t *testing.T) {
 
 	assert.Error(t, stdlibErr)
 	assert.Error(t, outsideErr)
+}
+
+func TestResolvePackageRejectsCurrentModulePackageOutsideSandbox(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	barDir := filepath.Join(moduleDir, "internal", "bar")
+	writeFile(t, filepath.Join(barDir, "bar.go"), "package bar\n")
+	auth := authdomain.NewAutoApproveAuthorizer(pkgDir)
+
+	_, err := resolvePackage(auth, "internal/bar")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outside the sandbox")
 }
 
 func TestChangedFilesDetectsAddedAndDeletedEmptyFiles(t *testing.T) {
@@ -475,11 +566,49 @@ func (f *fakeAgentInvoker) Invoke(ctx context.Context, agentName string, req too
 	return ch, nil
 }
 
+type recordingAuthorizer struct {
+	authdomain.Authorizer
+	readPaths     []string
+	writePaths    []string
+	denyReadPath  string
+	denyWritePath string
+}
+
+func (a *recordingAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
+	a.readPaths = append(a.readPaths, absPath...)
+	if containsPath(absPath, a.denyReadPath) {
+		return errors.New("cas read denied")
+	}
+	return a.Authorizer.IsAuthorizedForRead(requestPermission, requestReason, toolName, absPath...)
+}
+
+func (a *recordingAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
+	a.writePaths = append(a.writePaths, absPath...)
+	if containsPath(absPath, a.denyWritePath) {
+		return errors.New("cas write denied")
+	}
+	return a.Authorizer.IsAuthorizedForWrite(requestPermission, requestReason, toolName, absPath...)
+}
+
+func containsPath(paths []string, target string) bool {
+	if target == "" {
+		return false
+	}
+	for _, path := range paths {
+		if path == target {
+			return true
+		}
+	}
+	return false
+}
+
 func newTestModule(t *testing.T) (string, string) {
 	t.Helper()
 
+	unsetEnv(t, gocas.EnvCASDB)
 	moduleDir := t.TempDir()
 	writeFile(t, filepath.Join(moduleDir, "go.mod"), "module example.com/project\n\ngo 1.24.4\n")
+	require.NoError(t, os.Mkdir(filepath.Join(moduleDir, ".git"), 0o755))
 	pkgDir := filepath.Join(moduleDir, "internal", "foo")
 	writeFile(t, filepath.Join(pkgDir, "foo.go"), "package foo\n\nfunc A() int { return 1 }\n")
 	return moduleDir, pkgDir
@@ -492,13 +621,29 @@ func writeFile(t *testing.T, path string, content string) {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }
 
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+
+	old, hadOld := os.LookupEnv(key)
+	require.NoError(t, os.Unsetenv(key))
+	t.Cleanup(func() {
+		var err error
+		if hadOld {
+			err = os.Setenv(key, old)
+		} else {
+			err = os.Unsetenv(key)
+		}
+		require.NoError(t, err)
+	})
+}
+
 func retrieveDryCAS(t *testing.T, moduleDir string, pkgDir string) (bool, refactorCASRecord) {
 	t.Helper()
 
 	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
 	require.NoError(t, err)
 	var record refactorCASRecord
-	found, _, err := newCASDB(moduleDir).RetrieveOnCodeUnit(unit, dryNamespace(), &record)
+	found, _, err := newTestCASDB(t, moduleDir).RetrieveOnCodeUnit(unit, dryNamespace(), &record)
 	require.NoError(t, err)
 	return found, record
 }
@@ -509,9 +654,17 @@ func retrieveDryCASMetadata(t *testing.T, moduleDir string, pkgDir string) (bool
 	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
 	require.NoError(t, err)
 	metadata := make(map[string]json.RawMessage)
-	found, _, err := newCASDB(moduleDir).RetrieveOnCodeUnit(unit, dryNamespace(), &metadata)
+	found, _, err := newTestCASDB(t, moduleDir).RetrieveOnCodeUnit(unit, dryNamespace(), &metadata)
 	require.NoError(t, err)
 	return found, metadata
+}
+
+func newTestCASDB(t *testing.T, moduleDir string) *gocas.DB {
+	t.Helper()
+
+	db, err := gocas.NewDBForBaseDir(moduleDir)
+	require.NoError(t, err)
+	return db
 }
 
 func dryNamespace() gocas.Namespace {

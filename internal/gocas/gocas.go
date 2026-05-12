@@ -16,6 +16,9 @@ import (
 	"github.com/codalotl/codalotl/internal/q/cas"
 )
 
+// EnvCASDB is the environment variable that overrides the default CAS root.
+const EnvCASDB = "CODALOTL_CAS_DB"
+
 // Namespace is a logical partition + version for values stored in content-addressable storage (CAS).
 //
 // Namespace must be filesystem-safe (no path separators), because it is used as a directory name under the CAS root.
@@ -48,6 +51,59 @@ type DB struct {
 	//
 	//	<AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>
 	cas.DB
+}
+
+// RootDirForBaseDir returns the absolute CAS root for baseDir.
+func RootDirForBaseDir(baseDir string) (string, error) {
+	if envRoot, ok := os.LookupEnv(EnvCASDB); ok {
+		if envRoot == "" {
+			return "", fmt.Errorf("%s is empty", EnvCASDB)
+		}
+		absRoot, err := filepath.Abs(envRoot)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s: %w", EnvCASDB, err)
+		}
+		return absRoot, nil
+	}
+
+	if baseDir == "" {
+		return "", errors.New("baseDir is empty")
+	}
+	absBaseDir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve baseDir: %w", err)
+	}
+
+	gitRoot, err := nearestGitRoot(absBaseDir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(gitRoot, ".codalotl", "cas"), nil
+}
+
+// NewDBForBaseDir returns a Go-aware CAS database for baseDir.
+//
+// BaseDir and the underlying CAS root are absolute.
+func NewDBForBaseDir(baseDir string) (*DB, error) {
+	if baseDir == "" {
+		return nil, errors.New("baseDir is empty")
+	}
+	absBaseDir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve baseDir: %w", err)
+	}
+
+	absRoot, err := RootDirForBaseDir(absBaseDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DB{
+		BaseDir: absBaseDir,
+		DB: cas.DB{
+			AbsRoot: absRoot,
+		},
+	}, nil
 }
 
 // StoreOnCodeUnit stores jsonable for (unit, namespace).
@@ -219,6 +275,29 @@ func validateAbsPath(fieldName, p string) error {
 		return fmt.Errorf("%s must be an absolute path: %q", fieldName, p)
 	}
 	return nil
+}
+
+func nearestGitRoot(absBaseDir string) (string, error) {
+	dir := absBaseDir
+	if fi, err := os.Stat(dir); err == nil && !fi.IsDir() {
+		dir = filepath.Dir(dir)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("stat baseDir: %w", err)
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir, nil
+		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("stat .git in %q: %w", dir, err)
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no git root found for baseDir %q", absBaseDir)
+		}
+		dir = parent
+	}
 }
 
 func (db *DB) validateCommon(namespace Namespace) error {

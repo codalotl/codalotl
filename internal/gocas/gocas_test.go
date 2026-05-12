@@ -18,6 +18,24 @@ type testPayload struct {
 
 const testNamespace Namespace = "gocas-test"
 
+func unsetCASDB(t *testing.T) {
+	t.Helper()
+
+	old, ok := os.LookupEnv(EnvCASDB)
+	err := os.Unsetenv(EnvCASDB)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		if ok {
+			err := os.Setenv(EnvCASDB, old)
+			require.NoError(t, err)
+			return
+		}
+		err := os.Unsetenv(EnvCASDB)
+		require.NoError(t, err)
+	})
+}
+
 func writeTestFile(t *testing.T, path string, contents []byte) {
 	t.Helper()
 
@@ -49,6 +67,86 @@ func writeTestModuleWithPackage(t *testing.T, modDir string) *gocode.Package {
 	pkg, err := m.LoadPackageByRelativeDir("foo")
 	require.NoError(t, err)
 	return pkg
+}
+
+func TestRootDirForBaseDir_EnvOverride(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := filepath.Join(t.TempDir(), "cas")
+	t.Setenv(EnvCASDB, casRoot)
+
+	got, err := RootDirForBaseDir(baseDir)
+	require.NoError(t, err)
+	require.Equal(t, casRoot, got)
+
+	_, err = os.Stat(casRoot)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestRootDirForBaseDir_EnvOverrideRelativeIsAbsolute(t *testing.T) {
+	t.Setenv(EnvCASDB, "relative-cas-for-test")
+	want, err := filepath.Abs("relative-cas-for-test")
+	require.NoError(t, err)
+
+	got, err := RootDirForBaseDir(t.TempDir())
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
+func TestRootDirForBaseDir_GitRootFallback(t *testing.T) {
+	unsetCASDB(t)
+
+	repoDir := t.TempDir()
+	err := os.Mkdir(filepath.Join(repoDir, ".git"), 0o755)
+	require.NoError(t, err)
+
+	baseDir := filepath.Join(repoDir, "a", "b")
+	err = os.MkdirAll(baseDir, 0o755)
+	require.NoError(t, err)
+
+	got, err := RootDirForBaseDir(baseDir)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(repoDir, ".codalotl", "cas"), got)
+}
+
+func TestRootDirForBaseDir_NearestGitRoot(t *testing.T) {
+	unsetCASDB(t)
+
+	outerRepoDir := t.TempDir()
+	err := os.Mkdir(filepath.Join(outerRepoDir, ".git"), 0o755)
+	require.NoError(t, err)
+
+	innerRepoDir := filepath.Join(outerRepoDir, "inner")
+	err = os.MkdirAll(filepath.Join(innerRepoDir, ".git"), 0o755)
+	require.NoError(t, err)
+
+	baseDir := filepath.Join(innerRepoDir, "pkg")
+	err = os.MkdirAll(baseDir, 0o755)
+	require.NoError(t, err)
+
+	got, err := RootDirForBaseDir(baseDir)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(innerRepoDir, ".codalotl", "cas"), got)
+}
+
+func TestRootDirForBaseDir_NoGitRoot(t *testing.T) {
+	unsetCASDB(t)
+
+	_, err := RootDirForBaseDir(t.TempDir())
+	require.Error(t, err)
+}
+
+func TestNewDBForBaseDir(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := filepath.Join(t.TempDir(), "cas")
+	t.Setenv(EnvCASDB, casRoot)
+
+	db, err := NewDBForBaseDir(baseDir)
+	require.NoError(t, err)
+	require.Equal(t, baseDir, db.BaseDir)
+	require.Equal(t, casRoot, db.DB.AbsRoot)
+
+	_, err = os.Stat(casRoot)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
