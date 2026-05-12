@@ -76,7 +76,7 @@ func TestRun_InstallsRefactorToolOverride(t *testing.T) {
 	}
 }
 
-func TestCodalotlCLITool_OnlyExposesDocsAdd(t *testing.T) {
+func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	tool := toolcli.NewCodalotlCLITool(newCodalotlCLICommandTree)
 
 	helpResult := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
@@ -88,6 +88,7 @@ func TestCodalotlCLITool_OnlyExposesDocsAdd(t *testing.T) {
 	require.True(t, helpResult.Success)
 	require.Equal(t, 0, helpResult.ExitCode)
 	require.Contains(t, helpResult.Stdout, "codalotl docs add")
+	require.Contains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs reflow")
 	require.NotContains(t, helpResult.Stdout, "codalotl context public")
 
@@ -103,6 +104,17 @@ func TestCodalotlCLITool_OnlyExposesDocsAdd(t *testing.T) {
 	require.Contains(t, detailedHelp.Stdout, "--public-only")
 	require.Contains(t, detailedHelp.Stdout, "--important")
 	require.Contains(t, detailedHelp.Stdout, "--include-test")
+
+	improveHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-docs-improve-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"docs improve-from-clarify","argv":["--help"]}`,
+	}))
+	require.True(t, improveHelp.Success)
+	require.Equal(t, 0, improveHelp.ExitCode)
+	require.Contains(t, improveHelp.Stdout, "codalotl docs improve-from-clarify")
+	require.Contains(t, improveHelp.Stdout, "clarify_public_api")
 
 	rejected := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-disallowed",

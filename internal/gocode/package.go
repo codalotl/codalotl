@@ -199,7 +199,8 @@ func importPathFromRelativeDir(moduleName, relativeDir string) string {
 }
 
 // Reload returns a new Package without mutating p, but with all files re-read and re-parsed (new files are not discovered). It mutates p.Module, replacing p with
-// the new package. If p has a test package, that package is also reloaded. If p is a test package, its parent package will be reloaded, which in turn reloads p.
+// the new package. If p has a test package, that package is also reloaded. If p is a test package, its parent package will be reloaded and Reload returns the freshly
+// reloaded test package, or nil if the reloaded parent no longer has one.
 func (p *Package) Reload() (*Package, error) {
 	// If p is a test package (i.e. has a parentPackage), reload the parent package
 	// and return the freshly reloaded test package instance.
