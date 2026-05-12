@@ -46,6 +46,28 @@ func TestIsFixtureRepoPath(t *testing.T) {
 	assert.False(t, got)
 }
 
+func TestEnsureGitRootMarkerCreatesMinimalGitDir(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	require.NoError(t, ensureGitRootMarker(repoRoot))
+
+	data, err := os.ReadFile(filepath.Join(repoRoot, ".git", "HEAD"))
+	require.NoError(t, err)
+	assert.Equal(t, "ref: refs/heads/main\n", string(data))
+}
+
+func TestListFilesIfPresentIgnoresGitMetadata(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "note.txt"), []byte("hello\n"), 0o644))
+
+	got, err := listFilesIfPresent(root)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"note.txt"}, got)
+}
+
 func TestMatchesTextMatcherRequiresOrderedTexts(t *testing.T) {
 	assert.True(t, matchesTextMatcher(map[string]any{
 		"match": "partial",
@@ -264,10 +286,14 @@ func TestRunCaseDir_ThreadsLintConfigToNoninteractiveExec(t *testing.T) {
 
 	var capturedPrompt string
 	var capturedOpts noninteractive.Options
+	var sawGitRootMarker bool
 	runNoninteractiveExec = func(prompt string, opts noninteractive.Options) error {
 		capturedPrompt = prompt
 		capturedOpts = opts
-		_, err := fmt.Fprintln(opts.Out, `{"type":"start","package_path":""}`)
+		info, err := os.Stat(filepath.Join(opts.CWD, ".git"))
+		require.NoError(t, err)
+		sawGitRootMarker = info.IsDir()
+		_, err = fmt.Fprintln(opts.Out, `{"type":"start","package_path":""}`)
 		require.NoError(t, err)
 		_, err = fmt.Fprintln(opts.Out, `{"type":"user_message","text":"Say hello."}`)
 		require.NoError(t, err)
@@ -278,6 +304,7 @@ func TestRunCaseDir_ThreadsLintConfigToNoninteractiveExec(t *testing.T) {
 	require.NoError(t, RunCaseDir(caseDir))
 
 	assert.Equal(t, "Say hello.", capturedPrompt)
+	assert.True(t, sawGitRootMarker)
 	assert.Equal(t, "", capturedOpts.PackagePath)
 	require.Len(t, capturedOpts.LintSteps, 1)
 	assert.Equal(t, "custom-lint", capturedOpts.LintSteps[0].ID)

@@ -23,7 +23,6 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/llmstream"
-	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/codalotl/codalotl/internal/specmd"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 	"github.com/codalotl/codalotl/internal/tools/coretools"
@@ -1524,7 +1523,10 @@ func marshalPackageResults(results map[string]packageCheckResult) (string, error
 }
 
 func retrieveConformanceState(pkg *gocode.Package) (bool, bool, error) {
-	casRoot := filepath.Join(pkg.Module.AbsolutePath, ".codalotl", "cas")
+	db, casRoot, err := conformanceCASDB(pkg)
+	if err != nil {
+		return false, false, err
+	}
 	info, err := os.Stat(casRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1535,11 +1537,14 @@ func retrieveConformanceState(pkg *gocode.Package) (bool, bool, error) {
 	if !info.IsDir() {
 		return false, false, fmt.Errorf("%q is not a directory", casRoot)
 	}
-	return casconformance.Retrieve(newCASDB(pkg.Module.AbsolutePath), pkg)
+	return casconformance.Retrieve(db, pkg)
 }
 
 func (t *toolCheckSpecConformance) storeConformanceState(pkg *gocode.Package) error {
-	casRoot := filepath.Join(pkg.Module.AbsolutePath, ".codalotl", "cas")
+	db, casRoot, err := conformanceCASDB(pkg)
+	if err != nil {
+		return err
+	}
 	if t.authorizer != nil {
 		if authErr := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameCheckSpecConformance, casRoot); authErr != nil {
 			return authErr
@@ -1548,11 +1553,14 @@ func (t *toolCheckSpecConformance) storeConformanceState(pkg *gocode.Package) er
 	if err := os.MkdirAll(casRoot, 0o755); err != nil {
 		return err
 	}
-	return casconformance.Store(newCASDB(pkg.Module.AbsolutePath), pkg, true)
+	return casconformance.Store(db, pkg, true)
 }
 
 func (t *toolCheckSpecConformance) deleteConformanceState(pkg *gocode.Package) error {
-	casRoot := filepath.Join(pkg.Module.AbsolutePath, ".codalotl", "cas")
+	db, casRoot, err := conformanceCASDB(pkg)
+	if err != nil {
+		return err
+	}
 	if !pathExists(casRoot) {
 		return nil
 	}
@@ -1561,16 +1569,15 @@ func (t *toolCheckSpecConformance) deleteConformanceState(pkg *gocode.Package) e
 			return authErr
 		}
 	}
-	return casconformance.Delete(newCASDB(pkg.Module.AbsolutePath), pkg)
+	return casconformance.Delete(db, pkg)
 }
 
-func newCASDB(moduleAbsDir string) *gocas.DB {
-	return &gocas.DB{
-		BaseDir: moduleAbsDir,
-		DB: cas.DB{
-			AbsRoot: filepath.Join(moduleAbsDir, ".codalotl", "cas"),
-		},
+func conformanceCASDB(pkg *gocode.Package) (*gocas.DB, string, error) {
+	db, err := gocas.NewDBForBaseDir(pkg.Module.AbsolutePath)
+	if err != nil {
+		return nil, "", err
 	}
+	return db, db.DB.AbsRoot, nil
 }
 
 func packageHasSpec(pkg *gocode.Package) bool {

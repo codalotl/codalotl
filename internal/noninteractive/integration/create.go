@@ -81,6 +81,9 @@ func CreateCase(opts CreateOptions) error {
 	if err := copyTree(repoPath, workDir); err != nil {
 		return fmt.Errorf("copy repo to temp dir: %w", err)
 	}
+	if err := ensureGitRootMarker(workDir); err != nil {
+		return fmt.Errorf("ensure temp git root marker: %w", err)
+	}
 
 	hook := &recordingDiagnosticHook{}
 	unregister := llmstream.AddDiagnosticHook(hook)

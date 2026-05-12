@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
+	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocas/casclarify"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -37,6 +38,36 @@ type recordingAuthorizer struct {
 	readCalls  []authCall
 	writeCalls []authCall
 	writeErr   error
+}
+
+func withClarifyCASTestRoot(t *testing.T) string {
+	t.Helper()
+
+	casRoot := filepath.Join(t.TempDir(), "cas")
+	t.Setenv(gocas.EnvCASDB, casRoot)
+	return casRoot
+}
+
+func withoutClarifyCASTestRoot(t *testing.T) {
+	t.Helper()
+
+	oldCASRoot, hadCASRoot := os.LookupEnv(gocas.EnvCASDB)
+	require.NoError(t, os.Unsetenv(gocas.EnvCASDB))
+	t.Cleanup(func() {
+		if hadCASRoot {
+			_ = os.Setenv(gocas.EnvCASDB, oldCASRoot)
+			return
+		}
+		_ = os.Unsetenv(gocas.EnvCASDB)
+	})
+}
+
+func requireClarifyCASDB(t *testing.T, baseDir string) *gocas.DB {
+	t.Helper()
+
+	db, err := gocas.NewDBForBaseDir(baseDir)
+	require.NoError(t, err)
+	return db
 }
 
 func TestClarifyPublicAPITool_ExposesPresenter(t *testing.T) {
@@ -229,6 +260,7 @@ func TestClarifyPublicAPI_RunDependencyImportDoesNotRequestAuth(t *testing.T) {
 
 func TestClarifyPublicAPI_RunSandboxPackageRecordsCASWithoutDocsImprover(t *testing.T) {
 	withUpstreamFixture(t, func(pkg *gocode.Package) {
+		casRoot := withClarifyCASTestRoot(t)
 		oldSubAgentCreatorFromContext := subAgentCreatorFromContext
 		subAgentCreatorFromContext = func(context.Context) agent.SubAgentCreator {
 			return &fakeAgentCreator{}
@@ -262,15 +294,15 @@ func TestClarifyPublicAPI_RunSandboxPackageRecordsCASWithoutDocsImprover(t *test
 		assert.Equal(t, []string{ToolNameClarifyPublicAPI}, invoker.invokedAgentNames)
 		require.NotEmpty(t, auth.writeCalls)
 		assert.True(t, auth.writeCalls[0].requestPermission)
-		assert.Contains(t, auth.writeCalls[0].requestReason, ".codalotl/cas")
+		assert.Contains(t, auth.writeCalls[0].requestReason, "CAS")
 		assert.Equal(t, ToolNameClarifyPublicAPI, auth.writeCalls[0].toolName)
-		assert.Equal(t, []string{clarifyCASRoot(pkg.Module.AbsolutePath)}, auth.writeCalls[0].absPaths)
+		assert.Equal(t, []string{casRoot}, auth.writeCalls[0].absPaths)
 
 		resolved, err := resolveToolPackageRef(pkg.Module, "upstream")
 		require.NoError(t, err)
 		targetPkg, err := loadPackageForResolved(pkg.Module, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
 		require.NoError(t, err)
-		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(pkg.Module), targetPkg)
+		found, metadata, err := casclarify.Retrieve(requireClarifyCASDB(t, pkg.Module.AbsolutePath), targetPkg)
 		require.NoError(t, err)
 		require.True(t, found)
 		assert.Equal(t, []casclarify.Entry{{
@@ -283,8 +315,54 @@ func TestClarifyPublicAPI_RunSandboxPackageRecordsCASWithoutDocsImprover(t *test
 	})
 }
 
+func TestClarifyPublicAPI_RunNoGitModuleSkipsCASRecording(t *testing.T) {
+	withoutClarifyCASTestRoot(t)
+
+	withUpstreamFixture(t, func(pkg *gocode.Package) {
+		_, err := gocas.RootDirForBaseDir(pkg.Module.AbsolutePath)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no git root found")
+
+		oldSubAgentCreatorFromContext := subAgentCreatorFromContext
+		subAgentCreatorFromContext = func(context.Context) agent.SubAgentCreator {
+			return &fakeAgentCreator{}
+		}
+		defer func() {
+			subAgentCreatorFromContext = oldSubAgentCreatorFromContext
+		}()
+
+		answer := "It returns a friendly greeting."
+		invoker := &fakeAgentInvoker{
+			invokeFn: func(context.Context, string, toolsetinterface.InvokeRequest) (<-chan agent.Event, error) {
+				return successfulClarifyEvents(answer), nil
+			},
+		}
+		auth := &recordingAuthorizer{sandboxDir: pkg.Module.AbsolutePath}
+		tool := NewClarifyPublicAPITool(auth, nil, ClarifyPublicAPIToolOptions{
+			AgentInvoker:        invoker,
+			Model:               "mock-model",
+			OriginPackageAbsDir: pkg.AbsolutePath(),
+		})
+
+		res := tool.Run(context.Background(), llmstream.ToolCall{
+			CallID: "call-clarify-no-git-cas",
+			Name:   ToolNameClarifyPublicAPI,
+			Type:   "function_call",
+			Input:  `{"path":"upstream","identifier":"Hello","question":"What does Hello return?"}`,
+		})
+
+		require.False(t, res.IsError)
+		assert.Equal(t, answer, res.Result)
+		assert.Empty(t, auth.writeCalls)
+
+		_, statErr := os.Stat(filepath.Join(pkg.Module.AbsolutePath, ".codalotl", "cas"))
+		assert.True(t, os.IsNotExist(statErr))
+	})
+}
+
 func TestClarifyPublicAPI_RecordClarifyCASRecordsSandboxLocalReplacePackage(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
+		casRoot := withClarifyCASTestRoot(t)
 		rootModDir := pkg.Module.AbsolutePath
 		localModDir := filepath.Join(rootModDir, "localdep")
 		targetDir := filepath.Join(localModDir, "target")
@@ -325,11 +403,11 @@ func Greet() string {
 
 		require.NoError(t, err)
 		require.NotEmpty(t, auth.writeCalls)
-		assert.Equal(t, []string{clarifyCASRoot(mod.AbsolutePath)}, auth.writeCalls[0].absPaths)
+		assert.Equal(t, []string{casRoot}, auth.writeCalls[0].absPaths)
 
 		targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
 		require.NoError(t, err)
-		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+		found, metadata, err := casclarify.Retrieve(requireClarifyCASDB(t, mod.AbsolutePath), targetPkg)
 		require.NoError(t, err)
 		require.True(t, found)
 		assert.Equal(t, []casclarify.Entry{{
@@ -344,6 +422,7 @@ func Greet() string {
 
 func TestClarifyPublicAPI_RecordClarifyCASUsesNestedModuleOriginPackage(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
+		withClarifyCASTestRoot(t)
 		rootModDir := pkg.Module.AbsolutePath
 		localModDir := filepath.Join(rootModDir, "localdep")
 		originDir := filepath.Join(localModDir, "origin")
@@ -380,7 +459,7 @@ func Ask() {}
 		require.NoError(t, err)
 		targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
 		require.NoError(t, err)
-		found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+		found, metadata, err := casclarify.Retrieve(requireClarifyCASDB(t, mod.AbsolutePath), targetPkg)
 		require.NoError(t, err)
 		require.True(t, found)
 		assert.Equal(t, []casclarify.Entry{{
@@ -394,6 +473,7 @@ func Ask() {}
 }
 
 func TestClarifyPublicAPI_RecordClarifyCASUsesCanonicalRootOriginPackage(t *testing.T) {
+	withClarifyCASTestRoot(t)
 	rootModDir := t.TempDir()
 	targetDir := filepath.Join(rootModDir, "target")
 	require.NoError(t, os.MkdirAll(targetDir, 0o755))
@@ -428,7 +508,7 @@ func Greet() string {
 	require.NoError(t, err)
 	targetPkg, err := loadPackageForResolved(mod, resolved.ModuleAbsDir, resolved.PackageAbsDir, resolved.PackageRelDir, resolved.ImportPath)
 	require.NoError(t, err)
-	found, metadata, err := casclarify.Retrieve(newClarifyCASDB(mod), targetPkg)
+	found, metadata, err := casclarify.Retrieve(requireClarifyCASDB(t, mod.AbsolutePath), targetPkg)
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, []casclarify.Entry{{
@@ -459,6 +539,7 @@ func TestClarifyPublicAPI_RecordClarifyCASSkipsPackagesOutsideSandboxModule(t *t
 
 func TestClarifyPublicAPI_RecordClarifyCASReturnsWriteError(t *testing.T) {
 	withSimplePackage(t, func(pkg *gocode.Package) {
+		withClarifyCASTestRoot(t)
 		auth := &recordingAuthorizer{
 			sandboxDir: pkg.Module.AbsolutePath,
 			writeErr:   errors.New("deny write"),

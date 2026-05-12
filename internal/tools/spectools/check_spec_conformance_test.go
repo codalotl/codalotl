@@ -13,6 +13,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
+	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
@@ -564,12 +565,12 @@ func TestRunOnlyChangedChecksOnlyModifiedPackagesAndStoresCAS(t *testing.T) {
 	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
 	require.NoError(t, err)
 
-	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	found, conforms, err := casconformance.Retrieve(newTestCASDB(t, moduleDir), fooPkg)
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.True(t, conforms)
 
-	found, conforms, err = casconformance.Retrieve(newCASDB(moduleDir), barPkg)
+	found, conforms, err = casconformance.Retrieve(newTestCASDB(t, moduleDir), barPkg)
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
@@ -703,7 +704,7 @@ func TestRunWithPackagesClearsStaleCASConformanceForNonconformingPackage(t *test
 	require.NotNil(t, parsed["internal/foo"].Conforms)
 	assert.False(t, *parsed["internal/foo"].Conforms)
 
-	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	found, conforms, err := casconformance.Retrieve(newTestCASDB(t, moduleDir), fooPkg)
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
@@ -765,7 +766,7 @@ func TestRunWithPackagesClearsStaleCASWhenAnalysisFailsAfterNonconformingVerdict
 	assert.Contains(t, parsed["internal/foo"].PostcheckError, "analyze nonconformances: subagent returned non-JSON analysis result")
 	assert.Equal(t, 2, turns)
 
-	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	found, conforms, err := casconformance.Retrieve(newTestCASDB(t, moduleDir), fooPkg)
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
@@ -1237,12 +1238,12 @@ func TestRunRecordsPerPackageErrorsWithoutFailingOverall(t *testing.T) {
 	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
 	require.NoError(t, err)
 
-	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	found, conforms, err := casconformance.Retrieve(newTestCASDB(t, moduleDir), fooPkg)
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.True(t, conforms)
 
-	found, conforms, err = casconformance.Retrieve(newCASDB(moduleDir), barPkg)
+	found, conforms, err = casconformance.Retrieve(newTestCASDB(t, moduleDir), barPkg)
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
@@ -1286,12 +1287,12 @@ func TestRunRecordsPackagePreparationFailuresWithoutFailingOverall(t *testing.T)
 	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
 	require.NoError(t, err)
 
-	found, conforms, err := casconformance.Retrieve(newCASDB(moduleDir), fooPkg)
+	found, conforms, err := casconformance.Retrieve(newTestCASDB(t, moduleDir), fooPkg)
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.True(t, conforms)
 
-	found, conforms, err = casconformance.Retrieve(newCASDB(moduleDir), barPkg)
+	found, conforms, err = casconformance.Retrieve(newTestCASDB(t, moduleDir), barPkg)
 	require.NoError(t, err)
 	assert.False(t, found)
 	assert.False(t, conforms)
@@ -1305,7 +1306,7 @@ func TestRunRecordsPackageCASWriteFailuresWithoutFailingOverall(t *testing.T) {
 	barPkg, err := mod.LoadPackageByRelativeDir("internal/bar")
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Join(moduleDir, ".codalotl", "cas"), 0o755))
-	require.NoError(t, casconformance.Store(newCASDB(moduleDir), barPkg, true))
+	require.NoError(t, casconformance.Store(newTestCASDB(t, moduleDir), barPkg, true))
 
 	tool := NewCheckSpecConformanceTool(denyWritesAuthorizer{
 		allowAllAuthorizer: allowAllAuthorizer{sandboxDir: moduleDir},
@@ -1329,6 +1330,58 @@ func TestRunRecordsPackageCASWriteFailuresWithoutFailingOverall(t *testing.T) {
 	require.Contains(t, parsed, "internal/foo")
 	assert.Empty(t, parsed["internal/foo"].Error)
 	assert.Equal(t, "store CAS conformance: writes disabled", parsed["internal/foo"].PostcheckError)
+}
+
+func TestRetrieveConformanceStateUsesSelectedCASRootWithoutCreatingIt(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	selectedRoot := filepath.Join(t.TempDir(), "selected", "cas")
+	t.Setenv(gocas.EnvCASDB, selectedRoot)
+
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+
+	found, conforms, err := retrieveConformanceState(fooPkg)
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.False(t, conforms)
+	assert.NoDirExists(t, selectedRoot)
+	assert.NoDirExists(t, filepath.Join(moduleDir, ".codalotl", "cas"))
+}
+
+func TestConformanceStateUsesSelectedCASRootForStoreDeleteAndAuthorization(t *testing.T) {
+	moduleDir := setupModuleRepo(t)
+	selectedRoot := filepath.Join(t.TempDir(), "selected", "cas")
+	t.Setenv(gocas.EnvCASDB, selectedRoot)
+
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	fooPkg, err := mod.LoadPackageByRelativeDir("internal/foo")
+	require.NoError(t, err)
+
+	authorizer := &recordingWritesAuthorizer{
+		allowAllAuthorizer: allowAllAuthorizer{sandboxDir: moduleDir},
+	}
+	tool := &toolCheckSpecConformance{authorizer: authorizer}
+
+	require.NoError(t, tool.storeConformanceState(fooPkg))
+	assert.Equal(t, []string{selectedRoot}, authorizer.writes)
+	assert.DirExists(t, selectedRoot)
+	assert.NoDirExists(t, filepath.Join(moduleDir, ".codalotl", "cas"))
+
+	found, conforms, err := casconformance.Retrieve(newTestCASDB(t, moduleDir), fooPkg)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.True(t, conforms)
+
+	require.NoError(t, tool.deleteConformanceState(fooPkg))
+	assert.Equal(t, []string{selectedRoot, selectedRoot}, authorizer.writes)
+
+	found, conforms, err = casconformance.Retrieve(newTestCASDB(t, moduleDir), fooPkg)
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.False(t, conforms)
 }
 
 type fakeGitRunner struct {
@@ -1452,6 +1505,24 @@ type denyWritesAuthorizer struct {
 
 func (a denyWritesAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	return a.err
+}
+
+type recordingWritesAuthorizer struct {
+	allowAllAuthorizer
+	writes []string
+}
+
+func (a *recordingWritesAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
+	a.writes = append(a.writes, absPath...)
+	return nil
+}
+
+func newTestCASDB(t *testing.T, baseDir string) *gocas.DB {
+	t.Helper()
+
+	db, err := gocas.NewDBForBaseDir(baseDir)
+	require.NoError(t, err)
+	return db
 }
 
 func setupModuleRepo(t *testing.T) string {

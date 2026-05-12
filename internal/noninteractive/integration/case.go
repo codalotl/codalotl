@@ -77,6 +77,9 @@ func RunCaseDir(caseDir string) error {
 	if err := copyTree(sourceRepoDir, workDir); err != nil {
 		return fmt.Errorf("copy case repo: %w", err)
 	}
+	if err := ensureGitRootMarker(workDir); err != nil {
+		return fmt.Errorf("ensure case git root marker: %w", err)
+	}
 
 	httpFixturePath := filepath.Join(caseDir, "http.json")
 	httpFixtureCfg, err := readHTTPFixtureConfig(httpFixturePath)
@@ -680,6 +683,28 @@ func copyTree(src string, dst string) error {
 	})
 }
 
+func ensureGitRootMarker(repoRoot string) error {
+	gitPath := filepath.Join(repoRoot, ".git")
+	if _, err := os.Stat(gitPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat git root marker: %w", err)
+	}
+
+	if err := os.MkdirAll(gitPath, 0o755); err != nil {
+		return fmt.Errorf("create git root marker: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(gitPath, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		return fmt.Errorf("write git HEAD marker: %w", err)
+	}
+
+	config := "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n"
+	if err := os.WriteFile(filepath.Join(gitPath, "config"), []byte(config), 0o644); err != nil {
+		return fmt.Errorf("write git config marker: %w", err)
+	}
+	return nil
+}
+
 func assertExpectedRepo(expectedRoot string, originalRoot string, actualRoot string) error {
 	expectedFiles, err := listFilesIfPresent(expectedRoot)
 	if err != nil {
@@ -784,13 +809,19 @@ func listFilesIfPresent(root string) ([]string, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if d.IsDir() {
-			return nil
-		}
 
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
+		}
+		if rel == ".git" || strings.HasPrefix(rel, ".git"+string(os.PathSeparator)) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
 		}
 		files = append(files, rel)
 		return nil
