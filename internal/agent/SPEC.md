@@ -263,7 +263,9 @@ type ToolOutput struct {
 // EmitToolOutput emits display-only output for the active tool run. It is safe to call with any context.
 func EmitToolOutput(ctx context.Context, content string)
 
-// EmitExternalLLMUsage records token usage for an external LLM call. It is safe to call with any context.
+// EmitExternalLLMUsage records token usage for an external LLM call made during an active agent tool invocation. The usage is added to the owning agent and its
+// ancestors. It is safe to call with any context; if ctx is nil, is not an agent tool context, or the tool invocation has already returned, EmitExternalLLMUsage
+// is a no-op.
 func EmitExternalLLMUsage(ctx context.Context, usage llmstream.TokenUsage)
 ```
 

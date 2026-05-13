@@ -186,8 +186,9 @@ func (a *Agent) QueueUserMessage(message string) error {
 //   - EventTypeToolComplete after each tool returns a ToolResult (and after any subagent activity performed by that tool).
 //   - EventTypeWarning / EventTypeRetry as reported by the provider.
 //
-// The stream terminates with exactly one terminal event: EventTypeDoneSuccess on a normal end-of-turn, EventTypeCanceled when ctx is canceled / deadline exceeded
-// (or the provider reports cancellation), or EventTypeError for all other errors. The channel is closed immediately after the terminal event is emitted.
+// The stream terminates after this agent emits exactly one terminal event: EventTypeDoneSuccess on a normal end-of-turn, EventTypeCanceled when ctx is canceled
+// / deadline exceeded (or the provider reports cancellation), or EventTypeError for all other errors. Mirrored subagent events may include their own terminal events
+// before then; those subagent terminal events do not close the returned channel. The channel is closed immediately after this agent's terminal event is emitted.
 //
 // Note: tool execution may create subagents. Subagent events are mirrored into the same returned channel (distinguished by Event.Agent.Depth/ID) and may interleave
 // with the parent agent's events; consumers should not assume a total ordering across different agents.
