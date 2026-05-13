@@ -27,13 +27,23 @@ type addDocsFlagValues struct {
 }
 
 type addDocsConfig struct {
-	model              llmmodel.ModelID
-	reflowWidth        int
-	logFile            string
+	commonConfig
 	documentTestFiles  bool
 	onlyPublicAPI      bool
 	excludeIdentifiers []string
 	tokenBudget        int
+}
+
+type commonFlagValues struct {
+	model       string
+	reflowWidth int
+	logFile     string
+}
+
+type commonConfig struct {
+	model       llmmodel.ModelID
+	reflowWidth int
+	logFile     string
 }
 
 func main() {
@@ -64,6 +74,7 @@ func newRootCommand() *cli.Command {
 	docCmd := &cli.Command{
 		Name:  "doc",
 		Short: "Add documentation to a Go package.",
+		Usage: "<pkg>",
 		Args:  cli.ExactArgs(1),
 	}
 	docFlags := docCmd.Flags()
@@ -89,36 +100,79 @@ func newRootCommand() *cli.Command {
 		return runAddDocs(c, c.Args[0], cfg)
 	}
 
-	root.AddCommand(docCmd)
+	fixCmd := &cli.Command{
+		Name:  "fix",
+		Short: "Find and fix bad comments in a Go package.",
+		Usage: "<pkg> [identifier ...]",
+		Args:  minimumArgs(1),
+	}
+	fixCmd.Run = func(c *cli.Context) error {
+		cfg, err := resolveCommonConfig(commonFlagValues{
+			model:       *model,
+			reflowWidth: *reflowWidth,
+			logFile:     *logFile,
+		})
+		if err != nil {
+			return err
+		}
+
+		return runFixDocs(c, c.Args[0], c.Args[1:], cfg)
+	}
+
+	root.AddCommand(docCmd, fixCmd)
 	return root
 }
 
-func resolveAddDocsConfig(flags addDocsFlagValues) (addDocsConfig, error) {
+func resolveCommonConfig(flags commonFlagValues) (commonConfig, error) {
 	modelValue := flags.model
 	model := llmmodel.ModelID(modelValue)
 	if model == "" {
 		model = llmmodel.DefaultModel
 	}
 	if !model.Valid() {
-		return addDocsConfig{}, cli.UsageError{Message: fmt.Sprintf("invalid --model: %q", modelValue)}
+		return commonConfig{}, cli.UsageError{Message: fmt.Sprintf("invalid --model: %q", modelValue)}
 	}
 
 	if flags.reflowWidth < 0 {
-		return addDocsConfig{}, cli.UsageError{Message: "--reflow-width must be >= 0"}
+		return commonConfig{}, cli.UsageError{Message: "--reflow-width must be >= 0"}
+	}
+
+	return commonConfig{
+		model:       model,
+		reflowWidth: flags.reflowWidth,
+		logFile:     flags.logFile,
+	}, nil
+}
+
+func resolveAddDocsConfig(flags addDocsFlagValues) (addDocsConfig, error) {
+	common, err := resolveCommonConfig(commonFlagValues{
+		model:       flags.model,
+		reflowWidth: flags.reflowWidth,
+		logFile:     flags.logFile,
+	})
+	if err != nil {
+		return addDocsConfig{}, err
 	}
 	if flags.tokenBudget < 0 {
 		return addDocsConfig{}, cli.UsageError{Message: "--token-budget must be >= 0"}
 	}
 
 	return addDocsConfig{
-		model:              model,
-		reflowWidth:        flags.reflowWidth,
-		logFile:            flags.logFile,
+		commonConfig:       common,
 		documentTestFiles:  flags.documentTestFiles,
 		onlyPublicAPI:      flags.onlyPublicAPI,
 		excludeIdentifiers: parseIdentifierList(flags.excludeIdentifiers),
 		tokenBudget:        flags.tokenBudget,
 	}, nil
+}
+
+func minimumArgs(n int) cli.ArgsFunc {
+	return func(args []string) error {
+		if len(args) < n {
+			return cli.UsageError{Message: fmt.Sprintf("requires at least %d arg(s), got %d", n, len(args))}
+		}
+		return nil
+	}
 }
 
 func parseIdentifierList(value string) []string {
@@ -170,6 +224,37 @@ func runAddDocs(c *cli.Context, target string, cfg addDocsConfig) error {
 		fmt.Fprintf(c.Out, "- %s\n", strings.Join(change.IDs(), ", "))
 	}
 	return nil
+}
+
+func runFixDocs(c *cli.Context, target string, identifiers []string, cfg commonConfig) error {
+	logger, closeLogger, err := loggerFromFile(cfg.logFile)
+	if err != nil {
+		return err
+	}
+	defer closeLogger()
+
+	pkg, err := loadPackage(target)
+	if err != nil {
+		return fmt.Errorf("load package: %w", err)
+	}
+
+	changes, err := docubot.FindAndFixDocErrors(pkg, identifiers, docubot.FindFixDocErrorsOptions{
+		BaseOptions: docubot.BaseOptions{
+			ReflowMaxWidth: cfg.reflowWidth,
+			Out:            c.Out,
+			Model:          cfg.model,
+			Ctx:            health.NewCtx(logger),
+		},
+	})
+	if err != nil && len(changes) == 0 {
+		return err
+	}
+
+	fmt.Fprintf(c.Out, "Applied %d documentation fix(es).\n", len(changes))
+	for _, change := range changes {
+		fmt.Fprintf(c.Out, "- %s\n", strings.Join(change.Change.IDs(), ", "))
+	}
+	return err
 }
 
 func loggerFromFile(path string) (*slog.Logger, func(), error) {
