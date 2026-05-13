@@ -24,10 +24,17 @@ type FindFixDocErrorsOptions struct {
 // The returned slice contains one entry per change applied, each aggregating the feedback that led to that change. The function may return both a non-empty slice
 // and a non-nil error if only part of the package could be scanned or updated; check both return values.
 func FindAndFixDocErrors(pkg *gocode.Package, identifiers []string, options FindFixDocErrorsOptions) ([]IncorporatedFeedback, error) {
-	var incorporatedFeedbacks []IncorporatedFeedback
+	type feedbackBatch struct {
+		pkg       *gocode.Package
+		feedbacks []IdentifierFeedback
+		onlyTests bool
+	}
+	batchByPkg := make(map[*gocode.Package]*feedbackBatch)
+	var feedbackBatches []*feedbackBatch
 
 	filterOptionsEmpty := gocode.FilterIdentifiersOptions{OnlyAnyDocs: true, IncludeSnippetType: true, IncludeSnippetFuncs: true}
 	filterOptionsNonmpty := gocode.FilterIdentifiersOptionsDocumentedNonAmbiguous
+	// First scan all package slices, then mutate docs. Updating docs can shift position-qualified identifiers such as "_" and make later scans see stale package indexes.
 	err := gocode.EachPackageWithIdentifiers(pkg, identifiers, filterOptionsEmpty, filterOptionsNonmpty, func(p *gocode.Package, ids []string, onlyTests bool) error {
 		testsStr := "(non-tests)"
 		if onlyTests {
@@ -49,15 +56,29 @@ func FindAndFixDocErrors(pkg *gocode.Package, identifiers []string, options Find
 			return nil
 		}
 
-		changes, err := incorporateFeedback(p, feedbacks, onlyTests, options)
-		if err != nil {
-			return options.LogWrappedErr("find_and_fix_doc_errors.incorporate_feedback", err)
+		batch := batchByPkg[p]
+		if batch == nil {
+			batch = &feedbackBatch{pkg: p}
+			batchByPkg[p] = batch
+			feedbackBatches = append(feedbackBatches, batch)
 		}
-
-		incorporatedFeedbacks = append(incorporatedFeedbacks, changes...)
+		batch.feedbacks = append(batch.feedbacks, feedbacks...)
+		batch.onlyTests = batch.onlyTests || onlyTests
 
 		return findErrorsErr
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	var incorporatedFeedbacks []IncorporatedFeedback
+	for _, batch := range feedbackBatches {
+		changes, err := incorporateFeedback(batch.pkg, batch.feedbacks, batch.onlyTests, options)
+		if err != nil {
+			return incorporatedFeedbacks, options.LogWrappedErr("find_and_fix_doc_errors.incorporate_feedback", err)
+		}
+		incorporatedFeedbacks = append(incorporatedFeedbacks, changes...)
+	}
 
 	return incorporatedFeedbacks, err
 }

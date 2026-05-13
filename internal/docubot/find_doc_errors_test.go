@@ -136,8 +136,8 @@ func TestFindAndFixDocErrorsReloadsPackageBeforeTestPass(t *testing.T) {
 	longCommentLine := strings.Repeat("x ", 120)
 	conv := &responsesCompleter{responses: []string{
 		`{"Foo":"Foo should say bye."}`,
-		"```go\n// Foo says bye. " + longCommentLine + "\nfunc Foo()\n```",
 		`{"stubTool":""}`,
+		"```go\n// Foo says bye. " + longCommentLine + "\nfunc Foo()\n```",
 	}}
 
 	files := map[string]string{
