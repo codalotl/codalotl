@@ -32,6 +32,8 @@ func TestInfo(t *testing.T) {
 	assert.Contains(t, info.Parameters, "package")
 	assert.Contains(t, info.Description, "docs-add")
 	assert.Contains(t, info.Description, "important")
+	assert.Contains(t, info.Description, "docs-fix")
+	assert.Contains(t, info.Description, "materially false")
 	assert.Contains(t, info.Description, "dry")
 }
 
@@ -122,6 +124,100 @@ func TestDocsAddIgnoresCASRecordAndReportsDelegateError(t *testing.T) {
 	assert.True(t, result.toolResult.IsError)
 	assert.Contains(t, result.toolResult.Result, "delegate failed")
 	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
+func TestDocsFixDelegatesToCodalotlCLIAndReportsCASRecord(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	casRecordPath := filepath.Join(moduleDir, ".codalotl", "cas", "docs-fix-1", "ab", "cd")
+	var captured docsFixCapture
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		NewCommandTree: docsFixEditingCommandTree(&captured, pkgDir, casRecordPath),
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-fix", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusApplied, result.result.Status)
+	assert.Equal(t, "internal/foo", result.result.Package)
+	assert.Equal(t, []string{"foo.go"}, result.result.EditedFiles)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.Equal(t, ".codalotl/cas/docs-fix-1/ab/cd", *result.result.SavedCASRecord)
+	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
+func TestDocsFixNoOpportunityReportsCASRecord(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	casRecordPath := ".codalotl/cas/docs-fix-1/ab/cd"
+	var captured docsFixCapture
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		NewCommandTree: docsFixCommandTree(&captured, docsFixStdout(casRecordPath)),
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-fix", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+	assert.Equal(t, "no refactoring opportunities found", result.result.Message)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.Equal(t, casRecordPath, *result.result.SavedCASRecord)
+	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
+func TestDocsFixIgnoresRefactorCASRecord(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
+	require.NoError(t, err)
+	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-fix"}.casNamespace(), refactorCASRecord{Applied: true}))
+	var captured docsFixCapture
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		NewCommandTree: docsFixCommandTree(&captured, docsFixStdout(".codalotl/cas/docs-fix-1/ab/cd")),
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-fix", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+	require.NotNil(t, result.result.SavedCASRecord)
+	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
+func TestDocsFixErrorsWhenCASSummaryCannotBeParsed(t *testing.T) {
+	tests := []struct {
+		name    string
+		stdout  string
+		wantErr string
+	}{
+		{
+			name:    "missing",
+			stdout:  "Checked documentation.\n",
+			wantErr: "without docs_fix_result summary",
+		},
+		{
+			name:    "invalid json",
+			stdout:  "docs_fix_result={not-json}\n",
+			wantErr: "parse docs-fix result",
+		},
+		{
+			name:    "missing path",
+			stdout:  "docs_fix_result={}\n",
+			wantErr: "missing cas_record_path",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			moduleDir, _ := newTestModule(t)
+			tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+				NewCommandTree: docsFixCommandTree(&docsFixCapture{}, tt.stdout),
+			})
+
+			result := runRefactorTool(t, tool, Params{Name: "docs-fix", Package: "internal/foo"})
+
+			assert.True(t, result.toolResult.IsError)
+			assert.Contains(t, result.toolResult.Result, tt.wantErr)
+		})
+	}
 }
 
 func TestDryNoOpportunityWritesPostRunCAS(t *testing.T) {
@@ -522,6 +618,50 @@ func docsAddCommandTreeFunc(capture *docsAddCapture, run func(*qcli.Context) err
 		docs.AddCommand(add)
 		return root
 	}
+}
+
+type docsFixCapture struct {
+	args []string
+}
+
+func docsFixCommandTree(capture *docsFixCapture, stdout string) toolcli.CommandTreeFunc {
+	return docsFixCommandTreeFunc(capture, func(c *qcli.Context) error {
+		_, err := fmt.Fprint(c.Out, stdout)
+		return err
+	})
+}
+
+func docsFixEditingCommandTree(capture *docsFixCapture, pkgDir string, casRecordPath string) toolcli.CommandTreeFunc {
+	return docsFixCommandTreeFunc(capture, func(c *qcli.Context) error {
+		if err := os.WriteFile(filepath.Join(pkgDir, "foo.go"), []byte("package foo\n\n// A returns 1.\nfunc A() int { return 1 }\n"), 0o644); err != nil {
+			return err
+		}
+		_, err := fmt.Fprint(c.Out, docsFixStdout(casRecordPath))
+		return err
+	})
+}
+
+func docsFixCommandTreeFunc(capture *docsFixCapture, run func(*qcli.Context) error) toolcli.CommandTreeFunc {
+	return func() *qcli.Command {
+		root := &qcli.Command{Name: "codalotl"}
+		docs := &qcli.Command{Name: "docs"}
+		fix := &qcli.Command{Name: "fix"}
+		fix.Run = func(c *qcli.Context) error {
+			capture.args = append([]string(nil), c.Args...)
+			return run(c)
+		}
+		root.AddCommand(docs)
+		docs.AddCommand(fix)
+		return root
+	}
+}
+
+func docsFixStdout(casRecordPath string) string {
+	payload, err := json.Marshal(docsFixCLIResult{CASRecordPath: casRecordPath})
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("Checked documentation.\n%s%s\n", docsFixResultPrefix, payload)
 }
 
 func requirePackageAuthorizer(t *testing.T, authorizer authdomain.Authorizer, moduleDir string, pkgDir string) {
