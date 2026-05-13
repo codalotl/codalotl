@@ -42,7 +42,7 @@ type Graph struct {
 }
 
 type ExternalID struct {
-	ImportPath string // import path from the perspective of the using package. There should be a matching `import "myproj/codeai/gocode"` in the file
+	ImportPath string // Import path for the external package referenced from the using package.
 	ID         string // identifier being referenced
 }
 
@@ -476,8 +476,8 @@ func (g *Graph) handleValueSpec(genDecl *ast.GenDecl, isTestFile bool) {
 	}
 }
 
-// objectKey returns a unique, predictable key for a types.Object. For methods, it returns a key of the form "ReceiverType.MethodName". For other objects, it returns
-// the object's name.
+// objectKey returns a predictable key for a types.Object. For methods, it returns a key of the form "ReceiverType.MethodName". For other objects, it returns the
+// object's name, so the key is not globally unique across packages or scopes.
 func (g *Graph) objectKey(obj types.Object) string {
 	// For methods, generate an identifier that uses the canonical receiver
 	// type representation produced by receiverTypeString so that generic type

@@ -12,8 +12,13 @@ func (g *Graph) LeavesOf(idents, disconnectedIdents []string) []string {
 		disc[id] = struct{}{}
 	}
 
+	workG := g
+	if len(disconnectedIdents) > 0 {
+		workG = g.WithoutIdentifiers(disconnectedIdents)
+	}
+
 	// -------- 1.  Build / complete the SCC list --------
-	sccs := g.StronglyConnectedComponents()
+	sccs := workG.StronglyConnectedComponents()
 	sccIdx := make(map[string]int, len(sccs))
 	for i, c := range sccs {
 		for v := range c {
@@ -35,7 +40,7 @@ func (g *Graph) LeavesOf(idents, disconnectedIdents []string) []string {
 	for i := range out {
 		out[i] = map[int]struct{}{}
 	}
-	for v, uses := range g.intraUses {
+	for v, uses := range workG.intraUses {
 		if _, gone := disc[v]; gone {
 			continue
 		}
