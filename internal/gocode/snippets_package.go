@@ -13,8 +13,8 @@ var _ Snippet = (*PackageDocSnippet)(nil) // PackageDocSnippet implements Snippe
 // PackageDocSnippet holds the package-level documentation comment extracted from a single file, along with the trailing package clause. It is always considered
 // exported.
 //
-// Snippet contains the raw bytes from the start of the package doc comment through the end of the "package ..." line and aliases the file's content buffer. Doc
-// contains just the comment text and is newline-terminated.
+// Snippet contains the raw bytes from the start of the package doc comment through the end of the package name token, excluding trailing whitespace or comments
+// on that line, and aliases the file's content buffer. Doc contains just the comment text and is newline-terminated.
 type PackageDocSnippet struct {
 	Identifier string         // identifier, always in PackageIdentifierPerFile format (ex: "package:foo.go")
 	FileName   string         // file name (no dirs) where the package doc was defined (ex: "foo.go")

@@ -43,7 +43,7 @@ type FuncSnippet struct {
 
 	fileSet  *token.FileSet // fileSet used to parse decl
 	decl     *ast.FuncDecl  // decl node from parsing file
-	FullFunc []byte         // can be used to move the function elsewhere or examine it in its totality; just an index into f.Contents
+	FullFunc []byte         // FullFunc can be used to move the function elsewhere or examine it in its totality; it is sliced from File.Contents.
 }
 
 // Implemention of Snippet interface.

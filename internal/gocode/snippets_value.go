@@ -18,7 +18,8 @@ var _ Snippet = (*ValueSnippet)(nil) // ValueSnippet implements Snippet
 // in source and structured documentation for the declaration.
 //
 // Snippet contains the doc comment(s) and the declaration as written and aliases the file's content buffer. BlockDoc holds the block-level doc (for parenthesized
-// blocks). IdentifierDocs maps each declared identifier to its own doc (which may come from the block doc, spec doc, end-of-line comment, or a combination thereof).
+// blocks). IdentifierDocs maps each declared identifier to its own doc (which may come from the declaration doc for single-spec declarations, spec doc, end-of-line
+// comment, or a combination thereof).
 type ValueSnippet struct {
 	Identifiers []string // all identifiers defined by the value block (length is 1 for a single-spec value like "var MyVar int")
 	IsVar       bool     // true for var, false for const

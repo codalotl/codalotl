@@ -7,7 +7,7 @@ import (
 
 // groupFunctionsByType associates functions with their corresponding types. It categorizes functions based on their receiver and return types. Functions with no
 // receiver may be associated with a type T if:
-//  1. the function returns T or *T.
+//  1. the function returns T, *T, []T, or []*T.
 //  2. the function does not return any other type from the same package.
 func groupFunctionsByType(exportedTypes []*TypeSnippet, funcs []*FuncSnippet) map[string][]*FuncSnippet {
 	typeToMethods := map[string][]*FuncSnippet{}

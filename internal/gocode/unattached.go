@@ -94,7 +94,7 @@ func snippetSpan(s Snippet) (fileName string, start, end int) {
 }
 
 // extractUnattachedComments finds top-level comments that are not included in any snippet's FullBytes or bytes span for the given file and returns them, ordered
-// by their position. The nextSnippet field is populated by scanning for the next snippet that starts after the comment ends within the same file.
+// by their position. The Next field is populated by scanning for the next snippet that starts after the comment ends within the same file.
 func extractUnattachedComments(file *File, fileSnippets []Snippet) ([]*UnattachedComment, error) {
 	// Build snippet spans and a start-ordered list for next-snippet resolution.
 	type span struct {

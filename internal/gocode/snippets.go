@@ -46,8 +46,8 @@ type Snippet interface {
 	// same docs, each identifier will have its own entry, duplicating the doc.
 	Docs() []IdentifierDocumentation
 
-	// MissingDocs returns the identifiers and fields that are missing documentation. ex: if a struct type is missing all docs, one MissingDocumentation entry is for
-	// the struct itself, and each field has its own entry. If there is no missing documentation, nil is returned.
+	// MissingDocs returns the identifiers and fields that are missing documentation. ex: if a struct type is missing all docs, one IdentifierDocumentation entry is
+	// for the struct itself, and each field has its own entry. If there is no missing documentation, nil is returned.
 	MissingDocs() []IdentifierDocumentation
 
 	// Position returns the position of the snippet in the file. Can be used to get the file name (ex: Position().Filename).
