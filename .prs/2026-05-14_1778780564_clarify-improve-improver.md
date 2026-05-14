@@ -22,17 +22,19 @@ So, let's do the following:
 
 ### Phase 1: Add clarify-doc improvement refactor
 
-#### Package `internal/tools/refactor`
+#### Package `internal/tools/refactor` [DONE]
 - Add `docs-improve-from-clarify` as a package-local refactor.
 - It should use in-play `clarify_public_api` CAS Q/A records for the target package, invoke `package_mode_default_context` with a custom prompt and those Q/As, detect edited package files, and report normal refactor status.
 - It should let the package-mode agent improve docs wherever the confusion is best resolved, not necessarily on the originally questioned identifier.
 - It should delete consumed clarify records after successful agent completion, including no-op runs. Preserve records on failure.
 - It should not use refactor-owned CAS; clarify CAS records are the workflow state.
 - `internal/tools/refactor/SPEC.md` has been updated.
+	- Implemented in `28de7f1 add clarify docs refactor`.
 
-#### Package `internal/gocas/casclarify`
+#### Package `internal/gocas/casclarify` [DONE]
 - Prefer existing `FindInPlay` and `InPlayRecord.Delete` support.
 - Add narrowly scoped helpers only if `internal/tools/refactor` needs safer target filtering or record consumption semantics.
+	- No package changes were needed; existing public API was sufficient.
 
 ### Phase 2: Remove the old CLI/docubot path and update orchestrator guidance
 
