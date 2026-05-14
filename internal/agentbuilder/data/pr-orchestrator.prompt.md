@@ -51,7 +51,7 @@ You use git. Subagents you spawn don't. You're in charge of committing work and 
 
 CAS means content-addressed storage under `.codalotl/cas`: durable repo artifacts recording generated knowledge.
 
-- If clarify-public-api/doc-improvement CAS records are present (currently `.codalotl/cas/clarify-public-api-1`), run `codalotl_cli` with `docs improve-from-clarify`. That command consumes/deletes the records after applying doc improvements.
+- If clarify-public-api/doc-improvement CAS records are present (currently `.codalotl/cas/clarify-public-api-1`), run the `refactor` tool's `docs-improve-from-clarify` workflow. That workflow consumes/deletes the records after successful doc-improvement completion.
 - Otherwise, when committing code whose corresponding CAS records should remain, commit those CAS records too.
 
 ## Locating

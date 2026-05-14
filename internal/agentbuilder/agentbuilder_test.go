@@ -315,9 +315,11 @@ func TestBuildRegistry_InvokePROrchestrator_LoadsEmbeddedPromptAndTools(t *testi
 	assert.Contains(t, gotPrompt, "# Skills")
 	assert.Contains(t, gotPrompt, "content-addressed storage")
 	assert.Contains(t, gotPrompt, ".codalotl/cas/clarify-public-api-1")
-	assert.Contains(t, gotPrompt, "codalotl_cli")
-	assert.Contains(t, gotPrompt, "docs improve-from-clarify")
+	assert.Contains(t, gotPrompt, "refactor")
+	assert.Contains(t, gotPrompt, "docs-improve-from-clarify")
 	assert.Contains(t, gotPrompt, "consumes/deletes")
+	assert.NotContains(t, gotPrompt, "codalotl_cli")
+	assert.NotContains(t, gotPrompt, "docs improve-from-clarify")
 	assert.Contains(t, gotPrompt, "commit those CAS records too")
 	assert.Equal(t, []string{
 		coretools.ToolNameReadFile,
