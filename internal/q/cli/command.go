@@ -66,7 +66,8 @@ func (c *Command) Flags() *FlagSet {
 	return c.localFlags
 }
 
-// PersistentFlags returns flags inherited by c and its descendants.
+// PersistentFlags returns c's own persistent flag set; flags in it apply to c and are inherited by its descendants. It does not include persistent flags from c's
+// ancestors.
 func (c *Command) PersistentFlags() *FlagSet {
 	if c.persistentFlags == nil {
 		c.persistentFlags = newFlagSet()
