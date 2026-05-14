@@ -12,6 +12,8 @@ import (
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocas"
+	"github.com/codalotl/codalotl/internal/gocas/casclarify"
+	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/llmstream"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
@@ -34,6 +36,8 @@ func TestInfo(t *testing.T) {
 	assert.Contains(t, info.Description, "important")
 	assert.Contains(t, info.Description, "docs-fix")
 	assert.Contains(t, info.Description, "materially false")
+	assert.Contains(t, info.Description, "docs-improve-from-clarify")
+	assert.Contains(t, info.Description, "clarify_public_api")
 	assert.Contains(t, info.Description, "dry")
 }
 
@@ -183,6 +187,192 @@ func TestDocsFixIgnoresRefactorCASRecord(t *testing.T) {
 	assert.Nil(t, result.result.SavedCASRecord)
 	assertJSONOmitsField(t, result.toolResult.Result, "saved-cas-record")
 	assert.Equal(t, []string{pkgDir}, captured.args)
+}
+
+func TestDocsImproveFromClarifyNoRelevantEntriesSkipsAgent(t *testing.T) {
+	moduleDir, _ := newTestModule(t)
+	recordPath := newTestClarifyRecordFile(t, moduleDir)
+	stubFindInPlayClarifyRecords(t, func(*gocas.DB, *gocode.Module) ([]casclarify.InPlayRecord, error) {
+		return []casclarify.InPlayRecord{
+			{
+				Path:          recordPath,
+				TargetPackage: "example.com/project/internal/bar",
+				Metadata: casclarify.Metadata{
+					Entries: []casclarify.Entry{
+						{
+							TargetPackage: "example.com/project/internal/bar",
+							Identifier:    "Bar",
+							Question:      "How does Bar work?",
+							Answer:        "It works elsewhere.",
+						},
+					},
+				},
+			},
+		}, nil
+	})
+	invoker := &fakeAgentInvoker{}
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-improve-from-clarify", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
+	assert.Empty(t, invoker.calls)
+	assert.FileExists(t, recordPath)
+}
+
+func TestDocsImproveFromClarifyNoRelevantEntriesDoesNotRequireAgentInvoker(t *testing.T) {
+	moduleDir, _ := newTestModule(t)
+	stubFindInPlayClarifyRecords(t, func(*gocas.DB, *gocode.Module) ([]casclarify.InPlayRecord, error) {
+		return nil, nil
+	})
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-improve-from-clarify", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+	assert.Empty(t, result.result.EditedFiles)
+}
+
+func TestDocsImproveFromClarifyInvokesPackageAgentAndDeletesRecordsOnNoEdits(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	db := newTestCASDB(t, moduleDir)
+	recordPath := newTestClarifyRecordFile(t, moduleDir)
+	stubFindInPlayClarifyRecords(t, func(gotDB *gocas.DB, mod *gocode.Module) ([]casclarify.InPlayRecord, error) {
+		assert.Equal(t, db.BaseDir, gotDB.BaseDir)
+		assert.Equal(t, moduleDir, mod.AbsolutePath)
+		return []casclarify.InPlayRecord{
+			{
+				Path:          recordPath,
+				TargetPackage: "example.com/project/internal/foo",
+				Metadata: casclarify.Metadata{
+					Entries: []casclarify.Entry{
+						{
+							OriginPackage: "example.com/project/internal/caller",
+							Identifier:    "Client.Do",
+							Question:      "Should callers reuse Client?",
+							Answer:        "Clients are safe for concurrent reuse.",
+						},
+					},
+				},
+			},
+		}, nil
+	})
+	invoker := &fakeAgentInvoker{}
+	authorizer := &recordingAuthorizer{
+		Authorizer: authdomain.NewAutoApproveAuthorizer(moduleDir),
+	}
+	tool := NewRefactorTool(authorizer, Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-improve-from-clarify", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+	assert.Equal(t, "internal/foo", result.result.Package)
+	require.NotNil(t, result.result.EditedFiles)
+	assert.Empty(t, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
+	assertJSONOmitsField(t, result.toolResult.Result, "saved-cas-record")
+	require.Len(t, invoker.calls, 1)
+	assert.Equal(t, "package_mode_default_context", invoker.calls[0].agentName)
+	assert.Equal(t, pkgDir, invoker.calls[0].req.ToolOptions.GoPkgAbsDir)
+	prompt := invoker.calls[0].req.Messages[0]
+	assert.Contains(t, prompt, "clarify_public_api")
+	assert.Contains(t, prompt, "package docs")
+	assert.Contains(t, prompt, "related type docs")
+	assert.Contains(t, prompt, "Do not blindly paste answers")
+	assert.Contains(t, prompt, "documentation-only public-doc improvements")
+	assert.Contains(t, prompt, "Should callers reuse Client?")
+	assert.Contains(t, prompt, "Clients are safe for concurrent reuse.")
+	assert.NoFileExists(t, recordPath)
+	assert.Contains(t, authorizer.writePaths, db.AbsRoot)
+}
+
+func TestDocsImproveFromClarifyReportsEditedFiles(t *testing.T) {
+	moduleDir, pkgDir := newTestModule(t)
+	recordPath := newTestClarifyRecordFile(t, moduleDir)
+	stubFindInPlayClarifyRecords(t, func(*gocas.DB, *gocode.Module) ([]casclarify.InPlayRecord, error) {
+		return []casclarify.InPlayRecord{
+			{
+				Path:          recordPath,
+				TargetPackage: "example.com/project/internal/foo",
+				Metadata: casclarify.Metadata{
+					Entries: []casclarify.Entry{
+						{
+							Identifier: "Client",
+							Question:   "Where should timeout behavior be documented?",
+							Answer:     "Package docs should explain timeout behavior.",
+						},
+					},
+				},
+			},
+		}, nil
+	})
+	invoker := &fakeAgentInvoker{
+		onInvoke: func(context.Context, string, toolsetinterface.InvokeRequest) error {
+			writeFile(t, filepath.Join(pkgDir, "doc.go"), "package foo\n\n// Package foo explains timeout behavior.\n")
+			return nil
+		},
+	}
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-improve-from-clarify", Package: "internal/foo"})
+
+	require.False(t, result.toolResult.IsError)
+	assert.Equal(t, ResultStatusApplied, result.result.Status)
+	assert.Equal(t, []string{"doc.go"}, result.result.EditedFiles)
+	assert.Nil(t, result.result.SavedCASRecord)
+	assert.NoFileExists(t, recordPath)
+}
+
+func TestDocsImproveFromClarifyPreservesRecordsOnAgentFailure(t *testing.T) {
+	moduleDir, _ := newTestModule(t)
+	recordPath := newTestClarifyRecordFile(t, moduleDir)
+	stubFindInPlayClarifyRecords(t, func(*gocas.DB, *gocode.Module) ([]casclarify.InPlayRecord, error) {
+		return []casclarify.InPlayRecord{
+			{
+				Path:          recordPath,
+				TargetPackage: "example.com/project/internal/foo",
+				Metadata: casclarify.Metadata{
+					Entries: []casclarify.Entry{
+						{
+							Identifier: "Client",
+							Question:   "Should Client be reused?",
+							Answer:     "Yes.",
+						},
+					},
+				},
+			},
+		}, nil
+	})
+	invoker := &fakeAgentInvoker{
+		onInvoke: func(context.Context, string, toolsetinterface.InvokeRequest) error {
+			return errors.New("agent failed")
+		},
+	}
+	authorizer := &recordingAuthorizer{
+		Authorizer: authdomain.NewAutoApproveAuthorizer(moduleDir),
+	}
+	tool := NewRefactorTool(authorizer, Options{
+		AgentInvoker: invoker,
+	})
+
+	result := runRefactorTool(t, tool, Params{Name: "docs-improve-from-clarify", Package: "internal/foo"})
+
+	assert.True(t, result.toolResult.IsError)
+	assert.Contains(t, result.toolResult.Result, "agent failed")
+	assert.FileExists(t, recordPath)
+	assert.Empty(t, authorizer.writePaths)
 }
 
 func TestDryNoOpportunityWritesPostRunCAS(t *testing.T) {
@@ -643,6 +833,24 @@ func requirePackageAuthorizer(t *testing.T, authorizer authdomain.Authorizer, mo
 	assert.False(t, fallback.IsCodeUnitDomain())
 	assert.Equal(t, moduleDir, fallback.SandboxDir())
 	assert.NoError(t, authorizer.IsAuthorizedForRead(false, "", ToolNameRefactor, filepath.Join(pkgDir, "foo.go")))
+}
+
+func stubFindInPlayClarifyRecords(t *testing.T, fn func(*gocas.DB, *gocode.Module) ([]casclarify.InPlayRecord, error)) {
+	t.Helper()
+
+	old := findInPlayClarifyRecords
+	findInPlayClarifyRecords = fn
+	t.Cleanup(func() {
+		findInPlayClarifyRecords = old
+	})
+}
+
+func newTestClarifyRecordFile(t *testing.T, moduleDir string) string {
+	t.Helper()
+
+	recordPath := filepath.Join(newTestCASDB(t, moduleDir).AbsRoot, string(casclarify.Namespace), "ab", "record")
+	writeFile(t, recordPath, "{}")
+	return recordPath
 }
 
 type fakeAgentInvoker struct {
