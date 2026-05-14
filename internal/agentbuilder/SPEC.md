@@ -24,7 +24,10 @@
     - When the target dir is an existing package-mode directory but does not yet load as a Go package, startup still succeeds with fallback package-path context.
 - clarify_public_api: toolset_clarify_read_only
     - Prompt specialized for clarification requests.
+    - Has no recursive `clarify_public_api` access.
     - Uses `InitialTurnsBuilder` to add sandbox/env + initial context from request path + identifier.
+    - Answers from target package context and public APIs of target package dependencies.
+    - If evidence is insufficient, states known/unknown facts without guessing.
 - pr-orchestrator: toolset_core + toolset_spec + optional `codalotl_cli`/`refactor` + {`review`, `implement`, `review_spec_changes`}
     - Prompt that documents a workflow that plans PR work, iterates on `SPEC.md` edits with `review_spec_changes`, delegates implementation, reviews committed implementation state, manages commits, and handles CAS artifacts.
     - Prompt briefly explains CAS and directs clarify-public-api CAS records through the `codalotl docs improve-from-clarify` tool workflow.
@@ -181,7 +184,7 @@ Toolsets are just a device used in this SPEC.md to factor the file (and may be u
 - toolset_spec:
     - {`check_spec_conformance`}
 - toolset_clarify_read_only:
-    - {`ls`, `read_file`, `get_public_api`, `clarify_public_api`}
+    - {`ls`, `read_file`, `get_public_api`}
 - toolset_core:
     - {`read_file`, `ls`, `shell`, `update_plan`}
     - toolset_edit_files
