@@ -23,7 +23,7 @@ Refactors may be prompt-style agent runs or code-driven operations. The tool kee
 ### CAS
 
 - Each refactor is flagged with one of: `cas-ignore` or `cas-code-unit`
-- `cas-ignore` means the refactor does not use the CAS system. For instance, `codalotl docs add` doesn't need a separate CAS record to keep track of whether docs are added - it's better to look at the code itself to see if anything lacks documentation.
+- `cas-ignore` means the refactor does not use refactor-owned CAS records. It may delegate to commands that write their own CAS records or consume external workflow CAS records.
 - `cas-ignore` refactors never return "refactor already applied".
 - `cas-code-unit` means the refactor checks/stores a CAS cache entry to record that the refactor was done:
 	- Code unit means the CAS hash is based on code units.
@@ -50,6 +50,16 @@ Before the refactor is run, remember hash or bytes of original code unit files. 
 - Delegates to `codalotl docs fix <package>` via `codalotl_cli`, with visible stdout streaming.
 - CAS: refactor-level `cas-ignore`; delegated CLI command writes the docs-fix CAS record.
 - Result reports edited files, not delegated CLI CAS records.
+
+### docs-improve-from-clarify
+
+Prompt-style documentation refactor.
+
+- Uses in-play `clarify_public_api` CAS Q/A records for target package.
+- Invokes `package_mode_default_context` with prompt and Q/As.
+- May improve any package docs that resolve public API confusion, not just docs on questioned identifier.
+- On success, deletes consumed clarify records, including no-op runs. On failure, preserves them.
+- CAS: `cas-ignore`; clarify CAS records are external workflow state.
 
 ### dry
 

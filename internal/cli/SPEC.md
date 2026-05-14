@@ -36,7 +36,6 @@ Notes:
 - `codalotl_cli` exposes these commands:
 	- `codalotl docs add`
 	- `codalotl docs fix`
-	- `codalotl docs improve-from-clarify`
 
 ### codalotl -h, codalotl --help
 
@@ -219,18 +218,6 @@ Notes:
 
 Output:
 - Prints concise fix summary without internal CAS metadata.
-
-### codalotl docs improve-from-clarify
-
-Improves package documentation from in-play `clarify_public_api` CAS records for current module/workstream.
-
-Notes:
-- Uses `docubot.ImproveFromClarifications` on each target package.
-- Deletes successfully processed records, including no-op documentation runs.
-- Uses effective model and configured `reflowwidth`.
-
-Output:
-- Prints a concise summary of records processed/deleted and documentation changes.
 
 ### codalotl spec diff <path/to/pkg_or_SPEC.md>
 
