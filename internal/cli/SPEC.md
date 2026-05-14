@@ -218,7 +218,7 @@ Notes:
 - Successful runs write `docs-fix-1` package CAS records keyed against fixed contents; identifier-limited records are not whole-package records.
 
 Output:
-- Prints concise fix/CAS summary.
+- Prints concise fix summary without internal CAS metadata.
 
 ### codalotl docs improve-from-clarify
 
