@@ -59,12 +59,12 @@ const (
 
 // Result is the machine-readable refactor tool result.
 type Result struct {
-	Name           string       `json:"name"`              // Name is the refactor name that ran.
-	Package        string       `json:"package"`           // Package is the resolved package directory relative to the module root.
-	Status         ResultStatus `json:"status"`            // Status is the machine-readable outcome of the refactor run.
-	Message        string       `json:"message,omitempty"` // Message is a human-readable description of Status.
-	EditedFiles    []string     `json:"edited-files"`      // EditedFiles lists package-relative, slash-separated files whose contents or existence changed.
-	SavedCASRecord *string      `json:"saved-cas-record"`  // SavedCASRecord is the path to the CAS record written for the run, or nil when no record was written.
+	Name           string       `json:"name"`                       // Name is the refactor name that ran.
+	Package        string       `json:"package"`                    // Package is the resolved package directory relative to the module root.
+	Status         ResultStatus `json:"status"`                     // Status is the machine-readable outcome of the refactor run.
+	Message        string       `json:"message,omitempty"`          // Message is a human-readable description of Status.
+	EditedFiles    []string     `json:"edited-files"`               // EditedFiles lists package-relative, slash-separated files whose contents or existence changed.
+	SavedCASRecord *string      `json:"saved-cas-record,omitempty"` // SavedCASRecord is the path to the refactor-owned CAS record written for the run.
 }
 
 // Options configures the refactor tool.
@@ -375,52 +375,13 @@ func (t refactorTool) runDocsFix(ctx context.Context, resolved resolvedPackage, 
 		return Result{}, errors.New(msg)
 	}
 
-	casRecordPath, err := docsFixCASRecordPath(parsed.Stdout)
-	if err != nil {
-		return Result{}, err
-	}
-
 	_, edited, err := tracker.changedFiles()
 	if err != nil {
 		return Result{}, err
 	}
 
-	savedCASRecord := casRecordResultPath(resolved.moduleAbsDir, casRecordPath)
 	status := refactorAppliedStatus(len(edited) == 0)
-	return newRefactorResult(cfg, resolved, status, edited, &savedCASRecord), nil
-}
-
-const docsFixResultPrefix = "docs_fix_result="
-
-type docsFixCLIResult struct {
-	CASRecordPath string `json:"cas_record_path"`
-}
-
-func docsFixCASRecordPath(stdout string) (string, error) {
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSuffix(line, "\r")
-		payload, ok := strings.CutPrefix(line, docsFixResultPrefix)
-		if !ok {
-			continue
-		}
-
-		var result docsFixCLIResult
-		if err := json.Unmarshal([]byte(payload), &result); err != nil {
-			return "", fmt.Errorf("parse docs-fix result: %w", err)
-		}
-		if result.CASRecordPath == "" {
-			return "", errors.New("docs-fix result missing cas_record_path")
-		}
-		return result.CASRecordPath, nil
-	}
-	return "", errors.New("docs-fix succeeded without docs_fix_result summary")
-}
-
-func casRecordResultPath(moduleAbsDir, casRecordPath string) string {
-	if filepath.IsAbs(casRecordPath) {
-		return resultPath(moduleAbsDir, casRecordPath)
-	}
-	return filepath.ToSlash(casRecordPath)
+	return newRefactorResult(cfg, resolved, status, edited, nil), nil
 }
 
 // runPromptRefactor runs a CAS-backed prompt-style refactor for resolved.

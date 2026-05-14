@@ -274,7 +274,8 @@ func (c *Command) Commands() []*Command
 // Flags returns c's local flags.
 func (c *Command) Flags() *FlagSet
 
-// PersistentFlags returns flags inherited by c and its descendants.
+// PersistentFlags returns c's own persistent flag set; flags in it apply to c and are inherited by its descendants. It does not include persistent flags from c's
+// ancestors.
 func (c *Command) PersistentFlags() *FlagSet
 ```
 

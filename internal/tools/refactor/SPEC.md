@@ -18,7 +18,7 @@ Refactors may be prompt-style agent runs or code-driven operations. The tool kee
 	- "no refactoring opportunities found" - the refactoring logic was applied, but no edits were made. Code was already in a nicely factored state.
 	- "refactor already applied" - for CAS-backed refactors only, a CAS record already indicates the refactor was applied, so the refactor is skipped.
 	- error
-- Tool result always includes edited file list and saved CAS record path/null.
+- Tool result always includes edited file list. It includes saved CAS record path only for refactor-owned CAS writes.
 
 ### CAS
 
@@ -49,7 +49,7 @@ Before the refactor is run, remember hash or bytes of original code unit files. 
 
 - Delegates to `codalotl docs fix <package>` via `codalotl_cli`, with visible stdout streaming.
 - CAS: refactor-level `cas-ignore`; delegated CLI command writes the docs-fix CAS record.
-- Result reports edited files and saved CAS record path.
+- Result reports edited files, not delegated CLI CAS records.
 
 ### dry
 
@@ -105,7 +105,7 @@ type Result struct {
 	Status         ResultStatus `json:"status"`
 	Message        string       `json:"message,omitempty"`
 	EditedFiles    []string     `json:"edited-files"`
-	SavedCASRecord *string      `json:"saved-cas-record"`
+	SavedCASRecord *string      `json:"saved-cas-record,omitempty"`
 }
 ```
 
