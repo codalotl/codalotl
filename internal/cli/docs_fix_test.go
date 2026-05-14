@@ -2,10 +2,8 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/docubot"
@@ -67,15 +65,7 @@ func TestRun_DocsFix_UsesDocubotWritesCASAndSummary(t *testing.T) {
 	gotOut := out.String()
 	require.Contains(t, gotOut, "Checking docs...\n")
 	require.Contains(t, gotOut, "Applied 2 documentation fix(es).\n")
-	result := requireDocsFixResultLine(t, gotOut)
-	require.Equal(t, 2, result.FixCount)
-	require.Equal(t, string(docsFixCASNamespace), result.CASNamespace)
-	require.Equal(t, docsFixModeWholePackage, result.Mode)
-	require.Empty(t, result.Identifiers)
-	require.NotEmpty(t, result.CASRecordPath)
-	require.Contains(t, result.CASRecordPath, string(docsFixCASNamespace))
-	_, err = os.Stat(result.CASRecordPath)
-	require.NoError(t, err)
+	require.NotContains(t, gotOut, "docs_fix_result=")
 
 	mod, err := gocode.NewModule(tmp)
 	require.NoError(t, err)
@@ -130,10 +120,9 @@ func TestRun_DocsFix_IdentifierLimitedCASRecordIsMarked(t *testing.T) {
 	require.Empty(t, errOut.String())
 	require.Equal(t, []string{"Bar", "Foo"}, gotIdentifiers)
 
-	result := requireDocsFixResultLine(t, out.String())
-	require.Equal(t, 0, result.FixCount)
-	require.Equal(t, docsFixModeIdentifiers, result.Mode)
-	require.Equal(t, []string{"Bar", "Foo"}, result.Identifiers)
+	gotOut := out.String()
+	require.Contains(t, gotOut, "Applied 0 documentation fix(es).\n")
+	require.NotContains(t, gotOut, "docs_fix_result=")
 
 	mod, err := gocode.NewModule(tmp)
 	require.NoError(t, err)
@@ -147,6 +136,7 @@ func TestRun_DocsFix_IdentifierLimitedCASRecordIsMarked(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, docsFixModeIdentifiers, value.Mode)
 	require.Equal(t, []string{"Bar", "Foo"}, value.Identifiers)
+	require.Equal(t, 0, value.FixCount)
 }
 
 func TestParseDocsFixIdentifiers(t *testing.T) {
@@ -160,19 +150,4 @@ func TestParseDocsFixIdentifiers(t *testing.T) {
 
 	_, err = parseDocsFixIdentifiers("Foo,,Bar")
 	require.Error(t, err)
-}
-
-func requireDocsFixResultLine(t *testing.T, stdout string) docsFixSummary {
-	t.Helper()
-
-	for _, line := range strings.Split(stdout, "\n") {
-		if !strings.HasPrefix(line, docsFixResultLinePrefix) {
-			continue
-		}
-		var result docsFixSummary
-		require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(line, docsFixResultLinePrefix)), &result))
-		return result
-	}
-	t.Fatalf("expected %s line in stdout:\n%s", docsFixResultLinePrefix, stdout)
-	return docsFixSummary{}
 }

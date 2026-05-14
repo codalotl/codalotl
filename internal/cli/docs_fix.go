@@ -1,19 +1,15 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/docubot"
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocode"
-	qcas "github.com/codalotl/codalotl/internal/q/cas"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/health"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
@@ -23,7 +19,6 @@ const (
 	docsFixCASNamespace     = gocas.Namespace("docs-fix-1")
 	docsFixModeWholePackage = "whole-package"
 	docsFixModeIdentifiers  = "identifiers"
-	docsFixResultLinePrefix = "docs_fix_result="
 )
 
 var runDocubotFindAndFixDocErrors = docubot.FindAndFixDocErrors
@@ -33,14 +28,6 @@ type docsFixCASValue struct {
 	Mode        string   `json:"mode"`
 	Identifiers []string `json:"identifiers,omitempty"`
 	FixCount    int      `json:"fix_count"`
-}
-
-type docsFixSummary struct {
-	FixCount      int      `json:"fix_count"`
-	CASNamespace  string   `json:"cas_namespace"`
-	CASRecordPath string   `json:"cas_record_path"`
-	Mode          string   `json:"mode"`
-	Identifiers   []string `json:"identifiers,omitempty"`
 }
 
 func newDocsFixCommand(runWithConfig runWithConfigFunc) *qcli.Command {
@@ -89,11 +76,10 @@ codalotl docs fix --identifiers Foo,Bar ./internal/mypkg
 			return err
 		}
 
-		summary, err := storeDocsFixCASRecord(pkg, mod, identifiers, len(changes))
-		if err != nil {
+		if err := storeDocsFixCASRecord(pkg, mod, identifiers, len(changes)); err != nil {
 			return err
 		}
-		return writeDocsFixSummary(c.Out, summary)
+		return writeDocsFixSummary(c.Out, len(changes))
 	})
 	return cmd
 }
@@ -121,10 +107,10 @@ func parseDocsFixIdentifiers(s string) ([]string, error) {
 	return identifiers, nil
 }
 
-func storeDocsFixCASRecord(pkg *gocode.Package, mod *gocode.Module, identifiers []string, fixCount int) (docsFixSummary, error) {
+func storeDocsFixCASRecord(pkg *gocode.Package, mod *gocode.Module, identifiers []string, fixCount int) error {
 	db, err := casDBForBaseDir(mod.AbsolutePath)
 	if err != nil {
-		return docsFixSummary{}, err
+		return err
 	}
 
 	mode := docsFixModeWholePackage
@@ -140,80 +126,10 @@ func storeDocsFixCASRecord(pkg *gocode.Package, mod *gocode.Module, identifiers 
 		Identifiers: canonicalIdentifiers,
 		FixCount:    fixCount,
 	}
-	if err := db.StoreOnPackage(pkg, docsFixCASNamespace, value); err != nil {
-		return docsFixSummary{}, err
-	}
-
-	recordPath, err := docsFixCASRecordPath(db, pkg)
-	if err != nil {
-		return docsFixSummary{}, err
-	}
-
-	return docsFixSummary{
-		FixCount:      fixCount,
-		CASNamespace:  string(docsFixCASNamespace),
-		CASRecordPath: recordPath,
-		Mode:          mode,
-		Identifiers:   canonicalIdentifiers,
-	}, nil
+	return db.StoreOnPackage(pkg, docsFixCASNamespace, value)
 }
 
-func docsFixCASRecordPath(db *gocas.DB, pkg *gocode.Package) (string, error) {
-	paths, err := packageCASPaths(pkg)
-	if err != nil {
-		return "", err
-	}
-	hasher, err := qcas.NewDirRelativeFileSetHasher(db.BaseDir, paths)
-	if err != nil {
-		return "", err
-	}
-	hash := hasher.Hash()
-	if len(hash) < 2 {
-		return "", fmt.Errorf("cas: invalid hash %q", hash)
-	}
-	return filepath.Join(db.DB.AbsRoot, string(docsFixCASNamespace), hash[:2], hash[2:]), nil
-}
-
-func packageCASPaths(pkg *gocode.Package) ([]string, error) {
-	paths := packageGoSourcePaths(pkg)
-	if pkg.TestPackage != nil {
-		paths = append(paths, packageGoSourcePaths(pkg.TestPackage)...)
-	}
-
-	specPath := filepath.Join(pkg.AbsolutePath(), "SPEC.md")
-	info, err := os.Stat(specPath)
-	if err == nil {
-		if !info.IsDir() {
-			paths = append(paths, specPath)
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	return paths, nil
-}
-
-func packageGoSourcePaths(pkg *gocode.Package) []string {
-	if pkg == nil {
-		return nil
-	}
-	paths := make([]string, 0, len(pkg.Files))
-	for name := range pkg.Files {
-		paths = append(paths, filepath.Join(pkg.AbsolutePath(), name))
-	}
-	sort.Strings(paths)
-	return paths
-}
-
-func writeDocsFixSummary(w io.Writer, summary docsFixSummary) error {
-	if _, err := fmt.Fprintf(w, "Applied %d documentation fix(es).\n", summary.FixCount); err != nil {
-		return err
-	}
-
-	b, err := json.Marshal(summary)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(w, "%s%s\n", docsFixResultLinePrefix, b)
+func writeDocsFixSummary(w io.Writer, fixCount int) error {
+	_, err := fmt.Fprintf(w, "Applied %d documentation fix(es).\n", fixCount)
 	return err
 }
