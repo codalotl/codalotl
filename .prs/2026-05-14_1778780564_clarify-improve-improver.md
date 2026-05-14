@@ -36,28 +36,38 @@ So, let's do the following:
 - Add narrowly scoped helpers only if `internal/tools/refactor` needs safer target filtering or record consumption semantics.
 	- No package changes were needed; existing public API was sufficient.
 
-### Phase 2: Remove the old CLI/docubot path and update orchestrator guidance
+### Phase 2: Remove the old CLI/docubot path and update orchestrator guidance [DONE]
 
-#### Package `internal/cli`
+#### Package `internal/cli` [DONE]
 - Remove `codalotl docs improve-from-clarify` command registration, command implementation/tests, and `codalotl_cli` catalog exposure.
 - `internal/cli/SPEC.md` has been updated.
+	- Implemented in `6429975 remove clarify docs cli command`.
 
-#### Package `internal/docubot`
+#### Package `internal/docubot` [DONE]
 - Remove clarification-improvement API/behavior/tests from docubot.
 - Keep normal docubot documentation add/improve/fix behavior unchanged.
 - `internal/docubot/SPEC.md` has been updated.
+	- Implemented in `c9d4afe remove docubot clarify improver`.
 
-#### Package `internal/agentbuilder`
+#### Package `internal/agentbuilder` [DONE]
 - Update the PR orchestrator prompt data to use the `refactor` tool's `docs-improve-from-clarify` workflow for clarify-public-api CAS records.
 - `internal/agentbuilder/SPEC.md` has been updated.
+	- Implemented in `a3da20e Update clarify docs improver guidance`.
 
-#### Product docs and tests
+#### Product docs and tests [DONE]
 - Update product docs and tests that mention `codalotl docs improve-from-clarify` or assert the `codalotl_cli` command catalog.
 - Expect CLI tests and possibly noninteractive integration replays to need adjustment because the exposed tool surface changes.
+	- CLI and agentbuilder tests were updated; product docs now describe the refactor workflow.
 
 ## Review
 
 No implementation review yet. SPEC review completed for `internal/tools/refactor`, `internal/agentbuilder`, `internal/cli`, and `internal/docubot`; suggested wording refinements were applied.
+
+Per user request, full code review was not run in this step. `check_spec_conformance({"only_changed":true})` passed for:
+- `internal/agentbuilder`
+- `internal/cli`
+- `internal/docubot`
+- `internal/tools/refactor`
 
 ## Summary
 
@@ -74,4 +84,6 @@ TBD.
   - Refactor tool registry/implementation: `internal/tools/refactor/refactor.go`.
   - Clarify CAS: `internal/gocas/casclarify`.
   - Orchestrator prompt data: `internal/agentbuilder/data/pr-orchestrator.prompt.md`.
+- Focused validation passed: `go test ./internal/tools/refactor ./internal/cli ./internal/docubot ./internal/agentbuilder`.
+- SPEC conformance passed for all changed Go packages in commit `a3da20e`.
 
