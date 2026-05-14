@@ -89,7 +89,7 @@ func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	require.Equal(t, 0, helpResult.ExitCode)
 	require.Contains(t, helpResult.Stdout, "codalotl docs add")
 	require.Contains(t, helpResult.Stdout, "codalotl docs fix")
-	require.Contains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
+	require.NotContains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs reflow")
 	require.NotContains(t, helpResult.Stdout, "codalotl context public")
 
@@ -117,16 +117,16 @@ func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	require.Contains(t, fixHelp.Stdout, "codalotl docs fix")
 	require.Contains(t, fixHelp.Stdout, "--identifiers")
 
-	improveHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+	rejectedImprove := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-docs-improve-help",
 		Name:   toolcli.ToolNameCodalotlCLI,
 		Type:   "function_call",
-		Input:  `{"subcommand":"docs improve-from-clarify","argv":["--help"]}`,
+		Input:  `{"subcommand":"docs improve-from-clarify","argv":[]}`,
 	}))
-	require.True(t, improveHelp.Success)
-	require.Equal(t, 0, improveHelp.ExitCode)
-	require.Contains(t, improveHelp.Stdout, "codalotl docs improve-from-clarify")
-	require.Contains(t, improveHelp.Stdout, "clarify_public_api")
+	require.False(t, rejectedImprove.Success)
+	require.Equal(t, 2, rejectedImprove.ExitCode)
+	require.Contains(t, rejectedImprove.Stderr, "unknown subcommand")
+	require.Contains(t, rejectedImprove.Stderr, "improve-from-clarify")
 
 	rejected := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-disallowed",

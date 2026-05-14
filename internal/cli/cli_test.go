@@ -180,7 +180,6 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"context", "packages"},
 		{"docs", "add"},
 		{"docs", "fix"},
-		{"docs", "improve-from-clarify"},
 		{"docs", "reflow"},
 		{"spec", "fmt"},
 		{"spec", "diff"},
@@ -194,7 +193,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		require.NotEmpty(t, cmd.Long)
 		require.NotEmpty(t, cmd.Example)
 		switch strings.Join(names, " ") {
-		case "context packages", "docs improve-from-clarify", "spec status":
+		case "context packages", "spec status":
 		default:
 			require.NotEmpty(t, cmd.Usage)
 		}
@@ -210,7 +209,7 @@ func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {
 	got := out.String()
 	require.Contains(t, got, "codalotl docs add")
 	require.Contains(t, got, "codalotl docs fix")
-	require.Contains(t, got, "codalotl docs improve-from-clarify")
+	require.NotContains(t, got, "codalotl docs improve-from-clarify")
 	require.Contains(t, got, "codalotl context public")
 	require.Contains(t, got, "codalotl spec diff")
 	require.Contains(t, got, "Add missing documentation comments to a package.")
