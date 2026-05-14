@@ -52,7 +52,7 @@ type DiffHunk struct {
 	Lines   []DiffLine // Per-line diffs when Op != OpEqual; nil when OpEqual.
 }
 
-// DiffLine is a diff on a single line. Each line usually ends with (and includes) \n, unless the input text to DiffText had no \n.
+// DiffLine is a diff on a single line. Each line usually ends with (and includes) \n; a final line can lack a trailing \n when its input text did not end with \n.
 //
 // Operations follow the pattern of DiffHunk.
 //
