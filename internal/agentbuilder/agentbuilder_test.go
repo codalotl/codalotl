@@ -117,8 +117,8 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
 		pkgtools.ToolNameGetPublicAPI,
-		pkgtools.ToolNameClarifyPublicAPI,
 	}, clarifyDef.ToolNames)
+	assert.NotContains(t, clarifyDef.ToolNames, pkgtools.ToolNameClarifyPublicAPI)
 	assert.NotNil(t, clarifyDef.InitialTurnsBuilder)
 
 	clarifyPrompt, err := clarifyDef.SystemPromptBuilder(agentregistry.BuildOptions{})
@@ -126,7 +126,11 @@ func TestBuildRegistry_RegistersAgents(t *testing.T) {
 	assert.True(t, strings.HasPrefix(clarifyPrompt, prompt.GetBasicPrompt()))
 	assert.Contains(t, clarifyPrompt, "read-only agent for clarifying public API documentation")
 	assert.Contains(t, clarifyPrompt, "get_public_api")
-	assert.Contains(t, clarifyPrompt, "clarify_public_api")
+	assert.Contains(t, clarifyPrompt, "target package's perspective")
+	assert.Contains(t, clarifyPrompt, "Do not attempt recursive clarification")
+	assert.Contains(t, clarifyPrompt, "Use `get_public_api` only for packages imported by")
+	assert.Contains(t, clarifyPrompt, "Do not inspect unrelated packages or inverse dependents")
+	assert.Contains(t, clarifyPrompt, "state what is known and unknown instead of guessing")
 
 	prOrchestratorDef, ok := registry.Lookup("pr-orchestrator")
 	require.True(t, ok)
@@ -384,8 +388,8 @@ func TestClarifyReadOnlyTools_UsesOverrideAwareBuilders(t *testing.T) {
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
 		pkgtools.ToolNameGetPublicAPI,
-		pkgtools.ToolNameClarifyPublicAPI,
 	}, toolNames(tools))
+	assert.NotContains(t, toolNames(tools), pkgtools.ToolNameClarifyPublicAPI)
 	require.IsType(t, fakeNamedTool{}, requireTool(t, tools, coretools.ToolNameReadFile))
 }
 

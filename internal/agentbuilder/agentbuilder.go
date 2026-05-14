@@ -228,7 +228,6 @@ func clarifyReadOnlyToolNames() []string {
 		coretools.ToolNameReadFile,
 		coretools.ToolNameLS,
 		pkgtools.ToolNameGetPublicAPI,
-		pkgtools.ToolNameClarifyPublicAPI,
 	}
 }
 
@@ -646,8 +645,13 @@ func buildClarifyPublicAPISystemPrompt(options agentregistry.BuildOptions) (stri
 	var builder strings.Builder
 	builder.WriteString(prompt.GetBasicPrompt())
 	builder.WriteString("\n\nYou are a read-only agent for clarifying public API documentation for a single identifier.\n")
-	builder.WriteString("Use the initial context and available read-only tools (`ls`, `read_file`, `get_public_api`, `clarify_public_api`) to answer the user's question.\n")
-	builder.WriteString("If information is missing or the identifier cannot be found, clearly say so and explain what would be needed.\n")
+	builder.WriteString("Answer from the target package's perspective using only evidence in the initial context and available read-only tools (`ls`, `read_file`, `get_public_api`).\n")
+	builder.WriteString("Do not attempt recursive clarification; this agent has no `clarify_public_api` tool and must not ask for one.\n")
+	builder.WriteString("Workflow:\n")
+	builder.WriteString("1. Inspect the target context for the requested identifier and relevant package facts.\n")
+	builder.WriteString("2. Use `get_public_api` only for packages imported by, or otherwise clear direct dependencies of, the target package. Do not inspect unrelated packages or inverse dependents.\n")
+	builder.WriteString("3. Answer from the evidence you found, distinguishing documented behavior, implementation facts, and limits.\n")
+	builder.WriteString("If the package is types-only, depends on inverted control, or calls underdocumented dependency APIs, state what is known and unknown instead of guessing.\n")
 	builder.WriteString("Respond concisely and directly. The questioner cannot see non-exported implementation details, so ground your answer in the docs, files, and context you can read.")
 	return builder.String(), nil
 }
