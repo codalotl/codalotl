@@ -72,7 +72,7 @@ type Options struct {
 	AgentInvoker   toolsetinterface.AgentInvoker // AgentInvoker invokes subagents for prompt-style refactors.
 	Model          llmmodel.ModelID              // Model is the model used by prompt-style refactor agents.
 	LintSteps      []lints.Step                  // LintSteps configures linting for prompt-style refactor agents.
-	NewCommandTree toolcli.CommandTreeFunc       // NewCommandTree creates the whitelisted codalotl command tree used by docs-add refactors.
+	NewCommandTree toolcli.CommandTreeFunc       // NewCommandTree creates the whitelisted codalotl command tree used by docs refactors.
 }
 
 //go:embed data/*.md
@@ -91,6 +91,7 @@ type refactorKind string
 
 const (
 	refactorKindDocsAdd refactorKind = "docs-add"
+	refactorKindDocsFix refactorKind = "docs-fix"
 	refactorKindPrompt  refactorKind = "prompt"
 )
 
@@ -110,6 +111,12 @@ var refactorRegistry = []refactorConfig{
 		name:        "docs-add",
 		description: "Add missing important Go documentation with codalotl docs add.",
 		kind:        refactorKindDocsAdd,
+		casPolicy:   casPolicyIgnore,
+	},
+	{
+		name:        "docs-fix",
+		description: "Fix materially false Go documentation with codalotl docs fix.",
+		kind:        refactorKindDocsFix,
 		casPolicy:   casPolicyIgnore,
 	},
 	{
@@ -193,6 +200,8 @@ func (t refactorTool) Run(ctx context.Context, toolCall llmstream.ToolCall) llms
 	switch cfg.kind {
 	case refactorKindDocsAdd:
 		result, err = t.runDocsAdd(ctx, resolved, cfg)
+	case refactorKindDocsFix:
+		result, err = t.runDocsFix(ctx, resolved, cfg)
 	case refactorKindPrompt:
 		result, err = t.runPromptRefactor(ctx, resolved, cfg)
 	default:
@@ -316,6 +325,102 @@ func (t refactorTool) runDocsAdd(ctx context.Context, resolved resolvedPackage, 
 func docsAddNoOpportunity(stdout string) bool {
 	return strings.Contains(stdout, "Nothing left to document!") &&
 		!strings.Contains(stdout, "Applied ")
+}
+
+// runDocsFix runs the docs-fix refactor for resolved.
+func (t refactorTool) runDocsFix(ctx context.Context, resolved resolvedPackage, cfg refactorConfig) (Result, error) {
+	if cfg.casPolicy != casPolicyIgnore {
+		return Result{}, fmt.Errorf("docs-fix refactor requires CAS policy %q", casPolicyIgnore)
+	}
+	if t.options.NewCommandTree == nil {
+		return Result{}, errors.New("docs-fix refactor requires NewCommandTree")
+	}
+
+	tracker, err := newDefaultGoCodeUnitChangeTracker(resolved.absDir)
+	if err != nil {
+		return Result{}, err
+	}
+
+	cliTool := toolcli.NewCodalotlCLITool(t.options.NewCommandTree)
+	cliParams := toolcli.Params{
+		Subcommand: "docs",
+		Argv:       []string{"fix", resolved.absDir},
+	}
+	input, err := json.Marshal(cliParams)
+	if err != nil {
+		return Result{}, err
+	}
+
+	cliResult := cliTool.Run(ctx, llmstream.ToolCall{
+		CallID: "refactor-docs-fix",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  string(input),
+	})
+	if cliResult.IsError {
+		return Result{}, errors.New(cliResult.Result)
+	}
+
+	var parsed toolcli.Result
+	if err := json.Unmarshal([]byte(cliResult.Result), &parsed); err != nil {
+		return Result{}, err
+	}
+	if !parsed.Success {
+		msg := "codalotl docs fix failed"
+		if parsed.Stderr != "" {
+			msg = parsed.Stderr
+		} else if parsed.Stdout != "" {
+			msg = parsed.Stdout
+		}
+		return Result{}, errors.New(msg)
+	}
+
+	casRecordPath, err := docsFixCASRecordPath(parsed.Stdout)
+	if err != nil {
+		return Result{}, err
+	}
+
+	_, edited, err := tracker.changedFiles()
+	if err != nil {
+		return Result{}, err
+	}
+
+	savedCASRecord := casRecordResultPath(resolved.moduleAbsDir, casRecordPath)
+	status := refactorAppliedStatus(len(edited) == 0)
+	return newRefactorResult(cfg, resolved, status, edited, &savedCASRecord), nil
+}
+
+const docsFixResultPrefix = "docs_fix_result="
+
+type docsFixCLIResult struct {
+	CASRecordPath string `json:"cas_record_path"`
+}
+
+func docsFixCASRecordPath(stdout string) (string, error) {
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		payload, ok := strings.CutPrefix(line, docsFixResultPrefix)
+		if !ok {
+			continue
+		}
+
+		var result docsFixCLIResult
+		if err := json.Unmarshal([]byte(payload), &result); err != nil {
+			return "", fmt.Errorf("parse docs-fix result: %w", err)
+		}
+		if result.CASRecordPath == "" {
+			return "", errors.New("docs-fix result missing cas_record_path")
+		}
+		return result.CASRecordPath, nil
+	}
+	return "", errors.New("docs-fix succeeded without docs_fix_result summary")
+}
+
+func casRecordResultPath(moduleAbsDir, casRecordPath string) string {
+	if filepath.IsAbs(casRecordPath) {
+		return resultPath(moduleAbsDir, casRecordPath)
+	}
+	return filepath.ToSlash(casRecordPath)
 }
 
 // runPromptRefactor runs a CAS-backed prompt-style refactor for resolved.

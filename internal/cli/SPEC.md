@@ -35,6 +35,7 @@ Notes:
 - CLI startup installs agent tools such as `codalotl_cli` and `refactor` into `internal/agentbuilder`.
 - `codalotl_cli` exposes these commands:
 	- `codalotl docs add`
+	- `codalotl docs fix`
 	- `codalotl docs improve-from-clarify`
 
 ### codalotl -h, codalotl --help
@@ -204,6 +205,20 @@ Notes:
 
 Output:
 - Prints a concise summary of the applied documentation changes.
+
+### codalotl docs fix [--identifiers <comma-list>] <path/to/pkg>
+
+Fixes materially false existing documentation comments using `docubot.FindAndFixDocErrors`.
+
+Notes:
+- `<path/to/pkg>` follows usual single-package argument semantics.
+- Scans non-test, test, and black-box `_test` package docs.
+- `--identifiers` limits checks to a comma-separated allowlist.
+- Missing docs and non-material wording issues are ignored.
+- Successful runs write `docs-fix-1` package CAS records keyed against fixed contents; identifier-limited records are not whole-package records.
+
+Output:
+- Prints concise fix/CAS summary.
 
 ### codalotl docs improve-from-clarify
 

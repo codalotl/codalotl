@@ -180,6 +180,17 @@ func TestLeavesOf(t *testing.T) {
 			disconnectedIdents: []string{},
 			expectedLeaves:     []string{"F"},
 		},
+		{
+			name: "disconnected ident splits SCC",
+			src: `
+				type A struct { C }
+				type C struct { A; B }
+				type B struct { C; D }
+				type D struct {}`,
+			idents:             []string{"A"},
+			disconnectedIdents: []string{"C"},
+			expectedLeaves:     []string{"A"},
+		},
 	}
 
 	for _, tc := range tests {

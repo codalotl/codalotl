@@ -14,10 +14,17 @@ import (
 // Module describes a Go module rooted at a directory containing a go.mod file. It records the module path, absolute root on disk, and a cache of packages loaded
 // from that module. Create Modules with NewModule and load packages via the Load* and ReadPackage methods.
 type Module struct {
-	Name         string              // ex: "" or "github.com/foo/bar"
-	AbsolutePath string              // ex: "/path/to/package"
-	Packages     map[string]*Package // map of importPath to package; populated via LoadPackage/LoadAllPackages. TODO: make private
-	cloned       bool                // true if this module was produced via CloneWithoutPackages
+	// ex: "" or "github.com/foo/bar"
+	Name string
+
+	// ex: "/path/to/package"
+	AbsolutePath string
+
+	// map of importPath to package; populated via LoadPackageByRelativeDir, LoadPackageByImportPath, or LoadAllPackages. TODO: make private
+	Packages map[string]*Package
+
+	// true if this module was produced via CloneWithoutPackages
+	cloned bool
 }
 
 // NewModule returns a Module representing an existing Go module. It finds the nearest go.mod file starting from the path. The anyPath parameter can be any folder
@@ -349,9 +356,10 @@ func (m *Module) traverseDirectory(absDirPath string, relativeDir string) error 
 	return nil
 }
 
-// ReadPackage reads the package at relativeDir and all Go files it contains. In addition to returning the package, it caches it in m. The goFileNames parameter
-// is a list of .go files in the package (filenames only; no directory, even relative to the module). If goFileNames is nil, ReadPackage discovers the files. If
-// any .go files are specified in goFileNames, they are assumed to be the complete list; this function does not verify correctness.
+// ReadPackage reads the package at relativeDir and the selected Go files it contains. In addition to returning the package, it caches it in m. The goFileNames parameter
+// is a list of .go files in the package (filenames only; no directory, even relative to the module). If goFileNames is nil, ReadPackage discovers the files selected
+// by the default build configuration and GOFLAGS. If any .go files are specified in goFileNames, they are assumed to be the complete list; this function does not
+// verify correctness.
 //
 // TODO: We likely want to make this method private and have callers rely on LoadPackageByRelativeDir/LoadPackageByImportPath.
 func (m *Module) ReadPackage(relativeDir string, goFileNames []string) (*Package, error) {

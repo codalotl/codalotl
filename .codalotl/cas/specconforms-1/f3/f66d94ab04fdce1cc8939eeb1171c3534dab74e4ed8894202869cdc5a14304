@@ -1,0 +1,1 @@
+{"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{"unix_timestamp":1778704279,"paths":["internal/docubot/cmd/SPEC.md","internal/docubot/cmd/main.go","internal/docubot/cmd/main_test.go"],"git_clean":true,"git_commit":"4552421a5d6b8ed6bae5a0d43a2201172689ead3","git_merge_base":"a0ae09b4ecbd15580893372dc97bece222542af7"}}

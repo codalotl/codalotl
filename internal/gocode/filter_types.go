@@ -6,7 +6,8 @@ import (
 )
 
 // filterExportedTypes takes a type declaration and returns a cloned decl without unexported types or unexported fields or methods in structs or interfaces. If preserveMixed
-// is true, mixed named fields are kept intact when at least one name is exported. If a struct or interface has elided members, it will contain `// contains filtered or unexported fields`.
+// is true, mixed named fields are kept intact when at least one name is exported. If a struct has elided members, it will contain `// contains filtered or unexported fields`;
+// if an interface has elided members, it will contain `// contains filtered or unexported methods`.
 func filterExportedTypes(genDecl *ast.GenDecl, preserveMixed bool) *ast.GenDecl {
 	if genDecl == nil {
 		return genDecl
@@ -206,8 +207,8 @@ func cloneFieldWithFilteredType(fld *ast.Field, preserveMixed bool) *ast.Field {
 }
 
 // filterInterface returns a copy of orig that retains only exported interface API. Exported methods and exported embedded interfaces are kept; unexported ones are
-// removed. Type-set terms used by constraints (e.g., union/tilde expressions) are always preserved. The result preserves order and positions, and sets Incomplete
-// to true if anything was removed. orig is not mutated.
+// removed. Union, tilde, and parenthesized type-set terms used by constraints (ex: ~int | ~float) are preserved; bare unexported type terms are removed. The result
+// preserves order and positions, and sets Incomplete to true if anything was removed. orig is not mutated.
 func filterInterface(orig *ast.InterfaceType, preserveMixed bool) *ast.InterfaceType {
 	return filterInterfaceWithIncomplete(orig, preserveMixed, true)
 }

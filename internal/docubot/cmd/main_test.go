@@ -56,6 +56,15 @@ func TestResolveAddDocsConfig_InvalidModel(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid --model")
 }
 
+func TestResolveCommonConfig_InvalidReflowWidth(t *testing.T) {
+	_, err := resolveCommonConfig(commonFlagValues{
+		reflowWidth: -1,
+	})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "--reflow-width must be >= 0")
+}
+
 func TestRunDocRequiresPackageArg(t *testing.T) {
 	root := newRootCommand()
 	var stdout bytes.Buffer
@@ -70,6 +79,23 @@ func TestRunDocRequiresPackageArg(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Empty(t, stdout.String())
 	assert.Contains(t, stderr.String(), "Usage:")
+}
+
+func TestRunRootShowsSubcommandUsage(t *testing.T) {
+	root := newRootCommand()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := cli.Run(context.Background(), root, cli.Options{
+		Out: &stdout,
+		Err: &stderr,
+	})
+
+	assert.Equal(t, 2, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "docubot doc [OPTIONS] <pkg>")
+	assert.NotContains(t, stderr.String(), "docubot doc [OPTIONS] [args]")
+	assert.Contains(t, stderr.String(), "docubot fix [--log-file=<STRING>] [--model=<STRING>] [--reflow-width=<INT>] <pkg> [identifier ...]")
 }
 
 func TestRunDocRejectsInvalidTokenBudgetBeforeLoadingPackage(t *testing.T) {
@@ -110,12 +136,74 @@ func TestRunDocSendsDocubotProgressToCLIWriter(t *testing.T) {
 	assert.Empty(t, processStdout)
 }
 
+func TestRunFixRequiresPackageArg(t *testing.T) {
+	root := newRootCommand()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := cli.Run(context.Background(), root, cli.Options{
+		Args: []string{"fix"},
+		Out:  &stdout,
+		Err:  &stderr,
+	})
+
+	assert.Equal(t, 2, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "Usage:")
+}
+
+func TestRunFixRejectsInvalidModelBeforeLoadingPackage(t *testing.T) {
+	root := newRootCommand()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := cli.Run(context.Background(), root, cli.Options{
+		Args: []string{"fix", ".", "--model=not-a-model"},
+		Out:  &stdout,
+		Err:  &stderr,
+	})
+
+	assert.Equal(t, 2, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "invalid --model")
+}
+
+func TestRunFixSendsDocubotProgressToCLIWriter(t *testing.T) {
+	pkgDir := writeUndocumentedPackage(t)
+	root := newRootCommand()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	var code int
+	processStdout := captureStdout(t, func() {
+		code = cli.Run(context.Background(), root, cli.Options{
+			Args: []string{"fix", pkgDir},
+			Out:  &stdout,
+			Err:  &stderr,
+		})
+	})
+
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stderr.String())
+	assert.Contains(t, stdout.String(), "Applied 0 documentation fix(es).")
+	assert.Empty(t, processStdout)
+}
+
 func writeDocumentedPackage(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/docubotcmdtest\n\ngo 1.22\n"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "example.go"), []byte("// Package example is a documented package used by docubot cmd tests.\npackage example\n\n// Answer returns the answer.\nfunc Answer() int { return 42 }\n"), 0644))
+	return dir
+}
+
+func writeUndocumentedPackage(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/docubotcmdtest\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "example.go"), []byte("package example\n\nfunc Answer() int { return 42 }\n"), 0644))
 	return dir
 }
 

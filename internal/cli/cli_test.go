@@ -179,6 +179,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"context", "initial"},
 		{"context", "packages"},
 		{"docs", "add"},
+		{"docs", "fix"},
 		{"docs", "improve-from-clarify"},
 		{"docs", "reflow"},
 		{"spec", "fmt"},
@@ -208,6 +209,7 @@ func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {
 
 	got := out.String()
 	require.Contains(t, got, "codalotl docs add")
+	require.Contains(t, got, "codalotl docs fix")
 	require.Contains(t, got, "codalotl docs improve-from-clarify")
 	require.Contains(t, got, "codalotl context public")
 	require.Contains(t, got, "codalotl spec diff")

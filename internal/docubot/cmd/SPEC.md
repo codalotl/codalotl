@@ -29,3 +29,11 @@ Additional options:
 - `--only-public-api` - only apply documentation for public/exported identifiers
 - `--exclude-identifiers` - comma-separated list of identifiers to avoid documenting
 - `--token-budget` - token limit to use
+
+### Find and fix bad comments in a package:
+
+```sh
+go run . fix path/to/pkg [identifier ...]
+```
+
+When identifiers are provided, only those identifiers are checked.

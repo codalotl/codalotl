@@ -88,6 +88,7 @@ func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	require.True(t, helpResult.Success)
 	require.Equal(t, 0, helpResult.ExitCode)
 	require.Contains(t, helpResult.Stdout, "codalotl docs add")
+	require.Contains(t, helpResult.Stdout, "codalotl docs fix")
 	require.Contains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs reflow")
 	require.NotContains(t, helpResult.Stdout, "codalotl context public")
@@ -104,6 +105,17 @@ func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	require.Contains(t, detailedHelp.Stdout, "--public-only")
 	require.Contains(t, detailedHelp.Stdout, "--important")
 	require.Contains(t, detailedHelp.Stdout, "--include-test")
+
+	fixHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-docs-fix-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"docs fix","argv":["--help"]}`,
+	}))
+	require.True(t, fixHelp.Success)
+	require.Equal(t, 0, fixHelp.ExitCode)
+	require.Contains(t, fixHelp.Stdout, "codalotl docs fix")
+	require.Contains(t, fixHelp.Stdout, "--identifiers")
 
 	improveHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-docs-improve-help",

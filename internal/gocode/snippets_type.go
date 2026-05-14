@@ -281,7 +281,7 @@ func extractFieldDocs(typeName string, typeExpr ast.Expr, fset *token.FileSet, f
 	return fieldDocs, fieldOrder
 }
 
-// getEmbeddedFieldName returns the field name derived from an embedded field's type expression.
+// getEmbeddedFieldName returns the name string derived from an embedded field's type expression, including any package qualifier or leading "*".
 func getEmbeddedFieldName(typeExpr ast.Expr) string {
 	switch t := typeExpr.(type) {
 	case *ast.Ident:

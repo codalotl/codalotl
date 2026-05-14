@@ -131,3 +131,35 @@ func TestFindAllDocErrors(t *testing.T) {
 		assert.GreaterOrEqual(t, len(conv.convs), 1)
 	})
 }
+
+func TestFindAndFixDocErrorsReloadsPackageBeforeTestPass(t *testing.T) {
+	longCommentLine := strings.Repeat("x ", 120)
+	conv := &responsesCompleter{responses: []string{
+		`{"Foo":"Foo should say bye."}`,
+		`{"stubTool":""}`,
+		"```go\n// Foo says bye. " + longCommentLine + "\nfunc Foo()\n```",
+	}}
+
+	files := map[string]string{
+		"code.go": dedent(`
+			// Foo says hi.
+			func Foo() {}
+
+			var _ = Foo
+		`),
+		"code_test.go": dedent(`
+			// stubTool helps tests.
+			func stubTool() {}
+		`),
+	}
+
+	gocodetesting.WithMultiCode(t, files, func(pkg *gocode.Package) {
+		changes, err := FindAndFixDocErrors(pkg, nil, FindFixDocErrorsOptions{
+			BaseOptions: BaseOptions{Completer: conv, MaxParallelism: 1},
+		})
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		assert.Equal(t, []string{"Foo"}, changes[0].Change.IDs())
+		assert.Empty(t, conv.responses)
+	})
+}

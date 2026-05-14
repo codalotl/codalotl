@@ -48,7 +48,7 @@ type Package struct {
 	PackageDocSnippets []*PackageDocSnippet
 
 	// FuncSnippets holds documentation snippets describing each function or method declared at the top level inside this package. Entries cover both exported and unexported
-	// functions, and interface/receiver methods.
+	// functions and receiver methods. Interface methods are part of TypeSnippets for interface declarations.
 	FuncSnippets []*FuncSnippet
 
 	// ValueSnippets holds documentation snippets for each const and var declaration (including both blocks and single specs), both exported and unexported.
@@ -556,7 +556,7 @@ func (p *Package) WriteDocumentationTo(w io.Writer) (int64, error) {
 	return totalBytes, nil
 }
 
-// MarshalDocumentation calls WriteDocumentationTo with a new buffer, then returns the buffer.
+// MarshalDocumentation calls WriteDocumentationTo with a new buffer, then returns the buffer's bytes.
 func (p *Package) MarshalDocumentation() ([]byte, error) {
 	var buf bytes.Buffer
 	_, err := p.WriteDocumentationTo(&buf)

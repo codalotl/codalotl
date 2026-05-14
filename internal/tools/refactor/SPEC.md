@@ -45,6 +45,12 @@ Before the refactor is run, remember hash or bytes of original code unit files. 
 - Delegates to `codalotl docs add --important <package>`. Uses `codalotl_cli` command execution and visible stdout streaming.
 - CAS: `cas-ignore`
 
+### docs-fix
+
+- Delegates to `codalotl docs fix <package>` via `codalotl_cli`, with visible stdout streaming.
+- CAS: refactor-level `cas-ignore`; delegated CLI command writes the docs-fix CAS record.
+- Result reports edited files and saved CAS record path.
+
 ### dry
 
 Prompt-style refactor.
@@ -66,7 +72,7 @@ Prompt-style refactors are defined by name, a Markdown prompt file in `data/`, a
 - Complete presentation includes a status detail line, like `Refactor already applied`.
 - Behavior: Append
 - Prompt-style refactors show normal descendant subagent events and do not hide descendant final messages.
-- `docs-add` visible stdout is owned by delegated `codalotl_cli` behavior.
+- `docs-add` and `docs-fix` visible stdout are owned by delegated `codalotl_cli` behavior.
 
 ## Public API
 
