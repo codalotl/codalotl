@@ -129,6 +129,12 @@ func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCom
 func NewAutoApproveAuthorizer(sandboxDir string) Authorizer
 
 // NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback.
+//
+// The returned authorizer preserves fallback's sandbox policy and adds code-unit checks for filesystem operations. Reads are code-unit restricted for read_file,
+// ls, diagnostics, and run_tests. Writes are code-unit restricted for all tools. Shell authorization is delegated directly to fallback because shell command paths
+// are not modeled precisely here.
+//
+// Grants from AddGrantsFromUserMessage can allow read_file and ls to read outside the code unit, subject to fallback's sandbox policy.
 func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authorizer
 
 // AddGrantsFromUserMessage adds grants from userMessage to the authorizer. Grants in userMessage are of the form `@relative/path/to/file`, `@/path/to/file`, or
@@ -146,6 +152,15 @@ func AddGrantsFromUserMessage(authorizer Authorizer, userMessage string) error
 // WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same ShellAllowedCommands, request channel, grants, etc.
 //
 // This can be used to run subagents in other directories outside the sandbox (e.g., investigating a shared library).
+//
+// If authorizer has an active code-unit domain, WithUpdatedSandbox preserves that code-unit wrapper and updates only its fallback authorizer. The returned authorizer
+// still reports IsCodeUnitDomain() == true, CodeUnitDir() remains the original code unit directory, and filesystem read/write checks still enforce the original
+// code-unit restrictions before delegating to the updated fallback. Shell checks continue to delegate to the fallback, so the updated sandbox affects shell cwd
+// policy.
+//
+// To move work outside both the current sandbox and the code unit, first drop the code-unit wrapper:
+//
+//	updated, err := WithUpdatedSandbox(authorizer.WithoutCodeUnit(), otherDir)
 func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, error)
 
 // ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands. All methods are thread-safe.
@@ -256,6 +271,8 @@ type UserRequest struct {
 // or their implementation.
 type Authorizer interface {
 	// SandboxDir returns the normalized sandbox root for this authorizer.
+	//
+	// For a code-unit authorizer, this is the wrapped fallback authorizer's sandbox, not the code unit directory.
 	SandboxDir() string
 
 	// CodeUnitDir returns the code unit base dir if a code unit domain is active, else "".
@@ -264,7 +281,9 @@ type Authorizer interface {
 	// IsCodeUnitDomain reports whether this authorizer enforces a code unit domain.
 	IsCodeUnitDomain() bool
 
-	// WithoutCodeUnit returns an authorizer with code-unit restrictions removed (typically the fallback sandbox authorizer).
+	// WithoutCodeUnit returns an authorizer with code-unit restrictions removed.
+	//
+	// For a code-unit authorizer, this is the wrapped fallback authorizer. For other authorizers, it is the receiver.
 	WithoutCodeUnit() Authorizer
 
 	// IsAuthorizedForRead returns nil if all absPath are authorized to be read. It returns an error otherwise, where the error explains why authorization was denied.

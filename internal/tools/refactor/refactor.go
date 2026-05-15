@@ -17,6 +17,7 @@ import (
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocas"
+	"github.com/codalotl/codalotl/internal/gocas/casclarify"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -78,6 +79,8 @@ type Options struct {
 //go:embed data/*.md
 var promptFS embed.FS
 
+var findInPlayClarifyRecords = casclarify.FindInPlay
+
 // casPolicy selects how a refactor uses content-addressable storage.
 type casPolicy string
 
@@ -90,9 +93,10 @@ const (
 type refactorKind string
 
 const (
-	refactorKindDocsAdd refactorKind = "docs-add"
-	refactorKindDocsFix refactorKind = "docs-fix"
-	refactorKindPrompt  refactorKind = "prompt"
+	refactorKindDocsAdd                refactorKind = "docs-add"
+	refactorKindDocsFix                refactorKind = "docs-fix"
+	refactorKindDocsImproveFromClarify refactorKind = "docs-improve-from-clarify"
+	refactorKindPrompt                 refactorKind = "prompt"
 )
 
 // refactorConfig describes one registered canned refactor.
@@ -118,6 +122,14 @@ var refactorRegistry = []refactorConfig{
 		description: "Fix materially false Go documentation with codalotl docs fix.",
 		kind:        refactorKindDocsFix,
 		casPolicy:   casPolicyIgnore,
+	},
+	{
+		name:        "docs-improve-from-clarify",
+		description: "Improve public Go documentation from clarify_public_api Q/A records.",
+		kind:        refactorKindDocsImproveFromClarify,
+		casPolicy:   casPolicyIgnore,
+		promptPath:  "data/docs-improve-from-clarify.md",
+		agentName:   "package_mode_default_context",
 	},
 	{
 		name:        "dry",
@@ -202,6 +214,8 @@ func (t refactorTool) Run(ctx context.Context, toolCall llmstream.ToolCall) llms
 		result, err = t.runDocsAdd(ctx, resolved, cfg)
 	case refactorKindDocsFix:
 		result, err = t.runDocsFix(ctx, resolved, cfg)
+	case refactorKindDocsImproveFromClarify:
+		result, err = t.runDocsImproveFromClarify(ctx, resolved, cfg)
 	case refactorKindPrompt:
 		result, err = t.runPromptRefactor(ctx, resolved, cfg)
 	default:
@@ -384,6 +398,165 @@ func (t refactorTool) runDocsFix(ctx context.Context, resolved resolvedPackage, 
 	return newRefactorResult(cfg, resolved, status, edited, nil), nil
 }
 
+// runDocsImproveFromClarify runs the clarify-public-api documentation improvement refactor.
+func (t refactorTool) runDocsImproveFromClarify(ctx context.Context, resolved resolvedPackage, cfg refactorConfig) (Result, error) {
+	if cfg.casPolicy != casPolicyIgnore {
+		return Result{}, fmt.Errorf("docs-improve-from-clarify refactor requires CAS policy %q", casPolicyIgnore)
+	}
+
+	db, err := t.newReadCASDB(resolved)
+	if err != nil {
+		return Result{}, err
+	}
+	mod, err := gocode.NewModule(resolved.moduleAbsDir)
+	if err != nil {
+		return Result{}, err
+	}
+	records, err := findInPlayClarifyRecords(db, mod)
+	if err != nil {
+		return Result{}, err
+	}
+	entries, consumedRecords := clarifyEntriesForPackage(records, resolved.importPath)
+	if len(entries) == 0 {
+		return newRefactorResult(cfg, resolved, ResultStatusNoOpportunity, []string{}, nil), nil
+	}
+	if t.options.AgentInvoker == nil {
+		return Result{}, errors.New("docs-improve-from-clarify refactor requires AgentInvoker")
+	}
+
+	tracker, err := newDefaultGoCodeUnitChangeTracker(resolved.absDir)
+	if err != nil {
+		return Result{}, err
+	}
+	prompt, err := docsImproveFromClarifyPrompt(cfg, resolved, entries)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := t.invokePromptAgent(ctx, resolved, cfg, prompt, tracker.beforeUnit); err != nil {
+		return Result{}, err
+	}
+
+	_, edited, err := tracker.changedFiles()
+	if err != nil {
+		return Result{}, err
+	}
+	if err := t.deleteClarifyRecords(db, consumedRecords); err != nil {
+		return Result{}, err
+	}
+
+	status := refactorAppliedStatus(len(edited) == 0)
+	return newRefactorResult(cfg, resolved, status, edited, nil), nil
+}
+
+func clarifyEntriesForPackage(records []casclarify.InPlayRecord, targetPackage string) ([]casclarify.Entry, []casclarify.InPlayRecord) {
+	var entries []casclarify.Entry
+	var consumedRecords []casclarify.InPlayRecord
+	for _, record := range records {
+		recordEntries := clarifyRecordEntriesForPackage(record, targetPackage)
+		if len(recordEntries) == 0 {
+			continue
+		}
+		entries = append(entries, recordEntries...)
+		consumedRecords = append(consumedRecords, record)
+	}
+	return entries, consumedRecords
+}
+
+func clarifyRecordEntriesForPackage(record casclarify.InPlayRecord, targetPackage string) []casclarify.Entry {
+	var entries []casclarify.Entry
+	for _, entry := range record.Metadata.Entries {
+		if clarifyEntryTargetPackage(record, entry) == targetPackage {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func clarifyEntryTargetPackage(record casclarify.InPlayRecord, entry casclarify.Entry) string {
+	target := strings.TrimSpace(entry.TargetPackage)
+	if target == "" {
+		target = strings.TrimSpace(record.TargetPackage)
+	}
+	return target
+}
+
+func docsImproveFromClarifyPrompt(cfg refactorConfig, resolved resolvedPackage, entries []casclarify.Entry) (string, error) {
+	b, err := fs.ReadFile(promptFS, cfg.promptPath)
+	if err != nil {
+		return "", err
+	}
+
+	records := docsImproveFromClarifyRecordsPrompt(entries)
+	prompt := strings.NewReplacer(
+		"{{PACKAGE_REL_DIR}}", resolved.relDir,
+		"{{PACKAGE_IMPORT_PATH}}", resolved.importPath,
+		"{{CLARIFY_QA_RECORDS}}", records,
+	).Replace(string(b))
+	return prompt, nil
+}
+
+func docsImproveFromClarifyRecordsPrompt(entries []casclarify.Entry) string {
+	var b strings.Builder
+	for i, entry := range entries {
+		fmt.Fprintf(&b, "### %d. %s\n\n", i+1, clarifyPromptIdentifier(entry.Identifier))
+		if entry.OriginPackage != "" {
+			fmt.Fprintf(&b, "- Origin package: `%s`\n", entry.OriginPackage)
+		}
+		if target := entry.TargetPackage; target != "" {
+			fmt.Fprintf(&b, "- Target package: `%s`\n", target)
+		}
+		if entry.OriginPackage != "" || entry.TargetPackage != "" {
+			b.WriteString("\n")
+		}
+		writeClarifyPromptBlock(&b, "Question", entry.Question)
+		writeClarifyPromptBlock(&b, "Answer", entry.Answer)
+	}
+	return b.String()
+}
+
+func clarifyPromptIdentifier(identifier string) string {
+	if identifier == "" {
+		return "(unspecified identifier)"
+	}
+	return fmt.Sprintf("`%s`", identifier)
+}
+
+func writeClarifyPromptBlock(b *strings.Builder, label string, text string) {
+	fmt.Fprintf(b, "%s:\n", label)
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	for _, line := range lines {
+		fmt.Fprintf(b, "> %s\n", line)
+	}
+	b.WriteString("\n")
+}
+
+func (t refactorTool) deleteClarifyRecords(db *gocas.DB, records []casclarify.InPlayRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	if err := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameRefactor, db.AbsRoot); err != nil {
+		return err
+	}
+
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if _, ok := seen[record.Path]; ok {
+			continue
+		}
+		seen[record.Path] = struct{}{}
+		if !pathInside(db.AbsRoot, record.Path) {
+			return fmt.Errorf("clarify record %q is outside CAS root %q", record.Path, db.AbsRoot)
+		}
+		if err := record.Delete(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // runPromptRefactor runs a CAS-backed prompt-style refactor for resolved.
 func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPackage, cfg refactorConfig) (Result, error) {
 	if t.options.AgentInvoker == nil {
@@ -518,14 +691,23 @@ func (cfg refactorConfig) casNamespace() gocas.Namespace {
 
 // newCASDB returns an authorized CAS database for resolved's module.
 func (t refactorTool) newCASDB(resolved resolvedPackage) (*gocas.DB, error) {
+	db, err := t.newReadCASDB(resolved)
+	if err != nil {
+		return nil, err
+	}
+	if err := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameRefactor, db.AbsRoot); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+// newReadCASDB returns a read-authorized CAS database for resolved's module.
+func (t refactorTool) newReadCASDB(resolved resolvedPackage) (*gocas.DB, error) {
 	db, err := gocas.NewDBForBaseDir(resolved.moduleAbsDir)
 	if err != nil {
 		return nil, err
 	}
 	if err := t.authorizer.IsAuthorizedForRead(false, "", ToolNameRefactor, db.AbsRoot); err != nil {
-		return nil, err
-	}
-	if err := t.authorizer.IsAuthorizedForWrite(false, "", ToolNameRefactor, db.AbsRoot); err != nil {
 		return nil, err
 	}
 	return db, nil

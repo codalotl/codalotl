@@ -7,14 +7,14 @@ Codalotl treats Go documentation as product surface: concise facts attached to G
 - `codalotl docs add`: adds missing Go doc comments.
 - `codalotl docs fix`: finds existing docs that say materially false things, then fixes them.
 - `codalotl docs reflow`: normalizes doc comment shape - width, blank lines, and EOL-vs-Doc placement. No semantic rewrite intended.
-- `codalotl docs improve-from-clarify`: uses `clarify_public_api` answers to improve public docs.
+- `docs-improve-from-clarify`: uses `clarify_public_api` answers to improve public docs.
     - When `clarify_public_api` is used, CAS entries are written, recording the question and answer.
-    - This command consumes them, updating the docs when it makes sense.
+    - This refactor workflow consumes them, updating the docs when it makes sense.
 
 These tools are available via CLI commands, but also in various tools.
 - `docs add` and `docs fix` are in the `refactor` and `codalotl_cli` tools.
 - `docs reflow` is a lint that is auto-applied on edits.
-- `docs improve-from-clarity` can be called by agents like `orchestrator` via `codalotl_cli`.
+- `docs-improve-from-clarify` can be called by agents like `orchestrator` via the `refactor` tool.
 
 ## Documentation Model
 
