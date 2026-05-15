@@ -128,6 +128,7 @@ var refactorRegistry = []refactorConfig{
 		description: "Improve public Go documentation from clarify_public_api Q/A records.",
 		kind:        refactorKindDocsImproveFromClarify,
 		casPolicy:   casPolicyIgnore,
+		promptPath:  "data/docs-improve-from-clarify.md",
 		agentName:   "package_mode_default_context",
 	},
 	{
@@ -427,7 +428,10 @@ func (t refactorTool) runDocsImproveFromClarify(ctx context.Context, resolved re
 	if err != nil {
 		return Result{}, err
 	}
-	prompt := docsImproveFromClarifyPrompt(resolved, entries)
+	prompt, err := docsImproveFromClarifyPrompt(cfg, resolved, entries)
+	if err != nil {
+		return Result{}, err
+	}
 	if err := t.invokePromptAgent(ctx, resolved, cfg, prompt, tracker.beforeUnit); err != nil {
 		return Result{}, err
 	}
@@ -476,13 +480,23 @@ func clarifyEntryTargetPackage(record casclarify.InPlayRecord, entry casclarify.
 	return target
 }
 
-func docsImproveFromClarifyPrompt(resolved resolvedPackage, entries []casclarify.Entry) string {
+func docsImproveFromClarifyPrompt(cfg refactorConfig, resolved resolvedPackage, entries []casclarify.Entry) (string, error) {
+	b, err := fs.ReadFile(promptFS, cfg.promptPath)
+	if err != nil {
+		return "", err
+	}
+
+	records := docsImproveFromClarifyRecordsPrompt(entries)
+	prompt := strings.NewReplacer(
+		"{{PACKAGE_REL_DIR}}", resolved.relDir,
+		"{{PACKAGE_IMPORT_PATH}}", resolved.importPath,
+		"{{CLARIFY_QA_RECORDS}}", records,
+	).Replace(string(b))
+	return prompt, nil
+}
+
+func docsImproveFromClarifyRecordsPrompt(entries []casclarify.Entry) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Improve public Go documentation for package `%s` (`%s`).\n\n", resolved.relDir, resolved.importPath)
-	b.WriteString("Use the clarify_public_api Q/A records below as signals of public API confusion. Improve documentation wherever a senior Go engineer would naturally put the information: package docs, related type docs, function docs, or another public documentation location in this package. Do not blindly paste answers into the originally questioned identifier's doc comment.\n\n")
-	b.WriteString("Make documentation-only public-doc improvements. Do not change behavior, APIs, tests, generated files, or private implementation comments unless needed to support public documentation.\n\n")
-	b.WriteString("If the existing documentation already resolves these questions naturally, make no edits.\n\n")
-	b.WriteString("## Clarify Q/A records\n\n")
 	for i, entry := range entries {
 		fmt.Fprintf(&b, "### %d. %s\n\n", i+1, clarifyPromptIdentifier(entry.Identifier))
 		if entry.OriginPackage != "" {
