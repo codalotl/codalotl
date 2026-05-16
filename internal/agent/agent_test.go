@@ -1089,34 +1089,13 @@ func TestNewDefaultsToPackageDefaultModel(t *testing.T) {
 	require.Equal(t, llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown), a.model)
 }
 
-func TestContextUsagePercentTracksTurnUsage(t *testing.T) {
+func TestContextUsagePercent(t *testing.T) {
 	model := llmmodel.DefaultModel
 	info := llmmodel.GetModelInfo(model)
-	if info.ContextWindow <= 0 {
-		t.Fatalf("model %q missing context window", model)
-	}
+	require.Positive(t, info.ContextWindow)
 
-	used := info.ContextWindow / 2
-	if used == 0 {
-		t.Fatalf("context window too small for test: %d", info.ContextWindow)
-	}
-
-	usage := llmstream.TokenUsage{TotalInputTokens: used}
-	agent := runContextUsageAgent(t, model, usage)
-
-	got := agent.ContextUsagePercent()
-	want := roundPercentFloat(float64(used), float64(info.ContextWindow))
-	if got != want {
-		t.Fatalf("ContextUsagePercent = %d, want %d", got, want)
-	}
-}
-
-func TestContextUsagePercentIncludesCachedTokens(t *testing.T) {
-	model := llmmodel.DefaultModel
-	info := llmmodel.GetModelInfo(model)
-	if info.ContextWindow <= 0 {
-		t.Fatalf("model %q missing context window", model)
-	}
+	halfUsed := info.ContextWindow / 2
+	require.Positive(t, halfUsed)
 
 	total := info.ContextWindow / 4
 	if total == 0 {
@@ -1127,41 +1106,46 @@ func TestContextUsagePercentIncludesCachedTokens(t *testing.T) {
 		cached = total + 1
 	}
 
-	usage := llmstream.TokenUsage{
-		TotalInputTokens:  total,
-		CachedInputTokens: cached,
+	testCases := []struct {
+		name  string
+		model llmmodel.ModelID
+		usage llmstream.TokenUsage
+		want  int
+	}{
+		{
+			name:  "tracks turn usage",
+			model: model,
+			usage: llmstream.TokenUsage{TotalInputTokens: halfUsed},
+			want:  roundPercentFloat(float64(halfUsed), float64(info.ContextWindow)),
+		},
+		{
+			name:  "includes cached tokens",
+			model: model,
+			usage: llmstream.TokenUsage{
+				TotalInputTokens:  total,
+				CachedInputTokens: cached,
+			},
+			want: roundPercentFloat(float64(total+cached), float64(info.ContextWindow)),
+		},
+		{
+			name:  "clamps to full",
+			model: model,
+			usage: llmstream.TokenUsage{TotalInputTokens: info.ContextWindow * 2},
+			want:  100,
+		},
+		{
+			name:  "unknown model",
+			model: llmmodel.ModelID("unknown-model"),
+			usage: llmstream.TokenUsage{TotalInputTokens: 50_000},
+			want:  0,
+		},
 	}
-	agent := runContextUsageAgent(t, model, usage)
 
-	got := agent.ContextUsagePercent()
-	used := total + cached
-	want := roundPercentFloat(float64(used), float64(info.ContextWindow))
-	if got != want {
-		t.Fatalf("ContextUsagePercent = %d, want %d (total=%d cached=%d)", got, want, total, cached)
-	}
-}
-
-func TestContextUsagePercentClampsToFull(t *testing.T) {
-	model := llmmodel.DefaultModel
-	info := llmmodel.GetModelInfo(model)
-	if info.ContextWindow <= 0 {
-		t.Fatalf("model %q missing context window", model)
-	}
-
-	usage := llmstream.TokenUsage{TotalInputTokens: info.ContextWindow * 2}
-	agent := runContextUsageAgent(t, model, usage)
-
-	if got := agent.ContextUsagePercent(); got != 100 {
-		t.Fatalf("ContextUsagePercent = %d, want 100", got)
-	}
-}
-
-func TestContextUsagePercentUnknownModel(t *testing.T) {
-	usage := llmstream.TokenUsage{TotalInputTokens: 50_000}
-	agent := runContextUsageAgent(t, llmmodel.ModelID("unknown-model"), usage)
-
-	if got := agent.ContextUsagePercent(); got != 0 {
-		t.Fatalf("ContextUsagePercent = %d, want 0 for unknown model", got)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			agent := runContextUsageAgent(t, tc.model, tc.usage)
+			require.Equal(t, tc.want, agent.ContextUsagePercent())
+		})
 	}
 }
 
