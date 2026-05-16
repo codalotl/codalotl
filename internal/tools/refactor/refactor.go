@@ -140,6 +140,15 @@ var refactorRegistry = []refactorConfig{
 		agentName:   "limited_package_mode",
 		generation:  1,
 	},
+	{
+		name:        "test-cleanup",
+		description: "Clean up existing Go tests without adding missing coverage.",
+		kind:        refactorKindPrompt,
+		casPolicy:   casPolicyCodeUnit,
+		promptPath:  "data/test-cleanup.md",
+		agentName:   "limited_package_mode",
+		generation:  1,
+	},
 }
 
 // refactorTool applies registered package-local refactors.
