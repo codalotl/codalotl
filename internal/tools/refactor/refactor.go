@@ -149,6 +149,15 @@ var refactorRegistry = []refactorConfig{
 		agentName:   "limited_package_mode",
 		generation:  1,
 	},
+	{
+		name:        "test-ensure-coverage",
+		description: "Add worthwhile Go test coverage for public APIs and important edge cases.",
+		kind:        refactorKindPrompt,
+		casPolicy:   casPolicyCodeUnit,
+		promptPath:  "data/test-ensure-coverage.md",
+		agentName:   "limited_package_mode",
+		generation:  1,
+	},
 }
 
 // refactorTool applies registered package-local refactors.
