@@ -735,6 +735,28 @@ func TestInstallDefault_OverwritesSameNameOnly(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
+func TestInstallDefault_InstallsValidBuiltInSkills(t *testing.T) {
+	tmp := t.TempDir()
+
+	home := filepath.Join(tmp, "home")
+	require.NoError(t, os.MkdirAll(home, 0o755))
+	t.Setenv("HOME", home)
+
+	require.NoError(t, InstallDefault())
+
+	systemDir := filepath.Join(home, ".codalotl", "skills", ".system")
+	valid, invalid, failed, fnErr := LoadSkills([]string{systemDir})
+	require.NoError(t, fnErr)
+	assert.Empty(t, invalid)
+	assert.Empty(t, failed)
+
+	var names []string
+	for _, skill := range valid {
+		names = append(names, skill.Name)
+	}
+	assert.Subset(t, names, []string{"go-testing", "skill-creator", "spec-md"})
+}
+
 func TestInstallDefault_OverwritesOnlyStaleDefaultSkill(t *testing.T) {
 	tmp := t.TempDir()
 

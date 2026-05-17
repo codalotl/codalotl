@@ -69,6 +69,15 @@ Prompt-style refactor.
 - Agent: `limited_package_mode`.
 - CAS: `cas-code-unit`.
 
+### test-cleanup
+
+Prompt-style refactor.
+
+- Prompt: Applies `$go-testing` hygiene to existing package tests. May remove or coalesce redundant tests, add maintainable helpers, and convert tests to table-driven form when useful.
+- Not intended to add missing test coverage or radically refactor tests.
+- Agent: `limited_package_mode`.
+- CAS: `cas-code-unit`.
+
 ## Prompt-style refactors
 
 Prompt-style refactors are defined by name, a Markdown prompt file in `data/`, agent name, and CAS policy.

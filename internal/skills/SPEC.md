@@ -90,3 +90,16 @@ func SearchPaths(startDir string) []string
 func InstallDefault() error
 ```
 
+## Built-in Skills
+
+Built-in system skills installed by `InstallDefault` include:
+- `spec-md`: guidance for creating, editing, reviewing, and implementing Go packages from `SPEC.md`.
+- `skill-creator`: guidance for creating or updating skills.
+- `go-testing`: guidance for Go test maintainability and hygiene.
+
+`go-testing` includes concise advice for:
+- Table-driven tests and maintainable helpers.
+- Using assertion-based testing when available, including `testify`.
+- Testing package/interface boundaries.
+- Running Go tests and coverage tooling, while preferring dedicated test tools when available.
+
