@@ -51,11 +51,20 @@ The CAS files are found by `## CAS files`, even if outside sandbox dir or in par
 
 Prints CAS record if it exists, otherwise exits with status 1.
 
-### codalotl cas ls-unset <namespace> [--since-days=30] [--churned-percent=20]
+### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
 
 Lists packages (one per line, prefixed with `.`) that have no CAS file for their hash for the namespace. Only lists Go packages (not code units with no .go files). Packages listed are based on the git repo (see `## CAS files`), and are relative to the git repo.
 
-If `--since-days=N` is present, don't list a package if a CAS entry was invalidated N days ago.
+If `--stale-after-days=N` is present, list only packages whose most recent known CAS-covered state became stale at least 30 days ago.
 
-If `--churned-percent=N` is present, don't list a package if a CAS entry has less than N percent churn.
+If `--min-churn-percent=N` is present, list only packages whose current content differs from the most recent CAS-covered state by at least 20%.
 
+If both are passed, the conditions are OR'ed. Note that packages that have never had a CAS entry are always included.
+
+NOTE: there's a lot of nuance and edge cases in the above. These are implementation details.
+
+### codalotl cas prune
+
+Prunes CAS files:
+- prior versions (if a namespace bumps the version).
+- CAS files where older than N days ago where a newer CAS entry also exists.
