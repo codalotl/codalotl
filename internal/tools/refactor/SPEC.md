@@ -78,6 +78,15 @@ Prompt-style refactor.
 - Agent: `limited_package_mode`.
 - CAS: `cas-code-unit`.
 
+### test-ensure-coverage
+
+Prompt-style refactor.
+
+- Prompt: Uses `$go-testing` and Go coverage tooling to add worthwhile tests for public APIs and important edge cases.
+- Supplements `test-cleanup`; does not primarily refactor tests.
+- Agent: `limited_package_mode`.
+- CAS: `cas-code-unit`.
+
 ## Prompt-style refactors
 
 Prompt-style refactors are defined by name, a Markdown prompt file in `data/`, agent name, and CAS policy.
