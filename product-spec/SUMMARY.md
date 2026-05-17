@@ -19,8 +19,9 @@ It is a TUI and CLI.
 
 ### Git
 
-- Requires the git binary, and that the software we're building is version controlled with git.
-    - NOTE: certain parts of the codebase may gracefully degrade without git or a git repo - that's fine.
+- Basically requires the git binary, and that the software we're building is version controlled with git.
+- Certain parts of the codebase may gracefully degrade without git or a git repo - that's fine.
+- But we certainly don't try to equally support git and non-git. Certain operations may simply fail without git and a repo. Behavior without a git repo is undefined unless otherwise stated.
 
 ### Sandbox Dir
 
