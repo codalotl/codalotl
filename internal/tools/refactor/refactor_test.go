@@ -608,7 +608,7 @@ func TestA(t *testing.T) {
 	assert.Contains(t, prompt, "testing helpers")
 	assert.Contains(t, prompt, "table-driven form")
 	assert.Contains(t, prompt, "Do not add missing test coverage")
-	assert.Contains(t, prompt, "Do not radically rewrite tests")
+	assert.Contains(t, prompt, "Do not make marginal edits")
 	assert.Contains(t, prompt, "Target package: `internal/foo`.")
 
 	found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, testCleanupNamespace())
