@@ -143,6 +143,11 @@ func TestCollectFinalAssistantText_ReturnsErrors(t *testing.T) {
 			wantErr: "boom",
 		},
 		{
+			name:    "generic error event without error",
+			in:      []Event{{Type: EventTypeError}},
+			wantErr: "agent failed",
+		},
+		{
 			name:    "generic error when no answer",
 			wantErr: "agent did not return an answer",
 		},
@@ -153,6 +158,56 @@ func TestCollectFinalAssistantText_ReturnsErrors(t *testing.T) {
 			answer, err := collectFinalAssistantText(t, tc.in...)
 			assert.Empty(t, answer)
 			assert.EqualError(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestCollectFinalAssistantText_ReturnsCancellationErrors(t *testing.T) {
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	testCases := []struct {
+		name    string
+		ctx     context.Context
+		in      []Event
+		wantErr error
+	}{
+		{
+			name:    "canceled event propagates event error",
+			ctx:     context.Background(),
+			in:      []Event{{Type: EventTypeCanceled, Error: context.DeadlineExceeded}},
+			wantErr: context.DeadlineExceeded,
+		},
+		{
+			name:    "canceled event uses context error",
+			ctx:     canceledCtx,
+			in:      []Event{{Type: EventTypeCanceled}},
+			wantErr: context.Canceled,
+		},
+		{
+			name:    "canceled event defaults to canceled",
+			ctx:     context.Background(),
+			in:      []Event{{Type: EventTypeCanceled}},
+			wantErr: context.Canceled,
+		},
+		{
+			name:    "closed stream returns context error",
+			ctx:     canceledCtx,
+			wantErr: context.Canceled,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ch := make(chan Event, len(tc.in))
+			for _, event := range tc.in {
+				ch <- event
+			}
+			close(ch)
+
+			answer, err := CollectFinalAssistantText(tc.ctx, ch)
+			require.Empty(t, answer)
+			require.ErrorIs(t, err, tc.wantErr)
 		})
 	}
 }

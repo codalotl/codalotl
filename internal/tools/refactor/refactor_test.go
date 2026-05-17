@@ -42,6 +42,16 @@ func TestInfo(t *testing.T) {
 	assert.Contains(t, info.Description, "test-cleanup")
 	assert.Contains(t, info.Description, "existing Go tests")
 	assert.Contains(t, info.Description, "without adding missing coverage")
+	assert.Contains(t, info.Description, "test-ensure-coverage")
+	assert.Contains(t, info.Description, "public APIs")
+	assert.Contains(t, info.Description, "important edge cases")
+}
+
+func TestToolIdentity(t *testing.T) {
+	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(t.TempDir()), Options{})
+
+	assert.Equal(t, ToolNameRefactor, tool.Name())
+	assert.IsType(t, refactorPresenter{}, tool.Presenter())
 }
 
 func TestDocsAddDelegatesToCodalotlCLI(t *testing.T) {
@@ -457,6 +467,60 @@ func TestDryDetectsEditedFilesAndWritesCAS(t *testing.T) {
 	assert.Equal(t, []string{"helper.go"}, record.Edited)
 }
 
+func TestPromptRefactorReportsAgentTerminalFailures(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []agent.Event
+		want   string
+	}{
+		{
+			name: "error event detail",
+			events: []agent.Event{
+				{Type: agent.EventTypeError, Error: errors.New("agent exploded")},
+			},
+			want: "agent exploded",
+		},
+		{
+			name: "error event fallback",
+			events: []agent.Event{
+				{Type: agent.EventTypeError},
+			},
+			want: "prompt refactor agent failed",
+		},
+		{
+			name: "canceled event fallback",
+			events: []agent.Event{
+				{Type: agent.EventTypeCanceled},
+			},
+			want: context.Canceled.Error(),
+		},
+		{
+			name:   "closed without terminal event",
+			events: []agent.Event{},
+			want:   "prompt refactor agent ended without success",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			moduleDir, _ := newTestModule(t)
+			invoker := &fakeAgentInvoker{
+				useEvents: true,
+				events:    tt.events,
+			}
+			tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+				AgentInvoker: invoker,
+			})
+
+			result := runRefactorTool(t, tool, Params{Name: "dry", Package: "internal/foo"})
+
+			assert.True(t, result.toolResult.IsError)
+			assert.Contains(t, result.toolResult.Result, tt.want)
+			require.Len(t, invoker.calls, 1)
+		})
+	}
+}
+
 func TestDryUsesSelectedEnvCASRoot(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
 	selectedRoot := filepath.Join(moduleDir, "custom-cas")
@@ -571,99 +635,141 @@ func TestDryCASHitSkipsAgent(t *testing.T) {
 	assert.Empty(t, invoker.calls)
 }
 
-func TestTestCleanupNoOpportunityInvokesAgentWithPromptAndWritesCAS(t *testing.T) {
-	moduleDir, pkgDir := newTestModule(t)
-	writeFile(t, filepath.Join(pkgDir, "foo_test.go"), `package foo
-
-import "testing"
-
-func TestA(t *testing.T) {
-	if A() != 1 {
-		t.Fatal("bad")
-	}
-}
-`)
-	invoker := &fakeAgentInvoker{}
-	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
-		AgentInvoker: invoker,
-	})
-
-	result := runRefactorTool(t, tool, Params{Name: "test-cleanup", Package: "internal/foo"})
-
-	require.False(t, result.toolResult.IsError)
-	assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
-	assert.Equal(t, "internal/foo", result.result.Package)
-	require.NotNil(t, result.result.EditedFiles)
-	assert.Empty(t, result.result.EditedFiles)
-	require.NotNil(t, result.result.SavedCASRecord)
-	assert.Contains(t, *result.result.SavedCASRecord, ".codalotl/cas/refactor-test-cleanup-1/")
-	assert.FileExists(t, filepath.Join(moduleDir, filepath.FromSlash(*result.result.SavedCASRecord)))
-	require.Len(t, invoker.calls, 1)
-	assert.Equal(t, "limited_package_mode", invoker.calls[0].agentName)
-	assert.Equal(t, pkgDir, invoker.calls[0].req.ToolOptions.GoPkgAbsDir)
-	prompt := invoker.calls[0].req.Messages[0]
-	assert.Contains(t, prompt, "Use the `$go-testing` skill")
-	assert.Contains(t, prompt, "existing Go tests")
-	assert.Contains(t, prompt, "Remove or coalesce redundant tests")
-	assert.Contains(t, prompt, "testing helpers")
-	assert.Contains(t, prompt, "table-driven form")
-	assert.Contains(t, prompt, "Do not add missing test coverage")
-	assert.Contains(t, prompt, "Do not make marginal edits")
-	assert.Contains(t, prompt, "Target package: `internal/foo`.")
-
-	found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, testCleanupNamespace())
-	assert.True(t, found)
-	assert.True(t, record.Applied)
-	assert.Empty(t, record.Edited)
-
-	found, metadata := retrieveRefactorCASMetadata(t, moduleDir, pkgDir, testCleanupNamespace())
-	assert.True(t, found)
-	assert.Contains(t, metadata, "edited")
-	assert.JSONEq(t, `[]`, string(metadata["edited"]))
-}
-
-func TestTestCleanupDetectsEditedTestFilesAndWritesCAS(t *testing.T) {
-	moduleDir, pkgDir := newTestModule(t)
-	writeFile(t, filepath.Join(pkgDir, "foo_test.go"), `package foo
-
-import "testing"
-
-func TestA(t *testing.T) {
-	if A() != 1 {
-		t.Fatal("bad")
-	}
-}
-`)
-	invoker := &fakeAgentInvoker{
-		onInvoke: func(context.Context, string, toolsetinterface.InvokeRequest) error {
-			writeFile(t, filepath.Join(pkgDir, "foo_test.go"), `package foo
-
-import "testing"
-
-func TestA(t *testing.T) {
-	got := A()
-	if got != 1 {
-		t.Fatalf("A() = %d", got)
-	}
-}
-`)
-			return nil
+func TestPromptRefactorNoOpportunityInvokesAgentWithPromptAndWritesCAS(t *testing.T) {
+	tests := []struct {
+		name           string
+		refactorName   string
+		namespace      gocas.Namespace
+		setup          func(*testing.T, string)
+		promptContains []string
+	}{
+		{
+			name:         "test cleanup",
+			refactorName: "test-cleanup",
+			namespace:    testCleanupNamespace(),
+			setup:        writeUncleanFooTest,
+			promptContains: []string{
+				"Use the `$go-testing` skill",
+				"existing Go tests",
+				"Remove or coalesce redundant tests",
+				"testing helpers",
+				"table-driven form",
+				"Do not add missing test coverage",
+				"Do not make marginal edits",
+				"Target package: `internal/foo`.",
+			},
+		},
+		{
+			name:         "test ensure coverage",
+			refactorName: "test-ensure-coverage",
+			namespace:    testEnsureCoverageNamespace(),
+			promptContains: []string{
+				"Use the `$go-testing` skill",
+				"go test -coverprofile",
+				"go tool cover -func",
+				"Ensure the public API is tested",
+				"important edge cases",
+				"Do not primarily reorganize",
+				"Do not edit non-test code",
+				"Target package: `internal/foo`.",
+			},
 		},
 	}
-	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
-		AgentInvoker: invoker,
-	})
 
-	result := runRefactorTool(t, tool, Params{Name: "test-cleanup", Package: "internal/foo"})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			moduleDir, pkgDir := newTestModule(t)
+			if tt.setup != nil {
+				tt.setup(t, pkgDir)
+			}
+			invoker := &fakeAgentInvoker{}
+			tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+				AgentInvoker: invoker,
+			})
 
-	require.False(t, result.toolResult.IsError)
-	assert.Equal(t, ResultStatusApplied, result.result.Status)
-	assert.Equal(t, []string{"foo_test.go"}, result.result.EditedFiles)
-	require.NotNil(t, result.result.SavedCASRecord)
-	assert.Contains(t, *result.result.SavedCASRecord, ".codalotl/cas/refactor-test-cleanup-1/")
-	found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, testCleanupNamespace())
-	assert.True(t, found)
-	assert.Equal(t, []string{"foo_test.go"}, record.Edited)
+			result := runRefactorTool(t, tool, Params{Name: tt.refactorName, Package: "internal/foo"})
+
+			require.False(t, result.toolResult.IsError)
+			assert.Equal(t, ResultStatusNoOpportunity, result.result.Status)
+			assert.Equal(t, "internal/foo", result.result.Package)
+			require.NotNil(t, result.result.EditedFiles)
+			assert.Empty(t, result.result.EditedFiles)
+			require.NotNil(t, result.result.SavedCASRecord)
+			assert.Contains(t, *result.result.SavedCASRecord, fmt.Sprintf(".codalotl/cas/refactor-%s-1/", tt.refactorName))
+			assert.FileExists(t, filepath.Join(moduleDir, filepath.FromSlash(*result.result.SavedCASRecord)))
+			require.Len(t, invoker.calls, 1)
+			assert.Equal(t, "limited_package_mode", invoker.calls[0].agentName)
+			assert.Equal(t, pkgDir, invoker.calls[0].req.ToolOptions.GoPkgAbsDir)
+			assertContainsAll(t, invoker.calls[0].req.Messages[0], tt.promptContains)
+
+			found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, tt.namespace)
+			assert.True(t, found)
+			assert.True(t, record.Applied)
+			assert.Empty(t, record.Edited)
+
+			found, metadata := retrieveRefactorCASMetadata(t, moduleDir, pkgDir, tt.namespace)
+			assert.True(t, found)
+			assert.Contains(t, metadata, "edited")
+			assert.JSONEq(t, `[]`, string(metadata["edited"]))
+		})
+	}
+}
+
+func TestPromptRefactorDetectsEditedFilesAndWritesCAS(t *testing.T) {
+	tests := []struct {
+		name         string
+		refactorName string
+		namespace    gocas.Namespace
+		setup        func(*testing.T, string)
+		edit         func(*testing.T, string)
+	}{
+		{
+			name:         "test cleanup",
+			refactorName: "test-cleanup",
+			namespace:    testCleanupNamespace(),
+			setup:        writeUncleanFooTest,
+			edit: func(t *testing.T, pkgDir string) {
+				writeFile(t, filepath.Join(pkgDir, "foo_test.go"), cleanFooTestContent)
+			},
+		},
+		{
+			name:         "test ensure coverage",
+			refactorName: "test-ensure-coverage",
+			namespace:    testEnsureCoverageNamespace(),
+			edit: func(t *testing.T, pkgDir string) {
+				writeFile(t, filepath.Join(pkgDir, "foo_test.go"), coverageFooTestContent)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			moduleDir, pkgDir := newTestModule(t)
+			if tt.setup != nil {
+				tt.setup(t, pkgDir)
+			}
+			invoker := &fakeAgentInvoker{
+				onInvoke: func(context.Context, string, toolsetinterface.InvokeRequest) error {
+					tt.edit(t, pkgDir)
+					return nil
+				},
+			}
+			tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
+				AgentInvoker: invoker,
+			})
+
+			result := runRefactorTool(t, tool, Params{Name: tt.refactorName, Package: "internal/foo"})
+
+			require.False(t, result.toolResult.IsError)
+			assert.Equal(t, ResultStatusApplied, result.result.Status)
+			assert.Equal(t, []string{"foo_test.go"}, result.result.EditedFiles)
+			require.NotNil(t, result.result.SavedCASRecord)
+			assert.Contains(t, *result.result.SavedCASRecord, fmt.Sprintf(".codalotl/cas/refactor-%s-1/", tt.refactorName))
+			found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, tt.namespace)
+			assert.True(t, found)
+			assert.Equal(t, []string{"foo_test.go"}, record.Edited)
+		})
+	}
 }
 
 func TestPresenterUsesSemanticSummaryRoles(t *testing.T) {
@@ -793,6 +899,57 @@ func TestUnknownNameIsError(t *testing.T) {
 	assert.Contains(t, result.toolResult.Result, "unknown refactor name")
 }
 
+func TestRunRejectsInvalidParams(t *testing.T) {
+	tool := NewRefactorTool(nil, Options{})
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "invalid JSON",
+			input: `{"name":`,
+			want:  "unexpected EOF",
+		},
+		{
+			name:  "unknown field",
+			input: `{"name":"dry","package":"internal/foo","extra":true}`,
+			want:  "unknown field",
+		},
+		{
+			name:  "multiple JSON values",
+			input: `{"name":"dry","package":"internal/foo"} {}`,
+			want:  "multiple JSON values",
+		},
+		{
+			name:  "missing name",
+			input: `{"package":"internal/foo"}`,
+			want:  `missing required field "name"`,
+		},
+		{
+			name:  "missing package",
+			input: `{"name":"dry"}`,
+			want:  `missing required field "package"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tool.Run(context.Background(), llmstream.ToolCall{
+				CallID: "call_1",
+				Name:   ToolNameRefactor,
+				Type:   "function_call",
+				Input:  tt.input,
+			})
+
+			assert.True(t, result.IsError)
+			assert.Equal(t, ToolNameRefactor, result.Name)
+			assert.Equal(t, "call_1", result.CallID)
+			assert.Contains(t, result.Result, tt.want)
+		})
+	}
+}
+
 type runResult struct {
 	toolResult llmstream.ToolResult
 	result     Result
@@ -831,6 +988,14 @@ func assertJSONOmitsField(t *testing.T, payload string, field string) {
 	require.NoError(t, json.Unmarshal([]byte(payload), &fields))
 	_, ok := fields[field]
 	assert.False(t, ok)
+}
+
+func assertContainsAll(t *testing.T, s string, substrings []string) {
+	t.Helper()
+
+	for _, substring := range substrings {
+		assert.Contains(t, s, substring)
+	}
 }
 
 type docsAddCapture struct {
@@ -952,8 +1117,10 @@ func newTestClarifyRecordFile(t *testing.T, moduleDir string) string {
 }
 
 type fakeAgentInvoker struct {
-	onInvoke func(context.Context, string, toolsetinterface.InvokeRequest) error
-	calls    []fakeInvokeCall
+	onInvoke  func(context.Context, string, toolsetinterface.InvokeRequest) error
+	useEvents bool
+	events    []agent.Event
+	calls     []fakeInvokeCall
 }
 
 type fakeInvokeCall struct {
@@ -971,6 +1138,14 @@ func (f *fakeAgentInvoker) Invoke(ctx context.Context, agentName string, req too
 		if err := f.onInvoke(ctx, agentName, req); err != nil {
 			return nil, err
 		}
+	}
+	if f.useEvents {
+		ch := make(chan agent.Event, len(f.events))
+		for _, event := range f.events {
+			ch <- event
+		}
+		close(ch)
+		return ch, nil
 	}
 	ch := make(chan agent.Event, 1)
 	ch <- agent.Event{Type: agent.EventTypeDoneSuccess}
@@ -1031,6 +1206,48 @@ func writeFile(t *testing.T, path string, content string) {
 
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+const uncleanFooTestContent = `package foo
+
+import "testing"
+
+func TestA(t *testing.T) {
+	if A() != 1 {
+		t.Fatal("bad")
+	}
+}
+`
+
+const cleanFooTestContent = `package foo
+
+import "testing"
+
+func TestA(t *testing.T) {
+	got := A()
+	if got != 1 {
+		t.Fatalf("A() = %d", got)
+	}
+}
+`
+
+const coverageFooTestContent = `package foo
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestA(t *testing.T) {
+	assert.Equal(t, 1, A())
+}
+`
+
+func writeUncleanFooTest(t *testing.T, pkgDir string) {
+	t.Helper()
+
+	writeFile(t, filepath.Join(pkgDir, "foo_test.go"), uncleanFooTestContent)
 }
 
 func unsetEnv(t *testing.T, key string) {
@@ -1097,4 +1314,8 @@ func dryNamespace() gocas.Namespace {
 
 func testCleanupNamespace() gocas.Namespace {
 	return refactorConfig{name: "test-cleanup", generation: 1}.casNamespace()
+}
+
+func testEnsureCoverageNamespace() gocas.Namespace {
+	return refactorConfig{name: "test-ensure-coverage", generation: 1}.casNamespace()
 }

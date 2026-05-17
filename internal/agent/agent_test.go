@@ -1089,6 +1089,23 @@ func TestNewDefaultsToPackageDefaultModel(t *testing.T) {
 	require.Equal(t, llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown), a.model)
 }
 
+func TestNewAgentCreatorConstructsRootAgent(t *testing.T) {
+	systemPrompt := "You are helpful."
+	model := llmmodel.ModelID("creator-model")
+	conv := newScriptedConversation(systemPrompt)
+	overrideConversation(t, conv)
+
+	creator := NewAgentCreator()
+	a, err := creator.New(systemPrompt, nil, NewOptions{Model: model})
+	require.NoError(t, err)
+
+	require.Len(t, a.SessionID(), 32)
+	require.Equal(t, a.SessionID(), a.agentID)
+	require.Nil(t, a.parent)
+	require.Equal(t, model, a.model)
+	require.Equal(t, StatusIdle, a.Status())
+}
+
 func TestContextUsagePercent(t *testing.T) {
 	model := llmmodel.DefaultModel
 	info := llmmodel.GetModelInfo(model)
@@ -1147,6 +1164,104 @@ func TestContextUsagePercent(t *testing.T) {
 			require.Equal(t, tc.want, agent.ContextUsagePercent())
 		})
 	}
+}
+
+func TestSendUserMessageTerminalFinishReasons(t *testing.T) {
+	testCases := []struct {
+		name     string
+		reason   llmstream.FinishReason
+		wantType EventType
+		wantErr  string
+	}{
+		{
+			name:     "provider canceled",
+			reason:   llmstream.FinishReasonCanceled,
+			wantType: EventTypeCanceled,
+			wantErr:  "agent: turn canceled by provider",
+		},
+		{
+			name:     "provider error",
+			reason:   llmstream.FinishReasonError,
+			wantType: EventTypeError,
+			wantErr:  "agent: provider reported finish reason error",
+		},
+		{
+			name:     "permission denied",
+			reason:   llmstream.FinishReasonPermissionDenied,
+			wantType: EventTypeError,
+			wantErr:  "agent: provider reported finish reason permission_denied",
+		},
+		{
+			name:     "max tokens",
+			reason:   llmstream.FinishReasonMaxTokens,
+			wantType: EventTypeError,
+			wantErr:  "agent: turn stopped after hitting token limit",
+		},
+		{
+			name:     "unsupported",
+			reason:   llmstream.FinishReason("paused"),
+			wantType: EventTypeError,
+			wantErr:  "agent: unsupported finish reason paused",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			systemPrompt := "You are helpful."
+			turn := llmstream.Turn{
+				Role:         llmstream.RoleAssistant,
+				FinishReason: tc.reason,
+			}
+			conv := newScriptedConversation(systemPrompt, &sendScript{
+				events: []llmstream.Event{
+					{Type: llmstream.EventTypeCompletedSuccess, Turn: &turn},
+				},
+			})
+			overrideConversation(t, conv)
+
+			a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+			require.NoError(t, err)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			events := collectEvents(a.SendUserMessage(ctx, "Say hello"))
+			require.Len(t, events, 2)
+			require.Equal(t, EventTypeAssistantTurnComplete, events[0].Type)
+
+			terminal := events[len(events)-1]
+			require.Equal(t, tc.wantType, terminal.Type)
+			require.EqualError(t, terminal.Error, tc.wantErr)
+			require.Equal(t, StatusIdle, a.Status())
+		})
+	}
+}
+
+func TestSendUserMessageToolUseWithoutToolCallsReturnsError(t *testing.T) {
+	systemPrompt := "You are helpful."
+	turn := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	conv := newScriptedConversation(systemPrompt, &sendScript{
+		events: []llmstream.Event{
+			{Type: llmstream.EventTypeCompletedSuccess, Turn: &turn},
+		},
+	})
+	overrideConversation(t, conv)
+
+	a, err := New(systemPrompt, nil, NewOptions{Model: llmmodel.ModelID("model")})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := collectEvents(a.SendUserMessage(ctx, "Use a tool"))
+	require.Len(t, events, 2)
+	require.Equal(t, EventTypeAssistantTurnComplete, events[0].Type)
+	require.Equal(t, EventTypeError, events[1].Type)
+	require.ErrorIs(t, events[1].Error, errNoToolCallsPresent)
+	require.Equal(t, StatusIdle, a.Status())
 }
 
 func TestConcurrentSendRejected(t *testing.T) {
@@ -1669,6 +1784,22 @@ func TestSubAgentMirrorsEventsAndUsage(t *testing.T) {
 	if len(a.toolList) != 1 || a.toolList[0] == nil {
 		t.Fatalf("parent tool list unexpectedly mutated: %+v", a.toolList)
 	}
+}
+
+func TestToolContextHelpersWithoutToolInvocation(t *testing.T) {
+	var nilCtx context.Context
+
+	require.Equal(t, -1, SubAgentDepth(nilCtx))
+	require.Equal(t, -1, SubAgentDepth(context.Background()))
+	require.Nil(t, AgentToolsFromContext(nilCtx))
+	require.Nil(t, AgentToolsFromContext(context.Background()))
+
+	require.PanicsWithValue(t, "agent: SubAgentCreatorFromContext called with nil context", func() {
+		SubAgentCreatorFromContext(nilCtx)
+	})
+	require.PanicsWithValue(t, "agent: SubAgentCreator not available in context", func() {
+		SubAgentCreatorFromContext(context.Background())
+	})
 }
 
 func TestSubAgentStartEventOnlyOncePerSubagent(t *testing.T) {
@@ -2485,6 +2616,14 @@ func sumTokenUsage(usages ...llmstream.TokenUsage) llmstream.TokenUsage {
 		total.TotalOutputTokens += usage.TotalOutputTokens
 	}
 	return total
+}
+
+func collectEvents(events <-chan Event) []Event {
+	var collected []Event
+	for ev := range events {
+		collected = append(collected, ev)
+	}
+	return collected
 }
 
 type scriptedConversation struct {
