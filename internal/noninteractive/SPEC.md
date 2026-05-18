@@ -156,9 +156,15 @@ type Options struct {
 	// PackagePath is ignored for orchestrate mode.
 	SlashCommand string
 
-	ModelID   llmmodel.ModelID // ModelID selects the LLM model for this run. If empty, uses the existing default model behavior.
-	LintSteps []lints.Step     // LintSteps controls which lint steps the agent runs.
-	AutoYes   bool             // Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
+	// ModelID selects the LLM model for this run. If empty or whitespace, uses the existing default model behavior. Non-empty values are trimmed and used as provided;
+	// noninteractive does not validate the model ID before starting the session.
+	ModelID llmmodel.ModelID
+
+	// LintSteps controls which lint steps the agent runs.
+	LintSteps []lints.Step
+
+	// Answers 'Yes' to any permission check. If false, we answer 'No' to any permission check. The end-user is never asked.
+	AutoYes bool
 
 	// NoFormatting=true means any prints do NOT use colors or other ANSI control codes to format. Only outputs plain text. Otherwise, we default to the color scheme
 	// of the terminal and print colorized/formatted text.

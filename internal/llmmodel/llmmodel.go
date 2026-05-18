@@ -53,6 +53,8 @@ type ModelOverrides struct {
 type ProviderID string
 
 // DefaultModel returns the default model ID for pid.
+//
+// It returns ModelIDUnknown for an unknown provider ID. Use ModelIDOrFallback when callers need a best-effort fallback to any known model.
 func (pid ProviderID) DefaultModel() ModelID {
 	modelsMu.RLock()
 	defer modelsMu.RUnlock()
