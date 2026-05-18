@@ -45,6 +45,14 @@ Each type of metadata has its own namespace. Ex: `specconforms`; `docs-fix`. Sim
 
 Each namespace "knows" its associated current version and a hash mode.
 
+## Determining Churn and Age
+
+To determine churn %: we need to find a commit so we can diff a package against another known version. We know we have the right commit if the package hash at that commit matches the hash of the CAS record. If we cannot find a commit, we cannot calculate churn.
+
+The most likely way to find the commit is the commit that added the CAS record. Metadata within a CAS record may also be used (we store some git data there).
+
+Age is based on the time of the commit that added the CAS entry, falling back to the mtime of the file.
+
 ## CLI
 
 The CLI offers commands to view and manipulate CAS records. Namespace parameters from the CLI refer to the non-versioned namespace.
@@ -61,7 +69,7 @@ Lists packages (one per line, prefixed with `.`) that have no CAS file for their
 
 If `--stale-after-days=N` is present, list only packages whose most recent known CAS-covered state became stale at least N days ago.
 
-If `--min-churn-percent=N` is present, list only packages whose current content differs from the most recent CAS-covered state by at least N%.
+If `--min-churn-percent=N` is present, list only packages whose current content differs from the most recent CAS-covered state by at least N%. Packages without churn metrics are not included (e.g., we couldn't determine a corresponding git commit).
 
 If both are passed, the conditions are OR'ed. Note that packages that have never had a CAS entry are always included. If a Go package has no CAS record at all, for any hash, it is always considered stale and is always returned.
 
