@@ -63,6 +63,27 @@ replace example.com/dep => ./depmod
 	requireSameDir(t, filepath.Join(tmp, "example.com", "dep", "pkg"), pkg.AbsolutePath())
 }
 
+func TestLoadPackageArg_ResolvesImportPathOutsideModule(t *testing.T) {
+	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-pkgload-")
+
+	withLocal := filepath.Join(tmp, "with-local")
+	writePkgLoadPackage(t, filepath.Join(withLocal, "fmt"), "fmt")
+	chdirForTest(t, withLocal)
+
+	pkg, _, err := loadPackageArg("fmt")
+	require.NoError(t, err)
+	require.Equal(t, "fmt", pkg.ImportPath)
+	requireNotSameDir(t, filepath.Join(withLocal, "fmt"), pkg.AbsolutePath())
+
+	withoutLocal := filepath.Join(tmp, "without-local")
+	require.NoError(t, os.MkdirAll(withoutLocal, 0755))
+	chdirForTest(t, withoutLocal)
+
+	pkg, _, err = loadPackageArg("fmt")
+	require.NoError(t, err)
+	require.Equal(t, "fmt", pkg.ImportPath)
+}
+
 func TestLoadPackageArg_AcceptsExplicitAndFallbackDirs(t *testing.T) {
 	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-pkgload-")
 	writePkgLoadModule(t, tmp, "module example.com/forms\n\ngo 1.22\n")
@@ -115,6 +136,33 @@ func TestLoadPackageArg_FallbackDirMayBeInModuleBelowCWD(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "example.com/proj/internal/cli", pkg.ImportPath)
 			requireSameDir(t, pkgDir, pkg.AbsolutePath())
+		})
+	}
+}
+
+func TestLoadPackageArg_ReturnsMalformedModuleErrorsForDirs(t *testing.T) {
+	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-pkgload-")
+	badMod := filepath.Join(tmp, "badmod")
+	pkgDir := filepath.Join(badMod, "pkg")
+	writePkgLoadModule(t, badMod, "not a go.mod\n")
+	writePkgLoadPackage(t, pkgDir, "pkg")
+	chdirForTest(t, tmp)
+
+	tests := []string{
+		filepath.Join("badmod", "pkg"),
+		"." + string(filepath.Separator) + filepath.Join("badmod", "pkg"),
+		pkgDir,
+	}
+	for _, arg := range tests {
+		t.Run(arg, func(t *testing.T) {
+			pkg, mod, err := loadPackageArg(arg)
+			require.Error(t, err)
+			require.Nil(t, pkg)
+			require.Nil(t, mod)
+			require.Contains(t, err.Error(), "module")
+
+			var usageErr qcli.UsageError
+			require.NotErrorAs(t, err, &usageErr)
 		})
 	}
 }

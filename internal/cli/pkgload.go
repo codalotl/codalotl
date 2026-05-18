@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -32,6 +34,12 @@ func loadPackageArg(arg string) (*gocode.Package, *gocode.Module, error) {
 	var importErr error
 	if mod, err := gocode.NewModule(cwd); err == nil {
 		pkg, pkgMod, err := loadPackageImportArg(mod, arg)
+		if err == nil {
+			return pkg, pkgMod, nil
+		}
+		importErr = err
+	} else if isNoEnclosingGoModError(err) {
+		pkg, pkgMod, err := loadPackageImportWithoutModule(arg)
 		if err == nil {
 			return pkg, pkgMod, nil
 		}
@@ -107,6 +115,9 @@ func loadPackageDirArg(pathArg string) (*gocode.Package, *gocode.Module, error) 
 func loadPackageDir(absDir string) (*gocode.Package, *gocode.Module, error) {
 	mod, err := gocode.NewModule(absDir)
 	if err != nil {
+		if !isNoEnclosingGoModError(err) {
+			return nil, nil, err
+		}
 		return readPackageWithoutModule(absDir, filepath.Base(absDir))
 	}
 
@@ -123,6 +134,72 @@ func loadPackageDir(absDir string) (*gocode.Package, *gocode.Module, error) {
 		return nil, nil, err
 	}
 	return pkg, mod, nil
+}
+
+type goListPackageInfo struct {
+	Dir        string `json:"Dir"`
+	ImportPath string `json:"ImportPath"`
+	Module     *struct {
+		Dir string `json:"Dir"`
+	} `json:"Module"`
+}
+
+func loadPackageImportWithoutModule(arg string) (*gocode.Package, *gocode.Module, error) {
+	importPath := strings.TrimRight(strings.TrimSpace(arg), "/")
+	if importPath == "" {
+		return nil, nil, gocode.ErrResolveNotFound
+	}
+
+	cmd := exec.Command("go", "list", "-json", importPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, nil, goListImportError(importPath, out, err)
+	}
+
+	var info goListPackageInfo
+	if err := json.Unmarshal(out, &info); err != nil {
+		return nil, nil, fmt.Errorf("parse go list output for %q: %w", importPath, err)
+	}
+	if strings.TrimSpace(info.Dir) == "" {
+		return nil, nil, fmt.Errorf("go list %q returned no package directory", importPath)
+	}
+	if strings.TrimSpace(info.ImportPath) == "" {
+		info.ImportPath = importPath
+	}
+
+	if info.Module == nil || strings.TrimSpace(info.Module.Dir) == "" {
+		return readPackageWithoutModule(info.Dir, info.ImportPath)
+	}
+
+	mod, err := gocode.NewModule(info.Module.Dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	rel, err := filepath.Rel(mod.AbsolutePath, info.Dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	rel = filepath.Clean(rel)
+	if rel == "." {
+		rel = ""
+	}
+	pkg, err := mod.LoadPackageByRelativeDir(rel)
+	if err != nil {
+		return nil, nil, err
+	}
+	pkg.ImportPath = info.ImportPath
+	return pkg, mod, nil
+}
+
+func goListImportError(importPath string, out []byte, err error) error {
+	msg := strings.TrimSpace(string(out))
+	if isPackageImportNotFound(errors.New(msg)) {
+		return fmt.Errorf("%w: %s", gocode.ErrResolveNotFound, msg)
+	}
+	if msg == "" {
+		return fmt.Errorf("go list %q: %w", importPath, err)
+	}
+	return fmt.Errorf("go list %q: %w: %s", importPath, err, msg)
 }
 
 func loadPackageImportArg(resolver *gocode.Module, arg string) (*gocode.Package, *gocode.Module, error) {
@@ -170,6 +247,10 @@ func readPackageWithoutModule(packageAbsDir string, importPath string) (*gocode.
 	}
 	pkg.ImportPath = importPath
 	return pkg, mod, nil
+}
+
+func isNoEnclosingGoModError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no go.mod file found in parent directories")
 }
 
 func isPackageImportNotFound(err error) bool {
