@@ -14,8 +14,12 @@ import (
 	qcas "github.com/codalotl/codalotl/internal/q/cas"
 )
 
-// Namespace stores clarify_public_api answers.
-const Namespace gocas.Namespace = "clarify-public-api-1"
+// NamespaceSpec stores clarify_public_api answers.
+var NamespaceSpec = gocas.NamespaceSpec{
+	Name:     "clarify-public-api",
+	Version:  1,
+	HashMode: gocas.HashModePackage,
+}
 
 // Entry is one clarification captured for a target package.
 type Entry struct {
@@ -46,14 +50,14 @@ func Append(db *gocas.DB, pkg *gocode.Package, entry Entry) error {
 	}
 
 	metadata.Entries = append(metadata.Entries, entry)
-	return db.StoreOnPackage(pkg, Namespace, metadata)
+	return db.Store(pkg, NamespaceSpec, metadata)
 }
 
 // Retrieve loads clarify metadata for pkg.
 //
 // found reports whether a record existed.
 func Retrieve(db *gocas.DB, pkg *gocode.Package) (found bool, metadata Metadata, err error) {
-	found, _, err = db.RetrieveOnPackage(pkg, Namespace, &metadata)
+	found, _, err = db.Retrieve(pkg, NamespaceSpec, &metadata)
 	if err != nil {
 		return false, Metadata{}, err
 	}
@@ -63,7 +67,7 @@ func Retrieve(db *gocas.DB, pkg *gocode.Package) (found bool, metadata Metadata,
 
 // FindInPlay finds clarify records relevant to the current git workstream.
 func FindInPlay(db *gocas.DB, mod *gocode.Module) ([]InPlayRecord, error) {
-	namespaceDir := filepath.Join(db.DB.AbsRoot, string(Namespace))
+	namespaceDir := filepath.Join(db.DB.AbsRoot, string(NamespaceSpec.Namespace()))
 	gitState, ok := readGitState(mod.AbsolutePath, namespaceDir)
 	if !ok {
 		return nil, nil
@@ -313,7 +317,7 @@ func (h hashString) Hash() string {
 
 func readRecord(db *gocas.DB, hash string) (Metadata, bool, error) {
 	var metadata Metadata
-	found, _, err := db.DB.Retrieve(hashString(hash), string(Namespace), &metadata)
+	found, _, err := db.DB.Retrieve(hashString(hash), string(NamespaceSpec.Namespace()), &metadata)
 	if err != nil {
 		return Metadata{}, false, err
 	}

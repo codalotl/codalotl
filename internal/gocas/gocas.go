@@ -28,12 +28,32 @@ const EnvCASDB = "CODALOTL_CAS_DB"
 //   - Bump it when the stored JSON schema or semantics change, to avoid decoding old data into a new type.
 type Namespace string
 
+// HashMode selects which files participate in a Go CAS hash.
+type HashMode string
+
+const (
+	HashModePackage  HashMode = "package"   // HashModePackage hashes package Go files and package-local SPEC.md.
+	HashModeCodeUnit HashMode = "code-unit" // HashModeCodeUnit hashes the package's default Go code unit.
+)
+
+// NamespaceSpec describes a CAS namespace.
+type NamespaceSpec struct {
+	Name     string
+	Version  int
+	HashMode HashMode
+}
+
+// Namespace returns the versioned filesystem namespace, such as "specconforms-1".
+func (spec NamespaceSpec) Namespace() Namespace {
+	return Namespace(fmt.Sprintf("%s-%d", spec.Name, spec.Version))
+}
+
 // DB stores and retrieves Go-package-adjacent and code-unit-adjacent metadata in content-addressable storage (CAS).
 //
-// Keys are derived from either package files (see StoreOnPackage) or code-unit files (see StoreOnCodeUnit), plus a Namespace. Values are stored as JSON.
+// Keys are derived from a gocode.Package and NamespaceSpec. Values are stored as JSON.
 //
 // DB wraps cas.DB to add:
-//   - keying based on gocode.Package files or codeunit.CodeUnit files (file-content hashing)
+//   - keying based on package or default-code-unit files (file-content hashing)
 //   - best-effort git metadata capture (returned as cas.AdditionalInfo)
 //
 // Most callers should use the methods on *DB, rather than calling methods on the embedded cas.DB directly.
@@ -106,105 +126,37 @@ func NewDBForBaseDir(baseDir string) (*DB, error) {
 	}, nil
 }
 
-// StoreOnCodeUnit stores jsonable for (unit, namespace).
+// Store stores jsonable for (pkg, spec).
 //
-// Storage key is content-addressed from the included files in unit and their file contents, plus namespace. Paths are interpreted relative to BaseDir.
+// Storage is keyed by the pair (spec.Namespace(), content hash). The content hash is computed from files selected by spec.HashMode; spec.Namespace() is passed to
+// the underlying CAS as the namespace and is not mixed into the hash bytes. Paths are interpreted relative to BaseDir.
+//
+// HashModePackage uses package Go source files, package test files, and package-local SPEC.md.
+//
+// HashModeCodeUnit uses the default Go code unit rooted at pkg.
 //
 // Key derivation ignores duplicate absolute paths and directories, requires all remaining files to be within BaseDir, and sorts files by their BaseDir-relative
 // paths before hashing.
 //
-// If any included file cannot be read, StoreOnCodeUnit returns an error.
+// The selected files are hashed with BaseDir-relative path identity, so both file contents and their BaseDir-relative paths participate in the content hash.
+//
+// If any included file cannot be read, Store returns an error.
 //
 // jsonable must be encodable by encoding/json (and is stored as JSON bytes).
 //
-// StoreOnCodeUnit does not return the derived hash or filesystem path of the stored record. Use RetrieveOnCodeUnit to confirm a value can be loaded later.
+// Store does not return the derived hash or filesystem path of the stored record. Use Retrieve to confirm a value can be loaded later.
 //
-// StoreOnCodeUnit returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
-func (db *DB) StoreOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, jsonable any) error {
-	if unit == nil {
-		return errors.New("code unit is nil")
-	}
-	if err := db.validateCommon(namespace); err != nil {
-		return err
-	}
-
-	hasher, relPaths, err := db.hasherForCodeUnit(unit)
-	if err != nil {
-		return err
-	}
-
-	return db.store(namespace, hasher, relPaths, jsonable)
-}
-
-// RetrieveOnCodeUnit loads the stored value for (unit, namespace) into target.
-//
-// ok reports whether a value existed. When ok is false, target is left unchanged.
-//
-// additionalInfo is returned from the underlying CAS layer and may include best-effort git metadata captured at store time. Most callers should treat AdditionalInfo
-// as optional; see cas.AdditionalInfo field docs for details.
-//
-// RetrieveOnCodeUnit returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
-func (db *DB) RetrieveOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error) {
-	if unit == nil {
-		return false, cas.AdditionalInfo{}, errors.New("code unit is nil")
-	}
-	if target == nil {
-		return false, cas.AdditionalInfo{}, errors.New("target is nil")
-	}
-	if err := db.validateCommon(namespace); err != nil {
-		return false, cas.AdditionalInfo{}, err
-	}
-
-	hasher, _, err := db.hasherForCodeUnit(unit)
-	if err != nil {
-		return false, cas.AdditionalInfo{}, err
-	}
-
-	return db.retrieve(namespace, hasher, target)
-}
-
-// DeleteOnCodeUnit removes the stored value for (unit, namespace).
-//
-// Deleting a missing value is a no-op and returns nil.
-//
-// DeleteOnCodeUnit returns an error only for "real" failures (I/O, CAS delete failures, etc).
-func (db *DB) DeleteOnCodeUnit(unit *codeunit.CodeUnit, namespace Namespace) error {
-	if unit == nil {
-		return errors.New("code unit is nil")
-	}
-	if err := db.validateCommon(namespace); err != nil {
-		return err
-	}
-
-	hasher, _, err := db.hasherForCodeUnit(unit)
-	if err != nil {
-		return err
-	}
-
-	return db.delete(namespace, hasher)
-}
-
-// StoreOnPackage stores jsonable for (pkg, namespace).
-//
-// Storage key is content-addressed from the Go source files in pkg (including pkg.TestPackage, if present) and their file contents (paths are interpreted relative
-// to BaseDir), plus namespace.
-//
-// If a package-local SPEC.md exists in the package directory, it is also included in the storage key.
-//
-// If any package file cannot be read, StoreOnPackage returns an error.
-//
-// jsonable must be encodable by encoding/json (and is stored as JSON bytes).
-//
-// StoreOnPackage returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
-func (db *DB) StoreOnPackage(pkg *gocode.Package, namespace Namespace, jsonable any) error {
+// Store returns an error only for "real" failures (I/O, JSON encoding, CAS write failures, etc). Lack of git information is not an error.
+func (db *DB) Store(pkg *gocode.Package, spec NamespaceSpec, jsonable any) error {
 	if pkg == nil {
 		return errors.New("package is nil")
 	}
-	if err := db.validateCommon(namespace); err != nil {
+	if err := db.validateCommon(spec); err != nil {
 		return err
 	}
 
-	hasher, relPaths, err := db.hasherForPackage(pkg)
+	namespace := spec.Namespace()
+	hasher, relPaths, err := db.hasherForPackageSpec(pkg, spec)
 	if err != nil {
 		return err
 	}
@@ -212,31 +164,54 @@ func (db *DB) StoreOnPackage(pkg *gocode.Package, namespace Namespace, jsonable 
 	return db.store(namespace, hasher, relPaths, jsonable)
 }
 
-// RetrieveOnPackage loads the stored value for (pkg, namespace) into target.
+// Retrieve loads the stored value for (pkg, spec) into target.
 //
 // ok reports whether a value existed. When ok is false, target is left unchanged.
 //
 // additionalInfo is returned from the underlying CAS layer and may include best-effort git metadata captured at store time. Most callers should treat AdditionalInfo
 // as optional; see cas.AdditionalInfo field docs for details.
 //
-// RetrieveOnPackage returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
-func (db *DB) RetrieveOnPackage(pkg *gocode.Package, namespace Namespace, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error) {
+// Retrieve returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
+func (db *DB) Retrieve(pkg *gocode.Package, spec NamespaceSpec, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error) {
 	if pkg == nil {
 		return false, cas.AdditionalInfo{}, errors.New("package is nil")
 	}
 	if target == nil {
 		return false, cas.AdditionalInfo{}, errors.New("target is nil")
 	}
-	if err := db.validateCommon(namespace); err != nil {
+	if err := db.validateCommon(spec); err != nil {
 		return false, cas.AdditionalInfo{}, err
 	}
 
-	hasher, _, err := db.hasherForPackage(pkg)
+	namespace := spec.Namespace()
+	hasher, _, err := db.hasherForPackageSpec(pkg, spec)
 	if err != nil {
 		return false, cas.AdditionalInfo{}, err
 	}
 
 	return db.retrieve(namespace, hasher, target)
+}
+
+// Delete removes the stored value for (pkg, spec).
+//
+// Deleting a missing value is a no-op and returns nil.
+//
+// Delete returns an error only for "real" failures (I/O, CAS delete failures, etc).
+func (db *DB) Delete(pkg *gocode.Package, spec NamespaceSpec) error {
+	if pkg == nil {
+		return errors.New("package is nil")
+	}
+	if err := db.validateCommon(spec); err != nil {
+		return err
+	}
+
+	namespace := spec.Namespace()
+	hasher, _, err := db.hasherForPackageSpec(pkg, spec)
+	if err != nil {
+		return err
+	}
+
+	return db.delete(namespace, hasher)
 }
 
 func validateNamespace(namespace Namespace) error {
@@ -300,11 +275,32 @@ func nearestGitRoot(absBaseDir string) (string, error) {
 	}
 }
 
-func (db *DB) validateCommon(namespace Namespace) error {
+func validateNamespaceSpec(spec NamespaceSpec) error {
+	if spec.Name == "" {
+		return errors.New("namespace spec name is empty")
+	}
+	if err := validateNamespace(Namespace(spec.Name)); err != nil {
+		return fmt.Errorf("namespace spec name: %w", err)
+	}
+	if spec.Version <= 0 {
+		return fmt.Errorf("namespace spec version must be positive: %d", spec.Version)
+	}
+	switch spec.HashMode {
+	case HashModePackage, HashModeCodeUnit:
+	default:
+		return fmt.Errorf("unsupported namespace spec hash mode %q", spec.HashMode)
+	}
+	if err := validateNamespace(spec.Namespace()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *DB) validateCommon(spec NamespaceSpec) error {
 	if db == nil {
 		return errors.New("gocas DB is nil")
 	}
-	if err := validateNamespace(namespace); err != nil {
+	if err := validateNamespaceSpec(spec); err != nil {
 		return err
 	}
 	if err := validateAbsDir("BaseDir", db.BaseDir); err != nil {
@@ -348,6 +344,21 @@ func (db *DB) delete(namespace Namespace, hasher cas.Hasher) error {
 type fileRec struct {
 	abs string
 	rel string
+}
+
+func (db *DB) hasherForPackageSpec(pkg *gocode.Package, spec NamespaceSpec) (cas.Hasher, []string, error) {
+	switch spec.HashMode {
+	case HashModePackage:
+		return db.hasherForPackage(pkg)
+	case HashModeCodeUnit:
+		unit, err := codeunit.DefaultGoCodeUnit(pkg.AbsolutePath())
+		if err != nil {
+			return nil, nil, err
+		}
+		return db.hasherForCodeUnit(unit)
+	default:
+		return nil, nil, fmt.Errorf("unsupported namespace spec hash mode %q", spec.HashMode)
+	}
 }
 
 func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error) {

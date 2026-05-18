@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/agent"
-	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocas/casclarify"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -52,6 +51,14 @@ func TestToolIdentity(t *testing.T) {
 
 	assert.Equal(t, ToolNameRefactor, tool.Name())
 	assert.IsType(t, refactorPresenter{}, tool.Presenter())
+}
+
+func TestCASNamespaceSpecs(t *testing.T) {
+	assert.Equal(t, []gocas.NamespaceSpec{
+		{Name: "refactor-dry", Version: 1, HashMode: gocas.HashModeCodeUnit},
+		{Name: "refactor-test-cleanup", Version: 1, HashMode: gocas.HashModeCodeUnit},
+		{Name: "refactor-test-ensure-coverage", Version: 1, HashMode: gocas.HashModeCodeUnit},
+	}, CASNamespaceSpecs())
 }
 
 func TestDocsAddDelegatesToCodalotlCLI(t *testing.T) {
@@ -110,9 +117,7 @@ func TestDocsAddNoOpportunity(t *testing.T) {
 
 func TestDocsAddIgnoresCASRecordAndReportsActualResult(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
-	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
-	require.NoError(t, err)
-	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
+	storeRefactorCAS(t, moduleDir, pkgDir, ignoredCASNamespaceSpec("docs-add"), refactorCASRecord{Applied: true})
 	var captured docsAddCapture
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		NewCommandTree: docsAddCommandTree(&captured, "Nothing left to document!\n"),
@@ -131,9 +136,7 @@ func TestDocsAddIgnoresCASRecordAndReportsActualResult(t *testing.T) {
 
 func TestDocsAddIgnoresCASRecordAndReportsDelegateError(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
-	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
-	require.NoError(t, err)
-	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-add"}.casNamespace(), refactorCASRecord{Applied: true}))
+	storeRefactorCAS(t, moduleDir, pkgDir, ignoredCASNamespaceSpec("docs-add"), refactorCASRecord{Applied: true})
 	var captured docsAddCapture
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		NewCommandTree: failingDocsAddCommandTree(&captured, errors.New("delegate failed")),
@@ -185,9 +188,7 @@ func TestDocsFixNoOpportunityOmitsCASRecord(t *testing.T) {
 
 func TestDocsFixIgnoresRefactorCASRecord(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
-	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
-	require.NoError(t, err)
-	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, refactorConfig{name: "docs-fix"}.casNamespace(), refactorCASRecord{Applied: true}))
+	storeRefactorCAS(t, moduleDir, pkgDir, ignoredCASNamespaceSpec("docs-fix"), refactorCASRecord{Applied: true})
 	var captured docsFixCapture
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		NewCommandTree: docsFixCommandTree(&captured, "Checked documentation.\n"),
@@ -617,9 +618,7 @@ func TestDryRejectsCASRootWhenAuthorizerDeniesRead(t *testing.T) {
 
 func TestDryCASHitSkipsAgent(t *testing.T) {
 	moduleDir, pkgDir := newTestModule(t)
-	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
-	require.NoError(t, err)
-	require.NoError(t, newTestCASDB(t, moduleDir).StoreOnCodeUnit(unit, dryNamespace(), refactorCASRecord{Applied: true}))
+	storeRefactorCAS(t, moduleDir, pkgDir, dryNamespaceSpec(), refactorCASRecord{Applied: true})
 	invoker := &fakeAgentInvoker{}
 	tool := NewRefactorTool(authdomain.NewAutoApproveAuthorizer(moduleDir), Options{
 		AgentInvoker: invoker,
@@ -639,14 +638,14 @@ func TestPromptRefactorNoOpportunityInvokesAgentWithPromptAndWritesCAS(t *testin
 	tests := []struct {
 		name           string
 		refactorName   string
-		namespace      gocas.Namespace
+		spec           gocas.NamespaceSpec
 		setup          func(*testing.T, string)
 		promptContains []string
 	}{
 		{
 			name:         "test cleanup",
 			refactorName: "test-cleanup",
-			namespace:    testCleanupNamespace(),
+			spec:         testCleanupNamespaceSpec(),
 			setup:        writeUncleanFooTest,
 			promptContains: []string{
 				"Use the `$go-testing` skill",
@@ -662,7 +661,7 @@ func TestPromptRefactorNoOpportunityInvokesAgentWithPromptAndWritesCAS(t *testin
 		{
 			name:         "test ensure coverage",
 			refactorName: "test-ensure-coverage",
-			namespace:    testEnsureCoverageNamespace(),
+			spec:         testEnsureCoverageNamespaceSpec(),
 			promptContains: []string{
 				"Use the `$go-testing` skill",
 				"go test -coverprofile",
@@ -702,12 +701,12 @@ func TestPromptRefactorNoOpportunityInvokesAgentWithPromptAndWritesCAS(t *testin
 			assert.Equal(t, pkgDir, invoker.calls[0].req.ToolOptions.GoPkgAbsDir)
 			assertContainsAll(t, invoker.calls[0].req.Messages[0], tt.promptContains)
 
-			found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, tt.namespace)
+			found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, tt.spec)
 			assert.True(t, found)
 			assert.True(t, record.Applied)
 			assert.Empty(t, record.Edited)
 
-			found, metadata := retrieveRefactorCASMetadata(t, moduleDir, pkgDir, tt.namespace)
+			found, metadata := retrieveRefactorCASMetadata(t, moduleDir, pkgDir, tt.spec)
 			assert.True(t, found)
 			assert.Contains(t, metadata, "edited")
 			assert.JSONEq(t, `[]`, string(metadata["edited"]))
@@ -719,14 +718,14 @@ func TestPromptRefactorDetectsEditedFilesAndWritesCAS(t *testing.T) {
 	tests := []struct {
 		name         string
 		refactorName string
-		namespace    gocas.Namespace
+		spec         gocas.NamespaceSpec
 		setup        func(*testing.T, string)
 		edit         func(*testing.T, string)
 	}{
 		{
 			name:         "test cleanup",
 			refactorName: "test-cleanup",
-			namespace:    testCleanupNamespace(),
+			spec:         testCleanupNamespaceSpec(),
 			setup:        writeUncleanFooTest,
 			edit: func(t *testing.T, pkgDir string) {
 				writeFile(t, filepath.Join(pkgDir, "foo_test.go"), cleanFooTestContent)
@@ -735,7 +734,7 @@ func TestPromptRefactorDetectsEditedFilesAndWritesCAS(t *testing.T) {
 		{
 			name:         "test ensure coverage",
 			refactorName: "test-ensure-coverage",
-			namespace:    testEnsureCoverageNamespace(),
+			spec:         testEnsureCoverageNamespaceSpec(),
 			edit: func(t *testing.T, pkgDir string) {
 				writeFile(t, filepath.Join(pkgDir, "foo_test.go"), coverageFooTestContent)
 			},
@@ -765,7 +764,7 @@ func TestPromptRefactorDetectsEditedFilesAndWritesCAS(t *testing.T) {
 			assert.Equal(t, []string{"foo_test.go"}, result.result.EditedFiles)
 			require.NotNil(t, result.result.SavedCASRecord)
 			assert.Contains(t, *result.result.SavedCASRecord, fmt.Sprintf(".codalotl/cas/refactor-%s-1/", tt.refactorName))
-			found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, tt.namespace)
+			found, record := retrieveRefactorCAS(t, moduleDir, pkgDir, tt.spec)
 			assert.True(t, found)
 			assert.Equal(t, []string{"foo_test.go"}, record.Edited)
 		})
@@ -1111,7 +1110,7 @@ func stubFindInPlayClarifyRecords(t *testing.T, fn func(*gocas.DB, *gocode.Modul
 func newTestClarifyRecordFile(t *testing.T, moduleDir string) string {
 	t.Helper()
 
-	recordPath := filepath.Join(newTestCASDB(t, moduleDir).AbsRoot, string(casclarify.Namespace), "ab", "record")
+	recordPath := filepath.Join(newTestCASDB(t, moduleDir).AbsRoot, string(casclarify.NamespaceSpec.Namespace()), "ab", "record")
 	writeFile(t, recordPath, "{}")
 	return recordPath
 }
@@ -1269,35 +1268,49 @@ func unsetEnv(t *testing.T, key string) {
 func retrieveDryCAS(t *testing.T, moduleDir string, pkgDir string) (bool, refactorCASRecord) {
 	t.Helper()
 
-	return retrieveRefactorCAS(t, moduleDir, pkgDir, dryNamespace())
+	return retrieveRefactorCAS(t, moduleDir, pkgDir, dryNamespaceSpec())
 }
 
 func retrieveDryCASMetadata(t *testing.T, moduleDir string, pkgDir string) (bool, map[string]json.RawMessage) {
 	t.Helper()
 
-	return retrieveRefactorCASMetadata(t, moduleDir, pkgDir, dryNamespace())
+	return retrieveRefactorCASMetadata(t, moduleDir, pkgDir, dryNamespaceSpec())
 }
 
-func retrieveRefactorCAS(t *testing.T, moduleDir string, pkgDir string, namespace gocas.Namespace) (bool, refactorCASRecord) {
+func retrieveRefactorCAS(t *testing.T, moduleDir string, pkgDir string, spec gocas.NamespaceSpec) (bool, refactorCASRecord) {
 	t.Helper()
 
-	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
-	require.NoError(t, err)
 	var record refactorCASRecord
-	found, _, err := newTestCASDB(t, moduleDir).RetrieveOnCodeUnit(unit, namespace, &record)
+	found, _, err := newTestCASDB(t, moduleDir).Retrieve(loadTestPackage(t, moduleDir, pkgDir), spec, &record)
 	require.NoError(t, err)
 	return found, record
 }
 
-func retrieveRefactorCASMetadata(t *testing.T, moduleDir string, pkgDir string, namespace gocas.Namespace) (bool, map[string]json.RawMessage) {
+func retrieveRefactorCASMetadata(t *testing.T, moduleDir string, pkgDir string, spec gocas.NamespaceSpec) (bool, map[string]json.RawMessage) {
 	t.Helper()
 
-	unit, err := codeunit.DefaultGoCodeUnit(pkgDir)
-	require.NoError(t, err)
 	metadata := make(map[string]json.RawMessage)
-	found, _, err := newTestCASDB(t, moduleDir).RetrieveOnCodeUnit(unit, namespace, &metadata)
+	found, _, err := newTestCASDB(t, moduleDir).Retrieve(loadTestPackage(t, moduleDir, pkgDir), spec, &metadata)
 	require.NoError(t, err)
 	return found, metadata
+}
+
+func storeRefactorCAS(t *testing.T, moduleDir string, pkgDir string, spec gocas.NamespaceSpec, record refactorCASRecord) {
+	t.Helper()
+
+	require.NoError(t, newTestCASDB(t, moduleDir).Store(loadTestPackage(t, moduleDir, pkgDir), spec, record))
+}
+
+func loadTestPackage(t *testing.T, moduleDir string, pkgDir string) *gocode.Package {
+	t.Helper()
+
+	relDir, err := filepath.Rel(moduleDir, pkgDir)
+	require.NoError(t, err)
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	pkg, err := mod.LoadPackageByRelativeDir(relDir)
+	require.NoError(t, err)
+	return pkg
 }
 
 func newTestCASDB(t *testing.T, moduleDir string) *gocas.DB {
@@ -1308,14 +1321,22 @@ func newTestCASDB(t *testing.T, moduleDir string) *gocas.DB {
 	return db
 }
 
-func dryNamespace() gocas.Namespace {
-	return refactorConfig{name: "dry", generation: 1}.casNamespace()
+func dryNamespaceSpec() gocas.NamespaceSpec {
+	return refactorConfig{name: "dry", generation: 1}.casNamespaceSpec()
 }
 
-func testCleanupNamespace() gocas.Namespace {
-	return refactorConfig{name: "test-cleanup", generation: 1}.casNamespace()
+func testCleanupNamespaceSpec() gocas.NamespaceSpec {
+	return refactorConfig{name: "test-cleanup", generation: 1}.casNamespaceSpec()
 }
 
-func testEnsureCoverageNamespace() gocas.Namespace {
-	return refactorConfig{name: "test-ensure-coverage", generation: 1}.casNamespace()
+func testEnsureCoverageNamespaceSpec() gocas.NamespaceSpec {
+	return refactorConfig{name: "test-ensure-coverage", generation: 1}.casNamespaceSpec()
+}
+
+func ignoredCASNamespaceSpec(name string) gocas.NamespaceSpec {
+	return gocas.NamespaceSpec{
+		Name:     "refactor-" + name,
+		Version:  1,
+		HashMode: gocas.HashModeCodeUnit,
+	}
 }

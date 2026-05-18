@@ -43,7 +43,7 @@ func TestRun_SpecStatus_PrintsPerPackageStatus(t *testing.T) {
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "set", "specconforms-1", "./p1", `{"conforms":true}`}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{"codalotl", "cas", "set", "specconforms", "./p1", `{"conforms":true}`}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
@@ -52,7 +52,7 @@ func TestRun_SpecStatus_PrintsPerPackageStatus(t *testing.T) {
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "set", "specconforms-1", "./p2", `{"conforms":false}`}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{"codalotl", "cas", "set", "specconforms", "./p2", `{"conforms":false}`}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())

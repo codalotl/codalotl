@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/codalotl/codalotl/internal/codeunit"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/stretchr/testify/require"
@@ -16,7 +15,18 @@ type testPayload struct {
 	N int `json:"n"`
 }
 
-const testNamespace Namespace = "gocas-test"
+var (
+	testPackageNamespace = NamespaceSpec{
+		Name:     "gocas-test",
+		Version:  1,
+		HashMode: HashModePackage,
+	}
+	testCodeUnitNamespace = NamespaceSpec{
+		Name:     "gocas-test",
+		Version:  1,
+		HashMode: HashModeCodeUnit,
+	}
+)
 
 func unsetCASDB(t *testing.T) {
 	t.Helper()
@@ -149,7 +159,13 @@ func TestNewDBForBaseDir(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
+func TestNamespaceSpecNamespace(t *testing.T) {
+	spec := NamespaceSpec{Name: "specconforms", Version: 1, HashMode: HashModeCodeUnit}
+
+	require.Equal(t, Namespace("specconforms-1"), spec.Namespace())
+}
+
+func TestStoreAndRetrieve_PackageHashRoundTrip(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
@@ -162,11 +178,11 @@ func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
 		},
 	}
 
-	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 7})
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, ai, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
+	ok, ai, err := db.Retrieve(pkg, testPackageNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 7, got.N)
@@ -174,7 +190,7 @@ func TestStoreOnPackageAndRetrieveOnPackage_RoundTrip(t *testing.T) {
 	require.Equal(t, []string{"foo/SPEC.md", "foo/foo.go", "foo/foo_test.go"}, ai.Paths)
 }
 
-func TestStoreOnPackage_CreatesMissingCASRoot(t *testing.T) {
+func TestStore_CreatesMissingCASRoot(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := filepath.Join(t.TempDir(), "cas")
 
@@ -187,26 +203,23 @@ func TestStoreOnPackage_CreatesMissingCASRoot(t *testing.T) {
 		},
 	}
 
-	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 7})
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
+	ok, _, err := db.Retrieve(pkg, testPackageNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 7, got.N)
 }
 
-func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_RoundTrip(t *testing.T) {
+func TestStoreAndRetrieve_CodeUnitHashRoundTrip(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
-	writeTestModuleWithPackage(t, baseDir)
+	pkg := writeTestModuleWithPackage(t, baseDir)
 	writeTestFile(t, filepath.Join(baseDir, "foo", "data", "config.yml"), []byte("name: demo\n"))
 	writeTestFile(t, filepath.Join(baseDir, "foo", ".hidden", "ignored.txt"), []byte("ignored\n"))
-
-	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
-	require.NoError(t, err)
 
 	db := &DB{
 		BaseDir: baseDir,
@@ -215,11 +228,11 @@ func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_RoundTrip(t *testing.T) {
 		},
 	}
 
-	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 11})
+	err := db.Store(pkg, testCodeUnitNamespace, testPayload{N: 11})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, ai, err := db.RetrieveOnCodeUnit(unit, testNamespace, &got)
+	ok, ai, err := db.Retrieve(pkg, testCodeUnitNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 11, got.N)
@@ -232,16 +245,13 @@ func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_RoundTrip(t *testing.T) {
 	}, ai.Paths)
 }
 
-func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_SupportFileAffectsKey(t *testing.T) {
+func TestStoreAndRetrieve_CodeUnitHashSupportFileAffectsKey(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
-	writeTestModuleWithPackage(t, baseDir)
+	pkg := writeTestModuleWithPackage(t, baseDir)
 	supportFile := filepath.Join(baseDir, "foo", "data", "config.yml")
 	writeTestFile(t, supportFile, []byte("name: before\n"))
-
-	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
-	require.NoError(t, err)
 
 	db := &DB{
 		BaseDir: baseDir,
@@ -250,26 +260,23 @@ func TestStoreOnCodeUnitAndRetrieveOnCodeUnit_SupportFileAffectsKey(t *testing.T
 		},
 	}
 
-	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 5})
+	err := db.Store(pkg, testCodeUnitNamespace, testPayload{N: 5})
 	require.NoError(t, err)
 
 	err = os.WriteFile(supportFile, []byte("name: after\n"), 0o644)
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db.RetrieveOnCodeUnit(unit, testNamespace, &got)
+	ok, _, err := db.Retrieve(pkg, testCodeUnitNamespace, &got)
 	require.NoError(t, err)
 	require.False(t, ok)
 }
 
-func TestDeleteOnCodeUnit_RemovesStoredValue(t *testing.T) {
+func TestDelete_CodeUnitHashRemovesStoredValue(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
-	writeTestModuleWithPackage(t, baseDir)
-
-	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
-	require.NoError(t, err)
+	pkg := writeTestModuleWithPackage(t, baseDir)
 
 	db := &DB{
 		BaseDir: baseDir,
@@ -278,26 +285,23 @@ func TestDeleteOnCodeUnit_RemovesStoredValue(t *testing.T) {
 		},
 	}
 
-	err = db.StoreOnCodeUnit(unit, testNamespace, testPayload{N: 17})
+	err := db.Store(pkg, testCodeUnitNamespace, testPayload{N: 17})
 	require.NoError(t, err)
 
-	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	err = db.Delete(pkg, testCodeUnitNamespace)
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db.RetrieveOnCodeUnit(unit, testNamespace, &got)
+	ok, _, err := db.Retrieve(pkg, testCodeUnitNamespace, &got)
 	require.NoError(t, err)
 	require.False(t, ok)
 }
 
-func TestDeleteOnCodeUnit_MissingRecordIsNoOp(t *testing.T) {
+func TestDelete_MissingRecordIsNoOp(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
-	writeTestModuleWithPackage(t, baseDir)
-
-	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
-	require.NoError(t, err)
+	pkg := writeTestModuleWithPackage(t, baseDir)
 
 	db := &DB{
 		BaseDir: baseDir,
@@ -306,21 +310,18 @@ func TestDeleteOnCodeUnit_MissingRecordIsNoOp(t *testing.T) {
 		},
 	}
 
-	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	err := db.Delete(pkg, testCodeUnitNamespace)
 	require.NoError(t, err)
 
-	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	err = db.Delete(pkg, testCodeUnitNamespace)
 	require.NoError(t, err)
 }
 
-func TestDeleteOnCodeUnit_MissingCASRootIsNoOp(t *testing.T) {
+func TestDelete_MissingCASRootIsNoOp(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := filepath.Join(t.TempDir(), "cas")
 
-	writeTestModuleWithPackage(t, baseDir)
-
-	unit, err := codeunit.DefaultGoCodeUnit(filepath.Join(baseDir, "foo"))
-	require.NoError(t, err)
+	pkg := writeTestModuleWithPackage(t, baseDir)
 
 	db := &DB{
 		BaseDir: baseDir,
@@ -329,14 +330,14 @@ func TestDeleteOnCodeUnit_MissingCASRootIsNoOp(t *testing.T) {
 		},
 	}
 
-	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	err := db.Delete(pkg, testCodeUnitNamespace)
 	require.NoError(t, err)
 
-	err = db.DeleteOnCodeUnit(unit, testNamespace)
+	err = db.Delete(pkg, testCodeUnitNamespace)
 	require.NoError(t, err)
 }
 
-func TestRetrieveOnPackage_MissDoesNotMutateTarget(t *testing.T) {
+func TestRetrieve_MissDoesNotMutateTarget(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
@@ -350,7 +351,7 @@ func TestRetrieveOnPackage_MissDoesNotMutateTarget(t *testing.T) {
 	}
 
 	target := testPayload{N: 123}
-	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &target)
+	ok, _, err := db.Retrieve(pkg, testPackageNamespace, &target)
 	require.NoError(t, err)
 	require.False(t, ok)
 	require.Equal(t, 123, target.N)
@@ -377,17 +378,17 @@ func TestPackageHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {
 		},
 	}
 
-	err := db1.StoreOnPackage(pkg1, testNamespace, testPayload{N: 9})
+	err := db1.Store(pkg1, testPackageNamespace, testPayload{N: 9})
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db2.RetrieveOnPackage(pkg2, testNamespace, &got)
+	ok, _, err := db2.Retrieve(pkg2, testPackageNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 9, got.N)
 }
 
-func TestStoreOnPackage_IgnoresCodeUnitSupportFiles(t *testing.T) {
+func TestStore_PackageHashIgnoresCodeUnitSupportFiles(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
@@ -402,20 +403,20 @@ func TestStoreOnPackage_IgnoresCodeUnitSupportFiles(t *testing.T) {
 		},
 	}
 
-	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 13})
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 13})
 	require.NoError(t, err)
 
 	err = os.WriteFile(supportFile, []byte("name: after\n"), 0o644)
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
+	ok, _, err := db.Retrieve(pkg, testPackageNamespace, &got)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 13, got.N)
 }
 
-func TestStoreOnPackage_ErrOnUnreadableFile(t *testing.T) {
+func TestStore_ErrOnUnreadableFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission-based unreadable file test is not reliable on windows")
 	}
@@ -436,11 +437,11 @@ func TestStoreOnPackage_ErrOnUnreadableFile(t *testing.T) {
 		},
 	}
 
-	err = db.StoreOnPackage(pkg, testNamespace, testPayload{N: 1})
+	err = db.Store(pkg, testPackageNamespace, testPayload{N: 1})
 	require.Error(t, err)
 }
 
-func TestStoreOnPackageAndRetrieveOnPackage_SpecMdAffectsKey(t *testing.T) {
+func TestStoreAndRetrieve_PackageHashSpecMdAffectsKey(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
@@ -453,19 +454,19 @@ func TestStoreOnPackageAndRetrieveOnPackage_SpecMdAffectsKey(t *testing.T) {
 		},
 	}
 
-	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 7})
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
 	require.NoError(t, err)
 
 	err = os.WriteFile(filepath.Join(baseDir, "foo", "SPEC.md"), []byte("# foo\n\nchanged\n"), 0o644)
 	require.NoError(t, err)
 
 	var got testPayload
-	ok, _, err := db.RetrieveOnPackage(pkg, testNamespace, &got)
+	ok, _, err := db.Retrieve(pkg, testPackageNamespace, &got)
 	require.NoError(t, err)
 	require.False(t, ok)
 }
 
-func TestStoreOnPackage_ErrOnRelativeBaseDir(t *testing.T) {
+func TestStore_ErrOnRelativeBaseDir(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
 
@@ -478,6 +479,6 @@ func TestStoreOnPackage_ErrOnRelativeBaseDir(t *testing.T) {
 		},
 	}
 
-	err := db.StoreOnPackage(pkg, testNamespace, testPayload{N: 1})
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 1})
 	require.Error(t, err)
 }

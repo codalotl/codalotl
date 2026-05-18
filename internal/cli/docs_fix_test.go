@@ -74,10 +74,10 @@ func TestRun_DocsFix_UsesDocubotWritesCASAndSummary(t *testing.T) {
 	db, err := casReadDBForBaseDir(tmp)
 	require.NoError(t, err)
 	var value docsFixCASValue
-	ok, _, err := db.RetrieveOnPackage(pkg, docsFixCASNamespace, &value)
+	ok, _, err := db.Retrieve(pkg, docsFixCASNamespaceSpec, &value)
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, string(docsFixCASNamespace), value.Schema)
+	require.Equal(t, string(docsFixCASNamespaceSpec.Namespace()), value.Schema)
 	require.Equal(t, docsFixModeWholePackage, value.Mode)
 	require.Empty(t, value.Identifiers)
 	require.Equal(t, 2, value.FixCount)
@@ -87,7 +87,7 @@ func TestRun_DocsFix_UsesDocubotWritesCASAndSummary(t *testing.T) {
 	require.NoError(t, err)
 	pkg, err = mod.LoadPackageByRelativeDir("p")
 	require.NoError(t, err)
-	ok, _, err = db.RetrieveOnPackage(pkg, docsFixCASNamespace, &value)
+	ok, _, err = db.Retrieve(pkg, docsFixCASNamespaceSpec, &value)
 	require.NoError(t, err)
 	require.False(t, ok)
 }
@@ -131,7 +131,7 @@ func TestRun_DocsFix_IdentifierLimitedCASRecordIsMarked(t *testing.T) {
 	db, err := casReadDBForBaseDir(tmp)
 	require.NoError(t, err)
 	var value docsFixCASValue
-	ok, _, err := db.RetrieveOnPackage(pkg, docsFixCASNamespace, &value)
+	ok, _, err := db.Retrieve(pkg, docsFixCASNamespaceSpec, &value)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, docsFixModeIdentifiers, value.Mode)

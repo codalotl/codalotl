@@ -14,7 +14,6 @@ import (
 
 	"github.com/codalotl/codalotl/internal/agentbuilder"
 	"github.com/codalotl/codalotl/internal/docubot"
-	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
@@ -453,7 +452,7 @@ codalotl spec status
 		ArgHelp: []qcli.ArgHelp{
 			{
 				Display:     "<namespace>",
-				Description: "Filesystem-safe schema/version name used to separate stored CAS values.",
+				Description: "Registered non-versioned namespace name.",
 			},
 			{
 				Display:     "<path/to/pkg>",
@@ -465,13 +464,13 @@ codalotl spec status
 			},
 		},
 		Example: strings.TrimSpace(`
-codalotl cas set specconforms-1 internal/mypkg '{"conforms":true}'
-codalotl cas set review-state internal/mypkg '"OK"'
+codalotl cas set specconforms internal/mypkg '{"conforms":true}'
+codalotl cas set docs-fix internal/mypkg '"OK"'
 `),
 		Args: qcli.ExactArgs(3),
 		Run: runWithConfig("cas_set", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-			namespace := c.Args[0]
-			if err := validateCASNamespace(namespace); err != nil {
+			spec, err := resolveCASNamespaceSpec(c.Args[0])
+			if err != nil {
 				return qcli.UsageError{Message: err.Error()}
 			}
 			pkg, mod, err := loadPackageArg(c.Args[1])
@@ -486,7 +485,7 @@ codalotl cas set review-state internal/mypkg '"OK"'
 			if err != nil {
 				return err
 			}
-			return db.StoreOnPackage(pkg, gocas.Namespace(namespace), value)
+			return db.Store(pkg, spec, value)
 		}),
 	}
 	getCmd := &qcli.Command{
@@ -497,7 +496,7 @@ codalotl cas set review-state internal/mypkg '"OK"'
 		ArgHelp: []qcli.ArgHelp{
 			{
 				Display:     "<namespace>",
-				Description: "Filesystem-safe schema/version name used to separate stored CAS values.",
+				Description: "Registered non-versioned namespace name.",
 			},
 			{
 				Display:     "<path/to/pkg>",
@@ -505,12 +504,12 @@ codalotl cas set review-state internal/mypkg '"OK"'
 			},
 		},
 		Example: strings.TrimSpace(`
-codalotl cas get specconforms-1 internal/mypkg
+codalotl cas get specconforms internal/mypkg
 `),
 		Args: qcli.ExactArgs(2),
 		Run: runWithConfig("cas_get", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-			namespace := c.Args[0]
-			if err := validateCASNamespace(namespace); err != nil {
+			spec, err := resolveCASNamespaceSpec(c.Args[0])
+			if err != nil {
 				return qcli.UsageError{Message: err.Error()}
 			}
 			pkg, mod, err := loadPackageArg(c.Args[1])
@@ -522,7 +521,7 @@ codalotl cas get specconforms-1 internal/mypkg
 				return err
 			}
 			var value any
-			ok, info, err := db.RetrieveOnPackage(pkg, gocas.Namespace(namespace), &value)
+			ok, info, err := db.Retrieve(pkg, spec, &value)
 			if err != nil {
 				return err
 			}
@@ -540,6 +539,24 @@ codalotl cas get specconforms-1 internal/mypkg
 			return enc.Encode(out)
 		}),
 	}
+	lsNamespacesCmd := &qcli.Command{
+		Name:             "ls-namespaces",
+		Short:            "List registered CAS namespaces.",
+		Long:             "Lists registered CAS namespaces and active versions, sorted by namespace name.",
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
+		Example: strings.TrimSpace(`
+codalotl cas ls-namespaces
+`),
+		Run: runWithConfig("cas_ls_namespaces", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			for _, spec := range sortedCASNamespaceSpecs() {
+				if _, err := fmt.Fprintf(c.Out, "%s %d\n", spec.Name, spec.Version); err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
+	}
 	lsUnsetCmd := &qcli.Command{
 		Name:  "ls-unset",
 		Short: "List packages in the current module missing a CAS entry for a namespace.",
@@ -548,18 +565,18 @@ codalotl cas get specconforms-1 internal/mypkg
 		ArgHelp: []qcli.ArgHelp{
 			{
 				Display:     "<namespace>",
-				Description: "Filesystem-safe schema/version name used to separate stored CAS values.",
+				Description: "Registered non-versioned namespace name.",
 			},
 		},
 		Example: strings.TrimSpace(`
-codalotl cas ls-unset specconforms-1
+codalotl cas ls-unset specconforms
 `),
 		Args: qcli.ExactArgs(1),
 		Run: runWithConfig("cas_ls_unset", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 			return runCASLsUnset(c.Context, c.Out, c.Args[0])
 		}),
 	}
-	casCmd.AddCommand(setCmd, getCmd, lsUnsetCmd)
+	casCmd.AddCommand(setCmd, getCmd, lsNamespacesCmd, lsUnsetCmd)
 
 	panicCmd := &qcli.Command{
 		Name:             "panic",

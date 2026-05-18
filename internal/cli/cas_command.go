@@ -3,10 +3,14 @@ package cli
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/gocas"
+	"github.com/codalotl/codalotl/internal/gocas/casclarify"
+	"github.com/codalotl/codalotl/internal/gocas/casconformance"
 	qcas "github.com/codalotl/codalotl/internal/q/cas"
+	toolrefactor "github.com/codalotl/codalotl/internal/tools/refactor"
 )
 
 type casRetrieveOutput struct {
@@ -26,6 +30,40 @@ func validateCASNamespace(namespace string) error {
 	}
 	return nil
 }
+
+func registeredCASNamespaceSpecs() []gocas.NamespaceSpec {
+	specs := []gocas.NamespaceSpec{
+		casconformance.NamespaceSpec,
+		casclarify.NamespaceSpec,
+		docsFixCASNamespaceSpec,
+	}
+	specs = append(specs, toolrefactor.CASNamespaceSpecs()...)
+	return specs
+}
+
+func resolveCASNamespaceSpec(namespace string) (gocas.NamespaceSpec, error) {
+	if err := validateCASNamespace(namespace); err != nil {
+		return gocas.NamespaceSpec{}, err
+	}
+	for _, spec := range registeredCASNamespaceSpecs() {
+		if spec.Name == namespace {
+			return spec, nil
+		}
+	}
+	return gocas.NamespaceSpec{}, fmt.Errorf("unknown CAS namespace %q", namespace)
+}
+
+func sortedCASNamespaceSpecs() []gocas.NamespaceSpec {
+	specs := registeredCASNamespaceSpecs()
+	sort.Slice(specs, func(i, j int) bool {
+		if specs[i].Name == specs[j].Name {
+			return specs[i].Version < specs[j].Version
+		}
+		return specs[i].Name < specs[j].Name
+	})
+	return specs
+}
+
 func casDBForBaseDir(baseDir string) (*gocas.DB, error) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {

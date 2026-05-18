@@ -15,8 +15,13 @@ import (
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 )
 
+var docsFixCASNamespaceSpec = gocas.NamespaceSpec{
+	Name:     "docs-fix",
+	Version:  1,
+	HashMode: gocas.HashModePackage,
+}
+
 const (
-	docsFixCASNamespace     = gocas.Namespace("docs-fix-1")
 	docsFixModeWholePackage = "whole-package"
 	docsFixModeIdentifiers  = "identifiers"
 )
@@ -121,12 +126,12 @@ func storeDocsFixCASRecord(pkg *gocode.Package, mod *gocode.Module, identifiers 
 	sort.Strings(canonicalIdentifiers)
 
 	value := docsFixCASValue{
-		Schema:      string(docsFixCASNamespace),
+		Schema:      string(docsFixCASNamespaceSpec.Namespace()),
 		Mode:        mode,
 		Identifiers: canonicalIdentifiers,
 		FixCount:    fixCount,
 	}
-	return db.StoreOnPackage(pkg, docsFixCASNamespace, value)
+	return db.Store(pkg, docsFixCASNamespaceSpec, value)
 }
 
 func writeDocsFixSummary(w io.Writer, fixCount int) error {

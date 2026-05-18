@@ -49,11 +49,8 @@ type Namespace string
 type HashMode string
 
 const (
-	// HashModePackage hashes package Go files and package-local SPEC.md.
-	HashModePackage HashMode = "package"
-
-	// HashModeCodeUnit hashes the package's default Go code unit.
-	HashModeCodeUnit HashMode = "code-unit"
+	HashModePackage  HashMode = "package"   // HashModePackage hashes package Go files and package-local SPEC.md.
+	HashModeCodeUnit HashMode = "code-unit" // HashModeCodeUnit hashes the package's default Go code unit.
 )
 
 // NamespaceSpec describes a CAS namespace.
@@ -101,13 +98,17 @@ func NewDBForBaseDir(baseDir string) (*DB, error)
 
 // Store stores jsonable for (pkg, spec).
 //
-// Storage key is content-addressed from files selected by spec.HashMode, plus spec.Namespace(). Paths are interpreted relative to BaseDir.
+// Storage is keyed by the pair (spec.Namespace(), content hash). The content hash is computed from files selected by spec.HashMode; spec.Namespace() is passed to
+// the underlying CAS as the namespace and is not mixed into the hash bytes. Paths are interpreted relative to BaseDir.
 //
 // HashModePackage uses package Go source files, package test files, and package-local SPEC.md.
 //
 // HashModeCodeUnit uses the default Go code unit rooted at pkg.
 //
-// Key derivation ignores duplicate absolute paths and directories, requires all remaining files to be within BaseDir, and sorts files by their BaseDir-relative paths before hashing.
+// Key derivation ignores duplicate absolute paths and directories, requires all remaining files to be within BaseDir, and sorts files by their BaseDir-relative
+// paths before hashing.
+//
+// The selected files are hashed with BaseDir-relative path identity, so both file contents and their BaseDir-relative paths participate in the content hash.
 //
 // If any included file cannot be read, Store returns an error.
 //
