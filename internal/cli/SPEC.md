@@ -256,22 +256,33 @@ Sort: 1. has_spec (true first) 2. api_match (true first) 3. conforms (true first
 
 ### codalotl cas set <namespace> <path/to/pkg> <value>
 
-Uses `internal/gocas` to set `<value>` for (package, namespace).
+Uses `internal/gocas` to set `<value>` for (package, registered namespace).
 
 Notes:
-- `<namespace>` is a schema/version string and must be filesystem-safe (no path separators), since it is used as a directory name under the CAS root.
-- Storage key is content-addressed from the Go package's source file paths + contents (plus namespace). Changing package contents changes the key.
+- `<namespace>` is the non-versioned namespace name.
+- Namespace must be known to this codebase.
+- Storage key is content-addressed according to the namespace's hash mode. Changing hashed package contents changes the key.
 - `<value>` must be JSON-encodable (ex: `"OK"`, or `'{"result": "ok"}'`).
 
 The BaseDir is the package's module dir. CAS root selection is delegated to `internal/gocas` and follows product CAS rules.
 
 ### codalotl cas get <namespace> <path/to/pkg>
 
-Uses `internal/gocas` to get the stored value (and associated metadata) for (package, namespace), for the current package contents. Prints entire record (including additional information) if found. Otherwise prints nothing and exits 1.
+Uses `internal/gocas` to get the stored value (and associated metadata) for (package, registered namespace), for the current package contents.
+
+- `<namespace>` is the non-versioned namespace name.
+- Prints entire record (including additional information) if found.
+- Otherwise prints nothing and exits 1.
+
+### codalotl cas ls-namespaces
+
+Lists registered CAS namespaces and active versions, sorted by namespace name.
+
+Output: one line per namespace, format `<namespace> <version>`; hash mode omitted.
 
 ### codalotl cas ls-unset <namespace>
 
-Lists packages (one per line, of the form `./path/to/pkg`) that don't have a corresponding `cas get` entry set for the package. Considers packages in the module (based on cwd).
+Lists module packages (`./path/to/pkg`) without a corresponding `cas get` entry for the registered namespace. Considers packages in the module (based on cwd).
 
 ## Configuration
 

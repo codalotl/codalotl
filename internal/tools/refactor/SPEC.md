@@ -26,10 +26,10 @@ Refactors may be prompt-style agent runs or code-driven operations. The tool kee
 - `cas-ignore` means the refactor does not use refactor-owned CAS records. It may delegate to commands that write their own CAS records or consume external workflow CAS records.
 - `cas-ignore` refactors never return "refactor already applied".
 - `cas-code-unit` means the refactor checks/stores a CAS cache entry to record that the refactor was done:
-	- Code unit means the CAS hash is based on code units.
+	- Uses a `gocas.NamespaceSpec` with `HashModeCodeUnit`.
 	- Before running, CAS hit returns "refactor already applied".
 	- After the refactor, we store a CAS entry.
-		- Namespace is prefixed with `refactor` and suffixed with a generation, like `refactor-dry-1`.
+		- Namespace spec name is prefixed with `refactor`, like `refactor-dry`; version is the refactor generation, yielding filesystem namespace like `refactor-dry-1`.
 		- Metadata is a JSON object containing `"applied": true` and a list of files edited (package-relative). Ex: `{"applied": true, "edited": ["foo.go"]}`. If no files were edited, `edited` can be `null` or `[]`.
 	- On refactor error, no CAS is written.
 	- If writing to CAS results in an error, the overall tool returns an error. Do not attempt file cleanup. Files can remain edited. That's fine.
@@ -106,6 +106,11 @@ Prompt-style refactors are defined by name, a Markdown prompt file in `data/`, a
 
 ```go {api}
 const ToolNameRefactor = "refactor"
+```
+
+```go {api}
+// CASNamespaceSpecs returns CAS namespace specs owned by refactor.
+func CASNamespaceSpecs() []gocas.NamespaceSpec
 ```
 
 ```go {api}
