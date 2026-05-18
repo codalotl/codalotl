@@ -27,7 +27,7 @@ func TestRun_CAS_StoreAndRetrieve_RoundTrip(t *testing.T) {
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "set", "ns-1.0", "./p", `{"result":"ok"}`}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{"codalotl", "cas", "set", "docs-fix", "./p", `{"result":"ok"}`}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
@@ -36,7 +36,7 @@ func TestRun_CAS_StoreAndRetrieve_RoundTrip(t *testing.T) {
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "get", "ns-1.0", "./p"}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{"codalotl", "cas", "get", "docs-fix", "./p"}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
@@ -62,7 +62,7 @@ func TestRun_CAS_Retrieve_Miss_PrintsNothingAndExit1(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(origWD) })
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "get", "ns-1.0", "./p"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "get", "docs-fix", "./p"}, &RunOptions{Out: &out, Err: &errOut})
 	require.Error(t, err)
 	require.Equal(t, 1, code)
 	require.Empty(t, errOut.String())
@@ -88,13 +88,13 @@ func TestRun_CAS_Store_UsesCODALOTL_CAS_DB(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(origWD) })
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "set", "ns-1.0", "./p", `"OK"`}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "set", "docs-fix", "./p", `"OK"`}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
 	require.Empty(t, out.String())
 	// Store should create the namespace dir within the configured CAS root.
-	_, err = os.Stat(filepath.Join(dbRoot, "ns-1.0"))
+	_, err = os.Stat(filepath.Join(dbRoot, "docs-fix-1"))
 	require.NoError(t, err)
 	// Ensure we did not fall back to the git-dir-based location.
 	_, err = os.Stat(filepath.Join(tmp, ".codalotl", "cas"))
@@ -115,12 +115,12 @@ func TestRun_CAS_Store_UsesNearestGitDir_WhenEnvUnset(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(origWD) })
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "set", "ns-1.0", "./p", `"OK"`}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "set", "docs-fix", "./p", `"OK"`}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
 	require.Empty(t, out.String())
-	_, err = os.Stat(filepath.Join(tmp, ".codalotl", "cas", "ns-1.0"))
+	_, err = os.Stat(filepath.Join(tmp, ".codalotl", "cas", "docs-fix-1"))
 	require.NoError(t, err)
 }
 func TestRun_CAS_Store_InvalidNamespace_IsUsageError(t *testing.T) {
@@ -136,10 +136,36 @@ func TestRun_CAS_Store_InvalidValue_IsUsageError(t *testing.T) {
 	isolateUserConfig(t)
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "set", "ns-1.0", ".", "not-json"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "set", "docs-fix", ".", "not-json"}, &RunOptions{Out: &out, Err: &errOut})
 	require.Error(t, err)
 	require.Equal(t, 2, code)
 	require.NotEmpty(t, errOut.String())
+}
+
+func TestRun_CAS_UnknownNamespace_IsUsageError(t *testing.T) {
+	isolateUserConfig(t)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "get", "unknown-ns", "."}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Contains(t, errOut.String(), `unknown CAS namespace "unknown-ns"`)
+}
+
+func TestRun_CAS_LSNamespaces_ListsRegisteredNamespaces(t *testing.T) {
+	isolateUserConfig(t)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-namespaces"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	require.Contains(t, lines, "clarify-public-api 1")
+	require.Contains(t, lines, "docs-fix 1")
+	require.Contains(t, lines, "specconforms 1")
+	require.IsIncreasing(t, lines)
 }
 
 func TestRun_CAS_LSUnset_ListsPackagesMissingNamespace(t *testing.T) {
@@ -166,7 +192,7 @@ func TestRun_CAS_LSUnset_ListsPackagesMissingNamespace(t *testing.T) {
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "set", "ns-1.0", "./p1", `"OK"`}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{"codalotl", "cas", "set", "docs-fix", "./p1", `"OK"`}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
@@ -176,7 +202,7 @@ func TestRun_CAS_LSUnset_ListsPackagesMissingNamespace(t *testing.T) {
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "ls-unset", "ns-1.0"}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{"codalotl", "cas", "ls-unset", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())

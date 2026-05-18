@@ -2,15 +2,19 @@
 
 Stores `clarify_public_api` answers for a `*gocode.Package` via `internal/gocas`.
 
-Records are keyed like `gocas.StoreOnPackage`: target package Go files plus package-local `SPEC.md`.
+Records are keyed by target package Go files plus package-local `SPEC.md`.
 
 In-play records are clarify CAS records from current git workstream: uncommitted/staged records whose hash matches current package, plus records added on current branch even after package hash drift. If git state cannot be read, no records are found.
 
 ## Public API
 
 ```go
-// Namespace stores clarify_public_api answers.
-const Namespace gocas.Namespace = "clarify-public-api-1"
+// NamespaceSpec stores clarify_public_api answers.
+var NamespaceSpec = gocas.NamespaceSpec{
+	Name:     "clarify-public-api",
+	Version:  1,
+	HashMode: gocas.HashModePackage,
+}
 
 // Entry is one clarification captured for a target package.
 type Entry struct {

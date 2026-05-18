@@ -186,6 +186,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"spec", "ls-mismatch"},
 		{"spec", "status"},
 		{"cas", "get"},
+		{"cas", "ls-namespaces"},
 		{"cas", "ls-unset"},
 	} {
 		cmd := requireCommand(t, root, names...)
@@ -193,7 +194,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		require.NotEmpty(t, cmd.Long)
 		require.NotEmpty(t, cmd.Example)
 		switch strings.Join(names, " ") {
-		case "context packages", "spec status":
+		case "context packages", "spec status", "cas ls-namespaces":
 		default:
 			require.NotEmpty(t, cmd.Usage)
 		}

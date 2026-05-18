@@ -12,13 +12,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocode"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 )
 
 func runCASLsUnset(ctx context.Context, out io.Writer, namespace string) error {
-	if err := validateCASNamespace(namespace); err != nil {
+	spec, err := resolveCASNamespaceSpec(namespace)
+	if err != nil {
 		return qcli.UsageError{Message: err.Error()}
 	}
 
@@ -60,7 +60,7 @@ func runCASLsUnset(ctx context.Context, out io.Writer, namespace string) error {
 		}
 
 		var raw json.RawMessage
-		ok, _, err = db.RetrieveOnPackage(pkg, gocas.Namespace(namespace), &raw)
+		ok, _, err = db.Retrieve(pkg, spec, &raw)
 		if err != nil {
 			continue
 		}

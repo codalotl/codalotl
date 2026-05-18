@@ -160,6 +160,18 @@ var refactorRegistry = []refactorConfig{
 	},
 }
 
+// CASNamespaceSpecs returns CAS namespace specs owned by refactor.
+func CASNamespaceSpecs() []gocas.NamespaceSpec {
+	specs := make([]gocas.NamespaceSpec, 0)
+	for _, cfg := range refactorRegistry {
+		if cfg.casPolicy != casPolicyCodeUnit {
+			continue
+		}
+		specs = append(specs, cfg.casNamespaceSpec())
+	}
+	return specs
+}
+
 // refactorTool applies registered package-local refactors.
 type refactorTool struct {
 	authorizer authdomain.Authorizer     // authorizer controls package and CAS filesystem access.
@@ -592,9 +604,13 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	if err != nil {
 		return Result{}, err
 	}
-	namespace := cfg.casNamespace()
+	pkg, err := loadResolvedPackage(resolved)
+	if err != nil {
+		return Result{}, err
+	}
+	spec := cfg.casNamespaceSpec()
 	var casRecord refactorCASRecord
-	ok, _, err := db.RetrieveOnCodeUnit(tracker.beforeUnit, namespace, &casRecord)
+	ok, _, err := db.Retrieve(pkg, spec, &casRecord)
 	if err != nil {
 		return Result{}, err
 	}
@@ -615,11 +631,15 @@ func (t refactorTool) runPromptRefactor(ctx context.Context, resolved resolvedPa
 	if err != nil {
 		return Result{}, err
 	}
-	casRecordAbsPath, err := codeUnitCASRecordPath(db, afterUnit, namespace)
+	afterPkg, err := loadResolvedPackage(resolved)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := db.StoreOnCodeUnit(afterUnit, namespace, refactorCASRecord{Applied: true, Edited: edited}); err != nil {
+	casRecordAbsPath, err := codeUnitCASRecordPath(db, afterUnit, spec)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := db.Store(afterPkg, spec, refactorCASRecord{Applied: true, Edited: edited}); err != nil {
 		return Result{}, err
 	}
 	savedCASRecord := resultPath(resolved.moduleAbsDir, casRecordAbsPath)
@@ -702,9 +722,13 @@ type refactorCASRecord struct {
 	Edited  []string `json:"edited"`  // Edited lists package-relative files changed when the record was created.
 }
 
-// casNamespace returns the CAS namespace for cfg.
-func (cfg refactorConfig) casNamespace() gocas.Namespace {
-	return gocas.Namespace(fmt.Sprintf("refactor-%s-%d", cfg.name, cfg.generation))
+// casNamespaceSpec returns the CAS namespace spec for cfg.
+func (cfg refactorConfig) casNamespaceSpec() gocas.NamespaceSpec {
+	return gocas.NamespaceSpec{
+		Name:     "refactor-" + cfg.name,
+		Version:  cfg.generation,
+		HashMode: gocas.HashModeCodeUnit,
+	}
 }
 
 // newCASDB returns an authorized CAS database for resolved's module.
@@ -731,8 +755,19 @@ func (t refactorTool) newReadCASDB(resolved resolvedPackage) (*gocas.DB, error) 
 	return db, nil
 }
 
-// codeUnitCASRecordPath returns the absolute CAS record path for unit in namespace.
-func codeUnitCASRecordPath(db *gocas.DB, unit *codeunit.CodeUnit, namespace gocas.Namespace) (string, error) {
+func loadResolvedPackage(resolved resolvedPackage) (*gocode.Package, error) {
+	mod, err := gocode.NewModule(resolved.moduleAbsDir)
+	if err != nil {
+		return nil, err
+	}
+	return mod.LoadPackageByRelativeDir(resolved.relDir)
+}
+
+// codeUnitCASRecordPath returns the absolute CAS record path for unit in spec.
+func codeUnitCASRecordPath(db *gocas.DB, unit *codeunit.CodeUnit, spec gocas.NamespaceSpec) (string, error) {
+	if spec.HashMode != gocas.HashModeCodeUnit {
+		return "", fmt.Errorf("CAS record path requires hash mode %q, got %q", gocas.HashModeCodeUnit, spec.HashMode)
+	}
 	includedFiles, err := nonDirCodeUnitFiles(unit)
 	if err != nil {
 		return "", err
@@ -777,7 +812,7 @@ func codeUnitCASRecordPath(db *gocas.DB, unit *codeunit.CodeUnit, namespace goca
 	if len(hash) < 2 {
 		return "", fmt.Errorf("CAS hash %q is too short", hash)
 	}
-	return filepath.Join(db.AbsRoot, string(namespace), hash[:2], hash[2:]), nil
+	return filepath.Join(db.AbsRoot, string(spec.Namespace()), hash[:2], hash[2:]), nil
 }
 
 func resultPath(base, target string) string {

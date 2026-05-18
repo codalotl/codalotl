@@ -6,8 +6,12 @@ Conformance records for a package are keyed by the default Go code unit rooted a
 ## Public API
 
 ```go
-// Namespace stores results produced by spec conformance checks.
-const Namespace gocas.Namespace = "specconforms-1"
+// NamespaceSpec stores results produced by spec conformance checks.
+var NamespaceSpec = gocas.NamespaceSpec{
+	Name:     "specconforms",
+	Version:  1,
+	HashMode: gocas.HashModeCodeUnit,
+}
 
 // Metadata is the stored JSON payload.
 type Metadata struct {
