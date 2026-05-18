@@ -117,6 +117,19 @@ func TestLoadPackageArg_AcceptsExplicitAndFallbackDirs(t *testing.T) {
 	}
 }
 
+func TestLoadPackageArg_ModuleRootImportPathHasEmptyRelativeDir(t *testing.T) {
+	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-pkgload-")
+	writePkgLoadModule(t, tmp, "module example.com/root\n\ngo 1.22\n")
+	writePkgLoadPackage(t, tmp, "root")
+	chdirForTest(t, tmp)
+
+	pkg, _, err := loadPackageArg("example.com/root")
+	require.NoError(t, err)
+	require.Equal(t, "example.com/root", pkg.ImportPath)
+	require.Empty(t, pkg.RelativeDir)
+	requireSameDir(t, tmp, pkg.AbsolutePath())
+}
+
 func TestLoadPackageArg_FallbackDirMayBeInModuleBelowCWD(t *testing.T) {
 	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-pkgload-")
 	proj := filepath.Join(tmp, "proj")

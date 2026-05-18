@@ -211,8 +211,9 @@ func loadPackageImportArg(resolver *gocode.Module, arg string) (*gocode.Package,
 	if err != nil {
 		return nil, nil, err
 	}
-	if packageRelDir == "" {
-		packageRelDir = "."
+	packageRelDir = filepath.Clean(packageRelDir)
+	if packageRelDir == "." {
+		packageRelDir = ""
 	}
 	if moduleAbsDir == "" {
 		return readPackageWithoutModule(packageAbsDir, fqImportPath)
