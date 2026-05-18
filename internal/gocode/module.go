@@ -29,6 +29,10 @@ type Module struct {
 
 // NewModule returns a Module representing an existing Go module. It finds the nearest go.mod file starting from the path. The anyPath parameter can be any folder
 // or filename in the Go module (ex: a Go file, the go.mod file itself, or a folder).
+//
+// If no enclosing go.mod can be found, NewModule returns a wrapped error rather than ErrResolveNotFound. This package does not expose a sentinel error or stable
+// error string for that case; callers should treat the error opaquely. ErrResolveNotFound is reserved for package resolution methods such as ResolvePackageByRelativeDir
+// and ResolvePackageByImport.
 func NewModule(anyPath string) (*Module, error) {
 	// Find the module root (directory containing go.mod)
 	moduleRoot, err := findModuleRoot(anyPath)
@@ -49,6 +53,7 @@ func NewModule(anyPath string) (*Module, error) {
 	}, nil
 }
 
+// ErrResolveNotFound is returned by package resolution methods when Go tooling cannot find the requested package.
 var ErrResolveNotFound = errors.New("could not find package")
 
 // ResolvePackageByRelativeDir resolves pkgRelativeDir relative to m.AbsolutePath. The result is equivalent to Go tooling (ex: `go list`) as if run from within m:

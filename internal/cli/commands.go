@@ -40,10 +40,11 @@ var runNoninteractiveExec = noninteractive.Exec
 var runDocubotAddDocs = docubot.AddDocs
 
 const packagePathArgDescription = "Go-style package path (for example ., .., ./internal/cli), " +
-	"relative/absolute package directory, or import path for a package in the current module. Package patterns with ... are not supported."
+	"import path, explicit relative/absolute package directory, or bare CWD-relative fallback directory. " +
+	"Import paths take precedence. Package patterns with ... are not supported."
 
-const specPathArgDescription = "Package directory, import path, or SPEC.md file path. " +
-	"Package patterns with ... are not supported."
+const specPathArgDescription = "Package import path, package directory, or SPEC.md file path. " +
+	"Import paths take precedence over bare CWD-relative directories. Package patterns with ... are not supported."
 
 type configState struct {
 	once sync.Once
@@ -210,7 +211,7 @@ codalotl exec --yes --slash-command=orchestrate "Plan this refactor"
 `),
 	}
 	execFlags := execCmd.Flags()
-	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode, rooted at this package path (must be within cwd).")
+	execPackage := execFlags.String("package", 'p', "", "Run in Go package mode at this package path (import path or dir; must resolve inside cwd).")
 	execYes := execFlags.Bool("yes", 'y', false, "Auto-approve any permission checks (noninteractive).")
 	execNoColor := execFlags.Bool("no-color", 0, false, "Disable ANSI colors and formatting.")
 	execJSON := execFlags.Bool("json", 0, false, "Output newline-delimited JSON.")
@@ -243,8 +244,16 @@ codalotl exec --yes --slash-command=orchestrate "Plan this refactor"
 			return qcli.ExitError{Code: 1, Err: fmt.Errorf("invalid configuration: lints: %w", err)}
 		}
 
+		packagePath := strings.TrimSpace(*execPackage)
+		if packagePath != "" && !slashCommandAllowsEmptyInitialPrompt(slashCommand) {
+			packagePath, err = resolvePackagePathInsideCWD(packagePath)
+			if err != nil {
+				return err
+			}
+		}
+
 		err = runNoninteractiveExec(userPrompt, noninteractive.Options{
-			PackagePath:  *execPackage,
+			PackagePath:  packagePath,
 			SlashCommand: slashCommand,
 			ModelID:      modelID,
 			LintSteps:    steps,
@@ -864,23 +873,47 @@ func resolveSpecPathArg(arg string) (string, error) {
 		return "", qcli.UsageError{Message: `package patterns ("...") are not supported; provide a single package directory or SPEC.md`}
 	}
 
-	// If arg exists as a filesystem path, accept either a directory (use
-	// <dir>/SPEC.md) or a SPEC.md file.
-	if info, err := os.Stat(arg); err == nil {
-		if info.IsDir() {
-			return filepath.Join(arg, "SPEC.md"), nil
-		}
-		if filepath.Base(arg) != "SPEC.md" {
-			return "", qcli.UsageError{Message: fmt.Sprintf("expected SPEC.md file or package directory (got %q)", arg)}
-		}
-		return arg, nil
-	} else if !os.IsNotExist(err) {
-		return "", err
+	if isExplicitFilesystemPath(arg) {
+		return resolveExistingSpecPath(arg)
 	}
 
 	pkg, _, err := loadPackageArg(arg)
+	if err == nil {
+		return filepath.Join(pkg.AbsolutePath(), "SPEC.md"), nil
+	}
+	pkgErr := err
+
+	if specPath, ok, err := resolveExistingSpecPathIfPresent(arg); err != nil {
+		return "", err
+	} else if ok {
+		return specPath, nil
+	}
+
+	return "", pkgErr
+}
+
+func resolveExistingSpecPath(arg string) (string, error) {
+	specPath, ok, err := resolveExistingSpecPathIfPresent(arg)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(pkg.AbsolutePath(), "SPEC.md"), nil
+	if !ok {
+		return "", qcli.UsageError{Message: fmt.Sprintf("expected SPEC.md file or package directory (got %q)", arg)}
+	}
+	return specPath, nil
+}
+
+func resolveExistingSpecPathIfPresent(arg string) (string, bool, error) {
+	if info, err := os.Stat(arg); err == nil {
+		if info.IsDir() {
+			return filepath.Join(arg, "SPEC.md"), true, nil
+		}
+		if filepath.Base(arg) != "SPEC.md" {
+			return "", false, qcli.UsageError{Message: fmt.Sprintf("expected SPEC.md file or package directory (got %q)", arg)}
+		}
+		return arg, true, nil
+	} else if !os.IsNotExist(err) {
+		return "", false, err
+	}
+	return "", false, nil
 }
