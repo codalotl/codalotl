@@ -63,6 +63,10 @@ The CAS files are found using the rules in `## CAS files`, even if outside the s
 
 Prints CAS record if it exists, otherwise exits with status 1.
 
+### codalotl cas ls-namespaces
+
+Lists namespaces and their current version of all CAS types in the codebase (not which records have been saved so far). Does not display hash mode.
+
 ### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
 
 Lists packages (one per line, prefixed with `.`) that have no CAS file for their hash for the namespace. Only lists Go packages (not dirs with no .go files). Packages listed are based on the git repo (see `## CAS files`), and are relative to the git repo.
