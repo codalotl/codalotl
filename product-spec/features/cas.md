@@ -1,6 +1,6 @@
 # CAS
 
-CAS stands for "content-addressable storage" - in this product, it's a system to store metadata attached to content hashes (typically Go packages). For example, we might flag that a certain Go package - it's current files, paths, and bytes - have been analyzed for security vulnerabilities, with no vulnerabilities found. As soon as the package is edited, the analysis is implicitly invalidated (the hash changes).
+CAS stands for "content-addressable storage" - in this product, it's a system to store metadata attached to content hashes (typically Go packages). For example, we might flag that a certain Go package - its current files, paths, and bytes - has been analyzed for security vulnerabilities, with no vulnerabilities found. As soon as the package is edited, the analysis is implicitly invalidated (the hash changes).
 
 Tools like `check_spec_conformance` and `refactor` will often automatically create CAS files.
 
@@ -18,20 +18,20 @@ Which contains a JSON object like this:
 
 ## Package vs Code Unit
 
-There's a couple options to hash against: Go package vs code unit. The Go package is only the .go files and SPEC.md, whereas the code unit is (roughly) a file tree located at a dir, up to but not including nested Go packages. So the code unit can include supporting non-package files and dirs.
+There are a couple of options to hash against: Go package vs code unit. The Go package is only the .go files and SPEC.md, whereas the code unit is (roughly) a file tree located at a dir, up to but not including nested Go packages. So the code unit can include supporting non-package files and dirs.
 
 ## Merge Conflicts
 
-One very important property of this system is to be resilient to merge conflicts in multi-user repos. As such, we avoid index files. In this sytem, there should be almost no merge conflicts even when engineers modify the same package.
+One very important property of this system is to be resilient to merge conflicts in multi-user repos. As such, we avoid index files. In this system, there should be almost no merge conflicts even when engineers modify the same package.
 
 ## CAS files
 
-- If the nearest `.git` repo is located in `$GIT_ROOT` (recursively looking in cwd, parent, ...), the root CAS dir is `$GIT_ROOT/.codalotl/cas`. This can be overriden with `$CODALOTL_CAS_DB`.
-- Allowed to be outside of sandbox dir.
+- If the nearest `.git` repo is located in `$GIT_ROOT` (recursively looking in cwd, parent, ...), the root CAS dir is `$GIT_ROOT/.codalotl/cas`. This can be overridden with `$CODALOTL_CAS_DB`.
+- Allowed to be outside the sandbox dir.
 
 ## Checked into git
 
-- These CAS files are intended to be checked into git. If `$CODALOTL_CAS_DB` is defined and outside the git repo (or git ignored), the behavior is undefined:
+- These CAS files are intended to be checked into git. If `$CODALOTL_CAS_DB` is defined and outside the git repo (or git-ignored), the behavior is undefined:
     - Storing CAS files outside the repo should work.
     - But some workflow items might break - for instance, the agent might use `git status` to notice new files, expecting to find CAS files.
 
@@ -45,7 +45,7 @@ Each namespace "knows" its associated current version and a hash mode (e.g., pac
 
 The CLI offers commands to view and manipulate CAS records. Namespace parameters from the CLI refer to the non-versioned namespace.
 
-The CAS files are found by `## CAS files`, even if outside sandbox dir or in parents' dirs.
+The CAS files are found using the rules in `## CAS files`, even if outside the sandbox dir or in parent dirs.
 
 ### codalotl cas get <namespace> <path/to/pkg>
 
@@ -67,4 +67,4 @@ NOTE: there's a lot of nuance and edge cases in the above. These are implementat
 
 Deletes CAS files:
 - prior versions (if a namespace bumps the version).
-- CAS files where older than N days ago where a newer CAS entry also exists.
+- CAS files older than N days where a newer CAS entry also exists.
