@@ -3,10 +3,13 @@ package llmmodel
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/codalotl/codalotl/internal/openaisubscription"
 )
 
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model ID sent to API endpoints.
@@ -294,6 +297,14 @@ func ProviderHasConfiguredKey(providerID ProviderID) bool {
 	return os.Getenv(env) != ""
 }
 
+// ProviderHasConfiguredAuth reports whether providerID can currently be used for at least one built-in provider auth mode.
+func ProviderHasConfiguredAuth(providerID ProviderID) bool {
+	if ProviderHasConfiguredKey(providerID) {
+		return true
+	}
+	return providerID == ProviderIDOpenAI && openaisubscription.HasCredentials()
+}
+
 // GetAPIKey returns the API key for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIActualKey
 //  2. Env[ModelInfo.ModelOverrides.APIEnvKey]
@@ -335,6 +346,47 @@ func AvailableModelIDsWithAPIKey() []ModelID {
 		}
 	}
 	return out
+}
+
+// ModelHasConfiguredAuth reports whether id has either a provider API key or another supported provider auth mechanism.
+func ModelHasConfiguredAuth(id ModelID) bool {
+	if GetAPIKey(id) != "" {
+		return true
+	}
+	return ModelUsesOpenAISubscriptionAuth(id) && openaisubscription.HasCredentials()
+}
+
+// AvailableModelIDsWithConfiguredAuth returns only model IDs that can be called with the current auth configuration.
+func AvailableModelIDsWithConfiguredAuth() []ModelID {
+	ids := AvailableModelIDs()
+	out := make([]ModelID, 0, len(ids))
+	for _, id := range ids {
+		if ModelHasConfiguredAuth(id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// ModelUsesOpenAISubscriptionAuth reports whether id is eligible for ChatGPT subscription auth when no API key is configured.
+func ModelUsesOpenAISubscriptionAuth(id ModelID) bool {
+	info := GetModelInfo(id)
+	if info.ID == ModelIDUnknown || info.ProviderID != ProviderIDOpenAI {
+		return false
+	}
+	if info.APIActualKey != "" || info.APIEnvKey != "" {
+		return false
+	}
+	endpoint := strings.TrimSpace(GetAPIEndpointURL(id))
+	if endpoint == "" {
+		return true
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "api.openai.com"
 }
 
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:

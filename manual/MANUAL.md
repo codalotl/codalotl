@@ -16,7 +16,13 @@ go install github.com/codalotl/codalotl@latest
 codalotl version
 ```
 
-3. Configure a provider key. OpenAI, Anthropic, and Gemini models are supported. A simple starting point is OpenAI:
+3. Configure provider auth. For OpenAI, you can use a ChatGPT subscription:
+
+```bash
+codalotl auth login
+```
+
+API keys are also supported:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -334,6 +340,21 @@ To set your model for an `exec` run:
 
 ```bash
 codalotl exec --model gpt-5.5-high "your prompt"
+```
+
+#### LLM Auth Config
+
+For OpenAI, you can sign in with a ChatGPT subscription:
+
+```bash
+codalotl auth login
+```
+
+Check or remove stored subscription auth with:
+
+```bash
+codalotl auth status
+codalotl auth logout
 ```
 
 #### API Key Config

@@ -53,7 +53,7 @@ func (e startupValidationError) Error() string {
 	}
 
 	if e.MissingLLM {
-		b.WriteString("\nNo LLM provider API key is configured.\n")
+		b.WriteString("\nNo LLM provider authentication is configured.\n")
 
 		relevant := e.LLMEnvVars
 		if len(relevant) > 0 {
@@ -70,6 +70,8 @@ func (e startupValidationError) Error() string {
 		b.WriteString(globalConfigPath())
 		b.WriteString("\n")
 		b.WriteString("- Project: .codalotl/config.json\n")
+		b.WriteString("\nFor OpenAI ChatGPT subscription auth, run:\n")
+		b.WriteString("- codalotl auth login\n")
 
 		// Keep this snippet aligned with the current ProviderKeys schema.
 		if len(relevant) > 0 {
@@ -123,7 +125,7 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 		}
 	}
 
-	missingLLM := len(llmmodel.AvailableModelIDsWithAPIKey()) == 0
+	missingLLM := len(llmmodel.AvailableModelIDsWithConfiguredAuth()) == 0
 
 	if len(missingTools) == 0 && !missingLLM {
 		return nil

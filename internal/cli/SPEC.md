@@ -137,6 +137,7 @@ Prints the codalotl configuration to stdout. Details:
 	- Which file(s) actually store the config. If multiple do (`cascade` merges config data) they are all listed.
 	- The effective model (useful when no model is explicitely configured).
 	- List of provider ENV keys to set.
+	- OpenAI ChatGPT subscription auth instructions/status.
 	- Instructions on where the config file can be stored.
 
 Example Output:
@@ -162,9 +163,22 @@ To set LLM provider API keys, set one of these ENV variables:
 - OPENAI_API_KEY
 - ANTHROPIC_API_KEY
 
+For OpenAI ChatGPT subscription auth, run:
+- codalotl auth login
+
 Global configuration can be stored in /home/someuser/.codalotl/config.json
 Project-specific configuration can be stored in .codalotl/config.json
 ```
+
+### codalotl auth
+
+Manages OpenAI ChatGPT subscription authentication.
+- `codalotl auth login` starts a browser OAuth flow using the OpenAI/Codex client id and stores refresh credentials under `~/.codalotl/openai_auth.json`.
+- `codalotl auth login --no-browser` prints the sign-in URL without trying to open a browser.
+- `codalotl auth status` reports whether subscription auth is signed in and where credentials are stored.
+- `codalotl auth logout` removes stored subscription credentials.
+
+The auth commands do not require startup LLM validation, so users can run `codalotl auth login` before any API key is configured.
 
 ### codalotl context public <path/to/pkg>
 

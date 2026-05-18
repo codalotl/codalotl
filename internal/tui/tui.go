@@ -865,7 +865,7 @@ func (m *model) handleModelCommand(arg string) {
 		}
 
 		// Only list models that are callable in the current environment (i.e., have an effective API key).
-		available := llmmodel.AvailableModelIDsWithAPIKey()
+		available := llmmodel.AvailableModelIDsWithConfiguredAuth()
 
 		var b strings.Builder
 		fmt.Fprintf(&b, "Current model: %s\n", current)

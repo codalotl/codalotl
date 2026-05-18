@@ -25,15 +25,18 @@ Consumers can then configure these:
     - Add custom params on a per-model basis (ex: reasoning effort)
     - Create custom ModelID aliases
     - Add custom providers. For instance, local inference can be used by setting APIEndpointURL and (APIActualKey or APIEnvKey). ProviderID would be an API-compatible provider (likely OpenAI).
-- To present a model picker that only shows models that can be called with the *current* configuration, call AvailableModelIDsWithAPIKey(). This filters models using GetAPIKey(modelID), so it respects:
+- To present a model picker that only shows models that can be called with the *current* configuration, call AvailableModelIDsWithConfiguredAuth(). This respects:
     - per-model overrides (APIActualKey / APIEnvKey)
     - in-memory provider overrides (ConfigureProviderKey)
     - provider default env vars (ex: "OPENAI_API_KEY")
+    - OpenAI ChatGPT subscription auth, for OpenAI-hosted models that do not override API key/env key or endpoint
+- AvailableModelIDsWithAPIKey() remains the narrow API-key-only filter.
 - To check if a provider has a configured key *at the provider level* (ConfigureProviderKey or default env var), call ProviderHasConfiguredKey(providerID).
     - This does NOT consider per-model overrides; those are only visible when checking at the model level.
+- To check if a provider has any built-in configured auth, call ProviderHasConfiguredAuth(providerID).
 - EnvHasDefaultKey(providerID) is a narrow helper: it checks only the provider's default env var and ignores ConfigureProviderKey and per-model overrides.
 
-Once configured, params of type ModelID can be passed around to select a model. A package that uses llmmodel to send API requests can accept this ModelID param, get the API key, and get relevant parameters (URL, ReasoningEffort overrides, etc).
+Once configured, params of type ModelID can be passed around to select a model. A package that uses llmmodel to send API requests can accept this ModelID param, get the API key or configured auth status, and get relevant parameters (URL, ReasoningEffort overrides, etc).
 
 ## Implementation details
 
@@ -239,6 +242,9 @@ func ProviderKeyEnvVars() map[ProviderID]string
 // If you need to consider per-model overrides (APIActualKey / APIEnvKey), filter at the model level using GetAPIKey(modelID) instead.
 func ProviderHasConfiguredKey(providerID ProviderID) bool
 
+// ProviderHasConfiguredAuth reports whether providerID can currently be used for at least one built-in provider auth mode.
+func ProviderHasConfiguredAuth(providerID ProviderID) bool
+
 // GetAPIKey returns the API key for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIActualKey
 //  2. Env[ModelInfo.ModelOverrides.APIEnvKey]
@@ -248,6 +254,15 @@ func GetAPIKey(id ModelID) string
 
 // AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty effective API key (per GetAPIKey).
 func AvailableModelIDsWithAPIKey() []ModelID
+
+// ModelHasConfiguredAuth reports whether id has either a provider API key or another supported provider auth mechanism.
+func ModelHasConfiguredAuth(id ModelID) bool
+
+// AvailableModelIDsWithConfiguredAuth returns only model IDs that can be called with the current auth configuration.
+func AvailableModelIDsWithConfiguredAuth() []ModelID
+
+// ModelUsesOpenAISubscriptionAuth reports whether id is eligible for ChatGPT subscription auth when no API key is configured.
+func ModelUsesOpenAISubscriptionAuth(id ModelID) bool
 
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIEndpointURL

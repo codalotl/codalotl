@@ -12,6 +12,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/lints"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/openaisubscription"
 	"github.com/codalotl/codalotl/internal/q/cascade"
 )
 
@@ -169,6 +170,17 @@ func writeConfig(w io.Writer, cfg Config) error {
 	}
 	for _, ev := range llmProviderEnvVarsForDisplay(cfg) {
 		if _, err := fmt.Fprintf(w, "- %s\n", ev); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(w, "\nFor OpenAI ChatGPT subscription auth, run:"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "- codalotl auth login"); err != nil {
+		return err
+	}
+	if openaisubscription.HasCredentials() {
+		if _, err := fmt.Fprintf(w, "\nOpenAI subscription auth: signed in (%s)\n", openaisubscription.DefaultCredentialsPath()); err != nil {
 			return err
 		}
 	}

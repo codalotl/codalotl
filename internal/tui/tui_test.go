@@ -1627,10 +1627,10 @@ func TestModelCommandListsAvailableModels(t *testing.T) {
 	assert.Contains(t, msg.userMessage, "Available models:")
 	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
 
-	// Only list models that have an effective API key.
+	// Only list models that have configured provider auth.
 	for _, id := range listedModelIDs(msg.userMessage) {
 		require.Truef(t, id.Valid(), "listed invalid model id: %q", id)
-		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
+		require.Truef(t, llmmodel.ModelHasConfiguredAuth(id), "listed model without provider auth: %q", id)
 	}
 }
 func TestNewSessionBlock_GenericMode_ShowsOrchestrateHelpWithoutInternalAgentName(t *testing.T) {
@@ -1669,10 +1669,10 @@ func TestModelsCommandListsAvailableModels(t *testing.T) {
 	assert.Contains(t, msg.userMessage, "Available models:")
 	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
 
-	// Only list models that have an effective API key.
+	// Only list models that have configured provider auth.
 	for _, id := range listedModelIDs(msg.userMessage) {
 		require.Truef(t, id.Valid(), "listed invalid model id: %q", id)
-		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
+		require.Truef(t, llmmodel.ModelHasConfiguredAuth(id), "listed model without provider auth: %q", id)
 	}
 }
 

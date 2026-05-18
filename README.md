@@ -28,9 +28,15 @@ It is important to look at the benchmark test scenarios to see if they align wit
 go install github.com/codalotl/codalotl@latest
 ```
 
-### Configure LLM Provider Keys
+### Configure LLM Auth
 
-Codalotl requires an LLM provider API key. The best way to do that is to set one of:
+Codalotl requires LLM provider authentication. For OpenAI, you can sign in with your ChatGPT subscription:
+
+```bash
+codalotl auth login
+```
+
+API keys are also supported. The best way to configure one is to set one of:
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
@@ -83,7 +89,7 @@ Codalotl is **usable** and **effective** as-is: I have replaced most of my other
 - Not extensively tested on various repos/codebases/versions of Go. Untested in multi-module/go.work projects.
 - Has a number of UX issues (example: poor copy/paste support; onboarding; error messages).
 - Some common agent features are unimplemented (session resumption; mcp).
-- Only OpenAI, Anthropic, and Gemini models are supported; you must bring your own key.
+- Only OpenAI, Anthropic, and Gemini models are supported. OpenAI can use ChatGPT subscription auth or an API key; Anthropic and Gemini require API keys.
 
 All of these will be addressed over time.
 

@@ -911,7 +911,7 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	if errOut.Len() == 0 {
 		t.Fatalf("expected stderr output")
 	}
-	if !strings.Contains(errOut.String(), "No LLM provider API key is configured") {
+	if !strings.Contains(errOut.String(), "No LLM provider authentication is configured") {
 		t.Fatalf("expected error to mention missing LLM key, got stderr:\n%s", errOut.String())
 	}
 	if !strings.Contains(errOut.String(), "OPENAI_API_KEY") {

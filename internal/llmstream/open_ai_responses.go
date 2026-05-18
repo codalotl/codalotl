@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/openaisubscription"
 
 	openai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -32,17 +33,30 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.context", err)
 	}
 
-	apiKey := llmmodel.GetAPIKey(sc.modelID)
-	if apiKey == "" {
-		return Turn{}, sc.LogNewErr("open_ai_send_async.api_key_missing", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID)
-	}
-
 	opts := []option.RequestOption{
-		option.WithAPIKey(apiKey),
 		option.WithMaxRetries(3),
 	}
-	if baseURL := llmmodel.GetAPIEndpointURL(sc.modelID); baseURL != "" {
-		opts = append(opts, option.WithBaseURL(baseURL))
+	apiKey := llmmodel.GetAPIKey(sc.modelID)
+	if apiKey != "" {
+		opts = append(opts, option.WithAPIKey(apiKey))
+		if baseURL := llmmodel.GetAPIEndpointURL(sc.modelID); baseURL != "" {
+			opts = append(opts, option.WithBaseURL(baseURL))
+		}
+	} else if llmmodel.ModelUsesOpenAISubscriptionAuth(sc.modelID) {
+		auth, err := openaisubscription.ResolveAuth(ctx)
+		if err != nil {
+			return Turn{}, sc.LogWrappedErr("open_ai_send_async.subscription_auth", err)
+		}
+		opts = append(opts,
+			option.WithAPIKey(auth.AccessToken),
+			option.WithBaseURL(openaisubscription.CodexAPIBase),
+			option.WithHeader("originator", openaisubscription.Originator),
+		)
+		if auth.ChatGPTAccountID != "" {
+			opts = append(opts, option.WithHeader("ChatGPT-Account-ID", auth.ChatGPTAccountID))
+		}
+	} else {
+		return Turn{}, sc.LogNewErr("open_ai_send_async.api_key_missing", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID)
 	}
 	client := openai.NewClient(opts...)
 

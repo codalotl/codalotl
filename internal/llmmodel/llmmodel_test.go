@@ -340,3 +340,21 @@ func TestAvailableModelIDsWithAPIKeyAndProviderHasConfiguredKey(t *testing.T) {
 	require.True(t, seenOpenAI)
 	require.True(t, seenAnthropic)
 }
+
+func TestModelUsesOpenAISubscriptionAuth(t *testing.T) {
+	require.True(t, ModelUsesOpenAISubscriptionAuth(DefaultModel))
+
+	customEndpointID := ModelID("custom-openai-endpoint-no-subscription")
+	err := AddCustomModel(customEndpointID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{
+		APIEndpointURL: "http://localhost:1234/v1",
+	})
+	require.NoError(t, err)
+	require.False(t, ModelUsesOpenAISubscriptionAuth(customEndpointID))
+
+	customEnvID := ModelID("custom-openai-env-no-subscription")
+	err = AddCustomModel(customEnvID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{
+		APIEnvKey: "$ALT_OPENAI_KEY_FOR_SUBSCRIPTION_TEST",
+	})
+	require.NoError(t, err)
+	require.False(t, ModelUsesOpenAISubscriptionAuth(customEnvID))
+}
