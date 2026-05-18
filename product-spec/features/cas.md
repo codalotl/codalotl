@@ -18,7 +18,7 @@ Which contains a JSON object like this:
 
 ## Package vs Code Unit
 
-There are a couple of options to hash against: Go package vs code unit. The Go package is only the .go files and SPEC.md, whereas the code unit is (roughly) a file tree located at a dir, up to but not including nested Go packages. So the code unit can include supporting non-package files and dirs. Generally, code units are packages with extra files, and may be used interchangably in text.
+There are a couple of options to hash against: Go package vs code unit. The Go package is only the .go files and SPEC.md, whereas the code unit is (roughly) a file tree located at a dir, up to but not including nested Go packages. So the code unit can include supporting non-package files and dirs. Generally, code units are packages with extra files, and may be used interchangeably in text.
 
 ## Merge Conflicts
 
