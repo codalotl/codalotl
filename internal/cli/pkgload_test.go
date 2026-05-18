@@ -96,6 +96,29 @@ func TestLoadPackageArg_AcceptsExplicitAndFallbackDirs(t *testing.T) {
 	}
 }
 
+func TestLoadPackageArg_FallbackDirMayBeInModuleBelowCWD(t *testing.T) {
+	tmp := mkdirTempWithRemoveRetry(t, "codalotl-cli-pkgload-")
+	proj := filepath.Join(tmp, "proj")
+	pkgDir := filepath.Join(proj, "internal", "cli")
+	writePkgLoadModule(t, proj, "module example.com/proj\n\ngo 1.22\n")
+	writePkgLoadPackage(t, pkgDir, "cli")
+
+	chdirForTest(t, tmp)
+
+	for _, arg := range []string{
+		filepath.Join("proj", "internal", "cli"),
+		"." + string(filepath.Separator) + filepath.Join("proj", "internal", "cli"),
+		pkgDir,
+	} {
+		t.Run(arg, func(t *testing.T) {
+			pkg, _, err := loadPackageArg(arg)
+			require.NoError(t, err)
+			require.Equal(t, "example.com/proj/internal/cli", pkg.ImportPath)
+			requireSameDir(t, pkgDir, pkg.AbsolutePath())
+		})
+	}
+}
+
 func TestLoadPackageArg_RejectsPackagePatterns(t *testing.T) {
 	_, _, err := loadPackageArg("./...")
 	require.Error(t, err)

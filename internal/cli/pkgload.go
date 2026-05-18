@@ -182,7 +182,8 @@ func isPackageImportNotFound(err error) bool {
 	return strings.Contains(msg, " is not in std ") ||
 		strings.Contains(msg, " is not in std (") ||
 		strings.Contains(msg, "cannot find module providing package") ||
-		strings.Contains(msg, "no required module provides package")
+		strings.Contains(msg, "no required module provides package") ||
+		strings.Contains(msg, "no go.mod file found in parent directories")
 }
 
 func resolvePackagePathInsideCWD(arg string) (string, error) {
