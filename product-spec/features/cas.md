@@ -6,7 +6,7 @@ Tools like `check_spec_conformance` and `refactor` will often automatically crea
 
 ## Example
 
-One operation Codalotl does regularly is checking "spec conformance" (via a `check_spec_conformance` tool) - making sure a package's Go code conforms to the SPEC.md in the same dir. When it finds the code does conform to the SPEC.md, it writes a CAS entry against the package/spec's hash, recording this fact.
+One operation Codalotl does regularly is checking "spec conformance" (via a `check_spec_conformance` tool) - making sure a package's Go code conforms to the SPEC.md in the same dir. When it finds the code does conform to the SPEC.md, it writes a CAS entry against the package's hash, recording this fact.
 
 Concretely, a filename like this is written:
 `.codalotl/cas/specconforms-1/0a/07c31ddb15f6d14e7a17f46dfb04bbba24443d484c437db96c87a5c147789f`
@@ -16,9 +16,13 @@ Which contains a JSON object like this:
 {"kind":"cas-record-v1","metadata":{"conforms":true},"additional_info":{...}}
 ```
 
-## Package vs Code Unit
+## Hash mode
 
-There are a couple of options to hash against: Go package vs code unit. The Go package is only the .go files and SPEC.md, whereas the code unit is (roughly) a file tree located at a dir, up to but not including nested Go packages. So the code unit can include supporting non-package files and dirs. Generally, code units are packages with extra files, and may be used interchangeably in text.
+A Go package can be hashed in two ways:
+- .go files and SPEC.md
+- .go files and ~all other files in the dir, recursively, up to but not including nested Go packages.
+
+The former can be used for code-only concerns; the latter can be used when supporting files might play a role.
 
 ## Merge Conflicts
 
@@ -39,7 +43,7 @@ One very important property of this system is to be resilient to merge conflicts
 
 Each type of metadata has its own namespace. Ex: `specconforms`; `docs-fix`. Similarly, each namespace is versioned, affording us the ability to bump the version, invalidating all existing CAS records.
 
-Each namespace "knows" its associated current version and a hash mode (e.g., package vs code unit).
+Each namespace "knows" its associated current version and a hash mode.
 
 ## CLI
 
@@ -53,7 +57,7 @@ Prints CAS record if it exists, otherwise exits with status 1.
 
 ### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
 
-Lists packages (one per line, prefixed with `.`) that have no CAS file for their hash for the namespace. Only lists Go packages (not code units with no .go files). Packages listed are based on the git repo (see `## CAS files`), and are relative to the git repo.
+Lists packages (one per line, prefixed with `.`) that have no CAS file for their hash for the namespace. Only lists Go packages (not dirs with no .go files). Packages listed are based on the git repo (see `## CAS files`), and are relative to the git repo.
 
 If `--stale-after-days=N` is present, list only packages whose most recent known CAS-covered state became stale at least N days ago.
 
