@@ -18,7 +18,7 @@ Which contains a JSON object like this:
 
 ## Package vs Code Unit
 
-There are a couple of options to hash against: Go package vs code unit. The Go package is only the .go files and SPEC.md, whereas the code unit is (roughly) a file tree located at a dir, up to but not including nested Go packages. So the code unit can include supporting non-package files and dirs.
+There are a couple of options to hash against: Go package vs code unit. The Go package is only the .go files and SPEC.md, whereas the code unit is (roughly) a file tree located at a dir, up to but not including nested Go packages. So the code unit can include supporting non-package files and dirs. Generally, code units are packages with extra files, and may be used interchangably in text.
 
 ## Merge Conflicts
 
@@ -63,8 +63,8 @@ If both are passed, the conditions are OR'ed. Note that packages that have never
 
 NOTE: there's a lot of nuance and edge cases in the above. These are implementation details.
 
-### codalotl cas prune
+### codalotl cas prune [--days=N]
 
 Deletes CAS files:
 - prior versions (if a namespace bumps the version).
-- CAS files older than N days where a newer CAS entry also exists.
+- CAS files older than N days (default: 30) AND where a newer CAS entry also exists for the (namespace, package) pair.
