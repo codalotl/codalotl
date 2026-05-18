@@ -59,7 +59,7 @@ If `--stale-after-days=N` is present, list only packages whose most recent known
 
 If `--min-churn-percent=N` is present, list only packages whose current content differs from the most recent CAS-covered state by at least N%.
 
-If both are passed, the conditions are OR'ed. Note that packages that have never had a CAS entry are always included.
+If both are passed, the conditions are OR'ed. Note that packages that have never had a CAS entry are always included. If a Go package has no CAS record at all, for any hash, it is always considered stale and is always returned.
 
 NOTE: there's a lot of nuance and edge cases in the above. These are implementation details.
 
@@ -68,3 +68,34 @@ NOTE: there's a lot of nuance and edge cases in the above. These are implementat
 Deletes CAS files:
 - prior versions (if a namespace bumps the version).
 - CAS files older than N days (default: 30) AND where a newer CAS entry also exists for the (namespace, package) pair.
+
+### codalotl cas recertify <path/to/pkg> --namespaces="<namespace1>[,<namespace2>,...]"
+
+Recertify asserts that a package's current files wrt the namespace are compliant with a recent CAS record.
+- `--namespaces` is required with at least one namespace. It's a comma-separated list of namespaces.
+- no-op for (pkg, namespace) pairs where hash is already up-to-date.
+- Writes a new CAS entry with the ~same content as the most recent one, but with some updated metadata/additional_info, when appropriate (ex: updated git SHAs; updated file lists).
+    - New CAS entry has extra metadata indicating it's a recertification: `"recertified": true, "recertified_from_hash": "...", "recertified_from_record": "..."`
+- Never deletes or mutates existing CAS entries.
+- Before recertification, check invariants (things like same version, hash mode, package name, etc), raising errors as approprate. Display warnings if high-risk things are being done (ex: recertification done in different branches; large churn %; recertifying very old record; etc).
+
+Problem this solves: agent runs multiple refactors on a package in a row: `dry`, `test-cleanup`, `test-ensure-coverage`, `docs-fix`. Each one writes a CAS entry, and each one invalidates the previous entry. We need a way for the agent to say, "all these refactors are still valid." In theory, a refactor could break a previous refactor. In practice, that's rare. For refactors where that matters a lot, just don't recertify it.
+
+### codalotl cas ls-summary <namespace> [--csv]
+
+Displays a tabular summary of all packages in the system with respect to the namespace. If `--csv` is used, instead of printing a pretty table for display in a terminal, prints a CSV.
+
+Columns:
+- Package
+- CAS (either `yes` or `no`, for is there a CAS entry matching current package's hash)
+- Prev CAS (either `yes`, `no`, or `-`, for is there a CAS entry for this package that has been invalidated. If CAS in prior column is `yes`, this is `-` for "does not matter")
+- Age (either `-` if N/A, or something like `17d` indicating a CAS record was saved 17 days ago)
+- Churn % (either `-` if N/A, or something like `18%` indicating the package had 18% of lines changed relative to when the prior CAS record was saved).
+
+## Future Design Possibilities
+
+The following are NOT part of the spec, but simply ideas to explore IF certain problems occur:
+- We may want stronger recertify semantics:
+    - namespaces opt-in or opt-out to recertification
+    - expose recertification more easily, including in ls-summary
+    - prune should preserve provenance chains
