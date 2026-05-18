@@ -25,7 +25,7 @@ When codalotl starts, we load and validate configuration and required tools (exc
 Notes:
 - Any argument <path/to/pkg> follows `product-spec/features/cli.md` single-package semantics.
 	- Import paths take precedence.
-	- Explicit relative dirs (`.`, `..`, `./foo`) and absolute dirs are direct filesystem paths.
+	- Explicit relative dirs (`.`, `..`, `./foo`, `../foo`) and absolute dirs are direct filesystem paths.
 	- Bare/slashed CWD-relative dirs that do not start with `.` are fallback package dirs if they do not resolve as import paths.
 	- It may NOT use `...` package patterns unless the command explicitly accepts a package pattern.
 - The root command does not accept a package/path argument. The only exception is `codalotl .`, which is treated as an alias for launching the TUI (for muscle memory with tools like `code .`).
