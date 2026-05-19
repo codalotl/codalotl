@@ -177,6 +177,7 @@ func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Note: Prev CAS '-' with CAS=yes means not applicable (current CAS exists), not false/no previous record.")
 
 	rows := casSummaryRowsByPackage(out.String())
 	p1 := requireCASSummaryRow(t, rows, "./p1")
@@ -214,6 +215,7 @@ func TestRun_CAS_LSSummary_CSV(t *testing.T) {
 		{"Package", "CAS", "Prev CAS", "Age", "Churn %"},
 		{"./p", "no", "no", "-", "-"},
 	}, records)
+	require.NotContains(t, out.String(), "Note:")
 }
 
 func storeCASTestRecord(t *testing.T, moduleDir string, namespace string, relDir string, value any) {

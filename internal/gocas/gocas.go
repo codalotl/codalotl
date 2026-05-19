@@ -84,9 +84,14 @@ type PackageRecordSummary struct {
 
 // PackageSummary describes current and prior CAS state for a package in one namespace.
 type PackageSummary struct {
-	Current          *PackageRecordSummary // Current is non-nil when a CAS record exists for the package's current contents.
-	PriorInvalidated *PackageRecordSummary // PriorInvalidated is the most relevant older matching record when Current is nil.
-	ChurnPercent     *float64              // ChurnPercent is the best-effort changed-line percentage versus PriorInvalidated.
+	// Current is non-nil when a CAS record exists for the package's current contents.
+	Current *PackageRecordSummary
+
+	// PriorInvalidated is the most relevant older matching record when Current is nil.
+	PriorInvalidated *PackageRecordSummary
+
+	// ChurnPercent is the best-effort changed-line percentage versus the newest prior record with a verified git baseline.
+	ChurnPercent *float64
 }
 
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
@@ -247,13 +252,15 @@ func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (Package
 		}, nil
 	}
 
-	prior := db.priorInvalidatedPackageRecord(namespace, currentHash, pkg, relPaths)
+	priorRecords := db.priorInvalidatedPackageRecords(namespace, currentHash, pkg, relPaths)
+	var prior *PackageRecordSummary
+	if len(priorRecords) > 0 {
+		prior = priorRecords[0].summary
+	}
 	summary := PackageSummary{
 		PriorInvalidated: prior,
 	}
-	if prior != nil {
-		summary.ChurnPercent = db.churnPercent(prior.AdditionalInfo, relPaths)
-	}
+	summary.ChurnPercent = db.churnPercent(priorRecords, relPaths)
 	return summary, nil
 }
 
@@ -445,6 +452,11 @@ type casRecordFile struct {
 	AdditionalInfo cas.AdditionalInfo `json:"additional_info"`
 }
 
+type priorPackageRecord struct {
+	summary    *PackageRecordSummary
+	recordPath string
+}
+
 func readCASRecordFile(recordPath string) (cas.AdditionalInfo, bool) {
 	b, err := os.ReadFile(recordPath)
 	if err != nil {
@@ -462,8 +474,16 @@ func readCASRecordFile(recordPath string) (cas.AdditionalInfo, bool) {
 }
 
 func (db *DB) priorInvalidatedPackageRecord(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) *PackageRecordSummary {
+	records := db.priorInvalidatedPackageRecords(namespace, currentHash, pkg, currentRelPaths)
+	if len(records) == 0 {
+		return nil
+	}
+	return records[0].summary
+}
+
+func (db *DB) priorInvalidatedPackageRecords(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) []*priorPackageRecord {
 	namespaceDir := db.namespaceDir(namespace)
-	var best *PackageRecordSummary
+	records := []*priorPackageRecord{}
 
 	_ = filepath.WalkDir(namespaceDir, func(recordPath string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -487,13 +507,17 @@ func (db *DB) priorInvalidatedPackageRecord(namespace Namespace, currentHash str
 		}
 
 		candidate := db.packageRecordSummary(hash, additionalInfo, recordPath)
-		if betterPackageRecord(candidate, best) {
-			best = candidate
-		}
+		records = append(records, &priorPackageRecord{
+			summary:    candidate,
+			recordPath: recordPath,
+		})
 		return nil
 	})
 
-	return best
+	sort.Slice(records, func(i, j int) bool {
+		return betterPackageRecord(records[i].summary, records[j].summary)
+	})
+	return records
 }
 
 func recordHashFromPath(namespaceDir, recordPath string) (string, bool) {
@@ -603,13 +627,8 @@ func cleanRelPath(p string) (string, bool) {
 	return p, true
 }
 
-func (db *DB) churnPercent(priorAdditionalInfo cas.AdditionalInfo, currentRelPaths []string) *float64 {
-	if priorAdditionalInfo.GitCommit == "" || !priorAdditionalInfo.GitClean {
-		return nil
-	}
-
-	priorPaths := db.normalizeStoredPaths(priorAdditionalInfo.Paths)
-	if len(priorPaths) == 0 {
+func (db *DB) churnPercent(records []*priorPackageRecord, currentRelPaths []string) *float64 {
+	if len(records) == 0 {
 		return nil
 	}
 
@@ -618,19 +637,150 @@ func (db *DB) churnPercent(priorAdditionalInfo cas.AdditionalInfo, currentRelPat
 		return nil
 	}
 
-	allPaths := mergeRelPaths(priorPaths, currentRelPaths)
-	changedLines, ok := gitChangedLines(db.BaseDir, gitPath, priorAdditionalInfo.GitCommit, allPaths)
+	for _, record := range records {
+		churn := db.recordChurnPercent(record, currentRelPaths, gitPath)
+		if churn != nil {
+			return churn
+		}
+	}
+	return nil
+}
+
+func (db *DB) recordChurnPercent(record *priorPackageRecord, currentRelPaths []string, gitPath string) *float64 {
+	if record == nil || record.summary == nil {
+		return nil
+	}
+
+	priorPaths := db.normalizeStoredPaths(record.summary.AdditionalInfo.Paths)
+	if len(priorPaths) == 0 {
+		return nil
+	}
+
+	commit, ok := db.matchingRecordCommit(record, priorPaths, gitPath)
 	if !ok {
 		return nil
 	}
 
-	priorLines, ok := gitCommitLineCount(db.BaseDir, gitPath, priorAdditionalInfo.GitCommit, priorPaths)
+	allPaths := mergeRelPaths(priorPaths, currentRelPaths)
+	changedLines, ok := gitChangedLines(db.BaseDir, gitPath, commit, allPaths)
+	if !ok {
+		return nil
+	}
+
+	priorLines, ok := gitCommitLineCount(db.BaseDir, gitPath, commit, priorPaths)
 	if !ok || priorLines == 0 {
 		return nil
 	}
 
 	churn := (float64(changedLines) / float64(priorLines)) * 100
 	return &churn
+}
+
+func (db *DB) matchingRecordCommit(record *priorPackageRecord, priorPaths []string, gitPath string) (string, bool) {
+	for _, commit := range db.recordCommitCandidates(record, gitPath) {
+		if db.recordHashMatchesCommit(record.summary.Hash, commit, priorPaths, gitPath) {
+			return commit, true
+		}
+	}
+	return "", false
+}
+
+func (db *DB) recordCommitCandidates(record *priorPackageRecord, gitPath string) []string {
+	if record == nil || record.summary == nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	candidates := []string{}
+	add := func(commit string) {
+		commit = strings.TrimSpace(commit)
+		if commit == "" {
+			return
+		}
+		if _, ok := seen[commit]; ok {
+			return
+		}
+		seen[commit] = struct{}{}
+		candidates = append(candidates, commit)
+	}
+
+	add(record.summary.AdditionalInfo.GitCommit)
+	for _, commit := range db.gitCommitsAddingRecord(record.recordPath, gitPath) {
+		add(commit)
+	}
+	return candidates
+}
+
+func (db *DB) gitCommitsAddingRecord(recordPath string, gitPath string) []string {
+	if recordPath == "" {
+		return nil
+	}
+
+	gitRoot, err := gitOutput(db.BaseDir, gitPath, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil
+	}
+	rel, err := filepath.Rel(gitRoot, recordPath)
+	if err != nil {
+		return nil
+	}
+	rel, ok := cleanRelPath(rel)
+	if !ok {
+		return nil
+	}
+
+	out, err := gitOutput(db.BaseDir, gitPath, "log", "--format=%H", "--diff-filter=A", "--", rel)
+	if err != nil {
+		return nil
+	}
+
+	commits := []string{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			commits = append(commits, line)
+		}
+	}
+	return commits
+}
+
+func (db *DB) recordHashMatchesCommit(hash, commit string, relPaths []string, gitPath string) bool {
+	if hash == "" || commit == "" || len(relPaths) == 0 {
+		return false
+	}
+
+	tmpDir, err := os.MkdirTemp("", "codalotl-cas-hash-*")
+	if err != nil {
+		return false
+	}
+	defer os.RemoveAll(tmpDir)
+
+	absPaths := make([]string, 0, len(relPaths))
+	for _, relPath := range relPaths {
+		relPath, ok := cleanRelPath(relPath)
+		if !ok {
+			return false
+		}
+		out, ok := gitShowFile(db.BaseDir, gitPath, commit, relPath)
+		if !ok {
+			return false
+		}
+
+		absPath := filepath.Join(tmpDir, filepath.FromSlash(relPath))
+		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+			return false
+		}
+		if err := os.WriteFile(absPath, out, 0o644); err != nil {
+			return false
+		}
+		absPaths = append(absPaths, absPath)
+	}
+
+	hasher, err := cas.NewDirRelativeFileSetHasher(tmpDir, absPaths)
+	if err != nil {
+		return false
+	}
+	return hasher.Hash() == hash
 }
 
 func mergeRelPaths(a []string, b []string) []string {
@@ -695,14 +845,43 @@ func gitCommitLineCount(dir, gitPath, commit string, relPaths []string) (int, bo
 	total := 0
 	sawFile := false
 	for _, relPath := range relPaths {
-		out, err := gitOutputBytes(dir, gitPath, "show", commit+":"+relPath)
-		if err != nil {
+		out, ok := gitShowFile(dir, gitPath, commit, relPath)
+		if !ok {
 			continue
 		}
 		sawFile = true
 		total += countLines(out)
 	}
 	return total, sawFile
+}
+
+func gitShowFile(dir, gitPath, commit, relPath string) ([]byte, bool) {
+	objectPath, ok := gitObjectPath(dir, gitPath, relPath)
+	if !ok {
+		return nil, false
+	}
+
+	out, err := gitOutputBytes(dir, gitPath, "show", commit+":"+objectPath)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+func gitObjectPath(dir, gitPath, relPath string) (string, bool) {
+	relPath, ok := cleanRelPath(relPath)
+	if !ok {
+		return "", false
+	}
+
+	prefix, err := gitOutput(dir, gitPath, "rev-parse", "--show-prefix")
+	if err != nil {
+		return "", false
+	}
+	if prefix == "" {
+		return relPath, true
+	}
+	return strings.TrimSuffix(prefix, "/") + "/" + relPath, true
 }
 
 func gitOutputBytes(dir, gitPath string, args ...string) ([]byte, error) {

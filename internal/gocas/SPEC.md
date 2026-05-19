@@ -97,9 +97,14 @@ type PackageRecordSummary struct {
 
 // PackageSummary describes current and prior CAS state for a package in one namespace.
 type PackageSummary struct {
-	Current          *PackageRecordSummary // Current is non-nil when a CAS record exists for the package's current contents.
-	PriorInvalidated *PackageRecordSummary // PriorInvalidated is the most relevant older matching record when Current is nil.
-	ChurnPercent     *float64              // ChurnPercent is the best-effort changed-line percentage versus PriorInvalidated.
+	// Current is non-nil when a CAS record exists for the package's current contents.
+	Current *PackageRecordSummary
+
+	// PriorInvalidated is the most relevant older matching record when Current is nil.
+	PriorInvalidated *PackageRecordSummary
+
+	// ChurnPercent is the best-effort changed-line percentage versus the newest prior record with a verified git baseline.
+	ChurnPercent *float64
 }
 
 // RootDirForBaseDir returns the absolute CAS root for baseDir.

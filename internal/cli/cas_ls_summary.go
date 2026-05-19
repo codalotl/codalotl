@@ -126,7 +126,11 @@ func writeCASSummaryTable(w io.Writer, rows []casSummaryRow) error {
 			return err
 		}
 	}
-	return tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(w, "Note: Prev CAS '-' with CAS=yes means not applicable (current CAS exists), not false/no previous record.")
+	return err
 }
 
 func writeCASSummaryCSV(w io.Writer, rows []casSummaryRow) error {
