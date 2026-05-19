@@ -244,10 +244,10 @@ This may only produce a line for a dir if the dir has both a SPEC.md and a valid
 
 ### codalotl spec status
 
-This prints out the per-package status of SPEC.md files. It takes no argument (implies `./...` based on cwd).
+This prints out per-package SPEC.md status across modules discovered from the nearest git repo root via `gocode.DiscoverModules`.
 
 Per line:
-- package (ex: `./path/to/pkg`)
+- package, repo-relative when repo-scoped (ex: `./path/to/pkg`)
 - has SPEC.md file (ex: `true`)
 - matching `Public API` - i.e., `codalotl spec diff` produces NO output (ex: `false`)
 - impl conforms to spec as per cas system, via `casconformance.Retrieve` (ex: `true`)
@@ -270,7 +270,7 @@ Output: one line per namespace, format `<namespace> <version>`; hash mode omitte
 
 ### codalotl cas ls-summary <namespace> [--csv]
 
-Displays a per-package CAS summary for a registered namespace.
+Displays a per-package CAS summary for a registered namespace across modules discovered from the nearest git repo root via `gocode.DiscoverModules`.
 
 Columns:
 - Package
@@ -284,6 +284,8 @@ Pretty output is terminal-oriented. `--csv` emits CSV.
 ### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
 
 Lists packages under nearest git repo, printed repo-relative (`./path/to/pkg`), whose current contents lack a CAS record for registered namespace, one per line.
+
+Module discovery uses `gocode.DiscoverModules` from the nearest git repo root.
 
 Defaults: 30 days, 20% churn.
 

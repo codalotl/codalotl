@@ -177,6 +177,41 @@ func TestRun_CAS_LSStale_UsesRepoRootAcrossGoModules(t *testing.T) {
 	}, cliOutputLines(out.String()))
 }
 
+func TestRun_CAS_LSStale_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
+	isolateUserConfig(t)
+
+	repo := t.TempDir()
+	createGitRepoMarker(t, repo)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repo\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, repo, "rootnotworkspace", "package rootnotworkspace\n\nfunc RootNotWorkspace() {}\n")
+
+	apiModule := filepath.Join(repo, "services", "api")
+	require.NoError(t, os.MkdirAll(apiModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "go.mod"), []byte("module example.com/api\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "api.go"), []byte("package api\n\nfunc API() {}\n"), 0644))
+
+	workerModule := filepath.Join(repo, "services", "worker")
+	require.NoError(t, os.MkdirAll(workerModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(workerModule, "go.mod"), []byte("module example.com/worker\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, workerModule, "job", "package job\n\nfunc Job() {}\n")
+
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.work"), []byte("go 1.22\n\nuse ./services/api\n"), 0644))
+	t.Setenv(gocas.EnvCASDB, filepath.Join(repo, "casdb"))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(workerModule))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{"./services/api"}, cliOutputLines(out.String()))
+}
+
 func TestRun_CAS_LSStale_IgnoresTestdataModules(t *testing.T) {
 	isolateUserConfig(t)
 
@@ -330,6 +365,7 @@ func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
+	createGitRepoMarker(t, tmp)
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
 
 	writePackageFile(t, tmp, "p1", "package p1\n\nfunc P1() {}\n")
@@ -365,10 +401,53 @@ func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
 	require.Equal(t, []string{"./p3", "no", "no", "-", "-"}, requireCASSummaryRow(t, rows, "./p3"))
 }
 
+func TestRun_CAS_LSSummary_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
+	isolateUserConfig(t)
+
+	repo := t.TempDir()
+	createGitRepoMarker(t, repo)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repo\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, repo, "rootnotworkspace", "package rootnotworkspace\n\nfunc RootNotWorkspace() {}\n")
+
+	apiModule := filepath.Join(repo, "services", "api")
+	require.NoError(t, os.MkdirAll(apiModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "go.mod"), []byte("module example.com/api\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "api.go"), []byte("package api\n\nfunc API() {}\n"), 0644))
+
+	workerModule := filepath.Join(repo, "services", "worker")
+	require.NoError(t, os.MkdirAll(workerModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(workerModule, "go.mod"), []byte("module example.com/worker\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, workerModule, "job", "package job\n\nfunc Job() {}\n")
+
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.work"), []byte("go 1.22\n\nuse (\n\t./services/api\n\t./services/worker\n)\n"), 0644))
+	t.Setenv(gocas.EnvCASDB, filepath.Join(repo, "casdb"))
+	storeCASTestRecord(t, apiModule, "docs-fix", ".", "OK")
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(workerModule))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-summary", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	rows := casSummaryRowsByPackage(out.String())
+	api := requireCASSummaryRow(t, rows, "./services/api")
+	require.Equal(t, []string{"./services/api", "yes", "-", api[3], "-"}, api)
+	require.NotEqual(t, "-", api[3])
+	require.Equal(t, []string{"./services/worker/job", "no", "no", "-", "-"}, requireCASSummaryRow(t, rows, "./services/worker/job"))
+	require.NotContains(t, rows, "./rootnotworkspace")
+}
+
 func TestRun_CAS_LSSummary_CSV(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
+	createGitRepoMarker(t, tmp)
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
 	writePackageFile(t, tmp, "p", "package p\n\nfunc P() {}\n")
 	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
