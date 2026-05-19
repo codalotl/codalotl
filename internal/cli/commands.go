@@ -513,10 +513,11 @@ codalotl cas ls-namespaces
 			return nil
 		}),
 	}
-	lsUnsetCmd := &qcli.Command{
-		Name:  "ls-unset",
-		Short: "List packages in the current module missing a CAS entry for a namespace.",
-		Long:  "Lists module packages, one per line, that do not have a CAS value set for the given namespace and current package contents.",
+	lsStaleCmd := &qcli.Command{
+		Name:  "ls-stale",
+		Short: "List packages with stale CAS coverage for a namespace.",
+		Long: "Lists module packages, one per line, whose current contents lack a CAS record for the given namespace. " +
+			"Packages with no prior CAS record are always listed; otherwise age and churn thresholds are ORed.",
 		Usage: "<namespace>",
 		ArgHelp: []qcli.ArgHelp{
 			{
@@ -525,13 +526,21 @@ codalotl cas ls-namespaces
 			},
 		},
 		Example: strings.TrimSpace(`
-codalotl cas ls-unset specconforms
+codalotl cas ls-stale specconforms
+codalotl cas ls-stale specconforms --stale-after-days=14 --min-churn-percent=10
 `),
-		Args: qcli.ExactArgs(1),
-		Run: runWithConfig("cas_ls_unset", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-			return runCASLsUnset(c.Context, c.Out, c.Args[0])
-		}),
 	}
+	lsStaleAfterDays := lsStaleCmd.Flags().Int("stale-after-days", 0, defaultCASLsStaleAfterDays, "List packages whose prior CAS record is at least this many days old.")
+	lsStaleMinChurnPercent := lsStaleCmd.Flags().Int("min-churn-percent", 0, defaultCASLsStaleMinChurnPercent, "List packages whose churn from prior CAS record is at least this percent.")
+	lsStaleCmd.Args = func(args []string) error {
+		if err := qcli.ExactArgs(1)(args); err != nil {
+			return err
+		}
+		return validateCASLsStaleThresholds(*lsStaleAfterDays, *lsStaleMinChurnPercent)
+	}
+	lsStaleCmd.Run = runWithConfig("cas_ls_stale", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		return runCASLsStale(c.Context, c.Out, c.Args[0], *lsStaleAfterDays, *lsStaleMinChurnPercent)
+	})
 	lsSummaryCmd := &qcli.Command{
 		Name:  "ls-summary",
 		Short: "Summarize CAS coverage for packages in the current module.",
@@ -553,7 +562,7 @@ codalotl cas ls-summary specconforms --csv
 	lsSummaryCmd.Run = runWithConfig("cas_ls_summary", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 		return runCASLsSummary(c.Context, c.Out, c.Args[0], *lsSummaryCSV)
 	})
-	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsUnsetCmd)
+	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsStaleCmd)
 
 	panicCmd := &qcli.Command{
 		Name:             "panic",

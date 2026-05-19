@@ -106,48 +106,114 @@ func TestRun_CAS_LSNamespaces_ListsRegisteredNamespaces(t *testing.T) {
 	require.IsIncreasing(t, lines)
 }
 
-func TestRun_CAS_LSUnset_ListsPackagesMissingNamespace(t *testing.T) {
+func TestRun_CAS_LSStale_ListsNeverCoveredAndSkipsCurrentAndFreshPrior(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
 
-	p1Dir := filepath.Join(tmp, "p1")
-	require.NoError(t, os.MkdirAll(p1Dir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(p1Dir, "p1.go"), []byte("package p1\n\nfunc P1() {}\n"), 0644))
-
-	p2Dir := filepath.Join(tmp, "p2")
-	require.NoError(t, os.MkdirAll(p2Dir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(p2Dir, "p2.go"), []byte("package p2\n\nfunc P2() {}\n"), 0644))
+	writePackageFile(t, tmp, "p1", "package p1\n\nfunc P1() {}\n")
+	writePackageFile(t, tmp, "p2", "package p2\n\nfunc P2() {}\n")
+	writePackageFile(t, tmp, "p3", "package p3\n\nfunc P3() int { return 1 }\n")
 
 	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	storeCASTestRecord(t, tmp, "docs-fix", "p1", "OK")
+	storeCASTestRecord(t, tmp, "docs-fix", "p3", "OK")
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p3", "p3.go"), []byte("package p3\n\nfunc P3() int { return 2 }\n"), 0644))
 
 	origWD, err := os.Getwd()
 	require.NoError(t, err)
 	require.NoError(t, os.Chdir(tmp))
 	t.Cleanup(func() { _ = os.Chdir(origWD) })
 
-	storeCASTestRecord(t, tmp, "docs-fix", "p1", "OK")
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{"./p2"}, cliOutputLines(out.String()))
+}
+
+func TestRun_CAS_LSStale_AppliesAgeThreshold(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, tmp, "p", "package p\n\nfunc P() int { return 1 }\n")
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	storeCASTestRecord(t, tmp, "docs-fix", "p", "OK")
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc P() int { return 2 }\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
 
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "ls-unset", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{
+			"codalotl", "cas", "ls-stale", "docs-fix",
+			"--stale-after-days=0",
+			"--min-churn-percent=999",
+		}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
-
-		got := map[string]bool{}
-		for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				got[line] = true
-			}
-		}
-
-		require.True(t, got["./p2"])
-		require.False(t, got["./p1"])
+		require.Equal(t, []string{"./p"}, cliOutputLines(out.String()))
 	}
+
+	{
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		code, err := Run([]string{
+			"codalotl", "cas", "ls-stale", "docs-fix",
+			"--stale-after-days=999",
+			"--min-churn-percent=999",
+		}, &RunOptions{Out: &out, Err: &errOut})
+		require.NoError(t, err)
+		require.Equal(t, 0, code)
+		require.Empty(t, errOut.String())
+		require.Empty(t, cliOutputLines(out.String()))
+	}
+}
+
+func TestRun_CAS_LSStale_ValidatesThresholds(t *testing.T) {
+	isolateUserConfig(t)
+
+	for _, tc := range []struct {
+		name string
+		flag string
+		want string
+	}{
+		{name: "stale after days", flag: "--stale-after-days=-1", want: "invalid --stale-after-days"},
+		{name: "min churn percent", flag: "--min-churn-percent=-1", want: "invalid --min-churn-percent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix", tc.flag}, &RunOptions{Out: &out, Err: &errOut})
+			require.Error(t, err)
+			require.Equal(t, 2, code)
+			require.Empty(t, out.String())
+			require.Contains(t, errOut.String(), tc.want)
+		})
+	}
+}
+
+func TestRun_CAS_LSUnset_IsNotUserFacing(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-unset", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "unknown subcommand: ls-unset")
 }
 
 func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
@@ -258,4 +324,15 @@ func requireCASSummaryRow(t *testing.T, rows map[string][]string, pkg string) []
 	row, ok := rows[pkg]
 	require.True(t, ok)
 	return row
+}
+
+func cliOutputLines(s string) []string {
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
