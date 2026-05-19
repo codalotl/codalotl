@@ -254,18 +254,6 @@ Per line:
 
 Sort: 1. has_spec (true first) 2. api_match (true first) 3. conforms (true first) 4. package (a->z)
 
-### codalotl cas set <namespace> <path/to/pkg> <value>
-
-Uses `internal/gocas` to set `<value>` for (package, registered namespace).
-
-Notes:
-- `<namespace>` is the non-versioned namespace name.
-- Namespace must be known to this codebase.
-- Storage key is content-addressed according to the namespace's hash mode. Changing hashed package contents changes the key.
-- `<value>` must be JSON-encodable (ex: `"OK"`, or `'{"result": "ok"}'`).
-
-The BaseDir is the package's module dir. CAS root selection is delegated to `internal/gocas` and follows product CAS rules.
-
 ### codalotl cas get <namespace> <path/to/pkg>
 
 Uses `internal/gocas` to get the stored value (and associated metadata) for (package, registered namespace), for the current package contents.
@@ -279,6 +267,19 @@ Uses `internal/gocas` to get the stored value (and associated metadata) for (pac
 Lists registered CAS namespaces and active versions, sorted by namespace name.
 
 Output: one line per namespace, format `<namespace> <version>`; hash mode omitted.
+
+### codalotl cas ls-summary <namespace> [--csv]
+
+Displays a per-package CAS summary for a registered namespace.
+
+Columns:
+- Package
+- CAS: `yes` or `no`, based on current package content.
+- Prev CAS: `yes`, `no`, or `-` when current CAS exists.
+- Age: `-` or compact age of the relevant CAS entry.
+- Churn %: `-` or approximate line churn relative to the previous CAS-covered state.
+
+Pretty output is terminal-oriented. `--csv` emits CSV.
 
 ### codalotl cas ls-unset <namespace>
 
