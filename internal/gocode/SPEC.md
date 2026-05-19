@@ -17,12 +17,9 @@ Module discovery follows Go project layout conventions.
 ```go {api}
 // DiscoverModules returns Go modules discovered from root.
 //
-// File roots are normalized to their parent directory. Results are sorted by
-// absolute module path.
+// File roots are normalized to their parent directory. Results are sorted by absolute module path.
 //
-// If a Go workspace applies to root, DiscoverModules returns explicitly listed
-// workspace modules. Otherwise it recursively finds go.mod files below root,
-// skipping vendor, testdata, dot-prefixed, and underscore-prefixed directories
-// during descent. Root itself is considered before exclusions.
+// If a Go workspace applies to root, DiscoverModules returns explicitly listed workspace modules. Otherwise it recursively finds go.mod files below root, skipping
+// vendor, testdata, dot-prefixed, and underscore-prefixed directories during descent. Root itself is considered before exclusions.
 func DiscoverModules(root string) ([]*Module, error)
 ```
