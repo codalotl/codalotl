@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
-	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/specmd"
 )
 
@@ -26,27 +26,33 @@ func runSpecStatus(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	mod, err := gocode.NewModule(wd)
+	repoRoot, err := nearestGitRepoRoot(wd)
 	if err != nil {
 		return err
 	}
 
-	// NOTE: Spec status is intentionally based on ./... rooted at the current
-	// working directory (per SPEC.md). Paths printed are module-relative.
-	pkgDirs, err := goListPackageDirs(ctx, "./...")
-	if err != nil {
-		return err
-	}
-	db, err := casDBForBaseDir(mod.AbsolutePath)
+	pkgDirs, err := goListPackageDirsUnderRepo(ctx, repoRoot)
 	if err != nil {
 		return err
 	}
 
 	rows := make([]specStatusRow, 0, len(pkgDirs))
-	for _, absPkgDir := range pkgDirs {
-		display, ok := displayPackagePath(mod.AbsolutePath, absPkgDir)
+	dbs := map[string]*gocas.DB{}
+	for _, pkgDir := range pkgDirs {
+		display, ok := displayPackagePath(repoRoot, pkgDir.absDir)
 		if !ok {
 			continue
+		}
+
+		moduleRoot := pkgDir.mod.AbsolutePath
+		db, ok := dbs[moduleRoot]
+		if !ok {
+			var err error
+			db, err = casReadDBForBaseDir(moduleRoot)
+			if err != nil {
+				return err
+			}
+			dbs[moduleRoot] = db
 		}
 
 		row := specStatusRow{
@@ -56,7 +62,7 @@ func runSpecStatus(ctx context.Context, out io.Writer) error {
 			Conforms: "unset",
 		}
 
-		specPath := filepath.Join(absPkgDir, "SPEC.md")
+		specPath := filepath.Join(pkgDir.absDir, "SPEC.md")
 		if info, err := os.Stat(specPath); err == nil && !info.IsDir() {
 			row.HasSpec = "true"
 			match, err := specMatchesPublicAPI(specPath)
@@ -69,7 +75,7 @@ func runSpecStatus(ctx context.Context, out io.Writer) error {
 			}
 		}
 
-		relDir, err := filepath.Rel(mod.AbsolutePath, absPkgDir)
+		relDir, err := filepath.Rel(moduleRoot, pkgDir.absDir)
 		if err != nil {
 			row.Conforms = "error"
 			rows = append(rows, row)
@@ -82,7 +88,7 @@ func runSpecStatus(ctx context.Context, out io.Writer) error {
 			rows = append(rows, row)
 			continue
 		}
-		pkg, err := mod.LoadPackageByRelativeDir(relDir)
+		pkg, err := pkgDir.mod.LoadPackageByRelativeDir(relDir)
 		if err != nil {
 			row.Conforms = "error"
 			rows = append(rows, row)
