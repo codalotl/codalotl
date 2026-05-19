@@ -295,6 +295,16 @@ Filters are ORed:
 - `--stale-after-days=N`: prior CAS record is at least N days old.
 - `--min-churn-percent=N`: churn from prior CAS record is at least N%.
 
+### codalotl cas prune [--days=N]
+
+Deletes prune-eligible CAS records across modules discovered from nearest git repo.
+
+Notes:
+- Default `--days` is 30.
+- Removes prior namespace versions and superseded package records older than `--days`.
+- Preserves active current-content records.
+- Output reports delete counts.
+
 ### codalotl cas recertify <path/to/pkg> --namespaces="<namespace1>[,<namespace2>,...]"
 
 Copies recently invalidated CAS records forward to current package contents.

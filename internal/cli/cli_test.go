@@ -188,13 +188,14 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"cas", "get"},
 		{"cas", "ls-namespaces"},
 		{"cas", "ls-stale"},
+		{"cas", "prune"},
 	} {
 		cmd := requireCommand(t, root, names...)
 		require.NotEmpty(t, cmd.Short)
 		require.NotEmpty(t, cmd.Long)
 		require.NotEmpty(t, cmd.Example)
 		switch strings.Join(names, " ") {
-		case "context packages", "spec status", "cas ls-namespaces":
+		case "context packages", "spec status", "cas ls-namespaces", "cas prune":
 		default:
 			require.NotEmpty(t, cmd.Usage)
 		}
@@ -218,6 +219,24 @@ func TestRun_CAS_LSStale_HelpIncludesThresholdFlags(t *testing.T) {
 	require.Contains(t, got, "--stale-after-days")
 	require.Contains(t, got, "--min-churn-percent")
 	require.Contains(t, got, "codalotl cas ls-stale specconforms")
+}
+
+func TestRun_CAS_Prune_HelpIncludesDaysFlag(t *testing.T) {
+	isolateUserConfig(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PATH", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "prune", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	got := out.String()
+	require.Contains(t, got, "codalotl cas prune")
+	require.Contains(t, got, "--days")
+	require.Contains(t, got, "codalotl cas prune --days=14")
 }
 
 func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {

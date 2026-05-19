@@ -115,3 +115,6 @@ The following are NOT part of the spec, but simply ideas to explore IF certain p
     - namespaces opt-in or opt-out to recertification
     - expose recertification more easily, including in ls-summary
     - prune should preserve provenance chains
+- After some experimentation with this system, I think I'd like to unify ls-summary and ls-stale:
+    - add flags to filter in various ways, including by pkg name.
+    - it may be worth a performance pass. this was a bit slow at this relatively low scale. My guess is commit to determine churn.

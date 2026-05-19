@@ -43,6 +43,16 @@ Package recertification asserts current package contents remain compliant with a
 - Source/prior records are never deleted or rewritten.
 - Warnings highlight higher-risk recertifications: dirty current git worktree, large churn, old source record.
 
+## Package Pruning
+
+Package pruning removes obsolete CAS records.
+
+- Remove inactive namespace versions for supplied active namespace specs.
+- Remove superseded records older than configured age when newer record exists for same namespace/package pair.
+- Reject negative or unrepresentably large retention ages before deleting records.
+- Preserve current records and latest recertification provenance.
+- Skip corrupt or unrecognized records.
+
 ## Public API
 
 ```go
@@ -103,9 +113,17 @@ type DB struct {
 
 // PackageRecordSummary describes one CAS record relevant to a Go package.
 type PackageRecordSummary struct {
-	Hash           string             // Hash is the CAS hash used as the record key within the namespace.
-	Time           time.Time          // Time is the best-effort record time. It prefers the CAS add commit time and falls back when unavailable.
-	AdditionalInfo cas.AdditionalInfo // AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
+	// Hash is the CAS hash used as the record key within the namespace.
+	Hash string
+
+	// Time is the best-effort record time used for ordering records and pruning old superseded records.
+	//
+	// It prefers the git commit time for the commit that added the CAS record file. If that is unavailable, it falls back to AdditionalInfo.UnixTimestamp, then to the
+	// CAS record file modification time.
+	Time time.Time
+
+	// AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
+	AdditionalInfo cas.AdditionalInfo
 }
 
 // PackageSummary describes current and prior CAS state for a package in one namespace.
@@ -136,6 +154,20 @@ type PackageRecertificationResult struct {
 	SourceHash   string
 	SourceRecord string
 	Warnings     []string
+}
+
+// PruneOptions configures CAS record pruning.
+type PruneOptions struct {
+	// SupersededAgeDays removes superseded records older than this many days.
+	//
+	// If zero, Prune uses its default retention age, currently 30 days. Negative values and values too large to represent as time.Duration are invalid.
+	SupersededAgeDays int
+}
+
+// PruneResult summarizes deleted CAS records.
+type PruneResult struct {
+	DeletedPriorVersionRecords int
+	DeletedSupersededRecords   int
 }
 
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
@@ -191,6 +223,19 @@ func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (Package
 // Otherwise it copies the most recent matching prior record payload to the current content hash, updates AdditionalInfo for current package state, marks the new
 // record as recertified, and leaves existing records unchanged.
 func (db *DB) RecertifyPackage(pkg *gocode.Package, spec NamespaceSpec) (PackageRecertificationResult, error)
+
+// Prune removes obsolete CAS records for active namespace specs and known packages.
+//
+// A missing CAS root is treated as an empty store.
+//
+// Prune first removes prior namespace-version records selected from specs. A CAS namespace directory named "<Name>-<version>" is prior to a spec when Name matches
+// spec.Name and version is positive and less than spec.Version. Prior-version pruning is namespace-wide: it deletes valid CAS record files in those directories
+// without filtering by packages, age, or HashMode.
+//
+// Prune then removes superseded records for the exact active namespaces in specs and packages. A record is superseded only when it matches a supplied package, is
+// older than the configured age by PackageRecordSummary.Time, has a newer matching package record, and is not protected as the current package hash or latest recertification
+// provenance.
+func (db *DB) Prune(specs []NamespaceSpec, packages []*gocode.Package, opts PruneOptions) (PruneResult, error)
 
 // Delete removes the stored value for (pkg, spec).
 //

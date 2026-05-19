@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -480,6 +482,94 @@ func TestRun_CAS_LSStale_ValidatesThresholds(t *testing.T) {
 	}
 }
 
+func TestRun_CAS_Prune_DefaultOutputShape(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	createGitRepoMarker(t, tmp)
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, tmp, "p", "package p\n\nfunc P() {}\n")
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "prune"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "Deleted CAS records: prior-version=0 superseded=0 total=0\n", out.String())
+}
+
+func TestRun_CAS_Prune_ValidatesDays(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "prune", "--days=-1"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "invalid --days")
+}
+
+func TestRun_CAS_Prune_DeletesPriorVersionsAndSupersededOlderThanDays(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	createGitRepoMarker(t, tmp)
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, tmp, "p", "package p\n\nfunc P() int { return 1 }\n")
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	storeCASTestRecord(t, tmp, "docs-fix", "p", "old")
+	setCASNamespaceRecordsUnixTimestamp(t, tmp, "docs-fix-1", int(time.Now().Add(-48*time.Hour).Unix()))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc P() int { return 2 }\n"), 0644))
+	storeCASTestRecord(t, tmp, "docs-fix", "p", "current")
+	priorVersionNamespace := priorVersionCASNamespaceForTest()
+	expectedPriorVersionDeletes := 0
+	if priorVersionNamespace != "" {
+		storePriorVersionCASTestRecord(t, tmp, priorVersionNamespace, "prior-version")
+		expectedPriorVersionDeletes = 1
+	}
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "prune", "--days=1"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, fmt.Sprintf(
+		"Deleted CAS records: prior-version=%d superseded=1 total=%d\n",
+		expectedPriorVersionDeletes,
+		expectedPriorVersionDeletes+1,
+	), out.String())
+
+	var current string
+	ok, _ := retrieveCASTestRecord(t, tmp, "docs-fix", "p", &current)
+	require.True(t, ok)
+	require.Equal(t, "current", current)
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc P() int { return 1 }\n"), 0644))
+	var old string
+	ok, _ = retrieveCASTestRecord(t, tmp, "docs-fix", "p", &old)
+	require.False(t, ok)
+
+	if priorVersionNamespace != "" {
+		ok = retrievePriorVersionCASTestRecord(t, tmp, priorVersionNamespace)
+		require.False(t, ok)
+	}
+}
+
 func TestRun_CAS_LSUnset_IsNotUserFacing(t *testing.T) {
 	isolateUserConfig(t)
 
@@ -638,6 +728,77 @@ func retrieveCASTestRecord(t *testing.T, moduleDir string, namespace string, rel
 	ok, info, err := db.Retrieve(pkg, spec, target)
 	require.NoError(t, err)
 	return ok, info
+}
+
+func storePriorVersionCASTestRecord(t *testing.T, moduleDir string, namespace string, value any) {
+	t.Helper()
+
+	root, err := gocas.RootDirForBaseDir(moduleDir)
+	require.NoError(t, err)
+	db := qcas.DB{AbsRoot: root}
+	require.NoError(t, db.Store(qcas.NewBytesHasher([]byte("prior-version")), namespace, value, nil))
+}
+
+func retrievePriorVersionCASTestRecord(t *testing.T, moduleDir string, namespace string) bool {
+	t.Helper()
+
+	root, err := gocas.RootDirForBaseDir(moduleDir)
+	require.NoError(t, err)
+	db := qcas.DB{AbsRoot: root}
+	var got string
+	ok, _, err := db.Retrieve(qcas.NewBytesHasher([]byte("prior-version")), namespace, &got)
+	require.NoError(t, err)
+	return ok
+}
+
+func priorVersionCASNamespaceForTest() string {
+	for _, spec := range sortedCASNamespaceSpecs() {
+		if spec.Version > 1 {
+			return fmt.Sprintf("%s-%d", spec.Name, spec.Version-1)
+		}
+	}
+	return ""
+}
+
+func setCASNamespaceRecordsUnixTimestamp(t *testing.T, moduleDir string, namespace string, unixTimestamp int) {
+	t.Helper()
+
+	root, err := gocas.RootDirForBaseDir(moduleDir)
+	require.NoError(t, err)
+	namespaceDir := filepath.Join(root, namespace)
+	var updated int
+	require.NoError(t, filepath.WalkDir(namespaceDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var record map[string]any
+		if err := json.Unmarshal(b, &record); err != nil {
+			return err
+		}
+		additionalInfo, _ := record["additional_info"].(map[string]any)
+		if additionalInfo == nil {
+			additionalInfo = map[string]any{}
+			record["additional_info"] = additionalInfo
+		}
+		additionalInfo["unix_timestamp"] = unixTimestamp
+		b, err = json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, b, 0644); err != nil {
+			return err
+		}
+		updated++
+		return nil
+	}))
+	require.Positive(t, updated)
 }
 
 func createGitRepoMarker(t *testing.T, dir string) {

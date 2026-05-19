@@ -562,6 +562,27 @@ codalotl cas ls-summary specconforms --csv
 	lsSummaryCmd.Run = runWithConfig("cas_ls_summary", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 		return runCASLsSummary(c.Context, c.Out, c.Args[0], *lsSummaryCSV)
 	})
+	pruneCmd := &qcli.Command{
+		Name:             "prune",
+		Short:            "Delete obsolete CAS records.",
+		Long:             "Deletes prior namespace versions and superseded package CAS records across discovered modules in the nearest git repo.",
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
+		Example: strings.TrimSpace(`
+codalotl cas prune
+codalotl cas prune --days=14
+`),
+	}
+	pruneDays := pruneCmd.Flags().Int("days", 0, defaultCASPruneDays, "Delete superseded package records older than this many days.")
+	pruneCmd.Args = func(args []string) error {
+		if err := qcli.NoArgs(args); err != nil {
+			return err
+		}
+		return validateCASPruneDays(*pruneDays)
+	}
+	pruneCmd.Run = runWithConfig("cas_prune", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		return runCASPrune(c.Context, c.Out, *pruneDays)
+	})
 	recertifyCmd := &qcli.Command{
 		Name:  "recertify",
 		Short: "Copy prior CAS records forward to current package contents.",
@@ -591,7 +612,7 @@ codalotl cas recertify internal/mypkg --namespaces="docs-fix,specconforms"
 	recertifyCmd.Run = runWithConfig("cas_recertify", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 		return runCASRecertify(c.Out, c.Args[0], *recertifyNamespaces)
 	})
-	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsStaleCmd, recertifyCmd)
+	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsStaleCmd, pruneCmd, recertifyCmd)
 
 	panicCmd := &qcli.Command{
 		Name:             "panic",

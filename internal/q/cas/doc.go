@@ -9,5 +9,8 @@
 //
 //	<AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>
 //
+// Each record file is a JSON object with top-level fields "kind", "metadata", and, when non-zero AdditionalInfo is supplied, "additional_info". The "metadata" field
+// contains the caller's Store payload; "additional_info" contains AdditionalInfo using its field JSON tags.
+//
 // Records are written as JSON and are intended to be Git-friendly: merge conflicts occur only when different metadata is written for the same (namespace, hash).
 package cas
