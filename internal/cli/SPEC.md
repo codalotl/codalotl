@@ -185,7 +185,8 @@ Creates an orchestrator PR file and, unless `--no-git` is set, prepares a local 
 
 Git behavior:
 - Require git repo, clean workspace, and current branch `main` or `master`.
-- Ensure current branch is up to date with its upstream.
+- If current branch has an upstream, ensure it is up to date.
+- Local-only repos without an upstream are allowed.
 - Create branch named `$CODALOTL_USER_INITIALS/<feature-name>` when initials are set, else `<feature-name>`.
 - Add and commit PR file.
 - If `origin` exists, push branch with upstream tracking.
