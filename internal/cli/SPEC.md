@@ -244,10 +244,10 @@ This may only produce a line for a dir if the dir has both a SPEC.md and a valid
 
 ### codalotl spec status
 
-This prints out the per-package status of SPEC.md files. It takes no argument (implies `./...` based on cwd).
+This prints out per-package SPEC.md status across modules discovered from the nearest git repo root via `gocode.DiscoverModules`.
 
 Per line:
-- package (ex: `./path/to/pkg`)
+- package, repo-relative when repo-scoped (ex: `./path/to/pkg`)
 - has SPEC.md file (ex: `true`)
 - matching `Public API` - i.e., `codalotl spec diff` produces NO output (ex: `false`)
 - impl conforms to spec as per cas system, via `casconformance.Retrieve` (ex: `true`)
