@@ -332,6 +332,9 @@ func TestPublicMethodsValidateNilInputs(t *testing.T) {
 	_, err = db.RecertifyPackage(nil, testPackageNamespace)
 	require.Error(t, err)
 
+	_, err = db.Prune([]NamespaceSpec{testPackageNamespace}, []*gocode.Package{nil}, PruneOptions{})
+	require.Error(t, err)
+
 	err = db.Delete(nil, testPackageNamespace)
 	require.Error(t, err)
 }
@@ -1011,6 +1014,123 @@ func TestRecertifyPackage_WarnsForRiskyRecertification(t *testing.T) {
 		"large churn (>=20%)",
 		"source record is >=30 days old",
 	}, result.Warnings)
+}
+
+func TestPrune_RemovesPriorNamespaceVersionsAndOldSupersededRecords(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	db := newTestDB(baseDir, casRoot)
+	activeSpec := NamespaceSpec{
+		Name:     "gocas-test",
+		Version:  2,
+		HashMode: HashModePackage,
+	}
+
+	err := db.Store(pkg, activeSpec, testPayload{N: 1})
+	require.NoError(t, err)
+	oldActiveHash := currentPackageHash(t, db, pkg, activeSpec)
+	oldActivePath := storedRecordPath(t, db, activeSpec.Namespace(), oldActiveHash)
+	oldRecord := readStoredRecord(t, oldActivePath)
+	oldRecord.AdditionalInfo.UnixTimestamp = int(time.Now().Add(-40 * 24 * time.Hour).Unix())
+	writeStoredRecord(t, oldActivePath, oldRecord)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+	err = db.Store(pkg, activeSpec, testPayload{N: 2})
+	require.NoError(t, err)
+	currentHash := currentPackageHash(t, db, pkg, activeSpec)
+	currentPath := storedRecordPath(t, db, activeSpec.Namespace(), currentHash)
+
+	priorNamespace := Namespace("gocas-test-1")
+	writeCASRecordAtHash(t, db, priorNamespace, "aa11", cas.AdditionalInfo{})
+	writeCASRecordAtHash(t, db, priorNamespace, "bb22", cas.AdditionalInfo{})
+	priorPath := storedRecordPath(t, db, priorNamespace, "aa11")
+
+	result, err := db.Prune([]NamespaceSpec{activeSpec}, []*gocode.Package{pkg}, PruneOptions{SupersededAgeDays: 30})
+	require.NoError(t, err)
+	require.Equal(t, 2, result.DeletedPriorVersionRecords)
+	require.Equal(t, 1, result.DeletedSupersededRecords)
+
+	_, err = os.Stat(priorPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(oldActivePath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(currentPath)
+	require.NoError(t, err)
+}
+
+func TestPrune_PreservesCurrentRecertifiedSourceAndSkipsCorruptActiveRecords(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	db := newTestDB(baseDir, casRoot)
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+	sourceHash := currentPackageHash(t, db, pkg, testPackageNamespace)
+	sourcePath := storedRecordPath(t, db, testPackageNamespace.Namespace(), sourceHash)
+	sourceRecord := readStoredRecord(t, sourcePath)
+	sourceRecord.AdditionalInfo.UnixTimestamp = int(time.Now().Add(-40 * 24 * time.Hour).Unix())
+	writeStoredRecord(t, sourcePath, sourceRecord)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+	recertification, err := db.RecertifyPackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Equal(t, PackageRecertificationStatusRecertified, recertification.Status)
+	currentPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), recertification.CurrentHash)
+
+	outdatedHash := "dd33"
+	writeCASRecordAtHash(t, db, testPackageNamespace.Namespace(), outdatedHash, cas.AdditionalInfo{
+		UnixTimestamp: int(time.Now().Add(-50 * 24 * time.Hour).Unix()),
+		Paths:         []string{"foo/foo.go"},
+	})
+	outdatedPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), outdatedHash)
+
+	corruptPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), "ee44")
+	err = os.MkdirAll(filepath.Dir(corruptPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(corruptPath, []byte("{"), 0o644)
+	require.NoError(t, err)
+
+	result, err := db.Prune([]NamespaceSpec{testPackageNamespace}, []*gocode.Package{pkg}, PruneOptions{SupersededAgeDays: 30})
+	require.NoError(t, err)
+	require.Equal(t, 0, result.DeletedPriorVersionRecords)
+	require.Equal(t, 1, result.DeletedSupersededRecords)
+
+	_, err = os.Stat(sourcePath)
+	require.NoError(t, err)
+	_, err = os.Stat(currentPath)
+	require.NoError(t, err)
+	_, err = os.Stat(corruptPath)
+	require.NoError(t, err)
+	_, err = os.Stat(outdatedPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestPrune_PreservesOldRecordWithoutNewerRecord(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	db := newTestDB(baseDir, casRoot)
+
+	oldHash := "aa11"
+	writeCASRecordAtHash(t, db, testPackageNamespace.Namespace(), oldHash, cas.AdditionalInfo{
+		UnixTimestamp: int(time.Now().Add(-40 * 24 * time.Hour).Unix()),
+		Paths:         []string{"foo/foo.go"},
+	})
+	oldPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), oldHash)
+
+	result, err := db.Prune([]NamespaceSpec{testPackageNamespace}, []*gocode.Package{pkg}, PruneOptions{SupersededAgeDays: 30})
+	require.NoError(t, err)
+	require.Equal(t, PruneResult{}, result)
+
+	_, err = os.Stat(oldPath)
+	require.NoError(t, err)
 }
 
 func TestPackageHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {

@@ -22,6 +22,9 @@ import (
 const EnvCASDB = "CODALOTL_CAS_DB"
 
 const casRecordKind = "cas-record-v1"
+const defaultPruneSupersededAgeDays = 30
+
+var errInvalidCASRecord = errors.New("invalid CAS record")
 
 // Namespace is a logical partition + version for values stored in content-addressable storage (CAS).
 //
@@ -79,9 +82,17 @@ type DB struct {
 
 // PackageRecordSummary describes one CAS record relevant to a Go package.
 type PackageRecordSummary struct {
-	Hash           string             // Hash is the CAS hash used as the record key within the namespace.
-	Time           time.Time          // Time is the best-effort record time. It prefers the CAS add commit time and falls back when unavailable.
-	AdditionalInfo cas.AdditionalInfo // AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
+	// Hash is the CAS hash used as the record key within the namespace.
+	Hash string
+
+	// Time is the best-effort record time used for ordering records and pruning old superseded records.
+	//
+	// It prefers the git commit time for the commit that added the CAS record file. If that is unavailable, it falls back to AdditionalInfo.UnixTimestamp, then to the
+	// CAS record file modification time.
+	Time time.Time
+
+	// AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
+	AdditionalInfo cas.AdditionalInfo
 }
 
 // PackageSummary describes current and prior CAS state for a package in one namespace.
@@ -112,6 +123,20 @@ type PackageRecertificationResult struct {
 	SourceHash   string
 	SourceRecord string
 	Warnings     []string
+}
+
+// PruneOptions configures CAS record pruning.
+type PruneOptions struct {
+	// SupersededAgeDays removes superseded records older than this many days.
+	//
+	// If zero, Prune uses its default retention age, currently 30 days. Negative values are invalid.
+	SupersededAgeDays int
+}
+
+// PruneResult summarizes deleted CAS records.
+type PruneResult struct {
+	DeletedPriorVersionRecords int
+	DeletedSupersededRecords   int
 }
 
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
@@ -347,6 +372,365 @@ func (db *DB) RecertifyPackage(pkg *gocode.Package, spec NamespaceSpec) (Package
 	return result, nil
 }
 
+// Prune removes obsolete CAS records for active namespace specs and known packages.
+//
+// A missing CAS root is treated as an empty store.
+//
+// Prune first removes prior namespace-version records selected from specs. A CAS namespace directory named "<Name>-<version>" is prior to a spec when Name matches
+// spec.Name and version is positive and less than spec.Version. Prior-version pruning is namespace-wide: it deletes valid CAS record files in those directories
+// without filtering by packages, age, or HashMode.
+//
+// Prune then removes superseded records for the exact active namespaces in specs and packages. A record is superseded only when it matches a supplied package, is
+// older than the configured age by PackageRecordSummary.Time, has a newer matching package record, and is not protected as the current package hash or latest recertification
+// provenance.
+func (db *DB) Prune(specs []NamespaceSpec, packages []*gocode.Package, opts PruneOptions) (PruneResult, error) {
+	if db == nil {
+		return PruneResult{}, errors.New("gocas DB is nil")
+	}
+	if err := validateAbsDir("BaseDir", db.BaseDir); err != nil {
+		return PruneResult{}, err
+	}
+	if err := validateAbsPath("cas.DB.AbsRoot", db.DB.AbsRoot); err != nil {
+		return PruneResult{}, err
+	}
+	if opts.SupersededAgeDays < 0 {
+		return PruneResult{}, fmt.Errorf("superseded age days must be non-negative: %d", opts.SupersededAgeDays)
+	}
+	supersededAgeDays := opts.SupersededAgeDays
+	if supersededAgeDays == 0 {
+		supersededAgeDays = defaultPruneSupersededAgeDays
+	}
+
+	activeSpecs := make(map[string]NamespaceSpec, len(specs))
+	for _, spec := range specs {
+		if err := validateNamespaceSpec(spec); err != nil {
+			return PruneResult{}, err
+		}
+		if existing, ok := activeSpecs[spec.Name]; ok && existing.Version != spec.Version {
+			return PruneResult{}, fmt.Errorf("multiple active versions for namespace %q: %d and %d", spec.Name, existing.Version, spec.Version)
+		}
+		activeSpecs[spec.Name] = spec
+	}
+	for _, pkg := range packages {
+		if pkg == nil {
+			return PruneResult{}, errors.New("package is nil")
+		}
+	}
+
+	if fi, err := os.Stat(db.DB.AbsRoot); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return PruneResult{}, nil
+		}
+		return PruneResult{}, fmt.Errorf("stat CAS root: %w", err)
+	} else if !fi.IsDir() {
+		return PruneResult{}, fmt.Errorf("cas.DB.AbsRoot is not a directory: %q", db.DB.AbsRoot)
+	}
+
+	var result PruneResult
+	deletedPriorVersions, err := db.prunePriorNamespaceVersions(activeSpecs)
+	if err != nil {
+		return result, err
+	}
+	result.DeletedPriorVersionRecords = deletedPriorVersions
+
+	deletedSuperseded, err := db.pruneSupersededRecords(specs, packages, time.Duration(supersededAgeDays)*24*time.Hour)
+	if err != nil {
+		return result, err
+	}
+	result.DeletedSupersededRecords = deletedSuperseded
+	return result, nil
+}
+
+func (db *DB) prunePriorNamespaceVersions(activeSpecs map[string]NamespaceSpec) (int, error) {
+	entries, err := os.ReadDir(db.DB.AbsRoot)
+	if err != nil {
+		return 0, fmt.Errorf("read CAS root: %w", err)
+	}
+
+	deleted := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		for _, spec := range activeSpecs {
+			if !isPriorNamespaceVersion(entry.Name(), spec) {
+				continue
+			}
+			n, err := db.pruneNamespaceRecordFiles(Namespace(entry.Name()))
+			if err != nil {
+				return deleted, err
+			}
+			deleted += n
+			break
+		}
+	}
+	return deleted, nil
+}
+
+func isPriorNamespaceVersion(dirName string, spec NamespaceSpec) bool {
+	suffix, ok := strings.CutPrefix(dirName, spec.Name+"-")
+	if !ok || suffix == "" {
+		return false
+	}
+	version, err := parseNonNegativeInt(suffix)
+	if err != nil || version <= 0 {
+		return false
+	}
+	return version < spec.Version
+}
+
+func (db *DB) pruneNamespaceRecordFiles(namespace Namespace) (int, error) {
+	namespaceDir := db.namespaceDir(namespace)
+	recordPaths := []string{}
+	err := filepath.WalkDir(namespaceDir, func(recordPath string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if _, ok := recordHashFromPath(namespaceDir, recordPath); ok {
+			recordPaths = append(recordPaths, recordPath)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("walk prior CAS namespace: %w", err)
+	}
+
+	deleted := 0
+	for _, recordPath := range recordPaths {
+		removed, err := removeCASRecordPath(recordPath)
+		if err != nil {
+			return deleted, err
+		}
+		if removed {
+			deleted++
+			cleanupCASRecordDirs(namespaceDir, recordPath)
+		}
+	}
+	_ = os.Remove(namespaceDir)
+	return deleted, nil
+}
+
+func (db *DB) pruneSupersededRecords(specs []NamespaceSpec, packages []*gocode.Package, supersededAge time.Duration) (int, error) {
+	protected, err := db.pruneProtectedHashes(specs, packages)
+	if err != nil {
+		return 0, err
+	}
+
+	cutoff := time.Now().Add(-supersededAge)
+	deletedPaths := map[string]struct{}{}
+	deleted := 0
+	for _, spec := range specs {
+		namespace := spec.Namespace()
+		namespaceDir := db.namespaceDir(namespace)
+		if _, err := os.Stat(namespaceDir); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return deleted, fmt.Errorf("stat CAS namespace: %w", err)
+		}
+
+		for _, pkg := range packages {
+			_, _, relPaths, err := db.hasherForValidatedPackageSpec(pkg, spec)
+			if err != nil {
+				return deleted, err
+			}
+
+			records := db.packageRecordsForPrune(namespace, pkg, relPaths)
+			for _, record := range records {
+				if record == nil || record.summary == nil {
+					continue
+				}
+				if _, ok := deletedPaths[record.recordPath]; ok {
+					continue
+				}
+				if pruneHashProtected(protected, namespace, record.summary.Hash) {
+					continue
+				}
+				if !recordOlderThan(record.summary, cutoff) || !hasNewerPackageRecord(records, record) {
+					continue
+				}
+
+				removed, err := removeCASRecordPath(record.recordPath)
+				if err != nil {
+					return deleted, err
+				}
+				if removed {
+					deletedPaths[record.recordPath] = struct{}{}
+					deleted++
+					cleanupCASRecordDirs(namespaceDir, record.recordPath)
+				}
+			}
+		}
+	}
+	return deleted, nil
+}
+
+func (db *DB) pruneProtectedHashes(specs []NamespaceSpec, packages []*gocode.Package) (map[Namespace]map[string]struct{}, error) {
+	protected := map[Namespace]map[string]struct{}{}
+	addProtected := func(namespace Namespace, hash string) {
+		if _, _, ok := splitRecordHash(hash); !ok {
+			return
+		}
+		if _, ok := protected[namespace]; !ok {
+			protected[namespace] = map[string]struct{}{}
+		}
+		protected[namespace][hash] = struct{}{}
+	}
+
+	for _, spec := range specs {
+		namespace := spec.Namespace()
+		for _, pkg := range packages {
+			_, hasher, _, err := db.hasherForValidatedPackageSpec(pkg, spec)
+			if err != nil {
+				return nil, err
+			}
+
+			currentHash := hasher.Hash()
+			addProtected(namespace, currentHash)
+
+			currentRecordPath, ok := db.recordPath(namespace, currentHash)
+			if !ok {
+				continue
+			}
+			record, err := readFullCASRecordFile(currentRecordPath)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) || errors.Is(err, errInvalidCASRecord) {
+					continue
+				}
+				return nil, fmt.Errorf("read current CAS record: %w", err)
+			}
+			if sourceHash, ok := recertificationSourceHash(namespace, record.AdditionalInfo); ok {
+				addProtected(namespace, sourceHash)
+			}
+		}
+	}
+	return protected, nil
+}
+
+func pruneHashProtected(protected map[Namespace]map[string]struct{}, namespace Namespace, hash string) bool {
+	if len(protected) == 0 {
+		return false
+	}
+	hashes, ok := protected[namespace]
+	if !ok {
+		return false
+	}
+	_, ok = hashes[hash]
+	return ok
+}
+
+func recertificationSourceHash(namespace Namespace, additionalInfo cas.AdditionalInfo) (string, bool) {
+	if !additionalInfo.Recertified {
+		return "", false
+	}
+	recordNamespace, recordHash, ok := recordHashFromID(additionalInfo.RecertifiedFromRecord)
+	if ok && recordNamespace == namespace {
+		return recordHash, true
+	}
+	if _, _, ok := splitRecordHash(additionalInfo.RecertifiedFromHash); ok {
+		return additionalInfo.RecertifiedFromHash, true
+	}
+	return "", false
+}
+
+func recordHashFromID(id string) (Namespace, string, bool) {
+	if id == "" || path.Clean(id) != id {
+		return "", "", false
+	}
+	parts := strings.Split(id, "/")
+	if len(parts) != 3 || len(parts[1]) != 2 || parts[2] == "" {
+		return "", "", false
+	}
+	namespace := Namespace(parts[0])
+	if err := validateNamespace(namespace); err != nil {
+		return "", "", false
+	}
+	hash := parts[1] + parts[2]
+	if _, _, ok := splitRecordHash(hash); !ok {
+		return "", "", false
+	}
+	return namespace, hash, true
+}
+
+func (db *DB) packageRecordsForPrune(namespace Namespace, pkg *gocode.Package, currentRelPaths []string) []*priorPackageRecord {
+	namespaceDir := db.namespaceDir(namespace)
+	records := []*priorPackageRecord{}
+
+	_ = filepath.WalkDir(namespaceDir, func(recordPath string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		hash, ok := recordHashFromPath(namespaceDir, recordPath)
+		if !ok {
+			return nil
+		}
+
+		record, err := readFullCASRecordFile(recordPath)
+		if err != nil || !db.recordPathsMatchPackage(record.AdditionalInfo.Paths, pkg, currentRelPaths) {
+			return nil
+		}
+
+		candidate := db.packageRecordSummary(hash, record.AdditionalInfo, recordPath)
+		records = append(records, &priorPackageRecord{
+			summary:    candidate,
+			recordPath: recordPath,
+		})
+		return nil
+	})
+
+	sort.Slice(records, func(i, j int) bool {
+		return betterPackageRecord(records[i].summary, records[j].summary)
+	})
+	return records
+}
+
+func recordOlderThan(record *PackageRecordSummary, cutoff time.Time) bool {
+	return record != nil && !record.Time.IsZero() && record.Time.Before(cutoff)
+}
+
+func hasNewerPackageRecord(records []*priorPackageRecord, candidate *priorPackageRecord) bool {
+	if candidate == nil || candidate.summary == nil || candidate.summary.Time.IsZero() {
+		return false
+	}
+	for _, record := range records {
+		if record == nil || record == candidate || record.summary == nil {
+			continue
+		}
+		if record.summary.Time.After(candidate.summary.Time) {
+			return true
+		}
+	}
+	return false
+}
+
+func removeCASRecordPath(recordPath string) (bool, error) {
+	if err := os.Remove(recordPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("delete CAS record %q: %w", recordPath, err)
+	}
+	return true, nil
+}
+
+func cleanupCASRecordDirs(namespaceDir, recordPath string) {
+	_ = os.Remove(filepath.Dir(recordPath))
+	_ = os.Remove(namespaceDir)
+}
+
 // Delete removes the stored value for (pkg, spec).
 //
 // Deleting a missing value is a no-op and returns nil.
@@ -579,10 +963,10 @@ func readFullCASRecordFile(recordPath string) (casRecordFile, error) {
 
 	var record casRecordFile
 	if err := json.Unmarshal(b, &record); err != nil {
-		return casRecordFile{}, err
+		return casRecordFile{}, fmt.Errorf("%w: %v", errInvalidCASRecord, err)
 	}
 	if record.Kind != casRecordKind || len(record.Metadata) == 0 {
-		return casRecordFile{}, errors.New("invalid CAS record")
+		return casRecordFile{}, errInvalidCASRecord
 	}
 	return record, nil
 }
