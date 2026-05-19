@@ -177,6 +177,43 @@ func TestRun_CAS_LSStale_UsesRepoRootAcrossGoModules(t *testing.T) {
 	}, cliOutputLines(out.String()))
 }
 
+func TestRun_CAS_LSStale_IgnoresTestdataModules(t *testing.T) {
+	isolateUserConfig(t)
+
+	repo := t.TempDir()
+	createGitRepoMarker(t, repo)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repo\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, repo, "app", "package app\n\nfunc App() {}\n")
+
+	apiModule := filepath.Join(repo, "services", "api")
+	require.NoError(t, os.MkdirAll(apiModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "go.mod"), []byte("module example.com/api\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "api.go"), []byte("package api\n\nfunc API() {}\n"), 0644))
+
+	fixtureModule := filepath.Join(repo, "testdata", "fixture")
+	require.NoError(t, os.MkdirAll(fixtureModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(fixtureModule, "go.mod"), []byte("module example.com/fixture\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(fixtureModule, "fixture.go"), []byte("package fixture\n\nfunc Fixture() {}\n"), 0644))
+
+	t.Setenv(gocas.EnvCASDB, filepath.Join(repo, "casdb"))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repo))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{
+		"./app",
+		"./services/api",
+	}, cliOutputLines(out.String()))
+}
+
 func TestRun_CAS_LSStale_AppliesAgeThreshold(t *testing.T) {
 	isolateUserConfig(t)
 

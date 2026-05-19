@@ -170,7 +170,7 @@ func goModuleRootsUnderRepo(repoRoot string) ([]string, error) {
 		}
 		if path != repoRoot {
 			switch d.Name() {
-			case ".git", ".codalotl", "vendor":
+			case ".git", ".codalotl", "testdata", "vendor":
 				return filepath.SkipDir
 			}
 		}
