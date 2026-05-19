@@ -8,7 +8,7 @@ We use the `internal/q/cli` CLI framework to implement it.
 
 ## Startup and Environment Validation
 
-When codalotl starts, we load and validate configuration and required tools (exception: `version` and `-h` do not load/validate and always succeed).
+When codalotl starts, we load and validate configuration and required tools, except for commands that explicitly opt out (for example `version`, `pr new`, and `-h`).
 - If there's an error parsing the config file, or a config option is invalid, an error message is displayed and codalotl exits.
 - If there is no LLM configured (no LLM provider keys, including in ENV), an error message is displayed and codalotl exits.
 	- Note: a key must exist for **usable** models. The `llmmodel` package supports more providers than the CLI config schema currently exposes.
@@ -166,6 +166,35 @@ Global configuration can be stored in /home/someuser/.codalotl/config.json
 Project-specific configuration can be stored in .codalotl/config.json
 ```
 
+### codalotl pr new <feature-name> [--no-git]
+
+Creates an orchestrator PR file and, unless `--no-git` is set, prepares a local git branch:
+- Does not require LLM configuration or startup tool validation.
+- Feature name is required, filesystem-safe, and used as the PR filename suffix.
+- PR file path: `.prs/YYYY-MM-DD_<unix-seconds>_<feature-name>.md`
+- Never overwrite an existing PR file.
+- PR file starts with:
+
+```markdown
+# PR
+
+## User Summary (do not modify)
+
+
+```
+
+Git behavior:
+- Require git repo, clean workspace, and current branch `main` or `master`.
+- If current branch has an upstream, ensure it is up to date.
+- Local-only repos without an upstream are allowed.
+- Create branch named `$CODALOTL_USER_INITIALS/<feature-name>` when initials are set, else `<feature-name>`.
+- Add and commit PR file.
+- If `origin` exists, push branch with upstream tracking.
+
+If `--no-git` is set:
+- Do not require git state.
+- Only create the PR file.
+
 ### codalotl context public <path/to/pkg>
 
 Prints out the public API of the package (see the `internal/gocodecontext` package).
@@ -319,6 +348,8 @@ Notes:
 ## Configuration
 
 This package is responsible for loading a configuation file and passing various configuration to other packages. The configuration is loaded with `internal/q/cascade`. The configuration is loaded and validated for all commands, except those that obviously don't need it, like `version` and `-h`. An invalid configuration prints out a helpful error message and returns with an non-zero exit code.
+
+Commands that create local project scaffolding, such as `pr new`, can skip configuration loading.
 
 The config file is loaded with this preference:
 - `.codalotl/config.json` (starting from the working directory, recursively checking the parent, until some reasonable stop condition).
