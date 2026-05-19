@@ -43,6 +43,22 @@ func TestDiscoverModules_WorkspaceDiscovery(t *testing.T) {
 	assert.Equal(t, []string{"example.com/a", "example.com/b"}, discoverModuleNames(modules))
 }
 
+func TestDiscoverModules_GOWORKAutoUsesWorkspaceDiscovery(t *testing.T) {
+	t.Setenv("GOWORK", "auto")
+
+	root := t.TempDir()
+	moduleA := writeDiscoverTestModule(t, filepath.Join(root, "a"), "example.com/a")
+	moduleB := writeDiscoverTestModule(t, filepath.Join(root, "b"), "example.com/b")
+	writeDiscoverTestModule(t, filepath.Join(root, "ignored"), "example.com/ignored")
+	writeDiscoverTestFile(t, root, "go.work", "go 1.24\n\nuse (\n\t./b\n\t./a\n)\n")
+
+	modules, err := DiscoverModules(filepath.Join(root, "a"))
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{moduleA, moduleB}, discoverModuleAbsPaths(modules))
+	assert.Equal(t, []string{"example.com/a", "example.com/b"}, discoverModuleNames(modules))
+}
+
 func TestDiscoverModules_SkipsExcludedDirsExceptRoot(t *testing.T) {
 	t.Setenv("GOWORK", "off")
 

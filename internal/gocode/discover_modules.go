@@ -58,7 +58,7 @@ func findApplicableGoWork(rootDir string) (string, bool, error) {
 	if gowork == "off" {
 		return "", false, nil
 	}
-	if gowork != "" {
+	if gowork != "" && gowork != "auto" {
 		abs, err := filepath.Abs(gowork)
 		if err != nil {
 			return "", false, fmt.Errorf("absolute GOWORK: %w", err)
