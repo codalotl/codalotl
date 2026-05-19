@@ -78,7 +78,7 @@ type DB struct {
 // PackageRecordSummary describes one CAS record relevant to a Go package.
 type PackageRecordSummary struct {
 	Hash           string             // Hash is the CAS hash used as the record key within the namespace.
-	Time           time.Time          // Time is the best-effort record time. It prefers CAS metadata time and falls back to record file mtime.
+	Time           time.Time          // Time is the best-effort record time. It prefers the CAS add commit time and falls back when unavailable.
 	AdditionalInfo cas.AdditionalInfo // AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
 }
 
@@ -427,12 +427,34 @@ func (db *DB) recordPath(namespace Namespace, hash string) (string, bool) {
 func (db *DB) packageRecordSummary(hash string, additionalInfo cas.AdditionalInfo, recordPath string) *PackageRecordSummary {
 	return &PackageRecordSummary{
 		Hash:           hash,
-		Time:           recordTime(additionalInfo, recordPath),
+		Time:           db.recordTime(additionalInfo, recordPath),
 		AdditionalInfo: additionalInfo,
 	}
 }
 
-func recordTime(additionalInfo cas.AdditionalInfo, recordPath string) time.Time {
+func (db *DB) recordTime(additionalInfo cas.AdditionalInfo, recordPath string) time.Time {
+	if t, ok := db.recordAddCommitTime(recordPath); ok {
+		return t
+	}
+	return fallbackRecordTime(additionalInfo, recordPath)
+}
+
+func (db *DB) recordAddCommitTime(recordPath string) (time.Time, bool) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	for _, commit := range db.gitCommitsAddingRecord(recordPath, gitPath) {
+		t, ok := gitCommitTime(db.BaseDir, gitPath, commit)
+		if ok {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func fallbackRecordTime(additionalInfo cas.AdditionalInfo, recordPath string) time.Time {
 	if additionalInfo.UnixTimestamp > 0 {
 		return time.Unix(int64(additionalInfo.UnixTimestamp), 0)
 	}
@@ -884,6 +906,23 @@ func gitCommitLineCount(dir, gitPath, commit string, relPaths []string) (int, bo
 		total += countLines(out)
 	}
 	return total, sawFile
+}
+
+func gitCommitTime(dir, gitPath, commit string) (time.Time, bool) {
+	commit = strings.TrimSpace(commit)
+	if commit == "" {
+		return time.Time{}, false
+	}
+
+	out, err := gitOutput(dir, gitPath, "show", "-s", "--format=%ct", commit)
+	if err != nil {
+		return time.Time{}, false
+	}
+	seconds, err := parseNonNegativeInt(strings.TrimSpace(out))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(int64(seconds), 0), true
 }
 
 func gitShowFile(dir, gitPath, commit, relPath string) ([]byte, bool) {

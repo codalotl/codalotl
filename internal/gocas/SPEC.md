@@ -91,7 +91,7 @@ type DB struct {
 // PackageRecordSummary describes one CAS record relevant to a Go package.
 type PackageRecordSummary struct {
 	Hash           string             // Hash is the CAS hash used as the record key within the namespace.
-	Time           time.Time          // Time is the best-effort record time. It prefers CAS metadata time and falls back to record file mtime.
+	Time           time.Time          // Time is the best-effort record time. It prefers the CAS add commit time and falls back when unavailable.
 	AdditionalInfo cas.AdditionalInfo // AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
 }
 

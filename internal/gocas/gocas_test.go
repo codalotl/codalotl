@@ -140,6 +140,12 @@ func writeCASRecordAtHash(t *testing.T, db *DB, namespace Namespace, hash string
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 
+	return runGitEnv(t, dir, nil, args...)
+}
+
+func runGitEnv(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git is not available")
@@ -147,9 +153,22 @@ func runGit(t *testing.T, dir string, args ...string) string {
 
 	cmd := exec.Command(gitPath, args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(out))
 	return string(out)
+}
+
+func commitGitAt(t *testing.T, dir, msg string, at time.Time) {
+	t.Helper()
+
+	date := at.Format(time.RFC3339)
+	runGitEnv(t, dir, []string{
+		"GIT_AUTHOR_DATE=" + date,
+		"GIT_COMMITTER_DATE=" + date,
+	}, "commit", "-m", msg)
 }
 
 func TestRootDirForBaseDir_EnvOverride(t *testing.T) {
@@ -509,6 +528,88 @@ func TestSummarizePackage_CurrentRecordUsesFileMTimeWhenMetadataTimeMissing(t *t
 	require.NoError(t, err)
 	require.NotNil(t, summary.Current)
 	require.WithinDuration(t, mtime, summary.Current.Time, time.Second)
+}
+
+func TestSummarizePackage_CurrentRecordUsesMetadataTimeWhenAddCommitMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), summary.Current.Hash)
+	record := readStoredRecord(t, recordPath)
+	metadataTime := time.Unix(1234, 0)
+	record.AdditionalInfo.UnixTimestamp = int(metadataTime.Unix())
+	writeStoredRecord(t, recordPath, record)
+
+	mtime := time.Unix(5678, 0)
+	err = os.Chtimes(recordPath, mtime, mtime)
+	require.NoError(t, err)
+
+	summary, err = db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+	require.Equal(t, metadataTime, summary.Current.Time)
+}
+
+func TestSummarizePackage_CurrentRecordUsesCASAddCommitTimeFromSubdirectoryModule(t *testing.T) {
+	repoDir := t.TempDir()
+	baseDir := filepath.Join(repoDir, "subdir", "module")
+	casRoot := filepath.Join(repoDir, ".codalotl", "cas")
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	runGit(t, repoDir, "init")
+	runGit(t, repoDir, "config", "user.email", "test@example.com")
+	runGit(t, repoDir, "config", "user.name", "Test User")
+	runGit(t, repoDir, "add", ".")
+	commitGitAt(t, repoDir, "initial", time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC))
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), summary.Current.Hash)
+	record := readStoredRecord(t, recordPath)
+	metadataTime := time.Date(2010, 3, 4, 5, 6, 7, 0, time.UTC)
+	record.AdditionalInfo.UnixTimestamp = int(metadataTime.Unix())
+	writeStoredRecord(t, recordPath, record)
+
+	addCommitTime := time.Date(2004, 5, 6, 7, 8, 9, 0, time.UTC)
+	runGit(t, repoDir, "add", ".codalotl")
+	commitGitAt(t, repoDir, "add cas", addCommitTime)
+
+	mtime := time.Date(2015, 6, 7, 8, 9, 10, 0, time.UTC)
+	err = os.Chtimes(recordPath, mtime, mtime)
+	require.NoError(t, err)
+
+	summary, err = db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+	require.WithinDuration(t, addCommitTime, summary.Current.Time, time.Second)
 }
 
 func TestSummarizePackage_PriorInvalidatedRecordMatchesAbsoluteStoredPathsAndSkipsNoise(t *testing.T) {
