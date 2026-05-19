@@ -181,6 +181,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"docs", "add"},
 		{"docs", "fix"},
 		{"docs", "reflow"},
+		{"pr", "new"},
 		{"spec", "fmt"},
 		{"spec", "diff"},
 		{"spec", "ls-mismatch"},

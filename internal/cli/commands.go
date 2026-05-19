@@ -716,7 +716,7 @@ codalotl context packages --deps
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, newDocsCommand(runWithConfig, true), specCmd, casCmd, panicCmd)
+	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, newPRCommand(), newDocsCommand(runWithConfig, true), specCmd, casCmd, panicCmd)
 	return root, runState
 }
 
