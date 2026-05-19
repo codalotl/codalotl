@@ -427,8 +427,8 @@ codalotl spec ls-mismatch ./internal/...
 	}
 	statusCmd := &qcli.Command{
 		Name:             "status",
-		Short:            "Print per-package SPEC.md status (implies ./...).",
-		Long:             "Prints a table showing package, whether SPEC.md exists, whether Public API matches implementation, and whether the CAS conformance result is set.",
+		Short:            "Print per-package SPEC.md status across discovered repo modules.",
+		Long:             "Prints a table for packages across Go modules discovered from the nearest git repo, showing package, whether SPEC.md exists, whether Public API matches implementation, and whether the CAS conformance result is set.",
 		Args:             qcli.NoArgs,
 		NoPositionalArgs: true,
 		Example: strings.TrimSpace(`
