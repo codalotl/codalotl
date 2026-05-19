@@ -107,6 +107,17 @@ type PackageSummary struct {
 	ChurnPercent *float64
 }
 
+// RecertifyResult describes the outcome of copying a prior CAS record forward to current package contents.
+type RecertifyResult struct {
+	Namespace       Namespace
+	AlreadyCurrent  bool
+	Recertified     bool
+	CurrentHash     string
+	FromHash        string
+	FromRecordPath  string
+	Warnings        []string
+}
+
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
 func RootDirForBaseDir(baseDir string) (string, error)
 
@@ -153,6 +164,12 @@ func (db *DB) Retrieve(pkg *gocode.Package, spec NamespaceSpec, target any) (ok 
 // It uses the same hash mode and file selection as Store and Retrieve. Missing CAS roots or namespaces are treated as empty stores. Corrupt or unrelated prior records
 // are skipped, while errors looking up the current hash are returned.
 func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (PackageSummary, error)
+
+// RecertifyPackage asserts that pkg's current contents remain compliant with the most recent invalidated CAS record for spec.
+//
+// If current package contents already have a CAS record, RecertifyPackage is a no-op. Otherwise it copies the prior record payload to the current content hash,
+// updates additional info, marks the new record as recertified, and keeps existing records unchanged.
+func (db *DB) RecertifyPackage(pkg *gocode.Package, spec NamespaceSpec) (RecertifyResult, error)
 
 // Delete removes the stored value for (pkg, spec).
 //

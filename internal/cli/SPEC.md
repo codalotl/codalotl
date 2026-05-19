@@ -295,6 +295,17 @@ Filters are ORed:
 - `--stale-after-days=N`: prior CAS record is at least N days old.
 - `--min-churn-percent=N`: churn from prior CAS record is at least N%.
 
+### codalotl cas recertify <path/to/pkg> --namespaces="<namespace1>[,<namespace2>,...]"
+
+Copies recently invalidated CAS records forward to current package contents.
+
+Notes:
+- `<path/to/pkg>` follows usual single-package semantics.
+- `--namespaces` is required: comma-separated registered namespace names.
+- Existing current CAS records are left unchanged.
+- Prior CAS records are never deleted or mutated.
+- Output reports per-namespace no-op/recertified status and warnings.
+
 ## Configuration
 
 This package is responsible for loading a configuation file and passing various configuration to other packages. The configuration is loaded with `internal/q/cascade`. The configuration is loaded and validated for all commands, except those that obviously don't need it, like `version` and `-h`. An invalid configuration prints out a helpful error message and returns with an non-zero exit code.
