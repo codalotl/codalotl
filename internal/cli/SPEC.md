@@ -281,9 +281,17 @@ Columns:
 
 Pretty output is terminal-oriented. `--csv` emits CSV.
 
-### codalotl cas ls-unset <namespace>
+### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
 
-Lists module packages (`./path/to/pkg`) without a corresponding `cas get` entry for the registered namespace. Considers packages in the module (based on cwd).
+Lists module packages (`./path/to/pkg`) whose current contents lack a CAS record for registered namespace, one per line.
+
+Defaults: 30 days, 20% churn.
+
+Packages with no prior CAS record are always listed.
+
+Filters are ORed:
+- `--stale-after-days=N`: prior CAS record is at least N days old.
+- `--min-churn-percent=N`: churn from prior CAS record is at least N%.
 
 ## Configuration
 
