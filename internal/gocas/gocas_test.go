@@ -1,10 +1,13 @@
 package gocas
 
 import (
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/q/cas"
@@ -77,6 +80,95 @@ func writeTestModuleWithPackage(t *testing.T, modDir string) *gocode.Package {
 	pkg, err := m.LoadPackageByRelativeDir("foo")
 	require.NoError(t, err)
 	return pkg
+}
+
+func loadTestPackage(t *testing.T, modDir string) *gocode.Package {
+	t.Helper()
+
+	m, err := gocode.NewModule(modDir)
+	require.NoError(t, err)
+
+	pkg, err := m.LoadPackageByRelativeDir("foo")
+	require.NoError(t, err)
+	return pkg
+}
+
+func storedRecordPath(t *testing.T, db *DB, namespace Namespace, hash string) string {
+	t.Helper()
+
+	p, ok := db.recordPath(namespace, hash)
+	require.True(t, ok)
+	return p
+}
+
+func readStoredRecord(t *testing.T, recordPath string) casRecordFile {
+	t.Helper()
+
+	b, err := os.ReadFile(recordPath)
+	require.NoError(t, err)
+
+	var record casRecordFile
+	err = json.Unmarshal(b, &record)
+	require.NoError(t, err)
+	return record
+}
+
+func writeStoredRecord(t *testing.T, recordPath string, record casRecordFile) {
+	t.Helper()
+
+	b, err := json.Marshal(record)
+	require.NoError(t, err)
+
+	err = os.WriteFile(recordPath, b, 0o644)
+	require.NoError(t, err)
+}
+
+func writeCASRecordAtHash(t *testing.T, db *DB, namespace Namespace, hash string, additionalInfo cas.AdditionalInfo) {
+	t.Helper()
+
+	recordPath := storedRecordPath(t, db, namespace, hash)
+	err := os.MkdirAll(filepath.Dir(recordPath), 0o755)
+	require.NoError(t, err)
+
+	writeStoredRecord(t, recordPath, casRecordFile{
+		Kind:           "cas-record-v1",
+		Metadata:       json.RawMessage(`{"ok":true}`),
+		AdditionalInfo: additionalInfo,
+	})
+}
+
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+
+	return runGitEnv(t, dir, nil, args...)
+}
+
+func runGitEnv(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not available")
+	}
+
+	cmd := exec.Command(gitPath, args...)
+	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+	return string(out)
+}
+
+func commitGitAt(t *testing.T, dir, msg string, at time.Time) {
+	t.Helper()
+
+	date := at.Format(time.RFC3339)
+	runGitEnv(t, dir, []string{
+		"GIT_AUTHOR_DATE=" + date,
+		"GIT_COMMITTER_DATE=" + date,
+	}, "commit", "-m", msg)
 }
 
 func TestRootDirForBaseDir_EnvOverride(t *testing.T) {
@@ -355,6 +447,423 @@ func TestRetrieve_MissDoesNotMutateTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 	require.Equal(t, 123, target.N)
+}
+
+func TestSummarizePackage_CurrentRecord(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+	require.Nil(t, summary.PriorInvalidated)
+	require.Nil(t, summary.ChurnPercent)
+	require.NotEmpty(t, summary.Current.Hash)
+	require.False(t, summary.Current.Time.IsZero())
+	require.Equal(t, []string{"foo/SPEC.md", "foo/foo.go", "foo/foo_test.go"}, summary.Current.AdditionalInfo.Paths)
+}
+
+func TestSummarizePackage_MissingCASRootIsEmpty(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := filepath.Join(t.TempDir(), "cas")
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Nil(t, summary.Current)
+	require.Nil(t, summary.PriorInvalidated)
+	require.Nil(t, summary.ChurnPercent)
+}
+
+func TestSummarizePackage_CurrentRecordUsesFileMTimeWhenMetadataTimeMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), summary.Current.Hash)
+	record := readStoredRecord(t, recordPath)
+	record.AdditionalInfo.UnixTimestamp = 0
+	writeStoredRecord(t, recordPath, record)
+
+	mtime := time.Unix(1234, 0)
+	err = os.Chtimes(recordPath, mtime, mtime)
+	require.NoError(t, err)
+
+	summary, err = db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+	require.WithinDuration(t, mtime, summary.Current.Time, time.Second)
+}
+
+func TestSummarizePackage_CurrentRecordUsesMetadataTimeWhenAddCommitMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), summary.Current.Hash)
+	record := readStoredRecord(t, recordPath)
+	metadataTime := time.Unix(1234, 0)
+	record.AdditionalInfo.UnixTimestamp = int(metadataTime.Unix())
+	writeStoredRecord(t, recordPath, record)
+
+	mtime := time.Unix(5678, 0)
+	err = os.Chtimes(recordPath, mtime, mtime)
+	require.NoError(t, err)
+
+	summary, err = db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+	require.Equal(t, metadataTime, summary.Current.Time)
+}
+
+func TestSummarizePackage_CurrentRecordUsesCASAddCommitTimeFromSubdirectoryModule(t *testing.T) {
+	repoDir := t.TempDir()
+	baseDir := filepath.Join(repoDir, "subdir", "module")
+	casRoot := filepath.Join(repoDir, ".codalotl", "cas")
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	runGit(t, repoDir, "init")
+	runGit(t, repoDir, "config", "user.email", "test@example.com")
+	runGit(t, repoDir, "config", "user.name", "Test User")
+	runGit(t, repoDir, "add", ".")
+	commitGitAt(t, repoDir, "initial", time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC))
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), summary.Current.Hash)
+	record := readStoredRecord(t, recordPath)
+	metadataTime := time.Date(2010, 3, 4, 5, 6, 7, 0, time.UTC)
+	record.AdditionalInfo.UnixTimestamp = int(metadataTime.Unix())
+	writeStoredRecord(t, recordPath, record)
+
+	addCommitTime := time.Date(2004, 5, 6, 7, 8, 9, 0, time.UTC)
+	runGit(t, repoDir, "add", ".codalotl")
+	commitGitAt(t, repoDir, "add cas", addCommitTime)
+
+	mtime := time.Date(2015, 6, 7, 8, 9, 10, 0, time.UTC)
+	err = os.Chtimes(recordPath, mtime, mtime)
+	require.NoError(t, err)
+
+	summary, err = db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+	require.WithinDuration(t, addCommitTime, summary.Current.Time, time.Second)
+}
+
+func TestSummarizePackage_PriorInvalidatedRecordMatchesAbsoluteStoredPathsAndSkipsNoise(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, summary.Current)
+	priorHash := summary.Current.Hash
+	priorRecordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), priorHash)
+
+	record := readStoredRecord(t, priorRecordPath)
+	for i, relPath := range record.AdditionalInfo.Paths {
+		record.AdditionalInfo.Paths[i] = filepath.Join(baseDir, relPath)
+	}
+	writeStoredRecord(t, priorRecordPath, record)
+
+	writeCASRecordAtHash(t, db, testPackageNamespace.Namespace(), "aabb", cas.AdditionalInfo{
+		UnixTimestamp: record.AdditionalInfo.UnixTimestamp + 1000,
+		Paths:         []string{"bar/bar.go"},
+	})
+
+	corruptPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), "ccdd")
+	err = os.MkdirAll(filepath.Dir(corruptPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(corruptPath, []byte("{"), 0o644)
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	summary, err = db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Nil(t, summary.Current)
+	require.NotNil(t, summary.PriorInvalidated)
+	require.Equal(t, priorHash, summary.PriorInvalidated.Hash)
+	require.True(t, filepath.IsAbs(summary.PriorInvalidated.AdditionalInfo.Paths[0]))
+	require.Nil(t, summary.ChurnPercent)
+}
+
+func TestSummarizePackage_ChurnPercentFromGitMetadata(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	runGit(t, baseDir, "init")
+	runGit(t, baseDir, "config", "user.email", "test@example.com")
+	runGit(t, baseDir, "config", "user.name", "Test User")
+	runGit(t, baseDir, "add", ".")
+	runGit(t, baseDir, "commit", "-m", "initial")
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Nil(t, summary.Current)
+	require.NotNil(t, summary.PriorInvalidated)
+	require.NotNil(t, summary.ChurnPercent)
+	require.Greater(t, *summary.ChurnPercent, 0.0)
+}
+
+func TestSummarizePackage_ChurnPercentCountsUntrackedCurrentFiles(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	runGit(t, baseDir, "init")
+	runGit(t, baseDir, "config", "user.email", "test@example.com")
+	runGit(t, baseDir, "config", "user.name", "Test User")
+	runGit(t, baseDir, "add", ".")
+	runGit(t, baseDir, "commit", "-m", "initial")
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	writeTestFile(t, filepath.Join(baseDir, "foo", "new.go"), []byte("package foo\n\nfunc B() {}\nfunc C() {}\n"))
+	pkg = loadTestPackage(t, baseDir)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Nil(t, summary.Current)
+	require.NotNil(t, summary.PriorInvalidated)
+	require.NotNil(t, summary.ChurnPercent)
+	require.InEpsilon(t, (4.0/11.0)*100.0, *summary.ChurnPercent, 0.001)
+}
+
+func TestSummarizePackage_ChurnUsesOlderReliableRecordWhenNewestPriorIsDirty(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	runGit(t, baseDir, "init")
+	runGit(t, baseDir, "config", "user.email", "test@example.com")
+	runGit(t, baseDir, "config", "user.name", "Test User")
+	runGit(t, baseDir, "add", ".")
+	runGit(t, baseDir, "commit", "-m", "initial")
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc Dirty() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	err = db.Store(pkg, testPackageNamespace, testPayload{N: 8})
+	require.NoError(t, err)
+	dirtyHasher, _, err := db.hasherForPackageSpec(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	dirtyHash := dirtyHasher.Hash()
+
+	dirtyRecordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), dirtyHash)
+	dirtyRecord := readStoredRecord(t, dirtyRecordPath)
+	require.False(t, dirtyRecord.AdditionalInfo.GitClean)
+	dirtyRecord.AdditionalInfo.UnixTimestamp += 100
+	writeStoredRecord(t, dirtyRecordPath, dirtyRecord)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Nil(t, summary.Current)
+	require.NotNil(t, summary.PriorInvalidated)
+	require.Equal(t, dirtyHash, summary.PriorInvalidated.Hash)
+	require.NotNil(t, summary.ChurnPercent)
+	require.Greater(t, *summary.ChurnPercent, 0.0)
+}
+
+func TestSummarizePackage_ChurnCanUseCommitThatAddedCASRecordFromSubmodule(t *testing.T) {
+	repoDir := t.TempDir()
+	baseDir := filepath.Join(repoDir, "subdir", "module")
+	casRoot := filepath.Join(repoDir, ".codalotl", "cas")
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	runGit(t, repoDir, "init")
+	runGit(t, repoDir, "config", "user.email", "test@example.com")
+	runGit(t, repoDir, "config", "user.name", "Test User")
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "initial")
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+	initialHasher, _, err := db.hasherForPackageSpec(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	initialHash := initialHasher.Hash()
+
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), initialHash)
+	record := readStoredRecord(t, recordPath)
+	record.AdditionalInfo.GitCommit = ""
+	record.AdditionalInfo.GitClean = false
+	writeStoredRecord(t, recordPath, record)
+
+	runGit(t, repoDir, "add", ".codalotl")
+	runGit(t, repoDir, "commit", "-m", "add cas")
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Nil(t, summary.Current)
+	require.NotNil(t, summary.PriorInvalidated)
+	require.Equal(t, initialHash, summary.PriorInvalidated.Hash)
+	require.NotNil(t, summary.ChurnPercent)
+	require.Greater(t, *summary.ChurnPercent, 0.0)
+}
+
+func TestSummarizePackage_ChurnCanUseCommitThatAddedCASRecord(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := filepath.Join(baseDir, ".codalotl", "cas")
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	runGit(t, baseDir, "init")
+	runGit(t, baseDir, "config", "user.email", "test@example.com")
+	runGit(t, baseDir, "config", "user.name", "Test User")
+	runGit(t, baseDir, "add", ".")
+	runGit(t, baseDir, "commit", "-m", "initial")
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+	initialHasher, _, err := db.hasherForPackageSpec(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	initialHash := initialHasher.Hash()
+
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), initialHash)
+	record := readStoredRecord(t, recordPath)
+	record.AdditionalInfo.GitCommit = ""
+	record.AdditionalInfo.GitClean = false
+	writeStoredRecord(t, recordPath, record)
+
+	runGit(t, baseDir, "add", ".codalotl")
+	runGit(t, baseDir, "commit", "-m", "add cas")
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	summary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Nil(t, summary.Current)
+	require.NotNil(t, summary.PriorInvalidated)
+	require.Equal(t, initialHash, summary.PriorInvalidated.Hash)
+	require.NotNil(t, summary.ChurnPercent)
+	require.Greater(t, *summary.ChurnPercent, 0.0)
 }
 
 func TestPackageHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {

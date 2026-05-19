@@ -1,11 +1,13 @@
 package gocas
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -71,6 +73,25 @@ type DB struct {
 	//
 	//	<AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>
 	cas.DB
+}
+
+// PackageRecordSummary describes one CAS record relevant to a Go package.
+type PackageRecordSummary struct {
+	Hash           string             // Hash is the CAS hash used as the record key within the namespace.
+	Time           time.Time          // Time is the best-effort record time. It prefers the CAS add commit time and falls back when unavailable.
+	AdditionalInfo cas.AdditionalInfo // AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
+}
+
+// PackageSummary describes current and prior CAS state for a package in one namespace.
+type PackageSummary struct {
+	// Current is non-nil when a CAS record exists for the package's current contents.
+	Current *PackageRecordSummary
+
+	// PriorInvalidated is the most relevant older matching record when Current is nil.
+	PriorInvalidated *PackageRecordSummary
+
+	// ChurnPercent is the best-effort changed-line percentage versus the newest prior record with a verified git baseline.
+	ChurnPercent *float64
 }
 
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
@@ -190,6 +211,57 @@ func (db *DB) Retrieve(pkg *gocode.Package, spec NamespaceSpec, target any) (ok 
 	}
 
 	return db.retrieve(namespace, hasher, target)
+}
+
+// SummarizePackage returns current and prior CAS record state for (pkg, spec).
+//
+// It uses the same hash mode and file selection as Store and Retrieve. Missing CAS roots or namespaces are treated as empty stores. Corrupt or unrelated prior records
+// are skipped, while errors looking up the current hash are returned.
+func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (PackageSummary, error) {
+	if pkg == nil {
+		return PackageSummary{}, errors.New("package is nil")
+	}
+	if err := db.validateCommon(spec); err != nil {
+		return PackageSummary{}, err
+	}
+
+	namespace := spec.Namespace()
+	hasher, relPaths, err := db.hasherForPackageSpec(pkg, spec)
+	if err != nil {
+		return PackageSummary{}, err
+	}
+	currentHash := hasher.Hash()
+
+	namespaceDir := db.namespaceDir(namespace)
+	if _, err := os.Stat(namespaceDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return PackageSummary{}, nil
+		}
+		return PackageSummary{}, fmt.Errorf("stat CAS namespace: %w", err)
+	}
+
+	var raw json.RawMessage
+	ok, additionalInfo, err := db.retrieve(namespace, hasher, &raw)
+	if err != nil {
+		return PackageSummary{}, err
+	}
+	if ok {
+		recordPath, _ := db.recordPath(namespace, currentHash)
+		return PackageSummary{
+			Current: db.packageRecordSummary(currentHash, additionalInfo, recordPath),
+		}, nil
+	}
+
+	priorRecords := db.priorInvalidatedPackageRecords(namespace, currentHash, pkg, relPaths)
+	var prior *PackageRecordSummary
+	if len(priorRecords) > 0 {
+		prior = priorRecords[0].summary
+	}
+	summary := PackageSummary{
+		PriorInvalidated: prior,
+	}
+	summary.ChurnPercent = db.churnPercent(priorRecords, relPaths)
+	return summary, nil
 }
 
 // Delete removes the stored value for (pkg, spec).
@@ -339,6 +411,578 @@ func (db *DB) retrieve(namespace Namespace, hasher cas.Hasher, target any) (ok b
 
 func (db *DB) delete(namespace Namespace, hasher cas.Hasher) error {
 	return db.DB.Delete(hasher, string(namespace))
+}
+
+func (db *DB) namespaceDir(namespace Namespace) string {
+	return filepath.Join(db.DB.AbsRoot, string(namespace))
+}
+
+func (db *DB) recordPath(namespace Namespace, hash string) (string, bool) {
+	if len(hash) < 3 {
+		return "", false
+	}
+	return filepath.Join(db.namespaceDir(namespace), hash[:2], hash[2:]), true
+}
+
+func (db *DB) packageRecordSummary(hash string, additionalInfo cas.AdditionalInfo, recordPath string) *PackageRecordSummary {
+	return &PackageRecordSummary{
+		Hash:           hash,
+		Time:           db.recordTime(additionalInfo, recordPath),
+		AdditionalInfo: additionalInfo,
+	}
+}
+
+func (db *DB) recordTime(additionalInfo cas.AdditionalInfo, recordPath string) time.Time {
+	if t, ok := db.recordAddCommitTime(recordPath); ok {
+		return t
+	}
+	return fallbackRecordTime(additionalInfo, recordPath)
+}
+
+func (db *DB) recordAddCommitTime(recordPath string) (time.Time, bool) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	for _, commit := range db.gitCommitsAddingRecord(recordPath, gitPath) {
+		t, ok := gitCommitTime(db.BaseDir, gitPath, commit)
+		if ok {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func fallbackRecordTime(additionalInfo cas.AdditionalInfo, recordPath string) time.Time {
+	if additionalInfo.UnixTimestamp > 0 {
+		return time.Unix(int64(additionalInfo.UnixTimestamp), 0)
+	}
+	if recordPath == "" {
+		return time.Time{}
+	}
+	fi, err := os.Stat(recordPath)
+	if err != nil {
+		return time.Time{}
+	}
+	return fi.ModTime()
+}
+
+type casRecordFile struct {
+	Kind           string             `json:"kind"`
+	Metadata       json.RawMessage    `json:"metadata"`
+	AdditionalInfo cas.AdditionalInfo `json:"additional_info"`
+}
+
+type priorPackageRecord struct {
+	summary    *PackageRecordSummary
+	recordPath string
+}
+
+func readCASRecordFile(recordPath string) (cas.AdditionalInfo, bool) {
+	b, err := os.ReadFile(recordPath)
+	if err != nil {
+		return cas.AdditionalInfo{}, false
+	}
+
+	var record casRecordFile
+	if err := json.Unmarshal(b, &record); err != nil {
+		return cas.AdditionalInfo{}, false
+	}
+	if record.Kind != "cas-record-v1" || len(record.Metadata) == 0 {
+		return cas.AdditionalInfo{}, false
+	}
+	return record.AdditionalInfo, true
+}
+
+func (db *DB) priorInvalidatedPackageRecord(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) *PackageRecordSummary {
+	records := db.priorInvalidatedPackageRecords(namespace, currentHash, pkg, currentRelPaths)
+	if len(records) == 0 {
+		return nil
+	}
+	return records[0].summary
+}
+
+func (db *DB) priorInvalidatedPackageRecords(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) []*priorPackageRecord {
+	namespaceDir := db.namespaceDir(namespace)
+	records := []*priorPackageRecord{}
+
+	_ = filepath.WalkDir(namespaceDir, func(recordPath string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		hash, ok := recordHashFromPath(namespaceDir, recordPath)
+		if !ok || hash == currentHash {
+			return nil
+		}
+
+		additionalInfo, ok := readCASRecordFile(recordPath)
+		if !ok || !db.recordPathsMatchPackage(additionalInfo.Paths, pkg, currentRelPaths) {
+			return nil
+		}
+
+		candidate := db.packageRecordSummary(hash, additionalInfo, recordPath)
+		records = append(records, &priorPackageRecord{
+			summary:    candidate,
+			recordPath: recordPath,
+		})
+		return nil
+	})
+
+	sort.Slice(records, func(i, j int) bool {
+		return betterPackageRecord(records[i].summary, records[j].summary)
+	})
+	return records
+}
+
+func recordHashFromPath(namespaceDir, recordPath string) (string, bool) {
+	rel, err := filepath.Rel(namespaceDir, recordPath)
+	if err != nil {
+		return "", false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) != 2 || len(parts[0]) != 2 || parts[1] == "" {
+		return "", false
+	}
+	return parts[0] + parts[1], true
+}
+
+func betterPackageRecord(candidate, incumbent *PackageRecordSummary) bool {
+	if candidate == nil {
+		return false
+	}
+	if incumbent == nil {
+		return true
+	}
+	if candidate.Time.After(incumbent.Time) {
+		return true
+	}
+	if incumbent.Time.After(candidate.Time) {
+		return false
+	}
+	return candidate.Hash > incumbent.Hash
+}
+
+func (db *DB) recordPathsMatchPackage(paths []string, pkg *gocode.Package, currentRelPaths []string) bool {
+	normalizedPaths := db.normalizeStoredPaths(paths)
+	if len(normalizedPaths) == 0 {
+		return false
+	}
+
+	currentPathSet := make(map[string]struct{}, len(currentRelPaths))
+	for _, p := range currentRelPaths {
+		rel, ok := cleanRelPath(p)
+		if ok {
+			currentPathSet[rel] = struct{}{}
+		}
+	}
+	for _, p := range normalizedPaths {
+		if _, ok := currentPathSet[p]; ok {
+			return true
+		}
+	}
+
+	pkgRelDir, ok := cleanRelPath(pkg.RelativeDir)
+	if !ok || pkgRelDir == "." {
+		for _, p := range normalizedPaths {
+			if !strings.Contains(p, "/") {
+				return true
+			}
+		}
+		return false
+	}
+
+	prefix := strings.TrimSuffix(pkgRelDir, "/") + "/"
+	for _, p := range normalizedPaths {
+		if p == pkgRelDir || strings.HasPrefix(p, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (db *DB) normalizeStoredPaths(paths []string) []string {
+	seen := make(map[string]struct{}, len(paths))
+	normalized := make([]string, 0, len(paths))
+	for _, p := range paths {
+		rel, ok := db.normalizeStoredPath(p)
+		if !ok {
+			continue
+		}
+		if _, ok := seen[rel]; ok {
+			continue
+		}
+		seen[rel] = struct{}{}
+		normalized = append(normalized, rel)
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
+func (db *DB) normalizeStoredPath(p string) (string, bool) {
+	if p == "" {
+		return "", false
+	}
+	if filepath.IsAbs(p) {
+		rel, err := filepath.Rel(db.BaseDir, p)
+		if err != nil {
+			return "", false
+		}
+		return cleanRelPath(rel)
+	}
+	return cleanRelPath(p)
+}
+
+func cleanRelPath(p string) (string, bool) {
+	p = strings.ReplaceAll(p, `\`, "/")
+	p = path.Clean(p)
+	if p == "" || p == "." || p == ".." || strings.HasPrefix(p, "../") {
+		return "", false
+	}
+	return p, true
+}
+
+func (db *DB) churnPercent(records []*priorPackageRecord, currentRelPaths []string) *float64 {
+	if len(records) == 0 {
+		return nil
+	}
+
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		return nil
+	}
+
+	for _, record := range records {
+		churn := db.recordChurnPercent(record, currentRelPaths, gitPath)
+		if churn != nil {
+			return churn
+		}
+	}
+	return nil
+}
+
+func (db *DB) recordChurnPercent(record *priorPackageRecord, currentRelPaths []string, gitPath string) *float64 {
+	if record == nil || record.summary == nil {
+		return nil
+	}
+
+	priorPaths := db.normalizeStoredPaths(record.summary.AdditionalInfo.Paths)
+	if len(priorPaths) == 0 {
+		return nil
+	}
+
+	commit, ok := db.matchingRecordCommit(record, priorPaths, gitPath)
+	if !ok {
+		return nil
+	}
+
+	allPaths := mergeRelPaths(priorPaths, currentRelPaths)
+	changedLines, ok := gitChangedLines(db.BaseDir, gitPath, commit, allPaths)
+	if !ok {
+		return nil
+	}
+
+	priorLines, ok := gitCommitLineCount(db.BaseDir, gitPath, commit, priorPaths)
+	if !ok || priorLines == 0 {
+		return nil
+	}
+
+	churn := (float64(changedLines) / float64(priorLines)) * 100
+	return &churn
+}
+
+func (db *DB) matchingRecordCommit(record *priorPackageRecord, priorPaths []string, gitPath string) (string, bool) {
+	for _, commit := range db.recordCommitCandidates(record, gitPath) {
+		if db.recordHashMatchesCommit(record.summary.Hash, commit, priorPaths, gitPath) {
+			return commit, true
+		}
+	}
+	return "", false
+}
+
+func (db *DB) recordCommitCandidates(record *priorPackageRecord, gitPath string) []string {
+	if record == nil || record.summary == nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	candidates := []string{}
+	add := func(commit string) {
+		commit = strings.TrimSpace(commit)
+		if commit == "" {
+			return
+		}
+		if _, ok := seen[commit]; ok {
+			return
+		}
+		seen[commit] = struct{}{}
+		candidates = append(candidates, commit)
+	}
+
+	add(record.summary.AdditionalInfo.GitCommit)
+	for _, commit := range db.gitCommitsAddingRecord(record.recordPath, gitPath) {
+		add(commit)
+	}
+	return candidates
+}
+
+func (db *DB) gitCommitsAddingRecord(recordPath string, gitPath string) []string {
+	if recordPath == "" {
+		return nil
+	}
+
+	gitRoot, err := gitOutput(db.BaseDir, gitPath, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil
+	}
+	rel, err := filepath.Rel(gitRoot, recordPath)
+	if err != nil {
+		return nil
+	}
+	rel, ok := cleanRelPath(rel)
+	if !ok {
+		return nil
+	}
+
+	out, err := gitOutput(gitRoot, gitPath, "log", "--format=%H", "--diff-filter=A", "--", rel)
+	if err != nil {
+		return nil
+	}
+
+	commits := []string{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			commits = append(commits, line)
+		}
+	}
+	return commits
+}
+
+func (db *DB) recordHashMatchesCommit(hash, commit string, relPaths []string, gitPath string) bool {
+	if hash == "" || commit == "" || len(relPaths) == 0 {
+		return false
+	}
+
+	tmpDir, err := os.MkdirTemp("", "codalotl-cas-hash-*")
+	if err != nil {
+		return false
+	}
+	defer os.RemoveAll(tmpDir)
+
+	absPaths := make([]string, 0, len(relPaths))
+	for _, relPath := range relPaths {
+		relPath, ok := cleanRelPath(relPath)
+		if !ok {
+			return false
+		}
+		out, ok := gitShowFile(db.BaseDir, gitPath, commit, relPath)
+		if !ok {
+			return false
+		}
+
+		absPath := filepath.Join(tmpDir, filepath.FromSlash(relPath))
+		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+			return false
+		}
+		if err := os.WriteFile(absPath, out, 0o644); err != nil {
+			return false
+		}
+		absPaths = append(absPaths, absPath)
+	}
+
+	hasher, err := cas.NewDirRelativeFileSetHasher(tmpDir, absPaths)
+	if err != nil {
+		return false
+	}
+	return hasher.Hash() == hash
+}
+
+func mergeRelPaths(a []string, b []string) []string {
+	seen := make(map[string]struct{}, len(a)+len(b))
+	merged := make([]string, 0, len(a)+len(b))
+	add := func(p string) {
+		rel, ok := cleanRelPath(p)
+		if !ok {
+			return
+		}
+		if _, ok := seen[rel]; ok {
+			return
+		}
+		seen[rel] = struct{}{}
+		merged = append(merged, rel)
+	}
+	for _, p := range a {
+		add(p)
+	}
+	for _, p := range b {
+		add(p)
+	}
+	sort.Strings(merged)
+	return merged
+}
+
+func gitChangedLines(dir, gitPath, commit string, relPaths []string) (int, bool) {
+	if len(relPaths) == 0 {
+		return 0, false
+	}
+
+	args := []string{"diff", "--numstat", "--no-ext-diff", "--no-renames", commit, "--"}
+	args = append(args, relPaths...)
+	out, err := gitOutput(dir, gitPath, args...)
+	if err != nil {
+		return 0, false
+	}
+
+	changed := 0
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 3 || fields[0] == "-" || fields[1] == "-" {
+			continue
+		}
+		added, err := parseNonNegativeInt(fields[0])
+		if err != nil {
+			return 0, false
+		}
+		deleted, err := parseNonNegativeInt(fields[1])
+		if err != nil {
+			return 0, false
+		}
+		changed += added + deleted
+	}
+	untrackedChanged, ok := gitUntrackedChangedLines(dir, gitPath, relPaths)
+	if !ok {
+		return 0, false
+	}
+	changed += untrackedChanged
+	return changed, true
+}
+
+func gitUntrackedChangedLines(dir, gitPath string, relPaths []string) (int, bool) {
+	args := []string{"ls-files", "--others", "--exclude-standard", "-z", "--"}
+	args = append(args, relPaths...)
+	out, err := gitOutputBytes(dir, gitPath, args...)
+	if err != nil {
+		return 0, false
+	}
+
+	changed := 0
+	for _, rawPath := range bytes.Split(out, []byte{0}) {
+		if len(rawPath) == 0 {
+			continue
+		}
+		relPath, ok := cleanRelPath(string(rawPath))
+		if !ok {
+			return 0, false
+		}
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(relPath)))
+		if err != nil {
+			return 0, false
+		}
+		changed += countLines(b)
+	}
+	return changed, true
+}
+
+func gitCommitLineCount(dir, gitPath, commit string, relPaths []string) (int, bool) {
+	total := 0
+	sawFile := false
+	for _, relPath := range relPaths {
+		out, ok := gitShowFile(dir, gitPath, commit, relPath)
+		if !ok {
+			continue
+		}
+		sawFile = true
+		total += countLines(out)
+	}
+	return total, sawFile
+}
+
+func gitCommitTime(dir, gitPath, commit string) (time.Time, bool) {
+	commit = strings.TrimSpace(commit)
+	if commit == "" {
+		return time.Time{}, false
+	}
+
+	out, err := gitOutput(dir, gitPath, "show", "-s", "--format=%ct", commit)
+	if err != nil {
+		return time.Time{}, false
+	}
+	seconds, err := parseNonNegativeInt(strings.TrimSpace(out))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(int64(seconds), 0), true
+}
+
+func gitShowFile(dir, gitPath, commit, relPath string) ([]byte, bool) {
+	objectPath, ok := gitObjectPath(dir, gitPath, relPath)
+	if !ok {
+		return nil, false
+	}
+
+	out, err := gitOutputBytes(dir, gitPath, "show", commit+":"+objectPath)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+func gitObjectPath(dir, gitPath, relPath string) (string, bool) {
+	relPath, ok := cleanRelPath(relPath)
+	if !ok {
+		return "", false
+	}
+
+	prefix, err := gitOutput(dir, gitPath, "rev-parse", "--show-prefix")
+	if err != nil {
+		return "", false
+	}
+	if prefix == "" {
+		return relPath, true
+	}
+	return strings.TrimSuffix(prefix, "/") + "/" + relPath, true
+}
+
+func gitOutputBytes(dir, gitPath string, args ...string) ([]byte, error) {
+	cmd := exec.Command(gitPath, args...)
+	cmd.Dir = dir
+	return cmd.Output()
+}
+
+func countLines(b []byte) int {
+	if len(b) == 0 {
+		return 0
+	}
+	n := bytes.Count(b, []byte{'\n'})
+	if b[len(b)-1] != '\n' {
+		n++
+	}
+	return n
+}
+
+func parseNonNegativeInt(s string) (int, error) {
+	if s == "" {
+		return 0, errors.New("empty integer")
+	}
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("invalid non-negative integer %q", s)
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n, nil
 }
 
 type fileRec struct {

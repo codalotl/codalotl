@@ -442,51 +442,7 @@ codalotl spec status
 	casCmd := &qcli.Command{
 		Name:  "cas",
 		Short: "Content-addressable metadata storage (CAS).",
-		Long:  "Commands for reading and writing content-addressed metadata keyed by package source contents.",
-	}
-	setCmd := &qcli.Command{
-		Name:  "set",
-		Short: "Set a JSON value for (package, namespace).",
-		Long:  "Stores a JSON value for a package and namespace under a key derived from the package's source file paths, contents, and namespace.",
-		Usage: "<namespace> <path/to/pkg> <value>",
-		ArgHelp: []qcli.ArgHelp{
-			{
-				Display:     "<namespace>",
-				Description: "Registered non-versioned namespace name.",
-			},
-			{
-				Display:     "<path/to/pkg>",
-				Description: packagePathArgDescription,
-			},
-			{
-				Display:     "<value>",
-				Description: `JSON value to store, such as "OK" or {"result":"ok"}.`,
-			},
-		},
-		Example: strings.TrimSpace(`
-codalotl cas set specconforms internal/mypkg '{"conforms":true}'
-codalotl cas set docs-fix internal/mypkg '"OK"'
-`),
-		Args: qcli.ExactArgs(3),
-		Run: runWithConfig("cas_set", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-			spec, err := resolveCASNamespaceSpec(c.Args[0])
-			if err != nil {
-				return qcli.UsageError{Message: err.Error()}
-			}
-			pkg, mod, err := loadPackageArg(c.Args[1])
-			if err != nil {
-				return err
-			}
-			var value any
-			if err := json.Unmarshal([]byte(c.Args[2]), &value); err != nil {
-				return qcli.UsageError{Message: fmt.Sprintf("invalid <value>: must be valid JSON (ex: %q or %q)", `"OK"`, `{"result":"ok"}`)}
-			}
-			db, err := casDBForBaseDir(mod.AbsolutePath)
-			if err != nil {
-				return err
-			}
-			return db.Store(pkg, spec, value)
-		}),
+		Long:  "Commands for inspecting content-addressed metadata keyed by package source contents.",
 	}
 	getCmd := &qcli.Command{
 		Name:  "get",
@@ -576,7 +532,28 @@ codalotl cas ls-unset specconforms
 			return runCASLsUnset(c.Context, c.Out, c.Args[0])
 		}),
 	}
-	casCmd.AddCommand(setCmd, getCmd, lsNamespacesCmd, lsUnsetCmd)
+	lsSummaryCmd := &qcli.Command{
+		Name:  "ls-summary",
+		Short: "Summarize CAS coverage for packages in the current module.",
+		Long:  "Displays per-package current and prior CAS coverage for a registered namespace across packages in the current module.",
+		Usage: "<namespace>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<namespace>",
+				Description: "Registered non-versioned namespace name.",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl cas ls-summary specconforms
+codalotl cas ls-summary specconforms --csv
+`),
+		Args: qcli.ExactArgs(1),
+	}
+	lsSummaryCSV := lsSummaryCmd.Flags().Bool("csv", 0, false, "Emit CSV instead of a terminal-oriented table.")
+	lsSummaryCmd.Run = runWithConfig("cas_ls_summary", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		return runCASLsSummary(c.Context, c.Out, c.Args[0], *lsSummaryCSV)
+	})
+	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsUnsetCmd)
 
 	panicCmd := &qcli.Command{
 		Name:             "panic",
