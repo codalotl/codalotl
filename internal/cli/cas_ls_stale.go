@@ -174,11 +174,8 @@ func goModuleRootsUnderRepo(repoRoot string) ([]string, error) {
 		if !d.IsDir() {
 			return nil
 		}
-		if path != repoRoot {
-			switch d.Name() {
-			case ".git", ".codalotl", "testdata", "vendor":
-				return filepath.SkipDir
-			}
+		if path != repoRoot && shouldSkipGoListRecursiveDir(d.Name()) {
+			return filepath.SkipDir
 		}
 		_, err := os.Stat(filepath.Join(path, "go.mod"))
 		switch {
@@ -195,6 +192,10 @@ func goModuleRootsUnderRepo(repoRoot string) ([]string, error) {
 	}
 	sort.Strings(roots)
 	return roots, nil
+}
+
+func shouldSkipGoListRecursiveDir(name string) bool {
+	return name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 func validateCASLsStaleThresholds(staleAfterDays int, minChurnPercent int) error {
