@@ -43,6 +43,15 @@ Package recertification asserts current package contents remain compliant with a
 - Source/prior records are never deleted or rewritten.
 - Warnings highlight higher-risk recertifications: dirty current git worktree, large churn, old source record.
 
+## Package Pruning
+
+Package pruning removes obsolete CAS records.
+
+- Remove inactive namespace versions for supplied active namespace specs.
+- Remove superseded records older than configured age when newer record exists for same namespace/package pair.
+- Preserve current records and latest recertification provenance.
+- Skip corrupt or unrecognized records.
+
 ## Public API
 
 ```go
@@ -138,6 +147,18 @@ type PackageRecertificationResult struct {
 	Warnings     []string
 }
 
+// PruneOptions configures CAS record pruning.
+type PruneOptions struct {
+	// SupersededAgeDays removes superseded records older than this many days. If zero, a sensible default is used.
+	SupersededAgeDays int
+}
+
+// PruneResult summarizes deleted CAS records.
+type PruneResult struct {
+	DeletedPriorVersionRecords int
+	DeletedSupersededRecords   int
+}
+
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
 func RootDirForBaseDir(baseDir string) (string, error)
 
@@ -191,6 +212,9 @@ func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (Package
 // Otherwise it copies the most recent matching prior record payload to the current content hash, updates AdditionalInfo for current package state, marks the new
 // record as recertified, and leaves existing records unchanged.
 func (db *DB) RecertifyPackage(pkg *gocode.Package, spec NamespaceSpec) (PackageRecertificationResult, error)
+
+// Prune removes obsolete CAS records for active namespace specs and known packages.
+func (db *DB) Prune(specs []NamespaceSpec, packages []*gocode.Package, opts PruneOptions) (PruneResult, error)
 
 // Delete removes the stored value for (pkg, spec).
 //
