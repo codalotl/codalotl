@@ -23,6 +23,7 @@ const EnvCASDB = "CODALOTL_CAS_DB"
 
 const casRecordKind = "cas-record-v1"
 const defaultPruneSupersededAgeDays = 30
+const maxPruneSupersededAgeDays = int64(1<<63-1) / int64(24*time.Hour)
 
 var errInvalidCASRecord = errors.New("invalid CAS record")
 
@@ -129,7 +130,7 @@ type PackageRecertificationResult struct {
 type PruneOptions struct {
 	// SupersededAgeDays removes superseded records older than this many days.
 	//
-	// If zero, Prune uses its default retention age, currently 30 days. Negative values are invalid.
+	// If zero, Prune uses its default retention age, currently 30 days. Negative values and values too large to represent as time.Duration are invalid.
 	SupersededAgeDays int
 }
 
@@ -399,6 +400,9 @@ func (db *DB) Prune(specs []NamespaceSpec, packages []*gocode.Package, opts Prun
 	supersededAgeDays := opts.SupersededAgeDays
 	if supersededAgeDays == 0 {
 		supersededAgeDays = defaultPruneSupersededAgeDays
+	}
+	if int64(supersededAgeDays) > maxPruneSupersededAgeDays {
+		return PruneResult{}, fmt.Errorf("superseded age days is too large: %d (max %d)", supersededAgeDays, maxPruneSupersededAgeDays)
 	}
 
 	activeSpecs := make(map[string]NamespaceSpec, len(specs))

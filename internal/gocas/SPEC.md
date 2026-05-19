@@ -49,6 +49,7 @@ Package pruning removes obsolete CAS records.
 
 - Remove inactive namespace versions for supplied active namespace specs.
 - Remove superseded records older than configured age when newer record exists for same namespace/package pair.
+- Reject negative or unrepresentably large retention ages before deleting records.
 - Preserve current records and latest recertification provenance.
 - Skip corrupt or unrecognized records.
 
@@ -159,7 +160,7 @@ type PackageRecertificationResult struct {
 type PruneOptions struct {
 	// SupersededAgeDays removes superseded records older than this many days.
 	//
-	// If zero, Prune uses its default retention age, currently 30 days. Negative values are invalid.
+	// If zero, Prune uses its default retention age, currently 30 days. Negative values and values too large to represent as time.Duration are invalid.
 	SupersededAgeDays int
 }
 

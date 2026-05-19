@@ -1133,6 +1133,50 @@ func TestPrune_PreservesOldRecordWithoutNewerRecord(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestPrune_RejectsOverflowingSupersededAgeWithoutDeletingRecords(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	db := newTestDB(baseDir, casRoot)
+	activeSpec := NamespaceSpec{
+		Name:     "gocas-test",
+		Version:  2,
+		HashMode: HashModePackage,
+	}
+
+	err := db.Store(pkg, activeSpec, testPayload{N: 1})
+	require.NoError(t, err)
+	oldActiveHash := currentPackageHash(t, db, pkg, activeSpec)
+	oldActivePath := storedRecordPath(t, db, activeSpec.Namespace(), oldActiveHash)
+	oldRecord := readStoredRecord(t, oldActivePath)
+	oldRecord.AdditionalInfo.UnixTimestamp = int(time.Now().Add(-40 * 24 * time.Hour).Unix())
+	writeStoredRecord(t, oldActivePath, oldRecord)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+	err = db.Store(pkg, activeSpec, testPayload{N: 2})
+	require.NoError(t, err)
+	currentHash := currentPackageHash(t, db, pkg, activeSpec)
+	currentPath := storedRecordPath(t, db, activeSpec.Namespace(), currentHash)
+
+	priorNamespace := Namespace("gocas-test-1")
+	writeCASRecordAtHash(t, db, priorNamespace, "aa11", cas.AdditionalInfo{})
+	priorPath := storedRecordPath(t, db, priorNamespace, "aa11")
+
+	result, err := db.Prune([]NamespaceSpec{activeSpec}, []*gocode.Package{pkg}, PruneOptions{SupersededAgeDays: 200000})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "superseded age days is too large")
+	require.Equal(t, PruneResult{}, result)
+
+	_, err = os.Stat(priorPath)
+	require.NoError(t, err)
+	_, err = os.Stat(oldActivePath)
+	require.NoError(t, err)
+	_, err = os.Stat(currentPath)
+	require.NoError(t, err)
+}
+
 func TestPackageHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {
 	baseDir1 := t.TempDir()
 	baseDir2 := t.TempDir()
