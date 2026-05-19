@@ -88,6 +88,8 @@ func TestRun_PRNew_NormalMode_ValidatesGitCreatesBranchCommitsAndPushes(t *testi
 			return "", nil
 		case "branch\x00--show-current":
 			return "main\n", nil
+		case "for-each-ref\x00--format=%(upstream:short)\x00refs/heads/main":
+			return "origin/main\n", nil
 		case "rev-list\x00--left-right\x00--count\x00HEAD...@{u}":
 			return "0\t0\n", nil
 		case "checkout\x00-b\x00jn/add-orchestrator-pr-new":
@@ -123,6 +125,7 @@ func TestRun_PRNew_NormalMode_ValidatesGitCreatesBranchCommitsAndPushes(t *testi
 		{"rev-parse", "--show-toplevel"},
 		{"status", "--porcelain"},
 		{"branch", "--show-current"},
+		{"for-each-ref", "--format=%(upstream:short)", "refs/heads/main"},
 		{"rev-list", "--left-right", "--count", "HEAD...@{u}"},
 		{"checkout", "-b", "jn/add-orchestrator-pr-new"},
 		{"add", ".prs/2026-05-19_1779229784_add-orchestrator-pr-new.md"},
@@ -140,7 +143,7 @@ func TestRun_PRNew_NormalMode_ValidatesGitCreatesBranchCommitsAndPushes(t *testi
 	}
 }
 
-func TestRun_PRNew_NormalMode_SkipsPushWhenOriginMissing(t *testing.T) {
+func TestRun_PRNew_NormalMode_AllowsLocalOnlyRepoWithoutUpstreamAndOrigin(t *testing.T) {
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
@@ -163,8 +166,8 @@ func TestRun_PRNew_NormalMode_SkipsPushWhenOriginMissing(t *testing.T) {
 			return "", nil
 		case "branch":
 			return "master\n", nil
-		case "rev-list":
-			return "0 0\n", nil
+		case "for-each-ref":
+			return "\n", nil
 		case "checkout", "add", "commit":
 			return "", nil
 		case "remote":
@@ -181,7 +184,16 @@ func TestRun_PRNew_NormalMode_SkipsPushWhenOriginMissing(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
-	require.NotContains(t, flattenPRNewGitCalls(calls), "push")
+	require.Equal(t, "Created .prs/2026-05-19_1779229784_without-origin.md\n", out.String())
+
+	prPath := filepath.Join(repo, ".prs", "2026-05-19_1779229784_without-origin.md")
+	got, err := os.ReadFile(prPath)
+	require.NoError(t, err)
+	require.Equal(t, prNewInitialTemplate, string(got))
+
+	flattenedCalls := flattenPRNewGitCalls(calls)
+	require.NotContains(t, flattenedCalls, "HEAD...@{u}")
+	require.NotContains(t, flattenedCalls, "push")
 }
 
 func TestRun_PRNew_NormalMode_DirtyWorkspaceFailsBeforeCreatingFile(t *testing.T) {

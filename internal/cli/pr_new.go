@@ -181,16 +181,22 @@ func preparePRNewGit(ctx context.Context, cwd string, branchName string) (string
 		return "", fmt.Errorf("current branch must be main or master (got %q)", currentBranch)
 	}
 
-	counts, err := gitOutput(ctx, repoRoot, "rev-list", "--left-right", "--count", "HEAD...@{u}")
+	upstream, err := gitOutput(ctx, repoRoot, "for-each-ref", "--format=%(upstream:short)", "refs/heads/"+currentBranch)
 	if err != nil {
-		return "", fmt.Errorf("current branch must have an upstream and be up to date: %w", err)
+		return "", fmt.Errorf("could not determine upstream status: %w", err)
 	}
-	fields := strings.Fields(counts)
-	if len(fields) != 2 {
-		return "", fmt.Errorf("could not determine upstream status: %q", strings.TrimSpace(counts))
-	}
-	if fields[0] != "0" || fields[1] != "0" {
-		return "", fmt.Errorf("current branch is not up to date with upstream (ahead %s, behind %s)", fields[0], fields[1])
+	if strings.TrimSpace(upstream) != "" {
+		counts, err := gitOutput(ctx, repoRoot, "rev-list", "--left-right", "--count", "HEAD...@{u}")
+		if err != nil {
+			return "", fmt.Errorf("could not determine upstream status: %w", err)
+		}
+		fields := strings.Fields(counts)
+		if len(fields) != 2 {
+			return "", fmt.Errorf("could not determine upstream status: %q", strings.TrimSpace(counts))
+		}
+		if fields[0] != "0" || fields[1] != "0" {
+			return "", fmt.Errorf("current branch is not up to date with upstream (ahead %s, behind %s)", fields[0], fields[1])
+		}
 	}
 
 	if _, err := gitOutput(ctx, repoRoot, "checkout", "-b", branchName); err != nil {
