@@ -40,24 +40,8 @@ func TestRun_SpecStatus_PrintsPerPackageStatus(t *testing.T) {
 	require.NoError(t, os.Chdir(tmp))
 	t.Cleanup(func() { _ = os.Chdir(origWD) })
 
-	{
-		var out bytes.Buffer
-		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "set", "specconforms", "./p1", `{"conforms":true}`}, &RunOptions{Out: &out, Err: &errOut})
-		require.NoError(t, err)
-		require.Equal(t, 0, code)
-		require.Empty(t, errOut.String())
-		require.Empty(t, out.String())
-	}
-	{
-		var out bytes.Buffer
-		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "set", "specconforms", "./p2", `{"conforms":false}`}, &RunOptions{Out: &out, Err: &errOut})
-		require.NoError(t, err)
-		require.Equal(t, 0, code)
-		require.Empty(t, errOut.String())
-		require.Empty(t, out.String())
-	}
+	storeCASTestRecord(t, tmp, "specconforms", "p1", map[string]bool{"conforms": true})
+	storeCASTestRecord(t, tmp, "specconforms", "p2", map[string]bool{"conforms": false})
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer

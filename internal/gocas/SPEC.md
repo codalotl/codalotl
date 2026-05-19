@@ -88,6 +88,20 @@ type DB struct {
 	cas.DB
 }
 
+// PackageRecordSummary describes one CAS record relevant to a Go package.
+type PackageRecordSummary struct {
+	Hash           string             // Hash is the CAS hash used as the record key within the namespace.
+	Time           time.Time          // Time is the best-effort record time. It prefers CAS metadata time and falls back to record file mtime.
+	AdditionalInfo cas.AdditionalInfo // AdditionalInfo is the CAS metadata stored beside the primary JSON payload.
+}
+
+// PackageSummary describes current and prior CAS state for a package in one namespace.
+type PackageSummary struct {
+	Current          *PackageRecordSummary // Current is non-nil when a CAS record exists for the package's current contents.
+	PriorInvalidated *PackageRecordSummary // PriorInvalidated is the most relevant older matching record when Current is nil.
+	ChurnPercent     *float64              // ChurnPercent is the best-effort changed-line percentage versus PriorInvalidated.
+}
+
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
 func RootDirForBaseDir(baseDir string) (string, error)
 
@@ -128,6 +142,12 @@ func (db *DB) Store(pkg *gocode.Package, spec NamespaceSpec, jsonable any) error
 //
 // Retrieve returns an error only for "real" failures (I/O, JSON decode, CAS read failures, etc).
 func (db *DB) Retrieve(pkg *gocode.Package, spec NamespaceSpec, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error)
+
+// SummarizePackage returns current and prior CAS record state for (pkg, spec).
+//
+// It uses the same hash mode and file selection as Store and Retrieve. Missing CAS roots or namespaces are treated as empty stores. Corrupt or unrelated prior records
+// are skipped, while errors looking up the current hash are returned.
+func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (PackageSummary, error)
 
 // Delete removes the stored value for (pkg, spec).
 //
