@@ -157,7 +157,7 @@ func TestRun_CAS_LSStale_UsesRepoRootAcrossGoModules(t *testing.T) {
 	writePackageFile(t, workerModule, "job", "package job\n\nfunc Job() {}\n")
 
 	t.Setenv(gocas.EnvCASDB, filepath.Join(repo, "casdb"))
-	storeCASTestRecordWithBaseDir(t, apiModule, repo, "docs-fix", "covered", "OK")
+	storeCASTestRecord(t, apiModule, "docs-fix", "covered", "OK")
 
 	origWD, err := os.Getwd()
 	require.NoError(t, err)

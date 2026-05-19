@@ -48,13 +48,9 @@ func runCASLsStale(ctx context.Context, out io.Writer, namespace string, staleAf
 		return err
 	}
 
-	db, err := casReadDBForBaseDir(repoRoot)
-	if err != nil {
-		return err
-	}
-
 	var stale []string
 	mods := map[string]*gocode.Module{}
+	dbs := map[string]*gocas.DB{}
 	now := time.Now()
 	for _, pkgDir := range pkgDirs {
 		mod, ok := mods[pkgDir.moduleRoot]
@@ -65,6 +61,16 @@ func runCASLsStale(ctx context.Context, out io.Writer, namespace string, staleAf
 				return err
 			}
 			mods[pkgDir.moduleRoot] = mod
+		}
+
+		db, ok := dbs[pkgDir.moduleRoot]
+		if !ok {
+			var err error
+			db, err = casReadDBForBaseDir(pkgDir.moduleRoot)
+			if err != nil {
+				return err
+			}
+			dbs[pkgDir.moduleRoot] = db
 		}
 
 		display, summary, ok, err := summarizeCASPackageFromBase(repoRoot, mod, db, spec, pkgDir.absDir)
