@@ -729,7 +729,7 @@ func (db *DB) gitCommitsAddingRecord(recordPath string, gitPath string) []string
 		return nil
 	}
 
-	out, err := gitOutput(db.BaseDir, gitPath, "log", "--format=%H", "--diff-filter=A", "--", rel)
+	out, err := gitOutput(gitRoot, gitPath, "log", "--format=%H", "--diff-filter=A", "--", rel)
 	if err != nil {
 		return nil
 	}
@@ -837,6 +837,37 @@ func gitChangedLines(dir, gitPath, commit string, relPaths []string) (int, bool)
 			return 0, false
 		}
 		changed += added + deleted
+	}
+	untrackedChanged, ok := gitUntrackedChangedLines(dir, gitPath, relPaths)
+	if !ok {
+		return 0, false
+	}
+	changed += untrackedChanged
+	return changed, true
+}
+
+func gitUntrackedChangedLines(dir, gitPath string, relPaths []string) (int, bool) {
+	args := []string{"ls-files", "--others", "--exclude-standard", "-z", "--"}
+	args = append(args, relPaths...)
+	out, err := gitOutputBytes(dir, gitPath, args...)
+	if err != nil {
+		return 0, false
+	}
+
+	changed := 0
+	for _, rawPath := range bytes.Split(out, []byte{0}) {
+		if len(rawPath) == 0 {
+			continue
+		}
+		relPath, ok := cleanRelPath(string(rawPath))
+		if !ok {
+			return 0, false
+		}
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(relPath)))
+		if err != nil {
+			return 0, false
+		}
+		changed += countLines(b)
 	}
 	return changed, true
 }
