@@ -106,48 +106,224 @@ func TestRun_CAS_LSNamespaces_ListsRegisteredNamespaces(t *testing.T) {
 	require.IsIncreasing(t, lines)
 }
 
-func TestRun_CAS_LSUnset_ListsPackagesMissingNamespace(t *testing.T) {
+func TestRun_CAS_LSStale_ListsNeverCoveredAndSkipsCurrentAndFreshPrior(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
+	createGitRepoMarker(t, tmp)
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
 
-	p1Dir := filepath.Join(tmp, "p1")
-	require.NoError(t, os.MkdirAll(p1Dir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(p1Dir, "p1.go"), []byte("package p1\n\nfunc P1() {}\n"), 0644))
-
-	p2Dir := filepath.Join(tmp, "p2")
-	require.NoError(t, os.MkdirAll(p2Dir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(p2Dir, "p2.go"), []byte("package p2\n\nfunc P2() {}\n"), 0644))
+	writePackageFile(t, tmp, "p1", "package p1\n\nfunc P1() {}\n")
+	writePackageFile(t, tmp, "p2", "package p2\n\nfunc P2() {}\n")
+	writePackageFile(t, tmp, "p3", "package p3\n\nfunc P3() int { return 1 }\n")
 
 	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	storeCASTestRecord(t, tmp, "docs-fix", "p1", "OK")
+	storeCASTestRecord(t, tmp, "docs-fix", "p3", "OK")
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p3", "p3.go"), []byte("package p3\n\nfunc P3() int { return 2 }\n"), 0644))
 
 	origWD, err := os.Getwd()
 	require.NoError(t, err)
 	require.NoError(t, os.Chdir(tmp))
 	t.Cleanup(func() { _ = os.Chdir(origWD) })
 
-	storeCASTestRecord(t, tmp, "docs-fix", "p1", "OK")
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{"./p2"}, cliOutputLines(out.String()))
+}
+
+func TestRun_CAS_LSStale_UsesRepoRootAcrossGoModules(t *testing.T) {
+	isolateUserConfig(t)
+
+	repo := t.TempDir()
+	createGitRepoMarker(t, repo)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repo\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, repo, "rootstale", "package rootstale\n\nfunc RootStale() {}\n")
+
+	apiModule := filepath.Join(repo, "services", "api")
+	require.NoError(t, os.MkdirAll(apiModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "go.mod"), []byte("module example.com/api\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "api.go"), []byte("package api\n\nfunc API() {}\n"), 0644))
+	writePackageFile(t, apiModule, "covered", "package covered\n\nfunc Covered() {}\n")
+
+	workerModule := filepath.Join(repo, "services", "worker")
+	require.NoError(t, os.MkdirAll(workerModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(workerModule, "go.mod"), []byte("module example.com/worker\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, workerModule, "job", "package job\n\nfunc Job() {}\n")
+
+	t.Setenv(gocas.EnvCASDB, filepath.Join(repo, "casdb"))
+	storeCASTestRecord(t, apiModule, "docs-fix", "covered", "OK")
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(apiModule))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{
+		"./rootstale",
+		"./services/api",
+		"./services/worker/job",
+	}, cliOutputLines(out.String()))
+}
+
+func TestRun_CAS_LSStale_IgnoresTestdataModules(t *testing.T) {
+	isolateUserConfig(t)
+
+	repo := t.TempDir()
+	createGitRepoMarker(t, repo)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repo\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, repo, "app", "package app\n\nfunc App() {}\n")
+
+	apiModule := filepath.Join(repo, "services", "api")
+	require.NoError(t, os.MkdirAll(apiModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "go.mod"), []byte("module example.com/api\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(apiModule, "api.go"), []byte("package api\n\nfunc API() {}\n"), 0644))
+
+	fixtureModule := filepath.Join(repo, "testdata", "fixture")
+	require.NoError(t, os.MkdirAll(fixtureModule, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(fixtureModule, "go.mod"), []byte("module example.com/fixture\n\ngo 1.22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(fixtureModule, "fixture.go"), []byte("package fixture\n\nfunc Fixture() {}\n"), 0644))
+
+	t.Setenv(gocas.EnvCASDB, filepath.Join(repo, "casdb"))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repo))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{
+		"./app",
+		"./services/api",
+	}, cliOutputLines(out.String()))
+}
+
+func TestRun_CAS_LSStale_IgnoresHiddenAndUnderscoreFixtureModules(t *testing.T) {
+	isolateUserConfig(t)
+
+	repo := t.TempDir()
+	createGitRepoMarker(t, repo)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repo\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, repo, "app", "package app\n\nfunc App() {}\n")
+
+	for _, fixtureDir := range []string{"._fixtures", "_fixtures"} {
+		moduleDir := filepath.Join(repo, fixtureDir)
+		require.NoError(t, os.MkdirAll(moduleDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "go.mod"), []byte("module example.com/fixture\n\ngo 1.22\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "fixture.go"), []byte("package fixture\n\nfunc Fixture() {}\n"), 0644))
+	}
+
+	t.Setenv(gocas.EnvCASDB, filepath.Join(repo, "casdb"))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repo))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{"./app"}, cliOutputLines(out.String()))
+}
+
+func TestRun_CAS_LSStale_AppliesAgeThreshold(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	createGitRepoMarker(t, tmp)
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, tmp, "p", "package p\n\nfunc P() int { return 1 }\n")
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	storeCASTestRecord(t, tmp, "docs-fix", "p", "OK")
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte("package p\n\nfunc P() int { return 2 }\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
 
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		code, err := Run([]string{"codalotl", "cas", "ls-unset", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+		code, err := Run([]string{
+			"codalotl", "cas", "ls-stale", "docs-fix",
+			"--stale-after-days=0",
+			"--min-churn-percent=999",
+		}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
-
-		got := map[string]bool{}
-		for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				got[line] = true
-			}
-		}
-
-		require.True(t, got["./p2"])
-		require.False(t, got["./p1"])
+		require.Equal(t, []string{"./p"}, cliOutputLines(out.String()))
 	}
+
+	{
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		code, err := Run([]string{
+			"codalotl", "cas", "ls-stale", "docs-fix",
+			"--stale-after-days=999",
+			"--min-churn-percent=999",
+		}, &RunOptions{Out: &out, Err: &errOut})
+		require.NoError(t, err)
+		require.Equal(t, 0, code)
+		require.Empty(t, errOut.String())
+		require.Empty(t, cliOutputLines(out.String()))
+	}
+}
+
+func TestRun_CAS_LSStale_ValidatesThresholds(t *testing.T) {
+	isolateUserConfig(t)
+
+	for _, tc := range []struct {
+		name string
+		flag string
+		want string
+	}{
+		{name: "stale after days", flag: "--stale-after-days=-1", want: "invalid --stale-after-days"},
+		{name: "min churn percent", flag: "--min-churn-percent=-1", want: "invalid --min-churn-percent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix", tc.flag}, &RunOptions{Out: &out, Err: &errOut})
+			require.Error(t, err)
+			require.Equal(t, 2, code)
+			require.Empty(t, out.String())
+			require.Contains(t, errOut.String(), tc.want)
+		})
+	}
+}
+
+func TestRun_CAS_LSUnset_IsNotUserFacing(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-unset", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "unknown subcommand: ls-unset")
 }
 
 func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
@@ -221,15 +397,27 @@ func TestRun_CAS_LSSummary_CSV(t *testing.T) {
 func storeCASTestRecord(t *testing.T, moduleDir string, namespace string, relDir string, value any) {
 	t.Helper()
 
+	storeCASTestRecordWithBaseDir(t, moduleDir, moduleDir, namespace, relDir, value)
+}
+
+func storeCASTestRecordWithBaseDir(t *testing.T, moduleDir string, dbBaseDir string, namespace string, relDir string, value any) {
+	t.Helper()
+
 	mod, err := gocode.NewModule(moduleDir)
 	require.NoError(t, err)
 	pkg, err := mod.LoadPackageByRelativeDir(relDir)
 	require.NoError(t, err)
 	spec, err := resolveCASNamespaceSpec(namespace)
 	require.NoError(t, err)
-	db, err := casDBForBaseDir(mod.AbsolutePath)
+	db, err := casDBForBaseDir(dbBaseDir)
 	require.NoError(t, err)
 	require.NoError(t, db.Store(pkg, spec, value))
+}
+
+func createGitRepoMarker(t *testing.T, dir string) {
+	t.Helper()
+
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0755))
 }
 
 func writePackageFile(t *testing.T, moduleDir string, relDir string, contents string) {
@@ -258,4 +446,15 @@ func requireCASSummaryRow(t *testing.T, rows map[string][]string, pkg string) []
 	row, ok := rows[pkg]
 	require.True(t, ok)
 	return row
+}
+
+func cliOutputLines(s string) []string {
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }

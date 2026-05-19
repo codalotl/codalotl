@@ -73,24 +73,9 @@ func runCASLsSummary(ctx context.Context, out io.Writer, namespace string, outpu
 }
 
 func casSummaryRowForPackage(mod *gocode.Module, db *gocas.DB, spec gocas.NamespaceSpec, absPkgDir string, now time.Time) (casSummaryRow, bool, error) {
-	display, ok := displayPackagePath(mod.AbsolutePath, absPkgDir)
-	if !ok {
-		return casSummaryRow{}, false, nil
-	}
-
-	rel, err := filepath.Rel(mod.AbsolutePath, absPkgDir)
-	if err != nil {
-		return casSummaryRow{}, false, nil
-	}
-
-	pkg, err := mod.LoadPackageByRelativeDir(rel)
-	if err != nil {
-		return casSummaryRow{}, false, nil
-	}
-
-	summary, err := db.SummarizePackage(pkg, spec)
-	if err != nil {
-		return casSummaryRow{}, false, err
+	display, summary, ok, err := summarizeCASPackage(mod, db, spec, absPkgDir)
+	if err != nil || !ok {
+		return casSummaryRow{}, ok, err
 	}
 
 	row := casSummaryRow{
@@ -114,6 +99,33 @@ func casSummaryRowForPackage(mod *gocode.Module, db *gocas.DB, spec gocas.Namesp
 		}
 	}
 	return row, true, nil
+}
+
+func summarizeCASPackage(mod *gocode.Module, db *gocas.DB, spec gocas.NamespaceSpec, absPkgDir string) (string, gocas.PackageSummary, bool, error) {
+	return summarizeCASPackageFromBase(mod.AbsolutePath, mod, db, spec, absPkgDir)
+}
+
+func summarizeCASPackageFromBase(displayBaseDir string, mod *gocode.Module, db *gocas.DB, spec gocas.NamespaceSpec, absPkgDir string) (string, gocas.PackageSummary, bool, error) {
+	display, ok := displayPackagePath(displayBaseDir, absPkgDir)
+	if !ok {
+		return "", gocas.PackageSummary{}, false, nil
+	}
+
+	rel, err := filepath.Rel(mod.AbsolutePath, absPkgDir)
+	if err != nil {
+		return "", gocas.PackageSummary{}, false, nil
+	}
+
+	pkg, err := mod.LoadPackageByRelativeDir(rel)
+	if err != nil {
+		return "", gocas.PackageSummary{}, false, nil
+	}
+
+	summary, err := db.SummarizePackage(pkg, spec)
+	if err != nil {
+		return "", gocas.PackageSummary{}, false, err
+	}
+	return display, summary, true, nil
 }
 
 func writeCASSummaryTable(w io.Writer, rows []casSummaryRow) error {

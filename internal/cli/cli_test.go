@@ -187,7 +187,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"spec", "status"},
 		{"cas", "get"},
 		{"cas", "ls-namespaces"},
-		{"cas", "ls-unset"},
+		{"cas", "ls-stale"},
 	} {
 		cmd := requireCommand(t, root, names...)
 		require.NotEmpty(t, cmd.Short)
@@ -199,6 +199,25 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 			require.NotEmpty(t, cmd.Usage)
 		}
 	}
+}
+
+func TestRun_CAS_LSStale_HelpIncludesThresholdFlags(t *testing.T) {
+	isolateUserConfig(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PATH", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	got := out.String()
+	require.Contains(t, got, "codalotl cas ls-stale")
+	require.Contains(t, got, "--stale-after-days")
+	require.Contains(t, got, "--min-churn-percent")
+	require.Contains(t, got, "codalotl cas ls-stale specconforms")
 }
 
 func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {
