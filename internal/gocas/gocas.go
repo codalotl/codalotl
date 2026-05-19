@@ -495,14 +495,6 @@ func readCASRecordFile(recordPath string) (cas.AdditionalInfo, bool) {
 	return record.AdditionalInfo, true
 }
 
-func (db *DB) priorInvalidatedPackageRecord(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) *PackageRecordSummary {
-	records := db.priorInvalidatedPackageRecords(namespace, currentHash, pkg, currentRelPaths)
-	if len(records) == 0 {
-		return nil
-	}
-	return records[0].summary
-}
-
 func (db *DB) priorInvalidatedPackageRecords(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) []*priorPackageRecord {
 	namespaceDir := db.namespaceDir(namespace)
 	records := []*priorPackageRecord{}
@@ -738,20 +730,20 @@ func (db *DB) gitCommitsAddingRecord(recordPath string, gitPath string) []string
 		return nil
 	}
 
-	gitRoot, err := gitOutput(db.BaseDir, gitPath, "rev-parse", "--show-toplevel")
+	prefix, err := gitOutput(db.BaseDir, gitPath, "rev-parse", "--show-prefix")
 	if err != nil {
 		return nil
 	}
-	rel, err := filepath.Rel(gitRoot, recordPath)
+	relFromBase, err := filepath.Rel(db.BaseDir, recordPath)
 	if err != nil {
 		return nil
 	}
-	rel, ok := cleanRelPath(rel)
+	rel, ok := cleanRelPath(path.Join(filepath.ToSlash(prefix), filepath.ToSlash(relFromBase)))
 	if !ok {
 		return nil
 	}
 
-	out, err := gitOutput(gitRoot, gitPath, "log", "--format=%H", "--diff-filter=A", "--", rel)
+	out, err := gitOutput(db.BaseDir, gitPath, "log", "--format=%H", "--diff-filter=A", "--", ":(top)"+rel)
 	if err != nil {
 		return nil
 	}
