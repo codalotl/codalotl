@@ -283,7 +283,7 @@ Pretty output is terminal-oriented. `--csv` emits CSV.
 
 ### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
 
-Lists module packages (`./path/to/pkg`) whose current contents lack a CAS record for registered namespace, one per line.
+Lists packages under nearest git repo, printed repo-relative (`./path/to/pkg`), whose current contents lack a CAS record for registered namespace, one per line.
 
 Defaults: 30 days, 20% churn.
 
