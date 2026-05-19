@@ -21,6 +21,8 @@ import (
 // EnvCASDB is the environment variable that overrides the default CAS root.
 const EnvCASDB = "CODALOTL_CAS_DB"
 
+const casRecordKind = "cas-record-v1"
+
 // Namespace is a logical partition + version for values stored in content-addressable storage (CAS).
 //
 // Namespace must be filesystem-safe (no path separators), because it is used as a directory name under the CAS root.
@@ -190,12 +192,7 @@ func (db *DB) Store(pkg *gocode.Package, spec NamespaceSpec, jsonable any) error
 	if pkg == nil {
 		return errors.New("package is nil")
 	}
-	if err := db.validateCommon(spec); err != nil {
-		return err
-	}
-
-	namespace := spec.Namespace()
-	hasher, relPaths, err := db.hasherForPackageSpec(pkg, spec)
+	namespace, hasher, relPaths, err := db.hasherForValidatedPackageSpec(pkg, spec)
 	if err != nil {
 		return err
 	}
@@ -218,12 +215,7 @@ func (db *DB) Retrieve(pkg *gocode.Package, spec NamespaceSpec, target any) (ok 
 	if target == nil {
 		return false, cas.AdditionalInfo{}, errors.New("target is nil")
 	}
-	if err := db.validateCommon(spec); err != nil {
-		return false, cas.AdditionalInfo{}, err
-	}
-
-	namespace := spec.Namespace()
-	hasher, _, err := db.hasherForPackageSpec(pkg, spec)
+	namespace, hasher, _, err := db.hasherForValidatedPackageSpec(pkg, spec)
 	if err != nil {
 		return false, cas.AdditionalInfo{}, err
 	}
@@ -239,12 +231,7 @@ func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (Package
 	if pkg == nil {
 		return PackageSummary{}, errors.New("package is nil")
 	}
-	if err := db.validateCommon(spec); err != nil {
-		return PackageSummary{}, err
-	}
-
-	namespace := spec.Namespace()
-	hasher, relPaths, err := db.hasherForPackageSpec(pkg, spec)
+	namespace, hasher, relPaths, err := db.hasherForValidatedPackageSpec(pkg, spec)
 	if err != nil {
 		return PackageSummary{}, err
 	}
@@ -291,12 +278,7 @@ func (db *DB) RecertifyPackage(pkg *gocode.Package, spec NamespaceSpec) (Package
 	if pkg == nil {
 		return PackageRecertificationResult{}, errors.New("package is nil")
 	}
-	if err := db.validateCommon(spec); err != nil {
-		return PackageRecertificationResult{}, err
-	}
-
-	namespace := spec.Namespace()
-	hasher, relPaths, err := db.hasherForPackageSpec(pkg, spec)
+	namespace, hasher, relPaths, err := db.hasherForValidatedPackageSpec(pkg, spec)
 	if err != nil {
 		return PackageRecertificationResult{}, err
 	}
@@ -374,12 +356,7 @@ func (db *DB) Delete(pkg *gocode.Package, spec NamespaceSpec) error {
 	if pkg == nil {
 		return errors.New("package is nil")
 	}
-	if err := db.validateCommon(spec); err != nil {
-		return err
-	}
-
-	namespace := spec.Namespace()
-	hasher, _, err := db.hasherForPackageSpec(pkg, spec)
+	namespace, hasher, _, err := db.hasherForValidatedPackageSpec(pkg, spec)
 	if err != nil {
 		return err
 	}
@@ -485,6 +462,19 @@ func (db *DB) validateCommon(spec NamespaceSpec) error {
 	return nil
 }
 
+func (db *DB) hasherForValidatedPackageSpec(pkg *gocode.Package, spec NamespaceSpec) (Namespace, cas.Hasher, []string, error) {
+	if err := db.validateCommon(spec); err != nil {
+		return "", nil, nil, err
+	}
+
+	namespace := spec.Namespace()
+	hasher, relPaths, err := db.hasherForPackageSpec(pkg, spec)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return namespace, hasher, relPaths, nil
+}
+
 func (db *DB) store(namespace Namespace, hasher cas.Hasher, relPaths []string, jsonable any) error {
 	additionalInfo := cas.AdditionalInfo{
 		UnixTimestamp: int(time.Now().Unix()),
@@ -519,10 +509,11 @@ func (db *DB) namespaceDir(namespace Namespace) string {
 }
 
 func (db *DB) recordPath(namespace Namespace, hash string) (string, bool) {
-	if len(hash) < 3 {
+	prefix, suffix, ok := splitRecordHash(hash)
+	if !ok {
 		return "", false
 	}
-	return filepath.Join(db.namespaceDir(namespace), hash[:2], hash[2:]), true
+	return filepath.Join(db.namespaceDir(namespace), prefix, suffix), true
 }
 
 func (db *DB) packageRecordSummary(hash string, additionalInfo cas.AdditionalInfo, recordPath string) *PackageRecordSummary {
@@ -590,7 +581,7 @@ func readFullCASRecordFile(recordPath string) (casRecordFile, error) {
 	if err := json.Unmarshal(b, &record); err != nil {
 		return casRecordFile{}, err
 	}
-	if record.Kind != "cas-record-v1" || len(record.Metadata) == 0 {
+	if record.Kind != casRecordKind || len(record.Metadata) == 0 {
 		return casRecordFile{}, errors.New("invalid CAS record")
 	}
 	return record, nil
@@ -605,10 +596,18 @@ func readCASRecordFile(recordPath string) (cas.AdditionalInfo, bool) {
 }
 
 func recordID(namespace Namespace, hash string) (string, bool) {
-	if len(hash) < 3 {
+	prefix, suffix, ok := splitRecordHash(hash)
+	if !ok {
 		return "", false
 	}
-	return path.Join(string(namespace), hash[:2], hash[2:]), true
+	return path.Join(string(namespace), prefix, suffix), true
+}
+
+func splitRecordHash(hash string) (string, string, bool) {
+	if len(hash) < 3 {
+		return "", "", false
+	}
+	return hash[:2], hash[2:], true
 }
 
 func (db *DB) recertificationWarnings(currentInfo cas.AdditionalInfo, source *PackageRecordSummary, records []*priorPackageRecord, currentRelPaths []string) []string {
@@ -1112,6 +1111,12 @@ type fileRec struct {
 	rel string
 }
 
+type fileRecOptions struct {
+	emptyPathErr    string
+	outsideBaseKind string
+	allowNotExist   bool
+}
+
 func (db *DB) hasherForPackageSpec(pkg *gocode.Package, spec NamespaceSpec) (cas.Hasher, []string, error) {
 	switch spec.HashMode {
 	case HashModePackage:
@@ -1131,35 +1136,11 @@ func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error
 	seen := make(map[string]struct{})
 	recs := make([]fileRec, 0, len(pkg.Files))
 	addAbsPath := func(abs string, allowNotExist bool) error {
-		if abs == "" {
-			return errors.New("package file has empty absolute path")
-		}
-		if _, ok := seen[abs]; ok {
-			return nil
-		}
-		seen[abs] = struct{}{}
-		fi, err := os.Stat(abs)
-		if err != nil {
-			if allowNotExist && errors.Is(err, os.ErrNotExist) {
-				return nil
-			}
-			return err
-		}
-		if fi.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(db.BaseDir, abs)
-		if err != nil {
-			return err
-		}
-		if rel == ".." ||
-			strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
-			strings.HasPrefix(rel, "../") ||
-			strings.HasPrefix(rel, `..\`) {
-			return fmt.Errorf("package file %q is outside BaseDir %q", abs, db.BaseDir)
-		}
-		recs = append(recs, fileRec{abs: abs, rel: rel})
-		return nil
+		return db.appendFileRec(&recs, seen, abs, fileRecOptions{
+			emptyPathErr:    "package file has empty absolute path",
+			outsideBaseKind: "package file",
+			allowNotExist:   allowNotExist,
+		})
 	}
 	addFiles := func(p *gocode.Package) error {
 		if p == nil {
@@ -1202,36 +1183,54 @@ func (db *DB) hasherForCodeUnit(unit *codeunit.CodeUnit) (cas.Hasher, []string, 
 	seen := make(map[string]struct{})
 	recs := make([]fileRec, 0, len(unit.IncludedFiles()))
 	for _, abs := range unit.IncludedFiles() {
-		if abs == "" {
-			return nil, nil, errors.New("code unit includes an empty path")
-		}
-		if _, ok := seen[abs]; ok {
-			continue
-		}
-		seen[abs] = struct{}{}
-
-		fi, err := os.Stat(abs)
+		err := db.appendFileRec(&recs, seen, abs, fileRecOptions{
+			emptyPathErr:    "code unit includes an empty path",
+			outsideBaseKind: "included file",
+		})
 		if err != nil {
 			return nil, nil, err
 		}
-		if fi.IsDir() {
-			continue
-		}
-
-		rel, err := filepath.Rel(db.BaseDir, abs)
-		if err != nil {
-			return nil, nil, err
-		}
-		if rel == ".." ||
-			strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
-			strings.HasPrefix(rel, "../") ||
-			strings.HasPrefix(rel, `..\`) {
-			return nil, nil, fmt.Errorf("included file %q is outside BaseDir %q", abs, db.BaseDir)
-		}
-		recs = append(recs, fileRec{abs: abs, rel: rel})
 	}
 
 	return db.hasherForFileRecs(recs)
+}
+
+func (db *DB) appendFileRec(recs *[]fileRec, seen map[string]struct{}, abs string, opts fileRecOptions) error {
+	if abs == "" {
+		return errors.New(opts.emptyPathErr)
+	}
+	if _, ok := seen[abs]; ok {
+		return nil
+	}
+	seen[abs] = struct{}{}
+
+	fi, err := os.Stat(abs)
+	if err != nil {
+		if opts.allowNotExist && errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if fi.IsDir() {
+		return nil
+	}
+
+	rel, err := filepath.Rel(db.BaseDir, abs)
+	if err != nil {
+		return err
+	}
+	if relPathOutsideBase(rel) {
+		return fmt.Errorf("%s %q is outside BaseDir %q", opts.outsideBaseKind, abs, db.BaseDir)
+	}
+	*recs = append(*recs, fileRec{abs: abs, rel: rel})
+	return nil
+}
+
+func relPathOutsideBase(rel string) bool {
+	return rel == ".." ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
+		strings.HasPrefix(rel, "../") ||
+		strings.HasPrefix(rel, `..\`)
 }
 
 func (db *DB) hasherForFileRecs(recs []fileRec) (cas.Hasher, []string, error) {
@@ -1276,9 +1275,7 @@ func (db *DB) bestEffortPopulateGitInfo(ai *cas.AdditionalInfo) {
 }
 
 func gitOutput(dir, gitPath string, args ...string) (string, error) {
-	cmd := exec.Command(gitPath, args...)
-	cmd.Dir = dir
-	out, err := cmd.Output()
+	out, err := gitOutputBytes(dir, gitPath, args...)
 	if err != nil {
 		return "", err
 	}
