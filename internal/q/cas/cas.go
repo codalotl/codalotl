@@ -130,9 +130,12 @@ type AdditionalInfo struct {
 	// Caller-supplied opaque paths. Caller may often try to align these with paths passed to, e.g., NewFileSetHasher, but this package does not verify them.
 	Paths []string `json:"paths"`
 
-	GitClean     bool   `json:"git_clean"`      // True if computed with a clean git worktree.
-	GitCommit    string `json:"git_commit"`     // Git commit the metadata was computed against.
-	GitMergeBase string `json:"git_merge_base"` // Merge-base for GitCommit (if relevant).
+	GitClean              bool   `json:"git_clean"`                         // True if computed with a clean git worktree.
+	GitCommit             string `json:"git_commit"`                        // Git commit the metadata was computed against.
+	GitMergeBase          string `json:"git_merge_base"`                    // Merge-base for GitCommit (if relevant).
+	Recertified           bool   `json:"recertified,omitempty"`             // True when copied forward from a source record.
+	RecertifiedFromHash   string `json:"recertified_from_hash,omitempty"`   // Source content hash.
+	RecertifiedFromRecord string `json:"recertified_from_record,omitempty"` // Source CAS record.
 }
 
 // Options let callers supply AdditionalInfo fields if desired. Also exists for future Store extensibility.
@@ -317,5 +320,8 @@ func isZeroAdditionalInfo(ai AdditionalInfo) bool {
 		len(ai.Paths) == 0 &&
 		!ai.GitClean &&
 		ai.GitCommit == "" &&
-		ai.GitMergeBase == ""
+		ai.GitMergeBase == "" &&
+		!ai.Recertified &&
+		ai.RecertifiedFromHash == "" &&
+		ai.RecertifiedFromRecord == ""
 }

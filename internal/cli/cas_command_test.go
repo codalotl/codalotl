@@ -11,6 +11,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocode"
+	qcas "github.com/codalotl/codalotl/internal/q/cas"
 	"github.com/stretchr/testify/require"
 )
 
@@ -104,6 +105,136 @@ func TestRun_CAS_LSNamespaces_ListsRegisteredNamespaces(t *testing.T) {
 	require.Contains(t, lines, "docs-fix 1")
 	require.Contains(t, lines, "specconforms 1")
 	require.IsIncreasing(t, lines)
+}
+
+func TestRun_CAS_Recertify_RequiresNamespaces(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "recertify", "."}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "missing --namespaces")
+}
+
+func TestRun_CAS_Recertify_ValidatesNamespaces(t *testing.T) {
+	isolateUserConfig(t)
+
+	for _, tc := range []struct {
+		name       string
+		namespaces string
+		want       string
+	}{
+		{name: "empty element", namespaces: "docs-fix,,specconforms", want: "empty namespace"},
+		{name: "duplicate", namespaces: "docs-fix,docs-fix", want: `duplicate namespace "docs-fix"`},
+		{name: "unknown", namespaces: "unknown", want: `unknown CAS namespace "unknown"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			code, err := Run([]string{"codalotl", "cas", "recertify", ".", "--namespaces=" + tc.namespaces}, &RunOptions{Out: &out, Err: &errOut})
+			require.Error(t, err)
+			require.Equal(t, 2, code)
+			require.Empty(t, out.String())
+			require.Contains(t, errOut.String(), tc.want)
+		})
+	}
+}
+
+func TestRun_CAS_Recertify_CopiesPriorPayloadForward(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	oldContents := "package p\n\nfunc P() int { return 1 }\n"
+	newContents := "package p\n\nfunc P() int { return 2 }\n"
+	writePackageFile(t, tmp, "p", oldContents)
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	value := map[string]string{"result": "ok"}
+	storeCASTestRecord(t, tmp, "docs-fix", "p", value)
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte(newContents), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "recertify", "./p", "--namespaces=docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "docs-fix: recertified (")
+
+	var got map[string]string
+	ok, info := retrieveCASTestRecord(t, tmp, "docs-fix", "p", &got)
+	require.True(t, ok)
+	require.Equal(t, value, got)
+	require.True(t, info.Recertified)
+	require.NotEmpty(t, info.RecertifiedFromHash)
+	require.Contains(t, info.RecertifiedFromRecord, "docs-fix-1")
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "p", "p.go"), []byte(oldContents), 0644))
+	var prior map[string]string
+	ok, priorInfo := retrieveCASTestRecord(t, tmp, "docs-fix", "p", &prior)
+	require.True(t, ok)
+	require.Equal(t, value, prior)
+	require.False(t, priorInfo.Recertified)
+}
+
+func TestRun_CAS_Recertify_CurrentRecordIsNoOp(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, tmp, "p", "package p\n\nfunc P() {}\n")
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+	storeCASTestRecord(t, tmp, "docs-fix", "p", "OK")
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "recertify", "./p", "--namespaces=docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "docs-fix: current (")
+
+	var got string
+	ok, info := retrieveCASTestRecord(t, tmp, "docs-fix", "p", &got)
+	require.True(t, ok)
+	require.Equal(t, "OK", got)
+	require.False(t, info.Recertified)
+}
+
+func TestRun_CAS_Recertify_NoPriorExitsOne(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	writePackageFile(t, tmp, "p", "package p\n\nfunc P() {}\n")
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "recertify", "./p", "--namespaces=docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 1, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, []string{"docs-fix: no prior record"}, cliOutputLines(out.String()))
 }
 
 func TestRun_CAS_LSStale_ListsNeverCoveredAndSkipsCurrentAndFreshPrior(t *testing.T) {
@@ -491,6 +622,22 @@ func storeCASTestRecordWithBaseDir(t *testing.T, moduleDir string, dbBaseDir str
 	db, err := casDBForBaseDir(dbBaseDir)
 	require.NoError(t, err)
 	require.NoError(t, db.Store(pkg, spec, value))
+}
+
+func retrieveCASTestRecord(t *testing.T, moduleDir string, namespace string, relDir string, target any) (bool, qcas.AdditionalInfo) {
+	t.Helper()
+
+	mod, err := gocode.NewModule(moduleDir)
+	require.NoError(t, err)
+	pkg, err := mod.LoadPackageByRelativeDir(relDir)
+	require.NoError(t, err)
+	spec, err := resolveCASNamespaceSpec(namespace)
+	require.NoError(t, err)
+	db, err := casReadDBForBaseDir(moduleDir)
+	require.NoError(t, err)
+	ok, info, err := db.Retrieve(pkg, spec, target)
+	require.NoError(t, err)
+	return ok, info
 }
 
 func createGitRepoMarker(t *testing.T, dir string) {

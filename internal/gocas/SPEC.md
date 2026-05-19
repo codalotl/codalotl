@@ -9,8 +9,9 @@ This package stores metadata about Go packages and code units using content-addr
 ## AdditionalInfo
 
 - `Store` captures `cas.AdditionalInfo` in a best-effort way by shelling out to `git`.
+- `RecertifyPackage` captures current `cas.AdditionalInfo` and sets recertification provenance fields.
 - If `git` isn't found, there's no `git` repo, there's no current branch (or similar), no error is returned. Those fields are left as zero values on `cas.AdditionalInfo`.
-    - Store should not fail just because the user doesn't use git or their git state is unusual.
+    - Record writes should not fail just because the user doesn't use git or their git state is unusual.
 
 ## DB Root Selection
 
@@ -29,6 +30,18 @@ Callers pass `NamespaceSpec`.
 - `Version` forms filesystem namespace `<Name>-<Version>`.
 - `HashMode` selects package-file or default-code-unit hashing.
 - Conversion to `internal/q/cas` namespace strings belongs here.
+
+## Package Recertification
+
+Package recertification asserts current package contents remain compliant with a recently invalidated CAS record.
+
+- Uses same hash mode, file selection, and key derivation as `Store`, `Retrieve`, and `SummarizePackage`.
+- Existing current CAS record: no-op, `current` status.
+- No current record and no matching prior invalidated record: normal no-op, `no-prior` status.
+- Matching prior invalidated record: copy most recent prior primary JSON payload to current hash, `recertified` status.
+- New record `AdditionalInfo` reflects current paths/git metadata and sets `Recertified`, `RecertifiedFromHash`, and `RecertifiedFromRecord`.
+- Source/prior records are never deleted or rewritten.
+- Warnings highlight higher-risk recertifications: dirty current git worktree, large churn, old source record.
 
 ## Public API
 
@@ -107,6 +120,24 @@ type PackageSummary struct {
 	ChurnPercent *float64
 }
 
+// PackageRecertificationStatus describes the outcome of package recertification.
+type PackageRecertificationStatus string
+
+const (
+	PackageRecertificationStatusCurrent     PackageRecertificationStatus = "current"
+	PackageRecertificationStatusRecertified PackageRecertificationStatus = "recertified"
+	PackageRecertificationStatusNoPrior     PackageRecertificationStatus = "no-prior"
+)
+
+// PackageRecertificationResult describes a package recertification attempt.
+type PackageRecertificationResult struct {
+	Status       PackageRecertificationStatus
+	CurrentHash  string
+	SourceHash   string
+	SourceRecord string
+	Warnings     []string
+}
+
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
 func RootDirForBaseDir(baseDir string) (string, error)
 
@@ -153,6 +184,13 @@ func (db *DB) Retrieve(pkg *gocode.Package, spec NamespaceSpec, target any) (ok 
 // It uses the same hash mode and file selection as Store and Retrieve. Missing CAS roots or namespaces are treated as empty stores. Corrupt or unrelated prior records
 // are skipped, while errors looking up the current hash are returned.
 func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (PackageSummary, error)
+
+// RecertifyPackage asserts that pkg's current contents remain compliant with a recently invalidated CAS record for spec.
+//
+// If current package contents already have a CAS record, RecertifyPackage is a no-op. If there is no matching prior invalidated record, it returns a no-prior result.
+// Otherwise it copies the most recent matching prior record payload to the current content hash, updates AdditionalInfo for current package state, marks the new
+// record as recertified, and leaves existing records unchanged.
+func (db *DB) RecertifyPackage(pkg *gocode.Package, spec NamespaceSpec) (PackageRecertificationResult, error)
 
 // Delete removes the stored value for (pkg, spec).
 //
