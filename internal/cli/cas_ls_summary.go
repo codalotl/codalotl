@@ -102,7 +102,11 @@ func casSummaryRowForPackage(mod *gocode.Module, db *gocas.DB, spec gocas.Namesp
 }
 
 func summarizeCASPackage(mod *gocode.Module, db *gocas.DB, spec gocas.NamespaceSpec, absPkgDir string) (string, gocas.PackageSummary, bool, error) {
-	display, ok := displayPackagePath(mod.AbsolutePath, absPkgDir)
+	return summarizeCASPackageFromBase(mod.AbsolutePath, mod, db, spec, absPkgDir)
+}
+
+func summarizeCASPackageFromBase(displayBaseDir string, mod *gocode.Module, db *gocas.DB, spec gocas.NamespaceSpec, absPkgDir string) (string, gocas.PackageSummary, bool, error) {
+	display, ok := displayPackagePath(displayBaseDir, absPkgDir)
 	if !ok {
 		return "", gocas.PackageSummary{}, false, nil
 	}

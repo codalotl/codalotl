@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -36,26 +38,36 @@ func runCASLsStale(ctx context.Context, out io.Writer, namespace string, staleAf
 	if err != nil {
 		return err
 	}
-	mod, err := gocode.NewModule(wd)
+	repoRoot, err := nearestGitRepoRoot(wd)
 	if err != nil {
 		return err
 	}
 
-	// Consider packages in the module based on cwd.
-	pkgDirs, err := goListPackageDirsFromDir(ctx, mod.AbsolutePath, "./...")
+	pkgDirs, err := goListPackageDirsUnderRepo(ctx, repoRoot)
 	if err != nil {
 		return err
 	}
 
-	db, err := casReadDBForBaseDir(mod.AbsolutePath)
+	db, err := casReadDBForBaseDir(repoRoot)
 	if err != nil {
 		return err
 	}
 
 	var stale []string
+	mods := map[string]*gocode.Module{}
 	now := time.Now()
-	for _, absPkgDir := range pkgDirs {
-		display, summary, ok, err := summarizeCASPackage(mod, db, spec, absPkgDir)
+	for _, pkgDir := range pkgDirs {
+		mod, ok := mods[pkgDir.moduleRoot]
+		if !ok {
+			var err error
+			mod, err = gocode.NewModule(pkgDir.moduleRoot)
+			if err != nil {
+				return err
+			}
+			mods[pkgDir.moduleRoot] = mod
+		}
+
+		display, summary, ok, err := summarizeCASPackageFromBase(repoRoot, mod, db, spec, pkgDir.absDir)
 		if err != nil {
 			return err
 		}
@@ -74,6 +86,109 @@ func runCASLsStale(ctx context.Context, out io.Writer, namespace string, staleAf
 		}
 	}
 	return nil
+}
+
+type casRepoPackageDir struct {
+	absDir     string
+	moduleRoot string
+}
+
+func nearestGitRepoRoot(start string) (string, error) {
+	dir, err := filepath.Abs(start)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		dir = filepath.Dir(dir)
+	}
+
+	for {
+		_, err := os.Stat(filepath.Join(dir, ".git"))
+		switch {
+		case err == nil:
+			return dir, nil
+		case !os.IsNotExist(err):
+			return "", err
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no enclosing git repository found from %q", start)
+		}
+		dir = parent
+	}
+}
+
+func goListPackageDirsUnderRepo(ctx context.Context, repoRoot string) ([]casRepoPackageDir, error) {
+	moduleRoots, err := goModuleRootsUnderRepo(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[string]casRepoPackageDir{}
+	for _, moduleRoot := range moduleRoots {
+		dirs, err := goListPackageDirsFromDir(ctx, moduleRoot, "./...")
+		if err != nil {
+			return nil, err
+		}
+		for _, absDir := range dirs {
+			if _, ok := displayPackagePath(repoRoot, absDir); !ok {
+				continue
+			}
+			if _, ok := seen[absDir]; ok {
+				continue
+			}
+			seen[absDir] = casRepoPackageDir{
+				absDir:     absDir,
+				moduleRoot: moduleRoot,
+			}
+		}
+	}
+
+	out := make([]casRepoPackageDir, 0, len(seen))
+	for _, pkgDir := range seen {
+		out = append(out, pkgDir)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].absDir < out[j].absDir
+	})
+	return out, nil
+}
+
+func goModuleRootsUnderRepo(repoRoot string) ([]string, error) {
+	var roots []string
+	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		if path != repoRoot {
+			switch d.Name() {
+			case ".git", ".codalotl", "vendor":
+				return filepath.SkipDir
+			}
+		}
+		_, err := os.Stat(filepath.Join(path, "go.mod"))
+		switch {
+		case err == nil:
+			roots = append(roots, path)
+		case os.IsNotExist(err):
+		default:
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(roots)
+	return roots, nil
 }
 
 func validateCASLsStaleThresholds(staleAfterDays int, minChurnPercent int) error {
