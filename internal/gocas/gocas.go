@@ -94,6 +94,24 @@ type PackageSummary struct {
 	ChurnPercent *float64
 }
 
+// PackageRecertificationStatus describes the outcome of package recertification.
+type PackageRecertificationStatus string
+
+const (
+	PackageRecertificationStatusCurrent     PackageRecertificationStatus = "current"
+	PackageRecertificationStatusRecertified PackageRecertificationStatus = "recertified"
+	PackageRecertificationStatusNoPrior     PackageRecertificationStatus = "no-prior"
+)
+
+// PackageRecertificationResult describes a package recertification attempt.
+type PackageRecertificationResult struct {
+	Status       PackageRecertificationStatus
+	CurrentHash  string
+	SourceHash   string
+	SourceRecord string
+	Warnings     []string
+}
+
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
 func RootDirForBaseDir(baseDir string) (string, error) {
 	if envRoot, ok := os.LookupEnv(EnvCASDB); ok {
@@ -262,6 +280,89 @@ func (db *DB) SummarizePackage(pkg *gocode.Package, spec NamespaceSpec) (Package
 	}
 	summary.ChurnPercent = db.churnPercent(priorRecords, relPaths)
 	return summary, nil
+}
+
+// RecertifyPackage asserts that pkg's current contents remain compliant with a recently invalidated CAS record for spec.
+//
+// If current package contents already have a CAS record, RecertifyPackage is a no-op. If there is no matching prior invalidated record, it returns a no-prior result.
+// Otherwise it copies the most recent matching prior record payload to the current content hash, updates AdditionalInfo for current package state, marks the new
+// record as recertified, and leaves existing records unchanged.
+func (db *DB) RecertifyPackage(pkg *gocode.Package, spec NamespaceSpec) (PackageRecertificationResult, error) {
+	if pkg == nil {
+		return PackageRecertificationResult{}, errors.New("package is nil")
+	}
+	if err := db.validateCommon(spec); err != nil {
+		return PackageRecertificationResult{}, err
+	}
+
+	namespace := spec.Namespace()
+	hasher, relPaths, err := db.hasherForPackageSpec(pkg, spec)
+	if err != nil {
+		return PackageRecertificationResult{}, err
+	}
+
+	result := PackageRecertificationResult{
+		CurrentHash: hasher.Hash(),
+	}
+
+	namespaceDir := db.namespaceDir(namespace)
+	if _, err := os.Stat(namespaceDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			result.Status = PackageRecertificationStatusNoPrior
+			return result, nil
+		}
+		return result, fmt.Errorf("stat CAS namespace: %w", err)
+	}
+
+	var raw json.RawMessage
+	ok, _, err := db.retrieve(namespace, hasher, &raw)
+	if err != nil {
+		return result, err
+	}
+	if ok {
+		result.Status = PackageRecertificationStatusCurrent
+		return result, nil
+	}
+
+	priorRecords := db.priorInvalidatedPackageRecords(namespace, result.CurrentHash, pkg, relPaths)
+	if len(priorRecords) == 0 {
+		result.Status = PackageRecertificationStatusNoPrior
+		return result, nil
+	}
+
+	source := priorRecords[0]
+	if source == nil || source.summary == nil {
+		result.Status = PackageRecertificationStatusNoPrior
+		return result, nil
+	}
+	sourceRecord, err := readFullCASRecordFile(source.recordPath)
+	if err != nil {
+		return result, fmt.Errorf("read source CAS record: %w", err)
+	}
+
+	sourceRecordID, ok := recordID(namespace, source.summary.Hash)
+	if !ok {
+		return result, fmt.Errorf("invalid source CAS hash %q", source.summary.Hash)
+	}
+
+	additionalInfo := cas.AdditionalInfo{
+		UnixTimestamp:         int(time.Now().Unix()),
+		Paths:                 relPaths,
+		Recertified:           true,
+		RecertifiedFromHash:   source.summary.Hash,
+		RecertifiedFromRecord: sourceRecordID,
+	}
+	db.bestEffortPopulateGitInfo(&additionalInfo)
+
+	if err := db.DB.Store(hasher, string(namespace), sourceRecord.Metadata, &cas.Options{AdditionalInfo: additionalInfo}); err != nil {
+		return result, err
+	}
+
+	result.Status = PackageRecertificationStatusRecertified
+	result.SourceHash = source.summary.Hash
+	result.SourceRecord = sourceRecordID
+	result.Warnings = db.recertificationWarnings(additionalInfo, source.summary, priorRecords, relPaths)
+	return result, nil
 }
 
 // Delete removes the stored value for (pkg, spec).
@@ -479,20 +580,49 @@ type priorPackageRecord struct {
 	recordPath string
 }
 
-func readCASRecordFile(recordPath string) (cas.AdditionalInfo, bool) {
+func readFullCASRecordFile(recordPath string) (casRecordFile, error) {
 	b, err := os.ReadFile(recordPath)
 	if err != nil {
-		return cas.AdditionalInfo{}, false
+		return casRecordFile{}, err
 	}
 
 	var record casRecordFile
 	if err := json.Unmarshal(b, &record); err != nil {
-		return cas.AdditionalInfo{}, false
+		return casRecordFile{}, err
 	}
 	if record.Kind != "cas-record-v1" || len(record.Metadata) == 0 {
+		return casRecordFile{}, errors.New("invalid CAS record")
+	}
+	return record, nil
+}
+
+func readCASRecordFile(recordPath string) (cas.AdditionalInfo, bool) {
+	record, err := readFullCASRecordFile(recordPath)
+	if err != nil {
 		return cas.AdditionalInfo{}, false
 	}
 	return record.AdditionalInfo, true
+}
+
+func recordID(namespace Namespace, hash string) (string, bool) {
+	if len(hash) < 3 {
+		return "", false
+	}
+	return path.Join(string(namespace), hash[:2], hash[2:]), true
+}
+
+func (db *DB) recertificationWarnings(currentInfo cas.AdditionalInfo, source *PackageRecordSummary, records []*priorPackageRecord, currentRelPaths []string) []string {
+	warnings := []string{}
+	if currentInfo.GitCommit != "" && !currentInfo.GitClean {
+		warnings = append(warnings, "current git worktree is dirty")
+	}
+	if churn := db.churnPercent(records, currentRelPaths); churn != nil && *churn >= 20 {
+		warnings = append(warnings, "large churn (>=20%)")
+	}
+	if source != nil && !source.Time.IsZero() && time.Since(source.Time) >= 30*24*time.Hour {
+		warnings = append(warnings, "source record is >=30 days old")
+	}
+	return warnings
 }
 
 func (db *DB) priorInvalidatedPackageRecords(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) []*priorPackageRecord {

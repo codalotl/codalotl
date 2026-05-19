@@ -866,6 +866,130 @@ func TestSummarizePackage_ChurnCanUseCommitThatAddedCASRecord(t *testing.T) {
 	require.Greater(t, *summary.ChurnPercent, 0.0)
 }
 
+func TestRecertifyPackage_CurrentRecordIsNoOp(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	hasher, _, err := db.hasherForPackageSpec(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	currentHash := hasher.Hash()
+	recordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), currentHash)
+	before, err := os.ReadFile(recordPath)
+	require.NoError(t, err)
+
+	result, err := db.RecertifyPackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Equal(t, PackageRecertificationStatusCurrent, result.Status)
+	require.Equal(t, currentHash, result.CurrentHash)
+	require.Empty(t, result.SourceHash)
+	require.Empty(t, result.SourceRecord)
+	require.Empty(t, result.Warnings)
+
+	after, err := os.ReadFile(recordPath)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+}
+
+func TestRecertifyPackage_NoPriorIsNormalMiss(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := filepath.Join(t.TempDir(), "cas")
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	hasher, _, err := db.hasherForPackageSpec(pkg, testPackageNamespace)
+	require.NoError(t, err)
+
+	result, err := db.RecertifyPackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Equal(t, PackageRecertificationStatusNoPrior, result.Status)
+	require.Equal(t, hasher.Hash(), result.CurrentHash)
+	require.Empty(t, result.SourceHash)
+	require.Empty(t, result.SourceRecord)
+	require.Empty(t, result.Warnings)
+
+	_, err = os.Stat(db.namespaceDir(testPackageNamespace.Namespace()))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestRecertifyPackage_CopiesPayloadAndProvenance(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+
+	db := &DB{
+		BaseDir: baseDir,
+		DB: cas.DB{
+			AbsRoot: casRoot,
+		},
+	}
+
+	err := db.Store(pkg, testPackageNamespace, testPayload{N: 7})
+	require.NoError(t, err)
+
+	sourceSummary, err := db.SummarizePackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.NotNil(t, sourceSummary.Current)
+	sourceHash := sourceSummary.Current.Hash
+	sourceRecordID, ok := recordID(testPackageNamespace.Namespace(), sourceHash)
+	require.True(t, ok)
+	sourceRecordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), sourceHash)
+	sourceRecordBefore := readStoredRecord(t, sourceRecordPath)
+	sourceBytesBefore, err := os.ReadFile(sourceRecordPath)
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(baseDir, "foo", "foo.go"), []byte("package foo\n\nfunc A() {}\nfunc B() {}\n"), 0o644)
+	require.NoError(t, err)
+
+	result, err := db.RecertifyPackage(pkg, testPackageNamespace)
+	require.NoError(t, err)
+	require.Equal(t, PackageRecertificationStatusRecertified, result.Status)
+	require.NotEmpty(t, result.CurrentHash)
+	require.NotEqual(t, sourceHash, result.CurrentHash)
+	require.Equal(t, sourceHash, result.SourceHash)
+	require.Equal(t, sourceRecordID, result.SourceRecord)
+
+	var got testPayload
+	ok, ai, err := db.Retrieve(pkg, testPackageNamespace, &got)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, testPayload{N: 7}, got)
+	require.True(t, ai.Recertified)
+	require.Equal(t, sourceHash, ai.RecertifiedFromHash)
+	require.Equal(t, sourceRecordID, ai.RecertifiedFromRecord)
+	require.Equal(t, []string{"foo/SPEC.md", "foo/foo.go", "foo/foo_test.go"}, ai.Paths)
+
+	currentRecordPath := storedRecordPath(t, db, testPackageNamespace.Namespace(), result.CurrentHash)
+	currentRecord := readStoredRecord(t, currentRecordPath)
+	require.Equal(t, sourceRecordBefore.Metadata, currentRecord.Metadata)
+	require.True(t, currentRecord.AdditionalInfo.Recertified)
+	require.Equal(t, sourceHash, currentRecord.AdditionalInfo.RecertifiedFromHash)
+	require.Equal(t, sourceRecordID, currentRecord.AdditionalInfo.RecertifiedFromRecord)
+
+	sourceBytesAfter, err := os.ReadFile(sourceRecordPath)
+	require.NoError(t, err)
+	require.Equal(t, sourceBytesBefore, sourceBytesAfter)
+}
+
 func TestPackageHasherStableAcrossDifferentAbsoluteBaseDirs(t *testing.T) {
 	baseDir1 := t.TempDir()
 	baseDir2 := t.TempDir()

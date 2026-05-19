@@ -562,7 +562,36 @@ codalotl cas ls-summary specconforms --csv
 	lsSummaryCmd.Run = runWithConfig("cas_ls_summary", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
 		return runCASLsSummary(c.Context, c.Out, c.Args[0], *lsSummaryCSV)
 	})
-	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsStaleCmd)
+	recertifyCmd := &qcli.Command{
+		Name:  "recertify",
+		Short: "Copy prior CAS records forward to current package contents.",
+		Long: "Recertifies current package contents for one or more registered CAS namespaces. " +
+			"Existing current records are left unchanged; prior records are never deleted or mutated.",
+		Usage: "<path/to/pkg> --namespaces=\"<namespace1>[,<namespace2>,...]\"",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<path/to/pkg>",
+				Description: packagePathArgDescription,
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl cas recertify internal/mypkg --namespaces="docs-fix,specconforms"
+`),
+	}
+	recertifyNamespaces := recertifyCmd.Flags().String("namespaces", 0, "", "Comma-separated registered non-versioned namespace names to recertify.")
+	recertifyCmd.Args = func(args []string) error {
+		if err := qcli.ExactArgs(1)(args); err != nil {
+			return err
+		}
+		if _, err := parseCASNamespacesFlag(*recertifyNamespaces); err != nil {
+			return qcli.UsageError{Message: err.Error()}
+		}
+		return nil
+	}
+	recertifyCmd.Run = runWithConfig("cas_recertify", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		return runCASRecertify(c.Out, c.Args[0], *recertifyNamespaces)
+	})
+	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsStaleCmd, recertifyCmd)
 
 	panicCmd := &qcli.Command{
 		Name:             "panic",

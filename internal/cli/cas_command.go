@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"github.com/codalotl/codalotl/internal/gocas/casclarify"
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
 	qcas "github.com/codalotl/codalotl/internal/q/cas"
+	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	toolrefactor "github.com/codalotl/codalotl/internal/tools/refactor"
 )
 
@@ -29,6 +32,33 @@ func validateCASNamespace(namespace string) error {
 		return fmt.Errorf("invalid <namespace>: must not contain path separators")
 	}
 	return nil
+}
+
+func parseCASNamespacesFlag(namespaces string) ([]gocas.NamespaceSpec, error) {
+	namespaces = strings.TrimSpace(namespaces)
+	if namespaces == "" {
+		return nil, fmt.Errorf("missing --namespaces")
+	}
+
+	parts := strings.Split(namespaces, ",")
+	specs := make([]gocas.NamespaceSpec, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		namespace := strings.TrimSpace(part)
+		if namespace == "" {
+			return nil, fmt.Errorf("invalid --namespaces: empty namespace")
+		}
+		if _, ok := seen[namespace]; ok {
+			return nil, fmt.Errorf("invalid --namespaces: duplicate namespace %q", namespace)
+		}
+		spec, err := resolveCASNamespaceSpec(namespace)
+		if err != nil {
+			return nil, err
+		}
+		seen[namespace] = struct{}{}
+		specs = append(specs, spec)
+	}
+	return specs, nil
 }
 
 func registeredCASNamespaceSpecs() []gocas.NamespaceSpec {
@@ -99,4 +129,72 @@ func casQDBForBaseDir(baseDir string) (*qcas.DB, error) {
 	// Unlike `cas set`, TUI only needs read access; avoid creating directories as
 	// a side effect of launching the UI.
 	return &qcas.DB{AbsRoot: absRoot}, nil
+}
+
+func runCASRecertify(out io.Writer, packagePath string, namespaces string) error {
+	specs, err := parseCASNamespacesFlag(namespaces)
+	if err != nil {
+		return qcli.UsageError{Message: err.Error()}
+	}
+
+	pkg, mod, err := loadPackageArg(packagePath)
+	if err != nil {
+		return err
+	}
+	db, err := casDBForBaseDir(mod.AbsolutePath)
+	if err != nil {
+		return err
+	}
+
+	var missingPrior bool
+	for _, spec := range specs {
+		result, err := db.RecertifyPackage(pkg, spec)
+		if err != nil {
+			return err
+		}
+		if err := writeCASRecertifyResult(out, spec.Name, result); err != nil {
+			return err
+		}
+		if result.Status == gocas.PackageRecertificationStatusNoPrior {
+			missingPrior = true
+		}
+	}
+	if missingPrior {
+		return qcli.ExitError{Code: 1, Err: errors.New("")}
+	}
+	return nil
+}
+
+func writeCASRecertifyResult(out io.Writer, namespace string, result gocas.PackageRecertificationResult) error {
+	switch result.Status {
+	case gocas.PackageRecertificationStatusCurrent:
+		if _, err := fmt.Fprintf(out, "%s: current (%s)\n", namespace, shortCASHex(result.CurrentHash)); err != nil {
+			return err
+		}
+	case gocas.PackageRecertificationStatusRecertified:
+		if _, err := fmt.Fprintf(out, "%s: recertified (%s -> %s)\n", namespace, shortCASHex(result.SourceHash), shortCASHex(result.CurrentHash)); err != nil {
+			return err
+		}
+	case gocas.PackageRecertificationStatusNoPrior:
+		if _, err := fmt.Fprintf(out, "%s: no prior record\n", namespace); err != nil {
+			return err
+		}
+	default:
+		if _, err := fmt.Fprintf(out, "%s: %s\n", namespace, result.Status); err != nil {
+			return err
+		}
+	}
+	for _, warning := range result.Warnings {
+		if _, err := fmt.Fprintf(out, "  warning: %s\n", warning); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func shortCASHex(hash string) string {
+	if len(hash) <= 12 {
+		return hash
+	}
+	return hash[:12]
 }

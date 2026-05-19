@@ -1,6 +1,7 @@
 package cas
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -110,15 +111,29 @@ func TestDB_StoreRetrieve_AdditionalInfo(t *testing.T) {
 
 	opts := &Options{
 		AdditionalInfo: AdditionalInfo{
-			UnixTimestamp: 123,
-			Paths:         []string{"a.go", "b.go"},
-			GitClean:      true,
-			GitCommit:     "abc123",
-			GitMergeBase:  "def456",
+			UnixTimestamp:         123,
+			Paths:                 []string{"a.go", "b.go"},
+			GitClean:              true,
+			GitCommit:             "abc123",
+			GitMergeBase:          "def456",
+			Recertified:           true,
+			RecertifiedFromHash:   "oldhash",
+			RecertifiedFromRecord: "securityreview-1.0/ab/cdef",
 		},
 	}
 
 	require.NoError(t, db.Store(h, ns, map[string]any{"ok": true}, opts))
+
+	b, err := os.ReadFile(db.recordPath(ns, h.Hash()))
+	require.NoError(t, err)
+
+	var rec struct {
+		AdditionalInfo map[string]any `json:"additional_info"`
+	}
+	require.NoError(t, json.Unmarshal(b, &rec))
+	require.Equal(t, true, rec.AdditionalInfo["recertified"])
+	require.Equal(t, "oldhash", rec.AdditionalInfo["recertified_from_hash"])
+	require.Equal(t, "securityreview-1.0/ab/cdef", rec.AdditionalInfo["recertified_from_record"])
 
 	var out map[string]any
 	found, ai, err := db.Retrieve(h, ns, &out)
@@ -126,6 +141,44 @@ func TestDB_StoreRetrieve_AdditionalInfo(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, map[string]any{"ok": true}, out)
 	require.Equal(t, opts.AdditionalInfo, ai)
+}
+
+func TestDB_Retrieve_OldStyleAdditionalInfoDefaultsRecertification(t *testing.T) {
+	dbRoot := t.TempDir()
+	db := &DB{AbsRoot: dbRoot}
+
+	ns := "securityreview-1.0"
+	h := NewBytesHasher([]byte("content"))
+	recordPath := db.recordPath(ns, h.Hash())
+
+	require.NoError(t, os.MkdirAll(filepath.Dir(recordPath), 0o755))
+	require.NoError(t, os.WriteFile(recordPath, []byte(`{
+		"kind": "cas-record-v1",
+		"metadata": {"ok": true},
+		"additional_info": {
+			"unix_timestamp": 123,
+			"paths": ["a.go", "b.go"],
+			"git_clean": true,
+			"git_commit": "abc123",
+			"git_merge_base": "def456"
+		}
+	}`), 0o644))
+
+	var out map[string]any
+	found, ai, err := db.Retrieve(h, ns, &out)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, map[string]any{"ok": true}, out)
+	require.Equal(t, AdditionalInfo{
+		UnixTimestamp: 123,
+		Paths:         []string{"a.go", "b.go"},
+		GitClean:      true,
+		GitCommit:     "abc123",
+		GitMergeBase:  "def456",
+	}, ai)
+	require.False(t, ai.Recertified)
+	require.Empty(t, ai.RecertifiedFromHash)
+	require.Empty(t, ai.RecertifiedFromRecord)
 }
 
 func TestDB_Delete(t *testing.T) {
