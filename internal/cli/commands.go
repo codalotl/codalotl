@@ -543,8 +543,8 @@ codalotl cas ls-stale specconforms --stale-after-days=14 --min-churn-percent=10
 	})
 	lsSummaryCmd := &qcli.Command{
 		Name:  "ls-summary",
-		Short: "Summarize CAS coverage for packages in the current module.",
-		Long:  "Displays per-package current and prior CAS coverage for a registered namespace across packages in the current module.",
+		Short: "Summarize CAS coverage for packages in the current repo.",
+		Long:  "Displays per-package current and prior CAS coverage for a registered namespace across discovered modules in the nearest git repo.",
 		Usage: "<namespace>",
 		ArgHelp: []qcli.ArgHelp{
 			{

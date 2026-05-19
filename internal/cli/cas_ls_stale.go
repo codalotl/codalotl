@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,31 +48,21 @@ func runCASLsStale(ctx context.Context, out io.Writer, namespace string, staleAf
 	}
 
 	var stale []string
-	mods := map[string]*gocode.Module{}
 	dbs := map[string]*gocas.DB{}
 	now := time.Now()
 	for _, pkgDir := range pkgDirs {
-		mod, ok := mods[pkgDir.moduleRoot]
+		moduleRoot := pkgDir.mod.AbsolutePath
+		db, ok := dbs[moduleRoot]
 		if !ok {
 			var err error
-			mod, err = gocode.NewModule(pkgDir.moduleRoot)
+			db, err = casReadDBForBaseDir(moduleRoot)
 			if err != nil {
 				return err
 			}
-			mods[pkgDir.moduleRoot] = mod
+			dbs[moduleRoot] = db
 		}
 
-		db, ok := dbs[pkgDir.moduleRoot]
-		if !ok {
-			var err error
-			db, err = casReadDBForBaseDir(pkgDir.moduleRoot)
-			if err != nil {
-				return err
-			}
-			dbs[pkgDir.moduleRoot] = db
-		}
-
-		display, summary, ok, err := summarizeCASPackageFromBase(repoRoot, mod, db, spec, pkgDir.absDir)
+		display, summary, ok, err := summarizeCASPackageFromBase(repoRoot, pkgDir.mod, db, spec, pkgDir.absDir)
 		if err != nil {
 			return err
 		}
@@ -95,8 +84,8 @@ func runCASLsStale(ctx context.Context, out io.Writer, namespace string, staleAf
 }
 
 type casRepoPackageDir struct {
-	absDir     string
-	moduleRoot string
+	absDir string
+	mod    *gocode.Module
 }
 
 func nearestGitRepoRoot(start string) (string, error) {
@@ -130,14 +119,14 @@ func nearestGitRepoRoot(start string) (string, error) {
 }
 
 func goListPackageDirsUnderRepo(ctx context.Context, repoRoot string) ([]casRepoPackageDir, error) {
-	moduleRoots, err := goModuleRootsUnderRepo(repoRoot)
+	mods, err := gocode.DiscoverModules(repoRoot)
 	if err != nil {
 		return nil, err
 	}
 
 	seen := map[string]casRepoPackageDir{}
-	for _, moduleRoot := range moduleRoots {
-		dirs, err := goListPackageDirsFromDir(ctx, moduleRoot, "./...")
+	for _, mod := range mods {
+		dirs, err := goListPackageDirsFromDir(ctx, mod.AbsolutePath, "./...")
 		if err != nil {
 			return nil, err
 		}
@@ -149,8 +138,8 @@ func goListPackageDirsUnderRepo(ctx context.Context, repoRoot string) ([]casRepo
 				continue
 			}
 			seen[absDir] = casRepoPackageDir{
-				absDir:     absDir,
-				moduleRoot: moduleRoot,
+				absDir: absDir,
+				mod:    mod,
 			}
 		}
 	}
@@ -163,39 +152,6 @@ func goListPackageDirsUnderRepo(ctx context.Context, repoRoot string) ([]casRepo
 		return out[i].absDir < out[j].absDir
 	})
 	return out, nil
-}
-
-func goModuleRootsUnderRepo(repoRoot string) ([]string, error) {
-	var roots []string
-	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if !d.IsDir() {
-			return nil
-		}
-		if path != repoRoot && shouldSkipGoListRecursiveDir(d.Name()) {
-			return filepath.SkipDir
-		}
-		_, err := os.Stat(filepath.Join(path, "go.mod"))
-		switch {
-		case err == nil:
-			roots = append(roots, path)
-		case os.IsNotExist(err):
-		default:
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(roots)
-	return roots, nil
-}
-
-func shouldSkipGoListRecursiveDir(name string) bool {
-	return name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 func validateCASLsStaleThresholds(staleAfterDays int, minChurnPercent int) error {
