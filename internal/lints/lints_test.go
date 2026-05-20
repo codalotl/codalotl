@@ -35,6 +35,13 @@ func TestResolveSteps_Defaults(t *testing.T) {
 	require.Contains(t, steps[0].Check.Args, "{{ .relativePackageDir }}")
 }
 
+func TestDefaultSteps(t *testing.T) {
+	defaultSteps := DefaultSteps()
+	resolved, err := ResolveSteps(nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, resolved, defaultSteps)
+}
+
 func TestResolveSteps_ExtendDuplicateID(t *testing.T) {
 	cfg := &Lints{
 		Mode: ConfigModeExtend,
@@ -49,6 +56,98 @@ func TestResolveSteps_ExtendDuplicateID(t *testing.T) {
 	}
 	_, err := ResolveSteps(cfg, 120)
 	require.Error(t, err)
+}
+
+func TestResolveSteps_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Lints
+		wantErr string
+	}{
+		{
+			name: "unknown mode",
+			cfg: Lints{
+				Mode: ConfigMode("bogus"),
+			},
+			wantErr: `unknown lints mode "bogus"`,
+		},
+		{
+			name: "unknown preconfigured id with no commands",
+			cfg: Lints{
+				Mode:  ConfigModeReplace,
+				Steps: []Step{{ID: "bogus"}},
+			},
+			wantErr: `lint step "bogus": at least one of check/fix command is required`,
+		},
+		{
+			name: "fix only step cannot run during tests",
+			cfg: Lints{
+				Mode: ConfigModeReplace,
+				Steps: []Step{{
+					ID:         "fix-only",
+					Situations: []Situation{SituationTests},
+					Fix:        helperCmd("", 0, false),
+				}},
+			},
+			wantErr: `lint step "fix-only": check command is required for initial/tests situations`,
+		},
+		{
+			name: "empty command",
+			cfg: Lints{
+				Mode: ConfigModeReplace,
+				Steps: []Step{{
+					ID:    "empty-command",
+					Check: &cmdrunner.Command{},
+				}},
+			},
+			wantErr: `lint step "empty-command": check command: command is required`,
+		},
+		{
+			name: "odd attrs",
+			cfg: Lints{
+				Mode: ConfigModeReplace,
+				Steps: []Step{{
+					ID: "odd-attrs",
+					Check: &cmdrunner.Command{
+						Command: "anything",
+						Attrs:   []string{"mode"},
+					},
+				}},
+			},
+			wantErr: `lint step "odd-attrs": check command: attrs must have even length, got 1`,
+		},
+		{
+			name: "duplicate situation",
+			cfg: Lints{
+				Mode: ConfigModeReplace,
+				Steps: []Step{{
+					ID:         "duplicate-situation",
+					Situations: []Situation{SituationTests, SituationTests},
+					Check:      helperCmd("", 0, false),
+				}},
+			},
+			wantErr: `lint step "duplicate-situation": duplicate situation "tests"`,
+		},
+		{
+			name: "unknown situation",
+			cfg: Lints{
+				Mode: ConfigModeReplace,
+				Steps: []Step{{
+					ID:         "unknown-situation",
+					Situations: []Situation{"bogus"},
+					Check:      helperCmd("", 0, false),
+				}},
+			},
+			wantErr: `lint step "unknown-situation": unknown situation "bogus"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ResolveSteps(&tt.cfg, 120)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }
 
 func TestResolveSteps_ReplaceEmptyDisablesAll(t *testing.T) {
@@ -345,6 +444,124 @@ func TestRun_SkipsReflowDuringInitial(t *testing.T) {
 	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), []Step{{ID: "reflow"}}, SituationInitial)
 	require.NoError(t, err)
 	require.Equal(t, wantNoLintersStatus, out)
+}
+
+func TestRun_ReflowRunsInProcess(t *testing.T) {
+	tests := []struct {
+		name             string
+		situation        Situation
+		wantStatus       string
+		wantMode         string
+		wantCheckFlag    bool
+		wantInstructions bool
+		wantModified     bool
+	}{
+		{
+			name:             "check reports files that would change",
+			situation:        SituationTests,
+			wantStatus:       `lint-status ok="false"`,
+			wantMode:         `mode="check"`,
+			wantCheckFlag:    true,
+			wantInstructions: true,
+		},
+		{
+			name:         "fix updates files",
+			situation:    SituationFix,
+			wantStatus:   `lint-status ok="true"`,
+			wantMode:     `mode="fix"`,
+			wantModified: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sandboxDir, target, relativePackageDir := writeTempModule(t)
+			source := strings.Join([]string{
+				"package tgt",
+				"",
+				"// Foo does one thing and then another thing and then keeps describing enough behavior to require wrapping.",
+				"func Foo() {}",
+				"",
+			}, "\n")
+			sourcePath := filepath.Join(target, "tgt.go")
+			require.NoError(t, os.WriteFile(sourcePath, []byte(source), 0o644))
+
+			cfg := &Lints{
+				Mode: ConfigModeReplace,
+				Steps: []Step{{
+					ID:         "reflow",
+					Situations: []Situation{tt.situation},
+				}},
+			}
+			steps, err := ResolveSteps(cfg, 48)
+			require.NoError(t, err)
+
+			out, err := Run(context.Background(), sandboxDir, target, steps, tt.situation)
+			require.NoError(t, err)
+
+			require.Contains(t, out, tt.wantStatus)
+			require.Contains(t, out, tt.wantMode)
+			require.Contains(t, out, relativePackageDir+"/tgt.go")
+			require.NotContains(t, out, "--width=48")
+			if tt.wantCheckFlag {
+				require.Contains(t, out, "\n$ codalotl docs reflow --check "+relativePackageDir+"\n")
+			} else {
+				require.Contains(t, out, "\n$ codalotl docs reflow "+relativePackageDir+"\n")
+				require.NotContains(t, out, "--check")
+			}
+			if tt.wantInstructions {
+				require.Contains(t, out, reflowCheckInstructions)
+			} else {
+				require.NotContains(t, out, reflowCheckInstructions)
+			}
+
+			updated, err := os.ReadFile(sourcePath)
+			require.NoError(t, err)
+			if tt.wantModified {
+				require.NotEqual(t, source, string(updated))
+				require.Greater(t, countCommentLinesAboveFunc(string(updated), "func Foo"), 1)
+			} else {
+				require.Equal(t, source, string(updated))
+			}
+		})
+	}
+}
+
+func TestRun_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		sandbox   string
+		target    string
+		situation Situation
+		wantErr   string
+	}{
+		{
+			name:      "missing sandbox",
+			target:    t.TempDir(),
+			situation: SituationTests,
+			wantErr:   "sandboxDir is required",
+		},
+		{
+			name:      "missing target",
+			sandbox:   t.TempDir(),
+			situation: SituationTests,
+			wantErr:   "targetPkgAbsDir is required",
+		},
+		{
+			name:      "unknown situation",
+			sandbox:   t.TempDir(),
+			target:    t.TempDir(),
+			situation: Situation("bogus"),
+			wantErr:   `unknown situation "bogus"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Run(context.Background(), tt.sandbox, tt.target, nil, tt.situation)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }
 
 func TestRun_SpecStepsSkippedWhenNoSpecMD(t *testing.T) {
