@@ -36,6 +36,7 @@ const (
 	SituationTests   Situation = "tests"   // SituationTests runs check-mode lints during test validation.
 )
 
+// An action is the check or fix command mode implied by a lint situation.
 type action string
 
 const (
@@ -125,6 +126,7 @@ func defaultSteps(reflowWidth int) []Step {
 	return []Step{gofmt, specFmt, specDiff}
 }
 
+// preconfiguredStep returns the built-in lint step for id. It returns ok=false for unknown IDs. A non-positive reflowWidth uses defaultReflowWidth.
 func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
@@ -341,6 +343,8 @@ func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
 	return normalizeStepWidths(steps, reflowWidth)
 }
 
+// appendStepsUnique canonicalizes, validates, and appends src steps to dst without duplicating non-empty IDs. Existing dst IDs are treated as already used, empty
+// IDs may repeat, and reflowWidth is used when expanding preconfigured ID-only steps. If an error occurs after an append, dst is not rolled back.
 func appendStepsUnique(dst *[]Step, src []Step, reflowWidth int) error {
 	seen := make(map[string]struct{}, len(*dst)+len(src))
 	for _, s := range *dst {
@@ -366,6 +370,8 @@ func appendStepsUnique(dst *[]Step, src []Step, reflowWidth int) error {
 	return nil
 }
 
+// canonicalizeStep expands an ID-only preconfigured step into its built-in definition. It preserves fully specified steps, applies non-nil Situations and Active
+// overrides to the built-in step, and leaves unknown IDs unchanged for validation.
 func canonicalizeStep(s Step, reflowWidth int) Step {
 	if s.ID == "" {
 		return s
@@ -390,6 +396,8 @@ func canonicalizeStep(s Step, reflowWidth int) Step {
 	return pre
 }
 
+// validateStep reports whether s is a valid lint step definition. Nil Situations enable all situations. The validation checks situations, required check/fix commands
+// for enabled situations, command names, and attribute key/value pairs.
 func validateStep(s Step) error {
 	if err := validateSituations(s.Situations); err != nil {
 		if s.ID == "" {
@@ -492,6 +500,8 @@ func stepEnabledInSituation(step Step, situation Situation) bool {
 	return false
 }
 
+// normalizeStepWidths ensures reflow-related steps carry the configured documentation width. It adds missing --width flags to reflow commands and, when reflow is
+// enabled, to spec-fmt commands. Existing invalid width flags are returned as errors, and non-positive widths use defaultReflowWidth.
 func normalizeStepWidths(steps []Step, reflowWidth int) ([]Step, error) {
 	if reflowWidth <= 0 {
 		reflowWidth = defaultReflowWidth
@@ -554,6 +564,8 @@ func stepsEnableReflow(steps []Step) bool {
 	return false
 }
 
+// ensureWidthArg returns a command whose arguments include a --width flag. It validates any existing width flag, leaves commands that already set one unchanged,
+// and appends --width=<reflowWidth> to a shallow copy otherwise. Non-positive widths use defaultReflowWidth.
 func ensureWidthArg(c *cmdrunner.Command, reflowWidth int) (*cmdrunner.Command, error) {
 	if c == nil {
 		return nil, errors.New("command is nil")
@@ -576,6 +588,8 @@ func ensureWidthArg(c *cmdrunner.Command, reflowWidth int) (*cmdrunner.Command, 
 	return &cc, nil
 }
 
+// parseWidthFlag returns the value and argument index of a --width flag in args. It accepts both --width=N and --width N forms. If no width is present, it returns
+// ok=false and idx=-1. Duplicate flags, missing values, and non-integer values return an error.
 func parseWidthFlag(args []string) (width int, idx int, ok bool, err error) {
 	width = 0
 	idx = -1
@@ -734,6 +748,9 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 	return all.ToXML("lint-status"), nil
 }
 
+// stepActive reports whether s should run for the package. The spec-diff and spec-fmt steps are active only when the package contains SPEC.md, except that unexpected
+// stat errors are treated as active. If s has no Active command, it is active. Otherwise the Active command is run and the step is inactive only when that command
+// exits with code 0, produces no non-whitespace output, and has no exec error.
 func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, moduleDir string, relativePackageDir string, s Step) bool {
 	if s.ID == "spec-diff" || s.ID == "spec-fmt" {
 		// Special-case: this step is only active when the package has a SPEC.md.
@@ -775,6 +792,8 @@ func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, 
 	return !(cr.ExitCode == 0 && strings.TrimSpace(cr.Output) == "" && cr.ExecError == nil)
 }
 
+// selectCommand chooses the command to run for s under act. For check actions, Check is required. For fix actions, Fix is preferred and Check is used as a check-mode
+// dry run when no Fix command exists. The returned modeAttr is the XML mode value, and dryRun reports whether the command should avoid modifying files.
 func selectCommand(s Step, act action) (cmd *cmdrunner.Command, modeAttr string, dryRun bool, err error) {
 	switch act {
 	case actionCheck:
@@ -821,6 +840,8 @@ func upsertAttrPair(attrs []string, key string, value string) []string {
 	return out
 }
 
+// runReflow runs the in-process documentation reflow lint and returns a cmdrunner-style command result. The command's Args provide the optional --width flag. Dry
+// runs fail when files would change, while fix runs fail only on reflow errors or failed identifiers. The rendered command omits the width flag.
 func runReflow(moduleDir string, relativePackageDir string, targetPkgAbsDir string, c *cmdrunner.Command, modeAttr string, dryRun bool) (cmdrunner.CommandResult, error) {
 	start := time.Now()
 
@@ -887,6 +908,8 @@ func runReflow(moduleDir string, relativePackageDir string, targetPkgAbsDir stri
 	return cr, nil
 }
 
+// runSpecDiff runs the in-process spec-diff lint for targetPkgAbsDir and returns a cmdrunner-style check result. The result fails when SPEC.md cannot be read, diffs
+// cannot be computed or formatted, or the implementation differs from the spec. Diff output includes SpecDiffInstructions when present.
 func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.CommandResult {
 	start := time.Now()
 
@@ -952,6 +975,9 @@ func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.Co
 	}
 	return cr
 }
+
+// runSpecFmt formats the package SPEC.md in process and returns a cmdrunner-style result. relativePackageDir is used in the rendered command, moduleDir is used
+// to render changed and error paths, and reflowWidth is passed to specmd formatting. The result fails on read or format errors.
 func runSpecFmt(moduleDir string, relativePackageDir string, targetPkgAbsDir string, reflowWidth int) cmdrunner.CommandResult {
 	start := time.Now()
 	specPath := filepath.Join(targetPkgAbsDir, "SPEC.md")
