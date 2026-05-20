@@ -209,6 +209,67 @@ func TestBuildAgent_OrchestrateStartBuildsBuiltInOrchestrator(t *testing.T) {
 	require.NotNil(t, agentInstance)
 }
 
+func TestNewSessionRootAgentCreatorNoStoreFollowsZDREnv(t *testing.T) {
+	originalEnv, hadEnv := os.LookupEnv("CODALOTL_ZDR")
+	t.Cleanup(func() {
+		if hadEnv {
+			require.NoError(t, os.Setenv("CODALOTL_ZDR", originalEnv))
+			return
+		}
+		require.NoError(t, os.Unsetenv("CODALOTL_ZDR"))
+	})
+
+	originalCreator := newRootAgentCreator
+	t.Cleanup(func() {
+		newRootAgentCreator = originalCreator
+	})
+
+	tests := []struct {
+		name        string
+		envSet      bool
+		envValue    string
+		wantNoStore bool
+	}{
+		{name: "unset"},
+		{name: "false", envSet: true, envValue: "false"},
+		{name: "uppercase true", envSet: true, envValue: "TRUE"},
+		{name: "true with whitespace", envSet: true, envValue: " true "},
+		{name: "exact true", envSet: true, envValue: "true", wantNoStore: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envSet {
+				require.NoError(t, os.Setenv("CODALOTL_ZDR", tt.envValue))
+			} else {
+				require.NoError(t, os.Unsetenv("CODALOTL_ZDR"))
+			}
+
+			var captured [][]agent.NewOptions
+			newRootAgentCreator = func(options ...agent.NewOptions) agent.AgentCreator {
+				captured = append(captured, append([]agent.NewOptions(nil), options...))
+				return agent.NewAgentCreator(options...)
+			}
+
+			var buf bytes.Buffer
+			session, err := NewSession(Options{
+				CWD:          t.TempDir(),
+				NoFormatting: true,
+				Out:          &buf,
+			})
+			require.NoError(t, err)
+			require.NoError(t, session.Close())
+
+			require.Len(t, captured, 1)
+			if tt.wantNoStore {
+				require.Equal(t, []agent.NewOptions{{NoStore: true}}, captured[0])
+			} else {
+				require.Empty(t, captured[0])
+			}
+		})
+	}
+}
+
 func TestShouldSuppressFormattedOutput(t *testing.T) {
 	t.Parallel()
 
