@@ -147,7 +147,9 @@ In a **single response**, do **both** of the following in this exact order:
 Rules:
 - The text greeting MUST appear before any tool call.
 - Call exactly one tool (store_message) once.
-- Do not ask questions or add extra text after the tool call.`
+- Do not ask questions or add extra text after the tool call.
+
+After the tool result is supplied in a later turn, reply with "Stored successfully."`
 
 	conv := NewConversation(llmmodel.DefaultModel, instructions)
 	require.NoError(t, conv.AddUserTurn("Hello Mr. Automaton."))
@@ -159,7 +161,7 @@ Rules:
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "minimal"})
+	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low"})
 
 	var (
 		gotToolUse   bool
@@ -312,7 +314,7 @@ After the tool result is supplied, reply with "Final answer: <value>" where <val
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "minimal"})
+	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low"})
 
 	var (
 		firstResp *Turn
@@ -344,7 +346,7 @@ After the tool result is supplied, reply with "Final answer: <value>" where <val
 	require.NotEmpty(t, call.CallID)
 
 	rawInput := strings.TrimSpace(call.Input)
-	require.True(t, strings.HasPrefix(rawInput, "answer:"), "tool input should start with answer:")
+	require.True(t, strings.HasPrefix(rawInput, "answer:"))
 	value := strings.TrimSpace(strings.TrimPrefix(rawInput, "answer:"))
 	assert.Equal(t, requestedNumber, value)
 
@@ -412,7 +414,7 @@ func TestOpenAIResponsesProvider_Reasoning(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low"})
+	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "high"})
 
 	var completeResp *Turn
 	gotCreated := false
@@ -779,7 +781,7 @@ In your FIRST response, call the tool 'two_param_tool' exactly once with this JS
 {"first":"hello"}  // do NOT include "second".
 Do not include any assistant text outside of the tool call.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-4o-mini"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{twoParamTool{name: toolName}}))
 
@@ -845,9 +847,10 @@ func TestOpenAIResponsesProvider_ToolWithNoParams(t *testing.T) {
 
 	system := `You are a precise assistant.
 In your FIRST response, invoke the tool 'noop_tool' exactly once with no arguments.
-Do not include any assistant text outside of the tool call.`
+Do not include any assistant text outside of the tool call.
+After the tool result is supplied, reply with "Noop complete."`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-4o-mini"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{noParamTool{name: toolName}}))
 
@@ -874,8 +877,8 @@ Do not include any assistant text outside of the tool call.`
 			in := strings.TrimSpace(ev.ToolCall.Input)
 			if !(in == "") {
 				var obj map[string]any
-				if assert.NoError(t, json.Unmarshal([]byte(in), &obj), "tool input must be JSON object or empty") {
-					assert.Len(t, obj, 0, "no-arg tool should have 0 keys in arguments")
+				if assert.NoError(t, json.Unmarshal([]byte(in), &obj)) {
+					assert.Len(t, obj, 0)
 				}
 			}
 			firstCall = ev.ToolCall
