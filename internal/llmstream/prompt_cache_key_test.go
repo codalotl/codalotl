@@ -42,7 +42,7 @@ func TestOpenAIResponsesParams_IncludePromptCacheKey(t *testing.T) {
 	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system prompt").(*streamingConversation)
 	require.NoError(t, sc.AddUserTurn("hello"))
 
-	req, err := sc.buildOpenAIResponsesParams(llmmodel.ModelInfo{ProviderModelID: "gpt-4o-mini"})
+	req, err := sc.buildOpenAIResponsesParams(llmmodel.ModelInfo{ProviderModelID: "gpt-4o-mini"}, nil)
 	require.NoError(t, err)
 
 	b, err := json.Marshal(req)

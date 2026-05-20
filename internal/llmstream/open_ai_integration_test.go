@@ -502,7 +502,7 @@ func TestOpenAIResponsesProvider_Reasoning(t *testing.T) {
 	assert.Equal(t, "395", m.TextContent())
 }
 
-func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
+func TestOpenAIResponsesProvider_NoStoreZDRToolFlow(t *testing.T) {
 	if !runIntegrationTest(t, "OPENAI_API_KEY") {
 		return
 	}
@@ -513,19 +513,31 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 		toolReply = "72 F"
 	)
 
-	// Instruct the model to call the tool and then reply with only the tool result
-	conv := NewConversation(llmmodel.DefaultModel, "You are a precise assistant. Use the available tool to answer and then reply ONLY with the tool result string.")
+	systemPrompt := `You are a precise assistant. Use the available tool to answer and then reply ONLY with the tool result string.
+
+The following stable prefix is intentionally long so the second no-store request can demonstrate provider input caching:
+` + strings.Repeat("cache anchor alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n", 220)
+
+	modelID := llmmodel.ModelID("test-openai-zdr-gpt-4o-mini")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+
+	conv := NewConversation(modelID, systemPrompt)
+	sc := conv.(*streamingConversation)
 	require.NoError(t, conv.AddUserTurn("Call the tool named get_weather with the JSON {\"location\":\"San Francisco\"}. After you receive the result, reply with exactly the function call result and nothing else."))
 
 	// Register the weather tool
 	tool := getWeatherTestTool{name: toolName, fixedTemp: toolReply}
 	require.NoError(t, conv.AddTools([]Tool{tool}))
 
+	hook := &recordingDiagnosticHook{}
+	unregister := AddDiagnosticHook(hook)
+	defer unregister()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// First send: expect a tool call, with reasoning enabled and NoLink=true
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low", NoLink: true})
+	// First send: expect a tool call, with OpenAI no-store/ZDR request semantics.
+	events := conv.SendAsync(ctx, SendOptions{NoStore: true, TemperaturePresent: true, Temperature: 0.0})
 
 	var (
 		gotToolUse bool
@@ -557,6 +569,10 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 	require.NotNil(t, firstResp)
 	require.NotNil(t, firstCall)
 	require.Equal(t, FinishReasonToolUse, firstResp.FinishReason)
+	assert.Empty(t, sc.providerConversationID)
+
+	require.Len(t, hook.turns, 1)
+	assertOpenAINoStoreDiagnosticRequest(t, hook.turns[0].Request)
 
 	// Provide tool result matching the emitted tool call
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
@@ -565,8 +581,8 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 	tr := tool.Run(ctx2, ToolCall{CallID: firstCall.CallID, Name: firstCall.Name, Input: firstCall.Input, Type: firstCall.Type})
 	require.NoError(t, conv.AddToolResults([]ToolResult{tr}))
 
-	// Second send: expect a plain text answer echoing the tool result, with NoLink=true again
-	events2 := conv.SendAsync(ctx2, SendOptions{ReasoningEffort: "low", NoLink: true})
+	// Second send: expect a plain text answer echoing the tool result, still without server linking.
+	events2 := conv.SendAsync(ctx2, SendOptions{NoStore: true, TemperaturePresent: true, Temperature: 0.0})
 
 	var finalResp *Turn
 	for ev := range events2 {
@@ -585,6 +601,16 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 	require.NotNil(t, finalResp)
 	assert.Equal(t, FinishReasonEndTurn, finalResp.FinishReason)
 	assert.Empty(t, finalResp.ToolCalls())
+	assert.Empty(t, sc.providerConversationID)
+
+	require.Len(t, hook.turns, 2)
+	assertOpenAINoStoreDiagnosticRequest(t, hook.turns[1].Request)
+	secondRequestJSON := mustMarshalDiagnosticJSON(t, hook.turns[1].Request)
+	assert.Contains(t, secondRequestJSON, "cache anchor alpha beta")
+	assert.Contains(t, secondRequestJSON, "Call the tool named get_weather")
+	assert.Contains(t, secondRequestJSON, toolName)
+	assert.Contains(t, secondRequestJSON, toolReply)
+	assert.Greater(t, finalResp.Usage.CachedInputTokens, int64(0))
 
 	// Reply back with the function call result; keep assertion tolerant to formatting
 	if assert.NotEmpty(t, finalResp.Parts) {
@@ -610,6 +636,14 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 		assert.Contains(t, tc.Content, toolReply)
 		assert.Contains(t, last.TextContent(), toolReply)
 	}
+}
+
+func assertOpenAINoStoreDiagnosticRequest(t *testing.T, request map[string]any) {
+	t.Helper()
+
+	assert.Equal(t, false, request["store"])
+	assert.NotContains(t, request, "previous_response_id")
+	assert.NotEmpty(t, request["input"])
 }
 
 // integrationTestTool implements Tool for integration testing.

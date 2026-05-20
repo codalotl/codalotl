@@ -46,19 +46,10 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	}
 	client := openai.NewClient(opts...)
 
-	params, err := sc.buildOpenAIResponsesParams(modelInfo)
+	params, err := sc.buildOpenAIResponsesRequestParams(modelInfo, opt)
 	if err != nil {
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.build_params", err)
 	}
-	// Link with previous response ID if available
-	if sc.providerConversationID != "" {
-		params.PreviousResponseID = param.NewOpt(sc.providerConversationID)
-	}
-	if err := openAIResponsesApplySendOptions(&params, modelInfo, opt); err != nil {
-		return Turn{}, sc.LogWrappedErr("open_ai_send_async.options", err)
-	}
-
-	params.ParallelToolCalls = param.NewOpt(true)
 
 	debugPrint(debugHTTPRequests, "HTTP REQUEST: create response(streaming=true)", params)
 
@@ -172,15 +163,27 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogNewErr("open_ai_send_async.not_completed")
 	}
 
-	// Record the latest response ID so the next turn can link via PreviousResponseID
-	// NOTE: may want to make this a slice?
-	if !(opt != nil && opt.NoLink) {
-		sc.providerConversationID = finalResp.ProviderID
-	}
+	sc.recordOpenAIResponseLink(*finalResp, opt)
 
 	resp := *finalResp
 	resp.Role = RoleAssistant
 	return resp, nil
+}
+
+func (sc *streamingConversation) buildOpenAIResponsesRequestParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
+	params, err := sc.buildOpenAIResponsesParams(modelInfo, opt)
+	if err != nil {
+		return responses.ResponseNewParams{}, err
+	}
+	if openAIResponsesUsesStoredLink(opt) && sc.providerConversationID != "" {
+		params.PreviousResponseID = param.NewOpt(sc.providerConversationID)
+	}
+	if err := openAIResponsesApplySendOptions(&params, modelInfo, opt); err != nil {
+		return responses.ResponseNewParams{}, err
+	}
+
+	params.ParallelToolCalls = param.NewOpt(true)
+	return params, nil
 }
 
 func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelInfo llmmodel.ModelInfo, opt *SendOptions) error {
@@ -244,6 +247,18 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	}
 
 	return nil
+}
+
+func openAIResponsesUsesStoredLink(opt *SendOptions) bool {
+	return opt == nil || !opt.NoStore
+}
+
+func (sc *streamingConversation) recordOpenAIResponseLink(resp Turn, opt *SendOptions) {
+	if openAIResponsesUsesStoredLink(opt) {
+		sc.providerConversationID = resp.ProviderID
+		return
+	}
+	sc.providerConversationID = ""
 }
 
 func maybeEmitOpenAIDiagnosticTurn(request map[string]any, evt responses.ResponseStreamEventUnion) {
@@ -427,7 +442,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 	return nil, true, nil
 }
 
-func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.ModelInfo) (responses.ResponseNewParams, error) {
+func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
 	modelID := modelInfo.ProviderModelID
 	if modelID == "" {
 		return responses.ResponseNewParams{}, fmt.Errorf("model %q missing provider model id", string(sc.modelID))
@@ -436,7 +451,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	// The previous_response_id will provide the assistant content to the provider.
 	resps := sc.turns
 	respsToEncode := resps
-	if sc.providerConversationID != "" {
+	if openAIResponsesUsesStoredLink(opt) && sc.providerConversationID != "" {
 		lastAssistantIdx := -1
 		for i := len(resps) - 1; i >= 0; i-- {
 			if resps[i].Role == RoleAssistant {
