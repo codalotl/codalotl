@@ -22,3 +22,31 @@ Additional instructions:
   codalotl cas recertify internal/lints --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"
 - Inspect and commit CAS files produced by recertify.
 
+## Plan
+
+### Package internal/lints
+- Run `docs-add`; inspect the diff and commit it separately if safe.
+- Run `docs-fix`; inspect the diff and commit it separately if safe.
+- Run `dry`; inspect the diff and commit it separately if safe.
+- Run `test-cleanup`; inspect the diff and commit it separately if safe.
+- Run `test-ensure-coverage`; inspect the diff and commit it separately if safe.
+- Run `codalotl cas recertify internal/lints --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"` via `codalotl_cli`; inspect and commit produced CAS files.
+
+### Validation
+- After the refactors, run package tests or broader tests as appropriate.
+- Run review and changed-package SPEC conformance once implementation is complete.
+
+## Review
+
+Not yet run.
+
+## Summary
+
+TBD.
+
+## State
+
+- Branch: `jn/refactor-internal-lints`.
+- Active PR file: `.prs/2026-05-20_1779283072_refactor-internal-lints.md`.
+- Target package: `internal/lints`.
+- User specifically requested the canned refactors in order, each inspected and committed separately when safe, followed by CAS recertify.
