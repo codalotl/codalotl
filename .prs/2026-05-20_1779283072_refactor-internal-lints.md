@@ -25,7 +25,7 @@ Additional instructions:
 ## Plan
 
 ### Package internal/lints
-- Run `docs-add`; inspect the diff and commit it separately if safe.
+- [DONE] Run `docs-add`; inspected documentation-only diff and committed it separately.
 - Run `docs-fix`; inspect the diff and commit it separately if safe.
 - Run `dry`; inspect the diff and commit it separately if safe.
 - Run `test-cleanup`; inspect the diff and commit it separately if safe.
@@ -50,3 +50,4 @@ TBD.
 - Active PR file: `.prs/2026-05-20_1779283072_refactor-internal-lints.md`.
 - Target package: `internal/lints`.
 - User specifically requested the canned refactors in order, each inspected and committed separately when safe, followed by CAS recertify.
+- `docs-add` added internal helper documentation in `internal/lints/lints.go`; `go test ./internal/lints` passed.
