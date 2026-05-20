@@ -1106,6 +1106,74 @@ func TestNewAgentCreatorConstructsRootAgent(t *testing.T) {
 	require.Equal(t, StatusIdle, a.Status())
 }
 
+func TestNewAgentCreatorMergesDefaultOptions(t *testing.T) {
+	systemPrompt := "You are helpful."
+	packageDefault := llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
+	creatorModel := llmmodel.ModelID("creator-model")
+	callModel := llmmodel.ModelID("call-model")
+
+	testCases := []struct {
+		name        string
+		creatorOpts []NewOptions
+		callOpts    []NewOptions
+		wantModel   llmmodel.ModelID
+		wantNoStore bool
+	}{
+		{
+			name:      "no arg creator uses package default",
+			wantModel: packageDefault,
+		},
+		{
+			name:        "creator default model is used",
+			creatorOpts: []NewOptions{{Model: creatorModel}},
+			wantModel:   creatorModel,
+		},
+		{
+			name:        "per call model overrides creator default",
+			creatorOpts: []NewOptions{{Model: creatorModel}},
+			callOpts:    []NewOptions{{Model: callModel}},
+			wantModel:   callModel,
+		},
+		{
+			name:        "creator no store is sticky with zero value per call option",
+			creatorOpts: []NewOptions{{Model: creatorModel, NoStore: true}},
+			callOpts:    []NewOptions{{}},
+			wantModel:   creatorModel,
+			wantNoStore: true,
+		},
+		{
+			name:        "per call no store opts in",
+			creatorOpts: []NewOptions{{Model: creatorModel}},
+			callOpts:    []NewOptions{{NoStore: true}},
+			wantModel:   creatorModel,
+			wantNoStore: true,
+		},
+		{
+			name: "creator defaults merge",
+			creatorOpts: []NewOptions{
+				{Model: llmmodel.ModelID("first-creator-model")},
+				{Model: creatorModel, NoStore: true},
+			},
+			wantModel:   creatorModel,
+			wantNoStore: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			conv := newScriptedConversation(systemPrompt)
+			overrideConversation(t, conv)
+
+			creator := NewAgentCreator(tc.creatorOpts...)
+			a, err := creator.New(systemPrompt, nil, tc.callOpts...)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.wantModel, a.model)
+			require.Equal(t, tc.wantNoStore, a.noStore)
+		})
+	}
+}
+
 func TestNoStoreAgentPassesNoStoreOnEverySend(t *testing.T) {
 	systemPrompt := "You are helpful."
 
