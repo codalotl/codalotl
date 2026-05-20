@@ -109,7 +109,9 @@ const ToolNameRefactor = "refactor"
 ```
 
 ```go {api}
-// CASNamespaceSpecs returns CAS namespace specs owned by refactor.
+// CASNamespaceSpecs returns refactor-owned CAS namespace specs for code-unit CAS-backed refactors.
+//
+// cas-ignore refactors are omitted.
 func CASNamespaceSpecs() []gocas.NamespaceSpec
 ```
 

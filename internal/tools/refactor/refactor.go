@@ -160,7 +160,9 @@ var refactorRegistry = []refactorConfig{
 	},
 }
 
-// CASNamespaceSpecs returns CAS namespace specs owned by refactor.
+// CASNamespaceSpecs returns refactor-owned CAS namespace specs for code-unit CAS-backed refactors.
+//
+// cas-ignore refactors are omitted.
 func CASNamespaceSpecs() []gocas.NamespaceSpec {
 	specs := make([]gocas.NamespaceSpec, 0)
 	for _, cfg := range refactorRegistry {
