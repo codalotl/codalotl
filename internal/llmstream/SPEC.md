@@ -7,6 +7,12 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 ### OpenAI
 
 - Implements responses API only.
+- `SendOptions.NoStore` uses OpenAI Responses ZDR semantics:
+	- Sends `store=false`.
+	- Does not send `previous_response_id`.
+	- Does not retain response IDs for future linking.
+	- Sends full local conversation history on every request.
+- Default OpenAI behavior stores/links responses server-side where supported.
 
 ### Anthropic
 
@@ -87,7 +93,6 @@ type SendOptions struct {
 	TemperaturePresent bool
 	Temperature        float64
 	ServiceTier        string
-	NoLink             bool
 	NoStore            bool
 }
 

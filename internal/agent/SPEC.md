@@ -111,8 +111,11 @@ type AgentCreator interface {
 type NewOptions struct {
 	Model         llmmodel.ModelID
 	SubagentLabel string
+	NoStore      bool
 }
 ```
+
+No-store agents pass `llmstream.SendOptions{NoStore: true}` on each provider send. Subagents inherit no-store behavior from parent agents.
 
 Every `Event` includes metadata describing the originator so TUIs can attribute mirrored events:
 
@@ -198,6 +201,7 @@ func NewAgentCreator() AgentCreator
 type NewOptions struct {
 	Model         llmmodel.ModelID
 	SubagentLabel string
+	NoStore      bool
 }
 
 // AgentCreator can construct either a root Agent or a SubAgent, depending on how it was obtained.
