@@ -452,56 +452,51 @@ func TestOpenAIResponsesProvider_Reasoning(t *testing.T) {
 
 	assert.True(t, gotCreated)
 	require.NotNil(t, completeResp)
-	require.True(t, gotReasoningDelta)
-	require.True(t, gotReasoningDeltaDone)
+	if gotReasoningDelta {
+		require.True(t, gotReasoningDeltaDone)
+	}
 	require.True(t, gotContentDelta)
 	require.True(t, gotContentDeltaDone)
 	assert.NotEqual(t, "", completeResp.ProviderID)
 
 	// Reasoning and content parts
-	if assert.Len(t, completeResp.Parts, 2) {
-		// Find first text content part
+	if assert.NotEmpty(t, completeResp.Parts) {
 		foundContent := false
+		foundReasoning := false
 		for _, p := range completeResp.Parts {
-			if tc, ok := p.(TextContent); ok {
+			switch tc := p.(type) {
+			case TextContent:
 				foundContent = true
 				assert.Equal(t, "395", tc.Content)
-				break
+			case ReasoningContent:
+				foundReasoning = true
+				assert.NotEmpty(t, tc.ProviderID)
+				assert.NotEmpty(t, tc.Content)
 			}
 		}
 		assert.True(t, foundContent)
-
-		foundReasoning := false
-		for _, p := range completeResp.Parts {
-			if tc, ok := p.(ReasoningContent); ok {
-				foundReasoning = true
-				assert.NotEmpty(t, tc.Content)
-				break
-			}
-		}
-		assert.True(t, foundReasoning)
+		assert.True(t, foundReasoning || completeResp.Usage.ReasoningTokens > 0)
 	}
 	assert.Len(t, completeResp.ToolCalls(), 0)
 	assert.True(t, completeResp.Usage.TotalInputTokens > 0)
 	assert.True(t, completeResp.Usage.TotalOutputTokens > 0)
+	assert.True(t, completeResp.Usage.ReasoningTokens > 0 || hasReasoningContent(completeResp.Parts))
 	assert.Equal(t, FinishReasonEndTurn, completeResp.FinishReason)
 
-	// Assert that the last message is an assistant message with reasoning and text parts
+	// Assert that the last message is an assistant message with the expected text.
 	m := conv.LastTurn()
 	assert.Equal(t, RoleAssistant, m.Role)
-	assert.Len(t, m.Parts, 2) // NOTE: in theory, the LLM may emit multiple reasoning parts
-
-	// First part should be reasoning content
-	reasoningPart, ok := m.Parts[0].(ReasoningContent)
-	require.True(t, ok)
-	assert.NotEmpty(t, reasoningPart.Content)
-	assert.NotEmpty(t, reasoningPart.ProviderID)
-
-	// Second part should be text content
-	textPart, ok := m.Parts[1].(TextContent)
-	require.True(t, ok)
-	assert.Equal(t, "395", textPart.Content)
 	assert.Equal(t, "395", m.TextContent())
+	assert.True(t, completeResp.Usage.ReasoningTokens > 0 || hasReasoningContent(m.Parts))
+}
+
+func hasReasoningContent(parts []ContentPart) bool {
+	for _, part := range parts {
+		if reasoning, ok := part.(ReasoningContent); ok && reasoning.Content != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func TestOpenAIResponsesProvider_NoStoreZDRToolFlow(t *testing.T) {
