@@ -127,6 +127,108 @@ func TestBuildOpenAIResponsesRequestParams_DefaultFullHistoryKeepsPersistedProvi
 	assert.Contains(t, reqJSON, "ct_persisted")
 }
 
+func TestBuildOpenAIResponsesRequestParams_StoredReplayAfterNoStoreScrubOmitsNoStoreProviderIDs(t *testing.T) {
+	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("first question"))
+
+	functionCall := ToolCall{
+		ProviderID: "fc_unstored",
+		CallID:     "call_function_value",
+		Name:       "lookup_weather",
+		Type:       "function_call",
+		Input:      `{"city":"Paris"}`,
+	}
+	customCall := ToolCall{
+		ProviderID: "ct_unstored",
+		CallID:     "call_custom_value",
+		Name:       "structured_answer",
+		Type:       "custom_tool_call",
+		Input:      "answer:7",
+	}
+	completedEventTurn := Turn{
+		Role:       RoleAssistant,
+		ProviderID: "resp_unstored",
+		Parts: []ContentPart{
+			ReasoningContent{ProviderID: "rs_unstored", Content: "private reasoning summary"},
+			TextContent{ProviderID: "msg_unstored", Content: "assistant value answer"},
+			functionCall,
+			customCall,
+		},
+		Usage: TokenUsage{
+			TotalInputTokens:  11,
+			ReasoningTokens:   2,
+			TotalOutputTokens: 7,
+		},
+		FinishReason: FinishReasonToolUse,
+	}
+
+	retainedTurn := openAIResponsesScrubNoStoreTurn(completedEventTurn)
+	sc.turns = append(sc.turns, retainedTurn)
+	for _, call := range retainedTurn.ToolCalls() {
+		sc.toolCalls[call.CallID] = toolCallResult{call: call}
+	}
+
+	assert.Equal(t, "resp_unstored", completedEventTurn.ProviderID)
+	assert.Empty(t, retainedTurn.ProviderID)
+	assert.Equal(t, completedEventTurn.Usage, retainedTurn.Usage)
+	assert.Equal(t, completedEventTurn.FinishReason, retainedTurn.FinishReason)
+	assert.Equal(t, "assistant value answer", retainedTurn.TextContent())
+	require.Len(t, retainedTurn.Parts, 3)
+	for _, part := range retainedTurn.Parts {
+		switch part := part.(type) {
+		case TextContent:
+			assert.Empty(t, part.ProviderID)
+		case ToolCall:
+			assert.Empty(t, part.ProviderID)
+			assert.NotEmpty(t, part.CallID)
+			assert.NotEmpty(t, part.Name)
+			assert.NotEmpty(t, part.Type)
+			assert.NotEmpty(t, part.Input)
+		case ReasoningContent:
+			t.Fatalf("reasoning content should not be retained")
+		}
+	}
+
+	functionResult := ToolResult{
+		CallID: functionCall.CallID,
+		Name:   functionCall.Name,
+		Type:   functionCall.Type,
+		Result: "72 F",
+	}
+	customResult := ToolResult{
+		CallID: customCall.CallID,
+		Name:   customCall.Name,
+		Type:   customCall.Type,
+		Result: "acknowledged 7",
+	}
+	require.NoError(t, sc.AddToolResults([]ToolResult{functionResult, customResult}))
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIRequestShapeModelInfo(), nil)
+	require.NoError(t, err)
+
+	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, true, req["store"])
+	assert.NotContains(t, req, "previous_response_id")
+	assert.Contains(t, reqJSON, "system instructions")
+	assert.Contains(t, reqJSON, "first question")
+	assert.Contains(t, reqJSON, "assistant value answer")
+	assert.Contains(t, reqJSON, "lookup_weather")
+	assert.Contains(t, reqJSON, "structured_answer")
+	assert.Contains(t, reqJSON, "call_function_value")
+	assert.Contains(t, reqJSON, "call_custom_value")
+	assert.Contains(t, reqJSON, "Paris")
+	assert.Contains(t, reqJSON, "answer:7")
+	assert.Contains(t, reqJSON, "72 F")
+	assert.Contains(t, reqJSON, "acknowledged 7")
+	assert.NotContains(t, reqJSON, "resp_unstored")
+	assert.NotContains(t, reqJSON, "rs_unstored")
+	assert.NotContains(t, reqJSON, "private reasoning summary")
+	assert.NotContains(t, reqJSON, "msg_unstored")
+	assert.NotContains(t, reqJSON, "fc_unstored")
+	assert.NotContains(t, reqJSON, "ct_unstored")
+	assert.NotContains(t, reqJSON, `"type":"reasoning"`)
+}
+
 func TestRecordOpenAIResponseLink_NoStoreClearsRetainedLink(t *testing.T) {
 	sc := openAIRequestShapeConversation(t)
 	require.NotEmpty(t, sc.providerConversationID)

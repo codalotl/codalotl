@@ -167,6 +167,9 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 
 	resp := *finalResp
 	resp.Role = RoleAssistant
+	if opt != nil && opt.NoStore {
+		resp = openAIResponsesScrubNoStoreTurn(resp)
+	}
 	return resp, nil
 }
 
@@ -259,6 +262,33 @@ func (sc *streamingConversation) recordOpenAIResponseLink(resp Turn, opt *SendOp
 		return
 	}
 	sc.providerConversationID = ""
+}
+
+func openAIResponsesScrubNoStoreTurn(turn Turn) Turn {
+	turn.ProviderID = ""
+	if len(turn.Parts) == 0 {
+		return turn
+	}
+
+	parts := make([]ContentPart, 0, len(turn.Parts))
+	for _, part := range turn.Parts {
+		switch p := part.(type) {
+		case TextContent:
+			p.ProviderID = ""
+			parts = append(parts, p)
+		case ReasoningContent:
+			// OpenAI reasoning items require provider item IDs/state that no-store
+			// responses do not persist. Keep them out of retained replay history.
+			continue
+		case ToolCall:
+			p.ProviderID = ""
+			parts = append(parts, p)
+		default:
+			parts = append(parts, part)
+		}
+	}
+	turn.Parts = parts
+	return turn
 }
 
 func maybeEmitOpenAIDiagnosticTurn(request map[string]any, evt responses.ResponseStreamEventUnion) {
@@ -551,7 +581,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					return responses.ResponseNewParams{}, fmt.Errorf("unknown or missing call type for tool result %s", tpart.CallID)
 				}
 			case ReasoningContent:
-				if !includeProviderItemIDs {
+				if !includeProviderItemIDs || tpart.ProviderID == "" {
 					// Reasoning summaries require their provider item ID to replay.
 					// No-store responses do not persist those IDs server-side.
 					continue

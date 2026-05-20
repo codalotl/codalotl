@@ -11,7 +11,9 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 	- Sends `store=false`.
 	- Does not send `previous_response_id`.
 	- Does not retain response IDs for future linking.
-	- Sends full local conversation history on every request.
+	- Sends full replayable local conversation history on every request: visible messages, tool calls, and tool results are replayed by value.
+	- Does not replay provider output item IDs or provider reasoning items that require stored OpenAI state.
+	- Retained no-store assistant turns omit provider IDs/reasoning state that require stored OpenAI state.
 - Default OpenAI behavior stores/links responses server-side where supported.
 
 ### Anthropic
