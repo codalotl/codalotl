@@ -26,7 +26,7 @@ Additional instructions:
 
 ### Package internal/lints
 - [DONE] Run `docs-add`; inspected documentation-only diff and committed it separately.
-- Run `docs-fix`; inspect the diff and commit it separately if safe.
+- [DONE] Run `docs-fix`; inspected documentation-only diff and committed it separately with CAS.
 - Run `dry`; inspect the diff and commit it separately if safe.
 - Run `test-cleanup`; inspect the diff and commit it separately if safe.
 - Run `test-ensure-coverage`; inspect the diff and commit it separately if safe.
@@ -51,3 +51,4 @@ TBD.
 - Target package: `internal/lints`.
 - User specifically requested the canned refactors in order, each inspected and committed separately when safe, followed by CAS recertify.
 - `docs-add` added internal helper documentation in `internal/lints/lints.go`; `go test ./internal/lints` passed.
+- `docs-fix` clarified `Step.Situations` docs and added `.codalotl/cas/docs-fix-1/6b/f6e62d2e0c7d2eb00bd834f241ee126a2643974430de620884c80f3212a201`; `go test ./internal/lints` passed.
