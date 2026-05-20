@@ -465,6 +465,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	}
 
 	inputItems := make(responses.ResponseInputParam, 0, len(respsToEncode))
+	includeProviderItemIDs := openAIResponsesUsesStoredLink(opt)
 	for _, resp := range respsToEncode {
 
 		// Collect all text parts. A text part maps to a message, for a single msg on our side, we only want to make one message on their side.
@@ -516,7 +517,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					functionCall.Arguments = tpart.Input
 					functionCall.CallID = tpart.CallID
 					functionCall.Name = tpart.Name
-					if tpart.ProviderID != "" {
+					if includeProviderItemIDs && tpart.ProviderID != "" {
 						functionCall.ID = param.NewOpt(tpart.ProviderID)
 					}
 					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCall: &functionCall})
@@ -525,7 +526,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					customToolCall.Input = tpart.Input
 					customToolCall.CallID = tpart.CallID
 					customToolCall.Name = tpart.Name
-					if tpart.ProviderID != "" {
+					if includeProviderItemIDs && tpart.ProviderID != "" {
 						customToolCall.ID = param.NewOpt(tpart.ProviderID)
 					}
 					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfCustomToolCall: &customToolCall})
@@ -550,6 +551,11 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					return responses.ResponseNewParams{}, fmt.Errorf("unknown or missing call type for tool result %s", tpart.CallID)
 				}
 			case ReasoningContent:
+				if !includeProviderItemIDs {
+					// Reasoning summaries require their provider item ID to replay.
+					// No-store responses do not persist those IDs server-side.
+					continue
+				}
 				if !idToAddedResponse[tpart.ProviderID] {
 					idToAddedResponse[tpart.ProviderID] = true
 					summaryList := []responses.ResponseReasoningItemSummaryParam{}

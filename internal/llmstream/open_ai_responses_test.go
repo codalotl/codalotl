@@ -79,6 +79,54 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistor
 	assert.Contains(t, reqJSON, "second question")
 }
 
+func TestBuildOpenAIResponsesRequestParams_NoStoreOmitsPersistedProviderItemIDs(t *testing.T) {
+	sc := openAIProviderItemReplayConversation(t)
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIRequestShapeModelInfo(), &SendOptions{NoStore: true})
+	require.NoError(t, err)
+
+	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, false, req["store"])
+	assert.NotContains(t, req, "previous_response_id")
+
+	input := openAIResponsesRequestInput(t, req)
+	require.NotEmpty(t, input)
+	assert.Contains(t, reqJSON, "system instructions")
+	assert.Contains(t, reqJSON, "first question")
+	assert.Contains(t, reqJSON, "assistant value answer")
+	assert.Contains(t, reqJSON, "lookup_weather")
+	assert.Contains(t, reqJSON, "structured_answer")
+	assert.Contains(t, reqJSON, "call_function_value")
+	assert.Contains(t, reqJSON, "call_custom_value")
+	assert.Contains(t, reqJSON, "Paris")
+	assert.Contains(t, reqJSON, "answer:7")
+	assert.Contains(t, reqJSON, "72 F")
+	assert.Contains(t, reqJSON, "acknowledged 7")
+	assert.NotContains(t, reqJSON, "resp_first")
+	assert.NotContains(t, reqJSON, "rs_persisted")
+	assert.NotContains(t, reqJSON, "private reasoning summary")
+	assert.NotContains(t, reqJSON, "msg_persisted")
+	assert.NotContains(t, reqJSON, "fc_persisted")
+	assert.NotContains(t, reqJSON, "ct_persisted")
+	assert.NotContains(t, reqJSON, `"type":"reasoning"`)
+}
+
+func TestBuildOpenAIResponsesRequestParams_DefaultFullHistoryKeepsPersistedProviderItemIDs(t *testing.T) {
+	sc := openAIProviderItemReplayConversation(t)
+	sc.providerConversationID = ""
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIRequestShapeModelInfo(), nil)
+	require.NoError(t, err)
+
+	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, true, req["store"])
+	assert.NotContains(t, req, "previous_response_id")
+	assert.Contains(t, reqJSON, "rs_persisted")
+	assert.Contains(t, reqJSON, "private reasoning summary")
+	assert.Contains(t, reqJSON, "fc_persisted")
+	assert.Contains(t, reqJSON, "ct_persisted")
+}
+
 func TestRecordOpenAIResponseLink_NoStoreClearsRetainedLink(t *testing.T) {
 	sc := openAIRequestShapeConversation(t)
 	require.NotEmpty(t, sc.providerConversationID)
@@ -111,6 +159,59 @@ func openAIRequestShapeConversation(t *testing.T) *streamingConversation {
 		},
 	})
 	require.NoError(t, sc.AddUserTurn("second question"))
+	sc.providerConversationID = "resp_first"
+	return sc
+}
+
+func openAIProviderItemReplayConversation(t *testing.T) *streamingConversation {
+	t.Helper()
+
+	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("first question"))
+
+	functionCall := ToolCall{
+		ProviderID: "fc_persisted",
+		CallID:     "call_function_value",
+		Name:       "lookup_weather",
+		Type:       "function_call",
+		Input:      `{"city":"Paris"}`,
+	}
+	customCall := ToolCall{
+		ProviderID: "ct_persisted",
+		CallID:     "call_custom_value",
+		Name:       "structured_answer",
+		Type:       "custom_tool_call",
+		Input:      "answer:7",
+	}
+	sc.turns = append(sc.turns, Turn{
+		Role:       RoleAssistant,
+		ProviderID: "resp_first",
+		Parts: []ContentPart{
+			ReasoningContent{ProviderID: "rs_persisted", Content: "private reasoning summary"},
+			TextContent{ProviderID: "msg_persisted", Content: "assistant value answer"},
+			functionCall,
+			customCall,
+		},
+	})
+
+	functionResult := ToolResult{
+		CallID: functionCall.CallID,
+		Name:   functionCall.Name,
+		Type:   functionCall.Type,
+		Result: "72 F",
+	}
+	customResult := ToolResult{
+		CallID: customCall.CallID,
+		Name:   customCall.Name,
+		Type:   customCall.Type,
+		Result: "acknowledged 7",
+	}
+	sc.toolCalls[functionCall.CallID] = toolCallResult{call: functionCall, result: &functionResult}
+	sc.toolCalls[customCall.CallID] = toolCallResult{call: customCall, result: &customResult}
+	sc.turns = append(sc.turns, Turn{
+		Role:  RoleUser,
+		Parts: []ContentPart{functionResult, customResult},
+	})
 	sc.providerConversationID = "resp_first"
 	return sc
 }

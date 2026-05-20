@@ -607,6 +607,10 @@ The following stable prefix is intentionally long so the second no-store request
 	assert.Contains(t, secondRequestJSON, "Call the tool named get_weather")
 	assert.Contains(t, secondRequestJSON, toolName)
 	assert.Contains(t, secondRequestJSON, toolReply)
+	for _, id := range openAIProviderItemIDs(firstResp.Parts) {
+		assert.NotContains(t, secondRequestJSON, id)
+	}
+	assert.NotContains(t, secondRequestJSON, `"type":"reasoning"`)
 	assert.Greater(t, finalResp.Usage.CachedInputTokens, int64(0))
 
 	// Reply back with the function call result; keep assertion tolerant to formatting
@@ -641,6 +645,27 @@ func assertOpenAINoStoreDiagnosticRequest(t *testing.T, request map[string]any) 
 	assert.Equal(t, false, request["store"])
 	assert.NotContains(t, request, "previous_response_id")
 	assert.NotEmpty(t, request["input"])
+}
+
+func openAIProviderItemIDs(parts []ContentPart) []string {
+	var ids []string
+	for _, part := range parts {
+		switch part := part.(type) {
+		case TextContent:
+			if part.ProviderID != "" {
+				ids = append(ids, part.ProviderID)
+			}
+		case ReasoningContent:
+			if part.ProviderID != "" {
+				ids = append(ids, part.ProviderID)
+			}
+		case ToolCall:
+			if part.ProviderID != "" {
+				ids = append(ids, part.ProviderID)
+			}
+		}
+	}
+	return ids
 }
 
 // integrationTestTool implements Tool for integration testing.
