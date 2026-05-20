@@ -46,6 +46,7 @@ This makes a new PR File with proper naming and sets up a git branch for the orc
 ### codalotl pr refactor --package=<path/to/pkg>
 
 This is a special case of `codalotl pr new`.
+- `--package` is required.
 - Feature name is automatically generated. Something like `refactor-internal-mypkg` (if `internal/mypkg` is the package).
 - PR file pre-baked instructions on how to refactor the package.
 - Instructions include which specific refactors to do, how to do commits, how to review, how to deal with CAS files and recertify them, and so on.
