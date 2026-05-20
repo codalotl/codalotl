@@ -92,8 +92,10 @@ type Step struct {
 	ID string `json:"id,omitempty"`
 
 	// The step will be run in the following situations.
-	//   - If omitted/null: run in all situations.
+	//   - If omitted/null: fully specified steps run in all situations; ID-only preconfigured steps inherit their built-in situations (ex: reflow, spec-fmt, and spec-diff
+	//     use limited defaults).
 	//   - If []: run in no situations (disable).
+	//   - Reflow is skipped in SituationInitial regardless of Situations.
 	Situations []Situation `json:"situations,omitempty"`
 
 	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no non-whitespace output: step
