@@ -39,6 +39,7 @@ Notes:
 - `codalotl_cli` exposes these commands:
 	- `codalotl docs add`
 	- `codalotl docs fix`
+	- `codalotl cas recertify`
 
 ### codalotl -h, codalotl --help
 
@@ -194,6 +195,19 @@ Git behavior:
 If `--no-git` is set:
 - Do not require git state.
 - Only create the PR file.
+
+### codalotl pr refactor --package=<path/to/pkg>
+
+Creates a PR file and branch for the package-refactor orchestrator flow:
+- Does not require LLM configuration or startup tool validation.
+- `--package` is required and follows usual single-package argument semantics.
+- Feature name is generated from resolved package path, prefixed with `refactor-`.
+- Uses `pr new` git behavior.
+- PR file User Summary includes:
+	- target package
+	- refactor order: `docs-add`, `docs-fix`, `dry`, `test-cleanup`, `test-ensure-coverage`
+	- instructions to inspect and commit each refactor separately, including relevant CAS files
+	- instructions to run `codalotl cas recertify` through `codalotl_cli` after the final refactor for CAS namespaces that can be recertified
 
 ### codalotl context public <path/to/pkg>
 
