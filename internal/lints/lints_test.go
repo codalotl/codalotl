@@ -273,108 +273,101 @@ func TestResolveSteps_SpecFmtWidthPropagation(t *testing.T) {
 }
 
 func TestLints_Reflows(t *testing.T) {
-	t.Run("default false", func(t *testing.T) {
-		require.False(t, (Lints{}).Reflows())
-	})
-
-	t.Run("extend with reflow", func(t *testing.T) {
-		cfg := Lints{
-			Mode: ConfigModeExtend,
-			Steps: []Step{
-				{ID: "reflow"},
+	tests := []struct {
+		name string
+		cfg  Lints
+		want bool
+	}{
+		{
+			name: "default false",
+		},
+		{
+			name: "extend with reflow",
+			cfg: Lints{
+				Mode:  ConfigModeExtend,
+				Steps: []Step{{ID: "reflow"}},
 			},
-		}
-		require.True(t, cfg.Reflows())
-	})
-
-	t.Run("disabled", func(t *testing.T) {
-		cfg := Lints{
-			Mode:    ConfigModeExtend,
-			Disable: []string{"reflow"},
-			Steps: []Step{
-				{ID: "reflow"},
+			want: true,
+		},
+		{
+			name: "disabled",
+			cfg: Lints{
+				Mode:    ConfigModeExtend,
+				Disable: []string{"reflow"},
+				Steps:   []Step{{ID: "reflow"}},
 			},
-		}
-		require.False(t, cfg.Reflows())
-	})
-
-	t.Run("situations empty means never runs", func(t *testing.T) {
-		cfg := Lints{
-			Mode: ConfigModeReplace,
-			Steps: []Step{
-				{ID: "reflow", Situations: []Situation{}},
+		},
+		{
+			name: "situations empty means never runs",
+			cfg: Lints{
+				Mode:  ConfigModeReplace,
+				Steps: []Step{{ID: "reflow", Situations: []Situation{}}},
 			},
-		}
-		require.False(t, cfg.Reflows())
-	})
-
-	t.Run("situations initial only means never runs", func(t *testing.T) {
-		cfg := Lints{
-			Mode: ConfigModeReplace,
-			Steps: []Step{
-				{ID: "reflow", Situations: []Situation{SituationInitial}},
+		},
+		{
+			name: "situations initial only means never runs",
+			cfg: Lints{
+				Mode:  ConfigModeReplace,
+				Steps: []Step{{ID: "reflow", Situations: []Situation{SituationInitial}}},
 			},
-		}
-		require.False(t, cfg.Reflows())
-	})
-
-	t.Run("situations fix means runs", func(t *testing.T) {
-		cfg := Lints{
-			Mode: ConfigModeReplace,
-			Steps: []Step{
-				{ID: "reflow", Situations: []Situation{SituationFix}},
+		},
+		{
+			name: "situations fix means runs",
+			cfg: Lints{
+				Mode:  ConfigModeReplace,
+				Steps: []Step{{ID: "reflow", Situations: []Situation{SituationFix}}},
 			},
-		}
-		require.True(t, cfg.Reflows())
-	})
-
-	t.Run("invalid config false", func(t *testing.T) {
-		cfg := Lints{
-			Mode: ConfigModeReplace,
-			Steps: []Step{
-				{ID: "reflow", Situations: []Situation{"bogus"}},
+			want: true,
+		},
+		{
+			name: "invalid config false",
+			cfg: Lints{
+				Mode:  ConfigModeReplace,
+				Steps: []Step{{ID: "reflow", Situations: []Situation{"bogus"}}},
 			},
-		}
-		require.False(t, cfg.Reflows())
-	})
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.cfg.Reflows())
+		})
+	}
 }
 
 func TestRun_NoSteps(t *testing.T) {
 	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), nil, SituationTests)
 	require.NoError(t, err)
-	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+	require.Equal(t, wantNoLintersStatus, out)
 }
 
 func TestRun_SkipsReflowDuringInitial(t *testing.T) {
 	out, err := Run(context.Background(), t.TempDir(), t.TempDir(), []Step{{ID: "reflow"}}, SituationInitial)
 	require.NoError(t, err)
-	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+	require.Equal(t, wantNoLintersStatus, out)
 }
 
-func TestRun_SpecDiffSkippedWhenNoSpecMD(t *testing.T) {
-	sandboxDir, target, _ := writeTempModule(t)
-	step, ok := preconfiguredStep("spec-diff", 0)
-	require.True(t, ok)
+func TestRun_SpecStepsSkippedWhenNoSpecMD(t *testing.T) {
+	tests := []struct {
+		name      string
+		stepID    string
+		situation Situation
+	}{
+		{name: "spec diff in fix", stepID: "spec-diff", situation: SituationFix},
+		{name: "spec fmt in patch", stepID: "spec-fmt", situation: SituationPatch},
+		{name: "spec fmt in fix", stepID: "spec-fmt", situation: SituationFix},
+	}
 
-	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationFix)
-	require.NoError(t, err)
-	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
-}
-func TestRun_SpecFmtSkippedWhenNoSpecMD(t *testing.T) {
-	sandboxDir, target, _ := writeTempModule(t)
-	step, ok := preconfiguredStep("spec-fmt", 0)
-	require.True(t, ok)
-	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationPatch)
-	require.NoError(t, err)
-	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
-}
-func TestRun_SpecFmtAlsoSkippedWhenNoSpecMD_InFix(t *testing.T) {
-	sandboxDir, target, _ := writeTempModule(t)
-	step, ok := preconfiguredStep("spec-fmt", 0)
-	require.True(t, ok)
-	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationFix)
-	require.NoError(t, err)
-	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sandboxDir, target, _ := writeTempModule(t)
+			step := mustPreconfiguredStep(t, tt.stepID)
+
+			out, err := Run(context.Background(), sandboxDir, target, []Step{step}, tt.situation)
+			require.NoError(t, err)
+			require.Equal(t, wantNoLintersStatus, out)
+		})
+	}
 }
 
 func TestRun_SpecDiffRunsInProcess(t *testing.T) {
@@ -387,7 +380,7 @@ func TestRun_SpecDiffRunsInProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	// A SPEC with a declared public API that is missing in the implementation.
-	spec := strings.Join([]string{
+	writeSpec(t, target,
 		"# spec",
 		"",
 		"## Public API",
@@ -397,9 +390,7 @@ func TestRun_SpecDiffRunsInProcess(t *testing.T) {
 		"}",
 		"```",
 		"",
-	}, "\n")
-	err = os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
-	require.NoError(t, err)
+	)
 
 	// Even if the configured command is something else, `spec-diff` is executed
 	// in-process.
@@ -420,72 +411,45 @@ func TestRun_SpecDiffRunsInProcess(t *testing.T) {
 	require.Contains(t, out, "Fixing SPEC diff failures")
 	require.NotContains(t, out, "should-not-run")
 }
+
 func TestRun_SpecFmtRunsInProcess(t *testing.T) {
-	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
-	sandboxDir, target, relativePackageDir := writeTempModule(t)
-	spec := strings.Join([]string{
-		"# spec",
-		"",
-		"```go",
-		"func  Foo( ) {",
-		"}",
-		"```",
-		"",
-	}, "\n")
-	err := os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
-	require.NoError(t, err)
-	steps := []Step{{
-		ID:         "spec-fmt",
-		Situations: []Situation{SituationPatch},
-		Fix:        helperCmd("should-not-run", 0, false),
-	}}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationPatch)
-	require.NoError(t, err)
-	require.Contains(t, out, `lint-status ok="true"`)
-	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
-	require.Contains(t, out, `mode="fix"`)
-	require.NotContains(t, out, "should-not-run")
-	require.Contains(t, out, relativePackageDir+"/SPEC.md")
-	b, err := os.ReadFile(filepath.Join(target, "SPEC.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(b), "func Foo() {")
-	require.NotContains(t, string(b), "func  Foo")
-}
-func TestRun_SpecFmtRunsInProcess_InFix(t *testing.T) {
-	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
-	sandboxDir, target, relativePackageDir := writeTempModule(t)
-	spec := strings.Join([]string{
-		"# spec",
-		"",
-		"```go",
-		"func  Foo( ) {",
-		"}",
-		"```",
-		"",
-	}, "\n")
-	err := os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
-	require.NoError(t, err)
-	steps := []Step{{
-		ID:         "spec-fmt",
-		Situations: []Situation{SituationFix},
-		Fix:        helperCmd("should-not-run", 0, false),
-	}}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationFix)
-	require.NoError(t, err)
-	require.Contains(t, out, `lint-status ok="true"`)
-	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
-	require.Contains(t, out, `mode="fix"`)
-	require.NotContains(t, out, "should-not-run")
-	require.Contains(t, out, relativePackageDir+"/SPEC.md")
-	b, err := os.ReadFile(filepath.Join(target, "SPEC.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(b), "func Foo() {")
-	require.NotContains(t, string(b), "func  Foo")
+	for _, situation := range []Situation{SituationPatch, SituationFix} {
+		t.Run(string(situation), func(t *testing.T) {
+			t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+			sandboxDir, target, relativePackageDir := writeTempModule(t)
+			writeSpec(t, target,
+				"# spec",
+				"",
+				"```go",
+				"func  Foo( ) {",
+				"}",
+				"```",
+				"",
+			)
+			steps := []Step{{
+				ID:         "spec-fmt",
+				Situations: []Situation{situation},
+				Fix:        helperCmd("should-not-run", 0, false),
+			}}
+
+			out, err := Run(context.Background(), sandboxDir, target, steps, situation)
+			require.NoError(t, err)
+			require.Contains(t, out, `lint-status ok="true"`)
+			require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
+			require.Contains(t, out, `mode="fix"`)
+			require.NotContains(t, out, "should-not-run")
+			require.Contains(t, out, relativePackageDir+"/SPEC.md")
+
+			spec := readSpec(t, target)
+			require.Contains(t, spec, "func Foo() {")
+			require.NotContains(t, spec, "func  Foo")
+		})
+	}
 }
 
 func TestRun_SpecFmtRunsInProcess_ReflowWidthFromConfig(t *testing.T) {
 	sandboxDir, target, relativePackageDir := writeTempModule(t)
-	spec := strings.Join([]string{
+	writeSpec(t, target,
 		"# spec",
 		"",
 		"```go",
@@ -493,9 +457,7 @@ func TestRun_SpecFmtRunsInProcess_ReflowWidthFromConfig(t *testing.T) {
 		"func Foo() {}",
 		"```",
 		"",
-	}, "\n")
-	err := os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
-	require.NoError(t, err)
+	)
 
 	cfg := &Lints{
 		Mode: ConfigModeReplace,
@@ -512,9 +474,8 @@ func TestRun_SpecFmtRunsInProcess_ReflowWidthFromConfig(t *testing.T) {
 	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
 	require.Contains(t, out, relativePackageDir+"/SPEC.md")
 
-	b, err := os.ReadFile(filepath.Join(target, "SPEC.md"))
-	require.NoError(t, err)
-	require.Greater(t, countCommentLinesAboveFunc(string(b), "func Foo"), 1)
+	spec := readSpec(t, target)
+	require.Greater(t, countCommentLinesAboveFunc(spec, "func Foo"), 1)
 }
 
 func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
@@ -523,7 +484,7 @@ func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
 	err := os.WriteFile(filepath.Join(target, "tgt.go"), []byte("package tgt\n\nfunc Foo() {}\n"), 0o644)
 	require.NoError(t, err)
 
-	spec := strings.Join([]string{
+	writeSpec(t, target,
 		"# spec",
 		"",
 		"## Public API",
@@ -533,9 +494,7 @@ func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
 		"}",
 		"```",
 		"",
-	}, "\n")
-	err = os.WriteFile(filepath.Join(target, "SPEC.md"), []byte(spec), 0o644)
-	require.NoError(t, err)
+	)
 
 	cr := runSpecDiff(relativePackageDir, target)
 	require.Equal(t, cmdrunner.OutcomeSuccess, cr.Outcome)
@@ -549,31 +508,33 @@ func TestRunSpecDiff_NoInstructionsWhenNoDiffs(t *testing.T) {
 	// Silence unused in case a future refactor removes a module-dir dependency.
 	_ = sandboxDir
 }
-func TestRun_SpecDiffReadErrorIsVisibleInOutput(t *testing.T) {
-	sandboxDir, target, relativePackageDir := writeTempModule(t)
-	require.NoError(t, os.Mkdir(filepath.Join(target, "SPEC.md"), 0o755))
-	step, ok := preconfiguredStep("spec-diff", 0)
-	require.True(t, ok)
-	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationFix)
-	require.NoError(t, err)
-	require.Contains(t, out, `lint-status ok="false"`)
-	require.Contains(t, out, "\n$ codalotl spec diff "+relativePackageDir+"\n")
-	require.Contains(t, out, "Error: ")
-	require.Contains(t, out, relativePackageDir+"/SPEC.md")
-	require.NotContains(t, out, `message="no issues found"`)
-}
-func TestRun_SpecFmtReadErrorIsVisibleInOutput(t *testing.T) {
-	sandboxDir, target, relativePackageDir := writeTempModule(t)
-	require.NoError(t, os.Mkdir(filepath.Join(target, "SPEC.md"), 0o755))
-	step, ok := preconfiguredStep("spec-fmt", 0)
-	require.True(t, ok)
-	out, err := Run(context.Background(), sandboxDir, target, []Step{step}, SituationPatch)
-	require.NoError(t, err)
-	require.Contains(t, out, `lint-status ok="false"`)
-	require.Contains(t, out, "\n$ codalotl spec fmt "+relativePackageDir+"\n")
-	require.Contains(t, out, "Error: ")
-	require.Contains(t, out, relativePackageDir+"/SPEC.md")
-	require.NotContains(t, out, `message="no issues found"`)
+
+func TestRun_SpecStepReadErrorIsVisibleInOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		stepID    string
+		command   string
+		situation Situation
+	}{
+		{name: "spec diff", stepID: "spec-diff", command: "diff", situation: SituationFix},
+		{name: "spec fmt", stepID: "spec-fmt", command: "fmt", situation: SituationPatch},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sandboxDir, target, relativePackageDir := writeTempModule(t)
+			require.NoError(t, os.Mkdir(filepath.Join(target, "SPEC.md"), 0o755))
+			step := mustPreconfiguredStep(t, tt.stepID)
+
+			out, err := Run(context.Background(), sandboxDir, target, []Step{step}, tt.situation)
+			require.NoError(t, err)
+			require.Contains(t, out, `lint-status ok="false"`)
+			require.Contains(t, out, "\n$ codalotl spec "+tt.command+" "+relativePackageDir+"\n")
+			require.Contains(t, out, "Error: ")
+			require.Contains(t, out, relativePackageDir+"/SPEC.md")
+			require.NotContains(t, out, `message="no issues found"`)
+		})
+	}
 }
 
 func countCommentLinesAboveFunc(src string, funcPrefix string) int {
@@ -613,6 +574,31 @@ func writeTempModule(t *testing.T) (sandboxDir string, targetPkgAbsDir string, r
 	targetPkgAbsDir = filepath.Join(sandboxDir, filepath.FromSlash(relativePackageDir))
 	require.NoError(t, os.MkdirAll(targetPkgAbsDir, 0o755))
 	return sandboxDir, targetPkgAbsDir, relativePackageDir
+}
+
+const wantNoLintersStatus = `<lint-status ok="true" message="no linters"></lint-status>`
+
+func mustPreconfiguredStep(t *testing.T, id string) Step {
+	t.Helper()
+
+	step, ok := preconfiguredStep(id, 0)
+	require.True(t, ok)
+	return step
+}
+
+func writeSpec(t *testing.T, targetPkgAbsDir string, lines ...string) {
+	t.Helper()
+
+	err := os.WriteFile(filepath.Join(targetPkgAbsDir, "SPEC.md"), []byte(strings.Join(lines, "\n")), 0o644)
+	require.NoError(t, err)
+}
+
+func readSpec(t *testing.T, targetPkgAbsDir string) string {
+	t.Helper()
+
+	b, err := os.ReadFile(filepath.Join(targetPkgAbsDir, "SPEC.md"))
+	require.NoError(t, err)
+	return string(b)
 }
 
 func TestRun_CheckModeRunsAllSteps(t *testing.T) {
@@ -699,33 +685,31 @@ func TestRun_FiltersBySituation(t *testing.T) {
 }
 
 func TestRun_ConditionalStepInactiveIsSkipped(t *testing.T) {
-	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
-	sandboxDir, target, _ := writeTempModule(t)
-	steps := []Step{
-		{
-			ID:     "a",
-			Active: helperCmd("", 0, false), // inactive
-			Check:  helperCmd("should-not-run", 0, false),
-		},
+	tests := []struct {
+		name         string
+		activeOutput string
+	}{
+		{name: "empty output"},
+		{name: "whitespace output", activeOutput: "\n"},
 	}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
-	require.NoError(t, err)
-	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
-}
 
-func TestRun_ConditionalStepWhitespaceOutputIsInactive(t *testing.T) {
-	t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
-	sandboxDir, target, _ := writeTempModule(t)
-	steps := []Step{
-		{
-			ID:     "a",
-			Active: helperCmd("\n", 0, false), // treated as empty output
-			Check:  helperCmd("should-not-run", 0, false),
-		},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CODALOTL_LINTS_HELPER_PROCESS", "1")
+			sandboxDir, target, _ := writeTempModule(t)
+			steps := []Step{
+				{
+					ID:     "a",
+					Active: helperCmd(tt.activeOutput, 0, false),
+					Check:  helperCmd("should-not-run", 0, false),
+				},
+			}
+
+			out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
+			require.NoError(t, err)
+			require.Equal(t, wantNoLintersStatus, out)
+		})
 	}
-	out, err := Run(context.Background(), sandboxDir, target, steps, SituationTests)
-	require.NoError(t, err)
-	require.Equal(t, `<lint-status ok="true" message="no linters"></lint-status>`, out)
 }
 
 func TestRun_ConditionalStepActiveRunsAndActiveOutputIsInvisible(t *testing.T) {
@@ -766,6 +750,7 @@ func TestRun_ConditionalStepErrorIsTreatedActive(t *testing.T) {
 	require.Equal(t, 1, strings.Count(out, "\n$ "))
 	require.Contains(t, out, "ran")
 }
+
 func helperCmd(stdout string, exitCode int, failIfAnyOutput bool) *cmdrunner.Command {
 	return &cmdrunner.Command{
 		Command: os.Args[0],
