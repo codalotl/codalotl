@@ -139,6 +139,8 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		if processedEvent != nil {
 
 			if processedEvent.Type == EventTypeCompletedSuccess {
+				preparedEvent := openAIResponsesPrepareCompletedSuccessEvent(*processedEvent, opt)
+				processedEvent = &preparedEvent
 				debugPrint(debugParsedResponses, "PARSED RESPONSE: EventTypeCompletedSuccess", processedEvent)
 				finalResp = processedEvent.Turn
 			}
@@ -167,9 +169,6 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 
 	resp := *finalResp
 	resp.Role = RoleAssistant
-	if opt != nil && opt.NoStore {
-		resp = openAIResponsesScrubNoStoreTurn(resp)
-	}
 	return resp, nil
 }
 
@@ -262,6 +261,20 @@ func (sc *streamingConversation) recordOpenAIResponseLink(resp Turn, opt *SendOp
 		return
 	}
 	sc.providerConversationID = ""
+}
+
+func openAIResponsesPrepareCompletedSuccessEvent(event Event, opt *SendOptions) Event {
+	if event.Type != EventTypeCompletedSuccess || event.Turn == nil {
+		return event
+	}
+
+	turn := *event.Turn
+	turn.Role = RoleAssistant
+	if opt != nil && opt.NoStore {
+		turn = openAIResponsesScrubNoStoreTurn(turn)
+	}
+	event.Turn = &turn
+	return event
 }
 
 func openAIResponsesScrubNoStoreTurn(turn Turn) Turn {

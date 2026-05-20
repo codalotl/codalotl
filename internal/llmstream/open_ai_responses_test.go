@@ -127,6 +127,83 @@ func TestBuildOpenAIResponsesRequestParams_DefaultFullHistoryKeepsPersistedProvi
 	assert.Contains(t, reqJSON, "ct_persisted")
 }
 
+func TestOpenAIResponsesPrepareCompletedSuccessEvent_NoStoreScrubsEventTurn(t *testing.T) {
+	functionCall := ToolCall{
+		ProviderID: "fc_unstored",
+		CallID:     "call_function_value",
+		Name:       "lookup_weather",
+		Type:       "function_call",
+		Input:      `{"city":"Paris"}`,
+	}
+	customCall := ToolCall{
+		ProviderID: "ct_unstored",
+		CallID:     "call_custom_value",
+		Name:       "structured_answer",
+		Type:       "custom_tool_call",
+		Input:      "answer:7",
+	}
+	usage := TokenUsage{
+		TotalInputTokens:  11,
+		ReasoningTokens:   2,
+		TotalOutputTokens: 7,
+	}
+	originalTurn := Turn{
+		Role:       RoleUser,
+		ProviderID: "resp_unstored",
+		Parts: []ContentPart{
+			ReasoningContent{ProviderID: "rs_unstored", Content: "private reasoning summary"},
+			TextContent{ProviderID: "msg_unstored", Content: "assistant value answer"},
+			functionCall,
+			customCall,
+		},
+		Usage:        usage,
+		FinishReason: FinishReasonToolUse,
+	}
+	event := Event{Type: EventTypeCompletedSuccess, Turn: &originalTurn}
+
+	prepared := openAIResponsesPrepareCompletedSuccessEvent(event, &SendOptions{NoStore: true})
+
+	require.NotNil(t, prepared.Turn)
+	assertOpenAINoStoreTurnScrubbed(t, prepared.Turn)
+	assert.Equal(t, RoleAssistant, prepared.Turn.Role)
+	assert.Equal(t, usage, prepared.Turn.Usage)
+	assert.Equal(t, FinishReasonToolUse, prepared.Turn.FinishReason)
+	assert.Equal(t, "assistant value answer", prepared.Turn.TextContent())
+	assert.Equal(t, []ToolCall{
+		{CallID: "call_function_value", Name: "lookup_weather", Type: "function_call", Input: `{"city":"Paris"}`},
+		{CallID: "call_custom_value", Name: "structured_answer", Type: "custom_tool_call", Input: "answer:7"},
+	}, prepared.Turn.ToolCalls())
+
+	assert.Equal(t, "resp_unstored", originalTurn.ProviderID)
+	require.Len(t, originalTurn.Parts, 4)
+}
+
+func TestOpenAIResponsesPrepareCompletedSuccessEvent_OnlyScrubsNoStoreCompletedEvents(t *testing.T) {
+	completedTurn := Turn{
+		Role:       RoleAssistant,
+		ProviderID: "resp_stored",
+		Parts: []ContentPart{
+			ReasoningContent{ProviderID: "rs_stored", Content: "reasoning summary"},
+			TextContent{ProviderID: "msg_stored", Content: "assistant answer"},
+			ToolCall{ProviderID: "fc_stored", CallID: "call_value", Name: "lookup_weather", Type: "function_call", Input: `{"city":"Paris"}`},
+		},
+	}
+
+	stored := openAIResponsesPrepareCompletedSuccessEvent(Event{Type: EventTypeCompletedSuccess, Turn: &completedTurn}, nil)
+	require.NotNil(t, stored.Turn)
+	assert.Equal(t, "resp_stored", stored.Turn.ProviderID)
+	assert.Len(t, stored.Turn.Parts, 3)
+
+	toolUseEvent := Event{
+		Type:     EventTypeToolUse,
+		ToolCall: &ToolCall{ProviderID: "fc_streaming", CallID: "call_streaming", Name: "lookup_weather", Type: "function_call", Input: `{"city":"Paris"}`},
+	}
+
+	notCompleted := openAIResponsesPrepareCompletedSuccessEvent(toolUseEvent, &SendOptions{NoStore: true})
+	require.NotNil(t, notCompleted.ToolCall)
+	assert.Equal(t, "fc_streaming", notCompleted.ToolCall.ProviderID)
+}
+
 func TestBuildOpenAIResponsesRequestParams_StoredReplayAfterNoStoreScrubOmitsNoStoreProviderIDs(t *testing.T) {
 	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
 	require.NoError(t, sc.AddUserTurn("first question"))
@@ -316,6 +393,23 @@ func openAIProviderItemReplayConversation(t *testing.T) *streamingConversation {
 	})
 	sc.providerConversationID = "resp_first"
 	return sc
+}
+
+func assertOpenAINoStoreTurnScrubbed(t *testing.T, turn *Turn) {
+	t.Helper()
+
+	require.NotNil(t, turn)
+	assert.Empty(t, turn.ProviderID)
+	for _, part := range turn.Parts {
+		switch part := part.(type) {
+		case TextContent:
+			assert.Empty(t, part.ProviderID)
+		case ToolCall:
+			assert.Empty(t, part.ProviderID)
+		case ReasoningContent:
+			t.Fatalf("reasoning content should not be exposed on no-store completed turns")
+		}
+	}
 }
 
 func openAIRequestShapeModelInfo() llmmodel.ModelInfo {

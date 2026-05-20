@@ -566,6 +566,7 @@ The following stable prefix is intentionally long so the second no-store request
 	require.NotNil(t, firstResp)
 	require.NotNil(t, firstCall)
 	require.Equal(t, FinishReasonToolUse, firstResp.FinishReason)
+	assertOpenAINoStoreTurnScrubbed(t, firstResp)
 	assert.Empty(t, sc.providerConversationID)
 
 	require.Len(t, hook.turns, 1)
@@ -598,6 +599,7 @@ The following stable prefix is intentionally long so the second no-store request
 	require.NotNil(t, finalResp)
 	assert.Equal(t, FinishReasonEndTurn, finalResp.FinishReason)
 	assert.Empty(t, finalResp.ToolCalls())
+	assertOpenAINoStoreTurnScrubbed(t, finalResp)
 	assert.Empty(t, sc.providerConversationID)
 
 	require.Len(t, hook.turns, 2)
