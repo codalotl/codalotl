@@ -291,15 +291,20 @@ type Step struct {
 	ID string `json:"id,omitempty"`
 
 	// The step will be run in the following situations.
-	//   - If omitted/null: run in all situations.
+	//   - If omitted/null: fully specified steps run in all situations; ID-only preconfigured steps inherit their built-in situations (ex: reflow, spec-fmt, and spec-diff
+	//     use limited defaults).
 	//   - If []: run in no situations (disable).
+	//   - Reflow is skipped in SituationInitial regardless of Situations.
 	Situations []Situation `json:"situations,omitempty"`
 
 	// Active, when set, is executed before selecting/running the step's lint command for a package. If the result is exit code 0 with no non-whitespace output: step
 	// is inactive. Otherwise, active.
 	Active *cmdrunner.Command `json:"active,omitempty"`
 
+	// Check is the command used when the step runs in check mode. Steps enabled for SituationInitial or SituationTests must have a Check command.
 	Check *cmdrunner.Command `json:"check,omitempty"`
+
+	// Fix is the command preferred when the step runs in fix mode. If Fix is nil, fix mode falls back to Check so check-only lints can still run.
 	Fix   *cmdrunner.Command `json:"fix,omitempty"`
 }
 
