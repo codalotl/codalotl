@@ -28,6 +28,8 @@ const (
 	orchestrateAgentName = "pr-orchestrator"
 )
 
+var newRootAgentCreator = agent.NewAgentCreator
+
 type session struct {
 	agent            *agent.Agent
 	queueUserMessage func(string) error
@@ -160,7 +162,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 	prepared.InitialTurns = append(prepared.InitialTurns, buildEnvironmentInfo(sandboxDir))
 
-	agentInstance, err := prepared.Create(agent.NewAgentCreator())
+	agentInstance, err := prepared.Create(newSessionAgentCreator())
 	if err != nil {
 		sandboxAuthorizer.Close()
 		return nil, fmt.Errorf("construct agent: %w", err)
@@ -181,6 +183,13 @@ func newSession(cfg sessionConfig) (*session, error) {
 		userRequests:     userRequests,
 		config:           cfg,
 	}, nil
+}
+
+func newSessionAgentCreator() agent.AgentCreator {
+	if os.Getenv("CODALOTL_ZDR") == "true" {
+		return newRootAgentCreator(agent.NewOptions{NoStore: true})
+	}
+	return newRootAgentCreator()
 }
 
 // Close releases resources acquired for the session, notably the sandbox authorizer.
