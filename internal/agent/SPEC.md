@@ -111,7 +111,7 @@ type AgentCreator interface {
 type NewOptions struct {
 	Model         llmmodel.ModelID
 	SubagentLabel string
-	NoStore      bool
+	NoStore       bool
 }
 ```
 
@@ -201,7 +201,7 @@ func NewAgentCreator() AgentCreator
 type NewOptions struct {
 	Model         llmmodel.ModelID
 	SubagentLabel string
-	NoStore      bool
+	NoStore       bool
 }
 
 // AgentCreator can construct either a root Agent or a SubAgent, depending on how it was obtained.

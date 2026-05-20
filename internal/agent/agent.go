@@ -31,6 +31,7 @@ type Agent struct {
 	sessionID           string                          // The session ID identifies the root session shared by this agent and its subagents.
 	agentID             string                          // The agent ID identifies this agent in emitted Event.Agent metadata.
 	model               llmmodel.ModelID                // The model selects the provider model used for sends and context estimates.
+	noStore             bool                            // The no-store flag enables provider ZDR/no-store behavior on every send.
 	subagentLabel       string                          // The subagent label is emitted with the start-subagent event for this agent.
 	callingToolCallID   string                          // The calling tool-call ID records the parent tool call that created this subagent.
 	conv                llmstream.StreamingConversation // The conversation stores turns, tools, and provider send state.
@@ -58,6 +59,7 @@ type Agent struct {
 type NewOptions struct {
 	Model         llmmodel.ModelID // Model selects the model for the new agent; the zero value uses the applicable default.
 	SubagentLabel string           // SubagentLabel is emitted in EventTypeStartSubagent events for subagents created with these options.
+	NoStore       bool             // NoStore enables provider no-store/ZDR behavior for the agent and descendant subagents.
 }
 
 // New constructs a root Agent.
@@ -73,7 +75,7 @@ func New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*A
 		model = llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
 	}
 
-	return newAgentInstance(model, systemPrompt, tools, sessionID, sessionID, nil, 0, nil, resolved.SubagentLabel, "")
+	return newAgentInstance(model, systemPrompt, tools, sessionID, sessionID, nil, 0, nil, resolved.NoStore, resolved.SubagentLabel, "")
 }
 
 // SessionID returns a globally unique identifier for this agent session.
@@ -328,7 +330,11 @@ func (a *Agent) run(ctx context.Context, out chan<- Event) {
 
 // sendOnce sends the current conversation to the provider and streams events back to out.
 func (a *Agent) sendOnce(ctx context.Context, out chan<- Event) (*llmstream.Turn, map[string]struct{}, error) {
-	events := a.conv.SendAsync(ctx)
+	var options []llmstream.SendOptions
+	if a.noStore {
+		options = append(options, llmstream.SendOptions{NoStore: true})
+	}
+	events := a.conv.SendAsync(ctx, options...)
 
 	var (
 		sendErr         error
@@ -818,13 +824,16 @@ func mergeNewOptions(options []NewOptions) NewOptions {
 		if opt.SubagentLabel != "" {
 			merged.SubagentLabel = opt.SubagentLabel
 		}
+		if opt.NoStore {
+			merged.NoStore = true
+		}
 	}
 	return merged
 }
 
 // newAgentInstance constructs an Agent with an initialized conversation, tool registry, and system turn. It returns an error if the conversation cannot be created
 // or the tools cannot be registered.
-func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, sessionID, agentID string, parent *Agent, depth int, parentOut chan<- Event, subagentLabel, callingToolCallID string) (*Agent, error) {
+func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, sessionID, agentID string, parent *Agent, depth int, parentOut chan<- Event, noStore bool, subagentLabel, callingToolCallID string) (*Agent, error) {
 	conv := newConversation(model, systemPrompt)
 	if conv == nil {
 		return nil, errors.New("agent: failed to create conversation")
@@ -844,6 +853,7 @@ func newAgentInstance(model llmmodel.ModelID, systemPrompt string, tools []llmst
 		sessionID:         sessionID,
 		agentID:           agentID,
 		model:             model,
+		noStore:           noStore,
 		subagentLabel:     subagentLabel,
 		callingToolCallID: callingToolCallID,
 		conv:              conv,

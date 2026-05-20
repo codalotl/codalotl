@@ -87,11 +87,11 @@ func (f *subAgentFactory) New(systemPrompt string, tools []llmstream.Tool, optio
 	if model == "" {
 		model = llmmodel.ModelIDOrFallback(f.defaultModel)
 	}
-	return f.create(model, systemPrompt, tools, resolved.SubagentLabel)
+	return f.create(model, systemPrompt, tools, resolved.NoStore, resolved.SubagentLabel)
 }
 
 // create constructs and registers a child Agent for the factory's active tool call. It panics if the factory is closed or missing its parent output channel.
-func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, subagentLabel string) (*Agent, error) {
+func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, noStore bool, subagentLabel string) (*Agent, error) {
 	f.mu.Lock()
 	if f.closed {
 		f.mu.Unlock()
@@ -113,7 +113,7 @@ func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, to
 	}
 
 	lifetimeCtx, lifetimeCancel := context.WithCancel(context.Background())
-	child, err := newAgentInstance(model, systemPrompt, tools, parent.sessionID, agentID, parent, parent.depth+1, parentOut, subagentLabel, toolCallID)
+	child, err := newAgentInstance(model, systemPrompt, tools, parent.sessionID, agentID, parent, parent.depth+1, parentOut, parent.noStore || noStore, subagentLabel, toolCallID)
 	if err != nil {
 		lifetimeCancel()
 		return nil, err
