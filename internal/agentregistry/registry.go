@@ -88,6 +88,7 @@ func (r *Registry) ValidateTools() error {
 	return nil
 }
 
+// BuildOptions are the resolved inputs used by definition builders during Prepare.
 type BuildOptions struct {
 	AgentName   string
 	ToolOptions toolsetinterface.Options       // ToolOptions are the effective options used to construct tools after auth/package policy and overrides are applied.
@@ -96,7 +97,8 @@ type BuildOptions struct {
 
 // PreparedAgent contains a fully prepared agent configuration.
 //
-// It includes resolved tool options, system prompt, tool names, and initial turns, but it does not start a run or send any request messages.
+// It includes resolved tool options, system prompt, tool names, and initial turns, but it does not start a run or send any request messages. The prepared value
+// only carries registry-resolved configuration; construction policy not represented here must be configured on the agent.AgentCreator supplied to Create.
 type PreparedAgent struct {
 	BuildOptions BuildOptions
 	SystemPrompt string
@@ -164,7 +166,8 @@ func (d Definition) Validate() error {
 
 // Create constructs an idle agent from the prepared configuration.
 //
-// InitialTurns are applied before the agent is returned. No request messages are sent.
+// Create delegates construction to agentCreator.New. If BuildOptions.ToolOptions.Model is set, that model is passed in agent.NewOptions; otherwise no agent.NewOptions
+// are passed, preserving the creator's defaults. InitialTurns are applied before the agent is returned. No request messages are sent.
 func (p *PreparedAgent) Create(agentCreator agent.AgentCreator) (*agent.Agent, error) {
 	if p == nil {
 		return nil, errors.New("agentregistry: prepared agent is required")
