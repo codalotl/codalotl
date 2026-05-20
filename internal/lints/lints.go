@@ -30,10 +30,12 @@ type Situation string
 
 // The Situation constants name the contexts in which lint steps can run.
 const (
-	SituationInitial Situation = "initial" // SituationInitial runs check-mode lints during initial context creation. Reflow is always skipped in this situation.
-	SituationPatch   Situation = "patch"   // SituationPatch runs fix-mode lints during patch application.
-	SituationFix     Situation = "fix"     // SituationFix runs fix-mode lints during an explicit fix run.
-	SituationTests   Situation = "tests"   // SituationTests runs check-mode lints during test validation.
+	// SituationInitial runs check-mode lints during initial context creation. Reflow is always skipped in this situation.
+	SituationInitial Situation = "initial"
+
+	SituationPatch Situation = "patch" // SituationPatch runs fix-mode lints during patch application.
+	SituationFix   Situation = "fix"   // SituationFix runs fix-mode lints during an explicit fix run.
+	SituationTests Situation = "tests" // SituationTests runs check-mode lints during test validation.
 )
 
 // An action is the check or fix command mode implied by a lint situation.
@@ -42,6 +44,15 @@ type action string
 const (
 	actionCheck action = "check"
 	actionFix   action = "fix"
+)
+
+const (
+	stepIDGofmt        = "gofmt"
+	stepIDReflow       = "reflow"
+	stepIDStaticcheck  = "staticcheck"
+	stepIDGolangciLint = "golangci-lint"
+	stepIDSpecDiff     = "spec-diff"
+	stepIDSpecFmt      = "spec-fmt"
 )
 
 // ConfigMode represents the configuration mode of specifying steps: do we extend existing steps, or replace them all with the given steps?
@@ -71,19 +82,7 @@ func (l Lints) Reflows() bool {
 	if err != nil {
 		return false
 	}
-	for _, s := range steps {
-		if s.ID != "reflow" {
-			continue
-		}
-		// Reflow is always skipped for SituationInitial, so only treat it as
-		// enabled if it can run in a non-initial situation.
-		if stepEnabledInSituation(s, SituationTests) ||
-			stepEnabledInSituation(s, SituationPatch) ||
-			stepEnabledInSituation(s, SituationFix) {
-			return true
-		}
-	}
-	return false
+	return stepsEnableReflow(steps)
 }
 
 // Step configures one lint pipeline step. A step may be a fully specified command pair or a recognized preconfigured step ID.
@@ -109,9 +108,27 @@ type Step struct {
 	Fix *cmdrunner.Command `json:"fix,omitempty"`
 }
 
-const defaultReflowWidth = 120
+const (
+	defaultReflowWidth = 120
+	noIssuesFound      = "no issues found"
+	noLintersStatusXML = `<lint-status ok="true" message="no linters"></lint-status>`
+
+	templateModuleDir          = "{{ .moduleDir }}"
+	templateRelativePackageDir = "{{ .relativePackageDir }}"
+
+	inputPath               = "path"
+	inputModuleDir          = "moduleDir"
+	inputRelativePackageDir = "relativePackageDir"
+)
 
 const reflowCheckInstructions = "never manually fix these unless asked; fixing is automatic on apply_patch"
+
+func normalizeReflowWidth(reflowWidth int) int {
+	if reflowWidth <= 0 {
+		return defaultReflowWidth
+	}
+	return reflowWidth
+}
 
 // DefaultSteps returns default steps. It is equivalent to ResolveSteps(nil, 0).
 func DefaultSteps() []Step {
@@ -122,44 +139,36 @@ func defaultSteps(reflowWidth int) []Step {
 	// Defaults intentionally include only lightweight, low-noise steps.
 	// Additional steps (like reflow) are available as preconfigured steps by
 	// specifying `{"id":"reflow"}` in config.
-	gofmt, _ := preconfiguredStep("gofmt", reflowWidth)
-	specFmt, _ := preconfiguredStep("spec-fmt", reflowWidth)
-	specDiff, _ := preconfiguredStep("spec-diff", reflowWidth)
+	gofmt, _ := preconfiguredStep(stepIDGofmt, reflowWidth)
+	specFmt, _ := preconfiguredStep(stepIDSpecFmt, reflowWidth)
+	specDiff, _ := preconfiguredStep(stepIDSpecDiff, reflowWidth)
 	return []Step{gofmt, specFmt, specDiff}
 }
 
 // preconfiguredStep returns the built-in lint step for id. It returns ok=false for unknown IDs. A non-positive reflowWidth uses defaultReflowWidth.
 func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
-	if reflowWidth <= 0 {
-		reflowWidth = defaultReflowWidth
-	}
+	reflowWidth = normalizeReflowWidth(reflowWidth)
 
 	switch id {
-	case "gofmt":
-		gofmtCheck := &cmdrunner.Command{
-			Command: "gofmt",
-			Args: []string{
+	case stepIDGofmt:
+		gofmtCheck := newPreconfiguredCommand("gofmt",
+			[]string{
 				"-l",
-				"{{ .relativePackageDir }}",
+				templateRelativePackageDir,
 			},
-			CWD:                    "{{ .moduleDir }}",
-			OutcomeFailIfAnyOutput: true,
-			MessageIfNoOutput:      "no issues found",
-		}
-		gofmtFix := &cmdrunner.Command{
-			Command: "gofmt",
-			Args: []string{
+			true,
+		)
+		gofmtFix := newPreconfiguredCommand("gofmt",
+			[]string{
 				"-l",
 				"-w",
-				"{{ .relativePackageDir }}",
+				templateRelativePackageDir,
 			},
-			CWD:                    "{{ .moduleDir }}",
-			OutcomeFailIfAnyOutput: false,
-			MessageIfNoOutput:      "no issues found",
-		}
+			false,
+		)
 
-		return Step{ID: "gofmt", Check: gofmtCheck, Fix: gofmtFix}, true
-	case "reflow":
+		return Step{ID: stepIDGofmt, Check: gofmtCheck, Fix: gofmtFix}, true
+	case stepIDReflow:
 		// ID == "reflow" is special-cased during execution (it is NOT executed as a
 		// subprocess). The command is still stored so users can override the args.
 		reflowCheckArgs := []string{
@@ -167,118 +176,89 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 			"reflow",
 			"--check",
 			fmt.Sprintf("--width=%d", reflowWidth),
-			"{{ .relativePackageDir }}",
+			templateRelativePackageDir,
 		}
 		reflowFixArgs := []string{
 			"docs",
 			"reflow",
 			fmt.Sprintf("--width=%d", reflowWidth),
-			"{{ .relativePackageDir }}",
+			templateRelativePackageDir,
 		}
-		reflowCheck := &cmdrunner.Command{
-			Command:                "codalotl",
-			Args:                   append([]string(nil), reflowCheckArgs...),
-			CWD:                    "{{ .moduleDir }}",
-			OutcomeFailIfAnyOutput: true,
-			MessageIfNoOutput:      "no issues found",
-		}
-		reflowFix := &cmdrunner.Command{
-			Command:                "codalotl",
-			Args:                   append([]string(nil), reflowFixArgs...),
-			CWD:                    "{{ .moduleDir }}",
-			OutcomeFailIfAnyOutput: false,
-			MessageIfNoOutput:      "no issues found",
-		}
+		reflowCheck := newPreconfiguredCommand("codalotl", reflowCheckArgs, true)
+		reflowFix := newPreconfiguredCommand("codalotl", reflowFixArgs, false)
 
 		// Reflow is intentionally excluded from initial context creation.
 		return Step{
-			ID:         "reflow",
+			ID:         stepIDReflow,
 			Situations: []Situation{SituationPatch, SituationFix, SituationTests},
 			Check:      reflowCheck,
 			Fix:        reflowFix,
 		}, true
-	case "staticcheck":
+	case stepIDStaticcheck:
 		// staticcheck has no built-in fix mode. In fix situations we still run it in
 		// check mode (selectCommand falls back to Check when Fix is nil).
-		staticcheckCheck := &cmdrunner.Command{
-			Command: "staticcheck",
-			Args: []string{
-				"./{{ .relativePackageDir }}",
-			},
-			CWD:               "{{ .moduleDir }}",
-			MessageIfNoOutput: "no issues found",
-		}
+		staticcheckCheck := newPreconfiguredCommand("staticcheck", []string{"./" + templateRelativePackageDir}, false)
 
 		return Step{
-			ID:    "staticcheck",
+			ID:    stepIDStaticcheck,
 			Check: staticcheckCheck,
 		}, true
-	case "golangci-lint":
-		golangciCheck := &cmdrunner.Command{
-			Command: "golangci-lint",
-			Args: []string{
+	case stepIDGolangciLint:
+		golangciCheck := newPreconfiguredCommand("golangci-lint",
+			[]string{
 				"run",
-				"./{{ .relativePackageDir }}",
+				"./" + templateRelativePackageDir,
 			},
-			CWD:               "{{ .moduleDir }}",
-			MessageIfNoOutput: "no issues found",
-		}
-		golangciFix := &cmdrunner.Command{
-			Command: "golangci-lint",
-			Args: []string{
+			false,
+		)
+		golangciFix := newPreconfiguredCommand("golangci-lint",
+			[]string{
 				"run",
 				"--fix",
-				"./{{ .relativePackageDir }}",
+				"./" + templateRelativePackageDir,
 			},
-			CWD:               "{{ .moduleDir }}",
-			MessageIfNoOutput: "no issues found",
-		}
+			false,
+		)
 
 		return Step{
-			ID:    "golangci-lint",
+			ID:    stepIDGolangciLint,
 			Check: golangciCheck,
 			Fix:   golangciFix,
 		}, true
-	case "spec-diff":
+	case stepIDSpecDiff:
 		// ID == "spec-diff" is special-cased during execution (it is NOT executed as a
 		// subprocess). The command is still stored so config validation works and so
 		// we can render a uniform cmdrunner-style output.
-		specDiffCheck := &cmdrunner.Command{
-			Command: "codalotl",
-			Args: []string{
+		specDiffCheck := newPreconfiguredCommand("codalotl",
+			[]string{
 				"spec",
 				"diff",
-				"{{ .relativePackageDir }}",
+				templateRelativePackageDir,
 			},
-			CWD:                    "{{ .moduleDir }}",
-			OutcomeFailIfAnyOutput: true,
-			MessageIfNoOutput:      "no issues found",
-		}
+			true,
+		)
 
 		// Spec diffs are enabled in tests and dedicated fix flows by default (not
 		// during apply_patch auto-fix).
 		return Step{
-			ID:         "spec-diff",
+			ID:         stepIDSpecDiff,
 			Situations: []Situation{SituationTests, SituationFix},
 			Check:      specDiffCheck,
 		}, true
-	case "spec-fmt":
+	case stepIDSpecFmt:
 		// ID == "spec-fmt" is special-cased during execution (it is NOT executed as a
 		// subprocess). The command is still stored so config validation works and so
 		// we can render a uniform cmdrunner-style output.
-		specFmtFix := &cmdrunner.Command{
-			Command: "codalotl",
-			Args: []string{
+		specFmtFix := newPreconfiguredCommand("codalotl",
+			[]string{
 				"spec",
 				"fmt",
-				"{{ .relativePackageDir }}",
+				templateRelativePackageDir,
 			},
-			CWD:                    "{{ .moduleDir }}",
-			OutcomeFailIfAnyOutput: false,
-			MessageIfNoOutput:      "no issues found",
-		}
+			false,
+		)
 		return Step{
-			ID:         "spec-fmt",
+			ID:         stepIDSpecFmt,
 			Situations: []Situation{SituationPatch, SituationFix},
 			Fix:        specFmtFix,
 		}, true
@@ -287,14 +267,22 @@ func preconfiguredStep(id string, reflowWidth int) (Step, bool) {
 	}
 }
 
+func newPreconfiguredCommand(command string, args []string, failIfAnyOutput bool) *cmdrunner.Command {
+	return &cmdrunner.Command{
+		Command:                command,
+		Args:                   append([]string(nil), args...),
+		CWD:                    templateModuleDir,
+		OutcomeFailIfAnyOutput: failIfAnyOutput,
+		MessageIfNoOutput:      noIssuesFound,
+	}
+}
+
 // ResolveSteps merges defaults and user config, applying disable rules. Validation errors (unknown mode, invalid step definitions, duplicate IDs, etc.) return an
 // error. It normalizes width handling:
 //   - `reflow` steps include `--width=<reflowWidth>` when missing.
 //   - `spec-fmt` steps inherit `--width=<reflowWidth>` when reflow is enabled.
 func ResolveSteps(cfg *Lints, reflowWidth int) ([]Step, error) {
-	if reflowWidth <= 0 {
-		reflowWidth = defaultReflowWidth
-	}
+	reflowWidth = normalizeReflowWidth(reflowWidth)
 
 	if cfg == nil {
 		return defaultSteps(reflowWidth), nil
@@ -502,64 +490,65 @@ func stepEnabledInSituation(step Step, situation Situation) bool {
 	return false
 }
 
+func stepEnabledOutsideInitial(step Step) bool {
+	return stepEnabledInSituation(step, SituationTests) ||
+		stepEnabledInSituation(step, SituationPatch) ||
+		stepEnabledInSituation(step, SituationFix)
+}
+
 // normalizeStepWidths ensures reflow-related steps carry the configured documentation width. It adds missing --width flags to reflow commands and, when reflow is
 // enabled, to spec-fmt commands. Existing invalid width flags are returned as errors, and non-positive widths use defaultReflowWidth.
 func normalizeStepWidths(steps []Step, reflowWidth int) ([]Step, error) {
-	if reflowWidth <= 0 {
-		reflowWidth = defaultReflowWidth
-	}
+	reflowWidth = normalizeReflowWidth(reflowWidth)
 
 	reflowEnabled := stepsEnableReflow(steps)
 
 	for i := range steps {
 		switch steps[i].ID {
-		case "reflow":
-			if steps[i].Check != nil {
-				check, err := ensureWidthArg(steps[i].Check, reflowWidth)
-				if err != nil {
-					return nil, fmt.Errorf("lint step %q: check command: %w", steps[i].ID, err)
-				}
-				steps[i].Check = check
+		case stepIDReflow:
+			if err := normalizeStepCommandWidths(&steps[i], reflowWidth); err != nil {
+				return nil, err
 			}
-			if steps[i].Fix != nil {
-				fix, err := ensureWidthArg(steps[i].Fix, reflowWidth)
-				if err != nil {
-					return nil, fmt.Errorf("lint step %q: fix command: %w", steps[i].ID, err)
-				}
-				steps[i].Fix = fix
-			}
-		case "spec-fmt":
+		case stepIDSpecFmt:
 			if !reflowEnabled {
 				continue
 			}
-			if steps[i].Check != nil {
-				check, err := ensureWidthArg(steps[i].Check, reflowWidth)
-				if err != nil {
-					return nil, fmt.Errorf("lint step %q: check command: %w", steps[i].ID, err)
-				}
-				steps[i].Check = check
-			}
-			if steps[i].Fix != nil {
-				fix, err := ensureWidthArg(steps[i].Fix, reflowWidth)
-				if err != nil {
-					return nil, fmt.Errorf("lint step %q: fix command: %w", steps[i].ID, err)
-				}
-				steps[i].Fix = fix
+			if err := normalizeStepCommandWidths(&steps[i], reflowWidth); err != nil {
+				return nil, err
 			}
 		}
 	}
 	return steps, nil
 }
 
+func normalizeStepCommandWidths(step *Step, reflowWidth int) error {
+	commands := []struct {
+		name string
+		cmd  **cmdrunner.Command
+	}{
+		{name: "check", cmd: &step.Check},
+		{name: "fix", cmd: &step.Fix},
+	}
+	for _, c := range commands {
+		if *c.cmd == nil {
+			continue
+		}
+		normalized, err := ensureWidthArg(*c.cmd, reflowWidth)
+		if err != nil {
+			return fmt.Errorf("lint step %q: %s command: %w", step.ID, c.name, err)
+		}
+		*c.cmd = normalized
+	}
+	return nil
+}
+
 func stepsEnableReflow(steps []Step) bool {
 	for _, s := range steps {
-		if s.ID != "reflow" {
+		if s.ID != stepIDReflow {
 			continue
 		}
 		// Reflow is always skipped for SituationInitial.
-		if stepEnabledInSituation(s, SituationTests) ||
-			stepEnabledInSituation(s, SituationPatch) ||
-			stepEnabledInSituation(s, SituationFix) {
+		if stepEnabledOutsideInitial(s) {
 			return true
 		}
 	}
@@ -572,9 +561,7 @@ func ensureWidthArg(c *cmdrunner.Command, reflowWidth int) (*cmdrunner.Command, 
 	if c == nil {
 		return nil, errors.New("command is nil")
 	}
-	if reflowWidth <= 0 {
-		reflowWidth = defaultReflowWidth
-	}
+	reflowWidth = normalizeReflowWidth(reflowWidth)
 
 	_, _, ok, err := parseWidthFlag(c.Args)
 	if err != nil {
@@ -655,14 +642,14 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 			continue
 		}
 		// Reflow is never enabled during initial context creation, regardless of config.
-		if s.ID == "reflow" && situation == SituationInitial {
+		if s.ID == stepIDReflow && situation == SituationInitial {
 			continue
 		}
 		selected = append(selected, s)
 	}
 
 	if len(selected) == 0 {
-		return `<lint-status ok="true" message="no linters"></lint-status>`, nil
+		return noLintersStatusXML, nil
 	}
 
 	moduleDir, relativePackageDir, err := cmdrunner.ManifestDir(sandboxDir, targetPkgAbsDir)
@@ -677,7 +664,7 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 			continue
 		}
 
-		if s.ID == "reflow" {
+		if s.ID == stepIDReflow {
 			c, modeAttr, dryRun, err := selectCommand(s, act)
 			if err != nil {
 				return "", err
@@ -690,7 +677,7 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 			continue
 		}
 
-		if s.ID == "spec-diff" {
+		if s.ID == stepIDSpecDiff {
 			// This lint is always rendered as a check-only step, even in fix situations.
 			// It's executed in-process so we can use internal/specmd directly and keep
 			// output uniform (cmdrunner-style).
@@ -698,7 +685,7 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 			all.Results = append(all.Results, cr)
 			continue
 		}
-		if s.ID == "spec-fmt" {
+		if s.ID == stepIDSpecFmt {
 			// This lint is fix-only and is executed in-process so we can format SPEC.md
 			// via internal/specmd without spawning a subprocess.
 			c, _, _, err := selectCommand(s, act)
@@ -722,22 +709,11 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 			return "", err
 		}
 
-		runner := cmdrunner.NewRunner(
-			map[string]cmdrunner.InputType{
-				"path":               cmdrunner.InputTypePathDir,
-				"moduleDir":          cmdrunner.InputTypePathDir,
-				"relativePackageDir": cmdrunner.InputTypeString,
-			},
-			[]string{"path", "moduleDir", "relativePackageDir"},
-		)
+		runner := newLintRunner()
 		cmd := withModeAttr(*c, modeAttr)
 		runner.AddCommand(cmd)
 
-		r, runErr := runner.Run(ctx, sandboxDir, map[string]any{
-			"path":               targetPkgAbsDir,
-			"moduleDir":          moduleDir,
-			"relativePackageDir": relativePackageDir,
-		})
+		r, runErr := runner.Run(ctx, sandboxDir, lintRunnerInputs(targetPkgAbsDir, moduleDir, relativePackageDir))
 		if runErr != nil {
 			return "", runErr
 		}
@@ -745,7 +721,7 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 	}
 
 	if len(all.Results) == 0 {
-		return `<lint-status ok="true" message="no linters"></lint-status>`, nil
+		return noLintersStatusXML, nil
 	}
 	return all.ToXML("lint-status"), nil
 }
@@ -754,7 +730,7 @@ func Run(ctx context.Context, sandboxDir string, targetPkgAbsDir string, steps [
 // stat errors are treated as active. If s has no Active command, it is active. Otherwise the Active command is run and the step is inactive only when that command
 // exits with code 0, produces no non-whitespace output, and has no exec error.
 func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, moduleDir string, relativePackageDir string, s Step) bool {
-	if s.ID == "spec-diff" || s.ID == "spec-fmt" {
+	if stepRequiresSpecMD(s.ID) {
 		// Special-case: this step is only active when the package has a SPEC.md.
 		// (The spec describes this as a pseudo "active command"; we do it in-process
 		// for portability and to avoid spawning a subprocess just to check existence.)
@@ -770,20 +746,9 @@ func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, 
 	if s.Active == nil {
 		return true
 	}
-	runner := cmdrunner.NewRunner(
-		map[string]cmdrunner.InputType{
-			"path":               cmdrunner.InputTypePathDir,
-			"moduleDir":          cmdrunner.InputTypePathDir,
-			"relativePackageDir": cmdrunner.InputTypeString,
-		},
-		[]string{"path", "moduleDir", "relativePackageDir"},
-	)
+	runner := newLintRunner()
 	runner.AddCommand(*s.Active)
-	r, err := runner.Run(ctx, sandboxDir, map[string]any{
-		"path":               targetPkgAbsDir,
-		"moduleDir":          moduleDir,
-		"relativePackageDir": relativePackageDir,
-	})
+	r, err := runner.Run(ctx, sandboxDir, lintRunnerInputs(targetPkgAbsDir, moduleDir, relativePackageDir))
 	if err != nil || len(r.Results) == 0 {
 		// Errors or unexpected results in the active check are considered active.
 		return true
@@ -792,6 +757,29 @@ func stepActive(ctx context.Context, sandboxDir string, targetPkgAbsDir string, 
 	// The only way to make a step inactive is a clean 0 exit with no
 	// non-whitespace output.
 	return !(cr.ExitCode == 0 && strings.TrimSpace(cr.Output) == "" && cr.ExecError == nil)
+}
+
+func stepRequiresSpecMD(id string) bool {
+	return id == stepIDSpecDiff || id == stepIDSpecFmt
+}
+
+func newLintRunner() *cmdrunner.Runner {
+	return cmdrunner.NewRunner(
+		map[string]cmdrunner.InputType{
+			inputPath:               cmdrunner.InputTypePathDir,
+			inputModuleDir:          cmdrunner.InputTypePathDir,
+			inputRelativePackageDir: cmdrunner.InputTypeString,
+		},
+		[]string{inputPath, inputModuleDir, inputRelativePackageDir},
+	)
+}
+
+func lintRunnerInputs(targetPkgAbsDir string, moduleDir string, relativePackageDir string) map[string]any {
+	return map[string]any{
+		inputPath:               targetPkgAbsDir,
+		inputModuleDir:          moduleDir,
+		inputRelativePackageDir: relativePackageDir,
+	}
 }
 
 // selectCommand chooses the command to run for s under act. For check actions, Check is required. For fix actions, Fix is preferred and Check is used as a check-mode
@@ -852,7 +840,7 @@ func runReflow(moduleDir string, relativePackageDir string, targetPkgAbsDir stri
 		return cmdrunner.CommandResult{}, err
 	}
 	if !ok || width <= 0 {
-		width = defaultReflowWidth
+		width = normalizeReflowWidth(width)
 	}
 
 	modified, failed, fnErr := updatedocs.ReflowDocumentationPaths(
@@ -900,7 +888,7 @@ func runReflow(moduleDir string, relativePackageDir string, targetPkgAbsDir stri
 		Command:           "codalotl",
 		Args:              args,
 		Output:            strings.Join(outLines, "\n"),
-		MessageIfNoOutput: "no issues found",
+		MessageIfNoOutput: noIssuesFound,
 		Attrs:             attrs,
 		ExecStatus:        cmdrunner.ExecStatusCompleted,
 		ExecError:         fnErr,
@@ -968,7 +956,7 @@ func runSpecDiff(relativePackageDir string, targetPkgAbsDir string) cmdrunner.Co
 		Command:           "codalotl",
 		Args:              []string{"spec", "diff", relativePackageDir},
 		Output:            output,
-		MessageIfNoOutput: "no issues found",
+		MessageIfNoOutput: noIssuesFound,
 		Attrs:             []string{"mode", "check"},
 		ExecStatus:        cmdrunner.ExecStatusCompleted,
 		ExecError:         execErr,
@@ -1013,7 +1001,7 @@ func runSpecFmt(moduleDir string, relativePackageDir string, targetPkgAbsDir str
 		Command:           "codalotl",
 		Args:              []string{"spec", "fmt", relativePackageDir},
 		Output:            output,
-		MessageIfNoOutput: "no issues found",
+		MessageIfNoOutput: noIssuesFound,
 		Attrs:             []string{"mode", "fix"},
 		ExecStatus:        cmdrunner.ExecStatusCompleted,
 		ExecError:         execErr,
