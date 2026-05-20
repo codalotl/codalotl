@@ -266,6 +266,177 @@ func TestRun_PRNew_InvalidFeatureNameIsUsageError(t *testing.T) {
 	require.Contains(t, errOut.String(), "invalid <feature-name>")
 }
 
+func TestRun_PRRefactor_NormalMode_ReusesPRNewGitBehaviorAndWritesInstructions(t *testing.T) {
+	isolateUserConfig(t)
+	t.Setenv("CODALOTL_USER_INITIALS", "")
+
+	repo := t.TempDir()
+	writeTestGoPackage(t, repo, "internal/mypkg")
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repo))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origNow := prNewNow
+	prNewNow = func() time.Time { return time.Unix(1779277562, 0).UTC() }
+	t.Cleanup(func() { prNewNow = origNow })
+
+	var calls []prNewGitCall
+	stubPRNewGit(t, func(dir string, args []string) (string, error) {
+		calls = append(calls, prNewGitCall{dir: dir, args: append([]string(nil), args...)})
+		switch strings.Join(args, "\x00") {
+		case "rev-parse\x00--show-toplevel":
+			return repo + "\n", nil
+		case "status\x00--porcelain":
+			return "", nil
+		case "branch\x00--show-current":
+			return "main\n", nil
+		case "for-each-ref\x00--format=%(upstream:short)\x00refs/heads/main":
+			return "origin/main\n", nil
+		case "rev-list\x00--left-right\x00--count\x00HEAD...@{u}":
+			return "0\t0\n", nil
+		case "checkout\x00-b\x00refactor-internal-mypkg":
+			return "", nil
+		case "add\x00.prs/2026-05-20_1779277562_refactor-internal-mypkg.md":
+			return "", nil
+		case "commit\x00-m\x00Add PR file for refactor-internal-mypkg":
+			return "", nil
+		case "remote\x00get-url\x00origin":
+			return "git@example.com:repo.git\n", nil
+		case "push\x00-u\x00origin\x00refactor-internal-mypkg":
+			return "", nil
+		default:
+			t.Fatalf("unexpected git command in %s: %q", dir, args)
+			return "", nil
+		}
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "pr", "refactor", "--package=internal/mypkg"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "Created .prs/2026-05-20_1779277562_refactor-internal-mypkg.md\n", out.String())
+
+	require.Equal(t, [][]string{
+		{"rev-parse", "--show-toplevel"},
+		{"status", "--porcelain"},
+		{"branch", "--show-current"},
+		{"for-each-ref", "--format=%(upstream:short)", "refs/heads/main"},
+		{"rev-list", "--left-right", "--count", "HEAD...@{u}"},
+		{"checkout", "-b", "refactor-internal-mypkg"},
+		{"add", ".prs/2026-05-20_1779277562_refactor-internal-mypkg.md"},
+		{"commit", "-m", "Add PR file for refactor-internal-mypkg"},
+		{"remote", "get-url", "origin"},
+		{"push", "-u", "origin", "refactor-internal-mypkg"},
+	}, prNewGitCallArgs(calls))
+
+	prPath := filepath.Join(repo, ".prs", "2026-05-20_1779277562_refactor-internal-mypkg.md")
+	gotBytes, err := os.ReadFile(prPath)
+	require.NoError(t, err)
+	got := string(gotBytes)
+	require.True(t, strings.HasPrefix(got, "# PR\n\n## User Summary (do not modify)\n\n"))
+	require.Contains(t, got, "Target package: internal/mypkg")
+	require.Contains(t, got, `refactor("name": "docs-add", "package": "internal/mypkg")`)
+	require.Contains(t, got, `refactor("name": "docs-fix", "package": "internal/mypkg")`)
+	require.Contains(t, got, `refactor("name": "dry", "package": "internal/mypkg")`)
+	require.Contains(t, got, `refactor("name": "test-cleanup", "package": "internal/mypkg")`)
+	require.Contains(t, got, `refactor("name": "test-ensure-coverage", "package": "internal/mypkg")`)
+	requireRefactorOrder(t, got, []string{"docs-add", "docs-fix", "dry", "test-cleanup", "test-ensure-coverage"})
+	require.Contains(t, got, "inspect the diff")
+	require.Contains(t, got, "commit that refactor separately")
+	require.Contains(t, got, "relevant CAS files")
+	require.Contains(t, got, "avoid risky fix-forward behavior")
+	require.Contains(t, got, "codalotl_cli")
+	require.Contains(t, got, `codalotl cas recertify internal/mypkg --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"`)
+	require.NotContains(t, got, `--namespaces="docs-add`)
+}
+
+func TestPRRefactorFeatureName(t *testing.T) {
+	tests := []struct {
+		packagePath string
+		want        string
+	}{
+		{packagePath: "internal/cli", want: "refactor-internal-cli"},
+		{packagePath: "./internal/cli", want: "refactor-internal-cli"},
+		{packagePath: "github.com/codalotl/codalotl/internal/cli", want: "refactor-github.com-codalotl-codalotl-internal-cli"},
+		{packagePath: "pkg with spaces", want: "refactor-pkg-with-spaces"},
+		{packagePath: ".", want: "refactor-package"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.packagePath, func(t *testing.T) {
+			got, err := prRefactorFeatureName(tt.packagePath)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestRun_PRRefactor_RequiresPackage(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "pr", "refactor"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "missing --package")
+}
+
+func TestRun_PRRefactor_BypassesStartupValidation(t *testing.T) {
+	isolateUserConfig(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PATH", "")
+
+	repo := t.TempDir()
+	writeTestGoPackage(t, repo, "p")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".codalotl"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".codalotl", "config.json"), []byte(`{not-json`), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repo))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	origNow := prNewNow
+	prNewNow = func() time.Time { return time.Unix(1779277562, 0).UTC() }
+	t.Cleanup(func() { prNewNow = origNow })
+
+	stubPRNewGit(t, func(_ string, args []string) (string, error) {
+		switch args[0] {
+		case "rev-parse":
+			return repo + "\n", nil
+		case "status":
+			return "", nil
+		case "branch":
+			return "main\n", nil
+		case "for-each-ref":
+			return "\n", nil
+		case "checkout", "add", "commit":
+			return "", nil
+		case "remote":
+			return "", errors.New("no origin")
+		default:
+			t.Fatalf("unexpected git command: %q", args)
+			return "", nil
+		}
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "pr", "refactor", "--package=./p"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Contains(t, out.String(), "refactor-p.md")
+	require.Empty(t, errOut.String())
+	require.NotContains(t, errOut.String(), "No LLM provider API key is configured")
+	require.NotContains(t, errOut.String(), "Missing required tools")
+}
+
 type prNewGitCall struct {
 	dir  string
 	args []string
@@ -295,4 +466,25 @@ func flattenPRNewGitCalls(calls []prNewGitCall) string {
 		lines = append(lines, strings.Join(call.args, " "))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func writeTestGoPackage(t *testing.T, moduleDir string, packageDir string) {
+	t.Helper()
+
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+	dir := filepath.Join(moduleDir, filepath.FromSlash(packageDir))
+	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pkg.go"), []byte("package mypkg\n\nfunc Foo() {}\n"), 0644))
+}
+
+func requireRefactorOrder(t *testing.T, got string, names []string) {
+	t.Helper()
+
+	prev := -1
+	for _, name := range names {
+		idx := strings.Index(got, `refactor("name": "`+name+`"`)
+		require.NotEqual(t, -1, idx)
+		require.Greater(t, idx, prev)
+		prev = idx
+	}
 }

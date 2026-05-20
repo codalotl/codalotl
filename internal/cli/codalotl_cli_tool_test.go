@@ -76,7 +76,7 @@ func TestRun_InstallsRefactorToolOverride(t *testing.T) {
 	}
 }
 
-func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
+func TestCodalotlCLITool_OnlyExposesDocsAndCASRecertifyCommands(t *testing.T) {
 	tool := toolcli.NewCodalotlCLITool(newCodalotlCLICommandTree)
 
 	helpResult := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
@@ -89,8 +89,11 @@ func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	require.Equal(t, 0, helpResult.ExitCode)
 	require.Contains(t, helpResult.Stdout, "codalotl docs add")
 	require.Contains(t, helpResult.Stdout, "codalotl docs fix")
+	require.Contains(t, helpResult.Stdout, "codalotl cas recertify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs reflow")
+	require.NotContains(t, helpResult.Stdout, "codalotl cas get")
+	require.NotContains(t, helpResult.Stdout, "codalotl cas ls-namespaces")
 	require.NotContains(t, helpResult.Stdout, "codalotl context public")
 
 	detailedHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
@@ -117,6 +120,17 @@ func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	require.Contains(t, fixHelp.Stdout, "codalotl docs fix")
 	require.Contains(t, fixHelp.Stdout, "--identifiers")
 
+	recertifyHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-cas-recertify-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"cas recertify","argv":["--help"]}`,
+	}))
+	require.True(t, recertifyHelp.Success)
+	require.Equal(t, 0, recertifyHelp.ExitCode)
+	require.Contains(t, recertifyHelp.Stdout, "codalotl cas recertify")
+	require.Contains(t, recertifyHelp.Stdout, "--namespaces")
+
 	rejectedImprove := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-docs-improve-help",
 		Name:   toolcli.ToolNameCodalotlCLI,
@@ -127,6 +141,17 @@ func TestCodalotlCLITool_OnlyExposesDocsCommands(t *testing.T) {
 	require.Equal(t, 2, rejectedImprove.ExitCode)
 	require.Contains(t, rejectedImprove.Stderr, "unknown subcommand")
 	require.Contains(t, rejectedImprove.Stderr, "improve-from-clarify")
+
+	rejectedCASGet := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-cas-get-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"cas get","argv":[]}`,
+	}))
+	require.False(t, rejectedCASGet.Success)
+	require.Equal(t, 2, rejectedCASGet.ExitCode)
+	require.Contains(t, rejectedCASGet.Stderr, "unknown subcommand")
+	require.Contains(t, rejectedCASGet.Stderr, "get")
 
 	rejected := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-disallowed",

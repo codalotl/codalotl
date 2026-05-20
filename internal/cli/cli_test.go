@@ -182,6 +182,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"docs", "fix"},
 		{"docs", "reflow"},
 		{"pr", "new"},
+		{"pr", "refactor"},
 		{"spec", "fmt"},
 		{"spec", "diff"},
 		{"spec", "ls-mismatch"},
@@ -190,6 +191,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"cas", "ls-namespaces"},
 		{"cas", "ls-stale"},
 		{"cas", "prune"},
+		{"cas", "recertify"},
 	} {
 		cmd := requireCommand(t, root, names...)
 		require.NotEmpty(t, cmd.Short)
