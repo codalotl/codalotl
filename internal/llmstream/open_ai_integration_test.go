@@ -641,6 +641,103 @@ The following stable prefix is intentionally long so the second no-store request
 	}
 }
 
+func TestOpenAIResponsesProvider_NoStoreZDREncryptedReasoningReplay(t *testing.T) {
+	if !runIntegrationTest(t, "OPENAI_API_KEY") {
+		return
+	}
+
+	systemPrompt := `You are a precise reasoning assistant. Keep visible answers short.
+
+The following stable prefix is intentionally long so later no-store requests can demonstrate provider input caching:
+` + strings.Repeat("encrypted reasoning cache anchor alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.\n", 240)
+
+	modelID := llmmodel.ModelID("test-openai-zdr-gpt-5-mini")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-5-mini", llmmodel.ModelOverrides{}))
+
+	conv := NewConversation(modelID, systemPrompt)
+	sc := conv.(*streamingConversation)
+	require.NoError(t, conv.AddUserTurn("Compute 2718 + 314. Reply with only the integer."))
+
+	hook := &recordingDiagnosticHook{}
+	unregister := AddDiagnosticHook(hook)
+	defer unregister()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	events := conv.SendAsync(ctx, SendOptions{NoStore: true, ReasoningEffort: "low"})
+
+	var firstResp *Turn
+	for event := range events {
+		switch event.Type {
+		case EventTypeError:
+			require.Error(t, event.Error)
+			t.Fatalf("unexpected error in first reasoning turn: %v", event.Error)
+		case EventTypeWarning:
+			t.Fatalf("unexpected warning event in first reasoning turn: %v", event.Error)
+		case EventTypeCompletedSuccess:
+			require.NotNil(t, event.Turn)
+			firstResp = event.Turn
+		}
+	}
+
+	require.NotNil(t, firstResp)
+	assert.Equal(t, FinishReasonEndTurn, firstResp.FinishReason)
+	assertOpenAINoStoreTurnScrubbed(t, firstResp)
+	require.NotEmpty(t, openAIReasoningProviderStates(firstResp.Parts))
+	assert.Empty(t, sc.providerConversationID)
+
+	require.Len(t, hook.turns, 1)
+	assertOpenAINoStoreDiagnosticRequest(t, hook.turns[0].Request)
+	assertOpenAIRequestIncludesEncryptedReasoning(t, hook.turns[0].Request)
+	assert.Contains(t, mustMarshalDiagnosticJSON(t, hook.turns[0].Response), "encrypted_content")
+
+	require.NoError(t, conv.AddUserTurn("Now add 1 to the previous integer. Reply with only the new integer."))
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel2()
+
+	events2 := conv.SendAsync(ctx2, SendOptions{NoStore: true, ReasoningEffort: "low"})
+
+	var secondResp *Turn
+	for event := range events2 {
+		switch event.Type {
+		case EventTypeError:
+			require.Error(t, event.Error)
+			t.Fatalf("unexpected error in second reasoning turn: %v", event.Error)
+		case EventTypeWarning:
+			t.Fatalf("unexpected warning event in second reasoning turn: %v", event.Error)
+		case EventTypeCompletedSuccess:
+			require.NotNil(t, event.Turn)
+			secondResp = event.Turn
+		}
+	}
+
+	require.NotNil(t, secondResp)
+	assert.Equal(t, FinishReasonEndTurn, secondResp.FinishReason)
+	assertOpenAINoStoreTurnScrubbed(t, secondResp)
+	assert.Empty(t, sc.providerConversationID)
+	assert.Greater(t, secondResp.Usage.CachedInputTokens, int64(0))
+
+	require.Len(t, hook.turns, 2)
+	assertOpenAINoStoreDiagnosticRequest(t, hook.turns[1].Request)
+	assertOpenAIRequestIncludesEncryptedReasoning(t, hook.turns[1].Request)
+	secondRequestJSON := mustMarshalDiagnosticJSON(t, hook.turns[1].Request)
+	assert.Contains(t, secondRequestJSON, "encrypted_content")
+	assert.Contains(t, secondRequestJSON, "encrypted reasoning cache anchor")
+	assert.NotContains(t, secondRequestJSON, "previous_response_id")
+
+	reasoningItems := openAIResponsesRequestReasoningInputItems(t, hook.turns[1].Request)
+	require.NotEmpty(t, reasoningItems)
+	for _, item := range reasoningItems {
+		assert.Equal(t, "reasoning", item["type"])
+		assert.NotEmpty(t, item["encrypted_content"])
+		assert.NotContains(t, item, "id")
+		assert.Empty(t, item["summary"])
+		assert.NotContains(t, item, "content")
+	}
+}
+
 func assertOpenAINoStoreDiagnosticRequest(t *testing.T, request map[string]any) {
 	t.Helper()
 

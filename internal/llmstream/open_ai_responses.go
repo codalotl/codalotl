@@ -237,6 +237,9 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 
 	if opt.NoStore {
 		params.Store = param.NewOpt(false)
+		if openAIResponsesShouldRequestEncryptedReasoning(modelInfo, opt) {
+			openAIResponsesIncludeEncryptedReasoning(params)
+		}
 	}
 	if opt.ReasoningEffort != "" {
 		params.Reasoning.Effort = shared.ReasoningEffort(opt.ReasoningEffort)
@@ -249,6 +252,26 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	}
 
 	return nil
+}
+
+func openAIResponsesIncludeEncryptedReasoning(params *responses.ResponseNewParams) {
+	const encryptedReasoning = responses.ResponseIncludable("reasoning.encrypted_content")
+	for _, include := range params.Include {
+		if include == encryptedReasoning {
+			return
+		}
+	}
+	params.Include = append(params.Include, encryptedReasoning)
+}
+
+func openAIResponsesShouldRequestEncryptedReasoning(modelInfo llmmodel.ModelInfo, opt *SendOptions) bool {
+	if opt == nil || !opt.NoStore {
+		return false
+	}
+	return modelInfo.CanReason ||
+		modelInfo.HasReasoningEffort ||
+		strings.TrimSpace(modelInfo.ReasoningEffort) != "" ||
+		strings.TrimSpace(opt.ReasoningEffort) != ""
 }
 
 func openAIResponsesUsesStoredLink(opt *SendOptions) bool {
@@ -290,9 +313,10 @@ func openAIResponsesScrubNoStoreTurn(turn Turn) Turn {
 			p.ProviderID = ""
 			parts = append(parts, p)
 		case ReasoningContent:
-			// OpenAI reasoning items require provider item IDs/state that no-store
-			// responses do not persist. Keep them out of retained replay history.
-			continue
+			if p.ProviderState == "" {
+				continue
+			}
+			parts = append(parts, ReasoningContent{ProviderState: p.ProviderState})
 		case ToolCall:
 			p.ProviderID = ""
 			parts = append(parts, p)
@@ -509,6 +533,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 
 	inputItems := make(responses.ResponseInputParam, 0, len(respsToEncode))
 	includeProviderItemIDs := openAIResponsesUsesStoredLink(opt)
+	replayEncryptedReasoning := opt != nil && opt.NoStore
 	for _, resp := range respsToEncode {
 
 		// Collect all text parts. A text part maps to a message, for a single msg on our side, we only want to make one message on their side.
@@ -527,7 +552,9 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		for _, part := range resp.Parts {
 			switch tpart := part.(type) {
 			case ReasoningContent:
-				idToReasoningParts[tpart.ProviderID] = append(idToReasoningParts[tpart.ProviderID], tpart)
+				if tpart.Content != "" {
+					idToReasoningParts[tpart.ProviderID] = append(idToReasoningParts[tpart.ProviderID], tpart)
+				}
 			}
 		}
 		idToAddedResponse := map[string]bool{} // keep track if we added the ID ("rs_blahblah") yet
@@ -594,6 +621,13 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					return responses.ResponseNewParams{}, fmt.Errorf("unknown or missing call type for tool result %s", tpart.CallID)
 				}
 			case ReasoningContent:
+				if replayEncryptedReasoning && tpart.ProviderState != "" {
+					inputItems = append(inputItems, openAIResponsesEncryptedReasoningInputItem(tpart.ProviderState))
+					continue
+				}
+				if tpart.Content == "" {
+					continue
+				}
 				if !includeProviderItemIDs || tpart.ProviderID == "" {
 					// Reasoning summaries require their provider item ID to replay.
 					// No-store responses do not persist those IDs server-side.
@@ -633,6 +667,14 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		}
 	}
 	return req, nil
+}
+
+func openAIResponsesEncryptedReasoningInputItem(encrypted string) responses.ResponseInputItemUnionParam {
+	return param.Override[responses.ResponseInputItemUnionParam](map[string]any{
+		"type":              "reasoning",
+		"summary":           []any{},
+		"encrypted_content": encrypted,
+	})
 }
 
 func openaiResponesMapMessageRole(role Role) responses.EasyInputMessageRole {
@@ -678,6 +720,9 @@ func openaiResponesBuildResponse(resp responses.Response) *Turn {
 			reasoning := item.AsReasoning()
 			for _, summaryItem := range reasoning.Summary {
 				parts = append(parts, ReasoningContent{Content: summaryItem.Text, ProviderID: reasoning.ID})
+			}
+			if reasoning.EncryptedContent != "" {
+				parts = append(parts, ReasoningContent{ProviderID: reasoning.ID, ProviderState: reasoning.EncryptedContent})
 			}
 		}
 	}

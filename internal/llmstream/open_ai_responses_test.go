@@ -20,6 +20,40 @@ func TestOpenAIResponesBuildResponse_SetsRoleAssistant(t *testing.T) {
 	assert.Equal(t, RoleAssistant, turn.Role)
 }
 
+func TestOpenAIResponesBuildResponse_CapturesEncryptedReasoningState(t *testing.T) {
+	var resp responses.Response
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "resp_123",
+		"status": "completed",
+		"output": [
+			{
+				"id": "rs_123",
+				"type": "reasoning",
+				"summary": [
+					{"type": "summary_text", "text": "reasoning summary"}
+				],
+				"encrypted_content": "encrypted_reasoning_blob"
+			},
+			{
+				"id": "msg_123",
+				"type": "message",
+				"role": "assistant",
+				"status": "completed",
+				"content": [
+					{"type": "output_text", "text": "answer"}
+				]
+			}
+		]
+	}`), &resp))
+
+	turn := openaiResponesBuildResponse(resp)
+
+	require.NotNil(t, turn)
+	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_123", Content: "reasoning summary"})
+	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_123", ProviderState: "encrypted_reasoning_blob"})
+	assert.Contains(t, turn.Parts, TextContent{ProviderID: "msg_123", Content: "answer"})
+}
+
 func TestOpenAIResponesConvertUsage_TotalOutputIncludesReasoning(t *testing.T) {
 	usage := responses.ResponseUsage{
 		InputTokens: 12,
@@ -70,6 +104,7 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistor
 	assert.Equal(t, false, req["store"])
 	assert.Equal(t, true, req["parallel_tool_calls"])
 	assert.NotContains(t, req, "previous_response_id")
+	assert.NotContains(t, req, "include")
 
 	input := openAIResponsesRequestInput(t, req)
 	require.Len(t, input, 4)
@@ -77,6 +112,46 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistor
 	assert.Contains(t, reqJSON, "first question")
 	assert.Contains(t, reqJSON, "first answer")
 	assert.Contains(t, reqJSON, "second question")
+}
+
+func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWithoutProviderIDs(t *testing.T) {
+	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("first question"))
+	sc.turns = append(sc.turns, Turn{
+		Role:       RoleAssistant,
+		ProviderID: "resp_unstored",
+		Parts: []ContentPart{
+			ReasoningContent{ProviderID: "rs_unstored", Content: "private reasoning summary", ProviderState: "encrypted_reasoning_blob"},
+			TextContent{ProviderID: "msg_unstored", Content: "first answer"},
+		},
+	})
+	require.NoError(t, sc.AddUserTurn("second question"))
+	sc.providerConversationID = "resp_unstored"
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIReasoningRequestShapeModelInfo(), &SendOptions{NoStore: true})
+	require.NoError(t, err)
+
+	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, false, req["store"])
+	assert.NotContains(t, req, "previous_response_id")
+	assertOpenAIRequestIncludesEncryptedReasoning(t, req)
+
+	reasoningItems := openAIResponsesRequestReasoningInputItems(t, req)
+	require.Len(t, reasoningItems, 1)
+	assert.Equal(t, "reasoning", reasoningItems[0]["type"])
+	assert.Equal(t, "encrypted_reasoning_blob", reasoningItems[0]["encrypted_content"])
+	assert.NotContains(t, reasoningItems[0], "id")
+	assert.Empty(t, reasoningItems[0]["summary"])
+	assert.NotContains(t, reasoningItems[0], "content")
+
+	assert.Contains(t, reqJSON, "system instructions")
+	assert.Contains(t, reqJSON, "first question")
+	assert.Contains(t, reqJSON, "first answer")
+	assert.Contains(t, reqJSON, "second question")
+	assert.NotContains(t, reqJSON, "resp_unstored")
+	assert.NotContains(t, reqJSON, "rs_unstored")
+	assert.NotContains(t, reqJSON, "private reasoning summary")
+	assert.NotContains(t, reqJSON, "msg_unstored")
 }
 
 func TestBuildOpenAIResponsesRequestParams_NoStoreOmitsPersistedProviderItemIDs(t *testing.T) {
@@ -151,7 +226,7 @@ func TestOpenAIResponsesPrepareCompletedSuccessEvent_NoStoreScrubsEventTurn(t *t
 		Role:       RoleUser,
 		ProviderID: "resp_unstored",
 		Parts: []ContentPart{
-			ReasoningContent{ProviderID: "rs_unstored", Content: "private reasoning summary"},
+			ReasoningContent{ProviderID: "rs_unstored", Content: "private reasoning summary", ProviderState: "encrypted_reasoning_blob"},
 			TextContent{ProviderID: "msg_unstored", Content: "assistant value answer"},
 			functionCall,
 			customCall,
@@ -173,6 +248,7 @@ func TestOpenAIResponsesPrepareCompletedSuccessEvent_NoStoreScrubsEventTurn(t *t
 		{CallID: "call_function_value", Name: "lookup_weather", Type: "function_call", Input: `{"city":"Paris"}`},
 		{CallID: "call_custom_value", Name: "structured_answer", Type: "custom_tool_call", Input: "answer:7"},
 	}, prepared.Turn.ToolCalls())
+	assert.Equal(t, []string{"encrypted_reasoning_blob"}, openAIReasoningProviderStates(prepared.Turn.Parts))
 
 	assert.Equal(t, "resp_unstored", originalTurn.ProviderID)
 	require.Len(t, originalTurn.Parts, 4)
@@ -407,7 +483,9 @@ func assertOpenAINoStoreTurnScrubbed(t *testing.T, turn *Turn) {
 		case ToolCall:
 			assert.Empty(t, part.ProviderID)
 		case ReasoningContent:
-			t.Fatalf("reasoning content should not be exposed on no-store completed turns")
+			assert.Empty(t, part.ProviderID)
+			assert.Empty(t, part.Content)
+			assert.NotEmpty(t, part.ProviderState)
 		}
 	}
 }
@@ -418,6 +496,15 @@ func openAIRequestShapeModelInfo() llmmodel.ModelInfo {
 		ProviderID:      llmmodel.ProviderIDOpenAI,
 		ProviderModelID: "gpt-4o-mini",
 	}
+}
+
+func openAIReasoningRequestShapeModelInfo() llmmodel.ModelInfo {
+	info := openAIRequestShapeModelInfo()
+	info.ID = llmmodel.ModelID("gpt-5-mini")
+	info.ProviderModelID = "gpt-5-mini"
+	info.CanReason = true
+	info.HasReasoningEffort = true
+	return info
 }
 
 func mustMarshalOpenAIResponsesRequest(t *testing.T, params responses.ResponseNewParams) (map[string]any, string) {
@@ -437,4 +524,37 @@ func openAIResponsesRequestInput(t *testing.T, req map[string]any) []any {
 	input, ok := req["input"].([]any)
 	require.True(t, ok)
 	return input
+}
+
+func assertOpenAIRequestIncludesEncryptedReasoning(t *testing.T, req map[string]any) {
+	t.Helper()
+
+	include, ok := req["include"].([]any)
+	require.True(t, ok)
+	assert.Contains(t, include, "reasoning.encrypted_content")
+}
+
+func openAIResponsesRequestReasoningInputItems(t *testing.T, req map[string]any) []map[string]any {
+	t.Helper()
+
+	var reasoningItems []map[string]any
+	for _, raw := range openAIResponsesRequestInput(t, req) {
+		item, ok := raw.(map[string]any)
+		require.True(t, ok)
+		if item["type"] == "reasoning" {
+			reasoningItems = append(reasoningItems, item)
+		}
+	}
+	return reasoningItems
+}
+
+func openAIReasoningProviderStates(parts []ContentPart) []string {
+	var states []string
+	for _, part := range parts {
+		reasoning, ok := part.(ReasoningContent)
+		if ok && reasoning.ProviderState != "" {
+			states = append(states, reasoning.ProviderState)
+		}
+	}
+	return states
 }
