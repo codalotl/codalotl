@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model ID sent to API endpoints.
@@ -100,6 +101,62 @@ var AllProviderIDs = []ProviderID{
 	ProviderIDXAI,
 	ProviderIDAnthropic,
 	ProviderIDGemini,
+}
+
+// ProviderSubscription is provider-agnostic subscription auth that can be used
+// instead of a provider API key.
+type ProviderSubscription struct {
+	ProviderID       ProviderID
+	AccessToken      string
+	AccountID        string
+	APIEndpointURL   string
+	ExpiresAt        time.Time
+	RequiresNoStore  bool
+	RootInstructions bool
+}
+
+// Valid reports whether sub contains the minimum information required to
+// authenticate provider requests.
+func (sub ProviderSubscription) Valid() bool {
+	return sub.ProviderID != ProviderIDUnknown &&
+		strings.TrimSpace(sub.AccessToken) != "" &&
+		strings.TrimSpace(sub.APIEndpointURL) != ""
+}
+
+// SetProviderSubscription configures subscription auth for a provider.
+func SetProviderSubscription(providerID ProviderID, sub ProviderSubscription) {
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+	sub.ProviderID = providerID
+	if providerID == ProviderIDUnknown || !sub.Valid() {
+		delete(providerSubscriptions, providerID)
+		return
+	}
+	providerSubscriptions[providerID] = sub
+}
+
+// ClearProviderSubscription removes subscription auth for a provider.
+func ClearProviderSubscription(providerID ProviderID) {
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+	delete(providerSubscriptions, providerID)
+}
+
+// GetProviderSubscription returns subscription auth for providerID, if set.
+func GetProviderSubscription(providerID ProviderID) (ProviderSubscription, bool) {
+	modelsMu.RLock()
+	defer modelsMu.RUnlock()
+	sub, ok := providerSubscriptions[providerID]
+	if !ok || !sub.Valid() {
+		return ProviderSubscription{}, false
+	}
+	return sub, true
+}
+
+// ProviderHasSubscription reports whether subscription auth is configured for providerID.
+func ProviderHasSubscription(providerID ProviderID) bool {
+	_, ok := GetProviderSubscription(providerID)
+	return ok
 }
 
 // AddCustomModel adds the custom model to the available models. id is an opaque identifier that can be referred to later from consumers of this package. providerID
@@ -325,12 +382,14 @@ func GetAPIKey(id ModelID) string {
 	return ""
 }
 
-// AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty effective API key (per GetAPIKey).
+// AvailableModelIDsWithAPIKey returns the model IDs that currently have usable provider auth. Despite the historical name, this includes provider subscription
+// auth in addition to non-empty effective API keys (per GetAPIKey).
 func AvailableModelIDsWithAPIKey() []ModelID {
 	ids := AvailableModelIDs()
 	out := make([]ModelID, 0, len(ids))
 	for _, id := range ids {
-		if GetAPIKey(id) != "" {
+		info := GetModelInfo(id)
+		if GetAPIKey(id) != "" || ProviderHasSubscription(info.ProviderID) {
 			out = append(out, id)
 		}
 	}
@@ -389,13 +448,14 @@ type providerData struct {
 }
 
 var (
-	modelsMu             sync.RWMutex
-	modelsByID           = make(map[ModelID]ModelInfo)
-	modelOrder           []ModelID
-	providerDefaults     = make(map[ProviderID]ModelID)
-	providerEnvVars      = make(map[ProviderID]string)
-	providerKeyOverrides = make(map[ProviderID]string)
-	providerCatalog      = make(map[ProviderID]providerData)
+	modelsMu              sync.RWMutex
+	modelsByID            = make(map[ModelID]ModelInfo)
+	modelOrder            []ModelID
+	providerDefaults      = make(map[ProviderID]ModelID)
+	providerEnvVars       = make(map[ProviderID]string)
+	providerKeyOverrides  = make(map[ProviderID]string)
+	providerSubscriptions = make(map[ProviderID]ProviderSubscription)
+	providerCatalog       = make(map[ProviderID]providerData)
 )
 
 var anthropicVersionSuffix = regexp.MustCompile(`-\d{6,}$`)

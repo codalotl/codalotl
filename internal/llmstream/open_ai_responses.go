@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -32,7 +33,11 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.context", err)
 	}
 
+	sub, useSubscription := openAIResponsesSubscription(modelInfo)
 	apiKey := llmmodel.GetAPIKey(sc.modelID)
+	if useSubscription {
+		apiKey = sub.AccessToken
+	}
 	if apiKey == "" {
 		return Turn{}, sc.LogNewErr("open_ai_send_async.api_key_missing", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID)
 	}
@@ -41,17 +46,25 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		option.WithAPIKey(apiKey),
 		option.WithMaxRetries(3),
 	}
-	if baseURL := llmmodel.GetAPIEndpointURL(sc.modelID); baseURL != "" {
+	baseURL := llmmodel.GetAPIEndpointURL(sc.modelID)
+	if useSubscription {
+		baseURL = sub.APIEndpointURL
+		opts = append(opts, option.WithBaseURL(sub.APIEndpointURL))
+		if sub.AccountID != "" {
+			opts = append(opts, option.WithHeader("ChatGPT-Account-ID", sub.AccountID))
+		}
+	} else if baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}
 	client := openai.NewClient(opts...)
 
-	params, err := sc.buildOpenAIResponsesRequestParams(modelInfo, opt)
+	effectiveOpt := openAIResponsesEffectiveSendOptions(modelInfo, opt)
+	params, err := sc.buildOpenAIResponsesRequestParams(modelInfo, effectiveOpt)
 	if err != nil {
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.build_params", err)
 	}
 
-	debugPrint(debugHTTPRequests, "HTTP REQUEST: create response(streaming=true)", params)
+	debugPrint(debugHTTPRequests, fmt.Sprintf("HTTP REQUEST: POST %s create response(streaming=true)", openAIResponsesRequestPath(baseURL)), params)
 
 	var diagnosticRequest map[string]any
 	if hasDiagnosticHooks() {
@@ -139,7 +152,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		if processedEvent != nil {
 
 			if processedEvent.Type == EventTypeCompletedSuccess {
-				preparedEvent := openAIResponsesPrepareCompletedSuccessEvent(*processedEvent, opt)
+				preparedEvent := openAIResponsesPrepareCompletedSuccessEvent(*processedEvent, effectiveOpt)
 				processedEvent = &preparedEvent
 				debugPrint(debugParsedResponses, "PARSED RESPONSE: EventTypeCompletedSuccess", processedEvent)
 				finalResp = processedEvent.Turn
@@ -165,7 +178,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogNewErr("open_ai_send_async.not_completed")
 	}
 
-	sc.recordOpenAIResponseLink(*finalResp, opt)
+	sc.recordOpenAIResponseLink(*finalResp, effectiveOpt)
 
 	resp := *finalResp
 	resp.Role = RoleAssistant
@@ -173,6 +186,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 }
 
 func (sc *streamingConversation) buildOpenAIResponsesRequestParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
+	opt = openAIResponsesEffectiveSendOptions(modelInfo, opt)
 	params, err := sc.buildOpenAIResponsesParams(modelInfo, opt)
 	if err != nil {
 		return responses.ResponseNewParams{}, err
@@ -186,6 +200,50 @@ func (sc *streamingConversation) buildOpenAIResponsesRequestParams(modelInfo llm
 
 	params.ParallelToolCalls = param.NewOpt(true)
 	return params, nil
+}
+
+func openAIResponsesEffectiveSendOptions(modelInfo llmmodel.ModelInfo, opt *SendOptions) *SendOptions {
+	sub, ok := openAIResponsesSubscription(modelInfo)
+	if !ok || !sub.RequiresNoStore {
+		return opt
+	}
+	effective := SendOptions{}
+	if opt != nil {
+		effective = *opt
+	}
+	effective.NoStore = true
+	return &effective
+}
+
+func openAIResponsesSubscription(modelInfo llmmodel.ModelInfo) (llmmodel.ProviderSubscription, bool) {
+	if modelInfo.ProviderID != llmmodel.ProviderIDOpenAI {
+		return llmmodel.ProviderSubscription{}, false
+	}
+	if openAIResponsesHasExplicitModelAuth(modelInfo) {
+		return llmmodel.ProviderSubscription{}, false
+	}
+	return llmmodel.GetProviderSubscription(modelInfo.ProviderID)
+}
+
+func openAIResponsesHasExplicitModelAuth(modelInfo llmmodel.ModelInfo) bool {
+	return strings.TrimSpace(modelInfo.ModelOverrides.APIEndpointURL) != "" ||
+		strings.TrimSpace(modelInfo.ModelOverrides.APIActualKey) != "" ||
+		strings.TrimSpace(modelInfo.ModelOverrides.APIEnvKey) != ""
+}
+
+func openAIResponsesRequestPath(baseURL string) string {
+	const responsesPath = "/responses"
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return responsesPath
+	}
+	if u, err := url.Parse(baseURL); err == nil && u.Path != "" {
+		return strings.TrimRight(u.EscapedPath(), "/") + responsesPath
+	}
+	if strings.HasPrefix(baseURL, "/") {
+		return strings.TrimRight(baseURL, "/") + responsesPath
+	}
+	return responsesPath
 }
 
 func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelInfo llmmodel.ModelInfo, opt *SendOptions) error {
@@ -534,7 +592,11 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	inputItems := make(responses.ResponseInputParam, 0, len(respsToEncode))
 	includeProviderItemIDs := openAIResponsesUsesStoredLink(opt)
 	replayEncryptedReasoning := opt != nil && opt.NoStore
+	rootInstructions := openAIResponsesRootInstructions(modelInfo, respsToEncode)
 	for _, resp := range respsToEncode {
+		if rootInstructions != "" && resp.Role == RoleSystem {
+			continue
+		}
 
 		// Collect all text parts. A text part maps to a message, for a single msg on our side, we only want to make one message on their side.
 		// I have no idea these parts exist in practice, but in theory they could be interleaved in msg.Parts. So the first part we see, we write a message with all text parts.
@@ -652,6 +714,9 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		Model: modelID,
 		Input: responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
 	}
+	if rootInstructions != "" {
+		req.Instructions = param.NewOpt(rootInstructions)
+	}
 	if sc.promptCacheKey != "" {
 		req.PromptCacheKey = param.NewOpt(sc.promptCacheKey)
 	}
@@ -667,6 +732,26 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		}
 	}
 	return req, nil
+}
+
+func openAIResponsesRootInstructions(modelInfo llmmodel.ModelInfo, turns []Turn) string {
+	sub, ok := openAIResponsesSubscription(modelInfo)
+	if !ok || !sub.RootInstructions {
+		return ""
+	}
+	var parts []string
+	for _, turn := range turns {
+		if turn.Role != RoleSystem {
+			continue
+		}
+		for _, part := range turn.Parts {
+			text, ok := part.(TextContent)
+			if ok && strings.TrimSpace(text.Content) != "" {
+				parts = append(parts, text.Content)
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func openAIResponsesEncryptedReasoningInputItem(encrypted string) responses.ResponseInputItemUnionParam {

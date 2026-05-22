@@ -114,6 +114,84 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistor
 	assert.Contains(t, reqJSON, "second question")
 }
 
+func TestBuildOpenAIResponsesRequestParams_OpenAISubscriptionForcesNoStoreAndRootInstructions(t *testing.T) {
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		AccessToken:      "access-token",
+		AccountID:        "account-id",
+		APIEndpointURL:   "https://chatgpt.com/backend-api/codex",
+		RequiresNoStore:  true,
+		RootInstructions: true,
+	})
+	t.Cleanup(func() { llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI) })
+
+	sc := openAIRequestShapeConversation(t)
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIRequestShapeModelInfo(), nil)
+	require.NoError(t, err)
+
+	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, false, req["store"])
+	assert.Equal(t, "system instructions", req["instructions"])
+	assert.NotContains(t, req, "previous_response_id")
+
+	input := openAIResponsesRequestInput(t, req)
+	require.Len(t, input, 3)
+	assert.Contains(t, reqJSON, "first question")
+	assert.Contains(t, reqJSON, "first answer")
+	assert.Contains(t, reqJSON, "second question")
+	assert.NotContains(t, reqJSON, `"role":"system"`)
+}
+
+func TestOpenAIResponsesSubscriptionUsesOpenAISubscriptionForDefaultModelAuth(t *testing.T) {
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		AccessToken:    "access-token",
+		APIEndpointURL: "https://chatgpt.com/backend-api/codex",
+	})
+	t.Cleanup(func() { llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI) })
+
+	sub, ok := openAIResponsesSubscription(openAIRequestShapeModelInfo())
+
+	require.True(t, ok)
+	assert.Equal(t, "access-token", sub.AccessToken)
+	assert.Equal(t, "https://chatgpt.com/backend-api/codex", sub.APIEndpointURL)
+}
+
+func TestOpenAIResponsesSubscriptionSkipsExplicitModelAuth(t *testing.T) {
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		AccessToken:    "access-token",
+		APIEndpointURL: "https://chatgpt.com/backend-api/codex",
+	})
+	t.Cleanup(func() { llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI) })
+
+	for _, tc := range []struct {
+		name      string
+		overrides llmmodel.ModelOverrides
+	}{
+		{
+			name:      "actual_key",
+			overrides: llmmodel.ModelOverrides{APIActualKey: "custom-key"},
+		},
+		{
+			name:      "env_key",
+			overrides: llmmodel.ModelOverrides{APIEnvKey: "CUSTOM_OPENAI_KEY"},
+		},
+		{
+			name:      "endpoint",
+			overrides: llmmodel.ModelOverrides{APIEndpointURL: "https://example.test/v1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			modelInfo := openAIRequestShapeModelInfo()
+			modelInfo.ModelOverrides = tc.overrides
+
+			sub, ok := openAIResponsesSubscription(modelInfo)
+
+			assert.False(t, ok)
+			assert.Empty(t, sub)
+		})
+	}
+}
+
 func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWithoutProviderIDs(t *testing.T) {
 	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
 	require.NoError(t, sc.AddUserTurn("first question"))
@@ -152,6 +230,12 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWitho
 	assert.NotContains(t, reqJSON, "rs_unstored")
 	assert.NotContains(t, reqJSON, "private reasoning summary")
 	assert.NotContains(t, reqJSON, "msg_unstored")
+}
+
+func TestOpenAIResponsesRequestPathIncludesBaseURLPath(t *testing.T) {
+	assert.Equal(t, "/backend-api/codex/responses", openAIResponsesRequestPath("https://chatgpt.com/backend-api/codex"))
+	assert.Equal(t, "/v1/responses", openAIResponsesRequestPath("https://api.openai.com/v1/"))
+	assert.Equal(t, "/responses", openAIResponsesRequestPath(""))
 }
 
 func TestBuildOpenAIResponsesRequestParams_NoStoreOmitsPersistedProviderItemIDs(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/agentbuilder"
 	"github.com/codalotl/codalotl/internal/docubot"
@@ -27,6 +28,7 @@ import (
 	"github.com/codalotl/codalotl/internal/q/health"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
 	"github.com/codalotl/codalotl/internal/specmd"
+	"github.com/codalotl/codalotl/internal/subscriptions/openaisub"
 	toolcli "github.com/codalotl/codalotl/internal/tools/cli"
 	toolrefactor "github.com/codalotl/codalotl/internal/tools/refactor"
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
@@ -121,6 +123,7 @@ func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunStat
 			if err != nil {
 				return qcli.ExitError{Code: 1, Err: err}
 			}
+			_ = openaisub.Init(c.Context)
 
 			m := ensureMonitor(cfg)
 			runState.setEvent(event)
@@ -675,8 +678,93 @@ codalotl context packages --deps
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, newPRCommand(), newDocsCommand(runWithConfig, true), specCmd, casCmd, panicCmd)
+	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, newAuthCommand(), newPRCommand(), newDocsCommand(runWithConfig, true), specCmd, casCmd, panicCmd)
 	return root, runState
+}
+
+func newAuthCommand() *qcli.Command {
+	authCmd := &qcli.Command{
+		Name:  "auth",
+		Short: "Manage provider authentication.",
+		Long:  "Manage provider authentication used by codalotl.",
+		Usage: "[provider]",
+	}
+	openAICmd := &qcli.Command{
+		Name:  "openai",
+		Short: "Manage OpenAI authentication.",
+		Long:  "Manage OpenAI ChatGPT subscription authentication.",
+		Usage: "[command]",
+	}
+
+	loginCmd := &qcli.Command{
+		Name:             "login",
+		Short:            "Log in with an OpenAI ChatGPT subscription.",
+		Long:             "Starts the OpenAI ChatGPT subscription device login flow and stores credentials in ~/.codalotl/openai_auth.json.",
+		NoPositionalArgs: true,
+		Args:             qcli.NoArgs,
+	}
+	noBrowser := loginCmd.Flags().Bool("no-browser", 0, false, "Print the verification URL instead of opening a browser.")
+	loginCmd.Run = func(c *qcli.Context) error {
+		if err := openaisub.Login(c.Context, openaisub.LoginOptions{
+			Options:   openaisub.Options{Out: c.Out},
+			NoBrowser: *noBrowser,
+		}); err != nil {
+			return qcli.ExitError{Code: 1, Err: err}
+		}
+		return nil
+	}
+
+	logoutCmd := &qcli.Command{
+		Name:             "logout",
+		Short:            "Log out of OpenAI ChatGPT subscription auth.",
+		Long:             "Deletes stored OpenAI ChatGPT subscription credentials from ~/.codalotl/openai_auth.json.",
+		NoPositionalArgs: true,
+		Args:             qcli.NoArgs,
+		Run: func(c *qcli.Context) error {
+			if err := openaisub.Logout(); err != nil {
+				return qcli.ExitError{Code: 1, Err: err}
+			}
+			return writeStringln(c.Out, "Logged out of OpenAI subscription.")
+		},
+	}
+
+	statusCmd := &qcli.Command{
+		Name:             "status",
+		Short:            "Show OpenAI ChatGPT subscription auth status.",
+		Long:             "Shows whether OpenAI ChatGPT subscription credentials are configured and usable.",
+		NoPositionalArgs: true,
+		Args:             qcli.NoArgs,
+		Run: func(c *qcli.Context) error {
+			status, err := openaisub.CheckStatus(c.Context)
+			if err != nil {
+				return qcli.ExitError{Code: 1, Err: err}
+			}
+			if !status.LoggedIn {
+				if err := writeStringln(c.Out, "Not logged in to OpenAI subscription."); err != nil {
+					return err
+				}
+				return qcli.ExitError{Code: 1, Err: errors.New("")}
+			}
+			if err := writeStringln(c.Out, "Logged in to OpenAI subscription."); err != nil {
+				return err
+			}
+			if status.ChatGPTAccountID != "" {
+				if err := writeStringln(c.Out, "Account: "+status.ChatGPTAccountID); err != nil {
+					return err
+				}
+			}
+			if !status.ExpiresAt.IsZero() {
+				if err := writeStringln(c.Out, "Expires: "+status.ExpiresAt.Format(time.RFC3339)); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+
+	openAICmd.AddCommand(loginCmd, logoutCmd, statusCmd)
+	authCmd.AddCommand(openAICmd)
+	return authCmd
 }
 
 func newCodalotlCLICommandTree() *qcli.Command {

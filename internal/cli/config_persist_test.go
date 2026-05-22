@@ -14,6 +14,14 @@ func isolateUserConfigWithHome(t *testing.T) string {
 	home := mkdirTempWithRemoveRetry(t, "codalotl-test-home-")
 	t.Setenv("HOME", home)
 	t.Setenv("LOCALAPPDATA", mkdirTempWithRemoveRetry(t, "codalotl-test-localappdata-"))
+	for _, pid := range llmmodel.AllProviderIDs {
+		llmmodel.ClearProviderSubscription(pid)
+	}
+	t.Cleanup(func() {
+		for _, pid := range llmmodel.AllProviderIDs {
+			llmmodel.ClearProviderSubscription(pid)
+		}
+	})
 	return home
 }
 

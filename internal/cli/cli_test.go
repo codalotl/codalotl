@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/docubot"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -18,6 +19,7 @@ import (
 	"github.com/codalotl/codalotl/internal/noninteractive"
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 	"github.com/codalotl/codalotl/internal/q/remotemonitor"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,7 +32,13 @@ func isolateUserConfig(t *testing.T) {
 	// llmmodel key overrides are process-global; ensure tests don't leak state.
 	for _, pid := range llmmodel.AllProviderIDs {
 		llmmodel.ConfigureProviderKey(pid, "")
+		llmmodel.ClearProviderSubscription(pid)
 	}
+	t.Cleanup(func() {
+		for _, pid := range llmmodel.AllProviderIDs {
+			llmmodel.ClearProviderSubscription(pid)
+		}
+	})
 
 	// Keep tests hermetic: don't allow developer env vars to satisfy startup validation.
 	for _, ev := range llmmodel.ProviderKeyEnvVars() {
@@ -169,6 +177,61 @@ func TestRun_CommandHelp_IsDetailedAndSkipsStartupValidation(t *testing.T) {
 	require.Contains(t, got, "<path/to/pkg>")
 	require.Contains(t, got, "codalotl docs add --public-only internal/mypkg")
 	require.Contains(t, got, "codalotl docs add --important internal/mypkg")
+}
+
+func TestRun_AuthOpenAIStatus_UsesSubscriptionAuthFile(t *testing.T) {
+	isolateUserConfig(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	authDir := filepath.Join(home, ".codalotl")
+	require.NoError(t, os.MkdirAll(authDir, 0o755))
+	authPath := filepath.Join(authDir, "openai_auth.json")
+	expiresAt := time.Now().Add(time.Hour).Format(time.RFC3339Nano)
+	require.NoError(t, os.WriteFile(authPath, []byte(`{
+		"type": "openai_subscription",
+		"access_token": "access-token",
+		"refresh_token": "refresh-token",
+		"id_token": "id-token",
+		"expires_at": "`+expiresAt+`",
+		"chatgpt_account_id": "account-id"
+	}`), 0o600))
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "auth", "openai", "status"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+
+	got := out.String()
+	require.Contains(t, got, "Logged in to OpenAI subscription.")
+	require.Contains(t, got, "Account: account-id")
+	assert.True(t, llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI))
+}
+
+func TestRun_AuthOpenAILogout_RemovesSubscriptionAuthFile(t *testing.T) {
+	isolateUserConfig(t)
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	authDir := filepath.Join(home, ".codalotl")
+	require.NoError(t, os.MkdirAll(authDir, 0o755))
+	authPath := filepath.Join(authDir, "openai_auth.json")
+	require.NoError(t, os.WriteFile(authPath, []byte(`{"type":"openai_subscription"}`), 0o600))
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		AccessToken:    "access-token",
+		APIEndpointURL: "https://chatgpt.com/backend-api/codex",
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "auth", "openai", "logout"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Logged out of OpenAI subscription.")
+	require.NoFileExists(t, authPath)
+	assert.False(t, llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI))
 }
 
 func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
