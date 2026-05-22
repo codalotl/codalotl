@@ -33,15 +33,15 @@ Implementing this is (probably) the easy-ish part. The hard part is validating i
   - [DONE] Re-send encrypted reasoning items on subsequent no-store requests.
   - [DONE] Update request-shape/unit tests and live `INTEGRATION_TEST` coverage so the second or later no-store request contains encrypted reasoning content and still has cached input.
 
-### Phase 2: validation
+### Phase 2: validation [DONE]
 
-- Run focused `internal/llmstream` tests.
-- Run live OpenAI integration tests with `INTEGRATION_TEST=1`, using a multi-turn no-store reasoning flow that exercises encrypted reasoning replay and cached input.
-- Run a live command similar to `CODALOTL_ZDR=true go run . exec --yes --model <openai-reasoning-model> ...` and inspect diagnostic output for:
-  - all requests use `store=false`;
-  - no `previous_response_id`;
-  - encrypted reasoning content is requested and replayed after the first turn;
-  - later turns report cached input tokens.
+- [DONE] Run focused `internal/llmstream` tests.
+- [DONE] Run live OpenAI integration tests with `INTEGRATION_TEST=1`, using a multi-turn no-store reasoning flow that exercises encrypted reasoning replay and cached input.
+- [DONE] Run a live command similar to `CODALOTL_ZDR=true go run . exec --yes --model <openai-reasoning-model> ...` and inspect diagnostic output for:
+  - [DONE] all requests use `store=false`;
+  - [DONE] no `previous_response_id`;
+  - [DONE] encrypted reasoning content is requested and replayed after the first turn;
+  - [DONE] later turns report cached input tokens.
 
 ## Review
 
@@ -73,3 +73,11 @@ TBD.
   - Added request-shape/unit coverage and `TestOpenAIResponsesProvider_NoStoreZDREncryptedReasoningReplay`.
   - Validation reported by implementation agent: `go test ./internal/llmstream`, `INTEGRATION_TEST=1 go test -v -run TestOpenAIResponsesProvider_NoStoreZDRToolFlow ./internal/llmstream`, and `INTEGRATION_TEST=1 go test -v -run TestOpenAIResponsesProvider_NoStoreZDREncryptedReasoningReplay ./internal/llmstream` passed.
   - Orchestrator sanity validation: `go test -count=1 ./internal/llmstream` passed.
+- Orchestrator validation after implementation:
+  - `go test -count=1 ./internal/llmstream` passed.
+  - `go test -count=1 ./...` passed.
+  - `INTEGRATION_TEST=1 go test -count=1 -v ./internal/llmstream -run 'TestOpenAIResponsesProvider_NoStoreZDR(ToolFlow|EncryptedReasoningReplay)'` passed against real OpenAI.
+  - `CODALOTL_ZDR=true LLMSTREAM_LOG_FILE=zdr-encrypted-live.log go run . exec --yes --no-color --model gpt-5-mini 'Use tools to inspect go.mod and internal/llmstream/open_ai_responses.go. Then inspect internal/llmstream/open_ai_responses_test.go. After using tools, answer exactly: ZDR encrypted reasoning live validation complete.'` passed against real OpenAI.
+  - Live `go run` diagnostics showed 4 actual OpenAI request blocks; every request used `store=false`, requested `reasoning.encrypted_content`, and omitted request-level `previous_response_id`.
+  - Live `go run` diagnostics showed encrypted reasoning replay after the first turn: request 2 had 1 `encrypted_content` input field, request 3 had 2, and request 4 had 3.
+  - Live `go run` cached-token validation succeeded: response cached-token counts were `[0, 4096, 0, 4736]`, and the CLI token table reported 8832 total cached input tokens.
