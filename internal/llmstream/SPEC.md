@@ -11,9 +11,10 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 	- Sends `store=false`.
 	- Does not send `previous_response_id`.
 	- Does not retain response IDs for future linking.
+	- Requests `reasoning.encrypted_content` and replays encrypted reasoning content across stateless turns.
 	- Sends full replayable local conversation history on every request: visible messages, tool calls, and tool results are replayed by value.
-	- Does not replay provider output item IDs or provider reasoning items that require stored OpenAI state.
-	- Retained no-store assistant turns omit provider IDs/reasoning state that require stored OpenAI state.
+	- Does not replay provider output item IDs or provider reasoning items that require stored OpenAI state without encrypted content.
+	- Retained no-store assistant turns omit provider IDs and only keep reasoning state that is safe for stateless encrypted replay.
 - Default OpenAI behavior stores/links responses server-side where supported.
 
 ### Anthropic
