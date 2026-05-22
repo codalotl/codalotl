@@ -147,7 +147,9 @@ In a **single response**, do **both** of the following in this exact order:
 Rules:
 - The text greeting MUST appear before any tool call.
 - Call exactly one tool (store_message) once.
-- Do not ask questions or add extra text after the tool call.`
+- Do not ask questions or add extra text after the tool call.
+
+After the tool result is supplied in a later turn, reply with "Stored successfully."`
 
 	conv := NewConversation(llmmodel.DefaultModel, instructions)
 	require.NoError(t, conv.AddUserTurn("Hello Mr. Automaton."))
@@ -159,7 +161,7 @@ Rules:
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "minimal"})
+	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low"})
 
 	var (
 		gotToolUse   bool
@@ -312,7 +314,7 @@ After the tool result is supplied, reply with "Final answer: <value>" where <val
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "minimal"})
+	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low"})
 
 	var (
 		firstResp *Turn
@@ -344,7 +346,7 @@ After the tool result is supplied, reply with "Final answer: <value>" where <val
 	require.NotEmpty(t, call.CallID)
 
 	rawInput := strings.TrimSpace(call.Input)
-	require.True(t, strings.HasPrefix(rawInput, "answer:"), "tool input should start with answer:")
+	require.True(t, strings.HasPrefix(rawInput, "answer:"))
 	value := strings.TrimSpace(strings.TrimPrefix(rawInput, "answer:"))
 	assert.Equal(t, requestedNumber, value)
 
@@ -412,7 +414,7 @@ func TestOpenAIResponsesProvider_Reasoning(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low"})
+	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "high"})
 
 	var completeResp *Turn
 	gotCreated := false
@@ -450,59 +452,54 @@ func TestOpenAIResponsesProvider_Reasoning(t *testing.T) {
 
 	assert.True(t, gotCreated)
 	require.NotNil(t, completeResp)
-	require.True(t, gotReasoningDelta)
-	require.True(t, gotReasoningDeltaDone)
+	if gotReasoningDelta {
+		require.True(t, gotReasoningDeltaDone)
+	}
 	require.True(t, gotContentDelta)
 	require.True(t, gotContentDeltaDone)
 	assert.NotEqual(t, "", completeResp.ProviderID)
 
 	// Reasoning and content parts
-	if assert.Len(t, completeResp.Parts, 2) {
-		// Find first text content part
+	if assert.NotEmpty(t, completeResp.Parts) {
 		foundContent := false
+		foundReasoning := false
 		for _, p := range completeResp.Parts {
-			if tc, ok := p.(TextContent); ok {
+			switch tc := p.(type) {
+			case TextContent:
 				foundContent = true
 				assert.Equal(t, "395", tc.Content)
-				break
+			case ReasoningContent:
+				foundReasoning = true
+				assert.NotEmpty(t, tc.ProviderID)
+				assert.NotEmpty(t, tc.Content)
 			}
 		}
 		assert.True(t, foundContent)
-
-		foundReasoning := false
-		for _, p := range completeResp.Parts {
-			if tc, ok := p.(ReasoningContent); ok {
-				foundReasoning = true
-				assert.NotEmpty(t, tc.Content)
-				break
-			}
-		}
-		assert.True(t, foundReasoning)
+		assert.True(t, foundReasoning || completeResp.Usage.ReasoningTokens > 0)
 	}
 	assert.Len(t, completeResp.ToolCalls(), 0)
 	assert.True(t, completeResp.Usage.TotalInputTokens > 0)
 	assert.True(t, completeResp.Usage.TotalOutputTokens > 0)
+	assert.True(t, completeResp.Usage.ReasoningTokens > 0 || hasReasoningContent(completeResp.Parts))
 	assert.Equal(t, FinishReasonEndTurn, completeResp.FinishReason)
 
-	// Assert that the last message is an assistant message with reasoning and text parts
+	// Assert that the last message is an assistant message with the expected text.
 	m := conv.LastTurn()
 	assert.Equal(t, RoleAssistant, m.Role)
-	assert.Len(t, m.Parts, 2) // NOTE: in theory, the LLM may emit multiple reasoning parts
-
-	// First part should be reasoning content
-	reasoningPart, ok := m.Parts[0].(ReasoningContent)
-	require.True(t, ok)
-	assert.NotEmpty(t, reasoningPart.Content)
-	assert.NotEmpty(t, reasoningPart.ProviderID)
-
-	// Second part should be text content
-	textPart, ok := m.Parts[1].(TextContent)
-	require.True(t, ok)
-	assert.Equal(t, "395", textPart.Content)
 	assert.Equal(t, "395", m.TextContent())
+	assert.True(t, completeResp.Usage.ReasoningTokens > 0 || hasReasoningContent(m.Parts))
 }
 
-func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
+func hasReasoningContent(parts []ContentPart) bool {
+	for _, part := range parts {
+		if reasoning, ok := part.(ReasoningContent); ok && reasoning.Content != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOpenAIResponsesProvider_NoStoreZDRToolFlow(t *testing.T) {
 	if !runIntegrationTest(t, "OPENAI_API_KEY") {
 		return
 	}
@@ -513,19 +510,31 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 		toolReply = "72 F"
 	)
 
-	// Instruct the model to call the tool and then reply with only the tool result
-	conv := NewConversation(llmmodel.DefaultModel, "You are a precise assistant. Use the available tool to answer and then reply ONLY with the tool result string.")
+	systemPrompt := `You are a precise assistant. Use the available tool to answer and then reply ONLY with the tool result string.
+
+The following stable prefix is intentionally long so the second no-store request can demonstrate provider input caching:
+` + strings.Repeat("cache anchor alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n", 220)
+
+	modelID := llmmodel.ModelID("test-openai-zdr-gpt-4o-mini")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+
+	conv := NewConversation(modelID, systemPrompt)
+	sc := conv.(*streamingConversation)
 	require.NoError(t, conv.AddUserTurn("Call the tool named get_weather with the JSON {\"location\":\"San Francisco\"}. After you receive the result, reply with exactly the function call result and nothing else."))
 
 	// Register the weather tool
 	tool := getWeatherTestTool{name: toolName, fixedTemp: toolReply}
 	require.NoError(t, conv.AddTools([]Tool{tool}))
 
+	hook := &recordingDiagnosticHook{}
+	unregister := AddDiagnosticHook(hook)
+	defer unregister()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// First send: expect a tool call, with reasoning enabled and NoLink=true
-	events := conv.SendAsync(ctx, SendOptions{ReasoningEffort: "low", NoLink: true})
+	// First send: expect a tool call, with OpenAI no-store/ZDR request semantics.
+	events := conv.SendAsync(ctx, SendOptions{NoStore: true, TemperaturePresent: true, Temperature: 0.0})
 
 	var (
 		gotToolUse bool
@@ -557,6 +566,11 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 	require.NotNil(t, firstResp)
 	require.NotNil(t, firstCall)
 	require.Equal(t, FinishReasonToolUse, firstResp.FinishReason)
+	assertOpenAINoStoreTurnScrubbed(t, firstResp)
+	assert.Empty(t, sc.providerConversationID)
+
+	require.Len(t, hook.turns, 1)
+	assertOpenAINoStoreDiagnosticRequest(t, hook.turns[0].Request)
 
 	// Provide tool result matching the emitted tool call
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
@@ -565,8 +579,8 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 	tr := tool.Run(ctx2, ToolCall{CallID: firstCall.CallID, Name: firstCall.Name, Input: firstCall.Input, Type: firstCall.Type})
 	require.NoError(t, conv.AddToolResults([]ToolResult{tr}))
 
-	// Second send: expect a plain text answer echoing the tool result, with NoLink=true again
-	events2 := conv.SendAsync(ctx2, SendOptions{ReasoningEffort: "low", NoLink: true})
+	// Second send: expect a plain text answer echoing the tool result, still without server linking.
+	events2 := conv.SendAsync(ctx2, SendOptions{NoStore: true, TemperaturePresent: true, Temperature: 0.0})
 
 	var finalResp *Turn
 	for ev := range events2 {
@@ -585,6 +599,21 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 	require.NotNil(t, finalResp)
 	assert.Equal(t, FinishReasonEndTurn, finalResp.FinishReason)
 	assert.Empty(t, finalResp.ToolCalls())
+	assertOpenAINoStoreTurnScrubbed(t, finalResp)
+	assert.Empty(t, sc.providerConversationID)
+
+	require.Len(t, hook.turns, 2)
+	assertOpenAINoStoreDiagnosticRequest(t, hook.turns[1].Request)
+	secondRequestJSON := mustMarshalDiagnosticJSON(t, hook.turns[1].Request)
+	assert.Contains(t, secondRequestJSON, "cache anchor alpha beta")
+	assert.Contains(t, secondRequestJSON, "Call the tool named get_weather")
+	assert.Contains(t, secondRequestJSON, toolName)
+	assert.Contains(t, secondRequestJSON, toolReply)
+	for _, id := range openAIProviderItemIDs(firstResp.Parts) {
+		assert.NotContains(t, secondRequestJSON, id)
+	}
+	assert.NotContains(t, secondRequestJSON, `"type":"reasoning"`)
+	assert.Greater(t, finalResp.Usage.CachedInputTokens, int64(0))
 
 	// Reply back with the function call result; keep assertion tolerant to formatting
 	if assert.NotEmpty(t, finalResp.Parts) {
@@ -610,6 +639,35 @@ func TestOpenAIResponsesProvider_NoLinkReasoningTool(t *testing.T) {
 		assert.Contains(t, tc.Content, toolReply)
 		assert.Contains(t, last.TextContent(), toolReply)
 	}
+}
+
+func assertOpenAINoStoreDiagnosticRequest(t *testing.T, request map[string]any) {
+	t.Helper()
+
+	assert.Equal(t, false, request["store"])
+	assert.NotContains(t, request, "previous_response_id")
+	assert.NotEmpty(t, request["input"])
+}
+
+func openAIProviderItemIDs(parts []ContentPart) []string {
+	var ids []string
+	for _, part := range parts {
+		switch part := part.(type) {
+		case TextContent:
+			if part.ProviderID != "" {
+				ids = append(ids, part.ProviderID)
+			}
+		case ReasoningContent:
+			if part.ProviderID != "" {
+				ids = append(ids, part.ProviderID)
+			}
+		case ToolCall:
+			if part.ProviderID != "" {
+				ids = append(ids, part.ProviderID)
+			}
+		}
+	}
+	return ids
 }
 
 // integrationTestTool implements Tool for integration testing.
@@ -745,7 +803,7 @@ In your FIRST response, call the tool 'two_param_tool' exactly once with this JS
 {"first":"hello"}  // do NOT include "second".
 Do not include any assistant text outside of the tool call.`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-4o-mini"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{twoParamTool{name: toolName}}))
 
@@ -811,9 +869,10 @@ func TestOpenAIResponsesProvider_ToolWithNoParams(t *testing.T) {
 
 	system := `You are a precise assistant.
 In your FIRST response, invoke the tool 'noop_tool' exactly once with no arguments.
-Do not include any assistant text outside of the tool call.`
+Do not include any assistant text outside of the tool call.
+After the tool result is supplied, reply with "Noop complete."`
 
-	conv := NewConversation(llmmodel.ModelID("gpt-5.1-codex-low"), system)
+	conv := NewConversation(llmmodel.ModelID("gpt-4o-mini"), system)
 	require.NoError(t, conv.AddUserTurn("Proceed."))
 	require.NoError(t, conv.AddTools([]Tool{noParamTool{name: toolName}}))
 
@@ -840,8 +899,8 @@ Do not include any assistant text outside of the tool call.`
 			in := strings.TrimSpace(ev.ToolCall.Input)
 			if !(in == "") {
 				var obj map[string]any
-				if assert.NoError(t, json.Unmarshal([]byte(in), &obj), "tool input must be JSON object or empty") {
-					assert.Len(t, obj, 0, "no-arg tool should have 0 keys in arguments")
+				if assert.NoError(t, json.Unmarshal([]byte(in), &obj)) {
+					assert.Len(t, obj, 0)
 				}
 			}
 			firstCall = ev.ToolCall

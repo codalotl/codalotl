@@ -43,6 +43,10 @@ Upon finishing a session, print a line like this:
 - Each send still prints the same human-readable or JSON event stream shape that `Exec` uses for a one-shot run.
 - Sessions own authorizer/request-loop resources and should be closed when the caller is done with them.
 
+## ZDR / No-store
+
+When `CODALOTL_ZDR=true`, sessions construct agents in no-store mode.
+
 ## JSON mode
 
 If `Options.OutputJSON` is true, output is newline-delimited JSON: one object per line, no surrounding array.

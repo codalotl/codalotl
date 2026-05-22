@@ -38,10 +38,7 @@ type SendOptions struct {
 	//   - OpenAI Responses: when set to "priority" or "flex", sets service_tier in the request.
 	ServiceTier string
 
-	// If true, we do not link turns via server persistence. The ONLY context the LLM will have is what is provided in Turns. Note that this still stores.
-	NoLink bool
-
-	// For ZDR (zero data retention). Sends store=false so the provider does not store the turn. We'd need to implement reasoning.encrypted_content.
+	// NoStore enables provider no-store/ZDR behavior. OpenAI Responses sends store=false, disables server-side response linking, and resends full local history.
 	NoStore bool
 }
 

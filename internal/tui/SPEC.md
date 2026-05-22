@@ -114,6 +114,7 @@ When a new session is initiated (application startup; /new; /package; /orchestra
 - The new session text will describe the currently active mode. For example: "Package mode is a Go-specific mode that..."
 - Generic mode describes how to enter package mode. Ex: "To enter package mode, use the /package path/to/pkg command."
 - The new session text does not mention the current configuration (ex: active model, session ID, current package), but may give the guidance, including illustrative examples of commands.
+- When `CODALOTL_ZDR=true`, new sessions construct agents in no-store mode.
 
 ## Package Mode
 

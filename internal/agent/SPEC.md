@@ -101,18 +101,21 @@ The agent package contains an `AgentCreator` interface that a callee can accept,
 - This enables a function to be created (ex: ResearchPlan(ac AgentCreator, plan string, ...)) that either operates as a root agent, or as a SubAgent, with the same signature.
 
 ```go
-func NewAgentCreator() AgentCreator
+func NewAgentCreator(options ...NewOptions) AgentCreator
 
 type AgentCreator interface {
-	// Model omitted: root creators use package default model; SubAgent creators use parent model.
+	// Model omitted: root creators use their configured/default model; SubAgent creators use parent model.
 	New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
 }
 
 type NewOptions struct {
 	Model         llmmodel.ModelID
 	SubagentLabel string
+	NoStore       bool
 }
 ```
+
+No-store agents pass `llmstream.SendOptions{NoStore: true}` on each provider send. Subagents inherit no-store behavior from parent agents.
 
 Every `Event` includes metadata describing the originator so TUIs can attribute mirrored events:
 
@@ -192,17 +195,18 @@ See Usage for implied interface. Additionally:
 func New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
 
 // NewAgentCreator returns an AgentCreator that constructs root agents.
-func NewAgentCreator() AgentCreator
+func NewAgentCreator(options ...NewOptions) AgentCreator
 
 // NewOptions controls optional agent construction behavior.
 type NewOptions struct {
 	Model         llmmodel.ModelID
 	SubagentLabel string
+	NoStore       bool
 }
 
 // AgentCreator can construct either a root Agent or a SubAgent, depending on how it was obtained.
 type AgentCreator interface {
-	// Model omitted: root creators use package default model; SubAgent creators use parent model.
+	// Model omitted: root creators use their configured/default model; SubAgent creators use parent model.
 	New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
 }
 

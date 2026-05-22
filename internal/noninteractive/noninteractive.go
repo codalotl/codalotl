@@ -34,6 +34,7 @@ const (
 )
 
 var toolCallPrintDelay = 3 * time.Second
+var newRootAgentCreator = agent.NewAgentCreator
 
 // IsPrinted returns true if err has already been printed to the screen.
 func IsPrinted(err error) bool {
@@ -100,6 +101,13 @@ func effectiveModelID(opts Options) llmmodel.ModelID {
 		return llmmodel.ModelID(strings.TrimSpace(string(opts.ModelID)))
 	}
 	return defaultModelID
+}
+
+func rootAgentNewOptionsFromEnv() []agent.NewOptions {
+	if os.Getenv("CODALOTL_ZDR") != "true" {
+		return nil
+	}
+	return []agent.NewOptions{{NoStore: true}}
 }
 
 var newSessionForExec = NewSession
@@ -805,7 +813,7 @@ func buildAgent(start sessionStart, sandboxDir string, pkgRelPath string, pkgAbs
 	}
 	prepared.InitialTurns = append(prepared.InitialTurns, envMsg)
 
-	agentInstance, err := prepared.Create(agent.NewAgentCreator())
+	agentInstance, err := prepared.Create(newRootAgentCreator(rootAgentNewOptionsFromEnv()...))
 	if err != nil {
 		return nil, fmt.Errorf("construct agent: %w", err)
 	}

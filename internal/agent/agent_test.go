@@ -1106,6 +1106,270 @@ func TestNewAgentCreatorConstructsRootAgent(t *testing.T) {
 	require.Equal(t, StatusIdle, a.Status())
 }
 
+func TestNewAgentCreatorMergesDefaultOptions(t *testing.T) {
+	systemPrompt := "You are helpful."
+	packageDefault := llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown)
+	creatorModel := llmmodel.ModelID("creator-model")
+	callModel := llmmodel.ModelID("call-model")
+
+	testCases := []struct {
+		name        string
+		creatorOpts []NewOptions
+		callOpts    []NewOptions
+		wantModel   llmmodel.ModelID
+		wantNoStore bool
+	}{
+		{
+			name:      "no arg creator uses package default",
+			wantModel: packageDefault,
+		},
+		{
+			name:        "creator default model is used",
+			creatorOpts: []NewOptions{{Model: creatorModel}},
+			wantModel:   creatorModel,
+		},
+		{
+			name:        "per call model overrides creator default",
+			creatorOpts: []NewOptions{{Model: creatorModel}},
+			callOpts:    []NewOptions{{Model: callModel}},
+			wantModel:   callModel,
+		},
+		{
+			name:        "creator no store is sticky with zero value per call option",
+			creatorOpts: []NewOptions{{Model: creatorModel, NoStore: true}},
+			callOpts:    []NewOptions{{}},
+			wantModel:   creatorModel,
+			wantNoStore: true,
+		},
+		{
+			name:        "per call no store opts in",
+			creatorOpts: []NewOptions{{Model: creatorModel}},
+			callOpts:    []NewOptions{{NoStore: true}},
+			wantModel:   creatorModel,
+			wantNoStore: true,
+		},
+		{
+			name: "creator defaults merge",
+			creatorOpts: []NewOptions{
+				{Model: llmmodel.ModelID("first-creator-model")},
+				{Model: creatorModel, NoStore: true},
+			},
+			wantModel:   creatorModel,
+			wantNoStore: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			conv := newScriptedConversation(systemPrompt)
+			overrideConversation(t, conv)
+
+			creator := NewAgentCreator(tc.creatorOpts...)
+			a, err := creator.New(systemPrompt, nil, tc.callOpts...)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.wantModel, a.model)
+			require.Equal(t, tc.wantNoStore, a.noStore)
+		})
+	}
+}
+
+func TestNoStoreAgentPassesNoStoreOnEverySend(t *testing.T) {
+	systemPrompt := "You are helpful."
+
+	toolCall := llmstream.ToolCall{
+		ProviderID: "tool-1",
+		CallID:     "call_123",
+		Name:       "stub_tool",
+		Type:       "function_call",
+		Input:      `{}`,
+	}
+	turnTool := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{toolCall},
+		FinishReason: llmstream.FinishReasonToolUse,
+	}
+	finalText := llmstream.TextContent{ProviderID: "text-1", Content: "Done"}
+	turnFinal := llmstream.Turn{
+		Role:         llmstream.RoleAssistant,
+		Parts:        []llmstream.ContentPart{finalText},
+		FinishReason: llmstream.FinishReasonEndTurn,
+	}
+
+	conv := newScriptedConversation(systemPrompt,
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnTool},
+			},
+		},
+		&sendScript{
+			events: []llmstream.Event{
+				{Type: llmstream.EventTypeTextDelta, Text: &finalText, Delta: finalText.Content, Done: true},
+				{Type: llmstream.EventTypeCompletedSuccess, Turn: &turnFinal},
+			},
+		},
+	)
+	overrideConversation(t, conv)
+
+	tool := newStubTool("stub_tool", llmstream.ToolResult{Result: "OK"})
+	a, err := New(systemPrompt, []llmstream.Tool{tool}, NewOptions{
+		Model:   llmmodel.ModelID("model"),
+		NoStore: true,
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := collectEvents(a.SendUserMessage(ctx, "Use the tool"))
+	require.Equal(t, EventTypeDoneSuccess, events[len(events)-1].Type)
+	require.Equal(t, [][]llmstream.SendOptions{
+		{{NoStore: true}},
+		{{NoStore: true}},
+	}, conv.SendOptions())
+}
+
+func TestSubAgentNoStoreInheritance(t *testing.T) {
+	testCases := []struct {
+		name             string
+		parentNoStore    bool
+		childNoStore     bool
+		wantChildNoStore bool
+		wantRootOptions  [][]llmstream.SendOptions
+		wantChildOptions [][]llmstream.SendOptions
+	}{
+		{
+			name:             "child inherits from no-store parent",
+			parentNoStore:    true,
+			childNoStore:     false,
+			wantChildNoStore: true,
+			wantRootOptions: [][]llmstream.SendOptions{
+				{{NoStore: true}},
+				{{NoStore: true}},
+			},
+			wantChildOptions: [][]llmstream.SendOptions{
+				{{NoStore: true}},
+			},
+		},
+		{
+			name:             "child can opt in under storing parent",
+			parentNoStore:    false,
+			childNoStore:     true,
+			wantChildNoStore: true,
+			wantRootOptions:  [][]llmstream.SendOptions{nil, nil},
+			wantChildOptions: [][]llmstream.SendOptions{
+				{{NoStore: true}},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rootPrompt := "Root system"
+			subPrompt := "Sub system"
+
+			toolCall := llmstream.ToolCall{
+				ProviderID: "tool-1",
+				CallID:     "call_subagent",
+				Name:       "explore",
+				Type:       "function_call",
+				Input:      `{}`,
+			}
+			rootToolTurn := llmstream.Turn{
+				Role:         llmstream.RoleAssistant,
+				Parts:        []llmstream.ContentPart{toolCall},
+				FinishReason: llmstream.FinishReasonToolUse,
+			}
+			rootFinalText := llmstream.TextContent{ProviderID: "root-final", Content: "root done"}
+			rootFinalTurn := llmstream.Turn{
+				Role:         llmstream.RoleAssistant,
+				Parts:        []llmstream.ContentPart{rootFinalText},
+				FinishReason: llmstream.FinishReasonEndTurn,
+			}
+			rootConv := newScriptedConversation(rootPrompt,
+				&sendScript{
+					events: []llmstream.Event{
+						{Type: llmstream.EventTypeToolUse, ToolCall: &toolCall},
+						{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootToolTurn},
+					},
+				},
+				&sendScript{
+					events: []llmstream.Event{
+						{Type: llmstream.EventTypeTextDelta, Text: &rootFinalText, Delta: rootFinalText.Content, Done: true},
+						{Type: llmstream.EventTypeCompletedSuccess, Turn: &rootFinalTurn},
+					},
+				},
+			)
+
+			subText := llmstream.TextContent{ProviderID: "sub-final", Content: "sub done"}
+			subTurn := llmstream.Turn{
+				Role:         llmstream.RoleAssistant,
+				Parts:        []llmstream.ContentPart{subText},
+				FinishReason: llmstream.FinishReasonEndTurn,
+			}
+			subConv := newScriptedConversation(subPrompt,
+				&sendScript{
+					events: []llmstream.Event{
+						{Type: llmstream.EventTypeTextDelta, Text: &subText, Delta: subText.Content, Done: true},
+						{Type: llmstream.EventTypeCompletedSuccess, Turn: &subTurn},
+					},
+				},
+			)
+
+			prev := newConversation
+			convs := []llmstream.StreamingConversation{rootConv, subConv}
+			newConversation = func(model llmmodel.ModelID, systemPrompt string) llmstream.StreamingConversation {
+				if len(convs) == 0 {
+					return nil
+				}
+				conv := convs[0]
+				convs = convs[1:]
+				return conv
+			}
+			t.Cleanup(func() {
+				newConversation = prev
+			})
+
+			var childAgent *Agent
+			tool := &funcTool{name: "explore"}
+			tool.runFn = func(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
+				creator := SubAgentCreatorFromContext(ctx)
+				child, err := creator.New(subPrompt, nil, NewOptions{NoStore: tc.childNoStore})
+				require.NoError(t, err)
+				childAgent = child
+
+				for range child.SendUserMessage(ctx, "search") {
+				}
+
+				return llmstream.ToolResult{
+					CallID: call.CallID,
+					Name:   call.Name,
+					Type:   call.Type,
+					Result: "ok",
+				}
+			}
+
+			rootAgent, err := New(rootPrompt, []llmstream.Tool{tool}, NewOptions{
+				Model:   llmmodel.ModelID("model"),
+				NoStore: tc.parentNoStore,
+			})
+			require.NoError(t, err)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			events := collectEvents(rootAgent.SendUserMessage(ctx, "start"))
+			require.Equal(t, EventTypeDoneSuccess, events[len(events)-1].Type)
+			require.NotNil(t, childAgent)
+			require.Equal(t, tc.parentNoStore, rootAgent.noStore)
+			require.Equal(t, tc.wantChildNoStore, childAgent.noStore)
+			require.Equal(t, tc.wantRootOptions, rootConv.SendOptions())
+			require.Equal(t, tc.wantChildOptions, subConv.SendOptions())
+		})
+	}
+}
+
 func TestContextUsagePercent(t *testing.T) {
 	model := llmmodel.DefaultModel
 	info := llmmodel.GetModelInfo(model)
@@ -2632,6 +2896,7 @@ type scriptedConversation struct {
 	turns       []llmstream.Turn
 	scripts     []*sendScript
 	toolResults [][]llmstream.ToolResult
+	sendOptions [][]llmstream.SendOptions
 }
 
 type sendScript struct {
@@ -2688,8 +2953,20 @@ func (c *scriptedConversation) AddToolResults(results []llmstream.ToolResult) er
 	return nil
 }
 
-func (c *scriptedConversation) SendAsync(ctx context.Context, _ ...llmstream.SendOptions) <-chan llmstream.Event {
+func (c *scriptedConversation) SendOptions() [][]llmstream.SendOptions {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	copied := make([][]llmstream.SendOptions, len(c.sendOptions))
+	for i, opts := range c.sendOptions {
+		copied[i] = append([]llmstream.SendOptions(nil), opts...)
+	}
+	return copied
+}
+
+func (c *scriptedConversation) SendAsync(ctx context.Context, options ...llmstream.SendOptions) <-chan llmstream.Event {
+	c.mu.Lock()
+	c.sendOptions = append(c.sendOptions, append([]llmstream.SendOptions(nil), options...))
 	if len(c.scripts) == 0 {
 		c.mu.Unlock()
 		ch := make(chan llmstream.Event)

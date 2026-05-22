@@ -9,7 +9,7 @@ import (
 
 // AgentCreator can construct either a root Agent or a SubAgent, depending on how it was obtained.
 type AgentCreator interface {
-	// Model omitted: root creators use package default model; SubAgent creators use parent model.
+	// Model omitted: root creators use their configured/default model; SubAgent creators use parent model.
 	New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error)
 }
 
@@ -20,21 +20,23 @@ type SubAgentCreator interface {
 }
 
 // NewAgentCreator returns an AgentCreator that constructs root agents.
-func NewAgentCreator() AgentCreator {
+func NewAgentCreator(options ...NewOptions) AgentCreator {
 	return &defaultAgentCreator{
-		defaultModel: llmmodel.ModelIDOrFallback(llmmodel.ModelIDUnknown),
+		defaults: mergeNewOptions(options),
 	}
 }
 
-// defaultAgentCreator constructs root agents using a default model.
+// defaultAgentCreator constructs root agents using configured default options.
 type defaultAgentCreator struct {
-	defaultModel llmmodel.ModelID // defaultModel is used when NewOptions.Model is empty.
+	defaults NewOptions
 }
 
-// New constructs a root Agent using the creator's default model unless options specify another model.
+// New constructs a root Agent using the creator's default options unless options override them.
 func (c *defaultAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error) {
-	opts := append([]NewOptions{{Model: llmmodel.ModelIDOrFallback(c.defaultModel)}}, options...)
-	return New(systemPrompt, tools, opts...)
+	opts := make([]NewOptions, 0, 1+len(options))
+	opts = append(opts, c.defaults)
+	opts = append(opts, options...)
+	return New(systemPrompt, tools, mergeNewOptions(opts))
 }
 
 // A subAgentFactory creates subagents for one active tool call and manages their lifetime.
@@ -87,11 +89,11 @@ func (f *subAgentFactory) New(systemPrompt string, tools []llmstream.Tool, optio
 	if model == "" {
 		model = llmmodel.ModelIDOrFallback(f.defaultModel)
 	}
-	return f.create(model, systemPrompt, tools, resolved.SubagentLabel)
+	return f.create(model, systemPrompt, tools, resolved.NoStore, resolved.SubagentLabel)
 }
 
 // create constructs and registers a child Agent for the factory's active tool call. It panics if the factory is closed or missing its parent output channel.
-func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, subagentLabel string) (*Agent, error) {
+func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, tools []llmstream.Tool, noStore bool, subagentLabel string) (*Agent, error) {
 	f.mu.Lock()
 	if f.closed {
 		f.mu.Unlock()
@@ -113,7 +115,7 @@ func (f *subAgentFactory) create(model llmmodel.ModelID, systemPrompt string, to
 	}
 
 	lifetimeCtx, lifetimeCancel := context.WithCancel(context.Background())
-	child, err := newAgentInstance(model, systemPrompt, tools, parent.sessionID, agentID, parent, parent.depth+1, parentOut, subagentLabel, toolCallID)
+	child, err := newAgentInstance(model, systemPrompt, tools, parent.sessionID, agentID, parent, parent.depth+1, parentOut, parent.noStore || noStore, subagentLabel, toolCallID)
 	if err != nil {
 		lifetimeCancel()
 		return nil, err

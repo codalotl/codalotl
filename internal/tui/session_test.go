@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"os"
 	"testing"
 
+	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/stretchr/testify/require"
 )
@@ -56,4 +58,61 @@ func TestNewSession_AutoYesDisablesUserRequests(t *testing.T) {
 	t.Cleanup(s.Close)
 
 	require.Nil(t, s.UserRequests())
+}
+
+func TestNewSession_ZDREnvControlsNoStoreRootAgentCreator(t *testing.T) {
+	oldCreator := newRootAgentCreator
+	t.Cleanup(func() {
+		newRootAgentCreator = oldCreator
+	})
+
+	for _, tc := range []struct {
+		name        string
+		envValue    *string
+		wantOptions []agent.NewOptions
+	}{
+		{name: "unset"},
+		{name: "false", envValue: ptr("false")},
+		{name: "uppercase true", envValue: ptr("TRUE")},
+		{name: "exact true", envValue: ptr("true"), wantOptions: []agent.NewOptions{{NoStore: true}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setCODALOTLZDR(t, tc.envValue)
+
+			var gotOptions []agent.NewOptions
+			newRootAgentCreator = func(options ...agent.NewOptions) agent.AgentCreator {
+				gotOptions = append([]agent.NewOptions(nil), options...)
+				return oldCreator(options...)
+			}
+
+			s, err := newSession(sessionConfig{})
+			require.NoError(t, err)
+			t.Cleanup(s.Close)
+
+			require.Equal(t, tc.wantOptions, gotOptions)
+		})
+	}
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}
+
+func setCODALOTLZDR(t *testing.T, value *string) {
+	t.Helper()
+
+	oldValue, hadOldValue := os.LookupEnv("CODALOTL_ZDR")
+	t.Cleanup(func() {
+		if hadOldValue {
+			require.NoError(t, os.Setenv("CODALOTL_ZDR", oldValue))
+			return
+		}
+		require.NoError(t, os.Unsetenv("CODALOTL_ZDR"))
+	})
+
+	if value == nil {
+		require.NoError(t, os.Unsetenv("CODALOTL_ZDR"))
+		return
+	}
+	require.NoError(t, os.Setenv("CODALOTL_ZDR", *value))
 }

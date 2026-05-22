@@ -46,19 +46,10 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	}
 	client := openai.NewClient(opts...)
 
-	params, err := sc.buildOpenAIResponsesParams(modelInfo)
+	params, err := sc.buildOpenAIResponsesRequestParams(modelInfo, opt)
 	if err != nil {
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.build_params", err)
 	}
-	// Link with previous response ID if available
-	if sc.providerConversationID != "" {
-		params.PreviousResponseID = param.NewOpt(sc.providerConversationID)
-	}
-	if err := openAIResponsesApplySendOptions(&params, modelInfo, opt); err != nil {
-		return Turn{}, sc.LogWrappedErr("open_ai_send_async.options", err)
-	}
-
-	params.ParallelToolCalls = param.NewOpt(true)
 
 	debugPrint(debugHTTPRequests, "HTTP REQUEST: create response(streaming=true)", params)
 
@@ -148,6 +139,8 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		if processedEvent != nil {
 
 			if processedEvent.Type == EventTypeCompletedSuccess {
+				preparedEvent := openAIResponsesPrepareCompletedSuccessEvent(*processedEvent, opt)
+				processedEvent = &preparedEvent
 				debugPrint(debugParsedResponses, "PARSED RESPONSE: EventTypeCompletedSuccess", processedEvent)
 				finalResp = processedEvent.Turn
 			}
@@ -172,15 +165,27 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogNewErr("open_ai_send_async.not_completed")
 	}
 
-	// Record the latest response ID so the next turn can link via PreviousResponseID
-	// NOTE: may want to make this a slice?
-	if !(opt != nil && opt.NoLink) {
-		sc.providerConversationID = finalResp.ProviderID
-	}
+	sc.recordOpenAIResponseLink(*finalResp, opt)
 
 	resp := *finalResp
 	resp.Role = RoleAssistant
 	return resp, nil
+}
+
+func (sc *streamingConversation) buildOpenAIResponsesRequestParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
+	params, err := sc.buildOpenAIResponsesParams(modelInfo, opt)
+	if err != nil {
+		return responses.ResponseNewParams{}, err
+	}
+	if openAIResponsesUsesStoredLink(opt) && sc.providerConversationID != "" {
+		params.PreviousResponseID = param.NewOpt(sc.providerConversationID)
+	}
+	if err := openAIResponsesApplySendOptions(&params, modelInfo, opt); err != nil {
+		return responses.ResponseNewParams{}, err
+	}
+
+	params.ParallelToolCalls = param.NewOpt(true)
+	return params, nil
 }
 
 func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelInfo llmmodel.ModelInfo, opt *SendOptions) error {
@@ -244,6 +249,59 @@ func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelI
 	}
 
 	return nil
+}
+
+func openAIResponsesUsesStoredLink(opt *SendOptions) bool {
+	return opt == nil || !opt.NoStore
+}
+
+func (sc *streamingConversation) recordOpenAIResponseLink(resp Turn, opt *SendOptions) {
+	if openAIResponsesUsesStoredLink(opt) {
+		sc.providerConversationID = resp.ProviderID
+		return
+	}
+	sc.providerConversationID = ""
+}
+
+func openAIResponsesPrepareCompletedSuccessEvent(event Event, opt *SendOptions) Event {
+	if event.Type != EventTypeCompletedSuccess || event.Turn == nil {
+		return event
+	}
+
+	turn := *event.Turn
+	turn.Role = RoleAssistant
+	if opt != nil && opt.NoStore {
+		turn = openAIResponsesScrubNoStoreTurn(turn)
+	}
+	event.Turn = &turn
+	return event
+}
+
+func openAIResponsesScrubNoStoreTurn(turn Turn) Turn {
+	turn.ProviderID = ""
+	if len(turn.Parts) == 0 {
+		return turn
+	}
+
+	parts := make([]ContentPart, 0, len(turn.Parts))
+	for _, part := range turn.Parts {
+		switch p := part.(type) {
+		case TextContent:
+			p.ProviderID = ""
+			parts = append(parts, p)
+		case ReasoningContent:
+			// OpenAI reasoning items require provider item IDs/state that no-store
+			// responses do not persist. Keep them out of retained replay history.
+			continue
+		case ToolCall:
+			p.ProviderID = ""
+			parts = append(parts, p)
+		default:
+			parts = append(parts, part)
+		}
+	}
+	turn.Parts = parts
+	return turn
 }
 
 func maybeEmitOpenAIDiagnosticTurn(request map[string]any, evt responses.ResponseStreamEventUnion) {
@@ -427,7 +485,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 	return nil, true, nil
 }
 
-func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.ModelInfo) (responses.ResponseNewParams, error) {
+func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
 	modelID := modelInfo.ProviderModelID
 	if modelID == "" {
 		return responses.ResponseNewParams{}, fmt.Errorf("model %q missing provider model id", string(sc.modelID))
@@ -436,7 +494,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	// The previous_response_id will provide the assistant content to the provider.
 	resps := sc.turns
 	respsToEncode := resps
-	if sc.providerConversationID != "" {
+	if openAIResponsesUsesStoredLink(opt) && sc.providerConversationID != "" {
 		lastAssistantIdx := -1
 		for i := len(resps) - 1; i >= 0; i-- {
 			if resps[i].Role == RoleAssistant {
@@ -450,6 +508,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	}
 
 	inputItems := make(responses.ResponseInputParam, 0, len(respsToEncode))
+	includeProviderItemIDs := openAIResponsesUsesStoredLink(opt)
 	for _, resp := range respsToEncode {
 
 		// Collect all text parts. A text part maps to a message, for a single msg on our side, we only want to make one message on their side.
@@ -501,7 +560,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					functionCall.Arguments = tpart.Input
 					functionCall.CallID = tpart.CallID
 					functionCall.Name = tpart.Name
-					if tpart.ProviderID != "" {
+					if includeProviderItemIDs && tpart.ProviderID != "" {
 						functionCall.ID = param.NewOpt(tpart.ProviderID)
 					}
 					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCall: &functionCall})
@@ -510,7 +569,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					customToolCall.Input = tpart.Input
 					customToolCall.CallID = tpart.CallID
 					customToolCall.Name = tpart.Name
-					if tpart.ProviderID != "" {
+					if includeProviderItemIDs && tpart.ProviderID != "" {
 						customToolCall.ID = param.NewOpt(tpart.ProviderID)
 					}
 					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfCustomToolCall: &customToolCall})
@@ -535,6 +594,11 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 					return responses.ResponseNewParams{}, fmt.Errorf("unknown or missing call type for tool result %s", tpart.CallID)
 				}
 			case ReasoningContent:
+				if !includeProviderItemIDs || tpart.ProviderID == "" {
+					// Reasoning summaries require their provider item ID to replay.
+					// No-store responses do not persist those IDs server-side.
+					continue
+				}
 				if !idToAddedResponse[tpart.ProviderID] {
 					idToAddedResponse[tpart.ProviderID] = true
 					summaryList := []responses.ResponseReasoningItemSummaryParam{}
