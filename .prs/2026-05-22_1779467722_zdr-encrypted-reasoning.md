@@ -22,16 +22,16 @@ Implementing this is (probably) the easy-ish part. The hard part is validating i
 - Continue omitting provider output item IDs and reasoning state that requires stored OpenAI server state.
 - Keep full-history replay and prompt-cache validation requirements from the previous ZDR PR.
 
-### Phase 1: implementation
+### Phase 1: implementation [DONE]
 
-#### Package `internal/llmstream`
+#### Package `internal/llmstream` [DONE]
 - Implement the updated `internal/llmstream/SPEC.md`.
 - Likely changes:
-  - Add `reasoning.encrypted_content` to OpenAI Responses requests when `NoStore` is enabled.
-  - Capture encrypted reasoning content from OpenAI reasoning output items.
-  - Retain encrypted reasoning state locally on no-store assistant turns while still scrubbing unsafe provider IDs/state.
-  - Re-send encrypted reasoning items on subsequent no-store requests.
-  - Update request-shape/unit tests and live `INTEGRATION_TEST` coverage so the second or later no-store request contains encrypted reasoning content and still has cached input.
+  - [DONE] Add `reasoning.encrypted_content` to OpenAI Responses requests when `NoStore` is enabled for reasoning-capable sends.
+  - [DONE] Capture encrypted reasoning content from OpenAI reasoning output items.
+  - [DONE] Retain encrypted reasoning state locally on no-store assistant turns while still scrubbing unsafe provider IDs/state.
+  - [DONE] Re-send encrypted reasoning items on subsequent no-store requests.
+  - [DONE] Update request-shape/unit tests and live `INTEGRATION_TEST` coverage so the second or later no-store request contains encrypted reasoning content and still has cached input.
 
 ### Phase 2: validation
 
@@ -65,3 +65,11 @@ TBD.
   - `internal/llmstream/open_ai_responses_test.go`
   - `internal/llmstream/open_ai_integration_test.go`
 - Expected representation: likely use `ReasoningContent.ProviderState` for OpenAI encrypted reasoning content; keep visible reasoning summary/content out of no-store retained turns unless safe/needed.
+- `internal/llmstream` implementation commit `a477c49`:
+  - No-store reasoning-capable OpenAI requests include `reasoning.encrypted_content`; non-reasoning no-store models avoid the include because live OpenAI rejects it for models like `gpt-4o-mini`.
+  - OpenAI encrypted reasoning content is captured into `ReasoningContent.ProviderState`.
+  - No-store assistant turns scrub provider IDs and visible reasoning content, but retain opaque encrypted reasoning state for replay.
+  - Subsequent no-store requests replay encrypted reasoning input items without provider item IDs, summaries, or visible reasoning content.
+  - Added request-shape/unit coverage and `TestOpenAIResponsesProvider_NoStoreZDREncryptedReasoningReplay`.
+  - Validation reported by implementation agent: `go test ./internal/llmstream`, `INTEGRATION_TEST=1 go test -v -run TestOpenAIResponsesProvider_NoStoreZDRToolFlow ./internal/llmstream`, and `INTEGRATION_TEST=1 go test -v -run TestOpenAIResponsesProvider_NoStoreZDREncryptedReasoningReplay ./internal/llmstream` passed.
+  - Orchestrator sanity validation: `go test -count=1 ./internal/llmstream` passed.
