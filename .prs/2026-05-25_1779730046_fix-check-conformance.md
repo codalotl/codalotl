@@ -35,7 +35,15 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 - Run review and changed-package SPEC conformance checks.
 - Record outcomes and write the PR summary.
 
+### Review follow-ups
+- Fix review finding in `internal/gocas`: prior-version pruning should not follow symlinks or read non-regular record-shaped entries while validating records.
+
 ## Review
+
+- Reviewed against `origin/fix-check-conformance`.
+- Review finding:
+  - P2 `internal/gocas`: `pruneNamespaceRecordFiles` validates record-shaped paths with `readFullCASRecordFile`, which uses `os.ReadFile` and follows symlinks. A malicious or malformed symlink such as `oldns/ab/cd -> /dev/zero` could hang or consume unbounded memory during prune. Fix by checking `DirEntry`/`Info` for a regular file, or otherwise avoiding symlink-following reads before validation.
+- Changed-package SPEC conformance: `check_spec_conformance({"only_changed":true})` returned no nonconformances and produced no CAS changes for this tree state.
 
 ## Summary
 
@@ -52,3 +60,4 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 - Fixed `internal/q/cas` dot-segment validation for namespaces and derived hash path segments. Validation passed: `go test ./internal/q/cas`; `check_spec_conformance` certified `internal/q/cas`.
 - Fixed `internal/skills` literal name validation while preserving `LoadSkill` frontmatter trimming. Validation passed: `go test ./internal/skills`; `check_spec_conformance` certified `internal/skills`.
 - Fixed `internal/gocas` prior-version pruning to delete only validated CAS record files and skip corrupt/unrecognized records. Validation passed: `go test ./internal/gocas`; `check_spec_conformance` certified `internal/gocas`.
+- Final validation run: review reported one actionable `internal/gocas` symlink/non-regular-file pruning issue; changed-package SPEC conformance returned no issues.
