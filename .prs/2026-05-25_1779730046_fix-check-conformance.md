@@ -10,7 +10,7 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 
 ## Plan
 
-### Package exposing the `codalotl_cli` whitelist
+### Package exposing the `codalotl_cli` whitelist [DONE]
 - Locate the CLI/tool whitelist that backs the `codalotl_cli` tool.
 - Add access for `codalotl spec status`.
 - Validate the command is exposed by the tool after the TUI restart reloads tool metadata.
@@ -33,4 +33,6 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 
 - Active branch: `fix-check-conformance`.
 - Active PR file: `.prs/2026-05-25_1779730046_fix-check-conformance.md`.
-- Current `codalotl_cli` tool help only exposes `cas recertify`, `docs add`, and `docs fix`; `spec status` is not available in this TUI session yet.
+- Implemented in `internal/cli`: `newCodalotlCLICommandTree` now exposes `spec status` only from the `spec` group.
+- Focused validation passed: `go test ./internal/cli` and `go test -run TestCodalotlCLITool_OnlyExposesWhitelistedCommands ./internal/cli`.
+- Need user to restart the TUI before the current session's `codalotl_cli` tool metadata can expose `spec status`.
