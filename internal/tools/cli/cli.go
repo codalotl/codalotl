@@ -1,3 +1,4 @@
+// Package cli provides the codalotl_cli LLM tool, an in-process wrapper around a caller-supplied, whitelisted codalotl command tree.
 package cli
 
 import (
@@ -35,6 +36,9 @@ var (
 type CommandTreeFunc func() *qcli.Command
 
 // NewCodalotlCLITool creates the codalotl_cli tool.
+//
+// The returned tool captures command stdout and stderr in Result. When its Run context supports display-only tool output, Run also streams command stdout visibly
+// while the command runs; this applies to direct Run calls as well as agent-runtime tool invocations. Stderr is captured but not visibly streamed.
 func NewCodalotlCLITool(newCommandTree CommandTreeFunc) llmstream.Tool {
 	return &codalotlCLITool{newCommandTree: newCommandTree}
 }

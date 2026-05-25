@@ -23,8 +23,13 @@ var promptHowToMD string
 
 // Skill is an Agent Skill, loaded from a skill directory containing a SKILL.md file.
 type Skill struct {
-	AbsDir        string // AbsDir is the dir that contains the SKILL.md file. Should not end in "/". Its last segment must match Name in valid Skills.
-	Name          string
+	// AbsDir is the dir that contains the SKILL.md file. Should not end in "/". Its last segment must match Name in valid Skills.
+	AbsDir string
+
+	// Name is the skill's canonical name. In valid Skills, Name is at most 64 runes, contains only lowercase letters, digits, and hyphens, and does not start or end
+	// with a hyphen.
+	Name string
+
 	Description   string
 	License       string
 	Compatibility string
