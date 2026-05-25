@@ -79,6 +79,30 @@ func TestLoadSkill_AcceptsLowercaseSkillMD(t *testing.T) {
 	assert.Contains(t, s.Body, "Body")
 }
 
+func TestLoadSkill_TrimsFrontMatterStringFields(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "alpha")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(strings.Join([]string{
+		"---",
+		`name: " alpha "`,
+		`description: " Alpha skill "`,
+		`license: " MIT "`,
+		`compatibility: " Requires foo "`,
+		"---",
+		"Body",
+		"",
+	}, "\n")), 0o644))
+
+	s, err := LoadSkill(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "alpha", s.Name)
+	assert.Equal(t, "Alpha skill", s.Description)
+	assert.Equal(t, "MIT", s.License)
+	assert.Equal(t, "Requires foo", s.Compatibility)
+	assert.NoError(t, s.Validate())
+}
+
 func TestLoadSkill_Errors(t *testing.T) {
 	t.Run("missing path", func(t *testing.T) {
 		_, err := LoadSkill(filepath.Join(t.TempDir(), "nope"))
@@ -200,6 +224,16 @@ func TestSkillValidate_Table(t *testing.T) {
 			},
 			wantErr:  true,
 			contains: []string{"must be lowercase", "directory name"},
+		},
+		{
+			name: "name with leading and trailing whitespace",
+			skill: Skill{
+				AbsDir:      filepath.Join(tmp, "pdf-processing"),
+				Name:        " pdf-processing ",
+				Description: "Extract PDFs",
+			},
+			wantErr:  true,
+			contains: []string{"leading or trailing whitespace", "directory name"},
 		},
 		{
 			name: "leading hyphen",

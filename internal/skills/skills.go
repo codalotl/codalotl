@@ -426,10 +426,13 @@ func (s Skill) Validate() error {
 		}
 	}
 
-	name := strings.TrimSpace(s.Name)
+	name := s.Name
 	if name == "" {
 		issues = append(issues, "invalid skill name: missing or empty")
 	} else {
+		if strings.TrimSpace(name) != name {
+			issues = append(issues, "invalid skill name: must not contain leading or trailing whitespace")
+		}
 		if utf8.RuneCountInString(name) > 64 {
 			issues = append(issues, fmt.Sprintf("invalid skill name: exceeds 64 character limit (%d chars)", utf8.RuneCountInString(name)))
 		}
