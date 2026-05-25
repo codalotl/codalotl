@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -26,12 +27,11 @@ func TestInitConfiguresProviderSubscriptionFromAuthFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "openai_auth.json")
 	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
 	writeAuthFile(t, path, authFile{
-		Type:             authType,
-		AccessToken:      "access-token",
-		RefreshToken:     "refresh-token",
-		IDToken:          jwtForAccount(t, "account-id"),
-		ExpiresAt:        now.Add(time.Hour),
-		ChatGPTAccountID: "account-id",
+		Type:         authType,
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		IDToken:      jwtForAccount(t, "account-id"),
+		ExpiresAt:    now.Add(time.Hour),
 	})
 
 	err := InitWithOptions(context.Background(), Options{
@@ -43,6 +43,7 @@ func TestInitConfiguresProviderSubscriptionFromAuthFile(t *testing.T) {
 
 	sub, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	require.True(t, ok)
+	assert.Equal(t, llmmodel.ProviderIDOpenAI, sub.ProviderID)
 	assert.Equal(t, "access-token", sub.AccessToken)
 	assert.Equal(t, "account-id", sub.AccountID)
 	assert.Equal(t, "https://example.test/codex", sub.APIEndpointURL)
@@ -157,6 +158,63 @@ func TestLoginUsesDeviceCodeFlowAndPersistsAuth(t *testing.T) {
 	assert.Equal(t, "access-token", auth.AccessToken)
 	assert.Equal(t, "refresh-token", auth.RefreshToken)
 	assert.Equal(t, "account-id", auth.ChatGPTAccountID)
+}
+
+func TestSaveAuthUsesPrivatePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file mode bits are not reliable on Windows")
+	}
+
+	dir := filepath.Join(t.TempDir(), "auth")
+	path := filepath.Join(dir, "openai_auth.json")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
+	require.NoError(t, os.Chmod(dir, 0o755))
+	require.NoError(t, os.Chmod(path, 0o644))
+
+	err := saveAuth(path, authFile{
+		Type:             authType,
+		AccessToken:      "access-token",
+		RefreshToken:     "refresh-token",
+		IDToken:          jwtForAccount(t, "account-id"),
+		ExpiresAt:        time.Now().Add(time.Hour),
+		ChatGPTAccountID: "account-id",
+	})
+	require.NoError(t, err)
+
+	dirInfo, err := os.Stat(dir)
+	require.NoError(t, err)
+	fileInfo, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
+	assert.Equal(t, os.FileMode(0o600), fileInfo.Mode().Perm())
+}
+
+func TestLogoutRemovesAuthAndClearsProviderSubscription(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "openai_auth.json")
+	writeAuthFile(t, path, authFile{
+		Type:             authType,
+		AccessToken:      "access-token",
+		ExpiresAt:        time.Now().Add(time.Hour),
+		ChatGPTAccountID: "account-id",
+	})
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		ProviderID:       llmmodel.ProviderIDOpenAI,
+		AccessToken:      "access-token",
+		AccountID:        "account-id",
+		APIEndpointURL:   defaultCodexBaseURL,
+		ExpiresAt:        time.Now().Add(time.Hour),
+		RequiresNoStore:  true,
+		RootInstructions: true,
+	})
+
+	err := LogoutWithOptions(Options{Path: path})
+	require.NoError(t, err)
+
+	_, err = os.Stat(path)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
+	assert.False(t, ok)
 }
 
 func TestRequestDeviceCodeUsesAuthIssuerByDefault(t *testing.T) {

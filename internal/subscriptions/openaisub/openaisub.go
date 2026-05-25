@@ -22,8 +22,10 @@ import (
 	"github.com/codalotl/codalotl/internal/q/cascade"
 )
 
+// ClientID is the OpenAI app client ID used for ChatGPT subscription auth.
+const ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+
 const (
-	ClientID            = "app_EMoamEEZ73f0CkXaXp7hrann"
 	authType            = "openai_subscription"
 	defaultIssuer       = "https://auth.openai.com"
 	defaultOAuthIssuer  = "https://auth.openai.com"
@@ -36,6 +38,7 @@ const (
 	expiryRefreshSlack  = time.Minute
 )
 
+// Options configures OpenAI subscription auth operations.
 type Options struct {
 	Path         string
 	HTTPClient   *http.Client
@@ -47,11 +50,13 @@ type Options struct {
 	Out          io.Writer
 }
 
+// LoginOptions configures the OpenAI subscription device login flow.
 type LoginOptions struct {
 	Options
 	NoBrowser bool
 }
 
+// Status describes saved OpenAI subscription auth status.
 type Status struct {
 	LoggedIn         bool
 	Path             string
@@ -68,14 +73,17 @@ type authFile struct {
 	ChatGPTAccountID string    `json:"chatgpt_account_id"`
 }
 
+// DefaultPath returns the default OpenAI subscription auth file path.
 func DefaultPath() string {
 	return cascade.ExpandPath("~/.codalotl/openai_auth.json")
 }
 
+// Init loads saved OpenAI subscription auth and configures llmmodel when usable.
 func Init(ctx context.Context) error {
 	return InitWithOptions(ctx, Options{})
 }
 
+// InitWithOptions loads saved OpenAI subscription auth and configures llmmodel when usable.
 func InitWithOptions(ctx context.Context, opts Options) error {
 	auth, path, err := loadAuth(opts)
 	if errors.Is(err, os.ErrNotExist) {
@@ -98,6 +106,7 @@ func InitWithOptions(ctx context.Context, opts Options) error {
 		}
 	}
 
+	now = nowFunc(opts)()
 	if !auth.valid(now) {
 		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
 		return nil
@@ -106,6 +115,7 @@ func InitWithOptions(ctx context.Context, opts Options) error {
 	return nil
 }
 
+// Login runs the OpenAI subscription device login flow and saves usable auth.
 func Login(ctx context.Context, opts LoginOptions) error {
 	path := authPath(opts.Options)
 	client := httpClient(opts.Options)
@@ -146,9 +156,7 @@ func Login(ctx context.Context, opts LoginOptions) error {
 		ExpiresAt:        nowFunc(opts.Options)().Add(tokens.expiresIn()),
 		ChatGPTAccountID: tokens.ChatGPTAccountID,
 	}
-	if auth.ChatGPTAccountID == "" {
-		auth.ChatGPTAccountID = accountIDFromJWT(tokens.IDToken)
-	}
+	auth = auth.normalized()
 	if !auth.valid(nowFunc(opts.Options)()) {
 		return errors.New("OpenAI subscription login did not return usable credentials")
 	}
@@ -160,10 +168,12 @@ func Login(ctx context.Context, opts LoginOptions) error {
 	return err
 }
 
+// Logout removes saved OpenAI subscription auth and clears llmmodel subscription auth.
 func Logout() error {
 	return LogoutWithOptions(Options{})
 }
 
+// LogoutWithOptions removes saved OpenAI subscription auth and clears llmmodel subscription auth.
 func LogoutWithOptions(opts Options) error {
 	path := authPath(opts)
 	llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
@@ -173,10 +183,12 @@ func LogoutWithOptions(opts Options) error {
 	return nil
 }
 
+// CheckStatus reports saved OpenAI subscription auth status.
 func CheckStatus(ctx context.Context) (Status, error) {
 	return CheckStatusWithOptions(ctx, Options{})
 }
 
+// CheckStatusWithOptions reports saved OpenAI subscription auth status.
 func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 	if err := InitWithOptions(ctx, opts); err != nil {
 		return Status{Path: authPath(opts)}, err
@@ -198,6 +210,7 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 
 func configureSubscription(auth authFile, baseURL string) {
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		ProviderID:       llmmodel.ProviderIDOpenAI,
 		AccessToken:      auth.AccessToken,
 		AccountID:        auth.ChatGPTAccountID,
 		APIEndpointURL:   baseURL,
@@ -217,19 +230,35 @@ func loadAuth(opts Options) (authFile, string, error) {
 	if err := json.Unmarshal(data, &auth); err != nil {
 		return authFile{}, path, fmt.Errorf("read OpenAI subscription auth: %w", err)
 	}
-	return auth, path, nil
+	return auth.normalized(), path, nil
 }
 
 func saveAuth(path string, auth authFile) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
+	}
+	if dir != "." {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return err
+		}
 	}
 	data, err := json.MarshalIndent(auth, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o600)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+func (auth authFile) normalized() authFile {
+	if auth.ChatGPTAccountID == "" {
+		auth.ChatGPTAccountID = accountIDFromJWT(auth.IDToken)
+	}
+	return auth
 }
 
 func (auth authFile) valid(now time.Time) bool {
@@ -403,7 +432,7 @@ func refresh(ctx context.Context, opts Options, auth authFile) (authFile, error)
 		auth.ChatGPTAccountID = tokens.ChatGPTAccountID
 	}
 	auth.ExpiresAt = nowFunc(opts)().Add(tokens.expiresIn())
-	return auth, nil
+	return auth.normalized(), nil
 }
 
 func postJSON(ctx context.Context, client *http.Client, endpoint string, body any, out any) error {
