@@ -496,9 +496,13 @@ func (db *DB) pruneNamespaceRecordFiles(namespace Namespace) (int, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if _, ok := recordHashFromPath(namespaceDir, recordPath); ok {
-			recordPaths = append(recordPaths, recordPath)
+		if _, ok := recordHashFromPath(namespaceDir, recordPath); !ok {
+			return nil
 		}
+		if _, err := readFullCASRecordFile(recordPath); err != nil {
+			return nil
+		}
+		recordPaths = append(recordPaths, recordPath)
 		return nil
 	})
 	if err != nil {

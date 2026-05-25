@@ -24,7 +24,7 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 ### Conformance follow-ups
 - [DONE] `internal/q/cas`: fix code. Reject `.` and `..` path segments for namespaces and custom hashes so records cannot escape `DB.AbsRoot`.
 - [DONE] `internal/skills`: fix code. `Skill.Validate` should reject the literal `Name` value when it has leading/trailing whitespace; `LoadSkill` can remain forgiving by trimming YAML input before validation.
-- `internal/gocas`: fix code. Make prior-namespace-version pruning skip corrupt/unrecognized record-shaped files unless it can validate them as CAS records.
+- [DONE] `internal/gocas`: fix code. Make prior-namespace-version pruning skip corrupt/unrecognized record-shaped files unless it can validate them as CAS records.
 
 ### CAS/doc follow-up [DONE]
 - Ran `docs-improve-from-clarify` for clarify-public-api records produced by the sweep.
@@ -51,3 +51,4 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 - Remaining conformance findings are latent but actionable: `internal/gocas`, `internal/q/cas`, `internal/skills`.
 - Fixed `internal/q/cas` dot-segment validation for namespaces and derived hash path segments. Validation passed: `go test ./internal/q/cas`; `check_spec_conformance` certified `internal/q/cas`.
 - Fixed `internal/skills` literal name validation while preserving `LoadSkill` frontmatter trimming. Validation passed: `go test ./internal/skills`; `check_spec_conformance` certified `internal/skills`.
+- Fixed `internal/gocas` prior-version pruning to delete only validated CAS record files and skip corrupt/unrecognized records. Validation passed: `go test ./internal/gocas`; `check_spec_conformance` certified `internal/gocas`.

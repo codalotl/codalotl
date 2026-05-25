@@ -1061,6 +1061,55 @@ func TestPrune_RemovesPriorNamespaceVersionsAndOldSupersededRecords(t *testing.T
 	require.NoError(t, err)
 }
 
+func TestPrune_PriorNamespaceVersionSkipsCorruptOrUnrecognizedRecords(t *testing.T) {
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	db := newTestDB(baseDir, casRoot)
+	activeSpec := NamespaceSpec{
+		Name:     "gocas-test",
+		Version:  2,
+		HashMode: HashModePackage,
+	}
+	priorNamespace := Namespace("gocas-test-1")
+
+	writeCASRecordAtHash(t, db, priorNamespace, "aa11", cas.AdditionalInfo{})
+	validPath := storedRecordPath(t, db, priorNamespace, "aa11")
+
+	corruptPath := storedRecordPath(t, db, priorNamespace, "bb22")
+	err := os.MkdirAll(filepath.Dir(corruptPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(corruptPath, []byte("{"), 0o644)
+	require.NoError(t, err)
+
+	unrecognizedPath := storedRecordPath(t, db, priorNamespace, "cc33")
+	err = os.MkdirAll(filepath.Dir(unrecognizedPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(unrecognizedPath, []byte(`{"kind":"unknown","metadata":{"ok":true},"additional_info":{}}`), 0o644)
+	require.NoError(t, err)
+
+	missingMetadataPath := storedRecordPath(t, db, priorNamespace, "dd44")
+	err = os.MkdirAll(filepath.Dir(missingMetadataPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(missingMetadataPath, []byte(`{"kind":"cas-record-v1","additional_info":{}}`), 0o644)
+	require.NoError(t, err)
+
+	result, err := db.Prune([]NamespaceSpec{activeSpec}, []*gocode.Package{pkg}, PruneOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.DeletedPriorVersionRecords)
+	require.Equal(t, 0, result.DeletedSupersededRecords)
+
+	_, err = os.Stat(validPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(corruptPath)
+	require.NoError(t, err)
+	_, err = os.Stat(unrecognizedPath)
+	require.NoError(t, err)
+	_, err = os.Stat(missingMetadataPath)
+	require.NoError(t, err)
+}
+
 func TestPrune_PreservesCurrentRecertifiedSourceAndSkipsCorruptActiveRecords(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
