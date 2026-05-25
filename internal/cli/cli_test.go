@@ -181,6 +181,9 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"docs", "add"},
 		{"docs", "fix"},
 		{"docs", "reflow"},
+		{"auth", "openai", "login"},
+		{"auth", "openai", "logout"},
+		{"auth", "openai", "status"},
 		{"pr", "new"},
 		{"pr", "refactor"},
 		{"spec", "fmt"},
@@ -198,7 +201,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		require.NotEmpty(t, cmd.Long)
 		require.NotEmpty(t, cmd.Example)
 		switch strings.Join(names, " ") {
-		case "context packages", "spec status", "cas ls-namespaces", "cas prune":
+		case "context packages", "auth openai logout", "auth openai status", "spec status", "cas ls-namespaces", "cas prune":
 		default:
 			require.NotEmpty(t, cmd.Usage)
 		}
@@ -249,6 +252,9 @@ func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {
 	qcli.WriteHelp(&out, root, root, qcli.HelpOptions{LeafCommands: true})
 
 	got := out.String()
+	require.Contains(t, got, "codalotl auth openai login")
+	require.Contains(t, got, "codalotl auth openai logout")
+	require.Contains(t, got, "codalotl auth openai status")
 	require.Contains(t, got, "codalotl docs add")
 	require.Contains(t, got, "codalotl docs fix")
 	require.NotContains(t, got, "codalotl docs improve-from-clarify")

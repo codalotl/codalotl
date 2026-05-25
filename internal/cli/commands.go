@@ -139,8 +139,56 @@ func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunStat
 	return runWithConfig, runState
 }
 
+func newCLIRunWithConfigNoStartup(loadConfigForRuns bool, runState *cliRunState) runWithConfigFunc {
+	cfgState := &configState{}
+
+	ensureMonitor := func(cfg Config) *remotemonitor.Monitor {
+		if !loadConfigForRuns {
+			return nil
+		}
+		if m := runState.getMonitor(); m != nil {
+			return m
+		}
+
+		m := newCLIMonitor(Version)
+		configureMonitorReporting(m, cfg)
+		if m != nil {
+			m.FetchLatestVersionFromHost()
+		}
+
+		runState.setMonitor(m)
+		return m
+	}
+
+	return func(event string, next func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error) qcli.RunFunc {
+		if !loadConfigForRuns {
+			return func(c *qcli.Context) error {
+				runState.setEvent(event)
+				return next(c, Config{}, nil)
+			}
+		}
+		return func(c *qcli.Context) error {
+			cfg, err := cfgState.get()
+			if err != nil {
+				return qcli.ExitError{Code: 1, Err: err}
+			}
+
+			m := ensureMonitor(cfg)
+			runState.setEvent(event)
+
+			return withPanicReporting(m, runState, event, func() error {
+				if m != nil {
+					m.ReportEventAsync(event, nil, true)
+				}
+				return next(c, cfg, m)
+			})
+		}
+	}
+}
+
 func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	runWithConfig, runState := newCLIRunWithConfig(loadConfigForRuns)
+	runWithConfigNoStartup := newCLIRunWithConfigNoStartup(loadConfigForRuns, runState)
 	root := &qcli.Command{
 		Name:  "codalotl",
 		Short: "LLM-assisted Go coding agent.",
@@ -675,7 +723,7 @@ codalotl context packages --deps
 	})
 
 	contextCmd.AddCommand(publicCmd, initialCmd, packagesCmd)
-	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, newPRCommand(), newDocsCommand(runWithConfig, true), specCmd, casCmd, panicCmd)
+	root.AddCommand(execCmd, iterateCmd, contextCmd, versionCmd, configCmd, newAuthCommand(runWithConfigNoStartup), newPRCommand(), newDocsCommand(runWithConfig, true), specCmd, casCmd, panicCmd)
 	return root, runState
 }
 
