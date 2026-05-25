@@ -36,7 +36,7 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 - Record outcomes and write the PR summary.
 
 ### Review follow-ups
-- Fix review finding in `internal/gocas`: prior-version pruning should not follow symlinks or read non-regular record-shaped entries while validating records.
+- [DONE] Fix review finding in `internal/gocas`: prior-version pruning should not follow symlinks or read non-regular record-shaped entries while validating records.
 
 ## Review
 
@@ -61,3 +61,4 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 - Fixed `internal/skills` literal name validation while preserving `LoadSkill` frontmatter trimming. Validation passed: `go test ./internal/skills`; `check_spec_conformance` certified `internal/skills`.
 - Fixed `internal/gocas` prior-version pruning to delete only validated CAS record files and skip corrupt/unrecognized records. Validation passed: `go test ./internal/gocas`; `check_spec_conformance` certified `internal/gocas`.
 - Final validation run: review reported one actionable `internal/gocas` symlink/non-regular-file pruning issue; changed-package SPEC conformance returned no issues.
+- Fixed `internal/gocas` review follow-up by skipping non-regular record-shaped entries before reading record contents during prior-version pruning. Validation passed: `go test ./internal/gocas`; `check_spec_conformance` certified `internal/gocas`.

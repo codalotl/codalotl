@@ -1110,6 +1110,63 @@ func TestPrune_PriorNamespaceVersionSkipsCorruptOrUnrecognizedRecords(t *testing
 	require.NoError(t, err)
 }
 
+func TestPrune_PriorNamespaceVersionSkipsRecordShapedSymlinkAndDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is not reliable on windows")
+	}
+
+	baseDir := t.TempDir()
+	casRoot := t.TempDir()
+
+	pkg := writeTestModuleWithPackage(t, baseDir)
+	db := newTestDB(baseDir, casRoot)
+	activeSpec := NamespaceSpec{
+		Name:     "gocas-test",
+		Version:  2,
+		HashMode: HashModePackage,
+	}
+	priorNamespace := Namespace("gocas-test-1")
+
+	writeCASRecordAtHash(t, db, priorNamespace, "aa11", cas.AdditionalInfo{})
+	validPath := storedRecordPath(t, db, priorNamespace, "aa11")
+
+	targetPath := filepath.Join(t.TempDir(), "target-record")
+	writeStoredRecord(t, targetPath, casRecordFile{
+		Kind:           casRecordKind,
+		Metadata:       json.RawMessage(`{"ok":true}`),
+		AdditionalInfo: cas.AdditionalInfo{},
+	})
+
+	symlinkPath := storedRecordPath(t, db, priorNamespace, "bb22")
+	err := os.MkdirAll(filepath.Dir(symlinkPath), 0o755)
+	require.NoError(t, err)
+	err = os.Symlink(targetPath, symlinkPath)
+	require.NoError(t, err)
+
+	directoryPath := storedRecordPath(t, db, priorNamespace, "cc33")
+	err = os.MkdirAll(directoryPath, 0o755)
+	require.NoError(t, err)
+
+	result, err := db.Prune([]NamespaceSpec{activeSpec}, []*gocode.Package{pkg}, PruneOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.DeletedPriorVersionRecords)
+	require.Equal(t, 0, result.DeletedSupersededRecords)
+
+	_, err = os.Stat(validPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	linkInfo, err := os.Lstat(symlinkPath)
+	require.NoError(t, err)
+	require.True(t, linkInfo.Mode()&os.ModeSymlink != 0)
+
+	_, err = os.Stat(targetPath)
+	require.NoError(t, err)
+
+	directoryInfo, err := os.Stat(directoryPath)
+	require.NoError(t, err)
+	require.True(t, directoryInfo.IsDir())
+}
+
 func TestPrune_PreservesCurrentRecertifiedSourceAndSkipsCorruptActiveRecords(t *testing.T) {
 	baseDir := t.TempDir()
 	casRoot := t.TempDir()
