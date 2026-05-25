@@ -421,6 +421,7 @@ type openAIResponsesContentBuilders struct {
 	idToReasoningBuilder map[string]*strings.Builder
 	idToTextDone         map[string]bool
 	idToReasoningDone    map[string]bool
+	doneOutputParts      []ContentPart
 }
 
 // openAIResponsesProcessEvent processes evt, returning:
@@ -438,7 +439,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 	case "response.completed":
 		evtCompleted := evt.AsResponseCompleted()
 		debugPrint(debugHTTPResponses, "HTTP RESPONSE: response.completed", json.RawMessage(evt.RawJSON()))
-		return &Event{Type: EventTypeCompletedSuccess, Turn: openaiResponesBuildResponse(evtCompleted.Response)}, false, nil
+		return &Event{Type: EventTypeCompletedSuccess, Turn: openaiResponesBuildResponseWithFallbackParts(evtCompleted.Response, builders.doneOutputParts)}, false, nil
 	case "response.failed":
 		evtFailed := evt.AsResponseFailed()
 		code := string(evtFailed.Response.Error.Code)
@@ -536,27 +537,16 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 	case "response.output_item.done":
 		evtOutputItem := evt.AsResponseOutputItemDone()
 		item := evtOutputItem.Item
-		switch item.Type {
-		case "function_call":
-			fn := item.AsFunctionCall()
-			tc := &ToolCall{
-				ProviderID: item.ID,
-				CallID:     fn.CallID,
-				Name:       fn.Name,
-				Input:      fn.Arguments,
-				Type:       item.Type,
+		if parts := openAIResponsesContentPartsFromOutputItem(item); len(parts) > 0 {
+			builders.doneOutputParts = append(builders.doneOutputParts, parts...)
+			for _, part := range parts {
+				tc, ok := part.(ToolCall)
+				if !ok {
+					continue
+				}
+				call := tc
+				return &Event{Type: EventTypeToolUse, ToolCall: &call}, true, nil
 			}
-			return &Event{Type: EventTypeToolUse, ToolCall: tc}, true, nil
-		case "custom_tool_call":
-			custom := item.AsCustomToolCall()
-			tc := &ToolCall{
-				ProviderID: item.ID,
-				CallID:     custom.CallID,
-				Name:       custom.Name,
-				Input:      custom.Input,
-				Type:       item.Type,
-			}
-			return &Event{Type: EventTypeToolUse, ToolCall: tc}, true, nil
 		}
 	case "response.function_call_arguments.delta":
 		evtFCDelta := evt.AsResponseFunctionCallArgumentsDelta()
@@ -777,38 +767,65 @@ func openaiResponesMapMessageRole(role Role) responses.EasyInputMessageRole {
 
 // openaiResponesBuildResponse maps an OpenAI responses.Response into our Response type.
 func openaiResponesBuildResponse(resp responses.Response) *Turn {
+	return openAIResponsesBuildResponseFromParts(resp, openAIResponsesContentPartsFromOutput(resp.Output))
+}
 
-	parts := make([]ContentPart, 0, len(resp.Output))
+func openaiResponesBuildResponseWithFallbackParts(resp responses.Response, fallbackParts []ContentPart) *Turn {
+	turn := openaiResponesBuildResponse(resp)
+	if len(turn.Parts) == 0 && len(fallbackParts) > 0 {
+		return openAIResponsesBuildResponseFromParts(resp, fallbackParts)
+	}
+	return turn
+}
+
+func openAIResponsesContentPartsFromOutput(output []responses.ResponseOutputItemUnion) []ContentPart {
+	parts := make([]ContentPart, 0, len(output))
+	for _, item := range output {
+		parts = append(parts, openAIResponsesContentPartsFromOutputItem(item)...)
+	}
+	return parts
+}
+
+func openAIResponsesContentPartsFromOutputItem(item responses.ResponseOutputItemUnion) []ContentPart {
+	switch item.Type {
+	case "function_call":
+		fn := item.AsFunctionCall()
+		return []ContentPart{ToolCall{ProviderID: item.ID, CallID: fn.CallID, Name: fn.Name, Input: fn.Arguments, Type: "function_call"}}
+	case "custom_tool_call":
+		custom := item.AsCustomToolCall()
+		return []ContentPart{ToolCall{ProviderID: item.ID, CallID: custom.CallID, Name: custom.Name, Input: custom.Input, Type: "custom_tool_call"}}
+	case "message":
+		message := item.AsMessage()
+		parts := make([]ContentPart, 0, len(message.Content))
+		for _, messageContent := range message.Content {
+			switch messageContent.Type {
+			case "output_text":
+				mcOutput := messageContent.AsOutputText()
+				parts = append(parts, TextContent{Content: mcOutput.Text, ProviderID: message.ID})
+			}
+		}
+		return parts
+	case "reasoning":
+		reasoning := item.AsReasoning()
+		parts := make([]ContentPart, 0, len(reasoning.Summary)+1)
+		for _, summaryItem := range reasoning.Summary {
+			parts = append(parts, ReasoningContent{Content: summaryItem.Text, ProviderID: reasoning.ID})
+		}
+		if reasoning.EncryptedContent != "" {
+			parts = append(parts, ReasoningContent{ProviderID: reasoning.ID, ProviderState: reasoning.EncryptedContent})
+		}
+		return parts
+	default:
+		return nil
+	}
+}
+
+func openAIResponsesBuildResponseFromParts(resp responses.Response, parts []ContentPart) *Turn {
+	parts = append([]ContentPart(nil), parts...)
 	hasToolCalls := false
-	for _, item := range resp.Output {
-		switch item.Type {
-		case "function_call":
-			fn := item.AsFunctionCall()
-			tc := ToolCall{ProviderID: item.ID, CallID: fn.CallID, Name: fn.Name, Input: fn.Arguments, Type: "function_call"}
-			parts = append(parts, tc)
+	for _, part := range parts {
+		if _, ok := part.(ToolCall); ok {
 			hasToolCalls = true
-		case "custom_tool_call":
-			custom := item.AsCustomToolCall()
-			tc := ToolCall{ProviderID: item.ID, CallID: custom.CallID, Name: custom.Name, Input: custom.Input, Type: "custom_tool_call"}
-			parts = append(parts, tc)
-			hasToolCalls = true
-		case "message":
-			message := item.AsMessage()
-			for _, messageContent := range message.Content {
-				switch messageContent.Type {
-				case "output_text":
-					mcOutput := messageContent.AsOutputText()
-					parts = append(parts, TextContent{Content: mcOutput.Text, ProviderID: message.ID})
-				}
-			}
-		case "reasoning":
-			reasoning := item.AsReasoning()
-			for _, summaryItem := range reasoning.Summary {
-				parts = append(parts, ReasoningContent{Content: summaryItem.Text, ProviderID: reasoning.ID})
-			}
-			if reasoning.EncryptedContent != "" {
-				parts = append(parts, ReasoningContent{ProviderID: reasoning.ID, ProviderState: reasoning.EncryptedContent})
-			}
 		}
 	}
 

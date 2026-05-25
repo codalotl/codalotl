@@ -2,6 +2,7 @@ package llmstream
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -52,6 +53,64 @@ func TestOpenAIResponesBuildResponse_CapturesEncryptedReasoningState(t *testing.
 	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_123", Content: "reasoning summary"})
 	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_123", ProviderState: "encrypted_reasoning_blob"})
 	assert.Contains(t, turn.Parts, TextContent{ProviderID: "msg_123", Content: "answer"})
+}
+
+func TestOpenAIResponsesProcessEvent_CompletedFallsBackToDoneOutputItems(t *testing.T) {
+	builders := newOpenAIResponsesContentBuildersForTest()
+	itemDone := mustOpenAIResponseStreamEvent(t, `{
+		"type": "response.output_item.done",
+		"output_index": 0,
+		"sequence_number": 1,
+		"item": {
+			"id": "fc_123",
+			"type": "function_call",
+			"status": "completed",
+			"call_id": "call_123",
+			"name": "update_plan",
+			"arguments": "{\"plan\":[]}"
+		}
+	}`)
+
+	ev, cont, err := openAIResponsesProcessEvent(itemDone, builders)
+	require.NoError(t, err)
+	assert.True(t, cont)
+	require.NotNil(t, ev)
+	assert.Equal(t, EventTypeToolUse, ev.Type)
+	require.NotNil(t, ev.ToolCall)
+	assert.Equal(t, "call_123", ev.ToolCall.CallID)
+
+	completed := mustOpenAIResponseStreamEvent(t, `{
+		"type": "response.completed",
+		"sequence_number": 2,
+		"response": {
+			"id": "resp_123",
+			"object": "response",
+			"created_at": 1779486596,
+			"status": "completed",
+			"output": [],
+			"usage": {
+				"input_tokens": 10,
+				"input_tokens_details": {"cached_tokens": 0},
+				"output_tokens": 5,
+				"output_tokens_details": {"reasoning_tokens": 0},
+				"total_tokens": 15
+			}
+		}
+	}`)
+
+	ev, cont, err = openAIResponsesProcessEvent(completed, builders)
+	require.NoError(t, err)
+	assert.False(t, cont)
+	require.NotNil(t, ev)
+	require.NotNil(t, ev.Turn)
+	assert.Equal(t, FinishReasonToolUse, ev.Turn.FinishReason)
+	assert.Equal(t, []ToolCall{{
+		ProviderID: "fc_123",
+		CallID:     "call_123",
+		Name:       "update_plan",
+		Input:      `{"plan":[]}`,
+		Type:       "function_call",
+	}}, ev.Turn.ToolCalls())
 }
 
 func TestOpenAIResponesConvertUsage_TotalOutputIncludesReasoning(t *testing.T) {
@@ -500,6 +559,22 @@ func openAIRequestShapeConversation(t *testing.T) *streamingConversation {
 	require.NoError(t, sc.AddUserTurn("second question"))
 	sc.providerConversationID = "resp_first"
 	return sc
+}
+
+func newOpenAIResponsesContentBuildersForTest() *openAIResponsesContentBuilders {
+	return &openAIResponsesContentBuilders{
+		idToTextBuilder:      make(map[string]*strings.Builder),
+		idToReasoningBuilder: make(map[string]*strings.Builder),
+		idToTextDone:         make(map[string]bool),
+		idToReasoningDone:    make(map[string]bool),
+	}
+}
+
+func mustOpenAIResponseStreamEvent(t *testing.T, raw string) responses.ResponseStreamEventUnion {
+	t.Helper()
+	var event responses.ResponseStreamEventUnion
+	require.NoError(t, json.Unmarshal([]byte(raw), &event))
+	return event
 }
 
 func openAIProviderItemReplayConversation(t *testing.T) *streamingConversation {
