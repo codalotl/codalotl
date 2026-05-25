@@ -22,7 +22,7 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 - Fix nonconformance with good UX judgement, preferring code fixes when the SPEC.md accurately describes intended behavior and SPEC.md updates when the implementation behavior is the intended contract.
 
 ### Conformance follow-ups
-- `internal/q/cas`: fix code. Reject `.` and `..` path segments for namespaces and custom hashes so records cannot escape `DB.AbsRoot`.
+- [DONE] `internal/q/cas`: fix code. Reject `.` and `..` path segments for namespaces and custom hashes so records cannot escape `DB.AbsRoot`.
 - `internal/skills`: fix code. `Skill.Validate` should reject the literal `Name` value when it has leading/trailing whitespace; `LoadSkill` can remain forgiving by trimming YAML input before validation.
 - `internal/gocas`: fix code. Make prior-namespace-version pruning skip corrupt/unrecognized record-shaped files unless it can validate them as CAS records.
 
@@ -49,3 +49,4 @@ For any nonconformance, assess. Either update SPEC.md to match behavior, or fix 
 - `codalotl spec status` initially reported unset SPEC-bearing packages: `internal/cli`, `internal/gocas`, `internal/llmmodel`, `internal/q/cas`, `internal/skills`, `internal/tools/authdomain`, `internal/tools/refactor`.
 - `check_spec_conformance` certified `internal/cli`, `internal/llmmodel`, `internal/tools/authdomain`, `internal/tools/refactor`; `internal/tools/cli` was re-certified after doc CAS updates.
 - Remaining conformance findings are latent but actionable: `internal/gocas`, `internal/q/cas`, `internal/skills`.
+- Fixed `internal/q/cas` dot-segment validation for namespaces and derived hash path segments. Validation passed: `go test ./internal/q/cas`; `check_spec_conformance` certified `internal/q/cas`.
