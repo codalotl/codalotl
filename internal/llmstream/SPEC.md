@@ -7,6 +7,11 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 ### OpenAI
 
 - Implements responses API only.
+- Uses provider subscription auth from `llmmodel` when available for OpenAI models that do not have explicit model-level auth overrides.
+- OpenAI subscription auth:
+	- uses subscription access token, account ID, and backend URL
+	- forces no-store/ZDR request behavior
+	- sends system turns as root `instructions` instead of input array items
 - `SendOptions.NoStore` uses OpenAI Responses ZDR semantics:
 	- Sends `store=false`.
 	- Does not send `previous_response_id`.

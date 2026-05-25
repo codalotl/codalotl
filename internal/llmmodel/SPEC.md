@@ -21,6 +21,7 @@ By default, this package loads a set of top models/providers.
 Consumers can then configure these:
 - Call AvailableModelIDs() and GetModelInfo() to get default loaded state.
 - Call ConfigureProviderKey to configure API keys (for instance, from an app config file).
+- Call SetProviderSubscription to configure provider subscription auth discovered outside this package.
 - Call AddCustomModel() to add more models. They might do this for reasons:
     - Add custom params on a per-model basis (ex: reasoning effort)
     - Create custom ModelID aliases
@@ -29,11 +30,22 @@ Consumers can then configure these:
     - per-model overrides (APIActualKey / APIEnvKey)
     - in-memory provider overrides (ConfigureProviderKey)
     - provider default env vars (ex: "OPENAI_API_KEY")
+    - configured provider subscription auth
 - To check if a provider has a configured key *at the provider level* (ConfigureProviderKey or default env var), call ProviderHasConfiguredKey(providerID).
     - This does NOT consider per-model overrides; those are only visible when checking at the model level.
 - EnvHasDefaultKey(providerID) is a narrow helper: it checks only the provider's default env var and ignores ConfigureProviderKey and per-model overrides.
 
 Once configured, params of type ModelID can be passed around to select a model. A package that uses llmmodel to send API requests can accept this ModelID param, get the API key, and get relevant parameters (URL, ReasoningEffort overrides, etc).
+
+## Subscription Auth
+
+Provider subscription auth is provider-agnostic runtime auth state discovered outside this package and exposed to request-sending packages.
+
+Subscription auth:
+- coexists with API keys
+- is provider-level, not model-level
+- can require provider-specific request behavior, such as no-store requests or root-level instructions
+- is ignored for invalid or unknown provider IDs
 
 ## Implementation details
 
@@ -172,6 +184,32 @@ var AllProviderIDs = []ProviderID{
 	ProviderIDGemini,
 }
 
+// ProviderSubscription is provider-agnostic subscription auth that can be used instead of a provider API key.
+type ProviderSubscription struct {
+	ProviderID       ProviderID
+	AccessToken      string
+	AccountID        string
+	APIEndpointURL   string
+	ExpiresAt        time.Time
+	RequiresNoStore  bool
+	RootInstructions bool
+}
+
+// Valid reports whether sub contains the minimum information required to authenticate provider requests.
+func (sub ProviderSubscription) Valid() bool
+
+// SetProviderSubscription configures subscription auth for a provider.
+func SetProviderSubscription(providerID ProviderID, sub ProviderSubscription)
+
+// ClearProviderSubscription removes subscription auth for a provider.
+func ClearProviderSubscription(providerID ProviderID)
+
+// GetProviderSubscription returns subscription auth for providerID, if set.
+func GetProviderSubscription(providerID ProviderID) (ProviderSubscription, bool)
+
+// ProviderHasSubscription reports whether subscription auth is configured for providerID.
+func ProviderHasSubscription(providerID ProviderID) bool
+
 // AddCustomModel adds the custom model to the available models. id is an opaque identifier that can be referred to later from consumers of this package. providerID
 // must match a known provider (note: for truly custom models, just say it's openai, or whatever shape the API is, and use custom URL in overrides). providerModelID
 // is the API parameter sent to the LLM provider for 'model' - matches API provider docs (ex: "claude-opus-4-20250514").
@@ -246,7 +284,7 @@ func ProviderHasConfiguredKey(providerID ProviderID) bool
 //  4. Env[ProviderKeyEnvVars()[id.ProviderID()]]
 func GetAPIKey(id ModelID) string
 
-// AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty effective API key (per GetAPIKey).
+// AvailableModelIDsWithAPIKey returns model IDs with usable provider auth, including API keys from GetAPIKey and provider subscription auth.
 func AvailableModelIDsWithAPIKey() []ModelID
 
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:

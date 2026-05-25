@@ -9,6 +9,7 @@ We use the `internal/q/cli` CLI framework to implement it.
 ## Startup and Environment Validation
 
 When codalotl starts, we load and validate configuration and required tools, except for commands that explicitly opt out (for example `version`, `pr new`, and `-h`).
+- Config-loaded commands initialize saved provider subscription auth before checking whether an LLM is available.
 - If there's an error parsing the config file, or a config option is invalid, an error message is displayed and codalotl exits.
 - If there is no LLM configured (no LLM provider keys, including in ENV), an error message is displayed and codalotl exits.
 	- Note: a key must exist for **usable** models. The `llmmodel` package supports more providers than the CLI config schema currently exposes.
@@ -167,6 +168,22 @@ To set LLM provider API keys, set one of these ENV variables:
 Global configuration can be stored in /home/someuser/.codalotl/config.json
 Project-specific configuration can be stored in .codalotl/config.json
 ```
+
+### codalotl auth openai login [--no-browser]
+
+Starts OpenAI ChatGPT subscription device login and stores credentials in `~/.codalotl/openai_auth.json`.
+
+Notes:
+- `--no-browser` prints the verification URL/code without opening a browser.
+- This command does not require existing LLM configuration.
+
+### codalotl auth openai logout
+
+Deletes saved OpenAI ChatGPT subscription credentials and clears OpenAI subscription auth for the current process.
+
+### codalotl auth openai status
+
+Reports whether OpenAI ChatGPT subscription credentials are configured and usable.
 
 ### codalotl pr new <feature-name> [--no-git]
 
