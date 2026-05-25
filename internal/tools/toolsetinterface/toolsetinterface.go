@@ -26,6 +26,10 @@ type AgentInvoker interface {
 
 	// Invoke creates and starts a named agent with req, returning a channel from which to read events. Use it as the one-shot convenience API when callers do not need
 	// access to the created Agent.
+	//
+	// Callers should drain the returned channel until it is closed; otherwise the invoked agent may block while emitting events. With the standard agent infrastructure,
+	// invoked-agent events are also mirrored into the caller's agent event stream for display, so tools normally consume this channel to observe terminal status or
+	// results rather than to re-emit non-terminal events.
 	Invoke(ctx context.Context, agentName string, req InvokeRequest) (<-chan agent.Event, error)
 }
 

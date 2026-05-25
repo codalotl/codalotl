@@ -9,6 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type customHasher string
+
+func (h customHasher) Hash() string { return string(h) }
+
 func TestNewBytesHasher(t *testing.T) {
 	h1 := NewBytesHasher([]byte("hello"))
 	h2 := NewBytesHasher([]byte("hello"))
@@ -221,4 +225,70 @@ func TestDB_Store_ValidatesNamespaceAndHash(t *testing.T) {
 
 	err = db.Store(NewBytesHasher([]byte("x")), "a/b", map[string]any{"x": 1}, nil)
 	require.Error(t, err)
+}
+
+func TestDB_RecordOperationsRejectDotSegments(t *testing.T) {
+	dbRoot := t.TempDir()
+	db := &DB{AbsRoot: dbRoot}
+	validHasher := NewBytesHasher([]byte("x"))
+
+	tests := []struct {
+		name      string
+		namespace string
+		hasher    Hasher
+	}{
+		{
+			name:      "namespace dot",
+			namespace: ".",
+			hasher:    validHasher,
+		},
+		{
+			name:      "namespace dotdot",
+			namespace: "..",
+			hasher:    validHasher,
+		},
+		{
+			name:      "hash dot",
+			namespace: "ok",
+			hasher:    customHasher("."),
+		},
+		{
+			name:      "hash dotdot",
+			namespace: "ok",
+			hasher:    customHasher(".."),
+		},
+		{
+			name:      "hash directory segment dotdot",
+			namespace: "ok",
+			hasher:    customHasher("..x"),
+		},
+		{
+			name:      "hash record segment dot",
+			namespace: "ok",
+			hasher:    customHasher("ab."),
+		},
+		{
+			name:      "hash record segment dotdot",
+			namespace: "ok",
+			hasher:    customHasher("ab.."),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Error(t, db.Store(tt.hasher, tt.namespace, map[string]any{"x": 1}, nil))
+
+			var out map[string]any
+			found, ai, err := db.Retrieve(tt.hasher, tt.namespace, &out)
+			require.Error(t, err)
+			require.False(t, found)
+			require.Equal(t, AdditionalInfo{}, ai)
+
+			require.Error(t, db.Delete(tt.hasher, tt.namespace))
+		})
+	}
+
+	entries, err := os.ReadDir(dbRoot)
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }

@@ -425,20 +425,7 @@ codalotl spec ls-mismatch ./internal/...
 			return runSpecLsMismatch(c.Context, c.Out, c.Args[0])
 		}),
 	}
-	statusCmd := &qcli.Command{
-		Name:             "status",
-		Short:            "Print per-package SPEC.md status across discovered repo modules.",
-		Long:             "Prints a table for packages across Go modules discovered from the nearest git repo, showing package, whether SPEC.md exists, whether Public API matches implementation, and whether the CAS conformance result is set.",
-		Args:             qcli.NoArgs,
-		NoPositionalArgs: true,
-		Example: strings.TrimSpace(`
-codalotl spec status
-`),
-		Run: runWithConfig("spec_status", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-			return runSpecStatus(c.Context, c.Out)
-		}),
-	}
-	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd, statusCmd)
+	specCmd.AddCommand(fmtCmd, diffCmd, lsMismatchCmd, newSpecStatusCommand(runWithConfig))
 	casCmd := &qcli.Command{
 		Name:  "cas",
 		Short: "Content-addressable metadata storage (CAS).",
@@ -706,8 +693,31 @@ func newCodalotlCLICommandTree() *qcli.Command {
 		Long:  "Whitelisted CAS commands.",
 	}
 	casCmd.AddCommand(newCASRecertifyCommand(runWithConfig))
-	root.AddCommand(newDocsCommand(runWithConfig, false), casCmd)
+	specCmd := &qcli.Command{
+		Name:  "spec",
+		Short: "SPEC.md tools.",
+		Long:  "Whitelisted SPEC.md commands.",
+	}
+	specCmd.AddCommand(newSpecStatusCommand(runWithConfig))
+	root.AddCommand(newDocsCommand(runWithConfig, false), specCmd, casCmd)
 	return root
+}
+
+func newSpecStatusCommand(runWithConfig runWithConfigFunc) *qcli.Command {
+	statusCmd := &qcli.Command{
+		Name:             "status",
+		Short:            "Print per-package SPEC.md status across discovered repo modules.",
+		Long:             "Prints a table for packages across Go modules discovered from the nearest git repo, showing package, whether SPEC.md exists, whether Public API matches implementation, and whether the CAS conformance result is set.",
+		Args:             qcli.NoArgs,
+		NoPositionalArgs: true,
+		Example: strings.TrimSpace(`
+codalotl spec status
+`),
+		Run: runWithConfig("spec_status", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+			return runSpecStatus(c.Context, c.Out)
+		}),
+	}
+	return statusCmd
 }
 
 func newCASRecertifyCommand(runWithConfig runWithConfigFunc) *qcli.Command {

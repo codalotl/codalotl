@@ -160,15 +160,9 @@ func (db *DB) Store(hasher Hasher, namespace string, jsonable any, opts *Options
 	if hasher == nil {
 		return errors.New("hasher is nil")
 	}
-	if err := validatePathSegment("namespace", namespace); err != nil {
-		return err
-	}
 	hash := hasher.Hash()
-	if err := validatePathSegment("hash", hash); err != nil {
+	if err := validateRecordKey(namespace, hash); err != nil {
 		return err
-	}
-	if len(hash) < 3 {
-		return fmt.Errorf("hash %q is too short", hash)
 	}
 
 	payload, err := json.Marshal(jsonable)
@@ -238,15 +232,9 @@ func (db *DB) Retrieve(hasher Hasher, namespace string, target any) (bool, Addit
 	if hasher == nil {
 		return false, AdditionalInfo{}, errors.New("hasher is nil")
 	}
-	if err := validatePathSegment("namespace", namespace); err != nil {
-		return false, AdditionalInfo{}, err
-	}
 	hash := hasher.Hash()
-	if err := validatePathSegment("hash", hash); err != nil {
+	if err := validateRecordKey(namespace, hash); err != nil {
 		return false, AdditionalInfo{}, err
-	}
-	if len(hash) < 3 {
-		return false, AdditionalInfo{}, fmt.Errorf("hash %q is too short", hash)
 	}
 
 	b, err := os.ReadFile(db.recordPath(namespace, hash))
@@ -283,15 +271,9 @@ func (db *DB) Delete(hasher Hasher, namespace string) error {
 	if hasher == nil {
 		return errors.New("hasher is nil")
 	}
-	if err := validatePathSegment("namespace", namespace); err != nil {
-		return err
-	}
 	hash := hasher.Hash()
-	if err := validatePathSegment("hash", hash); err != nil {
+	if err := validateRecordKey(namespace, hash); err != nil {
 		return err
-	}
-	if len(hash) < 3 {
-		return fmt.Errorf("hash %q is too short", hash)
 	}
 
 	if err := os.Remove(db.recordPath(namespace, hash)); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -304,9 +286,31 @@ func (db *DB) recordPath(namespace, hash string) string {
 	return filepath.Join(db.AbsRoot, namespace, hash[:2], hash[2:])
 }
 
+func validateRecordKey(namespace, hash string) error {
+	if err := validatePathSegment("namespace", namespace); err != nil {
+		return err
+	}
+	if err := validatePathSegment("hash", hash); err != nil {
+		return err
+	}
+	if len(hash) < 3 {
+		return fmt.Errorf("hash %q is too short", hash)
+	}
+	if err := validatePathSegment("hash directory segment", hash[:2]); err != nil {
+		return err
+	}
+	if err := validatePathSegment("hash record segment", hash[2:]); err != nil {
+		return err
+	}
+	return nil
+}
+
 func validatePathSegment(name, s string) error {
 	if s == "" {
 		return fmt.Errorf("%s is empty", name)
+	}
+	if s == "." || s == ".." {
+		return fmt.Errorf("%s %q must not be a filesystem-special dot segment", name, s)
 	}
 	// Disallow both separators to be safe cross-platform.
 	if strings.Contains(s, "/") || strings.Contains(s, `\`) {

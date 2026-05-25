@@ -496,9 +496,16 @@ func (db *DB) pruneNamespaceRecordFiles(namespace Namespace) (int, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if _, ok := recordHashFromPath(namespaceDir, recordPath); ok {
-			recordPaths = append(recordPaths, recordPath)
+		if _, ok := recordHashFromPath(namespaceDir, recordPath); !ok {
+			return nil
 		}
+		if !isRegularDirEntry(d) {
+			return nil
+		}
+		if _, err := readFullCASRecordFile(recordPath); err != nil {
+			return nil
+		}
+		recordPaths = append(recordPaths, recordPath)
 		return nil
 	})
 	if err != nil {
@@ -518,6 +525,17 @@ func (db *DB) pruneNamespaceRecordFiles(namespace Namespace) (int, error) {
 	}
 	_ = os.Remove(namespaceDir)
 	return deleted, nil
+}
+
+func isRegularDirEntry(d os.DirEntry) bool {
+	if d == nil {
+		return false
+	}
+	info, err := d.Info()
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
 }
 
 func (db *DB) pruneSupersededRecords(specs []NamespaceSpec, packages []*gocode.Package, supersededAge time.Duration) (int, error) {

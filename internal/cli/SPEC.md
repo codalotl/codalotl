@@ -39,6 +39,7 @@ Notes:
 - `codalotl_cli` exposes these commands:
 	- `codalotl docs add`
 	- `codalotl docs fix`
+	- `codalotl spec status`
 	- `codalotl cas recertify`
 
 ### codalotl -h, codalotl --help
