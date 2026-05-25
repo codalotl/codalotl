@@ -76,7 +76,7 @@ func TestRun_InstallsRefactorToolOverride(t *testing.T) {
 	}
 }
 
-func TestCodalotlCLITool_OnlyExposesDocsAndCASRecertifyCommands(t *testing.T) {
+func TestCodalotlCLITool_OnlyExposesWhitelistedCommands(t *testing.T) {
 	tool := toolcli.NewCodalotlCLITool(newCodalotlCLICommandTree)
 
 	helpResult := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
@@ -89,9 +89,13 @@ func TestCodalotlCLITool_OnlyExposesDocsAndCASRecertifyCommands(t *testing.T) {
 	require.Equal(t, 0, helpResult.ExitCode)
 	require.Contains(t, helpResult.Stdout, "codalotl docs add")
 	require.Contains(t, helpResult.Stdout, "codalotl docs fix")
+	require.Contains(t, helpResult.Stdout, "codalotl spec status")
 	require.Contains(t, helpResult.Stdout, "codalotl cas recertify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs reflow")
+	require.NotContains(t, helpResult.Stdout, "codalotl spec diff")
+	require.NotContains(t, helpResult.Stdout, "codalotl spec fmt")
+	require.NotContains(t, helpResult.Stdout, "codalotl spec ls-mismatch")
 	require.NotContains(t, helpResult.Stdout, "codalotl cas get")
 	require.NotContains(t, helpResult.Stdout, "codalotl cas ls-namespaces")
 	require.NotContains(t, helpResult.Stdout, "codalotl context public")
@@ -119,6 +123,17 @@ func TestCodalotlCLITool_OnlyExposesDocsAndCASRecertifyCommands(t *testing.T) {
 	require.Equal(t, 0, fixHelp.ExitCode)
 	require.Contains(t, fixHelp.Stdout, "codalotl docs fix")
 	require.Contains(t, fixHelp.Stdout, "--identifiers")
+
+	statusHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-spec-status-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"spec status","argv":["--help"]}`,
+	}))
+	require.True(t, statusHelp.Success)
+	require.Equal(t, 0, statusHelp.ExitCode)
+	require.Contains(t, statusHelp.Stdout, "codalotl spec status")
+	require.Contains(t, statusHelp.Stdout, "whether SPEC.md exists")
 
 	recertifyHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-cas-recertify-help",
@@ -152,6 +167,17 @@ func TestCodalotlCLITool_OnlyExposesDocsAndCASRecertifyCommands(t *testing.T) {
 	require.Equal(t, 2, rejectedCASGet.ExitCode)
 	require.Contains(t, rejectedCASGet.Stderr, "unknown subcommand")
 	require.Contains(t, rejectedCASGet.Stderr, "get")
+
+	rejectedSpecDiff := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-spec-diff-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"spec diff","argv":[]}`,
+	}))
+	require.False(t, rejectedSpecDiff.Success)
+	require.Equal(t, 2, rejectedSpecDiff.ExitCode)
+	require.Contains(t, rejectedSpecDiff.Stderr, "unknown subcommand")
+	require.Contains(t, rejectedSpecDiff.Stderr, "diff")
 
 	rejected := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-disallowed",
