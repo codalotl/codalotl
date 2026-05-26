@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ModelID is a user-visible ID for a model from the perspective of consumers of this package. It is NOT (necessarily) the same as the model ID sent to API endpoints.
@@ -59,6 +60,50 @@ func (pid ProviderID) DefaultModel() ModelID {
 	modelsMu.RLock()
 	defer modelsMu.RUnlock()
 	return providerDefaults[pid]
+}
+
+// ProviderSubscription is provider-agnostic subscription auth that can be used instead of a provider API key.
+type ProviderSubscription struct {
+	ProviderID       ProviderID
+	AccessToken      string
+	AccountID        string
+	APIEndpointURL   string
+	ExpiresAt        time.Time
+	RequiresNoStore  bool
+	RootInstructions bool
+}
+
+// SetProviderSubscription configures subscription auth for a provider.
+func SetProviderSubscription(providerID ProviderID, sub ProviderSubscription) {
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+	providerSubscriptions[providerID] = sub
+}
+
+// ClearProviderSubscription removes subscription auth for a provider.
+func ClearProviderSubscription(providerID ProviderID) {
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+	delete(providerSubscriptions, providerID)
+}
+
+// GetProviderSubscription returns usable subscription auth for providerID, if set.
+//
+// Usable subscription auth has matching provider, required fields present, and nonexpired ExpiresAt.
+func GetProviderSubscription(providerID ProviderID) (ProviderSubscription, bool) {
+	modelsMu.RLock()
+	sub, ok := providerSubscriptions[providerID]
+	modelsMu.RUnlock()
+	if !ok || !usableProviderSubscription(providerID, sub) {
+		return ProviderSubscription{}, false
+	}
+	return sub, true
+}
+
+// ProviderHasSubscription reports whether usable subscription auth is configured for providerID.
+func ProviderHasSubscription(providerID ProviderID) bool {
+	_, ok := GetProviderSubscription(providerID)
+	return ok
 }
 
 // ProviderAPIType identifies one API "shape" a provider supports. Providers can expose multiple API types simultaneously (ex: OpenAI exposes both Responses and
@@ -337,6 +382,18 @@ func AvailableModelIDsWithAPIKey() []ModelID {
 	return out
 }
 
+// AvailableModelIDsWithAuth returns only the model IDs that currently have a non-empty effective API key or eligible provider subscription auth.
+func AvailableModelIDsWithAuth() []ModelID {
+	ids := AvailableModelIDs()
+	out := make([]ModelID, 0, len(ids))
+	for _, id := range ids {
+		if GetAPIKey(id) != "" || modelHasEligibleProviderSubscription(id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIEndpointURL
 //  2. ModelInfo.APIEndpointURL
@@ -389,13 +446,14 @@ type providerData struct {
 }
 
 var (
-	modelsMu             sync.RWMutex
-	modelsByID           = make(map[ModelID]ModelInfo)
-	modelOrder           []ModelID
-	providerDefaults     = make(map[ProviderID]ModelID)
-	providerEnvVars      = make(map[ProviderID]string)
-	providerKeyOverrides = make(map[ProviderID]string)
-	providerCatalog      = make(map[ProviderID]providerData)
+	modelsMu              sync.RWMutex
+	modelsByID            = make(map[ModelID]ModelInfo)
+	modelOrder            []ModelID
+	providerDefaults      = make(map[ProviderID]ModelID)
+	providerEnvVars       = make(map[ProviderID]string)
+	providerKeyOverrides  = make(map[ProviderID]string)
+	providerCatalog       = make(map[ProviderID]providerData)
+	providerSubscriptions = make(map[ProviderID]ProviderSubscription)
 )
 
 var anthropicVersionSuffix = regexp.MustCompile(`-\d{6,}$`)
@@ -589,6 +647,29 @@ func normalizeEnvKey(value string) string {
 		return value[1:]
 	}
 	return value
+}
+
+func usableProviderSubscription(providerID ProviderID, sub ProviderSubscription) bool {
+	if providerID == ProviderIDUnknown || sub.ProviderID != providerID {
+		return false
+	}
+	if strings.TrimSpace(sub.AccessToken) == "" ||
+		strings.TrimSpace(sub.AccountID) == "" ||
+		strings.TrimSpace(sub.APIEndpointURL) == "" {
+		return false
+	}
+	return sub.ExpiresAt.After(time.Now())
+}
+
+func modelHasEligibleProviderSubscription(id ModelID) bool {
+	info := GetModelInfo(id)
+	if info.ID == ModelIDUnknown {
+		return false
+	}
+	if info.APIActualKey != "" || info.APIEnvKey != "" || info.ModelOverrides.APIEndpointURL != "" {
+		return false
+	}
+	return ProviderHasSubscription(info.ProviderID)
 }
 
 func deriveModelID(pid ProviderID, providerModelID string) ModelID {

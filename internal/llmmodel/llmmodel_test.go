@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +29,39 @@ func defaultModelIDsByProvider(pid ProviderID) []ModelID {
 		}
 	}
 	return out
+}
+
+func clearProviderAuthForTest(t *testing.T) {
+	t.Helper()
+
+	for _, pid := range AllProviderIDs {
+		ConfigureProviderKey(pid, "")
+		ClearProviderSubscription(pid)
+	}
+	for _, envKey := range ProviderKeyEnvVars() {
+		if envKey != "" {
+			t.Setenv(envKey, "")
+		}
+	}
+
+	t.Cleanup(func() {
+		for _, pid := range AllProviderIDs {
+			ConfigureProviderKey(pid, "")
+			ClearProviderSubscription(pid)
+		}
+	})
+}
+
+func validProviderSubscription(providerID ProviderID) ProviderSubscription {
+	return ProviderSubscription{
+		ProviderID:       providerID,
+		AccessToken:      "access-token",
+		AccountID:        "account-id",
+		APIEndpointURL:   "https://chatgpt.com/backend-api/codex",
+		ExpiresAt:        time.Now().Add(time.Hour),
+		RequiresNoStore:  true,
+		RootInstructions: true,
+	}
 }
 
 func TestInspectingDefaultModels(t *testing.T) {
@@ -339,4 +373,106 @@ func TestAvailableModelIDsWithAPIKeyAndProviderHasConfiguredKey(t *testing.T) {
 	}
 	require.True(t, seenOpenAI)
 	require.True(t, seenAnthropic)
+}
+
+func TestProviderSubscriptionRequiresUsableAuth(t *testing.T) {
+	clearProviderAuthForTest(t)
+
+	valid := validProviderSubscription(ProviderIDOpenAI)
+	SetProviderSubscription(ProviderIDOpenAI, valid)
+
+	sub, ok := GetProviderSubscription(ProviderIDOpenAI)
+	require.True(t, ok)
+	require.Equal(t, valid, sub)
+	require.True(t, ProviderHasSubscription(ProviderIDOpenAI))
+
+	ClearProviderSubscription(ProviderIDOpenAI)
+	_, ok = GetProviderSubscription(ProviderIDOpenAI)
+	require.False(t, ok)
+	require.False(t, ProviderHasSubscription(ProviderIDOpenAI))
+
+	tests := map[string]func(ProviderSubscription) ProviderSubscription{
+		"provider mismatch": func(sub ProviderSubscription) ProviderSubscription {
+			sub.ProviderID = ProviderIDAnthropic
+			return sub
+		},
+		"blank access token": func(sub ProviderSubscription) ProviderSubscription {
+			sub.AccessToken = " "
+			return sub
+		},
+		"blank account id": func(sub ProviderSubscription) ProviderSubscription {
+			sub.AccountID = " "
+			return sub
+		},
+		"blank endpoint": func(sub ProviderSubscription) ProviderSubscription {
+			sub.APIEndpointURL = " "
+			return sub
+		},
+		"expired": func(sub ProviderSubscription) ProviderSubscription {
+			sub.ExpiresAt = time.Now().Add(-time.Second)
+			return sub
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			ClearProviderSubscription(ProviderIDOpenAI)
+			SetProviderSubscription(ProviderIDOpenAI, mutate(valid))
+
+			_, ok := GetProviderSubscription(ProviderIDOpenAI)
+			require.False(t, ok)
+			require.False(t, ProviderHasSubscription(ProviderIDOpenAI))
+		})
+	}
+}
+
+func TestAvailableModelIDsWithAuthUsesSubscriptionEligibility(t *testing.T) {
+	clearProviderAuthForTest(t)
+	require.NotContains(t, AvailableModelIDsWithAuth(), DefaultModel)
+
+	expired := validProviderSubscription(ProviderIDOpenAI)
+	expired.ExpiresAt = time.Now().Add(-time.Second)
+	SetProviderSubscription(ProviderIDOpenAI, expired)
+	require.NotContains(t, AvailableModelIDsWithAuth(), DefaultModel)
+	require.False(t, modelHasEligibleProviderSubscription(DefaultModel))
+
+	SetProviderSubscription(ProviderIDOpenAI, validProviderSubscription(ProviderIDOpenAI))
+
+	noOverrideID := ModelID("custom-openai-subscription-no-override")
+	err := AddCustomModel(noOverrideID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{})
+	require.NoError(t, err)
+
+	actualKeyID := ModelID("custom-openai-subscription-actual-key")
+	err = AddCustomModel(actualKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIActualKey: "literal"})
+	require.NoError(t, err)
+
+	envKeyID := ModelID("custom-openai-subscription-env-key")
+	t.Setenv("CUSTOM_SUBSCRIPTION_OPENAI_API_KEY", "")
+	err = AddCustomModel(envKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_OPENAI_API_KEY"})
+	require.NoError(t, err)
+
+	endpointID := ModelID("custom-openai-subscription-endpoint")
+	err = AddCustomModel(endpointID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEndpointURL: "http://localhost:1234/v1"})
+	require.NoError(t, err)
+
+	require.True(t, modelHasEligibleProviderSubscription(DefaultModel))
+	require.True(t, modelHasEligibleProviderSubscription(noOverrideID))
+	require.False(t, modelHasEligibleProviderSubscription(actualKeyID))
+	require.False(t, modelHasEligibleProviderSubscription(envKeyID))
+	require.False(t, modelHasEligibleProviderSubscription(endpointID))
+
+	authModels := AvailableModelIDsWithAuth()
+	require.Contains(t, authModels, DefaultModel)
+	require.Contains(t, authModels, noOverrideID)
+	require.Contains(t, authModels, actualKeyID)
+	require.NotContains(t, authModels, envKeyID)
+	require.NotContains(t, authModels, endpointID)
+
+	require.NotContains(t, AvailableModelIDsWithAPIKey(), DefaultModel)
+	require.Contains(t, AvailableModelIDsWithAPIKey(), actualKeyID)
+
+	ConfigureProviderKey(ProviderIDOpenAI, "configured")
+	t.Setenv("OPENAI_API_KEY", "default")
+	require.True(t, ProviderHasSubscription(ProviderIDOpenAI))
+	require.True(t, modelHasEligibleProviderSubscription(DefaultModel))
 }
