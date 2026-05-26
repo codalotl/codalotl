@@ -207,10 +207,51 @@ func saveAuth(path string, auth authFile) error {
 		return err
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	return writePrivateFile(path, data)
+}
+
+func writePrivateFile(path string, data []byte) (err error) {
+	if err := chmodExistingRegularFile(path, 0o600); err != nil {
 		return err
 	}
-	return os.Chmod(path, 0o600)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+
+	if err := file.Chmod(0o600); err != nil {
+		return err
+	}
+	if err := file.Truncate(0); err != nil {
+		return err
+	}
+	written, err := file.Write(data)
+	if err != nil {
+		return err
+	}
+	if written != len(data) {
+		return io.ErrShortWrite
+	}
+	return file.Chmod(0o600)
+}
+
+func chmodExistingRegularFile(path string, mode os.FileMode) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return nil
+	}
+	return os.Chmod(path, mode)
 }
 
 func (auth authFile) normalized() authFile {
