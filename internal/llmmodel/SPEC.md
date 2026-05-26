@@ -25,7 +25,7 @@ Consumers can then configure these:
     - Add custom params on a per-model basis (ex: reasoning effort)
     - Create custom ModelID aliases
     - Add custom providers. For instance, local inference can be used by setting APIEndpointURL and (APIActualKey or APIEnvKey). ProviderID would be an API-compatible provider (likely OpenAI).
-- To present a model picker that only shows models that can be called with the *current* configuration, call AvailableModelIDsWithAPIKey(). This filters models using GetAPIKey(modelID), so it respects:
+- To present an API-key-only model picker, call AvailableModelIDsWithAPIKey(). This filters models using GetAPIKey(modelID), so it respects:
     - per-model overrides (APIActualKey / APIEnvKey)
     - in-memory provider overrides (ConfigureProviderKey)
     - provider default env vars (ex: "OPENAI_API_KEY")

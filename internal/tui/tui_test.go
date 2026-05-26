@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/agent"
 	"github.com/codalotl/codalotl/internal/llmmodel"
@@ -1611,6 +1612,8 @@ func TestToolNamePrecedence(t *testing.T) {
 }
 
 func TestModelCommandListsAvailableModels(t *testing.T) {
+	clearLLMAuthForTest(t)
+
 	// Ensure we have at least one usable model to list.
 	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "test-openai-key")
 	require.NotEmpty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
@@ -1627,12 +1630,59 @@ func TestModelCommandListsAvailableModels(t *testing.T) {
 	assert.Contains(t, msg.userMessage, "Available models:")
 	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
 
-	// Only list models that have an effective API key.
+	available := llmmodel.AvailableModelIDsWithAuth()
 	for _, id := range listedModelIDs(msg.userMessage) {
-		require.Truef(t, id.Valid(), "listed invalid model id: %q", id)
-		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
+		require.True(t, id.Valid())
+		require.Contains(t, available, id)
 	}
 }
+
+func TestModelCommandListsModelsAvailableThroughProviderSubscription(t *testing.T) {
+	clearLLMAuthForTest(t)
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAISubscriptionForTest())
+
+	require.Empty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
+	require.NotContains(t, llmmodel.AvailableModelIDsWithAPIKey(), llmmodel.DefaultModel)
+	require.Contains(t, llmmodel.AvailableModelIDsWithAuth(), llmmodel.DefaultModel)
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	handled := m.handleSlashCommand("/model")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 1)
+	msg := m.messages[0]
+	require.Equal(t, messageKindSystem, msg.kind)
+	assert.Contains(t, msg.userMessage, "Current model:")
+	assert.Contains(t, msg.userMessage, "Available models:")
+	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
+
+	available := llmmodel.AvailableModelIDsWithAuth()
+	listed := listedModelIDs(msg.userMessage)
+	require.Contains(t, listed, llmmodel.DefaultModel)
+	for _, id := range listed {
+		require.True(t, id.Valid())
+		require.Contains(t, available, id)
+	}
+}
+
+func TestModelCommandEmptyStateMentionsAPIKeysAndProviderSubscriptionLogin(t *testing.T) {
+	clearLLMAuthForTest(t)
+	require.Empty(t, llmmodel.AvailableModelIDsWithAuth())
+
+	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+
+	handled := m.handleSlashCommand("/model")
+	require.True(t, handled)
+
+	require.Len(t, m.messages, 1)
+	msg := m.messages[0]
+	require.Equal(t, messageKindSystem, msg.kind)
+	assert.Contains(t, msg.userMessage, "no configured API keys or provider subscription logins found")
+	assert.Contains(t, msg.userMessage, "Set an API key env var")
+	assert.Contains(t, msg.userMessage, "codalotl auth openai login")
+}
+
 func TestNewSessionBlock_GenericMode_ShowsOrchestrateHelpWithoutInternalAgentName(t *testing.T) {
 	pal := colorPalette{
 		primaryBackground:  termformat.ANSIColor(0),
@@ -1653,6 +1703,8 @@ func TestNewSessionBlock_GenericMode_ShowsOrchestrateHelpWithoutInternalAgentNam
 }
 
 func TestModelsCommandListsAvailableModels(t *testing.T) {
+	clearLLMAuthForTest(t)
+
 	// Ensure we have at least one usable model to list.
 	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "test-openai-key")
 	require.NotEmpty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
@@ -1669,10 +1721,10 @@ func TestModelsCommandListsAvailableModels(t *testing.T) {
 	assert.Contains(t, msg.userMessage, "Available models:")
 	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
 
-	// Only list models that have an effective API key.
+	available := llmmodel.AvailableModelIDsWithAuth()
 	for _, id := range listedModelIDs(msg.userMessage) {
-		require.Truef(t, id.Valid(), "listed invalid model id: %q", id)
-		require.NotEmptyf(t, llmmodel.GetAPIKey(id), "listed model without API key: %q", id)
+		require.True(t, id.Valid())
+		require.Contains(t, available, id)
 	}
 }
 
@@ -1843,6 +1895,38 @@ func listedModelIDs(modelListText string) []llmmodel.ModelID {
 		ids = append(ids, llmmodel.ModelID(rest))
 	}
 	return ids
+}
+
+func clearLLMAuthForTest(t *testing.T) {
+	t.Helper()
+
+	clear := func() {
+		for _, pid := range llmmodel.AllProviderIDs {
+			llmmodel.ConfigureProviderKey(pid, "")
+			llmmodel.ClearProviderSubscription(pid)
+		}
+	}
+
+	clear()
+	t.Cleanup(clear)
+
+	for _, key := range llmmodel.ProviderKeyEnvVars() {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		t.Setenv(key, "")
+	}
+}
+
+func validOpenAISubscriptionForTest() llmmodel.ProviderSubscription {
+	return llmmodel.ProviderSubscription{
+		ProviderID:     llmmodel.ProviderIDOpenAI,
+		AccessToken:    "test-access-token",
+		AccountID:      "test-account-id",
+		APIEndpointURL: "https://chatgpt.com/backend-api/codex",
+		ExpiresAt:      time.Now().Add(time.Hour),
+	}
 }
 
 func renderAgentMessageText(t *testing.T, m *model, index int, width int) string {
