@@ -7,6 +7,7 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 ### OpenAI
 
 - Implements responses API only.
+- Sends conversation system message via top-level `instructions` on every create response request; omits it from input items.
 - `SendOptions.NoStore` uses OpenAI Responses ZDR semantics:
 	- Sends `store=false`.
 	- Does not send `previous_response_id`.
