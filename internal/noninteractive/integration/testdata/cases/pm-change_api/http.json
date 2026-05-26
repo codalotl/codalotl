@@ -11,15 +11,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -34,6 +25,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-change-api"
+        },
         "model": "mock-model-pm-change-api"
       },
       "response": {
@@ -2250,6 +2245,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-change-api"
+        },
         "model": "mock-model-pm-change-api",
         "previous_response_id": "resp_05afb0e3f11c7dff0069cc2224b59881a2885c2cbc495d4595"
       },
@@ -4398,6 +4397,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-change-api"
+        },
         "model": "mock-model-pm-change-api",
         "previous_response_id": "resp_05afb0e3f11c7dff0069cc222d12f881a29e81ef15fc8d4284"
       },
@@ -6620,6 +6623,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-change-api"
+        },
         "model": "mock-model-pm-change-api",
         "previous_response_id": "resp_05afb0e3f11c7dff0069cc22302eb081a2a103e32063ca3e7e"
       },
@@ -8768,15 +8775,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -8799,6 +8797,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-change-api"
+        },
         "model": "mock-model-pm-change-api"
       },
       "response": {

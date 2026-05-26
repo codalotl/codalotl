@@ -11,15 +11,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -34,6 +25,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-update-usage"
+        },
         "model": "mock-model-pm-update-usage"
       },
       "response": {
@@ -2250,6 +2245,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-update-usage"
+        },
         "model": "mock-model-pm-update-usage",
         "previous_response_id": "resp_0eff98af809508290069cc1a53efe8819f8d1c94669e940d40"
       },
@@ -4546,6 +4545,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-update-usage"
+        },
         "model": "mock-model-pm-update-usage",
         "previous_response_id": "resp_0eff98af809508290069cc1a5bb3a8819fbce77c8e12aff074"
       },
@@ -6772,6 +6775,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-update-usage"
+        },
         "model": "mock-model-pm-update-usage",
         "previous_response_id": "resp_0eff98af809508290069cc1a5f2944819f92eb50a5e0a5257e"
       },
@@ -11137,15 +11144,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -11177,6 +11175,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-update-usage"
+        },
         "model": "mock-model-pm-update-usage"
       },
       "response": {
@@ -15559,15 +15561,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -15599,6 +15592,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-update-usage"
+        },
         "model": "mock-model-pm-update-usage"
       },
       "response": {
@@ -21571,15 +21568,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -21611,6 +21599,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-update-usage"
+        },
         "model": "mock-model-pm-update-usage"
       },
       "response": {
