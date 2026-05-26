@@ -12,6 +12,12 @@ It owns OpenAI-specific device login, token refresh, credential persistence, and
 - Status loads saved auth, refreshes when possible, and reports whether saved credentials are currently usable.
 - Logout removes saved auth. Missing saved auth is not an error.
 - Options support alternate auth paths, HTTP clients, clock functions, auth endpoint URLs, browser-opening behavior, and user-visible output.
+- Usable saved/login/refreshed auth registers OpenAI subscription auth with `llmmodel`.
+	- Access token is used as bearer auth.
+	- ChatGPT account ID is sent with subscription requests.
+	- Registered endpoint targets ChatGPT Codex-compatible Responses.
+	- Registered subscription requires no-store Responses semantics and root instructions.
+- Unusable status and logout clear registered OpenAI subscription auth.
 
 ## Public API
 
