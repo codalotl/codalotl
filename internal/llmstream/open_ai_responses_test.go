@@ -85,13 +85,16 @@ func TestBuildOpenAIResponsesRequestParams_DefaultLinksAndTrimsHistory(t *testin
 	assert.Equal(t, true, req["store"])
 	assert.Equal(t, true, req["parallel_tool_calls"])
 	assert.Equal(t, "resp_first", req["previous_response_id"])
+	assertOpenAIRequestInstructions(t, req, "system instructions")
 
 	input := openAIResponsesRequestInput(t, req)
 	require.Len(t, input, 1)
-	assert.Contains(t, reqJSON, "second question")
-	assert.NotContains(t, reqJSON, "system instructions")
-	assert.NotContains(t, reqJSON, "first question")
-	assert.NotContains(t, reqJSON, "first answer")
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "second question")
+	assert.NotContains(t, inputJSON, "system instructions")
+	assert.NotContains(t, inputJSON, "first question")
+	assert.NotContains(t, inputJSON, "first answer")
+	assert.Contains(t, reqJSON, `"instructions":"system instructions"`)
 }
 
 func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistory(t *testing.T) {
@@ -105,13 +108,16 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistor
 	assert.Equal(t, true, req["parallel_tool_calls"])
 	assert.NotContains(t, req, "previous_response_id")
 	assert.NotContains(t, req, "include")
+	assertOpenAIRequestInstructions(t, req, "system instructions")
 
 	input := openAIResponsesRequestInput(t, req)
-	require.Len(t, input, 4)
-	assert.Contains(t, reqJSON, "system instructions")
-	assert.Contains(t, reqJSON, "first question")
-	assert.Contains(t, reqJSON, "first answer")
-	assert.Contains(t, reqJSON, "second question")
+	require.Len(t, input, 3)
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "first question")
+	assert.Contains(t, inputJSON, "first answer")
+	assert.Contains(t, inputJSON, "second question")
+	assert.NotContains(t, inputJSON, "system instructions")
+	assert.Contains(t, reqJSON, `"instructions":"system instructions"`)
 }
 
 func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWithoutProviderIDs(t *testing.T) {
@@ -135,6 +141,7 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWitho
 	assert.Equal(t, false, req["store"])
 	assert.NotContains(t, req, "previous_response_id")
 	assertOpenAIRequestIncludesEncryptedReasoning(t, req)
+	assertOpenAIRequestInstructions(t, req, "system instructions")
 
 	reasoningItems := openAIResponsesRequestReasoningInputItems(t, req)
 	require.Len(t, reasoningItems, 1)
@@ -144,10 +151,11 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWitho
 	assert.Empty(t, reasoningItems[0]["summary"])
 	assert.NotContains(t, reasoningItems[0], "content")
 
-	assert.Contains(t, reqJSON, "system instructions")
-	assert.Contains(t, reqJSON, "first question")
-	assert.Contains(t, reqJSON, "first answer")
-	assert.Contains(t, reqJSON, "second question")
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "first question")
+	assert.Contains(t, inputJSON, "first answer")
+	assert.Contains(t, inputJSON, "second question")
+	assert.NotContains(t, inputJSON, "system instructions")
 	assert.NotContains(t, reqJSON, "resp_unstored")
 	assert.NotContains(t, reqJSON, "rs_unstored")
 	assert.NotContains(t, reqJSON, "private reasoning summary")
@@ -163,20 +171,22 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreOmitsPersistedProviderItemIDs(
 	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
 	assert.Equal(t, false, req["store"])
 	assert.NotContains(t, req, "previous_response_id")
+	assertOpenAIRequestInstructions(t, req, "system instructions")
 
 	input := openAIResponsesRequestInput(t, req)
 	require.NotEmpty(t, input)
-	assert.Contains(t, reqJSON, "system instructions")
-	assert.Contains(t, reqJSON, "first question")
-	assert.Contains(t, reqJSON, "assistant value answer")
-	assert.Contains(t, reqJSON, "lookup_weather")
-	assert.Contains(t, reqJSON, "structured_answer")
-	assert.Contains(t, reqJSON, "call_function_value")
-	assert.Contains(t, reqJSON, "call_custom_value")
-	assert.Contains(t, reqJSON, "Paris")
-	assert.Contains(t, reqJSON, "answer:7")
-	assert.Contains(t, reqJSON, "72 F")
-	assert.Contains(t, reqJSON, "acknowledged 7")
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "first question")
+	assert.Contains(t, inputJSON, "assistant value answer")
+	assert.Contains(t, inputJSON, "lookup_weather")
+	assert.Contains(t, inputJSON, "structured_answer")
+	assert.Contains(t, inputJSON, "call_function_value")
+	assert.Contains(t, inputJSON, "call_custom_value")
+	assert.Contains(t, inputJSON, "Paris")
+	assert.Contains(t, inputJSON, "answer:7")
+	assert.Contains(t, inputJSON, "72 F")
+	assert.Contains(t, inputJSON, "acknowledged 7")
+	assert.NotContains(t, inputJSON, "system instructions")
 	assert.NotContains(t, reqJSON, "resp_first")
 	assert.NotContains(t, reqJSON, "rs_persisted")
 	assert.NotContains(t, reqJSON, "private reasoning summary")
@@ -196,6 +206,8 @@ func TestBuildOpenAIResponsesRequestParams_DefaultFullHistoryKeepsPersistedProvi
 	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
 	assert.Equal(t, true, req["store"])
 	assert.NotContains(t, req, "previous_response_id")
+	assertOpenAIRequestInstructions(t, req, "system instructions")
+	assert.NotContains(t, openAIResponsesRequestInputJSON(t, req), "system instructions")
 	assert.Contains(t, reqJSON, "rs_persisted")
 	assert.Contains(t, reqJSON, "private reasoning summary")
 	assert.Contains(t, reqJSON, "fc_persisted")
@@ -362,17 +374,19 @@ func TestBuildOpenAIResponsesRequestParams_StoredReplayAfterNoStoreScrubOmitsNoS
 	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
 	assert.Equal(t, true, req["store"])
 	assert.NotContains(t, req, "previous_response_id")
-	assert.Contains(t, reqJSON, "system instructions")
-	assert.Contains(t, reqJSON, "first question")
-	assert.Contains(t, reqJSON, "assistant value answer")
-	assert.Contains(t, reqJSON, "lookup_weather")
-	assert.Contains(t, reqJSON, "structured_answer")
-	assert.Contains(t, reqJSON, "call_function_value")
-	assert.Contains(t, reqJSON, "call_custom_value")
-	assert.Contains(t, reqJSON, "Paris")
-	assert.Contains(t, reqJSON, "answer:7")
-	assert.Contains(t, reqJSON, "72 F")
-	assert.Contains(t, reqJSON, "acknowledged 7")
+	assertOpenAIRequestInstructions(t, req, "system instructions")
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "first question")
+	assert.Contains(t, inputJSON, "assistant value answer")
+	assert.Contains(t, inputJSON, "lookup_weather")
+	assert.Contains(t, inputJSON, "structured_answer")
+	assert.Contains(t, inputJSON, "call_function_value")
+	assert.Contains(t, inputJSON, "call_custom_value")
+	assert.Contains(t, inputJSON, "Paris")
+	assert.Contains(t, inputJSON, "answer:7")
+	assert.Contains(t, inputJSON, "72 F")
+	assert.Contains(t, inputJSON, "acknowledged 7")
+	assert.NotContains(t, inputJSON, "system instructions")
 	assert.NotContains(t, reqJSON, "resp_unstored")
 	assert.NotContains(t, reqJSON, "rs_unstored")
 	assert.NotContains(t, reqJSON, "private reasoning summary")
@@ -395,10 +409,13 @@ func TestRecordOpenAIResponseLink_NoStoreClearsRetainedLink(t *testing.T) {
 
 	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
 	assert.NotContains(t, req, "previous_response_id")
-	assert.Contains(t, reqJSON, "system instructions")
-	assert.Contains(t, reqJSON, "first question")
-	assert.Contains(t, reqJSON, "first answer")
-	assert.Contains(t, reqJSON, "second question")
+	assertOpenAIRequestInstructions(t, req, "system instructions")
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "first question")
+	assert.Contains(t, inputJSON, "first answer")
+	assert.Contains(t, inputJSON, "second question")
+	assert.NotContains(t, inputJSON, "system instructions")
+	assert.Contains(t, reqJSON, `"instructions":"system instructions"`)
 }
 
 func openAIRequestShapeConversation(t *testing.T) *streamingConversation {
@@ -524,6 +541,20 @@ func openAIResponsesRequestInput(t *testing.T, req map[string]any) []any {
 	input, ok := req["input"].([]any)
 	require.True(t, ok)
 	return input
+}
+
+func openAIResponsesRequestInputJSON(t *testing.T, req map[string]any) string {
+	t.Helper()
+
+	data, err := json.Marshal(openAIResponsesRequestInput(t, req))
+	require.NoError(t, err)
+	return string(data)
+}
+
+func assertOpenAIRequestInstructions(t *testing.T, req map[string]any, want string) {
+	t.Helper()
+
+	assert.Equal(t, want, req["instructions"])
 }
 
 func assertOpenAIRequestIncludesEncryptedReasoning(t *testing.T, req map[string]any) {

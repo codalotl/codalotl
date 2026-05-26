@@ -535,6 +535,9 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	includeProviderItemIDs := openAIResponsesUsesStoredLink(opt)
 	replayEncryptedReasoning := opt != nil && opt.NoStore
 	for _, resp := range respsToEncode {
+		if resp.Role == RoleSystem {
+			continue
+		}
 
 		// Collect all text parts. A text part maps to a message, for a single msg on our side, we only want to make one message on their side.
 		// I have no idea these parts exist in practice, but in theory they could be interleaved in msg.Parts. So the first part we see, we write a message with all text parts.
@@ -649,8 +652,9 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	}
 
 	req := responses.ResponseNewParams{
-		Model: modelID,
-		Input: responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
+		Model:        modelID,
+		Instructions: param.NewOpt(sc.openAIResponsesInstructions()),
+		Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
 	}
 	if sc.promptCacheKey != "" {
 		req.PromptCacheKey = param.NewOpt(sc.promptCacheKey)
@@ -667,6 +671,21 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		}
 	}
 	return req, nil
+}
+
+func (sc *streamingConversation) openAIResponsesInstructions() string {
+	if len(sc.turns) == 0 {
+		return ""
+	}
+	if sc.turns[0].Role == RoleSystem {
+		return sc.turns[0].TextContent()
+	}
+	for _, turn := range sc.turns {
+		if turn.Role == RoleSystem {
+			return turn.TextContent()
+		}
+	}
+	return ""
 }
 
 func openAIResponsesEncryptedReasoningInputItem(encrypted string) responses.ResponseInputItemUnionParam {

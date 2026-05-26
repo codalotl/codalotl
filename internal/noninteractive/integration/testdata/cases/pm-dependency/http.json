@@ -11,15 +11,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -34,6 +25,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-dependency"
+        },
         "model": "mock-model-pm-dependency"
       },
       "response": {
@@ -2255,6 +2250,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-dependency"
+        },
         "model": "mock-model-pm-dependency",
         "previous_response_id": "resp_038964d1302fd73c0069cc2631b96881959317914bd7b764ca"
       },
@@ -4472,6 +4471,10 @@
             "type": "function_call_output"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-dependency"
+        },
         "model": "mock-model-pm-dependency",
         "previous_response_id": "resp_038964d1302fd73c0069cc2635dc888195a9af1fe8628fa290"
       },
@@ -6694,15 +6697,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -6725,6 +6719,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-dependency"
+        },
         "model": "mock-model-pm-dependency"
       },
       "response": {

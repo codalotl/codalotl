@@ -743,7 +743,9 @@ func assertOpenAINoStoreDiagnosticRequest(t *testing.T, request map[string]any) 
 
 	assert.Equal(t, false, request["store"])
 	assert.NotContains(t, request, "previous_response_id")
+	assert.NotEmpty(t, request["instructions"])
 	assert.NotEmpty(t, request["input"])
+	assert.NotContains(t, openAIResponsesRequestInputJSON(t, request), `"role":"system"`)
 }
 
 func openAIProviderItemIDs(parts []ContentPart) []string {

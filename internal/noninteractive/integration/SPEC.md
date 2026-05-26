@@ -170,6 +170,7 @@ Details:
 - `http.json` is kept close to recorded provider traffic:
     - request body is recorded as exact structured JSON, with minimal partial matchers.
     - first turn request keeps the first two `input` messages, but omits nested `text` fields inside them so prompt/env text is not matched
+    - top-level request `instructions` uses a stable partial matcher
     - response body is recorded with minimal adaptation needed for mock replay
     - request `model` is rewritten to generated mock model id (`mock-model-<case-name>`)
     - response ids and request `previous_response_id` are preserved as recorded

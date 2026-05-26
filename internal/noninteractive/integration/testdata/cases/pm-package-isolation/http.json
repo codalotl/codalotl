@@ -11,15 +11,6 @@
                 "type": "input_text"
               }
             ],
-            "role": "system",
-            "type": "message"
-          },
-          {
-            "content": [
-              {
-                "type": "input_text"
-              }
-            ],
             "role": "user",
             "type": "message"
           },
@@ -34,6 +25,10 @@
             "type": "message"
           }
         ],
+        "instructions": {
+          "match": "partial",
+          "text": "You are an advanced coding LLM based on integration-pm-package-isolation"
+        },
         "model": "mock-model-pm-package-isolation"
       },
       "response": {
