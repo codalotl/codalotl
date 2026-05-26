@@ -31,6 +31,7 @@ const (
 	deviceCodePath      = "/api/accounts/deviceauth/usercode"
 	deviceTokenPath     = "/api/accounts/deviceauth/token"
 	oauthTokenPath      = "/oauth/token"
+	openAIAuthClaim     = "https://api.openai.com/auth"
 	defaultPollTimeout  = 15 * time.Minute
 	defaultPollInterval = 5 * time.Second
 	expiryRefreshSlack  = time.Minute
@@ -493,7 +494,14 @@ func accountIDFromJWT(jwt string) string {
 	if accountID, ok := claims["chatgpt_account_id"].(string); ok {
 		return accountID
 	}
-	authClaims, ok := claims["auth"].(map[string]any)
+	if accountID := accountIDFromClaimObject(claims, openAIAuthClaim); accountID != "" {
+		return accountID
+	}
+	return accountIDFromClaimObject(claims, "auth")
+}
+
+func accountIDFromClaimObject(claims map[string]any, claim string) string {
+	authClaims, ok := claims[claim].(map[string]any)
 	if !ok {
 		return ""
 	}

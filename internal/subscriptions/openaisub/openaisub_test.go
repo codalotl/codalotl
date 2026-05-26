@@ -126,6 +126,48 @@ func TestLoginOpensBrowserWithVerificationURL(t *testing.T) {
 	assert.Equal(t, "https://verify.example.test", openedURL)
 }
 
+func TestLoginPersistsAccountIDFromNamespacedIDToken(t *testing.T) {
+	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"access_token":"access-token",
+			"refresh_token":"refresh-token",
+			"id_token":"` + jwtForNamespacedAccount(t, "namespaced-account-id") + `",
+			"expires_in":3600
+		}`))
+	}))
+	defer oauthServer.Close()
+
+	issuerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case deviceCodePath:
+			_, _ = w.Write([]byte(`{"device_auth_id":"device-id","user_code":"USER-CODE","interval":1}`))
+		case deviceTokenPath:
+			_, _ = w.Write([]byte(`{"authorization_code":"auth-code","code_verifier":"verifier"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer issuerServer.Close()
+
+	path := filepath.Join(t.TempDir(), "openai_auth.json")
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	err := Login(context.Background(), LoginOptions{
+		Options: Options{
+			Path:        path,
+			Now:         func() time.Time { return now },
+			Issuer:      issuerServer.URL,
+			OAuthIssuer: oauthServer.URL,
+		},
+		NoBrowser: true,
+	})
+	require.NoError(t, err)
+
+	auth, _, err := loadAuth(Options{Path: path})
+	require.NoError(t, err)
+	assert.Equal(t, "namespaced-account-id", auth.ChatGPTAccountID)
+	assert.Equal(t, now.Add(time.Hour), auth.ExpiresAt)
+}
+
 func TestCheckStatusRefreshesExpiredAuthFile(t *testing.T) {
 	var refreshBody url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +215,43 @@ func TestCheckStatusRefreshesExpiredAuthFile(t *testing.T) {
 	assert.Equal(t, "new-access-token", auth.AccessToken)
 	assert.Equal(t, "new-refresh-token", auth.RefreshToken)
 	assert.Equal(t, "new-account-id", auth.ChatGPTAccountID)
+}
+
+func TestCheckStatusRefreshesAccountIDFromNamespacedIDToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"access_token":"new-access-token",
+			"id_token":"` + jwtForNamespacedAccount(t, "new-namespaced-account-id") + `",
+			"expires_in":3600
+		}`))
+	}))
+	defer server.Close()
+
+	path := filepath.Join(t.TempDir(), "openai_auth.json")
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	writeAuthFile(t, path, authFile{
+		Type:             authType,
+		AccessToken:      "old-access-token",
+		RefreshToken:     "old-refresh-token",
+		IDToken:          jwtForAccount(t, "old-account-id"),
+		ExpiresAt:        now.Add(-time.Hour),
+		ChatGPTAccountID: "old-account-id",
+	})
+
+	status, err := CheckStatusWithOptions(context.Background(), Options{
+		Path:        path,
+		Now:         func() time.Time { return now },
+		OAuthIssuer: server.URL,
+	})
+	require.NoError(t, err)
+
+	assert.True(t, status.LoggedIn)
+	assert.Equal(t, "new-namespaced-account-id", status.ChatGPTAccountID)
+
+	auth, _, err := loadAuth(Options{Path: path})
+	require.NoError(t, err)
+	assert.Equal(t, "new-access-token", auth.AccessToken)
+	assert.Equal(t, "new-namespaced-account-id", auth.ChatGPTAccountID)
 }
 
 func TestCheckStatusMissingAndExpiredWithoutRefresh(t *testing.T) {
@@ -247,6 +326,10 @@ func TestAccountIDFromJWTReadsNestedAuthClaim(t *testing.T) {
 	assert.Equal(t, "account-id", accountIDFromJWT(jwtWithPayload(t, `{"auth":{"chatgpt_account_id":"account-id"}}`)))
 }
 
+func TestAccountIDFromJWTReadsNamespacedAuthClaim(t *testing.T) {
+	assert.Equal(t, "account-id", accountIDFromJWT(jwtForNamespacedAccount(t, "account-id")))
+}
+
 func TestRequestDeviceCodeUsesAuthIssuerByDefault(t *testing.T) {
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -272,6 +355,11 @@ func writeAuthFile(t *testing.T, path string, auth authFile) {
 func jwtForAccount(t *testing.T, accountID string) string {
 	t.Helper()
 	return jwtWithPayload(t, `{"chatgpt_account_id":"`+accountID+`"}`)
+}
+
+func jwtForNamespacedAccount(t *testing.T, accountID string) string {
+	t.Helper()
+	return jwtWithPayload(t, `{"`+openAIAuthClaim+`":{"chatgpt_account_id":"`+accountID+`"}}`)
 }
 
 func jwtWithPayload(t *testing.T, payloadJSON string) string {
