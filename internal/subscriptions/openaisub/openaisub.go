@@ -202,11 +202,6 @@ func saveAuth(path string, auth authFile) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if dir != "." {
-		if err := os.Chmod(dir, 0o700); err != nil {
-			return err
-		}
-	}
 	data, err := json.MarshalIndent(auth, "", "  ")
 	if err != nil {
 		return err

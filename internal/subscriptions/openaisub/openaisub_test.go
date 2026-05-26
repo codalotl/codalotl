@@ -277,17 +277,13 @@ func TestCheckStatusMissingAndExpiredWithoutRefresh(t *testing.T) {
 	assert.Equal(t, "account-id", status.ChatGPTAccountID)
 }
 
-func TestSaveAuthUsesPrivatePermissions(t *testing.T) {
+func TestSaveAuthCreatesMissingDirWithPrivatePermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("file mode bits are not reliable on Windows")
 	}
 
 	dir := filepath.Join(t.TempDir(), "auth")
 	path := filepath.Join(dir, "openai_auth.json")
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
-	require.NoError(t, os.Chmod(dir, 0o755))
-	require.NoError(t, os.Chmod(path, 0o644))
 
 	err := saveAuth(path, authFile{
 		Type:             authType,
@@ -304,6 +300,37 @@ func TestSaveAuthUsesPrivatePermissions(t *testing.T) {
 	fileInfo, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
+	assert.Equal(t, os.FileMode(0o600), fileInfo.Mode().Perm())
+}
+
+func TestSaveAuthPreservesExistingDirPermissionsAndPrivatizesFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file mode bits are not reliable on Windows")
+	}
+
+	dir := filepath.Join(t.TempDir(), "auth")
+	path := filepath.Join(dir, "openai_auth.json")
+	dirMode := os.FileMode(0o755)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
+	require.NoError(t, os.Chmod(dir, dirMode))
+	require.NoError(t, os.Chmod(path, 0o644))
+
+	err := saveAuth(path, authFile{
+		Type:             authType,
+		AccessToken:      "access-token",
+		RefreshToken:     "refresh-token",
+		IDToken:          jwtForAccount(t, "account-id"),
+		ExpiresAt:        time.Now().Add(time.Hour),
+		ChatGPTAccountID: "account-id",
+	})
+	require.NoError(t, err)
+
+	dirInfo, err := os.Stat(dir)
+	require.NoError(t, err)
+	fileInfo, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, dirMode, dirInfo.Mode().Perm())
 	assert.Equal(t, os.FileMode(0o600), fileInfo.Mode().Perm())
 }
 
