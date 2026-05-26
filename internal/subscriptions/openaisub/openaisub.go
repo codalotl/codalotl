@@ -35,7 +35,7 @@ const (
 	defaultPollTimeout  = 15 * time.Minute
 	defaultPollInterval = 5 * time.Second
 	expiryRefreshSlack  = time.Minute
-	defaultExpiresIn    = 7 * 24 * time.Hour
+	fallbackExpiresIn   = time.Hour
 )
 
 // Options configures OpenAI subscription auth operations.
@@ -112,15 +112,16 @@ func Login(ctx context.Context, opts LoginOptions) error {
 		return err
 	}
 
+	now := nowFunc(opts.Options)()
 	auth := authFile{
 		Type:             authType,
 		AccessToken:      tokens.AccessToken,
 		RefreshToken:     tokens.RefreshToken,
 		IDToken:          tokens.IDToken,
-		ExpiresAt:        nowFunc(opts.Options)().Add(tokens.expiresIn()),
+		ExpiresAt:        tokens.expiresAt(now),
 		ChatGPTAccountID: tokens.ChatGPTAccountID,
 	}.normalized()
-	if !auth.valid(nowFunc(opts.Options)()) {
+	if !auth.valid(now) {
 		return errors.New("OpenAI subscription login did not return usable credentials")
 	}
 	if err := saveAuth(path, auth); err != nil {
@@ -300,11 +301,60 @@ type tokenResponse struct {
 	ChatGPTAccountID string `json:"chatgpt_account_id"`
 }
 
-func (r tokenResponse) expiresIn() time.Duration {
-	if r.ExpiresIn <= 0 {
-		return defaultExpiresIn
+func (r tokenResponse) expiresAt(now time.Time) time.Time {
+	if r.ExpiresIn > 0 {
+		return now.Add(time.Duration(r.ExpiresIn) * time.Second)
 	}
-	return time.Duration(r.ExpiresIn) * time.Second
+	if expiresAt, ok := expiryFromJWT(r.AccessToken); ok {
+		return expiresAt
+	}
+	if expiresAt, ok := expiryFromJWT(r.IDToken); ok {
+		return expiresAt
+	}
+	return now.Add(fallbackExpiresIn)
+}
+
+func expiryFromJWT(jwt string) (time.Time, bool) {
+	parts := strings.Split(jwt, ".")
+	if len(parts) < 2 {
+		return time.Time{}, false
+	}
+	data, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}, false
+	}
+	var claims map[string]json.RawMessage
+	if err := json.Unmarshal(data, &claims); err != nil {
+		return time.Time{}, false
+	}
+	rawExp, ok := claims["exp"]
+	if !ok {
+		return time.Time{}, false
+	}
+
+	if exp, ok := int64FromJSON(rawExp); ok && exp > 0 {
+		return time.Unix(exp, 0).UTC(), true
+	}
+	return time.Time{}, false
+}
+
+func int64FromJSON(data json.RawMessage) (int64, bool) {
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err == nil {
+		if parsed, err := n.Int64(); err == nil {
+			return parsed, true
+		}
+		if parsed, err := strconv.ParseFloat(n.String(), 64); err == nil {
+			return int64(parsed), true
+		}
+	}
+
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		parsed, err := strconv.ParseInt(s, 10, 64)
+		return parsed, err == nil
+	}
+	return 0, false
 }
 
 func requestDeviceCode(ctx context.Context, opts Options, client *http.Client) (deviceCodeResponse, error) {
@@ -425,7 +475,7 @@ func refresh(ctx context.Context, opts Options, auth authFile) (authFile, error)
 	if tokens.ChatGPTAccountID != "" {
 		auth.ChatGPTAccountID = tokens.ChatGPTAccountID
 	}
-	auth.ExpiresAt = nowFunc(opts)().Add(tokens.expiresIn())
+	auth.ExpiresAt = tokens.expiresAt(nowFunc(opts)())
 	return auth.normalized(), nil
 }
 

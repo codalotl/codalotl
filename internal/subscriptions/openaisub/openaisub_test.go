@@ -330,6 +330,57 @@ func TestAccountIDFromJWTReadsNamespacedAuthClaim(t *testing.T) {
 	assert.Equal(t, "account-id", accountIDFromJWT(jwtForNamespacedAccount(t, "account-id")))
 }
 
+func TestTokenResponseExpiresAt(t *testing.T) {
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	accessTokenExpiry := now.Add(2 * time.Hour)
+	idTokenExpiry := now.Add(90 * time.Minute)
+
+	tests := []struct {
+		name   string
+		tokens tokenResponse
+		want   time.Time
+	}{
+		{
+			name: "uses access token exp when expires in omitted",
+			tokens: tokenResponse{
+				AccessToken: jwtWithExp(t, accessTokenExpiry),
+				IDToken:     jwtWithExp(t, idTokenExpiry),
+			},
+			want: accessTokenExpiry,
+		},
+		{
+			name: "uses id token exp when access token lacks exp",
+			tokens: tokenResponse{
+				AccessToken: "access-token",
+				IDToken:     jwtWithExp(t, idTokenExpiry),
+			},
+			want: idTokenExpiry,
+		},
+		{
+			name: "uses explicit expires in before jwt exp",
+			tokens: tokenResponse{
+				AccessToken: jwtWithExp(t, accessTokenExpiry),
+				ExpiresIn:   600,
+			},
+			want: now.Add(10 * time.Minute),
+		},
+		{
+			name: "uses fallback when no jwt exp exists",
+			tokens: tokenResponse{
+				AccessToken: jwtForAccount(t, "account-id"),
+				IDToken:     jwtForNamespacedAccount(t, "account-id"),
+			},
+			want: now.Add(time.Hour),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.tokens.expiresAt(now))
+		})
+	}
+}
+
 func TestRequestDeviceCodeUsesAuthIssuerByDefault(t *testing.T) {
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -360,6 +411,13 @@ func jwtForAccount(t *testing.T, accountID string) string {
 func jwtForNamespacedAccount(t *testing.T, accountID string) string {
 	t.Helper()
 	return jwtWithPayload(t, `{"`+openAIAuthClaim+`":{"chatgpt_account_id":"`+accountID+`"}}`)
+}
+
+func jwtWithExp(t *testing.T, expiresAt time.Time) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"exp": expiresAt.Unix()})
+	require.NoError(t, err)
+	return jwtWithPayload(t, string(payload))
 }
 
 func jwtWithPayload(t *testing.T, payloadJSON string) string {
