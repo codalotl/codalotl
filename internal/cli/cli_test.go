@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/docubot"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -30,6 +31,7 @@ func isolateUserConfig(t *testing.T) {
 	// llmmodel key overrides are process-global; ensure tests don't leak state.
 	for _, pid := range llmmodel.AllProviderIDs {
 		llmmodel.ConfigureProviderKey(pid, "")
+		llmmodel.ClearProviderSubscription(pid)
 	}
 
 	// Keep tests hermetic: don't allow developer env vars to satisfy startup validation.
@@ -959,18 +961,46 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	if errOut.Len() == 0 {
 		t.Fatalf("expected stderr output")
 	}
-	if !strings.Contains(errOut.String(), "No LLM provider API key is configured") {
-		t.Fatalf("expected error to mention missing LLM key, got stderr:\n%s", errOut.String())
-	}
-	if !strings.Contains(errOut.String(), "OPENAI_API_KEY") {
-		t.Fatalf("expected error to mention OPENAI_API_KEY, got stderr:\n%s", errOut.String())
-	}
-	if !strings.Contains(errOut.String(), "ANTHROPIC_API_KEY") {
-		t.Fatalf("expected error to mention ANTHROPIC_API_KEY, got stderr:\n%s", errOut.String())
-	}
-	if !strings.Contains(errOut.String(), "GEMINI_API_KEY") {
-		t.Fatalf("expected error to mention GEMINI_API_KEY, got stderr:\n%s", errOut.String())
-	}
+	got := errOut.String()
+	require.Contains(t, got, "No usable LLM auth or credentials are configured")
+	require.NotContains(t, got, "No LLM provider API key is configured")
+	require.Contains(t, got, "OPENAI_API_KEY")
+	require.Contains(t, got, "ANTHROPIC_API_KEY")
+	require.Contains(t, got, "GEMINI_API_KEY")
+	require.Contains(t, got, "codalotl auth openai login")
+}
+
+func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {
+	isolateUserConfig(t)
+
+	// Prove startup validation accepts provider subscription auth without any
+	// API-key-based model availability.
+	t.Setenv("OPENAI_API_KEY", "")
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		ProviderID:      llmmodel.ProviderIDOpenAI,
+		AccessToken:     "test-access-token",
+		AccountID:       "test-account-id",
+		APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+		ExpiresAt:       time.Now().Add(time.Hour),
+		RequiresNoStore: true,
+	})
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
 }
 
 func TestRun_Config_MissingTools_IsExitCode1(t *testing.T) {

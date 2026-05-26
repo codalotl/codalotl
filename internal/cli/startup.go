@@ -53,11 +53,11 @@ func (e startupValidationError) Error() string {
 	}
 
 	if e.MissingLLM {
-		b.WriteString("\nNo LLM provider API key is configured.\n")
+		b.WriteString("\nNo usable LLM auth or credentials are configured.\n")
 
 		relevant := e.LLMEnvVars
 		if len(relevant) > 0 {
-			b.WriteString("\nTo fix, set one of these ENV variables (recommended):\n")
+			b.WriteString("\nTo fix, set one of these provider API key ENV variables:\n")
 			for _, ev := range relevant {
 				b.WriteString("- ")
 				b.WriteString(ev)
@@ -65,7 +65,10 @@ func (e startupValidationError) Error() string {
 			}
 		}
 
-		b.WriteString("\nOr add a config file:\n")
+		b.WriteString("\nOr log in with supported provider subscription auth:\n")
+		b.WriteString("- codalotl auth openai login\n")
+
+		b.WriteString("\nOr add an API key to a config file:\n")
 		b.WriteString("- Global: ")
 		b.WriteString(globalConfigPath())
 		b.WriteString("\n")
@@ -123,7 +126,7 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 		}
 	}
 
-	missingLLM := len(llmmodel.AvailableModelIDsWithAPIKey()) == 0
+	missingLLM := len(llmmodel.AvailableModelIDsWithAuth()) == 0
 
 	if len(missingTools) == 0 && !missingLLM {
 		return nil
