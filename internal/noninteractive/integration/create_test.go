@@ -255,6 +255,56 @@ func TestBuildHTTPFixturePrunesNestedFirstTurnInputText(t *testing.T) {
 	}, got.Responses[1].Request["input"])
 }
 
+func TestBuildHTTPFixturePrunesInstructionsToReplayModelMatcher(t *testing.T) {
+	turns := []recordedTurn{
+		{
+			Request: mustJSONObject(t, `{
+				"model": "gpt-5.5-high",
+				"instructions": "You are an advanced coding LLM based on gpt-5.5-high. Volatile full system prompt content.",
+				"input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "first"}]}]
+			}`),
+			Response: mustJSONObject(t, `{
+				"id": "resp_1",
+				"object": "response",
+				"status": "completed",
+				"output": []
+			}`),
+		},
+		{
+			Request: mustJSONObject(t, `{
+				"model": "gpt-5.5-high",
+				"instructions": "You are an advanced coding LLM based on gpt-5.5-high. Different volatile full system prompt content.",
+				"previous_response_id": "resp_1",
+				"input": [{"type": "function_call_output", "call_id": "call_1", "output": "done"}]
+			}`),
+			Response: mustJSONObject(t, `{
+				"id": "resp_2",
+				"object": "response",
+				"status": "completed",
+				"output": []
+			}`),
+		},
+	}
+
+	got, err := buildHTTPFixture("case-name", turns, nil)
+	require.NoError(t, err)
+	require.Len(t, got.Responses, 2)
+
+	expectedMatcher := map[string]any{
+		"match": "partial",
+		"text":  "You are an advanced coding LLM based on integration-case-name",
+	}
+	for _, response := range got.Responses {
+		assert.Equal(t, expectedMatcher, response.Request["instructions"])
+		matcher, ok := response.Request["instructions"].(map[string]any)
+		require.True(t, ok)
+		text, ok := matcher["text"].(string)
+		require.True(t, ok)
+		assert.NotContains(t, text, "Volatile")
+		assert.NotContains(t, text, "Different")
+	}
+}
+
 func TestBuildGeneratedCaseCarriesLintConfig(t *testing.T) {
 	repoDir := t.TempDir()
 	workDir := t.TempDir()
@@ -586,6 +636,42 @@ func TestBuildReplayDebugHTTPFixtureRequestPrunesFirstTurn(t *testing.T) {
 	_, ok := got["tools"]
 	assert.False(t, ok)
 	_, ok = got["stream"]
+	assert.False(t, ok)
+}
+
+func TestBuildReplayDebugHTTPFixtureRequestPrunesInstructionsToActualModelMatcher(t *testing.T) {
+	request := map[string]any{
+		"model":        "mock-model-case-name",
+		"instructions": "You are an advanced coding LLM based on integration-case-name. Volatile full system prompt content.",
+		"input": []any{
+			map[string]any{
+				"type": "message",
+				"content": []any{
+					map[string]any{
+						"type": "input_text",
+						"text": "hello",
+					},
+				},
+			},
+		},
+		"tools": []any{
+			map[string]any{"name": "read_file"},
+		},
+	}
+
+	got, err := buildReplayDebugHTTPFixtureRequest(request, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]any{
+		"match": "partial",
+		"text":  "You are an advanced coding LLM based on integration-case-name",
+	}, got["instructions"])
+	matcher, ok := got["instructions"].(map[string]any)
+	require.True(t, ok)
+	text, ok := matcher["text"].(string)
+	require.True(t, ok)
+	assert.NotContains(t, text, "Volatile")
+	_, ok = got["tools"]
 	assert.False(t, ok)
 }
 

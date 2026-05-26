@@ -58,6 +58,7 @@ const (
 	httpFixtureGoRootSrcPlaceholder    = "__GOROOT_SRC__"
 	httpFixtureGoModCachePlaceholder   = "__GOMODCACHE__"
 	httpFixtureSystemSkillsPlaceholder = "__SYSTEM_SKILLS__"
+	httpFixtureInstructionsPrefix      = "You are an advanced coding LLM based on "
 )
 
 func CreateCase(opts CreateOptions) error {
@@ -402,6 +403,7 @@ func buildHTTPFixtureRequest(caseSuffix string, firstTurn bool, turn recordedTur
 	if err != nil {
 		return nil, err
 	}
+	pruneHTTPFixtureInstructionsToMatcher(request, httpFixtureInstructionsMatcherTextForModel("integration-"+caseSuffix))
 	request["model"] = "mock-model-" + caseSuffix
 	return request, nil
 }
@@ -433,7 +435,62 @@ func pruneHTTPFixtureRequest(request map[string]any, firstTurn bool) {
 	if firstTurn {
 		pruneFirstTurnHTTPFixtureInput(request)
 	}
+	pruneHTTPFixtureInstructions(request)
 	pruneHTTPFixtureRequestFields(request)
+}
+
+func pruneHTTPFixtureInstructions(request map[string]any) {
+	instructions, ok := request["instructions"]
+	if !ok {
+		return
+	}
+	matcherText, ok := httpFixtureInstructionsMatcherText(instructions)
+	if !ok {
+		return
+	}
+	pruneHTTPFixtureInstructionsToMatcher(request, matcherText)
+}
+
+func pruneHTTPFixtureInstructionsToMatcher(request map[string]any, matcherText string) {
+	if _, ok := request["instructions"]; !ok || matcherText == "" {
+		return
+	}
+	request["instructions"] = map[string]any{
+		"match": "partial",
+		"text":  matcherText,
+	}
+}
+
+func httpFixtureInstructionsMatcherText(instructions any) (string, bool) {
+	text, ok := instructions.(string)
+	if !ok {
+		return "", false
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", false
+	}
+
+	if idx := strings.Index(text, httpFixtureInstructionsPrefix); idx >= 0 {
+		modelText := text[idx+len(httpFixtureInstructionsPrefix):]
+		fields := strings.Fields(modelText)
+		if len(fields) > 0 {
+			modelID := strings.TrimRight(fields[0], ".,")
+			if modelID != "" {
+				return httpFixtureInstructionsMatcherTextForModel(modelID), true
+			}
+		}
+	}
+
+	line := text
+	if idx := strings.IndexAny(line, "\r\n"); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	return line, line != ""
+}
+
+func httpFixtureInstructionsMatcherTextForModel(modelID string) string {
+	return httpFixtureInstructionsPrefix + modelID
 }
 
 func pruneFirstTurnHTTPFixtureInput(request map[string]any) {
