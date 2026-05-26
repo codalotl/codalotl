@@ -1,8 +1,14 @@
 package llmstream
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/llmmodel"
 
@@ -54,6 +60,82 @@ func TestOpenAIResponesBuildResponse_CapturesEncryptedReasoningState(t *testing.
 	assert.Contains(t, turn.Parts, TextContent{ProviderID: "msg_123", Content: "answer"})
 }
 
+func TestOpenAIResponsesResolveAuth_UsesEligibleProviderSubscription(t *testing.T) {
+	registerTestOpenAIProviderSubscription(t, "https://chatgpt.com/backend-api/codex", true)
+
+	auth, err := openAIResponsesResolveAuth(llmmodel.ModelID("gpt-4o-mini"), openAIRequestShapeModelInfo())
+	require.NoError(t, err)
+
+	assert.Equal(t, openAIResponsesAuthModeProviderSubscription, auth.mode)
+	assert.Equal(t, "sub-token", auth.apiKey)
+	assert.Equal(t, "https://chatgpt.com/backend-api/codex", auth.baseURL)
+	assert.Equal(t, "acct_123", auth.accountID)
+	assert.True(t, auth.requiresNoStore)
+}
+
+func TestOpenAIResponsesSubscriptionEligible(t *testing.T) {
+	sub := llmmodel.ProviderSubscription{ProviderID: llmmodel.ProviderIDOpenAI}
+
+	tests := []struct {
+		name      string
+		info      llmmodel.ModelInfo
+		wantAllow bool
+	}{
+		{
+			name:      "no overrides",
+			info:      openAIRequestShapeModelInfo(),
+			wantAllow: true,
+		},
+		{
+			name: "default endpoint is not an override",
+			info: llmmodel.ModelInfo{
+				ID:              llmmodel.ModelID("gpt-4o-mini"),
+				ProviderID:      llmmodel.ProviderIDOpenAI,
+				ProviderModelID: "gpt-4o-mini",
+				APIEndpointURL:  "https://api.openai.com/v1",
+			},
+			wantAllow: true,
+		},
+		{
+			name: "actual key override suppresses",
+			info: llmmodel.ModelInfo{
+				ProviderID: llmmodel.ProviderIDOpenAI,
+				ModelOverrides: llmmodel.ModelOverrides{
+					APIActualKey: "model-key",
+				},
+			},
+		},
+		{
+			name: "env key override suppresses",
+			info: llmmodel.ModelInfo{
+				ProviderID: llmmodel.ProviderIDOpenAI,
+				ModelOverrides: llmmodel.ModelOverrides{
+					APIEnvKey: "CUSTOM_OPENAI_API_KEY",
+				},
+			},
+		},
+		{
+			name: "endpoint override suppresses",
+			info: llmmodel.ModelInfo{
+				ProviderID: llmmodel.ProviderIDOpenAI,
+				ModelOverrides: llmmodel.ModelOverrides{
+					APIEndpointURL: "https://example.test/v1",
+				},
+			},
+		},
+		{
+			name: "provider mismatch suppresses",
+			info: llmmodel.ModelInfo{ProviderID: llmmodel.ProviderIDAnthropic},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantAllow, openAIResponsesSubscriptionEligible(tt.info, sub))
+		})
+	}
+}
+
 func TestOpenAIResponesConvertUsage_TotalOutputIncludesReasoning(t *testing.T) {
 	usage := responses.ResponseUsage{
 		InputTokens: 12,
@@ -73,6 +155,91 @@ func TestOpenAIResponesConvertUsage_TotalOutputIncludesReasoning(t *testing.T) {
 	assert.EqualValues(t, 7, got.ReasoningTokens)
 	assert.EqualValues(t, 40, got.TotalOutputTokens)
 	assert.GreaterOrEqual(t, got.TotalOutputTokens, got.ReasoningTokens)
+}
+
+func TestSendAsyncOpenAIResponses_SubscriptionAuthUsesEndpointHeaderAndForcesNoStore(t *testing.T) {
+	var (
+		gotPath      string
+		gotAuth      string
+		gotAccountID string
+		gotRequest   map[string]any
+		requests     int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		gotPath = r.URL.EscapedPath()
+		gotAuth = r.Header.Get("Authorization")
+		gotAccountID = r.Header.Get("ChatGPT-Account-ID")
+		_ = json.NewDecoder(r.Body).Decode(&gotRequest)
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		writeOpenAISSEEvent(t, w, "response.output_text.delta", `{
+			"type":"response.output_text.delta",
+			"sequence_number":0,
+			"item_id":"msg_sub",
+			"output_index":0,
+			"content_index":0,
+			"delta":"hello"
+		}`)
+		writeOpenAISSEEvent(t, w, "response.completed", `{
+			"type":"response.completed",
+			"sequence_number":1,
+			"response":{
+				"id":"resp_sub",
+				"object":"response",
+				"created_at":0,
+				"model":"gpt-4o-mini",
+				"status":"completed",
+				"output":[],
+				"usage":{
+					"input_tokens":3,
+					"input_tokens_details":{"cached_tokens":0},
+					"output_tokens":1,
+					"output_tokens_details":{"reasoning_tokens":0},
+					"total_tokens":4
+				}
+			}
+		}`)
+	}))
+	defer server.Close()
+	registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+	modelID := llmmodel.ModelID("test-openai-subscription-stream")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+	conv := NewConversation(modelID, "system instructions")
+	require.NoError(t, conv.AddUserTurn("say hello"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var finalTurn *Turn
+	for ev := range conv.SendAsync(ctx) {
+		switch ev.Type {
+		case EventTypeError:
+			require.NoError(t, ev.Error)
+		case EventTypeCompletedSuccess:
+			finalTurn = ev.Turn
+		}
+	}
+
+	assert.Equal(t, 1, requests)
+	assert.Equal(t, "/backend-api/codex/responses", gotPath)
+	assert.Equal(t, "Bearer sub-token", gotAuth)
+	assert.Equal(t, "acct_123", gotAccountID)
+	require.NotNil(t, gotRequest)
+	assert.Equal(t, false, gotRequest["store"])
+	assert.NotContains(t, gotRequest, "previous_response_id")
+
+	require.NotNil(t, finalTurn)
+	assert.Empty(t, finalTurn.ProviderID)
+	assert.Equal(t, "hello", finalTurn.TextContent())
+	assert.Equal(t, FinishReasonEndTurn, finalTurn.FinishReason)
+
+	sc := conv.(*streamingConversation)
+	assert.Empty(t, sc.providerConversationID)
+	assert.Empty(t, sc.LastTurn().ProviderID)
+	assert.Equal(t, "hello", sc.LastTurn().TextContent())
 }
 
 func TestBuildOpenAIResponsesRequestParams_DefaultLinksAndTrimsHistory(t *testing.T) {
@@ -97,6 +264,43 @@ func TestBuildOpenAIResponsesRequestParams_DefaultLinksAndTrimsHistory(t *testin
 	assert.Contains(t, reqJSON, `"instructions":"system instructions"`)
 }
 
+func TestBuildOpenAIResponsesRequestParams_SubscriptionRequiresNoStore(t *testing.T) {
+	registerTestOpenAIProviderSubscription(t, "https://chatgpt.com/backend-api/codex", true)
+	sc := openAIRequestShapeConversation(t)
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIRequestShapeModelInfo(), nil)
+	require.NoError(t, err)
+
+	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, false, req["store"])
+	assert.NotContains(t, req, "previous_response_id")
+	assertOpenAIRequestInstructions(t, req, "system instructions")
+
+	input := openAIResponsesRequestInput(t, req)
+	require.Len(t, input, 3)
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "first question")
+	assert.Contains(t, inputJSON, "first answer")
+	assert.Contains(t, inputJSON, "second question")
+	assert.NotContains(t, inputJSON, "system instructions")
+	assert.Contains(t, reqJSON, `"instructions":"system instructions"`)
+	assert.NotContains(t, reqJSON, "resp_first")
+}
+
+func TestBuildOpenAIResponsesRequestParams_SubscriptionNoStoreSuppressedByModelEndpointOverride(t *testing.T) {
+	registerTestOpenAIProviderSubscription(t, "https://chatgpt.com/backend-api/codex", true)
+	sc := openAIRequestShapeConversation(t)
+	modelInfo := openAIRequestShapeModelInfo()
+	modelInfo.ModelOverrides.APIEndpointURL = "https://example.test/v1"
+
+	params, err := sc.buildOpenAIResponsesRequestParams(modelInfo, nil)
+	require.NoError(t, err)
+
+	req, _ := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, true, req["store"])
+	assert.Equal(t, "resp_first", req["previous_response_id"])
+}
+
 func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistory(t *testing.T) {
 	sc := openAIRequestShapeConversation(t)
 
@@ -118,6 +322,93 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreDisablesLinkAndSendsFullHistor
 	assert.Contains(t, inputJSON, "second question")
 	assert.NotContains(t, inputJSON, "system instructions")
 	assert.Contains(t, reqJSON, `"instructions":"system instructions"`)
+}
+
+func TestOpenAIResponsesProcessEvent_CompletedEmptyOutputUsesStreamedState(t *testing.T) {
+	builders := newOpenAIResponsesContentBuilders()
+
+	events := []string{
+		`{
+			"type":"response.output_text.delta",
+			"sequence_number":0,
+			"item_id":"msg_1",
+			"output_index":0,
+			"content_index":0,
+			"delta":"hello"
+		}`,
+		`{
+			"type":"response.output_item.done",
+			"sequence_number":1,
+			"output_index":1,
+			"item":{
+				"id":"fc_1",
+				"type":"function_call",
+				"status":"completed",
+				"call_id":"call_1",
+				"name":"lookup_weather",
+				"arguments":"{\"city\":\"Paris\"}"
+			}
+		}`,
+		`{
+			"type":"response.output_item.done",
+			"sequence_number":2,
+			"output_index":2,
+			"item":{
+				"id":"rs_1",
+				"type":"reasoning",
+				"summary":[{"type":"summary_text","text":"reasoning summary"}],
+				"encrypted_content":"encrypted_reasoning_blob"
+			}
+		}`,
+	}
+	for _, raw := range events {
+		processed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, raw), builders)
+		require.NoError(t, err)
+		assert.True(t, cont)
+		_ = processed
+	}
+
+	completed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, `{
+		"type":"response.completed",
+		"sequence_number":3,
+		"response":{
+			"id":"resp_1",
+			"object":"response",
+			"created_at":0,
+			"model":"gpt-4o-mini",
+			"status":"completed",
+			"output":[],
+			"usage":{
+				"input_tokens":10,
+				"input_tokens_details":{"cached_tokens":2},
+				"output_tokens":5,
+				"output_tokens_details":{"reasoning_tokens":1},
+				"total_tokens":15
+			}
+		}
+	}`), builders)
+	require.NoError(t, err)
+	assert.False(t, cont)
+	require.NotNil(t, completed)
+	require.NotNil(t, completed.Turn)
+
+	turn := completed.Turn
+	assert.Equal(t, "resp_1", turn.ProviderID)
+	assert.Equal(t, "hello", turn.TextContent())
+	assert.Equal(t, FinishReasonToolUse, turn.FinishReason)
+	assert.EqualValues(t, 10, turn.Usage.TotalInputTokens)
+	assert.EqualValues(t, 2, turn.Usage.CachedInputTokens)
+	assert.EqualValues(t, 1, turn.Usage.ReasoningTokens)
+	assert.EqualValues(t, 5, turn.Usage.TotalOutputTokens)
+	assert.Contains(t, turn.ToolCalls(), ToolCall{
+		ProviderID: "fc_1",
+		CallID:     "call_1",
+		Name:       "lookup_weather",
+		Type:       "function_call",
+		Input:      `{"city":"Paris"}`,
+	})
+	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_1", Content: "reasoning summary"})
+	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_1", ProviderState: "encrypted_reasoning_blob"})
 }
 
 func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWithoutProviderIDs(t *testing.T) {
@@ -433,6 +724,49 @@ func openAIRequestShapeConversation(t *testing.T) *streamingConversation {
 	require.NoError(t, sc.AddUserTurn("second question"))
 	sc.providerConversationID = "resp_first"
 	return sc
+}
+
+func registerTestOpenAIProviderSubscription(t *testing.T, endpoint string, requiresNoStore bool) {
+	t.Helper()
+
+	oldSub, hadOldSub := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		ProviderID:       llmmodel.ProviderIDOpenAI,
+		AccessToken:      "sub-token",
+		AccountID:        "acct_123",
+		APIEndpointURL:   endpoint,
+		ExpiresAt:        time.Now().Add(time.Hour),
+		RequiresNoStore:  requiresNoStore,
+		RootInstructions: true,
+	})
+	t.Cleanup(func() {
+		if hadOldSub {
+			llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, oldSub)
+			return
+		}
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+}
+
+func writeOpenAISSEEvent(t *testing.T, w http.ResponseWriter, event string, data string) {
+	t.Helper()
+
+	var compact bytes.Buffer
+	require.NoError(t, json.Compact(&compact, []byte(data)))
+
+	_, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, compact.String())
+	require.NoError(t, err)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func mustUnmarshalOpenAIStreamEvent(t *testing.T, raw string) responses.ResponseStreamEventUnion {
+	t.Helper()
+
+	var evt responses.ResponseStreamEventUnion
+	require.NoError(t, json.Unmarshal([]byte(raw), &evt))
+	return evt
 }
 
 func openAIProviderItemReplayConversation(t *testing.T) *streamingConversation {

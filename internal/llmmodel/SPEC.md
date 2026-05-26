@@ -127,6 +127,10 @@ func (id ModelID) Valid() bool
 // is added or deprecated. These things move fast.
 const ModelIDUnknown ModelID = ""
 
+// ModelOverrides contains optional per-model settings that take precedence over provider defaults where supported.
+//
+// APIEndpointURL records an explicit per-model endpoint override. It is preserved separately from ModelInfo.APIEndpointURL; use GetAPIEndpointURL to resolve the
+// effective endpoint for a model.
 type ModelOverrides struct {
 	APIActualKey    string // ex: "123-456"
 	APIEnvKey       string // ex: "$ANTHROPIC_API_KEY" or "ANTHROPIC_API_KEY"
@@ -221,13 +225,14 @@ func AvailableModelIDs() []ModelID
 // This method can be used in cases where the consumer must talk to *some* valid model, but their current model ID might be unset or invalid.
 func ModelIDOrFallback(id ModelID) ModelID
 
+// ModelInfo describes a registered model and its provider metadata.
 type ModelInfo struct {
 	ID              ModelID
 	ProviderID      ProviderID
 	SupportedTypes  []ProviderAPIType
 	ProviderModelID string // the model identifier used in API requests.
 	IsDefault       bool
-	APIEndpointURL  string
+	APIEndpointURL  string // APIEndpointURL is the provider/default endpoint; per-model overrides remain in ModelOverrides.APIEndpointURL.
 
 	// Note on pricing: uniformly modeling pricing across all providers is fraught. These numbers serve as rough guidelines. Some providers might be modeled very poorly.
 	// Some providers have pricing tiers that this flat schema cannot represent:
@@ -249,6 +254,9 @@ type ModelInfo struct {
 }
 
 // GetModelInfo returns information for the corresponding model ID.
+//
+// The returned ModelInfo preserves explicit per-model settings in the embedded ModelOverrides. Use helpers such as GetAPIEndpointURL when callers need resolved
+// effective values.
 func GetModelInfo(id ModelID) ModelInfo
 
 // ConfigureProviderKey configures the provider to use the provided API key.
