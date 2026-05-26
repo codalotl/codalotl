@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/q/cascade"
 )
 
@@ -36,6 +37,7 @@ const (
 	defaultPollInterval = 5 * time.Second
 	expiryRefreshSlack  = time.Minute
 	fallbackExpiresIn   = time.Hour
+	responsesBaseURL    = "https://chatgpt.com/backend-api/codex"
 )
 
 // Options configures OpenAI subscription auth operations.
@@ -70,6 +72,18 @@ type authFile struct {
 	IDToken          string    `json:"id_token,omitempty"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	ChatGPTAccountID string    `json:"chatgpt_account_id"`
+}
+
+func init() {
+	loadDefaultProviderSubscription()
+}
+
+func loadDefaultProviderSubscription() {
+	auth, path, err := loadAuth(Options{})
+	if err != nil {
+		return
+	}
+	syncProviderSubscription(path, auth, time.Now())
 }
 
 // DefaultPath returns the default OpenAI subscription auth file path.
@@ -127,6 +141,7 @@ func Login(ctx context.Context, opts LoginOptions) error {
 	if err := saveAuth(path, auth); err != nil {
 		return err
 	}
+	syncProviderSubscription(path, auth, now)
 	_, err = fmt.Fprintln(out, "Logged in to OpenAI subscription.")
 	return err
 }
@@ -142,6 +157,7 @@ func LogoutWithOptions(opts Options) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	clearProviderSubscription(authPath(opts))
 	return nil
 }
 
@@ -154,9 +170,11 @@ func CheckStatus(ctx context.Context) (Status, error) {
 func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 	auth, path, err := loadAuth(opts)
 	if errors.Is(err, os.ErrNotExist) {
+		clearProviderSubscription(path)
 		return Status{Path: path}, nil
 	}
 	if err != nil {
+		clearProviderSubscription(path)
 		return Status{Path: path}, err
 	}
 
@@ -164,14 +182,17 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 	if auth.expired(now) && auth.RefreshToken != "" {
 		refreshed, refreshErr := refresh(ctx, opts, auth)
 		if refreshErr != nil {
+			syncProviderSubscription(path, auth, now)
 			return statusFromAuth(path, auth, now), nil
 		}
 		auth = refreshed
 		if err := saveAuth(path, auth); err != nil {
+			clearProviderSubscription(path)
 			return Status{Path: path}, err
 		}
 		now = nowFunc(opts)()
 	}
+	syncProviderSubscription(path, auth, now)
 	return statusFromAuth(path, auth, now), nil
 }
 
@@ -271,6 +292,35 @@ func (auth authFile) valid(now time.Time) bool {
 
 func (auth authFile) expired(now time.Time) bool {
 	return auth.ExpiresAt.IsZero() || !auth.ExpiresAt.After(now.Add(expiryRefreshSlack))
+}
+
+func syncProviderSubscription(path string, auth authFile, now time.Time) {
+	if !isDefaultAuthPath(path) {
+		return
+	}
+	if !auth.valid(now) {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+		return
+	}
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		ProviderID:       llmmodel.ProviderIDOpenAI,
+		AccessToken:      auth.AccessToken,
+		AccountID:        auth.ChatGPTAccountID,
+		APIEndpointURL:   responsesBaseURL,
+		ExpiresAt:        auth.ExpiresAt,
+		RequiresNoStore:  true,
+		RootInstructions: true,
+	})
+}
+
+func clearProviderSubscription(path string) {
+	if isDefaultAuthPath(path) {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	}
+}
+
+func isDefaultAuthPath(path string) bool {
+	return filepath.Clean(path) == filepath.Clean(DefaultPath())
 }
 
 type deviceCodeResponse struct {
