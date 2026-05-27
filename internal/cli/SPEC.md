@@ -13,6 +13,7 @@ When codalotl starts, we load and validate configuration and required tools, exc
 - If there's an error parsing the config file, or a config option is invalid, an error message is displayed and codalotl exits.
 - If no usable LLM auth is configured (provider key or provider subscription auth), an error message is displayed and codalotl exits.
 	- Note: credentials must exist for **usable** models. The `llmmodel` package supports more providers than the CLI config schema exposes.
+- Startup validation refreshes saved provider subscription auth before reporting missing LLM auth.
 - Required tools are checked:
 	- `go`
 	- `gopls`

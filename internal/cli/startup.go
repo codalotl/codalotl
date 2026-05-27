@@ -1,16 +1,21 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/subscriptions/openaisub"
 )
+
+var refreshOpenAIDefaultProviderSubscription = openaisub.RefreshDefaultProviderSubscription
 
 type startupValidationError struct {
 	MissingTools []goclitools.ToolStatus
 	MissingLLM   bool
+	LLMAuthError error
 	LLMEnvVars   []string
 }
 
@@ -54,6 +59,13 @@ func (e startupValidationError) Error() string {
 
 	if e.MissingLLM {
 		b.WriteString("\nNo usable LLM auth or credentials are configured.\n")
+
+		if e.LLMAuthError != nil {
+			b.WriteString("\nOpenAI subscription auth could not be loaded/refreshed:\n")
+			b.WriteString("- ")
+			b.WriteString(e.LLMAuthError.Error())
+			b.WriteString("\n")
+		}
 
 		relevant := e.LLMEnvVars
 		if len(relevant) > 0 {
@@ -117,7 +129,11 @@ func exampleProviderKeyID(relevantEnvVars []string) string {
 	return ""
 }
 
-func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) error {
+func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools.ToolRequirement) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	toolStatuses := goclitools.CheckTools(requiredTools)
 	var missingTools []goclitools.ToolStatus
 	for _, st := range toolStatuses {
@@ -126,6 +142,7 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 		}
 	}
 
+	refreshErr := refreshOpenAIDefaultProviderSubscription(ctx)
 	missingLLM := len(llmmodel.AvailableModelIDsWithAuth()) == 0
 
 	if len(missingTools) == 0 && !missingLLM {
@@ -134,6 +151,7 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 	return startupValidationError{
 		MissingTools: missingTools,
 		MissingLLM:   missingLLM,
+		LLMAuthError: refreshErr,
 		LLMEnvVars:   llmProviderEnvVarsForDisplay(cfg),
 	}
 }

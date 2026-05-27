@@ -94,6 +94,13 @@ func ensureToolStubs(t *testing.T, names ...string) {
 	}
 }
 
+func restoreOpenAISubscriptionRefreshStub(t *testing.T) {
+	t.Helper()
+
+	orig := refreshOpenAIDefaultProviderSubscription
+	t.Cleanup(func() { refreshOpenAIDefaultProviderSubscription = orig })
+}
+
 func TestRun_Help(t *testing.T) {
 	isolateUserConfig(t)
 
@@ -970,12 +977,56 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	require.Contains(t, got, "codalotl auth openai login")
 }
 
+func TestRun_StartupValidationRefreshesOpenAISubscriptionBeforeMissingAuth(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.Empty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+			ProviderID:      llmmodel.ProviderIDOpenAI,
+			AccessToken:     "test-access-token",
+			AccountID:       "test-account-id",
+			APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+			ExpiresAt:       time.Now().Add(time.Hour),
+			RequiresNoStore: true,
+		})
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
+}
+
 func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {
 	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
 
 	// Prove startup validation accepts provider subscription auth without any
 	// API-key-based model availability.
 	t.Setenv("OPENAI_API_KEY", "")
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		return nil
+	}
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
 		ProviderID:      llmmodel.ProviderIDOpenAI,
 		AccessToken:     "test-access-token",

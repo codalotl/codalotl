@@ -74,10 +74,16 @@ func TestRun_AuthOpenAILogin_DoesNotRequireStartupValidation(t *testing.T) {
 func TestRun_AuthOpenAILogout_DoesNotRequireStartupValidation(t *testing.T) {
 	isolateUserConfig(t)
 	restoreOpenAIAuthStubs(t)
+	restoreOpenAISubscriptionRefreshStub(t)
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("PATH", "")
 
 	called := false
+	refreshCalled := false
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalled = true
+		return nil
+	}
 	runOpenAISubLogout = func(opts openaisub.Options) error {
 		called = true
 		_, err := opts.Out.Write([]byte("logout cleanup\n"))
@@ -91,6 +97,7 @@ func TestRun_AuthOpenAILogout_DoesNotRequireStartupValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.True(t, called)
+	require.False(t, refreshCalled)
 	require.Empty(t, strings.TrimSpace(errOut.String()))
 	require.Contains(t, out.String(), "logout cleanup")
 	require.Contains(t, out.String(), "credentials removed")

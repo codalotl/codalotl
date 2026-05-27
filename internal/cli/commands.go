@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,9 +64,9 @@ type startupState struct {
 	err  error
 }
 
-func (s *startupState) validate(cfg Config) error {
+func (s *startupState) validate(ctx context.Context, cfg Config) error {
 	s.once.Do(func() {
-		s.err = validateStartup(cfg, goclitools.DefaultRequiredTools())
+		s.err = validateStartup(ctx, cfg, goclitools.DefaultRequiredTools())
 	})
 	return s.err
 }
@@ -129,7 +130,7 @@ func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunStat
 				if m != nil {
 					m.ReportEventAsync(event, nil, true)
 				}
-				if err := startup.validate(cfg); err != nil {
+				if err := startup.validate(c.Context, cfg); err != nil {
 					return qcli.ExitError{Code: 1, Err: err}
 				}
 				return next(c, cfg, m)
