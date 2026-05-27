@@ -139,23 +139,11 @@ func commandPathString(cmd *Command) string {
 }
 
 func usageLine(root, cmd *Command) string {
-	full := commandDisplayName(root, cmd)
-	segments := []string{full}
-	if options := optionUsageFragment(flagsForHelp(cmd)); options != "" {
-		segments = append(segments, options)
-	}
-	if usage := usageFragment(cmd); usage != "" {
-		segments = append(segments, usage)
-	}
-	return strings.Join(segments, " ")
+	return commandSynopsis(root, cmd)
 }
 
 func formatCommandHelpLine(root, cmd *Command) string {
-	synopsis := commandSynopsis(root, cmd)
-	if cmd.Short == "" {
-		return fmt.Sprintf("  %s", synopsis)
-	}
-	return fmt.Sprintf("  %s\t%s", synopsis, cmd.Short)
+	return formatHelpLine(commandSynopsis(root, cmd), cmd.Short)
 }
 
 func commandSynopsis(root, cmd *Command) string {
@@ -254,14 +242,18 @@ func formatFlagHelpLine(fh flagHelp) string {
 	}
 	usage := strings.TrimSpace(def.usage)
 	if usage == "" {
-		return fmt.Sprintf("  %s%s", names, suffix)
+		return formatHelpLine(names+suffix, "")
 	}
-	return fmt.Sprintf("  %s%s\t%s", names, suffix, usage)
+	return formatHelpLine(names+suffix, usage)
 }
 
 func formatArgHelpLine(arg ArgHelp) string {
-	if arg.Description == "" {
-		return fmt.Sprintf("  %s", arg.Display)
+	return formatHelpLine(arg.Display, arg.Description)
+}
+
+func formatHelpLine(display, description string) string {
+	if description == "" {
+		return fmt.Sprintf("  %s", display)
 	}
-	return fmt.Sprintf("  %s\t%s", arg.Display, arg.Description)
+	return fmt.Sprintf("  %s\t%s", display, description)
 }
