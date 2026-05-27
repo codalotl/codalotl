@@ -10,6 +10,7 @@ It owns OpenAI-specific device login, token refresh, credential persistence, and
 - Stores auth in `~/.codalotl/openai_auth.json` by default, with private file/directory permissions.
 - Login starts OpenAI device authorization, optionally opens a browser, waits for approval, exchanges for tokens, and saves usable credentials.
 - Status loads saved auth, refreshes when possible, and reports whether saved credentials are currently usable.
+- Startup refreshes expired default saved auth when possible before syncing subscription auth.
 - Logout removes saved auth. Missing saved auth is not an error.
 - Options support alternate auth paths, HTTP clients, clock functions, auth endpoint URLs, browser-opening behavior, and user-visible output.
 - Usable saved/login/refreshed auth registers OpenAI subscription auth with `llmmodel`.
