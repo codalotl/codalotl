@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -977,6 +978,35 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	require.Contains(t, got, "codalotl auth openai login")
 }
 
+func TestRun_Config_MissingLLMIncludesOpenAISubscriptionRefreshError(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+
+	t.Setenv("OPENAI_API_KEY", "")
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		require.NotNil(t, ctx)
+		return errors.New("refresh failed")
+	}
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 1, code)
+	require.Empty(t, out.String())
+
+	got := errOut.String()
+	require.Contains(t, got, "No usable LLM auth or credentials are configured")
+	require.Contains(t, got, "OpenAI subscription auth could not be loaded/refreshed")
+	require.Contains(t, got, "refresh failed")
+}
+
 func TestRun_StartupValidationRefreshesOpenAISubscriptionBeforeMissingAuth(t *testing.T) {
 	isolateUserConfig(t)
 	restoreOpenAISubscriptionRefreshStub(t)
@@ -1017,6 +1047,33 @@ func TestRun_StartupValidationRefreshesOpenAISubscriptionBeforeMissingAuth(t *te
 	require.Contains(t, out.String(), "Current Configuration:")
 }
 
+func TestRun_Config_APIKeyAuthSkipsOpenAISubscriptionRefresh(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 0, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
+}
+
 func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {
 	isolateUserConfig(t)
 	restoreOpenAISubscriptionRefreshStub(t)
@@ -1024,7 +1081,10 @@ func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {
 	// Prove startup validation accepts provider subscription auth without any
 	// API-key-based model availability.
 	t.Setenv("OPENAI_API_KEY", "")
+	var refreshCalls int
 	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
 		return nil
 	}
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
@@ -1050,6 +1110,7 @@ func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {
 	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
+	require.Equal(t, 0, refreshCalls)
 	require.Empty(t, errOut.String())
 	require.Contains(t, out.String(), "Current Configuration:")
 }

@@ -142,8 +142,12 @@ func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools
 		}
 	}
 
-	refreshErr := refreshOpenAIDefaultProviderSubscription(ctx)
 	missingLLM := len(llmmodel.AvailableModelIDsWithAuth()) == 0
+	var refreshErr error
+	if missingLLM {
+		refreshErr = refreshOpenAIDefaultProviderSubscription(ctx)
+		missingLLM = len(llmmodel.AvailableModelIDsWithAuth()) == 0
+	}
 
 	if len(missingTools) == 0 && !missingLLM {
 		return nil
