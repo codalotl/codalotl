@@ -392,6 +392,21 @@ func TestRefreshDefaultProviderSubscriptionRefreshesExpiredAuthFile(t *testing.T
 	assertOpenAIProviderSubscription(t, "new-access-token", "new-account-id", now.Add(time.Hour))
 }
 
+func TestRefreshDefaultProviderSubscriptionMissingAuthClearsProviderSubscription(t *testing.T) {
+	isolateProviderSubscription(t)
+
+	path := useTempDefaultPath(t)
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAIProviderSubscriptionForTest("existing-token", "existing-account"))
+
+	err := RefreshDefaultProviderSubscription(context.Background())
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(path)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
+	assert.False(t, ok)
+}
+
 func TestRefreshDefaultProviderSubscriptionClearsProviderSubscriptionWhenRefreshFails(t *testing.T) {
 	isolateProviderSubscription(t)
 
@@ -420,7 +435,9 @@ func TestRefreshDefaultProviderSubscriptionClearsProviderSubscriptionWhenRefresh
 		Now:         func() time.Time { return now },
 		OAuthIssuer: server.URL,
 	})
-	require.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "refresh OpenAI subscription auth")
+	assert.Contains(t, err.Error(), "401 Unauthorized")
 
 	assert.Equal(t, "old-refresh-token", refreshBody.Get("refresh_token"))
 	auth, _, err := loadAuth(Options{Path: path})

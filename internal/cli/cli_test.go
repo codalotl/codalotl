@@ -1047,6 +1047,49 @@ func TestRun_StartupValidationRefreshesOpenAISubscriptionBeforeMissingAuth(t *te
 	require.Contains(t, out.String(), "Current Configuration:")
 }
 
+func TestRun_Config_DefaultOpenAIModelRefreshesOpenAISubscriptionWhenOtherProviderHasAuth(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+	require.Equal(t, llmmodel.ProviderIDOpenAI, effectiveModel(Config{}).ProviderID())
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.NotEmpty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+			ProviderID:      llmmodel.ProviderIDOpenAI,
+			AccessToken:     "test-access-token",
+			AccountID:       "test-account-id",
+			APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+			ExpiresAt:       time.Now().Add(time.Hour),
+			RequiresNoStore: true,
+		})
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
+	require.True(t, llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI))
+}
+
 func TestRun_Config_APIKeyAuthSkipsOpenAISubscriptionRefresh(t *testing.T) {
 	isolateUserConfig(t)
 	restoreOpenAISubscriptionRefreshStub(t)
@@ -1072,6 +1115,40 @@ func TestRun_Config_APIKeyAuthSkipsOpenAISubscriptionRefresh(t *testing.T) {
 	require.Equal(t, 0, refreshCalls)
 	require.Empty(t, errOut.String())
 	require.Contains(t, out.String(), "Current Configuration:")
+}
+
+func TestRun_Config_NonOpenAIEffectiveModelSkipsOpenAISubscriptionRefresh(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(`{
+  "preferredprovider": "anthropic"
+}`), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 0, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Effective Model: "+string(llmmodel.ProviderIDAnthropic.DefaultModel()))
 }
 
 func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {

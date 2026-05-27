@@ -116,14 +116,16 @@ func refreshDefaultProviderSubscriptionWithOptions(ctx context.Context, opts Opt
 	now := nowFunc(opts)()
 	if auth.expired(now) && auth.RefreshToken != "" {
 		refreshed, refreshErr := refresh(ctx, opts, auth)
-		if refreshErr == nil {
-			auth = refreshed
-			if err := saveAuth(path, auth); err != nil {
-				clearProviderSubscription(path)
-				return err
-			}
-			now = nowFunc(opts)()
+		if refreshErr != nil {
+			syncProviderSubscription(path, auth, now)
+			return fmt.Errorf("refresh OpenAI subscription auth: %w", refreshErr)
 		}
+		auth = refreshed
+		if err := saveAuth(path, auth); err != nil {
+			clearProviderSubscription(path)
+			return err
+		}
+		now = nowFunc(opts)()
 	}
 	syncProviderSubscription(path, auth, now)
 	return nil

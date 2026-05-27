@@ -142,12 +142,13 @@ func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools
 		}
 	}
 
-	missingLLM := len(llmmodel.AvailableModelIDsWithAuth()) == 0
+	availableModels := llmmodel.AvailableModelIDsWithAuth()
 	var refreshErr error
-	if missingLLM {
+	if shouldRefreshOpenAISubscriptionForStartup(cfg, availableModels) {
 		refreshErr = refreshOpenAIDefaultProviderSubscription(ctx)
-		missingLLM = len(llmmodel.AvailableModelIDsWithAuth()) == 0
+		availableModels = llmmodel.AvailableModelIDsWithAuth()
 	}
+	missingLLM := len(availableModels) == 0
 
 	if len(missingTools) == 0 && !missingLLM {
 		return nil
@@ -158,4 +159,21 @@ func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools
 		LLMAuthError: refreshErr,
 		LLMEnvVars:   llmProviderEnvVarsForDisplay(cfg),
 	}
+}
+
+func shouldRefreshOpenAISubscriptionForStartup(cfg Config, availableModels []llmmodel.ModelID) bool {
+	if len(availableModels) == 0 {
+		return true
+	}
+
+	effective := effectiveModel(cfg)
+	if effective.ProviderID() != llmmodel.ProviderIDOpenAI {
+		return false
+	}
+	for _, modelID := range availableModels {
+		if modelID == effective {
+			return false
+		}
+	}
+	return true
 }
