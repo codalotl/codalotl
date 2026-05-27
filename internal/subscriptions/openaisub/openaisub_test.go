@@ -306,6 +306,90 @@ func TestDefaultSavedAuthLoadRegistersProviderSubscription(t *testing.T) {
 	assertOpenAIProviderSubscription(t, "access-token", "account-id", expiresAt)
 }
 
+func TestDefaultSavedAuthLoadRefreshesExpiredAuthFile(t *testing.T) {
+	isolateProviderSubscription(t)
+
+	var refreshBody url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, oauthTokenPath, r.URL.Path)
+		require.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+		require.NoError(t, r.ParseForm())
+		refreshBody = r.PostForm
+		_, _ = w.Write([]byte(`{
+			"access_token":"new-access-token",
+			"refresh_token":"new-refresh-token",
+			"id_token":"` + jwtForAccount(t, "new-account-id") + `",
+			"expires_in":3600
+		}`))
+	}))
+	defer server.Close()
+
+	path := useTempDefaultPath(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	writeAuthFile(t, path, authFile{
+		Type:             authType,
+		AccessToken:      "old-access-token",
+		RefreshToken:     "old-refresh-token",
+		IDToken:          jwtForAccount(t, "old-account-id"),
+		ExpiresAt:        now.Add(-time.Hour),
+		ChatGPTAccountID: "old-account-id",
+	})
+
+	loadDefaultProviderSubscriptionWithContext(context.Background(), Options{
+		Now:         func() time.Time { return now },
+		OAuthIssuer: server.URL,
+	})
+
+	assert.Equal(t, ClientID, refreshBody.Get("client_id"))
+	assert.Equal(t, "refresh_token", refreshBody.Get("grant_type"))
+	assert.Equal(t, "old-refresh-token", refreshBody.Get("refresh_token"))
+
+	auth, _, err := loadAuth(Options{Path: path})
+	require.NoError(t, err)
+	assert.Equal(t, "new-access-token", auth.AccessToken)
+	assert.Equal(t, "new-refresh-token", auth.RefreshToken)
+	assert.Equal(t, "new-account-id", auth.ChatGPTAccountID)
+	assert.Equal(t, now.Add(time.Hour), auth.ExpiresAt)
+	assertOpenAIProviderSubscription(t, "new-access-token", "new-account-id", now.Add(time.Hour))
+}
+
+func TestDefaultSavedAuthLoadClearsProviderSubscriptionWhenRefreshFails(t *testing.T) {
+	isolateProviderSubscription(t)
+
+	var refreshBody url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, oauthTokenPath, r.URL.Path)
+		require.NoError(t, r.ParseForm())
+		refreshBody = r.PostForm
+		http.Error(w, "nope", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	path := useTempDefaultPath(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAIProviderSubscriptionForTest("existing-token", "existing-account"))
+	writeAuthFile(t, path, authFile{
+		Type:             authType,
+		AccessToken:      "old-access-token",
+		RefreshToken:     "old-refresh-token",
+		IDToken:          jwtForAccount(t, "old-account-id"),
+		ExpiresAt:        now.Add(-time.Hour),
+		ChatGPTAccountID: "old-account-id",
+	})
+
+	loadDefaultProviderSubscriptionWithContext(context.Background(), Options{
+		Now:         func() time.Time { return now },
+		OAuthIssuer: server.URL,
+	})
+
+	assert.Equal(t, "old-refresh-token", refreshBody.Get("refresh_token"))
+	auth, _, err := loadAuth(Options{Path: path})
+	require.NoError(t, err)
+	assert.Equal(t, "old-access-token", auth.AccessToken)
+	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
+	assert.False(t, ok)
+}
+
 func TestCheckStatusDefaultPathLoadRegistersProviderSubscription(t *testing.T) {
 	isolateProviderSubscription(t)
 

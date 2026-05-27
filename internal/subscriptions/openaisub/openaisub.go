@@ -26,18 +26,19 @@ import (
 const ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
 const (
-	authType            = "openai_subscription"
-	defaultIssuer       = "https://auth.openai.com"
-	defaultOAuthIssuer  = "https://auth.openai.com"
-	deviceCodePath      = "/api/accounts/deviceauth/usercode"
-	deviceTokenPath     = "/api/accounts/deviceauth/token"
-	oauthTokenPath      = "/oauth/token"
-	openAIAuthClaim     = "https://api.openai.com/auth"
-	defaultPollTimeout  = 15 * time.Minute
-	defaultPollInterval = 5 * time.Second
-	expiryRefreshSlack  = time.Minute
-	fallbackExpiresIn   = time.Hour
-	responsesBaseURL    = "https://chatgpt.com/backend-api/codex"
+	authType              = "openai_subscription"
+	defaultIssuer         = "https://auth.openai.com"
+	defaultOAuthIssuer    = "https://auth.openai.com"
+	deviceCodePath        = "/api/accounts/deviceauth/usercode"
+	deviceTokenPath       = "/api/accounts/deviceauth/token"
+	oauthTokenPath        = "/oauth/token"
+	openAIAuthClaim       = "https://api.openai.com/auth"
+	defaultPollTimeout    = 15 * time.Minute
+	defaultPollInterval   = 5 * time.Second
+	startupRefreshTimeout = 10 * time.Second
+	expiryRefreshSlack    = time.Minute
+	fallbackExpiresIn     = time.Hour
+	responsesBaseURL      = "https://chatgpt.com/backend-api/codex"
 )
 
 // Options configures OpenAI subscription auth operations.
@@ -79,11 +80,31 @@ func init() {
 }
 
 func loadDefaultProviderSubscription() {
-	auth, path, err := loadAuth(Options{})
+	ctx, cancel := context.WithTimeout(context.Background(), startupRefreshTimeout)
+	defer cancel()
+	loadDefaultProviderSubscriptionWithContext(ctx, Options{})
+}
+
+func loadDefaultProviderSubscriptionWithContext(ctx context.Context, opts Options) {
+	opts.Path = ""
+	auth, path, err := loadAuth(opts)
 	if err != nil {
 		return
 	}
-	syncProviderSubscription(path, auth, time.Now())
+
+	now := nowFunc(opts)()
+	if auth.expired(now) && auth.RefreshToken != "" {
+		refreshed, refreshErr := refresh(ctx, opts, auth)
+		if refreshErr == nil {
+			auth = refreshed
+			if err := saveAuth(path, auth); err != nil {
+				clearProviderSubscription(path)
+				return
+			}
+			now = nowFunc(opts)()
+		}
+	}
+	syncProviderSubscription(path, auth, now)
 }
 
 // DefaultPath returns the default OpenAI subscription auth file path.
