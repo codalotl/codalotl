@@ -47,7 +47,7 @@ func (e *expectedSnippet) FullBytes() []byte {
 	return e.fullBytes
 }
 
-// PublicSnippet returns the publicSnippet field and any error, or the preserveMixedPublicSnippet field when preserveMixed is true and hasPreserveMixedPublicSnippet
+// PublicSnippet returns the publicSnippet field and a nil error, or the preserveMixedPublicSnippet field when preserveMixed is true and hasPreserveMixedPublicSnippet
 // is true.
 func (e *expectedSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
 	if preserveMixed && e.hasPreserveMixedPublicSnippet {

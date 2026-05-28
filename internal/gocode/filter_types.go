@@ -55,7 +55,8 @@ func filterType(typeExpr ast.Expr, preserveMixed bool) ast.Expr {
 }
 
 // filterTypeWithIncomplete returns typeExpr with nested struct and interface type literals filtered to exported API. It recursively rewrites supported container
-// expressions, forwards preserveMixed, and uses markIncomplete to control whether filtered struct and interface nodes record removals.
+// expressions, forwards preserveMixed, and uses markIncomplete to control whether filtered struct and interface nodes reached through this traversal record removals;
+// nested member type literals inside those nodes may still record removals.
 func filterTypeWithIncomplete(typeExpr ast.Expr, preserveMixed bool, markIncomplete bool) ast.Expr {
 	switch t := typeExpr.(type) {
 	case *ast.StructType:
@@ -139,15 +140,16 @@ func filterFieldListTypes(fields *ast.FieldList, preserveMixed bool, markIncompl
 	return dup
 }
 
-// filterStruct returns a copy of orig that retains only exported fields and embedded types. Unexported fields (and unexported embedded types) are removed. For fields
-// that declare multiple names, preserveMixed controls whether mixed exported/unexported fields are kept intact or duplicated with only exported names. The result
-// preserves field order and positions, and sets Incomplete to true if anything was removed. orig is not mutated.
+// filterStruct returns orig unchanged if orig.Fields is nil; otherwise it returns a copy that retains only exported fields and embedded types. Unexported fields
+// (and unexported embedded types) are removed. For fields that declare multiple names, preserveMixed controls whether mixed exported/unexported fields are kept
+// intact or duplicated with only exported names. The result preserves field order and positions, and sets Incomplete to true if anything was removed. orig is not
+// mutated.
 func filterStruct(orig *ast.StructType, preserveMixed bool) *ast.StructType {
 	return filterStructWithIncomplete(orig, preserveMixed, true)
 }
 
-// filterStructWithIncomplete returns a copy of orig that retains only exported struct API. It keeps exported fields and embedded types, handles mixed named fields
-// according to preserveMixed, and sets Incomplete for removals when markIncomplete is true.
+// filterStructWithIncomplete returns orig unchanged if orig.Fields is nil; otherwise it returns a copy that retains only exported struct API. It keeps exported
+// fields and embedded types, handles mixed named fields according to preserveMixed, and sets Incomplete for removals when markIncomplete is true.
 func filterStructWithIncomplete(orig *ast.StructType, preserveMixed bool, markIncomplete bool) *ast.StructType {
 	if orig.Fields == nil { // nothing to filter
 		return orig
@@ -212,15 +214,15 @@ func cloneFieldWithFilteredType(fld *ast.Field, preserveMixed bool) *ast.Field {
 	return &dup
 }
 
-// filterInterface returns a copy of orig that retains only exported interface API. Exported methods and exported embedded interfaces are kept; unexported ones are
-// removed. Union, tilde, and parenthesized type-set terms used by constraints (ex: ~int | ~float) are preserved; bare unexported type terms are removed. The result
-// preserves order and positions, and sets Incomplete to true if anything was removed. orig is not mutated.
+// filterInterface returns orig unchanged if orig.Methods is nil; otherwise it returns a copy that retains only exported interface API. Exported methods and exported
+// embedded interfaces are kept; unexported ones are removed. Union, tilde, and parenthesized type-set terms used by constraints (ex: ~int | ~float) are preserved;
+// bare unexported type terms are removed. The result preserves order and positions, and sets Incomplete to true if anything was removed. orig is not mutated.
 func filterInterface(orig *ast.InterfaceType, preserveMixed bool) *ast.InterfaceType {
 	return filterInterfaceWithIncomplete(orig, preserveMixed, true)
 }
 
-// filterInterfaceWithIncomplete returns a copy of orig that retains only exported interface API. It keeps exported methods, exported embedded interfaces, and type-set
-// terms, removes unexported interface elements, and sets Incomplete for removals when markIncomplete is true.
+// filterInterfaceWithIncomplete returns orig unchanged if orig.Methods is nil; otherwise it returns a copy that retains only exported interface API. It keeps exported
+// methods, exported embedded interfaces, and type-set terms, removes unexported interface elements, and sets Incomplete for removals when markIncomplete is true.
 func filterInterfaceWithIncomplete(orig *ast.InterfaceType, preserveMixed bool, markIncomplete bool) *ast.InterfaceType {
 	if orig.Methods == nil { // nothing to filter
 		return orig

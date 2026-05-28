@@ -20,7 +20,7 @@ var _ Snippet = (*TypeSnippet)(nil) // TypeSnippet implements Snippet
 type TypeSnippet struct {
 	Identifiers []string // all identifiers defined by the type block (length will be 1 if it's a single-spec type like "type MyType int")
 	IsBlock     bool     // true if a block (ex: "type ( ... )")
-	FileName    string   // file name (no dirs) where the value was defined (ex: "foo.go")
+	FileName    string   // File name (no dirs) where the type was defined (ex: "foo.go").
 	Snippet     []byte   // the docs + decl as it appears in source; shares buffer with File's Contents
 	BlockDoc    string   // "" if not a block; otherwise, the doc above the overall block
 

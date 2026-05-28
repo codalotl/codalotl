@@ -16,8 +16,8 @@ import (
 
 // Package represents a Go package whose Go files have been read and parsed for documentation. Use Package to generate documentation and analyze the public API.
 //
-// Most instances are constructed at the Module level. A Package contains all Go source files in a directory, their documentation, and computed doc snippets for
-// exported and unexported symbols.
+// Most instances are constructed at the Module level. A Package contains the Go source files supplied or selected for a directory, their documentation, and computed
+// doc snippets for exported and unexported symbols.
 //
 // If the package contains black-box tests (`package foo_test`), they are represented by the TestPackage field.
 //
@@ -63,7 +63,7 @@ type Package struct {
 	TypeSnippets []*TypeSnippet
 
 	identifierToSnippet map[string]Snippet // mapping from identifier name to the corresponding code/documentation snippet
-	Files               map[string]*File   // all Go source files in this package, keyed by filename relative to the package dir
+	Files               map[string]*File   // selected Go source files in this package, keyed by filename relative to the package dir
 	Module              *Module            // module containing this package
 
 	// typeToMethods groups method and function documentation: type name -> methods/functions. For functions, "none" is used as the key
