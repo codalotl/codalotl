@@ -30,7 +30,7 @@ Run low-risk refactor workflows in the requested order, inspecting and committin
 - [DONE] `docs-add` - added missing important Go documentation in `internal/gocode`; inspected diff and verified with `go test ./internal/gocode`.
 - [DONE] `docs-fix` - corrected materially inaccurate/overstated Go documentation in `internal/gocode`; inspected diff, committed the docs-fix CAS record, and verified with `go test ./internal/gocode`.
 - [DONE] `dry` - extracted shared comment group text handling for snippet construction; inspected diff, committed the refactor-dry CAS record, and verified with `go test ./internal/gocode`.
-- `test-cleanup`
+- [DONE] `test-cleanup` - simplified test temp directory cleanup, converted snippet lookup assertions to a table, and removed redundant coverage; inspected diff, committed the refactor-test-cleanup CAS record, and verified with `go test ./internal/gocode`.
 - `test-ensure-coverage`
 
 After the refactors, run `codalotl cas recertify internal/gocode --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"`, inspect the resulting CAS changes, and commit them.
@@ -54,3 +54,4 @@ Pending.
 - Completed `docs-add` in commit `c79c070`; it only added/adjusted Go documentation in `internal/gocode` and passed `go test ./internal/gocode`.
 - Completed `docs-fix` in commit `f20b27e`; it only corrected Go documentation in `internal/gocode`, added the relevant `docs-fix` CAS record, and passed `go test ./internal/gocode`.
 - Completed `dry` in commit `56be7bc`; it extracted duplicated comment extraction logic into `commentGroupText`, added the relevant `refactor-dry` CAS record, and passed `go test ./internal/gocode`.
+- Completed `test-cleanup` in commit `307a0d3`; it cleaned existing tests without changing package behavior, added the relevant `refactor-test-cleanup` CAS record, and passed `go test ./internal/gocode`.
