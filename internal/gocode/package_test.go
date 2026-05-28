@@ -291,33 +291,6 @@ func TestTypeParsing(t *testing.T) {
 			checkTypeIdx:         0,
 		},
 		{
-			name: "multi type in type block - second struct",
-			code: dedent(`
-				// Outter comment
-				type (
-					// Inner comment1
-					MyStruct1 struct {
-						Field string // field comment
-					}
-
-					// Inner comment2
-					MyStruct2 struct {
-						Field string // field comment
-					}
-				)`),
-			wantType: &TypeSnippet{
-				Identifiers: []string{"MyStruct1", "MyStruct2"},
-				IsBlock:     true,
-				BlockDoc:    "// Outter comment\n",
-				IdentifierDocs: map[string]string{
-					"MyStruct1": "// Inner comment1\n",
-					"MyStruct2": "// Inner comment2\n",
-				},
-			},
-			wantCountDiffFromOne: 0,
-			checkTypeIdx:         0,
-		},
-		{
 			name: "simple interface",
 			code: dedent(`
 				// Foo does foolish things

@@ -10,18 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setupTestModule creates a temporary directory structure for a test Go module. It returns the module root path and a cleanup function.
-func setupTestModule(t *testing.T) (string, func()) {
+// setupTestModule creates a temporary directory structure for a test Go module.
+func setupTestModule(t *testing.T) string {
 	t.Helper()
 
-	// Create a temporary directory for the module
-	tmpDir, err := os.MkdirTemp("", "testmodule-")
-	require.NoError(t, err)
+	tmpDir := t.TempDir()
 
 	// Create a go.mod file
 	moduleName := "example.com/testmodule"
 	goModContent := "module " + moduleName
-	err = os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
+	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
 	require.NoError(t, err)
 
 	// Create a package in the root
@@ -47,16 +45,11 @@ func setupTestModule(t *testing.T) (string, func()) {
 	err = os.Mkdir(emptyDir, 0755)
 	require.NoError(t, err)
 
-	cleanup := func() {
-		os.RemoveAll(tmpDir)
-	}
-
-	return tmpDir, cleanup
+	return tmpDir
 }
 
 func TestCloneWithoutPackages(t *testing.T) {
-	moduleRoot, cleanup := setupTestModule(t)
-	defer cleanup()
+	moduleRoot := setupTestModule(t)
 
 	mod, err := NewModule(moduleRoot)
 	require.NoError(t, err)
@@ -91,8 +84,7 @@ func TestCloneWithoutPackages(t *testing.T) {
 }
 
 func TestClonePackage(t *testing.T) {
-	moduleRoot, cleanup := setupTestModule(t)
-	defer cleanup()
+	moduleRoot := setupTestModule(t)
 
 	mod, err := NewModule(moduleRoot)
 	require.NoError(t, err)
@@ -124,8 +116,7 @@ func TestClonePackage(t *testing.T) {
 }
 
 func TestModule_LoadPackageByRelativeDir(t *testing.T) {
-	moduleRoot, cleanup := setupTestModule(t)
-	defer cleanup()
+	moduleRoot := setupTestModule(t)
 
 	m, err := NewModule(moduleRoot)
 	require.NoError(t, err)
@@ -149,7 +140,7 @@ func TestModule_LoadPackageByRelativeDir(t *testing.T) {
 	// Test caching by loading the same package again
 	cachedPkgA, err := m.LoadPackageByRelativeDir("pkga")
 	require.NoError(t, err)
-	assert.Same(t, pkgA, cachedPkgA, "Expected to get the same package instance from cache")
+	assert.Same(t, pkgA, cachedPkgA)
 
 	// Test loading a non-existent directory
 	_, err = m.LoadPackageByRelativeDir("nonexistent")
@@ -157,8 +148,7 @@ func TestModule_LoadPackageByRelativeDir(t *testing.T) {
 }
 
 func TestModule_LoadPackageByImportPath(t *testing.T) {
-	moduleRoot, cleanup := setupTestModule(t)
-	defer cleanup()
+	moduleRoot := setupTestModule(t)
 
 	m, err := NewModule(moduleRoot)
 	require.NoError(t, err)
@@ -183,7 +173,7 @@ func TestModule_LoadPackageByImportPath(t *testing.T) {
 	// Test caching by loading the same package again
 	cachedPkgA, err := m.LoadPackageByImportPath("example.com/testmodule/pkga")
 	require.NoError(t, err)
-	assert.Same(t, pkgA, cachedPkgA, "Expected to get the same package instance from cache")
+	assert.Same(t, pkgA, cachedPkgA)
 
 	// Test loading an import path not in the module
 	_, err = m.LoadPackageByImportPath("example.com/anothermodule")
@@ -195,8 +185,7 @@ func TestModule_LoadPackageByImportPath(t *testing.T) {
 }
 
 func TestModule_ResolvePackageByRelativeDir(t *testing.T) {
-	moduleRoot, cleanup := setupTestModule(t)
-	defer cleanup()
+	moduleRoot := setupTestModule(t)
 
 	m, err := NewModule(moduleRoot)
 	require.NoError(t, err)
@@ -272,8 +261,7 @@ func TestModule_ResolvePackageByRelativeDir(t *testing.T) {
 }
 
 func TestModule_ResolvePackageByImport(t *testing.T) {
-	moduleRoot, cleanup := setupTestModule(t)
-	defer cleanup()
+	moduleRoot := setupTestModule(t)
 
 	m, err := NewModule(moduleRoot)
 	require.NoError(t, err)

@@ -1,20 +1,13 @@
 package gocode
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetSnippet(t *testing.T) {
-	// Create a temporary directory for the test
-	tempDir, err := os.MkdirTemp("", "gopackage-getsnippet-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
-	// Create a simple Go file with various snippets
 	codeContent := dedent(`
 		package testpkg
 
@@ -43,60 +36,75 @@ func TestGetSnippet(t *testing.T) {
 			return "Hello, World!"
 		}
 	`)
-	testFile := filepath.Join(tempDir, "main.go")
-	err = os.WriteFile(testFile, []byte(codeContent), 0644)
-	assert.NoError(t, err)
 
-	// Create a module for the test
-	module := &Module{
-		Name:         "testmodule",
-		AbsolutePath: tempDir,
-		Packages:     make(map[string]*Package),
+	pkg, _ := newTestPackageFromFiles(t, map[string]string{"main.go": codeContent})
+
+	tests := []struct {
+		name       string
+		identifier string
+		check      func(t *testing.T, snippet Snippet)
+	}{
+		{
+			name:       "function",
+			identifier: "Hello",
+			check: func(t *testing.T, snippet Snippet) {
+				t.Helper()
+				fs, ok := snippet.(*FuncSnippet)
+				require.True(t, ok)
+				assert.Equal(t, "Hello", fs.Name)
+			},
+		},
+		{
+			name:       "method",
+			identifier: "*Greeter.Greet",
+			check: func(t *testing.T, snippet Snippet) {
+				t.Helper()
+				fs, ok := snippet.(*FuncSnippet)
+				require.True(t, ok)
+				assert.Equal(t, "Greet", fs.Name)
+				assert.Equal(t, "*Greeter", fs.ReceiverType)
+			},
+		},
+		{
+			name:       "type",
+			identifier: "Greeter",
+			check: func(t *testing.T, snippet Snippet) {
+				t.Helper()
+				ts, ok := snippet.(*TypeSnippet)
+				require.True(t, ok)
+				assert.Contains(t, ts.Identifiers, "Greeter")
+			},
+		},
+		{
+			name:       "const",
+			identifier: "Version",
+			check: func(t *testing.T, snippet Snippet) {
+				t.Helper()
+				vs, ok := snippet.(*ValueSnippet)
+				require.True(t, ok)
+				assert.Contains(t, vs.Identifiers, "Version")
+				assert.False(t, vs.IsVar)
+			},
+		},
+		{
+			name:       "var",
+			identifier: "Config",
+			check: func(t *testing.T, snippet Snippet) {
+				t.Helper()
+				vs, ok := snippet.(*ValueSnippet)
+				require.True(t, ok)
+				assert.True(t, vs.IsVar)
+			},
+		},
 	}
 
-	// Create a new package
-	pkg, err := NewPackage("", tempDir, []string{"main.go"}, module)
-	assert.NoError(t, err)
-	assert.NotNil(t, pkg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snippet := pkg.GetSnippet(tt.identifier)
+			require.NotNil(t, snippet)
+			tt.check(t, snippet)
+		})
+	}
 
-	// Test getting function snippet
-	funcSnippet := pkg.GetSnippet("Hello")
-	assert.NotNil(t, funcSnippet, "Expected to find Hello function snippet")
-	fs, ok := funcSnippet.(*FuncSnippet)
-	assert.True(t, ok, "Expected FuncSnippet type")
-	assert.Equal(t, "Hello", fs.Name)
-
-	// Test getting method snippet
-	methodSnippet := pkg.GetSnippet("*Greeter.Greet")
-	assert.NotNil(t, methodSnippet, "Expected to find Greeter.Greet method snippet")
-	fs, ok = methodSnippet.(*FuncSnippet)
-	assert.True(t, ok, "Expected FuncSnippet type for method")
-	assert.Equal(t, "Greet", fs.Name)
-	assert.Equal(t, "*Greeter", fs.ReceiverType)
-
-	// Test getting type snippet
-	typeSnippet := pkg.GetSnippet("Greeter")
-	assert.NotNil(t, typeSnippet, "Expected to find Greeter type snippet")
-	ts, ok := typeSnippet.(*TypeSnippet)
-	assert.True(t, ok, "Expected TypeSnippet type")
-	assert.Contains(t, ts.Identifiers, "Greeter")
-
-	// Test getting value snippet
-	valueSnippet := pkg.GetSnippet("Version")
-	assert.NotNil(t, valueSnippet, "Expected to find Version const snippet")
-	vs, ok := valueSnippet.(*ValueSnippet)
-	assert.True(t, ok, "Expected ValueSnippet type")
-	assert.Contains(t, vs.Identifiers, "Version")
-	assert.False(t, vs.IsVar, "Expected Version to be a const, not var")
-
-	// Test getting var snippet
-	varSnippet := pkg.GetSnippet("Config")
-	assert.NotNil(t, varSnippet, "Expected to find Config var snippet")
-	vs, ok = varSnippet.(*ValueSnippet)
-	assert.True(t, ok, "Expected ValueSnippet type for var")
-	assert.True(t, vs.IsVar, "Expected Config to be a var, not const")
-
-	// Test non-existent identifier
-	notFound := pkg.GetSnippet("NonExistent")
-	assert.Nil(t, notFound, "Expected nil for non-existent identifier")
+	assert.Nil(t, pkg.GetSnippet("NonExistent"))
 }
