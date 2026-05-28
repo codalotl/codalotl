@@ -29,7 +29,7 @@ Additional instructions:
 Run low-risk refactor workflows in the requested order, inspecting and committing each acceptable diff separately:
 - [DONE] `docs-add` - added missing important Go documentation in `internal/gocode`; inspected diff and verified with `go test ./internal/gocode`.
 - [DONE] `docs-fix` - corrected materially inaccurate/overstated Go documentation in `internal/gocode`; inspected diff, committed the docs-fix CAS record, and verified with `go test ./internal/gocode`.
-- `dry`
+- [DONE] `dry` - extracted shared comment group text handling for snippet construction; inspected diff, committed the refactor-dry CAS record, and verified with `go test ./internal/gocode`.
 - `test-cleanup`
 - `test-ensure-coverage`
 
@@ -53,3 +53,4 @@ Pending.
 - Workspace was clean before adding this plan.
 - Completed `docs-add` in commit `c79c070`; it only added/adjusted Go documentation in `internal/gocode` and passed `go test ./internal/gocode`.
 - Completed `docs-fix` in commit `f20b27e`; it only corrected Go documentation in `internal/gocode`, added the relevant `docs-fix` CAS record, and passed `go test ./internal/gocode`.
+- Completed `dry` in commit `56be7bc`; it extracted duplicated comment extraction logic into `commentGroupText`, added the relevant `refactor-dry` CAS record, and passed `go test ./internal/gocode`.
