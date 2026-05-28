@@ -28,7 +28,7 @@ Additional instructions:
 
 Run low-risk refactor workflows in the requested order, inspecting and committing each acceptable diff separately:
 - [DONE] `docs-add` - added missing important Go documentation in `internal/gocode`; inspected diff and verified with `go test ./internal/gocode`.
-- `docs-fix`
+- [DONE] `docs-fix` - corrected materially inaccurate/overstated Go documentation in `internal/gocode`; inspected diff, committed the docs-fix CAS record, and verified with `go test ./internal/gocode`.
 - `dry`
 - `test-cleanup`
 - `test-ensure-coverage`
@@ -52,3 +52,4 @@ Pending.
 - Target package: `internal/gocode`
 - Workspace was clean before adding this plan.
 - Completed `docs-add` in commit `c79c070`; it only added/adjusted Go documentation in `internal/gocode` and passed `go test ./internal/gocode`.
+- Completed `docs-fix` in commit `f20b27e`; it only corrected Go documentation in `internal/gocode`, added the relevant `docs-fix` CAS record, and passed `go test ./internal/gocode`.
