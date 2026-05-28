@@ -22,3 +22,32 @@ Additional instructions:
   codalotl cas recertify internal/gocode --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"
 - Inspect and commit CAS files produced by recertify.
 
+## Plan
+
+### Package internal/gocode
+
+Run low-risk refactor workflows in the requested order, inspecting and committing each acceptable diff separately:
+- `docs-add`
+- `docs-fix`
+- `dry`
+- `test-cleanup`
+- `test-ensure-coverage`
+
+After the refactors, run `codalotl cas recertify internal/gocode --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"`, inspect the resulting CAS changes, and commit them.
+
+No `SPEC.md` changes are planned because the requested work is documentation/test/internal cleanup only and should not alter public API or behavior.
+
+## Review
+
+Not yet run.
+
+## Summary
+
+Pending.
+
+## State
+
+- Branch: `jn/refactor-internal-gocode`
+- PR file: `.prs/2026-05-28_1779980876_refactor-internal-gocode.md`
+- Target package: `internal/gocode`
+- Workspace was clean before adding this plan.
