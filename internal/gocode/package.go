@@ -665,19 +665,26 @@ type FilterIdentifiersOptions struct {
 
 	// If all IncludeSnippetTypeX are false, we include all types
 
-	IncludeSnippetFuncs       bool
-	IncludeSnippetType        bool
-	IncludeSnippetValue       bool
-	IncludeSnippetVar         bool
-	IncludeSnippetConst       bool
-	IncludeSnippetPackageDocs bool
+	IncludeSnippetFuncs       bool // IncludeSnippetFuncs includes function and method snippets.
+	IncludeSnippetType        bool // IncludeSnippetType includes type declaration snippets.
+	IncludeSnippetValue       bool // IncludeSnippetValue includes both var and const declaration snippets.
+	IncludeSnippetVar         bool // IncludeSnippetVar includes var declaration snippets when IncludeSnippetValue is false.
+	IncludeSnippetConst       bool // IncludeSnippetConst includes const declaration snippets when IncludeSnippetValue is false.
+	IncludeSnippetPackageDocs bool // IncludeSnippetPackageDocs includes package documentation snippets.
 }
 
 // Common options for FilterIdentifiers.
 var (
-	FilterIdentifiersOptionsAll                    = FilterIdentifiersOptions{IncludeTestFuncs: true, IncludeGeneratedFile: true, IncludeAmbiguous: true}
-	FilterIdentifiersOptionsAllNonGenerated        = FilterIdentifiersOptions{IncludeTestFuncs: true, IncludeGeneratedFile: false, IncludeAmbiguous: true}
-	FilterIdentifiersOptionsNonAmbiguous           = FilterIdentifiersOptions{IncludeTestFuncs: true, IncludeGeneratedFile: true, IncludeAmbiguous: false}
+	// FilterIdentifiersOptionsAll includes every identifier kind, including test functions, generated files, and ambiguous identifiers.
+	FilterIdentifiersOptionsAll = FilterIdentifiersOptions{IncludeTestFuncs: true, IncludeGeneratedFile: true, IncludeAmbiguous: true}
+
+	// FilterIdentifiersOptionsAllNonGenerated includes all identifier kinds except identifiers from generated files.
+	FilterIdentifiersOptionsAllNonGenerated = FilterIdentifiersOptions{IncludeTestFuncs: true, IncludeGeneratedFile: false, IncludeAmbiguous: true}
+
+	// FilterIdentifiersOptionsNonAmbiguous includes all identifier kinds except ambiguous identifiers.
+	FilterIdentifiersOptionsNonAmbiguous = FilterIdentifiersOptions{IncludeTestFuncs: true, IncludeGeneratedFile: true, IncludeAmbiguous: false}
+
+	// FilterIdentifiersOptionsDocumentedNonAmbiguous includes documented identifiers and excludes ambiguous identifiers.
 	FilterIdentifiersOptionsDocumentedNonAmbiguous = FilterIdentifiersOptions{IncludeTestFuncs: true, IncludeGeneratedFile: true, IncludeAmbiguous: false, OnlyAnyDocs: true}
 )
 

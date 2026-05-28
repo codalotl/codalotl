@@ -1,5 +1,9 @@
 package gocode
 
+// EachPackageWithIdentifiersCallback handles a package and its selected identifiers.
+//
+// The onlyTests argument reports whether the identifiers are all from test files or a black-box test package. If the callback returns an error, EachPackageWithIdentifiers
+// stops and returns that error.
 type EachPackageWithIdentifiersCallback func(pkg *Package, identifiers []string, onlyTests bool) error
 
 // EachPackageWithIdentifiers calls the callback up to three times with (package [either pkg or pkg.TestPackage], ids for that package, if ids are only testing ids).

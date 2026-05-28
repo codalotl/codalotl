@@ -164,6 +164,10 @@ func DeparenthesizeIdentifier(ident string) string {
 	return receiverType + "." + rest
 }
 
+// splitParenthesizedOrGenericReceiver splits a method identifier into receiver expression and suffix.
+//
+// It recognizes parenthesized receiver forms such as "(*T).M" and generic receiver forms such as "T[A].M". If ident is malformed or is not a supported receiver
+// form, ok is false.
 func splitParenthesizedOrGenericReceiver(ident string) (receiverExpr string, rest string, ok bool) {
 	// Parenthesized selector form: "(*T).M", "(T).M", including nested parens like "((*T)).M".
 	// We intentionally split on the first balanced ")." boundary, which avoids ambiguity with dots

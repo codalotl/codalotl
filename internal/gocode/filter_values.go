@@ -75,6 +75,9 @@ func filterExportedValue(gen *ast.GenDecl, preserveMixed bool) *ast.GenDecl {
 	return out
 }
 
+// cloneCommentGroupBefore copies group and places the copied comments immediately before pos.
+//
+// The returned group preserves the original comment text and order. If group is nil, cloneCommentGroupBefore returns nil.
 func cloneCommentGroupBefore(group *ast.CommentGroup, pos token.Pos) *ast.CommentGroup {
 	if group == nil {
 		return nil

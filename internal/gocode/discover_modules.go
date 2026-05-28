@@ -32,6 +32,9 @@ func DiscoverModules(root string) ([]*Module, error) {
 	return discoverModulesRecursive(rootDir)
 }
 
+// normalizeDiscoveryRoot returns the clean absolute directory where module discovery starts.
+//
+// An empty root is treated as ".". If root names a file, its parent directory is returned.
 func normalizeDiscoveryRoot(root string) (string, error) {
 	if root == "" {
 		root = "."
@@ -53,6 +56,10 @@ func normalizeDiscoveryRoot(root string) (string, error) {
 	return filepath.Clean(abs), nil
 }
 
+// findApplicableGoWork returns the go.work file that applies to rootDir, if any.
+//
+// GOWORK=off disables workspace discovery. An explicit GOWORK value other than "auto" is used directly after validation. Otherwise, rootDir and its parents are
+// searched for go.work.
 func findApplicableGoWork(rootDir string) (string, bool, error) {
 	gowork := os.Getenv("GOWORK")
 	if gowork == "off" {
@@ -84,6 +91,9 @@ func findApplicableGoWork(rootDir string) (string, bool, error) {
 	}
 }
 
+// discoverWorkspaceModules returns the modules explicitly listed by a go.work file.
+//
+// Relative use paths are resolved from the directory containing workFile. The returned modules are de-duplicated and sorted by absolute path.
 func discoverWorkspaceModules(workFile string) ([]*Module, error) {
 	data, err := os.ReadFile(workFile)
 	if err != nil {
@@ -111,6 +121,10 @@ func discoverWorkspaceModules(workFile string) ([]*Module, error) {
 	return modulesFromDirs(moduleDirs)
 }
 
+// discoverModulesRecursive finds Go modules under rootDir by recursively searching for go.mod files.
+//
+// The root directory is considered even if its name would otherwise be skipped. Descending into vendor, testdata, dot-prefixed, and underscore-prefixed directories
+// is skipped. Returned modules are sorted by absolute path.
 func discoverModulesRecursive(rootDir string) ([]*Module, error) {
 	var moduleDirs []string
 	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, walkErr error) error {
@@ -147,6 +161,10 @@ func shouldSkipModuleDiscoveryDir(name string) bool {
 		strings.HasPrefix(name, "_")
 }
 
+// modulesFromDirs loads modules rooted at moduleDirs and returns them sorted by absolute path.
+//
+// Each directory is cleaned, made absolute, and de-duplicated before loading. A directory must contain the module's go.mod directly; resolving to an enclosing module
+// is reported as an error.
 func modulesFromDirs(moduleDirs []string) ([]*Module, error) {
 	seen := make(map[string]struct{}, len(moduleDirs))
 	modules := make([]*Module, 0, len(moduleDirs))

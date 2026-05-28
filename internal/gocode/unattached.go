@@ -18,8 +18,11 @@ type UnattachedComment struct {
 	// AbovePackage is true if this unattached comment appears before the package clause (i.e., its end offset is at or before the position of the "package" token).
 	AbovePackage bool
 
+	// fileSet provides token position information for the comment.
 	fileSet *token.FileSet
-	group   *ast.CommentGroup
+
+	// group is the parsed AST comment group for the comment.
+	group *ast.CommentGroup
 }
 
 // snippetSpan returns the [start,end) byte offsets for a snippet within its file. The computation mirrors how snippet bytes are extracted in the respective extract*
