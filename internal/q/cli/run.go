@@ -152,36 +152,12 @@ func parseFlagToken(active activeFlags, token string, argv []string, idx int) (i
 
 	// Long flag: --name or --name=value
 	if strings.HasPrefix(token, "--") {
-		name, value, hasValue := splitFlagValue(token[2:])
-		var valuePtr *string
-		if hasValue {
-			valuePtr = &value
-		}
-		consumeNext, err := active.parseAndSet(token, hasDashDash, name, 0, valuePtr, nextPtr)
-		if err != nil {
-			return 0, err
-		}
-		if consumeNext {
-			return 1, nil
-		}
-		return 0, nil
+		return parseNamedFlagToken(active, token, token[2:], hasDashDash, nextPtr)
 	}
 
 	// Short flag: -n or -n=value, or single-dash long flag: -name or -name=value
 	if len(token) >= 3 && token[2] != '=' {
-		name, value, hasValue := splitFlagValue(token[1:])
-		var valuePtr *string
-		if hasValue {
-			valuePtr = &value
-		}
-		consumeNext, err := active.parseAndSet(token, hasDashDash, name, 0, valuePtr, nextPtr)
-		if err != nil {
-			return 0, err
-		}
-		if consumeNext {
-			return 1, nil
-		}
-		return 0, nil
+		return parseNamedFlagToken(active, token, token[1:], hasDashDash, nextPtr)
 	}
 
 	if len(token) < 2 {
@@ -194,6 +170,22 @@ func parseFlagToken(active activeFlags, token string, argv []string, idx int) (i
 		valuePtr = &v
 	}
 	consumeNext, err := active.parseAndSet(token, hasDashDash, "", shorthand, valuePtr, nextPtr)
+	if err != nil {
+		return 0, err
+	}
+	if consumeNext {
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func parseNamedFlagToken(active activeFlags, token, body string, hasDashDash bool, nextPtr *string) (int, error) {
+	name, value, hasValue := splitFlagValue(body)
+	var valuePtr *string
+	if hasValue {
+		valuePtr = &value
+	}
+	consumeNext, err := active.parseAndSet(token, hasDashDash, name, 0, valuePtr, nextPtr)
 	if err != nil {
 		return 0, err
 	}
@@ -218,47 +210,45 @@ func nextTokenValue(argv []string, idx int) (string, bool) {
 }
 
 func exitForHandlerError(root, cmd *Command, err error, errOut io.Writer) int {
-	var ec ExitCoder
-	if errors.As(err, &ec) {
-		code := ec.ExitCode()
-		if code == 2 {
-			printUsageError(root, cmd, err, errOut)
-			return 2
-		}
-		if code == 0 {
-			return 0
-		}
-		if msg := err.Error(); msg != "" {
-			fmt.Fprintln(errOut, msg)
-		}
+	if code, ok := exitForExitCoder(root, cmd, err, errOut); ok {
 		return code
 	}
 
-	if msg := err.Error(); msg != "" {
-		fmt.Fprintln(errOut, msg)
-	}
+	printErrorMessage(err, errOut)
 	return 1
 }
 
 func exitForArgsError(root, cmd *Command, err error, errOut io.Writer) int {
-	var ec ExitCoder
-	if errors.As(err, &ec) {
-		code := ec.ExitCode()
-		if code == 2 {
-			printUsageError(root, cmd, err, errOut)
-			return 2
-		}
-		if code == 0 {
-			return 0
-		}
-		if msg := err.Error(); msg != "" {
-			fmt.Fprintln(errOut, msg)
-		}
+	if code, ok := exitForExitCoder(root, cmd, err, errOut); ok {
 		return code
 	}
 
 	printUsageError(root, cmd, err, errOut)
 	return 2
+}
+
+func exitForExitCoder(root, cmd *Command, err error, errOut io.Writer) (int, bool) {
+	var ec ExitCoder
+	if errors.As(err, &ec) {
+		code := ec.ExitCode()
+		if code == 2 {
+			printUsageError(root, cmd, err, errOut)
+			return 2, true
+		}
+		if code == 0 {
+			return 0, true
+		}
+		printErrorMessage(err, errOut)
+		return code, true
+	}
+
+	return 0, false
+}
+
+func printErrorMessage(err error, errOut io.Writer) {
+	if msg := err.Error(); msg != "" {
+		fmt.Fprintln(errOut, msg)
+	}
 }
 
 func printUsageError(root, cmd *Command, err error, errOut io.Writer) {

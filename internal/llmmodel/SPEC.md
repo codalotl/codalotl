@@ -25,10 +25,14 @@ Consumers can then configure these:
     - Add custom params on a per-model basis (ex: reasoning effort)
     - Create custom ModelID aliases
     - Add custom providers. For instance, local inference can be used by setting APIEndpointURL and (APIActualKey or APIEnvKey). ProviderID would be an API-compatible provider (likely OpenAI).
-- To present a model picker that only shows models that can be called with the *current* configuration, call AvailableModelIDsWithAPIKey(). This filters models using GetAPIKey(modelID), so it respects:
+- To present an API-key-only model picker, call AvailableModelIDsWithAPIKey(). This filters models using GetAPIKey(modelID), so it respects:
     - per-model overrides (APIActualKey / APIEnvKey)
     - in-memory provider overrides (ConfigureProviderKey)
     - provider default env vars (ex: "OPENAI_API_KEY")
+- Subscription auth may be registered for providers whose non-API-key auth can be adapted to provider requests.
+    - Subscription auth is provider-level, and applies only to models without per-model API key/env or endpoint overrides.
+    - Provider-level API keys and default provider env vars do not suppress subscription auth.
+    - To present a model picker that includes both API-key and subscription-auth models, call AvailableModelIDsWithAuth().
 - To check if a provider has a configured key *at the provider level* (ConfigureProviderKey or default env var), call ProviderHasConfiguredKey(providerID).
     - This does NOT consider per-model overrides; those are only visible when checking at the model level.
 - EnvHasDefaultKey(providerID) is a narrow helper: it checks only the provider's default env var and ignores ConfigureProviderKey and per-model overrides.
@@ -123,6 +127,10 @@ func (id ModelID) Valid() bool
 // is added or deprecated. These things move fast.
 const ModelIDUnknown ModelID = ""
 
+// ModelOverrides contains optional per-model settings that take precedence over provider defaults where supported.
+//
+// APIEndpointURL records an explicit per-model endpoint override. It is preserved separately from ModelInfo.APIEndpointURL; use GetAPIEndpointURL to resolve the
+// effective endpoint for a model.
 type ModelOverrides struct {
 	APIActualKey    string // ex: "123-456"
 	APIEnvKey       string // ex: "$ANTHROPIC_API_KEY" or "ANTHROPIC_API_KEY"
@@ -137,6 +145,31 @@ type ProviderID string
 //
 // It returns ModelIDUnknown for an unknown provider ID. Use ModelIDOrFallback when callers need a best-effort fallback to any known model.
 func (pid ProviderID) DefaultModel() ModelID
+
+// ProviderSubscription is provider-agnostic subscription auth that can be used instead of a provider API key.
+type ProviderSubscription struct {
+	ProviderID       ProviderID
+	AccessToken      string
+	AccountID        string
+	APIEndpointURL   string
+	ExpiresAt        time.Time
+	RequiresNoStore  bool
+	RootInstructions bool
+}
+
+// SetProviderSubscription configures subscription auth for a provider.
+func SetProviderSubscription(providerID ProviderID, sub ProviderSubscription)
+
+// ClearProviderSubscription removes subscription auth for a provider.
+func ClearProviderSubscription(providerID ProviderID)
+
+// GetProviderSubscription returns usable subscription auth for providerID, if set.
+//
+// Usable subscription auth has matching provider, required fields present, and nonexpired ExpiresAt.
+func GetProviderSubscription(providerID ProviderID) (ProviderSubscription, bool)
+
+// ProviderHasSubscription reports whether usable subscription auth is configured for providerID.
+func ProviderHasSubscription(providerID ProviderID) bool
 
 // ProviderAPIType identifies one API "shape" a provider supports. Providers can expose multiple API types simultaneously (ex: OpenAI exposes both Responses and
 // Completions).
@@ -192,13 +225,14 @@ func AvailableModelIDs() []ModelID
 // This method can be used in cases where the consumer must talk to *some* valid model, but their current model ID might be unset or invalid.
 func ModelIDOrFallback(id ModelID) ModelID
 
+// ModelInfo describes a registered model and its provider metadata.
 type ModelInfo struct {
 	ID              ModelID
 	ProviderID      ProviderID
 	SupportedTypes  []ProviderAPIType
 	ProviderModelID string // the model identifier used in API requests.
 	IsDefault       bool
-	APIEndpointURL  string
+	APIEndpointURL  string // APIEndpointURL is the provider/default endpoint; per-model overrides remain in ModelOverrides.APIEndpointURL.
 
 	// Note on pricing: uniformly modeling pricing across all providers is fraught. These numbers serve as rough guidelines. Some providers might be modeled very poorly.
 	// Some providers have pricing tiers that this flat schema cannot represent:
@@ -220,6 +254,9 @@ type ModelInfo struct {
 }
 
 // GetModelInfo returns information for the corresponding model ID.
+//
+// The returned ModelInfo preserves explicit per-model settings in the embedded ModelOverrides. Use helpers such as GetAPIEndpointURL when callers need resolved
+// effective values.
 func GetModelInfo(id ModelID) ModelInfo
 
 // ConfigureProviderKey configures the provider to use the provided API key.
@@ -248,6 +285,9 @@ func GetAPIKey(id ModelID) string
 
 // AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty effective API key (per GetAPIKey).
 func AvailableModelIDsWithAPIKey() []ModelID
+
+// AvailableModelIDsWithAuth returns only the model IDs that currently have a non-empty effective API key or eligible provider subscription auth.
+func AvailableModelIDsWithAuth() []ModelID
 
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIEndpointURL

@@ -864,14 +864,14 @@ func (m *model) handleModelCommand(arg string) {
 			}
 		}
 
-		// Only list models that are callable in the current environment (i.e., have an effective API key).
-		available := llmmodel.AvailableModelIDsWithAPIKey()
+		// Only list models that are callable in the current environment.
+		available := llmmodel.AvailableModelIDsWithAuth()
 
 		var b strings.Builder
 		fmt.Fprintf(&b, "Current model: %s\n", current)
 		b.WriteString("Available models:\n")
 		if len(available) == 0 {
-			b.WriteString("• <none> (no configured API keys found)\n")
+			b.WriteString("• <none> (no configured API keys or provider subscription logins found)\n")
 			envVars := llmmodel.ProviderKeyEnvVars()
 			if len(envVars) > 0 {
 				var keys []string
@@ -883,7 +883,7 @@ func (m *model) handleModelCommand(arg string) {
 				if len(keys) > 0 {
 					b.WriteString("Set an API key env var (ex: ")
 					b.WriteString(strings.Join(keys, ", "))
-					b.WriteString(") and restart.\n")
+					b.WriteString(") or log in with a supported provider subscription (ex: `codalotl auth openai login`) and restart.\n")
 				}
 			}
 		} else {

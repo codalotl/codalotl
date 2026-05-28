@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/docubot"
 	"github.com/codalotl/codalotl/internal/gocode"
@@ -30,6 +32,7 @@ func isolateUserConfig(t *testing.T) {
 	// llmmodel key overrides are process-global; ensure tests don't leak state.
 	for _, pid := range llmmodel.AllProviderIDs {
 		llmmodel.ConfigureProviderKey(pid, "")
+		llmmodel.ClearProviderSubscription(pid)
 	}
 
 	// Keep tests hermetic: don't allow developer env vars to satisfy startup validation.
@@ -90,6 +93,13 @@ func ensureToolStubs(t *testing.T, names ...string) {
 	} else {
 		t.Setenv("PATH", binDir+string(os.PathListSeparator)+orig)
 	}
+}
+
+func restoreOpenAISubscriptionRefreshStub(t *testing.T) {
+	t.Helper()
+
+	orig := refreshOpenAIDefaultProviderSubscription
+	t.Cleanup(func() { refreshOpenAIDefaultProviderSubscription = orig })
 }
 
 func TestRun_Help(t *testing.T) {
@@ -959,18 +969,227 @@ func TestRun_Config_NoLLMConfigured_IsExitCode1(t *testing.T) {
 	if errOut.Len() == 0 {
 		t.Fatalf("expected stderr output")
 	}
-	if !strings.Contains(errOut.String(), "No LLM provider API key is configured") {
-		t.Fatalf("expected error to mention missing LLM key, got stderr:\n%s", errOut.String())
+	got := errOut.String()
+	require.Contains(t, got, "No usable LLM auth or credentials are configured")
+	require.NotContains(t, got, "No LLM provider API key is configured")
+	require.Contains(t, got, "OPENAI_API_KEY")
+	require.Contains(t, got, "ANTHROPIC_API_KEY")
+	require.Contains(t, got, "GEMINI_API_KEY")
+	require.Contains(t, got, "codalotl auth openai login")
+}
+
+func TestRun_Config_MissingLLMIncludesOpenAISubscriptionRefreshError(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+
+	t.Setenv("OPENAI_API_KEY", "")
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		require.NotNil(t, ctx)
+		return errors.New("refresh failed")
 	}
-	if !strings.Contains(errOut.String(), "OPENAI_API_KEY") {
-		t.Fatalf("expected error to mention OPENAI_API_KEY, got stderr:\n%s", errOut.String())
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 1, code)
+	require.Empty(t, out.String())
+
+	got := errOut.String()
+	require.Contains(t, got, "No usable LLM auth or credentials are configured")
+	require.Contains(t, got, "OpenAI subscription auth could not be loaded/refreshed")
+	require.Contains(t, got, "refresh failed")
+}
+
+func TestRun_StartupValidationRefreshesOpenAISubscriptionBeforeMissingAuth(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.Empty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+			ProviderID:      llmmodel.ProviderIDOpenAI,
+			AccessToken:     "test-access-token",
+			AccountID:       "test-account-id",
+			APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+			ExpiresAt:       time.Now().Add(time.Hour),
+			RequiresNoStore: true,
+		})
+		return nil
 	}
-	if !strings.Contains(errOut.String(), "ANTHROPIC_API_KEY") {
-		t.Fatalf("expected error to mention ANTHROPIC_API_KEY, got stderr:\n%s", errOut.String())
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
+}
+
+func TestRun_Config_DefaultOpenAIModelRefreshesOpenAISubscriptionWhenOtherProviderHasAuth(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+	require.Equal(t, llmmodel.ProviderIDOpenAI, effectiveModel(Config{}).ProviderID())
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.NotEmpty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+			ProviderID:      llmmodel.ProviderIDOpenAI,
+			AccessToken:     "test-access-token",
+			AccountID:       "test-account-id",
+			APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+			ExpiresAt:       time.Now().Add(time.Hour),
+			RequiresNoStore: true,
+		})
+		return nil
 	}
-	if !strings.Contains(errOut.String(), "GEMINI_API_KEY") {
-		t.Fatalf("expected error to mention GEMINI_API_KEY, got stderr:\n%s", errOut.String())
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
+	require.True(t, llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI))
+}
+
+func TestRun_Config_APIKeyAuthSkipsOpenAISubscriptionRefresh(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		return nil
 	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 0, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
+}
+
+func TestRun_Config_NonOpenAIEffectiveModelSkipsOpenAISubscriptionRefresh(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(`{
+  "preferredprovider": "anthropic"
+}`), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 0, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Effective Model: "+string(llmmodel.ProviderIDAnthropic.DefaultModel()))
+}
+
+func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+
+	// Prove startup validation accepts provider subscription auth without any
+	// API-key-based model availability.
+	t.Setenv("OPENAI_API_KEY", "")
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		return nil
+	}
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		ProviderID:      llmmodel.ProviderIDOpenAI,
+		AccessToken:     "test-access-token",
+		AccountID:       "test-account-id",
+		APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+		ExpiresAt:       time.Now().Add(time.Hour),
+		RequiresNoStore: true,
+	})
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 0, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Current Configuration:")
 }
 
 func TestRun_Config_MissingTools_IsExitCode1(t *testing.T) {

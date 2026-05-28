@@ -8,6 +8,12 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 
 - Implements responses API only.
 - Sends conversation system message via top-level `instructions` on every create response request; omits it from input items.
+- Uses `llmmodel` OpenAI subscription auth instead of an API key when usable provider subscription auth exists for the model provider and the model has no explicit API key/env or endpoint override.
+	- Default provider API keys do not suppress subscription auth.
+	- Sends subscription access token as bearer/API-key auth.
+	- Sends subscription account ID as `ChatGPT-Account-ID`.
+	- Uses subscription endpoint URL for Responses requests.
+	- If subscription requires no-store, applies `SendOptions.NoStore` semantics even when caller did not set `NoStore`.
 - `SendOptions.NoStore` uses OpenAI Responses ZDR semantics:
 	- Sends `store=false`.
 	- Does not send `previous_response_id`.
@@ -17,6 +23,8 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 	- Does not replay provider output item IDs or provider reasoning items that require stored OpenAI state without encrypted content.
 	- Retained no-store assistant turns omit provider IDs and only keep reasoning state that is safe for stateless encrypted replay.
 - Default OpenAI behavior stores/links responses server-side where supported.
+- HTTP request debug logs include resolved request path.
+- Streamed events are authoritative for emitted content/tool calls/reasoning; completed responses with empty output produce final turns from streamed state when possible.
 
 ### Anthropic
 

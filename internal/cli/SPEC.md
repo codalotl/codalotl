@@ -11,8 +11,9 @@ We use the `internal/q/cli` CLI framework to implement it.
 When codalotl starts, we load and validate configuration and required tools, except for commands that explicitly opt out (for example `version`, `pr new`, and `-h`).
 - `auth openai` commands do not require existing LLM configuration.
 - If there's an error parsing the config file, or a config option is invalid, an error message is displayed and codalotl exits.
-- If there is no LLM configured (no LLM provider keys, including in ENV), an error message is displayed and codalotl exits.
-	- Note: a key must exist for **usable** models. The `llmmodel` package supports more providers than the CLI config schema currently exposes.
+- If no usable LLM auth is configured (provider key or provider subscription auth), an error message is displayed and codalotl exits.
+	- Note: credentials must exist for **usable** models. The `llmmodel` package supports more providers than the CLI config schema exposes.
+- Startup validation refreshes saved provider subscription auth before reporting missing LLM auth.
 - Required tools are checked:
 	- `go`
 	- `gopls`

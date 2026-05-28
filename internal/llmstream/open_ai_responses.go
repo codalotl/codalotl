@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -32,25 +33,31 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.context", err)
 	}
 
-	apiKey := llmmodel.GetAPIKey(sc.modelID)
-	if apiKey == "" {
-		return Turn{}, sc.LogNewErr("open_ai_send_async.api_key_missing", "model_id", string(sc.modelID), "provider", modelInfo.ProviderID)
+	auth, err := openAIResponsesResolveAuth(sc.modelID, modelInfo)
+	if err != nil {
+		return Turn{}, sc.LogWrappedErr("open_ai_send_async.auth", err)
 	}
+	effectiveOpt := openAIResponsesEffectiveSendOptions(opt, auth)
 
 	opts := []option.RequestOption{
-		option.WithAPIKey(apiKey),
+		option.WithAPIKey(auth.apiKey),
 		option.WithMaxRetries(3),
+		option.WithMiddleware(openAIResponsesDebugRequestMiddleware(auth.mode)),
 	}
-	if baseURL := llmmodel.GetAPIEndpointURL(sc.modelID); baseURL != "" {
-		opts = append(opts, option.WithBaseURL(baseURL))
+	if auth.baseURL != "" {
+		opts = append(opts, option.WithBaseURL(auth.baseURL))
+	}
+	if auth.accountID != "" {
+		opts = append(opts, option.WithHeader("ChatGPT-Account-ID", auth.accountID))
 	}
 	client := openai.NewClient(opts...)
 
-	params, err := sc.buildOpenAIResponsesRequestParams(modelInfo, opt)
+	params, err := sc.buildOpenAIResponsesRequestParams(modelInfo, effectiveOpt)
 	if err != nil {
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.build_params", err)
 	}
 
+	debugPrint(debugHTTPRequests, "HTTP REQUEST METADATA: create response(streaming=true)", auth.debugMetadata())
 	debugPrint(debugHTTPRequests, "HTTP REQUEST: create response(streaming=true)", params)
 
 	var diagnosticRequest map[string]any
@@ -87,12 +94,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogWrappedErr("open_ai_send_async.stream_init", err)
 	}
 
-	builders := &openAIResponsesContentBuilders{
-		idToTextBuilder:      make(map[string]*strings.Builder),
-		idToReasoningBuilder: make(map[string]*strings.Builder),
-		idToTextDone:         make(map[string]bool),
-		idToReasoningDone:    make(map[string]bool),
-	}
+	builders := newOpenAIResponsesContentBuilders()
 	var finalResp *Turn
 
 	// I've observed that the LLM sometimes gets stuck in an endless loop of sending "response.function_call_arguments.delta"
@@ -139,7 +141,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		if processedEvent != nil {
 
 			if processedEvent.Type == EventTypeCompletedSuccess {
-				preparedEvent := openAIResponsesPrepareCompletedSuccessEvent(*processedEvent, opt)
+				preparedEvent := openAIResponsesPrepareCompletedSuccessEvent(*processedEvent, effectiveOpt)
 				processedEvent = &preparedEvent
 				debugPrint(debugParsedResponses, "PARSED RESPONSE: EventTypeCompletedSuccess", processedEvent)
 				finalResp = processedEvent.Turn
@@ -165,14 +167,104 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 		return Turn{}, sc.LogNewErr("open_ai_send_async.not_completed")
 	}
 
-	sc.recordOpenAIResponseLink(*finalResp, opt)
+	sc.recordOpenAIResponseLink(*finalResp, effectiveOpt)
 
 	resp := *finalResp
 	resp.Role = RoleAssistant
 	return resp, nil
 }
 
+type openAIResponsesAuthMode string
+
+const (
+	openAIResponsesAuthModeAPIKey               openAIResponsesAuthMode = "api_key"
+	openAIResponsesAuthModeProviderSubscription openAIResponsesAuthMode = "provider_subscription"
+)
+
+type openAIResponsesAuthConfig struct {
+	mode            openAIResponsesAuthMode
+	apiKey          string
+	baseURL         string
+	accountID       string
+	requiresNoStore bool
+}
+
+func openAIResponsesResolveAuth(modelID llmmodel.ModelID, modelInfo llmmodel.ModelInfo) (openAIResponsesAuthConfig, error) {
+	if sub, ok := llmmodel.GetProviderSubscription(modelInfo.ProviderID); ok && openAIResponsesSubscriptionEligible(modelInfo, sub) {
+		return openAIResponsesAuthConfig{
+			mode:            openAIResponsesAuthModeProviderSubscription,
+			apiKey:          sub.AccessToken,
+			baseURL:         sub.APIEndpointURL,
+			accountID:       sub.AccountID,
+			requiresNoStore: sub.RequiresNoStore,
+		}, nil
+	}
+
+	apiKey := llmmodel.GetAPIKey(modelID)
+	if apiKey == "" {
+		return openAIResponsesAuthConfig{}, fmt.Errorf("api key missing for model_id=%q provider=%s", string(modelID), modelInfo.ProviderID)
+	}
+	return openAIResponsesAuthConfig{
+		mode:    openAIResponsesAuthModeAPIKey,
+		apiKey:  apiKey,
+		baseURL: llmmodel.GetAPIEndpointURL(modelID),
+	}, nil
+}
+
+func openAIResponsesSubscriptionEligible(modelInfo llmmodel.ModelInfo, sub llmmodel.ProviderSubscription) bool {
+	if sub.ProviderID != modelInfo.ProviderID {
+		return false
+	}
+	overrides := modelInfo.ModelOverrides
+	return strings.TrimSpace(overrides.APIActualKey) == "" &&
+		strings.TrimSpace(overrides.APIEnvKey) == "" &&
+		strings.TrimSpace(overrides.APIEndpointURL) == ""
+}
+
+func openAIResponsesEffectiveSendOptions(opt *SendOptions, auth openAIResponsesAuthConfig) *SendOptions {
+	if !auth.requiresNoStore {
+		return opt
+	}
+	if opt == nil {
+		return &SendOptions{NoStore: true}
+	}
+	effective := *opt
+	effective.NoStore = true
+	return &effective
+}
+
+func openAIResponsesEffectiveSendOptionsForModel(modelInfo llmmodel.ModelInfo, opt *SendOptions) *SendOptions {
+	sub, ok := llmmodel.GetProviderSubscription(modelInfo.ProviderID)
+	if !ok || !openAIResponsesSubscriptionEligible(modelInfo, sub) || !sub.RequiresNoStore {
+		return opt
+	}
+	return openAIResponsesEffectiveSendOptions(opt, openAIResponsesAuthConfig{requiresNoStore: true})
+}
+
+func (a openAIResponsesAuthConfig) debugMetadata() map[string]any {
+	return map[string]any{
+		"auth_mode":      string(a.mode),
+		"base_url":       a.baseURL,
+		"has_account_id": a.accountID != "",
+	}
+}
+
+func openAIResponsesDebugRequestMiddleware(authMode openAIResponsesAuthMode) option.Middleware {
+	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		if req != nil && req.URL != nil {
+			debugPrint(debugHTTPRequests, "HTTP REQUEST RESOLVED: create response(streaming=true)", map[string]any{
+				"auth_mode": string(authMode),
+				"method":    req.Method,
+				"url_host":  req.URL.Host,
+				"url_path":  req.URL.EscapedPath(),
+			})
+		}
+		return next(req)
+	}
+}
+
 func (sc *streamingConversation) buildOpenAIResponsesRequestParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
+	opt = openAIResponsesEffectiveSendOptionsForModel(modelInfo, opt)
 	params, err := sc.buildOpenAIResponsesParams(modelInfo, opt)
 	if err != nil {
 		return responses.ResponseNewParams{}, err
@@ -363,6 +455,42 @@ type openAIResponsesContentBuilders struct {
 	idToReasoningBuilder map[string]*strings.Builder
 	idToTextDone         map[string]bool
 	idToReasoningDone    map[string]bool
+	streamedParts        []ContentPart
+	streamedPartIndex    map[string]int
+}
+
+func newOpenAIResponsesContentBuilders() *openAIResponsesContentBuilders {
+	return &openAIResponsesContentBuilders{
+		idToTextBuilder:      make(map[string]*strings.Builder),
+		idToReasoningBuilder: make(map[string]*strings.Builder),
+		idToTextDone:         make(map[string]bool),
+		idToReasoningDone:    make(map[string]bool),
+		streamedPartIndex:    make(map[string]int),
+	}
+}
+
+func (b *openAIResponsesContentBuilders) rememberStreamedPart(key string, part ContentPart) {
+	if b == nil || key == "" || part == nil {
+		return
+	}
+	if b.streamedPartIndex == nil {
+		b.streamedPartIndex = make(map[string]int)
+	}
+	if idx, ok := b.streamedPartIndex[key]; ok {
+		b.streamedParts[idx] = part
+		return
+	}
+	b.streamedPartIndex[key] = len(b.streamedParts)
+	b.streamedParts = append(b.streamedParts, part)
+}
+
+func (b *openAIResponsesContentBuilders) streamedTurnParts() []ContentPart {
+	if b == nil || len(b.streamedParts) == 0 {
+		return nil
+	}
+	parts := make([]ContentPart, len(b.streamedParts))
+	copy(parts, b.streamedParts)
+	return parts
 }
 
 // openAIResponsesProcessEvent processes evt, returning:
@@ -371,6 +499,10 @@ type openAIResponsesContentBuilders struct {
 //     before exiting their loop.
 //   - An error. Errors do NOT get built events - we just return the error, and the caller deals with it.
 func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builders *openAIResponsesContentBuilders) (*Event, bool, error) {
+	if builders == nil {
+		builders = newOpenAIResponsesContentBuilders()
+	}
+
 	switch evt.Type {
 	case "response.queued":
 		return &Event{Type: EventTypeQueued}, true, nil
@@ -380,7 +512,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 	case "response.completed":
 		evtCompleted := evt.AsResponseCompleted()
 		debugPrint(debugHTTPResponses, "HTTP RESPONSE: response.completed", json.RawMessage(evt.RawJSON()))
-		return &Event{Type: EventTypeCompletedSuccess, Turn: openaiResponesBuildResponse(evtCompleted.Response)}, false, nil
+		return &Event{Type: EventTypeCompletedSuccess, Turn: openAIResponsesBuildCompletedResponse(evtCompleted.Response, builders)}, false, nil
 	case "response.failed":
 		evtFailed := evt.AsResponseFailed()
 		code := string(evtFailed.Response.Error.Code)
@@ -415,7 +547,9 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				builders.idToTextBuilder[itemID] = builder
 			}
 			builder.WriteString(evtDelta.Delta)
-			return &Event{Type: EventTypeTextDelta, Delta: evtDelta.Delta, Text: &TextContent{ProviderID: itemID, Content: builder.String()}, Done: false}, true, nil
+			text := TextContent{ProviderID: itemID, Content: builder.String()}
+			builders.rememberStreamedPart("text:"+itemID, text)
+			return &Event{Type: EventTypeTextDelta, Delta: evtDelta.Delta, Text: &text, Done: false}, true, nil
 		}
 	case "response.output_text.done":
 		evtDone := evt.AsResponseOutputTextDone()
@@ -432,7 +566,9 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				builders.idToTextBuilder[itemID] = builder
 			}
 			deltaTxt := strings.TrimPrefix(evtDone.Text, builder.String())
-			return &Event{Type: EventTypeTextDelta, Delta: deltaTxt, Text: &TextContent{ProviderID: itemID, Content: evtDone.Text}, Done: true}, true, nil
+			text := TextContent{ProviderID: itemID, Content: evtDone.Text}
+			builders.rememberStreamedPart("text:"+itemID, text)
+			return &Event{Type: EventTypeTextDelta, Delta: deltaTxt, Text: &text, Done: true}, true, nil
 		}
 	case "response.reasoning_text.done":
 		debugPrint(debugHTTPResponses, "HTTP RESPONSE: response.reasoning_text.done", json.RawMessage(evt.RawJSON()))
@@ -454,7 +590,9 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				builders.idToReasoningBuilder[subItemID] = builder
 			}
 			builder.WriteString(evtDelta.Delta)
-			return &Event{Type: EventTypeReasoningDelta, Delta: evtDelta.Delta, Reasoning: &ReasoningContent{ProviderID: itemID, Content: builder.String()}, Done: false}, true, nil
+			reasoning := ReasoningContent{ProviderID: itemID, Content: builder.String()}
+			builders.rememberStreamedPart("reasoning_summary:"+subItemID, reasoning)
+			return &Event{Type: EventTypeReasoningDelta, Delta: evtDelta.Delta, Reasoning: &reasoning, Done: false}, true, nil
 		}
 		return nil, true, nil
 	case "response.reasoning_summary_part.done": // NOTE: this is PART.done, not TEXT.done
@@ -470,10 +608,12 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 			builder := builders.idToReasoningBuilder[subItemID]
 			if builder == nil {
 				builder = &strings.Builder{}
-				builders.idToTextBuilder[subItemID] = builder
+				builders.idToReasoningBuilder[subItemID] = builder
 			}
 			deltaTxt := strings.TrimPrefix(evtDone.Part.Text, builder.String())
-			return &Event{Type: EventTypeReasoningDelta, Delta: deltaTxt, Reasoning: &ReasoningContent{ProviderID: itemID, Content: evtDone.Part.Text}, Done: true}, true, nil
+			reasoning := ReasoningContent{ProviderID: itemID, Content: evtDone.Part.Text}
+			builders.rememberStreamedPart("reasoning_summary:"+subItemID, reasoning)
+			return &Event{Type: EventTypeReasoningDelta, Delta: deltaTxt, Reasoning: &reasoning, Done: true}, true, nil
 		}
 	case "response.output_item.done":
 		evtOutputItem := evt.AsResponseOutputItemDone()
@@ -488,6 +628,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				Input:      fn.Arguments,
 				Type:       item.Type,
 			}
+			builders.rememberStreamedPart("tool:"+tc.Type+":"+tc.CallID, *tc)
 			return &Event{Type: EventTypeToolUse, ToolCall: tc}, true, nil
 		case "custom_tool_call":
 			custom := item.AsCustomToolCall()
@@ -498,7 +639,25 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				Input:      custom.Input,
 				Type:       item.Type,
 			}
+			builders.rememberStreamedPart("tool:"+tc.Type+":"+tc.CallID, *tc)
 			return &Event{Type: EventTypeToolUse, ToolCall: tc}, true, nil
+		case "reasoning":
+			reasoning := item.AsReasoning()
+			for i, summaryItem := range reasoning.Summary {
+				if summaryItem.Text == "" {
+					continue
+				}
+				builders.rememberStreamedPart(
+					fmt.Sprintf("reasoning_summary:%s:%d", reasoning.ID, i),
+					ReasoningContent{ProviderID: reasoning.ID, Content: summaryItem.Text},
+				)
+			}
+			if reasoning.EncryptedContent != "" {
+				builders.rememberStreamedPart(
+					"reasoning_state:"+reasoning.ID,
+					ReasoningContent{ProviderID: reasoning.ID, ProviderState: reasoning.EncryptedContent},
+				)
+			}
 		}
 	case "response.function_call_arguments.delta":
 		evtFCDelta := evt.AsResponseFunctionCallArgumentsDelta()
@@ -707,6 +866,30 @@ func openaiResponesMapMessageRole(role Role) responses.EasyInputMessageRole {
 	default:
 		panic(fmt.Sprintf("unknown role: %v", role))
 	}
+}
+
+func openAIResponsesBuildCompletedResponse(resp responses.Response, builders *openAIResponsesContentBuilders) *Turn {
+	turn := openaiResponesBuildResponse(resp)
+	if len(resp.Output) != 0 {
+		return turn
+	}
+
+	streamedParts := builders.streamedTurnParts()
+	if len(streamedParts) == 0 {
+		return turn
+	}
+	turn.Parts = streamedParts
+	turn.FinishReason = openaiResponesMapFinishReason(resp, openAIResponsesPartsHaveToolCalls(streamedParts))
+	return turn
+}
+
+func openAIResponsesPartsHaveToolCalls(parts []ContentPart) bool {
+	for _, part := range parts {
+		if _, ok := part.(ToolCall); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // openaiResponesBuildResponse maps an OpenAI responses.Response into our Response type.

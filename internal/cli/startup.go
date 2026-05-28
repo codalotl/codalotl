@@ -1,16 +1,21 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/goclitools"
 	"github.com/codalotl/codalotl/internal/llmmodel"
+	"github.com/codalotl/codalotl/internal/subscriptions/openaisub"
 )
+
+var refreshOpenAIDefaultProviderSubscription = openaisub.RefreshDefaultProviderSubscription
 
 type startupValidationError struct {
 	MissingTools []goclitools.ToolStatus
 	MissingLLM   bool
+	LLMAuthError error
 	LLMEnvVars   []string
 }
 
@@ -53,11 +58,18 @@ func (e startupValidationError) Error() string {
 	}
 
 	if e.MissingLLM {
-		b.WriteString("\nNo LLM provider API key is configured.\n")
+		b.WriteString("\nNo usable LLM auth or credentials are configured.\n")
+
+		if e.LLMAuthError != nil {
+			b.WriteString("\nOpenAI subscription auth could not be loaded/refreshed:\n")
+			b.WriteString("- ")
+			b.WriteString(e.LLMAuthError.Error())
+			b.WriteString("\n")
+		}
 
 		relevant := e.LLMEnvVars
 		if len(relevant) > 0 {
-			b.WriteString("\nTo fix, set one of these ENV variables (recommended):\n")
+			b.WriteString("\nTo fix, set one of these provider API key ENV variables:\n")
 			for _, ev := range relevant {
 				b.WriteString("- ")
 				b.WriteString(ev)
@@ -65,7 +77,10 @@ func (e startupValidationError) Error() string {
 			}
 		}
 
-		b.WriteString("\nOr add a config file:\n")
+		b.WriteString("\nOr log in with supported provider subscription auth:\n")
+		b.WriteString("- codalotl auth openai login\n")
+
+		b.WriteString("\nOr add an API key to a config file:\n")
 		b.WriteString("- Global: ")
 		b.WriteString(globalConfigPath())
 		b.WriteString("\n")
@@ -114,7 +129,11 @@ func exampleProviderKeyID(relevantEnvVars []string) string {
 	return ""
 }
 
-func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) error {
+func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools.ToolRequirement) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	toolStatuses := goclitools.CheckTools(requiredTools)
 	var missingTools []goclitools.ToolStatus
 	for _, st := range toolStatuses {
@@ -123,7 +142,13 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 		}
 	}
 
-	missingLLM := len(llmmodel.AvailableModelIDsWithAPIKey()) == 0
+	availableModels := llmmodel.AvailableModelIDsWithAuth()
+	var refreshErr error
+	if shouldRefreshOpenAISubscriptionForStartup(cfg, availableModels) {
+		refreshErr = refreshOpenAIDefaultProviderSubscription(ctx)
+		availableModels = llmmodel.AvailableModelIDsWithAuth()
+	}
+	missingLLM := len(availableModels) == 0
 
 	if len(missingTools) == 0 && !missingLLM {
 		return nil
@@ -131,6 +156,24 @@ func validateStartup(cfg Config, requiredTools []goclitools.ToolRequirement) err
 	return startupValidationError{
 		MissingTools: missingTools,
 		MissingLLM:   missingLLM,
+		LLMAuthError: refreshErr,
 		LLMEnvVars:   llmProviderEnvVarsForDisplay(cfg),
 	}
+}
+
+func shouldRefreshOpenAISubscriptionForStartup(cfg Config, availableModels []llmmodel.ModelID) bool {
+	if len(availableModels) == 0 {
+		return true
+	}
+
+	effective := effectiveModel(cfg)
+	if effective.ProviderID() != llmmodel.ProviderIDOpenAI {
+		return false
+	}
+	for _, modelID := range availableModels {
+		if modelID == effective {
+			return false
+		}
+	}
+	return true
 }

@@ -1,3 +1,8 @@
+// Package openaisub manages OpenAI ChatGPT subscription authentication for codalotl.
+//
+// Operations that use DefaultPath also keep llmmodel's OpenAI provider subscription auth in sync. Package initialization loads usable default saved auth without
+// network I/O. Login, CheckStatus, CheckStatusWithOptions, and RefreshDefaultProviderSubscription can update or clear the provider subscription as they save, load,
+// or refresh default credentials. Operations using a non-default Options.Path only affect that auth file and do not configure llmmodel provider subscription auth.
 package openaisub
 
 import (
@@ -18,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/q/cascade"
 )
 
@@ -25,17 +31,19 @@ import (
 const ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
 const (
-	authType            = "openai_subscription"
-	defaultIssuer       = "https://auth.openai.com"
-	defaultOAuthIssuer  = "https://auth.openai.com"
-	deviceCodePath      = "/api/accounts/deviceauth/usercode"
-	deviceTokenPath     = "/api/accounts/deviceauth/token"
-	oauthTokenPath      = "/oauth/token"
-	openAIAuthClaim     = "https://api.openai.com/auth"
-	defaultPollTimeout  = 15 * time.Minute
-	defaultPollInterval = 5 * time.Second
-	expiryRefreshSlack  = time.Minute
-	fallbackExpiresIn   = time.Hour
+	authType              = "openai_subscription"
+	defaultIssuer         = "https://auth.openai.com"
+	defaultOAuthIssuer    = "https://auth.openai.com"
+	deviceCodePath        = "/api/accounts/deviceauth/usercode"
+	deviceTokenPath       = "/api/accounts/deviceauth/token"
+	oauthTokenPath        = "/oauth/token"
+	openAIAuthClaim       = "https://api.openai.com/auth"
+	defaultPollTimeout    = 15 * time.Minute
+	defaultPollInterval   = 5 * time.Second
+	startupRefreshTimeout = 10 * time.Second
+	expiryRefreshSlack    = time.Minute
+	fallbackExpiresIn     = time.Hour
+	responsesBaseURL      = "https://chatgpt.com/backend-api/codex"
 )
 
 // Options configures OpenAI subscription auth operations.
@@ -72,12 +80,66 @@ type authFile struct {
 	ChatGPTAccountID string    `json:"chatgpt_account_id"`
 }
 
+func init() {
+	loadDefaultProviderSubscription()
+}
+
+func loadDefaultProviderSubscription() {
+	auth, path, err := loadAuth(Options{})
+	if err != nil {
+		return
+	}
+	syncProviderSubscription(path, auth, nowFunc(Options{})())
+}
+
+// RefreshDefaultProviderSubscription refreshes and syncs default saved auth for startup availability.
+//
+// It is the explicit startup hook for callers that need to refresh expired default credentials before model selection or requests depend on subscription auth. Package
+// initialization only loads already usable default saved auth.
+func RefreshDefaultProviderSubscription(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, startupRefreshTimeout)
+	defer cancel()
+	return refreshDefaultProviderSubscriptionWithOptions(ctx, Options{})
+}
+
+func refreshDefaultProviderSubscriptionWithOptions(ctx context.Context, opts Options) error {
+	opts.Path = ""
+	auth, path, err := loadAuth(opts)
+	if errors.Is(err, os.ErrNotExist) {
+		clearProviderSubscription(path)
+		return nil
+	}
+	if err != nil {
+		clearProviderSubscription(path)
+		return err
+	}
+	now := nowFunc(opts)()
+	if auth.expired(now) && auth.RefreshToken != "" {
+		refreshed, refreshErr := refresh(ctx, opts, auth)
+		if refreshErr != nil {
+			syncProviderSubscription(path, auth, now)
+			return fmt.Errorf("refresh OpenAI subscription auth: %w", refreshErr)
+		}
+		auth = refreshed
+		if err := saveAuth(path, auth); err != nil {
+			clearProviderSubscription(path)
+			return err
+		}
+		now = nowFunc(opts)()
+	}
+	syncProviderSubscription(path, auth, now)
+	return nil
+}
+
 // DefaultPath returns the default OpenAI subscription auth file path.
 func DefaultPath() string {
 	return cascade.ExpandPath("~/.codalotl/openai_auth.json")
 }
 
 // Login runs the OpenAI subscription device login flow and saves usable auth.
+//
+// When opts uses DefaultPath, a successful login also configures llmmodel's OpenAI provider subscription auth. Logins saved to a non-default Options.Path do not
+// affect llmmodel provider subscription auth.
 func Login(ctx context.Context, opts LoginOptions) error {
 	path := authPath(opts.Options)
 	client := httpClient(opts.Options)
@@ -127,6 +189,7 @@ func Login(ctx context.Context, opts LoginOptions) error {
 	if err := saveAuth(path, auth); err != nil {
 		return err
 	}
+	syncProviderSubscription(path, auth, now)
 	_, err = fmt.Fprintln(out, "Logged in to OpenAI subscription.")
 	return err
 }
@@ -142,21 +205,28 @@ func LogoutWithOptions(opts Options) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	clearProviderSubscription(authPath(opts))
 	return nil
 }
 
-// CheckStatus reports saved OpenAI subscription auth status.
+// CheckStatus reports default saved OpenAI subscription auth status and syncs llmmodel's OpenAI provider subscription auth.
 func CheckStatus(ctx context.Context) (Status, error) {
 	return CheckStatusWithOptions(ctx, Options{})
 }
 
 // CheckStatusWithOptions reports saved OpenAI subscription auth status.
+//
+// It refreshes expired saved credentials when a refresh token is available. When opts uses DefaultPath, it also syncs llmmodel's OpenAI provider subscription auth;
+// a missing, invalid, or unrefreshable default auth file clears that provider subscription. A non-default Options.Path reports and refreshes only that file and
+// does not affect llmmodel provider subscription auth.
 func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 	auth, path, err := loadAuth(opts)
 	if errors.Is(err, os.ErrNotExist) {
+		clearProviderSubscription(path)
 		return Status{Path: path}, nil
 	}
 	if err != nil {
+		clearProviderSubscription(path)
 		return Status{Path: path}, err
 	}
 
@@ -164,14 +234,17 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 	if auth.expired(now) && auth.RefreshToken != "" {
 		refreshed, refreshErr := refresh(ctx, opts, auth)
 		if refreshErr != nil {
+			syncProviderSubscription(path, auth, now)
 			return statusFromAuth(path, auth, now), nil
 		}
 		auth = refreshed
 		if err := saveAuth(path, auth); err != nil {
+			clearProviderSubscription(path)
 			return Status{Path: path}, err
 		}
 		now = nowFunc(opts)()
 	}
+	syncProviderSubscription(path, auth, now)
 	return statusFromAuth(path, auth, now), nil
 }
 
@@ -271,6 +344,35 @@ func (auth authFile) valid(now time.Time) bool {
 
 func (auth authFile) expired(now time.Time) bool {
 	return auth.ExpiresAt.IsZero() || !auth.ExpiresAt.After(now.Add(expiryRefreshSlack))
+}
+
+func syncProviderSubscription(path string, auth authFile, now time.Time) {
+	if !isDefaultAuthPath(path) {
+		return
+	}
+	if !auth.valid(now) {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+		return
+	}
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+		ProviderID:       llmmodel.ProviderIDOpenAI,
+		AccessToken:      auth.AccessToken,
+		AccountID:        auth.ChatGPTAccountID,
+		APIEndpointURL:   responsesBaseURL,
+		ExpiresAt:        auth.ExpiresAt,
+		RequiresNoStore:  true,
+		RootInstructions: true,
+	})
+}
+
+func clearProviderSubscription(path string) {
+	if isDefaultAuthPath(path) {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	}
+}
+
+func isDefaultAuthPath(path string) bool {
+	return filepath.Clean(path) == filepath.Clean(DefaultPath())
 }
 
 type deviceCodeResponse struct {
