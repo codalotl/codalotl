@@ -325,6 +325,7 @@ func prRefactorAllPackageRefactorsTemplate(packagePath string) string {
 In this PR, refactor %s.
 
 Target package: %s
+Selected refactor flow: all refactors for one package
 
 Run these refactors in order:
 1. refactor("name": "docs-add", "package": "%s")
@@ -336,6 +337,7 @@ Run these refactors in order:
 Additional instructions:
 - After each refactor, inspect the diff before continuing.
 - If the diff looks good, commit that refactor separately. Include source changes and relevant CAS files in the commit.
+- If a refactor result is a no-op, skip it with a note in this PR file.
 - If the diff looks risky or outside scope, avoid risky fix-forward behavior. Revert, skip with a note in this PR file, or make only a minimal low-risk correction.
 - These refactors are intended to be safe and low risk. Do not change public API or behavior except for documentation changes.
 - After the final refactor is committed, use the codalotl_cli tool to run:
