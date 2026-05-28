@@ -141,13 +141,7 @@ func extractFuncSnippet(funcDecl *ast.FuncDecl, file *File) (*FuncSnippet, error
 	identifier := FuncIdentifier(receiverType, name, file.FileName, pos.Line, pos.Column)
 
 	// Get function documentation
-	doc := ""
-	if funcDecl.Doc != nil {
-		// Get the raw documentation from the file contents using position information
-		docStart := fset.Position(funcDecl.Doc.Pos()).Offset
-		docEnd := fset.Position(funcDecl.Doc.End()).Offset
-		doc = ensureNewline(string(file.Contents[docStart:docEnd]))
-	}
+	doc := commentGroupText(fset, file.Contents, funcDecl.Doc)
 
 	// Get function signature - from the start of "func" to the opening brace
 	funcStart := fset.Position(funcDecl.Pos()).Offset

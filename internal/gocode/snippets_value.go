@@ -200,13 +200,8 @@ func extractValueSnippet(genDecl *ast.GenDecl, file *File) (*ValueSnippet, error
 	isBlock := genDecl.Lparen.IsValid()
 
 	// Extract block-level documentation
-	var doc string
+	doc := commentGroupText(fset, file.Contents, genDecl.Doc)
 	var blockDoc string
-	if genDecl.Doc != nil {
-		docStart := fset.Position(genDecl.Doc.Pos()).Offset
-		docEnd := fset.Position(genDecl.Doc.End()).Offset
-		doc = ensureNewline(string(file.Contents[docStart:docEnd]))
-	}
 	if isBlock {
 		blockDoc = doc
 	}
@@ -223,14 +218,10 @@ func extractValueSnippet(genDecl *ast.GenDecl, file *File) (*ValueSnippet, error
 		if !isBlock {
 			specDoc = doc
 		} else if valueSpec.Doc != nil {
-			docStart := fset.Position(valueSpec.Doc.Pos()).Offset
-			docEnd := fset.Position(valueSpec.Doc.End()).Offset
-			specDoc = ensureNewline(string(file.Contents[docStart:docEnd]))
+			specDoc = commentGroupText(fset, file.Contents, valueSpec.Doc)
 		}
 		if valueSpec.Comment != nil {
-			commentStart := fset.Position(valueSpec.Comment.Pos()).Offset
-			commentEnd := fset.Position(valueSpec.Comment.End()).Offset
-			specDoc += ensureNewline(string(file.Contents[commentStart:commentEnd]))
+			specDoc += commentGroupText(fset, file.Contents, valueSpec.Comment)
 		}
 
 		for _, name := range valueSpec.Names {

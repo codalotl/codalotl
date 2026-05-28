@@ -92,9 +92,7 @@ func extractPackageDocSnippet(file *File) (*PackageDocSnippet, error) {
 	snippet := file.Contents[snippetStart:snippetEnd]
 
 	// Get the raw documentation from the file contents
-	docStart := file.FileSet.Position(file.AST.Doc.Pos()).Offset
-	docEnd := file.FileSet.Position(file.AST.Doc.End()).Offset
-	doc := ensureNewline(string(file.Contents[docStart:docEnd]))
+	doc := commentGroupText(file.FileSet, file.Contents, file.AST.Doc)
 
 	return &PackageDocSnippet{
 		Identifier: PackageIdentifierPerFile(file.FileName),
