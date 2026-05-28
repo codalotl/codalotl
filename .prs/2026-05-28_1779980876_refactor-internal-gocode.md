@@ -27,7 +27,7 @@ Additional instructions:
 ### Package internal/gocode
 
 Run low-risk refactor workflows in the requested order, inspecting and committing each acceptable diff separately:
-- `docs-add`
+- [DONE] `docs-add` - added missing important Go documentation in `internal/gocode`; inspected diff and verified with `go test ./internal/gocode`.
 - `docs-fix`
 - `dry`
 - `test-cleanup`
@@ -51,3 +51,4 @@ Pending.
 - PR file: `.prs/2026-05-28_1779980876_refactor-internal-gocode.md`
 - Target package: `internal/gocode`
 - Workspace was clean before adding this plan.
+- Completed `docs-add` in commit `c79c070`; it only added/adjusted Go documentation in `internal/gocode` and passed `go test ./internal/gocode`.
