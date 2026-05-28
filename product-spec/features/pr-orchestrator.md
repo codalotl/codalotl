@@ -43,14 +43,20 @@ This makes a new PR File with proper naming and sets up a git branch for the orc
 - If origin is set up, pushes to origin with remote tracking.
 - If `--no-git`, then none of the git stuff is done. We just make the file.
 
-### codalotl pr refactor --package=<path/to/pkg>
+### codalotl pr refactor (--package=<path/to/pkg> | --all-packages) [--refactor=<name>]
 
 This is a special case of `codalotl pr new`.
-- `--package` is required.
-- Feature name is automatically generated. Something like `refactor-internal-mypkg` (if `internal/mypkg` is the package).
-- PR file pre-baked instructions on how to refactor the package.
-- Instructions include which specific refactors to do, how to do commits, how to review, how to deal with CAS files and recertify them, and so on.
-    - It should do all refactors we have.
+- One package selector is required:
+    - `--package=<path/to/pkg>` targets one package.
+    - `--all-packages` targets all Go packages in the current module.
+- `--refactor=<name>` is optional. Without it, run all refactors we have.
+- Feature name is automatically generated. Examples:
+    - `refactor-internal-mypkg` for `--package=internal/mypkg`
+    - `refactor-docs-fix-all-packages` for `--all-packages --refactor=docs-fix`
+- PR file pre-baked instructions include what to run, how to commit/review, how to skip no-op or risky changes, and how to deal with CAS files and recertify them.
+- `--package=<path/to/pkg>` with no `--refactor` runs all refactors on one package.
+- `--all-packages --refactor=<name>` runs one refactor across all packages. Due to the CAS system, this will only refactor packages that are not up-to-date in their refactors.
+- `--all-packages` without `--refactor` is not supported. It makes PRs too large.
 - The user can then run the orchestrator as normal, possibly customizing the PR file as they see fit beforehand.
 
 ### codalotl pr prune [--days=N]
