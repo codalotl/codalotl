@@ -203,6 +203,16 @@ func ensureNewline(s string) string {
 	return s + "\n"
 }
 
+func commentGroupText(fset *token.FileSet, fileContents []byte, group *ast.CommentGroup) string {
+	if group == nil {
+		return ""
+	}
+
+	start := fset.Position(group.Pos()).Offset
+	end := fset.Position(group.End()).Offset
+	return ensureNewline(string(fileContents[start:end]))
+}
+
 func positionWithBaseFilename(position token.Position) token.Position {
 	position.Filename = filepath.Base(position.Filename)
 	return position

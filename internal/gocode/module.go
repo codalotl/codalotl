@@ -193,6 +193,8 @@ func (m *Module) ResolvePackageByImport(importPath string) (moduleAbsDir string,
 	return moduleAbsDir, packageAbsDir, packageRelDir, fqImportPath, nil
 }
 
+// resolveOnePackage loads pattern as Go tooling would from fromDir and returns the single resolved package. It wraps missing or non-matching packages with ErrResolveNotFound
+// and returns an error if the pattern resolves to zero, multiple, errored, or incomplete packages.
 func resolveOnePackage(fromDir string, pattern string) (*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedModule | packages.NeedFiles | packages.NeedName,
@@ -231,6 +233,10 @@ func resolveOnePackage(fromDir string, pattern string) (*packages.Package, error
 	return pkg, nil
 }
 
+// resolveNotFound reports whether package loading failed because the package could not be resolved.
+//
+// It checks the load error and package errors for go list messages that indicate a missing, excluded, or otherwise non-matching package rather than an internal
+// loading failure.
 func resolveNotFound(loadErr error, pkgs []*packages.Package) bool {
 	var msgs []string
 	if loadErr != nil {

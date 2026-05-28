@@ -20,7 +20,7 @@ var _ Snippet = (*TypeSnippet)(nil) // TypeSnippet implements Snippet
 type TypeSnippet struct {
 	Identifiers []string // all identifiers defined by the type block (length will be 1 if it's a single-spec type like "type MyType int")
 	IsBlock     bool     // true if a block (ex: "type ( ... )")
-	FileName    string   // file name (no dirs) where the value was defined (ex: "foo.go")
+	FileName    string   // File name (no dirs) where the type was defined (ex: "foo.go").
 	Snippet     []byte   // the docs + decl as it appears in source; shares buffer with File's Contents
 	BlockDoc    string   // "" if not a block; otherwise, the doc above the overall block
 
@@ -190,17 +190,8 @@ func extractFieldDocs(typeName string, typeExpr ast.Expr, fset *token.FileSet, f
 
 		for _, field := range t.Fields.List {
 			// Get field documentation
-			var fieldDoc string
-			if field.Doc != nil {
-				docStart := fset.Position(field.Doc.Pos()).Offset
-				docEnd := fset.Position(field.Doc.End()).Offset
-				fieldDoc += ensureNewline(string(fileContents[docStart:docEnd]))
-			}
-			if field.Comment != nil {
-				commentStart := fset.Position(field.Comment.Pos()).Offset
-				commentEnd := fset.Position(field.Comment.End()).Offset
-				fieldDoc += ensureNewline(string(fileContents[commentStart:commentEnd]))
-			}
+			fieldDoc := commentGroupText(fset, fileContents, field.Doc)
+			fieldDoc += commentGroupText(fset, fileContents, field.Comment)
 
 			// Handle field names
 			if len(field.Names) > 0 {
@@ -246,17 +237,8 @@ func extractFieldDocs(typeName string, typeExpr ast.Expr, fset *token.FileSet, f
 
 		for _, method := range t.Methods.List {
 			// Get method documentation
-			var methodDoc string
-			if method.Doc != nil {
-				docStart := fset.Position(method.Doc.Pos()).Offset
-				docEnd := fset.Position(method.Doc.End()).Offset
-				methodDoc += ensureNewline(string(fileContents[docStart:docEnd]))
-			}
-			if method.Comment != nil {
-				commentStart := fset.Position(method.Comment.Pos()).Offset
-				commentEnd := fset.Position(method.Comment.End()).Offset
-				methodDoc += ensureNewline(string(fileContents[commentStart:commentEnd]))
-			}
+			methodDoc := commentGroupText(fset, fileContents, method.Doc)
+			methodDoc += commentGroupText(fset, fileContents, method.Comment)
 
 			// Handle method names
 			if len(method.Names) > 0 {
@@ -314,13 +296,8 @@ func extractTypeSnippet(genDecl *ast.GenDecl, file *File) (*TypeSnippet, error) 
 	isBlock := genDecl.Lparen.IsValid()
 
 	// Extract block-level documentation
-	var doc string
+	doc := commentGroupText(fset, file.Contents, genDecl.Doc)
 	var blockDoc string
-	if genDecl.Doc != nil {
-		docStart := fset.Position(genDecl.Doc.Pos()).Offset
-		docEnd := fset.Position(genDecl.Doc.End()).Offset
-		doc = ensureNewline(string(file.Contents[docStart:docEnd]))
-	}
 	if isBlock {
 		blockDoc = doc
 	}
@@ -348,15 +325,11 @@ func extractTypeSnippet(genDecl *ast.GenDecl, file *File) (*TypeSnippet, error) 
 			specDoc = doc
 		} else if typeSpec.Doc != nil {
 			// Get doc comment from file contents
-			docStart := fset.Position(typeSpec.Doc.Pos()).Offset
-			docEnd := fset.Position(typeSpec.Doc.End()).Offset
-			specDoc = ensureNewline(string(file.Contents[docStart:docEnd]))
+			specDoc = commentGroupText(fset, file.Contents, typeSpec.Doc)
 		}
 		if typeSpec.Comment != nil {
 			// Get end-of-line comment from file contents
-			commentStart := fset.Position(typeSpec.Comment.Pos()).Offset
-			commentEnd := fset.Position(typeSpec.Comment.End()).Offset
-			specDoc += ensureNewline(string(file.Contents[commentStart:commentEnd]))
+			specDoc += commentGroupText(fset, file.Contents, typeSpec.Comment)
 		}
 
 		// Assign the doc to the identifier

@@ -47,7 +47,7 @@ func (e *expectedSnippet) FullBytes() []byte {
 	return e.fullBytes
 }
 
-// PublicSnippet returns the publicSnippet field and any error, or the preserveMixedPublicSnippet field when preserveMixed is true and hasPreserveMixedPublicSnippet
+// PublicSnippet returns the publicSnippet field and a nil error, or the preserveMixedPublicSnippet field when preserveMixed is true and hasPreserveMixedPublicSnippet
 // is true.
 func (e *expectedSnippet) PublicSnippet(preserveMixed bool) ([]byte, error) {
 	if preserveMixed && e.hasPreserveMixedPublicSnippet {
@@ -1688,6 +1688,33 @@ func TestExtractSnippets(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSnippetBytesReturnOriginalSnippet(t *testing.T) {
+	funcSnippets, valueSnippets, typeSnippets, packageDocSnippet, err := extractSnippetsFromSource(t, dedent(`
+		// Package testpkg documents testpkg.
+		package testpkg
+
+		// Foo does something.
+		func Foo() {}
+
+		// Bar is a value.
+		var Bar = 1
+
+		// Baz is a type.
+		type Baz struct{}
+	`))
+	require.NoError(t, err)
+	require.Len(t, funcSnippets, 1)
+	require.Len(t, valueSnippets, 1)
+	require.Len(t, typeSnippets, 1)
+	require.NotNil(t, packageDocSnippet)
+
+	assert.Equal(t, funcSnippets[0].Snippet, funcSnippets[0].Bytes())
+	assert.Equal(t, valueSnippets[0].Snippet, valueSnippets[0].Bytes())
+	assert.Equal(t, typeSnippets[0].Snippet, typeSnippets[0].Bytes())
+	assert.Equal(t, packageDocSnippet.Snippet, packageDocSnippet.Bytes())
+	assert.Equal(t, packageDocSnippet.Snippet, packageDocSnippet.FullBytes())
 }
 
 func TestExtractFuncSnippet(t *testing.T) {
