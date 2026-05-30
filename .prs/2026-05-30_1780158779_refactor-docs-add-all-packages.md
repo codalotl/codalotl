@@ -29,6 +29,8 @@ Additional instructions:
 - `docs-improve-from-clarify` returned `no_opportunity` for `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`; no files or CAS records changed.
 - Batch 1 no-ops: `internal/agentbuilder`, `internal/agentsmd`.
 - Batch 1 skipped for refactor-tool failures with no file changes: `internal/agentformatter` (token budget exceeded), `internal/applypatch` (generated snippets failed), `internal/cli` (token budget exceeded).
+- Batch 2 no-ops: `internal/diff`.
+- Batch 2 skipped for refactor-tool failures with no file changes: `internal/docubot` (token budget exceeded).
 
 ### Refactor batches
 
@@ -44,18 +46,18 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/applypatch` - skipped after generated-snippet refactor failure; no file changes.
 - [DONE] `github.com/codalotl/codalotl/internal/cli` - skipped after token-budget refactor failure; no file changes.
 
-#### Batch 2: code/doc/git/gocas packages
-- `github.com/codalotl/codalotl/internal/codeunit`
-- `github.com/codalotl/codalotl/internal/detectlang`
-- `github.com/codalotl/codalotl/internal/diff`
-- `github.com/codalotl/codalotl/internal/docubot`
-- `github.com/codalotl/codalotl/internal/docubot/cmd`
-- `github.com/codalotl/codalotl/internal/gittools`
-- `github.com/codalotl/codalotl/internal/gittools/cmd/changedfiles`
-- `github.com/codalotl/codalotl/internal/gittools/cmd/mergebase`
-- `github.com/codalotl/codalotl/internal/gocas`
-- `github.com/codalotl/codalotl/internal/gocas/casclarify`
-- `github.com/codalotl/codalotl/internal/gocas/casconformance`
+#### [DONE] Batch 2: code/doc/git/gocas packages
+- [DONE] `github.com/codalotl/codalotl/internal/codeunit` - added package docs and important field/helper docs; `go test ./internal/codeunit` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/detectlang` - added package docs and important language/helper docs; `go test ./internal/detectlang` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/diff` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/docubot` - skipped after token-budget refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/docubot/cmd` - added command package docs and important config/helper docs; `go test ./internal/docubot/cmd` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gittools` - added package docs and important helper/type docs; `go test ./internal/gittools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gittools/cmd/changedfiles` - added command package docs; `go test ./internal/gittools/cmd/changedfiles` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gittools/cmd/mergebase` - added command package docs; `go test ./internal/gittools/cmd/mergebase` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocas` - added package docs and important helper/type docs; `go test ./internal/gocas` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocas/casclarify` - added important field/helper docs; `go test ./internal/gocas/casclarify` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocas/casconformance` - added package docs and metadata field docs; `go test ./internal/gocas/casconformance` passed.
 
 #### Batch 3: Go analysis/refactor packages
 - `github.com/codalotl/codalotl/internal/goclitools`
@@ -138,3 +140,4 @@ TBD.
 - `go list ./...` currently reports 67 packages.
 - Clarify CAS records exist for target packages `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`, but the clarify doc-improvement refactor found no opportunities for all three packages.
 - Batch 1 complete. Accepted source changes for root package, `internal/agent`, and `internal/agentregistry`; other Batch 1 packages were no-op or skipped with no file changes.
+- Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
