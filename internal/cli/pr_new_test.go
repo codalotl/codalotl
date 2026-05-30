@@ -434,7 +434,7 @@ func TestRun_PRRefactor_AllPackagesSingleRefactor_WritesAllPackagesInstructions(
 	require.Contains(t, got, "Inspect each refactor result")
 	require.Contains(t, got, "Commit accepted changes")
 	require.Contains(t, got, "relevant CAS files")
-	require.Contains(t, got, "Skip no-op packages")
+	require.Contains(t, got, "Skip no-op packages without a commit and add a note in this PR file")
 	require.Contains(t, got, "add a note in this PR file")
 	require.Contains(t, got, "codalotl_cli")
 	require.Contains(t, got, `codalotl cas recertify <package> --namespaces="docs-fix"`)

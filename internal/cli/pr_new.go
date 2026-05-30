@@ -398,7 +398,7 @@ For each package in the current module:
 Additional instructions:
 - Inspect each refactor result and diff before moving to the next package.
 - Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package or small package group.
-- Skip no-op packages without a commit.
+- Skip no-op packages without a commit and add a note in this PR file.
 - If a package looks risky or outside scope, do not fix-forward aggressively; revert/skip it and add a note in this PR file explaining why.
 - Due to CAS, packages already up to date for this refactor may be no-ops.
 - %s
