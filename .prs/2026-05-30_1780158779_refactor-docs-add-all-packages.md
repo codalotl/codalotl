@@ -22,8 +22,11 @@ Additional instructions:
 
 ### Preflight
 - [DONE] Identify all Go packages in the current module with `go list ./...`.
-- Clarify-public-api CAS records are present. Per orchestrator CAS policy, resolve them with `docs-improve-from-clarify` before continuing broad `docs-add` work, then commit any accepted doc improvements with consumed CAS records.
+- [DONE] Clarify-public-api CAS records are present. Per orchestrator CAS policy, resolve them with `docs-improve-from-clarify` before continuing broad `docs-add` work, then commit any accepted doc improvements with consumed CAS records.
 - No `SPEC.md` changes are planned for this PR because the requested work is documentation-only and should not change package behavior.
+
+### No-op/skipped notes
+- `docs-improve-from-clarify` returned `no_opportunity` for `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`; no files or CAS records changed.
 
 ### Refactor batches
 
@@ -131,4 +134,4 @@ TBD.
 - PR file: `.prs/2026-05-30_1780158779_refactor-docs-add-all-packages.md`
 - Current request is broad docs-add refactoring across all Go packages.
 - `go list ./...` currently reports 67 packages.
-- Clarify CAS records currently exist for target packages `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`.
+- Clarify CAS records exist for target packages `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`, but the clarify doc-improvement refactor found no opportunities for all three packages.
