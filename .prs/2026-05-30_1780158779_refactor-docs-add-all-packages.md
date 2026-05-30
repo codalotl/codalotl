@@ -33,7 +33,7 @@ Additional instructions:
 Run `refactor("name": "docs-add", "package": "<package>")` for each package below, inspect the result and diff, commit useful changes in focused batches, and note no-op/skipped packages here.
 
 #### Batch 1: root and core agent/app packages
-- `github.com/codalotl/codalotl`
+- [DONE] `github.com/codalotl/codalotl` - added root package `doc.go`; `go test .` passed.
 - `github.com/codalotl/codalotl/internal/agent`
 - `github.com/codalotl/codalotl/internal/agentbuilder`
 - `github.com/codalotl/codalotl/internal/agentformatter`
