@@ -215,18 +215,26 @@ If `--no-git` is set:
 - Do not require git state.
 - Only create the PR file.
 
-### codalotl pr refactor --package=<path/to/pkg>
+### codalotl pr refactor (--package=<path/to/pkg> | --all-packages) [--refactor=<name>]
 
-Creates a PR file and branch for the package-refactor orchestrator flow:
+Creates a PR file and branch for refactor orchestrator flows:
 - Does not require LLM configuration or startup tool validation.
-- `--package` is required and follows usual single-package argument semantics.
-- Feature name is generated from resolved package path, prefixed with `refactor-`.
+- Exactly one package selector is required:
+	- `--package` follows usual single-package argument semantics.
+	- `--all-packages` targets all Go packages in current module.
+- `--refactor` optionally selects one refactor. Supported values: `docs-add`, `docs-fix`, `dry`, `test-cleanup`, `test-ensure-coverage`.
+- `--package` without `--refactor` runs all refactors on one package.
+- `--all-packages --refactor=<name>` runs one refactor across all packages.
+- `--all-packages` without `--refactor` is unsupported.
+- Feature name is generated from target and optional refactor:
+	- `refactor-internal-mypkg` for `--package=internal/mypkg`
+	- `refactor-docs-fix-all-packages` for `--all-packages --refactor=docs-fix`
 - Uses `pr new` git behavior.
 - PR file User Summary includes:
-	- target package
-	- refactor order: `docs-add`, `docs-fix`, `dry`, `test-cleanup`, `test-ensure-coverage`
-	- instructions to inspect and commit each refactor separately, including relevant CAS files
-	- instructions to run `codalotl cas recertify` through `codalotl_cli` after the final refactor for CAS namespaces that can be recertified
+	- target package or all-packages target
+	- selected refactor flow
+	- instructions to inspect each refactor diff, commit accepted changes with relevant CAS files, and skip no-op or risky changes with a PR-file note
+	- instructions to use `codalotl_cli` to recertify CAS namespaces that can be recertified after final accepted refactor changes
 
 ### codalotl context public <path/to/pkg>
 

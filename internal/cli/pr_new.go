@@ -29,6 +29,28 @@ var (
 	runPRNewGit       = runPRNewGitCommand
 )
 
+const (
+	prRefactorDocsAdd            = "docs-add"
+	prRefactorDocsFix            = "docs-fix"
+	prRefactorDry                = "dry"
+	prRefactorTestCleanup        = "test-cleanup"
+	prRefactorTestEnsureCoverage = "test-ensure-coverage"
+)
+
+var supportedPRRefactors = []string{
+	prRefactorDocsAdd,
+	prRefactorDocsFix,
+	prRefactorDry,
+	prRefactorTestCleanup,
+	prRefactorTestEnsureCoverage,
+}
+
+type prRefactorOptions struct {
+	PackageArg   string
+	AllPackages  bool
+	RefactorName string
+}
+
 func newPRCommand() *qcli.Command {
 	prCmd := &qcli.Command{
 		Name:  "pr",
@@ -69,30 +91,54 @@ codalotl pr new cas-prune --no-git
 		Short: "Create a package refactor PR orchestrator file and branch.",
 		Long: "Creates a PR orchestrator file prefilled with package-refactor instructions. It validates repo state, creates a generated refactor branch, " +
 			"commits the PR file, and pushes with upstream tracking when origin exists.",
-		Usage: "--package=<path/to/pkg>",
+		Usage: "(--package=<path/to/pkg> | --all-packages) [--refactor=<name>]",
 		ArgHelp: []qcli.ArgHelp{
 			{
 				Display:     "--package=<path/to/pkg>",
 				Description: packagePathArgDescription,
 			},
+			{
+				Display:     "--all-packages",
+				Description: "Target all Go packages in the current module. Requires --refactor.",
+			},
+			{
+				Display:     "--refactor=<name>",
+				Description: "Optional refactor flow: docs-add, docs-fix, dry, test-cleanup, or test-ensure-coverage.",
+			},
 		},
 		Example: strings.TrimSpace(`
 codalotl pr refactor --package=internal/mypkg
 codalotl pr refactor --package=./internal/mypkg
+codalotl pr refactor --package=internal/mypkg --refactor=docs-fix
+codalotl pr refactor --all-packages --refactor=docs-fix
 `),
 	}
-	refactorPackage := refactorCmd.Flags().String("package", 'p', "", "Package to refactor (import path or dir; must resolve to a single Go package).")
+	refactorFlags := refactorCmd.Flags()
+	refactorPackage := refactorFlags.String("package", 'p', "", "Package to refactor (import path or dir; must resolve to a single Go package).")
+	refactorAllPackages := refactorFlags.Bool("all-packages", 0, false, "Target all Go packages in the current module. Requires --refactor.")
+	refactorName := refactorFlags.String("refactor", 0, "", "Optional refactor flow: docs-add, docs-fix, dry, test-cleanup, or test-ensure-coverage.")
 	refactorCmd.Args = func(args []string) error {
 		if err := qcli.NoArgs(args); err != nil {
 			return err
 		}
-		if strings.TrimSpace(*refactorPackage) == "" {
-			return qcli.UsageError{Message: "missing --package"}
+		hasPackage := strings.TrimSpace(*refactorPackage) != ""
+		if hasPackage == *refactorAllPackages {
+			return qcli.UsageError{Message: "supply exactly one of --package or --all-packages"}
+		}
+		if *refactorAllPackages && strings.TrimSpace(*refactorName) == "" {
+			return qcli.UsageError{Message: "--all-packages requires --refactor"}
+		}
+		if err := validatePRRefactorName(*refactorName); err != nil {
+			return err
 		}
 		return nil
 	}
 	refactorCmd.Run = func(c *qcli.Context) error {
-		return runPRRefactor(c.Context, c.Out, *refactorPackage)
+		return runPRRefactor(c.Context, c.Out, prRefactorOptions{
+			PackageArg:   *refactorPackage,
+			AllPackages:  *refactorAllPackages,
+			RefactorName: *refactorName,
+		})
 	}
 
 	prCmd.AddCommand(newCmd, refactorCmd)
@@ -103,18 +149,33 @@ func runPRNew(ctx context.Context, out io.Writer, featureName string, noGit bool
 	return runPRScaffold(ctx, out, featureName, noGit, prNewInitialTemplate)
 }
 
-func runPRRefactor(ctx context.Context, out io.Writer, packageArg string) error {
-	pkg, _, err := loadPackageArg(packageArg)
-	if err != nil {
+func runPRRefactor(ctx context.Context, out io.Writer, opts prRefactorOptions) error {
+	refactorName := strings.TrimSpace(opts.RefactorName)
+	if err := validatePRRefactorName(refactorName); err != nil {
 		return err
 	}
 
-	packagePath := prRefactorPackagePath(pkg)
-	featureName, err := prRefactorFeatureName(packagePath)
+	if opts.AllPackages {
+		featureName, err := prRefactorAllPackagesFeatureName(refactorName)
+		if err != nil {
+			return err
+		}
+		return runPRScaffold(ctx, out, featureName, false, prRefactorAllPackagesTemplate(refactorName))
+	}
+
+	pkg, _, err := loadPackageArg(opts.PackageArg)
 	if err != nil {
 		return err
 	}
-	return runPRScaffold(ctx, out, featureName, false, prRefactorTemplate(packagePath))
+	packagePath := prRefactorPackagePath(pkg)
+	featureName, err := prRefactorPackageFeatureName(packagePath, refactorName)
+	if err != nil {
+		return err
+	}
+	if refactorName != "" {
+		return runPRScaffold(ctx, out, featureName, false, prRefactorSinglePackageTemplate(packagePath, refactorName))
+	}
+	return runPRScaffold(ctx, out, featureName, false, prRefactorAllPackageRefactorsTemplate(packagePath))
 }
 
 func runPRScaffold(ctx context.Context, out io.Writer, featureName string, noGit bool, content string) error {
@@ -172,6 +233,25 @@ func prRefactorPackagePath(pkg *gocode.Package) string {
 }
 
 func prRefactorFeatureName(packagePath string) (string, error) {
+	return prRefactorPackageFeatureName(packagePath, "")
+}
+
+func prRefactorPackageFeatureName(packagePath string, refactorName string) (string, error) {
+	if strings.TrimSpace(refactorName) != "" {
+		return prRefactorFeatureNameParts(refactorName, packagePath)
+	}
+	return prRefactorFeatureNameParts(packagePath)
+}
+
+func prRefactorAllPackagesFeatureName(refactorName string) (string, error) {
+	if strings.TrimSpace(refactorName) == "" {
+		return "", qcli.UsageError{Message: "--all-packages requires --refactor"}
+	}
+	return prRefactorFeatureNameParts(refactorName, "all-packages")
+}
+
+func prRefactorFeatureNameParts(parts ...string) (string, error) {
+	joined := strings.Join(parts, "-")
 	safePath := strings.Trim(strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'A' && r <= 'Z':
@@ -187,7 +267,7 @@ func prRefactorFeatureName(packagePath string) (string, error) {
 		default:
 			return '-'
 		}
-	}, filepath.ToSlash(strings.TrimSpace(packagePath))), ".-_")
+	}, filepath.ToSlash(strings.TrimSpace(joined))), ".-_")
 	if safePath == "" {
 		safePath = "package"
 	}
@@ -205,7 +285,37 @@ func collapseRepeatedHyphens(s string) string {
 	return s
 }
 
-func prRefactorTemplate(packagePath string) string {
+func validatePRRefactorName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	for _, supported := range supportedPRRefactors {
+		if name == supported {
+			return nil
+		}
+	}
+	return qcli.UsageError{Message: fmt.Sprintf("unsupported --refactor %q (supported: %s)", name, strings.Join(supportedPRRefactors, ", "))}
+}
+
+func prRefactorCASNamespaces(refactorName string) string {
+	switch strings.TrimSpace(refactorName) {
+	case "":
+		return "docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"
+	case prRefactorDocsFix:
+		return "docs-fix"
+	case prRefactorDry:
+		return "refactor-dry"
+	case prRefactorTestCleanup:
+		return "refactor-test-cleanup"
+	case prRefactorTestEnsureCoverage:
+		return "refactor-test-ensure-coverage"
+	default:
+		return ""
+	}
+}
+
+func prRefactorAllPackageRefactorsTemplate(packagePath string) string {
 	const recertifyNamespaces = "docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"
 
 	return fmt.Sprintf(`# PR
@@ -215,6 +325,7 @@ func prRefactorTemplate(packagePath string) string {
 In this PR, refactor %s.
 
 Target package: %s
+Selected refactor flow: all refactors for one package
 
 Run these refactors in order:
 1. refactor("name": "docs-add", "package": "%s")
@@ -226,6 +337,7 @@ Run these refactors in order:
 Additional instructions:
 - After each refactor, inspect the diff before continuing.
 - If the diff looks good, commit that refactor separately. Include source changes and relevant CAS files in the commit.
+- If a refactor result is a no-op, skip it with a note in this PR file.
 - If the diff looks risky or outside scope, avoid risky fix-forward behavior. Revert, skip with a note in this PR file, or make only a minimal low-risk correction.
 - These refactors are intended to be safe and low risk. Do not change public API or behavior except for documentation changes.
 - After the final refactor is committed, use the codalotl_cli tool to run:
@@ -233,6 +345,65 @@ Additional instructions:
 - Inspect and commit CAS files produced by recertify.
 
 `, packagePath, packagePath, packagePath, packagePath, packagePath, packagePath, packagePath, packagePath, recertifyNamespaces)
+}
+
+func prRefactorSinglePackageTemplate(packagePath string, refactorName string) string {
+	recertifyNamespaces := prRefactorCASNamespaces(refactorName)
+	recertifyInstructions := "No CAS namespace is currently recertifiable specifically for this refactor. If accepted changes invalidate other applicable CAS records, recertify those after final changes."
+	if recertifyNamespaces != "" {
+		recertifyInstructions = fmt.Sprintf("After the final accepted changes, use the codalotl_cli tool to run:\n  codalotl cas recertify %s --namespaces=%q\n- Inspect and commit CAS files produced by recertify.", packagePath, recertifyNamespaces)
+	}
+
+	return fmt.Sprintf(`# PR
+
+## User Summary (do not modify)
+
+In this PR, run the %s refactor for %s.
+
+Target package: %s
+Selected refactor flow: %s
+
+Run this refactor:
+1. refactor("name": "%s", "package": "%s")
+
+Additional instructions:
+- Inspect the refactor diff before continuing.
+- If the diff looks good, commit the accepted changes. Include source changes and relevant CAS files in the commit.
+- If the diff is a no-op, looks risky, or is outside scope, skip it with a note in this PR file.
+- These refactors are intended to be safe and low risk. Do not change public API or behavior except for documentation changes.
+- %s
+
+`, refactorName, packagePath, packagePath, refactorName, refactorName, packagePath, recertifyInstructions)
+}
+
+func prRefactorAllPackagesTemplate(refactorName string) string {
+	recertifyNamespaces := prRefactorCASNamespaces(refactorName)
+	recertifyInstructions := "No CAS namespace is currently recertifiable specifically for this refactor. If accepted package changes invalidate other applicable CAS records, recertify those after final changes."
+	if recertifyNamespaces != "" {
+		recertifyInstructions = fmt.Sprintf("After final accepted changes, use the codalotl_cli tool for each accepted package that needs recertification:\n  codalotl cas recertify <package> --namespaces=%q\n- Inspect and commit CAS files produced by recertify.", recertifyNamespaces)
+	}
+
+	return fmt.Sprintf(`# PR
+
+## User Summary (do not modify)
+
+In this PR, run the %s refactor across all Go packages in the current module.
+
+Target: all Go packages in the current module
+Selected refactor flow: %s
+
+For each package in the current module:
+1. refactor("name": "%s", "package": "<package>")
+
+Additional instructions:
+- Inspect each refactor result and diff before moving to the next package.
+- Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package or small package group.
+- Skip no-op packages without a commit and add a note in this PR file.
+- If a package looks risky or outside scope, do not fix-forward aggressively; revert/skip it and add a note in this PR file explaining why.
+- Due to CAS, packages already up to date for this refactor may be no-ops.
+- %s
+
+`, refactorName, refactorName, refactorName, recertifyInstructions)
 }
 
 func validatePRNewName(name string, label string) error {

@@ -1,6 +1,6 @@
 # Summary
 
-Codalotl, or `codalotl` (the binary), is an AI-powered software construction system specifically for Go projects.
+Codalotl, or `codalotl` (the binary), is an AI-powered software construction system ("agent") specifically for Go projects.
 
 It is a TUI and CLI.
 
