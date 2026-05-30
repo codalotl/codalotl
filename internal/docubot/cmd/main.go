@@ -16,34 +16,38 @@ import (
 	"github.com/codalotl/codalotl/internal/q/health"
 )
 
+// addDocsFlagValues holds raw values from the doc command flags before validation.
 type addDocsFlagValues struct {
-	model              string
-	reflowWidth        int
-	logFile            string
-	documentTestFiles  bool
-	onlyPublicAPI      bool
-	excludeIdentifiers string
-	tokenBudget        int
+	model              string // Model is the raw --model flag value; empty selects the default model during resolution.
+	reflowWidth        int    // ReflowWidth is the raw --reflow-width flag value.
+	logFile            string // LogFile is the raw --log-file path.
+	documentTestFiles  bool   // DocumentTestFiles reports whether --test-files was set.
+	onlyPublicAPI      bool   // OnlyPublicAPI reports whether --only-public-api was set.
+	excludeIdentifiers string // ExcludeIdentifiers is the raw comma-separated --exclude-identifiers value.
+	tokenBudget        int    // TokenBudget is the raw --token-budget flag value.
 }
 
+// addDocsConfig holds validated configuration for adding documentation.
 type addDocsConfig struct {
-	commonConfig
-	documentTestFiles  bool
-	onlyPublicAPI      bool
-	excludeIdentifiers []string
-	tokenBudget        int
+	commonConfig                // CommonConfig provides model, reflow, and log-file settings shared with other commands.
+	documentTestFiles  bool     // DocumentTestFiles includes eligible test-file identifiers when adding documentation.
+	onlyPublicAPI      bool     // OnlyPublicAPI limits documentation to exported identifiers.
+	excludeIdentifiers []string // ExcludeIdentifiers names identifiers that should be skipped.
+	tokenBudget        int      // TokenBudget limits one LLM request; zero uses the docubot default.
 }
 
+// commonFlagValues holds raw values from persistent CLI flags before validation.
 type commonFlagValues struct {
-	model       string
-	reflowWidth int
-	logFile     string
+	model       string // Model is the raw --model flag value; empty selects the default model during resolution.
+	reflowWidth int    // ReflowWidth is the raw --reflow-width flag value.
+	logFile     string // LogFile is the raw --log-file path.
 }
 
+// commonConfig holds validated configuration shared by docubot commands.
 type commonConfig struct {
-	model       llmmodel.ModelID
-	reflowWidth int
-	logFile     string
+	model       llmmodel.ModelID // Model is the validated model ID to use for LLM requests.
+	reflowWidth int              // ReflowWidth is the requested documentation comment wrap width.
+	logFile     string           // LogFile is the path that should receive logs, or empty to discard logs.
 }
 
 func main() {
@@ -60,6 +64,7 @@ func run(args []string, in io.Reader, out io.Writer, errW io.Writer) int {
 	})
 }
 
+// newRootCommand builds the docubot command tree and wires command handlers.
 func newRootCommand() *cli.Command {
 	root := &cli.Command{
 		Name:  "docubot",
@@ -123,6 +128,7 @@ func newRootCommand() *cli.Command {
 	return root
 }
 
+// resolveCommonConfig validates common flag values and applies command defaults.
 func resolveCommonConfig(flags commonFlagValues) (commonConfig, error) {
 	modelValue := flags.model
 	model := llmmodel.ModelID(modelValue)
@@ -144,6 +150,7 @@ func resolveCommonConfig(flags commonFlagValues) (commonConfig, error) {
 	}, nil
 }
 
+// resolveAddDocsConfig validates doc command flag values and applies command defaults.
 func resolveAddDocsConfig(flags addDocsFlagValues) (addDocsConfig, error) {
 	common, err := resolveCommonConfig(commonFlagValues{
 		model:       flags.model,
@@ -191,6 +198,7 @@ func parseIdentifierList(value string) []string {
 	return identifiers
 }
 
+// runAddDocs adds missing documentation to target and reports applied changes to c.Out.
 func runAddDocs(c *cli.Context, target string, cfg addDocsConfig) error {
 	logger, closeLogger, err := loggerFromFile(cfg.logFile)
 	if err != nil {
@@ -226,6 +234,7 @@ func runAddDocs(c *cli.Context, target string, cfg addDocsConfig) error {
 	return nil
 }
 
+// runFixDocs fixes documentation problems in target and reports applied fixes to c.Out.
 func runFixDocs(c *cli.Context, target string, identifiers []string, cfg commonConfig) error {
 	logger, closeLogger, err := loggerFromFile(cfg.logFile)
 	if err != nil {
@@ -270,6 +279,7 @@ func loggerFromFile(path string) (*slog.Logger, func(), error) {
 	return slog.New(slog.NewTextHandler(file, nil)), func() { _ = file.Close() }, nil
 }
 
+// loadPackage loads the Go package at target from its enclosing module.
 func loadPackage(target string) (*gocode.Package, error) {
 	absTarget, err := filepath.Abs(target)
 	if err != nil {
