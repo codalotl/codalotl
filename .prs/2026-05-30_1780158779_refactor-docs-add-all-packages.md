@@ -27,20 +27,22 @@ Additional instructions:
 
 ### No-op/skipped notes
 - `docs-improve-from-clarify` returned `no_opportunity` for `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`; no files or CAS records changed.
+- Batch 1 no-ops: `internal/agentbuilder`, `internal/agentsmd`.
+- Batch 1 skipped for refactor-tool failures with no file changes: `internal/agentformatter` (token budget exceeded), `internal/applypatch` (generated snippets failed), `internal/cli` (token budget exceeded).
 
 ### Refactor batches
 
 Run `refactor("name": "docs-add", "package": "<package>")` for each package below, inspect the result and diff, commit useful changes in focused batches, and note no-op/skipped packages here.
 
-#### Batch 1: root and core agent/app packages
+#### [DONE] Batch 1: root and core agent/app packages
 - [DONE] `github.com/codalotl/codalotl` - added root package `doc.go`; `go test .` passed.
-- `github.com/codalotl/codalotl/internal/agent`
-- `github.com/codalotl/codalotl/internal/agentbuilder`
-- `github.com/codalotl/codalotl/internal/agentformatter`
-- `github.com/codalotl/codalotl/internal/agentregistry`
-- `github.com/codalotl/codalotl/internal/agentsmd`
-- `github.com/codalotl/codalotl/internal/applypatch`
-- `github.com/codalotl/codalotl/internal/cli`
+- [DONE] `github.com/codalotl/codalotl/internal/agent` - documented `defaultAgentCreator.defaults`; `go test ./internal/agent` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/agentbuilder` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/agentformatter` - skipped after token-budget refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/agentregistry` - added package docs and important field/type docs; `go test ./internal/agentregistry` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/agentsmd` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/applypatch` - skipped after generated-snippet refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/cli` - skipped after token-budget refactor failure; no file changes.
 
 #### Batch 2: code/doc/git/gocas packages
 - `github.com/codalotl/codalotl/internal/codeunit`
@@ -135,3 +137,4 @@ TBD.
 - Current request is broad docs-add refactoring across all Go packages.
 - `go list ./...` currently reports 67 packages.
 - Clarify CAS records exist for target packages `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`, but the clarify doc-improvement refactor found no opportunities for all three packages.
+- Batch 1 complete. Accepted source changes for root package, `internal/agent`, and `internal/agentregistry`; other Batch 1 packages were no-op or skipped with no file changes.
