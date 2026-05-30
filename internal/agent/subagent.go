@@ -28,7 +28,7 @@ func NewAgentCreator(options ...NewOptions) AgentCreator {
 
 // defaultAgentCreator constructs root agents using configured default options.
 type defaultAgentCreator struct {
-	defaults NewOptions
+	defaults NewOptions // Defaults are applied to each new root agent unless overridden by call-specific options.
 }
 
 // New constructs a root Agent using the creator's default options unless options override them.
