@@ -15,8 +15,8 @@ import (
 
 // Registry holds agent and tool definitions.
 type Registry struct {
-	agents map[string]Definition
-	tools  map[string]toolsetinterface.Tool
+	agents map[string]Definition            // Agents maps stable agent names to registered definitions.
+	tools  map[string]toolsetinterface.Tool // Tools maps registered tool names to tool constructors.
 }
 
 // NewRegistry returns a new registry.
@@ -90,7 +90,7 @@ func (r *Registry) ValidateTools() error {
 
 // BuildOptions are the resolved inputs used by definition builders during Prepare.
 type BuildOptions struct {
-	AgentName   string
+	AgentName   string                         // AgentName is the name of the agent being prepared.
 	ToolOptions toolsetinterface.Options       // ToolOptions are the effective options used to construct tools after auth/package policy and overrides are applied.
 	Request     toolsetinterface.InvokeRequest // Request is the original invocation request.
 }
@@ -100,12 +100,12 @@ type BuildOptions struct {
 // It includes resolved tool options, system prompt, tool names, and initial turns, but it does not start a run or send any request messages. The prepared value
 // only carries registry-resolved configuration; construction policy not represented here must be configured on the agent.AgentCreator supplied to Create.
 type PreparedAgent struct {
-	BuildOptions BuildOptions
-	SystemPrompt string
-	ToolNames    []string
-	InitialTurns []string
-	tools        []llmstream.Tool
-	created      bool
+	BuildOptions BuildOptions     // BuildOptions contains the resolved inputs used while preparing the agent.
+	SystemPrompt string           // SystemPrompt is the final system prompt passed to the agent creator.
+	ToolNames    []string         // ToolNames lists the registered and dynamically built tool names used to construct tools, in order.
+	InitialTurns []string         // InitialTurns contains user turns applied before any request messages are sent.
+	tools        []llmstream.Tool // Tools holds the constructed tools passed to the agent creator.
+	created      bool             // Created records whether Create has already consumed this prepared configuration.
 }
 
 // ToolsBuilder returns tool names based on opts. It can be used to dynamically switch toolsets based on things like model.
@@ -117,8 +117,12 @@ type PromptBuilder func(options BuildOptions) (string, error)
 // InitialTurnsBuilder builds user turns that are added before Request.Messages are sent.
 type InitialTurnsBuilder func(ctx context.Context, options BuildOptions) ([]string, error)
 
+// AuthPolicy controls how Registry.Prepare derives authorization and sandbox settings for an agent's tools.
+//
+// Policies are string-valued so definitions can use stable named values.
 type AuthPolicy string
 
+// Supported authorization policies for agent definitions.
 const (
 	// AuthPolicyDefault inherits (directly uses) the authorizer of caller, unless an override is set.
 	AuthPolicyDefault AuthPolicy = ""
