@@ -11,24 +11,25 @@ import (
 // Lang represents a detected programming language.
 type Lang string
 
+// Language constants are the classifications returned by detection. Extension matching is case-insensitive.
 const (
-	LangUnknown    Lang = ""
-	LangMultiple   Lang = "multiple"
-	LangGo         Lang = "go"
-	LangRuby       Lang = "rb"
-	LangPython     Lang = "py"
-	LangRust       Lang = "rs"
-	LangJavaScript Lang = "js"
-	LangTypeScript Lang = "ts"
-	LangJava       Lang = "java"
-	LangC          Lang = "c"
-	LangCpp        Lang = "cpp"
-	LangCSharp     Lang = "cs"
-	LangPHP        Lang = "php"
-	LangSwift      Lang = "swift"
-	LangKotlin     Lang = "kt"
-	LangScala      Lang = "scala"
-	LangObjectiveC Lang = "objc"
+	LangUnknown    Lang = ""         // LangUnknown indicates that no recognized language was detected.
+	LangMultiple   Lang = "multiple" // LangMultiple indicates that two or more known languages are tied for the highest file count.
+	LangGo         Lang = "go"       // LangGo identifies Go files with the .go extension.
+	LangRuby       Lang = "rb"       // LangRuby identifies Ruby files with the .rb extension.
+	LangPython     Lang = "py"       // LangPython identifies Python files with the .py extension.
+	LangRust       Lang = "rs"       // LangRust identifies Rust files with the .rs extension.
+	LangJavaScript Lang = "js"       // LangJavaScript identifies JavaScript files with .js, .mjs, .cjs, or .jsx extensions.
+	LangTypeScript Lang = "ts"       // LangTypeScript identifies TypeScript files with .ts or .tsx extensions.
+	LangJava       Lang = "java"     // LangJava identifies Java files with the .java extension.
+	LangC          Lang = "c"        // LangC identifies C files with the .c extension.
+	LangCpp        Lang = "cpp"      // LangCpp identifies C++ files with .cpp, .cc, .cxx, .hpp, .hh, or .hxx extensions.
+	LangCSharp     Lang = "cs"       // LangCSharp identifies C# files with .cs or .csx extensions.
+	LangPHP        Lang = "php"      // LangPHP identifies PHP files with .php or .phtml extensions.
+	LangSwift      Lang = "swift"    // LangSwift identifies Swift files with the .swift extension.
+	LangKotlin     Lang = "kt"       // LangKotlin identifies Kotlin files with .kt or .kts extensions.
+	LangScala      Lang = "scala"    // LangScala identifies Scala files with the .scala extension.
+	LangObjectiveC Lang = "objc"     // LangObjectiveC identifies Objective-C and Objective-C++ files with .m or .mm extensions.
 )
 
 var (
@@ -108,6 +109,9 @@ func Detect(absRootDir, absPath string) (Lang, error) {
 	return langForExt(filepath.Ext(target)), nil
 }
 
+// detectDir detects a language for dir using a breadth-first search bounded by root. The root and dir paths are expected to be clean, absolute paths, with dir inside
+// root. The search starts at dir and visits only parent and child directories that remain within root, returning the first result other than LangUnknown, including
+// LangMultiple for a tie. It returns LangUnknown if the search completes without finding any recognized extensions.
 func detectDir(root, dir string) (Lang, error) {
 	type dirNode struct {
 		path string
@@ -143,6 +147,9 @@ func detectDir(root, dir string) (Lang, error) {
 	return LangUnknown, nil
 }
 
+// analyzeDir inspects only dir's immediate entries and does not recurse. It returns the plurality language, whether any files with recognized extensions were found,
+// dir's immediate child directories, and any directory read error. It returns LangMultiple when multiple known languages are tied for the highest file count, and
+// LangUnknown with false when no recognized extensions are present.
 func analyzeDir(dir string) (Lang, bool, []string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
