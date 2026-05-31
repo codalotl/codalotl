@@ -108,16 +108,30 @@ type Step struct {
 	Fix *cmdrunner.Command `json:"fix,omitempty"`
 }
 
+// These constants define default lint options, status messages, and cmdrunner template and input names.
 const (
+	// The defaultReflowWidth constant is used when the configured documentation width is not positive.
 	defaultReflowWidth = 120
-	noIssuesFound      = "no issues found"
+
+	// The noIssuesFound constant is the status message for successful lint commands that produce no output.
+	noIssuesFound = "no issues found"
+
+	// The noLintersStatusXML constant is returned when there are no selected or active lint steps.
 	noLintersStatusXML = `<lint-status ok="true" message="no linters"></lint-status>`
 
-	templateModuleDir          = "{{ .moduleDir }}"
+	// The templateModuleDir constant is the cmdrunner template expression for the package's module directory.
+	templateModuleDir = "{{ .moduleDir }}"
+
+	// The templateRelativePackageDir constant is the cmdrunner template expression for the package directory relative to its module.
 	templateRelativePackageDir = "{{ .relativePackageDir }}"
 
-	inputPath               = "path"
-	inputModuleDir          = "moduleDir"
+	// The inputPath constant names the cmdrunner input containing the absolute target package directory.
+	inputPath = "path"
+
+	// The inputModuleDir constant names the cmdrunner input containing the absolute module directory.
+	inputModuleDir = "moduleDir"
+
+	// The inputRelativePackageDir constant names the cmdrunner input containing the package directory relative to the module.
 	inputRelativePackageDir = "relativePackageDir"
 )
 
@@ -521,6 +535,8 @@ func normalizeStepWidths(steps []Step, reflowWidth int) ([]Step, error) {
 	return steps, nil
 }
 
+// normalizeStepCommandWidths ensures the step's check and fix commands have valid width arguments. It mutates step in place, skips nil commands, and returns an
+// error that identifies the command when an existing width argument is invalid.
 func normalizeStepCommandWidths(step *Step, reflowWidth int) error {
 	commands := []struct {
 		name string
