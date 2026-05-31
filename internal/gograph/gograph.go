@@ -12,11 +12,15 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 )
 
+// Graph represents dependencies among package-level identifiers in a Go package.
+//
+// Intra-package edges point from a defining identifier to another identifier in the same package that it references. Cross-package references and test-file identifiers
+// are tracked separately.
 type Graph struct {
-	pkg        *gocode.Package
-	info       *types.Info
-	checkedPkg *types.Package
-	fset       *token.FileSet
+	pkg        *gocode.Package // Pkg is the source package analyzed by the graph.
+	info       *types.Info     // Info is the go/types information collected while checking pkg.
+	checkedPkg *types.Package  // CheckedPkg is the go/types package produced for pkg.
+	fset       *token.FileSet  // Fset is the shared file set used by all parsed files in pkg.
 
 	// All package-level identifiers in the graph (see intraUses for explanation of identifiers). All identifiers in intraUses must be here. This set also contains identifiers
 	// that lack edges.
@@ -41,6 +45,7 @@ type Graph struct {
 	testIdentifiers map[string]struct{}
 }
 
+// ExternalID identifies a referenced package-level identifier outside the analyzed package.
 type ExternalID struct {
 	ImportPath string // Import path for the external package referenced from the using package.
 	ID         string // identifier being referenced
@@ -48,9 +53,10 @@ type ExternalID struct {
 
 // stubImporter returns empty stub packages for ALL non-stdlib imports
 type stubImporter struct {
-	stdImporter types.Importer
+	stdImporter types.Importer // StdImporter loads real standard-library package metadata.
 }
 
+// Import loads standard-library packages and returns empty stubs for other imports.
 func (s *stubImporter) Import(path string) (*types.Package, error) {
 	// Does this path resolve to a directory under $GOROOT/src ? —
 	// i.e. is it a standard-library package?
@@ -83,6 +89,10 @@ func getFilesAndSet(pkg *gocode.Package) ([]*ast.File, *token.FileSet, error) {
 	return files, fset, nil
 }
 
+// NewGoGraph constructs an identifier dependency graph for pkg.
+//
+// The package must be non-nil and contain parsed files that share a token.FileSet. If the file sets are inconsistent, NewGoGraph reloads the package once and returns
+// an error if the inconsistency remains. Non-standard-library imports are stubbed during type checking so dependency information can still be collected.
 func NewGoGraph(pkg *gocode.Package) (*Graph, error) {
 	g := &Graph{
 		pkg:              pkg,
@@ -138,6 +148,7 @@ func NewGoGraph(pkg *gocode.Package) (*Graph, error) {
 	return g, nil
 }
 
+// WithoutTestIdentifiers returns a copy of g with all test-file identifiers removed.
 func (g *Graph) WithoutTestIdentifiers() *Graph {
 	idents := make([]string, 0, len(g.testIdentifiers))
 	for ident := range g.testIdentifiers {
@@ -146,6 +157,7 @@ func (g *Graph) WithoutTestIdentifiers() *Graph {
 	return g.WithoutIdentifiers(idents)
 }
 
+// WithoutIdentifiers returns a copy of g with the given identifiers removed.
 func (g *Graph) WithoutIdentifiers(idents []string) *Graph {
 	newG := &Graph{
 		pkg:              g.pkg,
@@ -212,6 +224,7 @@ func (g *Graph) WithoutIdentifiers(idents []string) *Graph {
 	return newG
 }
 
+// The populateIdentifiersAndUses method fills g with identifiers and dependency edges.
 func (g *Graph) populateIdentifiersAndUses() {
 	g.intraUses = make(map[string]map[string]struct{})
 	if g.checkedPkg == nil || g.pkg == nil {
@@ -253,6 +266,7 @@ func (g *Graph) populateIdentifiersAndUses() {
 	}
 }
 
+// The handleFuncDecl method records an identifier and dependencies from a function declaration.
 func (g *Graph) handleFuncDecl(funcDecl *ast.FuncDecl, isTestFile bool) {
 	if funcDecl.Name == nil {
 		return // Should not happen for top-level functions
@@ -332,6 +346,7 @@ func (g *Graph) handleFuncDecl(funcDecl *ast.FuncDecl, isTestFile bool) {
 	}
 }
 
+// The handleTypeSpec method records identifiers and dependencies from a type declaration.
 func (g *Graph) handleTypeSpec(genDecl *ast.GenDecl, isTestFile bool) {
 	for _, spec := range genDecl.Specs {
 		typeSpec, ok := spec.(*ast.TypeSpec)
@@ -374,6 +389,7 @@ func (g *Graph) handleTypeSpec(genDecl *ast.GenDecl, isTestFile bool) {
 	}
 }
 
+// The handleValueSpec method records identifiers and dependencies from a var or const declaration.
 func (g *Graph) handleValueSpec(genDecl *ast.GenDecl, isTestFile bool) {
 	for _, spec := range genDecl.Specs {
 		valueSpec, ok := spec.(*ast.ValueSpec)
@@ -595,6 +611,7 @@ func (g *Graph) findUses(n ast.Node, defObj types.Object) map[string]struct{} {
 	return uses
 }
 
+// The addUses method records intra-package dependencies from defKey to uses.
 func (g *Graph) addUses(defKey string, uses map[string]struct{}) {
 	if _, ok := g.intraUses[defKey]; !ok {
 		g.intraUses[defKey] = make(map[string]struct{})
