@@ -26,10 +26,10 @@ var (
 //
 // ColumnStart and ColumnEnd are 1-based byte offsets in the line, and ColumnEnd is the first byte past the reference.
 type Ref struct {
-	AbsPath     string
-	Line        int
-	ColumnStart int
-	ColumnEnd   int
+	AbsPath     string // AbsPath is the absolute path to the referenced file.
+	Line        int    // Line is the 1-based line number of the reference.
+	ColumnStart int    // ColumnStart is the 1-based UTF-8 byte offset where the reference starts.
+	ColumnEnd   int    // ColumnEnd is the 1-based UTF-8 byte offset immediately after the reference.
 }
 
 // Gofmt runs `gofmt` on filenameOrDir with -w -l. It returns true if anything was formatted.
