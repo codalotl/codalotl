@@ -189,6 +189,7 @@ func usedBy(pkg *gocode.Package) ([]string, error) {
 	return result, nil
 }
 
+// formatSection renders content inside a named section tag.
 func formatSection(tagName, attrs, content string) string {
 	var b strings.Builder
 	b.WriteByte('<')
@@ -210,6 +211,7 @@ func formatSection(tagName, attrs, content string) string {
 	return b.String()
 }
 
+// limitTestPkgMap returns combined test package-map content unless it exceeds maxLines, in which case it returns an elision message.
 func limitTestPkgMap(sections []string, maxLines int) string {
 	if len(sections) == 0 {
 		return ""
