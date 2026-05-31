@@ -31,6 +31,7 @@ Additional instructions:
 - Batch 1 skipped for refactor-tool failures with no file changes: `internal/agentformatter` (token budget exceeded), `internal/applypatch` (generated snippets failed), `internal/cli` (token budget exceeded).
 - Batch 2 no-ops: `internal/diff`.
 - Batch 2 skipped for refactor-tool failures with no file changes: `internal/docubot` (token budget exceeded).
+- Batch 3 no-ops: `internal/gocode`, `internal/gocodetesting`, `internal/gotypes`.
 
 ### Refactor batches
 
@@ -59,16 +60,16 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/gocas/casclarify` - added important field/helper docs; `go test ./internal/gocas/casclarify` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/gocas/casconformance` - added package docs and metadata field docs; `go test ./internal/gocas/casconformance` passed.
 
-#### Batch 3: Go analysis/refactor packages
-- `github.com/codalotl/codalotl/internal/goclitools`
-- `github.com/codalotl/codalotl/internal/gocode`
-- `github.com/codalotl/codalotl/internal/gocodecontext`
-- `github.com/codalotl/codalotl/internal/gocodetesting`
-- `github.com/codalotl/codalotl/internal/gograph`
-- `github.com/codalotl/codalotl/internal/gopackagediff`
-- `github.com/codalotl/codalotl/internal/gorenamer`
-- `github.com/codalotl/codalotl/internal/gotypes`
-- `github.com/codalotl/codalotl/internal/gousage`
+#### [DONE] Batch 3: Go analysis/refactor packages
+- [DONE] `github.com/codalotl/codalotl/internal/goclitools` - added important field docs; `go test ./internal/goclitools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocode` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/gocodecontext` - added important helper/type docs; `go test ./internal/gocodecontext` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocodetesting` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/gograph` - added package docs and important graph helper/type docs; `go test ./internal/gograph` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gopackagediff` - added package docs and important diff helper/field docs; `go test ./internal/gopackagediff` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gorenamer` - added package docs and identifier-rename field docs; `go test ./internal/gorenamer` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gotypes` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/gousage` - added package docs and usage field docs; `go test ./internal/gousage` passed.
 
 #### Batch 4: orchestration/runtime packages
 - `github.com/codalotl/codalotl/internal/initialcontext`
@@ -141,3 +142,4 @@ TBD.
 - Clarify CAS records exist for target packages `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`, but the clarify doc-improvement refactor found no opportunities for all three packages.
 - Batch 1 complete. Accepted source changes for root package, `internal/agent`, and `internal/agentregistry`; other Batch 1 packages were no-op or skipped with no file changes.
 - Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
+- Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
