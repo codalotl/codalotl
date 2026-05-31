@@ -203,6 +203,8 @@ func InternalPackageSignatures(pkg *gocode.Package, tests bool, includeDocs bool
 	return result, nil
 }
 
+// signaturesForFile parses file and renders the file with all function bodies removed. When includeDocs is true, comments outside removed function bodies are preserved;
+// otherwise all comments are stripped. It returns an error when file is nil, the contents cannot be parsed, or the result cannot be formatted.
 func signaturesForFile(file *gocode.File, includeDocs bool) (string, error) {
 	if file == nil {
 		return "", fmt.Errorf("nil file")
@@ -242,6 +244,8 @@ func signaturesForFile(file *gocode.File, includeDocs bool) (string, error) {
 	return buf.String(), nil
 }
 
+// stripAllComments removes every comment from f, including attached documentation, end-of-line comments, and unattached comment groups. It mutates f in place and
+// does nothing when f is nil.
 func stripAllComments(f *ast.File) {
 	if f == nil {
 		return
@@ -287,9 +291,10 @@ func stripAllComments(f *ast.File) {
 	f.Comments = nil
 }
 
+// commentPosRange identifies a token-position range in an AST.
 type commentPosRange struct {
-	start token.Pos
-	end   token.Pos
+	start token.Pos // Start is the first token position in the range.
+	end   token.Pos // End is the AST end position for the range.
 }
 
 func filterCommentsOutsideBodies(f *ast.File, ranges []commentPosRange) {
@@ -321,6 +326,8 @@ func commentWithinRanges(cg *ast.CommentGroup, ranges []commentPosRange) bool {
 	return false
 }
 
+// removeBlankLines returns s with all blank or whitespace-only lines removed. It returns an empty string for empty input or input containing only blank lines. A
+// non-empty result always ends with a newline.
 func removeBlankLines(s string) string {
 	if s == "" {
 		return ""
