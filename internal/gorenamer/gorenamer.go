@@ -15,9 +15,10 @@ import (
 // renameFunc abstracts the external CLI rename tool. It is set to goclitools.Rename by default, but tests may override it to stub external behavior.
 var renameFunc = goclitools.Rename
 
+// IdentifierRename describes a single requested identifier rename in a package.
 type IdentifierRename struct {
-	From   string
-	To     string
+	From   string // From is the existing identifier name to rename.
+	To     string // To is the new identifier name to use.
 	DeclID string // ID from gocode.
 
 	// Context is the full-line context where the From identifier appears. It includes whitespace but excludes newlines. But if that is ambiguous, Context may have extra
