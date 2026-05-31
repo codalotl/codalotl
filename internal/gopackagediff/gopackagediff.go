@@ -22,12 +22,12 @@ type Change struct {
 	// If the identifiers for a snippet are the same in both the new and old package, IdentifiersChanged == false and OldIdentifiers == NewIdentifiers.
 	IdentifiersChanged bool
 
-	OldIdentifiers []string
-	NewIdentifiers []string
-	OldCode        string // old snippet's code (full function body presence is based on Diff's excludeFuncBody)
-	NewCode        string // new snippet's code
-	OldSnippet     gocode.Snippet
-	NewSnippet     gocode.Snippet
+	OldIdentifiers []string       // OldIdentifiers are the identifiers defined by OldSnippet, or nil for an added snippet.
+	NewIdentifiers []string       // NewIdentifiers are the identifiers defined by NewSnippet, or nil for a deleted snippet.
+	OldCode        string         // old snippet's code (full function body presence is based on Diff's excludeFuncBody)
+	NewCode        string         // new snippet's code
+	OldSnippet     gocode.Snippet // OldSnippet is the snippet from the old package version, or nil for an added snippet.
+	NewSnippet     gocode.Snippet // NewSnippet is the snippet from the new package version, or nil for a deleted snippet.
 }
 
 // ColorizedDiff returns a character-level colored diff using diffmatchpatch's pretty text representation.
@@ -254,6 +254,9 @@ func Diff(origPkg *gocode.Package, newPkg *gocode.Package, identifiers []string,
 	return changes, nil
 }
 
+// getIDsInFiles returns the set of identifiers declared in the named files in either package.
+//
+// oldPkg and newPkg must be non-nil. File names are matched exactly against snippet positions; missing files contribute no identifiers.
 func getIDsInFiles(oldPkg *gocode.Package, newPkg *gocode.Package, files []string) map[string]struct{} {
 	ids := make(map[string]struct{})
 
