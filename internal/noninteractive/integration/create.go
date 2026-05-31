@@ -19,38 +19,43 @@ import (
 	"github.com/codalotl/codalotl/internal/q/cmdrunner"
 )
 
+// CreateOptions configures recording and writing a noninteractive integration test case.
 type CreateOptions struct {
-	RepoPath          string
-	PackagePath       string
-	ModelID           llmmodel.ModelID
-	Prompt            string
-	OutputDir         string
-	ReflowWidth       int
-	Lints             lints.Lints
-	IncludeTokenUsage bool
-	ProgressOut       io.Writer
-	JSONStreamOut     io.Writer
+	RepoPath          string           // RepoPath is the source repository to copy and run against.
+	PackagePath       string           // PackagePath is the package directory within RepoPath, or empty for generic mode.
+	ModelID           llmmodel.ModelID // ModelID is the model used for the live recording run.
+	Prompt            string           // Prompt is the user prompt passed to noninteractive.
+	OutputDir         string           // OutputDir is the destination case directory, which must be missing or empty.
+	ReflowWidth       int              // ReflowWidth is passed to lint resolution when nonzero.
+	Lints             lints.Lints      // Lints configures the lint pipeline used during recording and replay.
+	IncludeTokenUsage bool             // IncludeTokenUsage records token usage in the expected done event.
+	ProgressOut       io.Writer        // ProgressOut receives human-readable progress messages.
+	JSONStreamOut     io.Writer        // JSONStreamOut receives the live NDJSON output from the recording run.
 }
 
+// recordedTurn is a single captured LLM provider request and response pair.
 type recordedTurn struct {
-	Request  map[string]any
-	Response map[string]any
+	Request  map[string]any // Request is the JSON request body sent to the provider.
+	Response map[string]any // Response is the JSON response body returned by the provider.
 }
 
+// recordingDiagnosticHook captures LLM provider turns reported by the diagnostic hook.
 type recordingDiagnosticHook struct {
-	mu    sync.Mutex
-	turns []recordedTurn
+	mu    sync.Mutex     // mu protects turns.
+	turns []recordedTurn // turns stores captured provider turns in chronological order.
 }
 
+// An httpFixtureConfig describes the mock OpenAI exchanges used to replay an integration case.
 type httpFixtureConfig struct {
-	Responses []httpFixtureResponse `json:"responses"`
+	Responses []httpFixtureResponse `json:"responses"` // Responses lists the mock responses in the order they are expected to match provider requests.
 }
 
+// httpFixtureResponse describes one mock OpenAI response entry in an integration HTTP fixture.
 type httpFixtureResponse struct {
-	Name     string         `json:"name"`
-	Consume  bool           `json:"consume"`
-	Request  map[string]any `json:"request"`
-	Response map[string]any `json:"response"`
+	Name     string         `json:"name"`     // Name is an optional diagnostic label for the fixture entry.
+	Consume  bool           `json:"consume"`  // Consume requires the fixture entry to be matched during replay.
+	Request  map[string]any `json:"request"`  // Request is the expected provider request body or matcher.
+	Response map[string]any `json:"response"` // Response is the provider response body served by the mock.
 }
 
 const (
@@ -61,6 +66,11 @@ const (
 	httpFixtureInstructionsPrefix      = "You are an advanced coding LLM based on "
 )
 
+// CreateCase records a noninteractive integration case from opts and writes it to opts.OutputDir.
+//
+// It validates the options, runs the real agent against a temporary copy of opts.RepoPath, captures the JSON event stream and provider traffic, writes config.json,
+// http.json, and expected repository snapshots, and then verifies the generated case with RunCaseDir. The source repository is not modified. Progress messages and
+// the live JSON stream are written to the optional writers in opts.
 func CreateCase(opts CreateOptions) error {
 	repoPath, outputDir, err := validateCreateOptions(opts)
 	if err != nil {
@@ -170,6 +180,7 @@ func reportProgress(out io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(out, format+"\n", args...)
 }
 
+// AddTurn records a provider request and response pair for later fixture generation.
 func (h *recordingDiagnosticHook) AddTurn(request map[string]any, response map[string]any) {
 	if request == nil || response == nil {
 		return
@@ -184,6 +195,7 @@ func (h *recordingDiagnosticHook) AddTurn(request map[string]any, response map[s
 	})
 }
 
+// snapshot returns a cloned, chronological copy of the provider turns captured by h. It returns nil for a nil hook and does not clear the recorded turns.
 func (h *recordingDiagnosticHook) snapshot() []recordedTurn {
 	if h == nil {
 		return nil
@@ -202,6 +214,7 @@ func (h *recordingDiagnosticHook) snapshot() []recordedTurn {
 	return out
 }
 
+// validateCreateOptions validates recording options and returns absolute repository and output paths.
 func validateCreateOptions(opts CreateOptions) (string, string, error) {
 	repoPath := strings.TrimSpace(opts.RepoPath)
 	if repoPath == "" {
@@ -246,6 +259,7 @@ func validateCreateOptions(opts CreateOptions) (string, string, error) {
 	return repoAbs, outputAbs, nil
 }
 
+// ensureEmptyOrMissingDir reports whether path is missing or an existing empty directory.
 func ensureEmptyOrMissingDir(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -268,6 +282,7 @@ func ensureEmptyOrMissingDir(path string) error {
 	return nil
 }
 
+// validatePackagePath validates that packagePath is empty or names an existing directory inside repoPath. It rejects absolute paths and paths that escape the repository.
 func validatePackagePath(repoPath string, packagePath string) error {
 	if packagePath == "" {
 		return nil
@@ -295,6 +310,7 @@ func validatePackagePath(repoPath string, packagePath string) error {
 	return nil
 }
 
+// buildGeneratedCase builds the replay config, HTTP fixture, and expected file snapshots for a recorded case.
 func buildGeneratedCase(caseName string, originalRepoRoot string, actualRepoRoot string, actualEvents []map[string]any, turns []recordedTurn, opts CreateOptions) (testCaseConfig, httpFixtureConfig, map[string]string, error) {
 	if len(turns) == 0 {
 		return testCaseConfig{}, httpFixtureConfig{}, nil, fmt.Errorf("no diagnostic turns were recorded")
@@ -324,6 +340,7 @@ func buildGeneratedCase(caseName string, originalRepoRoot string, actualRepoRoot
 	}, httpCfg, expectedRepoFiles, nil
 }
 
+// buildExpectedEvents converts recorded JSON events into stable replay expectations.
 func buildExpectedEvents(actualEvents []map[string]any, includeTokenUsage bool, roots []string) ([]map[string]any, error) {
 	expected := make([]map[string]any, 0, len(actualEvents))
 	for _, event := range actualEvents {
@@ -374,6 +391,8 @@ func buildExpectedEvents(actualEvents []map[string]any, includeTokenUsage bool, 
 	return expected, nil
 }
 
+// buildHTTPFixture converts recorded provider turns into an ordered mock OpenAI fixture. It normalizes paths using roots, rewrites requests for the generated mock
+// model, and marks every fixture response as required.
 func buildHTTPFixture(caseName string, turns []recordedTurn, roots []string) (httpFixtureConfig, error) {
 	caseSuffix := sanitizeIdentifier(caseName)
 	cfg := httpFixtureConfig{
@@ -461,6 +480,8 @@ func pruneHTTPFixtureInstructionsToMatcher(request map[string]any, matcherText s
 	}
 }
 
+// httpFixtureInstructionsMatcherText returns stable partial matcher text for a provider instructions value. It extracts the model-based prefix when present, falls
+// back to the first line, and reports false for non-string or blank values.
 func httpFixtureInstructionsMatcherText(instructions any) (string, bool) {
 	text, ok := instructions.(string)
 	if !ok {
@@ -516,6 +537,8 @@ func pruneHTTPFixtureRequestFields(request map[string]any) {
 	delete(request, "context_management")
 }
 
+// omitTextKeys returns a JSON-like copy of value with every object member named "text" removed. It recursively processes map[string]any and []any values and leaves
+// other values unchanged.
 func omitTextKeys(value any) any {
 	switch v := value.(type) {
 	case []any:
@@ -580,6 +603,8 @@ func normalizeHTTPResponseOutputItem(item map[string]any) map[string]any {
 	return normalized
 }
 
+// extractStringValue returns the first non-empty string payload found in value. It returns strings directly, prefers a non-empty "OfString" member in maps, searches
+// remaining map values in sorted-key order, and searches slices in order. It returns "" when no non-empty string exists.
 func extractStringValue(value any) string {
 	switch v := value.(type) {
 	case string:
@@ -622,6 +647,7 @@ func cloneJSONObjectFromValue(value any) map[string]any {
 	return cloned
 }
 
+// normalizeJSONAbsolutePaths returns value with absolute paths in JSON strings replaced by stable path text.
 func normalizeJSONAbsolutePaths(value any, roots []string) any {
 	switch v := value.(type) {
 	case string:
@@ -643,6 +669,8 @@ func normalizeJSONAbsolutePaths(value any, roots []string) any {
 	}
 }
 
+// normalizeHTTPJSONAbsolutePaths returns a JSON-like copy of value with recognized absolute path prefixes replaced by HTTP fixture placeholders. It recursively
+// processes strings inside map[string]any and []any values; roots supplies the repository roots eligible for repo path replacement.
 func normalizeHTTPJSONAbsolutePaths(value any, roots []string) any {
 	switch v := value.(type) {
 	case string:
@@ -664,6 +692,8 @@ func normalizeHTTPJSONAbsolutePaths(value any, roots []string) any {
 	}
 }
 
+// denormalizeHTTPJSONAbsolutePaths returns a JSON-like copy of value with HTTP fixture placeholders expanded to runtime absolute paths. It recursively processes
+// strings inside map[string]any and []any values; roots supplies the repository roots used for repo path placeholders.
 func denormalizeHTTPJSONAbsolutePaths(value any, roots []string) any {
 	switch v := value.(type) {
 	case string:
@@ -693,9 +723,10 @@ func denormalizeConfigPromptText(text string, roots []string) string {
 	return denormalizeHTTPAbsolutePathText(text, roots)
 }
 
+// pathReplacement describes a path prefix rewrite used during fixture normalization.
 type pathReplacement struct {
-	prefix      string
-	replacement string
+	prefix      string // prefix is the cleaned path prefix to match.
+	replacement string // replacement is the text substituted for prefix.
 }
 
 func normalizeAbsolutePathText(text string, roots []string) string {
@@ -786,9 +817,10 @@ func absolutePathPlaceholderReplacements() []pathReplacement {
 	return replacements.build()
 }
 
+// pathReplacementBuilder collects unique path prefix rewrites before ordering them for use.
 type pathReplacementBuilder struct {
-	replacements []pathReplacement
-	seen         map[string]struct{}
+	replacements []pathReplacement   // replacements holds the accumulated rewrite rules.
+	seen         map[string]struct{} // seen records cleaned prefixes that have already been added.
 }
 
 func newPathReplacementBuilder(capacity int) pathReplacementBuilder {
@@ -798,6 +830,7 @@ func newPathReplacementBuilder(capacity int) pathReplacementBuilder {
 	}
 }
 
+// add records a path prefix rewrite unless the cleaned prefix is empty or already present.
 func (b *pathReplacementBuilder) add(prefix string, replacement string) {
 	if prefix == "" {
 		return
@@ -814,6 +847,7 @@ func (b *pathReplacementBuilder) add(prefix string, replacement string) {
 	})
 }
 
+// build returns the accumulated rewrite rules sorted from longest prefix to shortest.
 func (b pathReplacementBuilder) build() []pathReplacement {
 	sort.Slice(b.replacements, func(i int, j int) bool {
 		return len(b.replacements[i].prefix) > len(b.replacements[j].prefix)
@@ -842,6 +876,8 @@ func defaultSystemSkillsPath() string {
 	return filepath.Join(home, ".codalotl", "skills", ".system")
 }
 
+// replaceAbsolutePathPrefix replaces path-token-bounded occurrences of prefix in text with replacement. When the prefix is followed by a path separator, the separator
+// is consumed and non-empty replacements use "/" as the separator.
 func replaceAbsolutePathPrefix(text string, prefix string, replacement string) string {
 	if text == "" || prefix == "" {
 		return text
@@ -938,6 +974,8 @@ func snapshotExpectedRepoFiles(originalRoot string, actualRoot string) (map[stri
 	return out, nil
 }
 
+// writeExpectedRepoFiles writes the expected repository snapshot files under root. It treats map keys as relative paths, creates parent directories as needed, and
+// does nothing when files is empty.
 func writeExpectedRepoFiles(root string, files map[string]string) error {
 	if len(files) == 0 {
 		return nil
@@ -1012,6 +1050,8 @@ func marshalCompactJSON(value any) ([]byte, error) {
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
+// marshalConfigJSON returns the stable generated config.json encoding for cfg. It emits optional fields only when set, writes expected events one per line, and
+// omits expected repository file matchers.
 func marshalConfigJSON(cfg testCaseConfig) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString("{\n")
@@ -1103,6 +1143,7 @@ func normalizeLintStepJSON(step lints.Step) map[string]any {
 	return out
 }
 
+// normalizeLintCommandJSON returns the generated config JSON representation of cmd. The command must be non-nil, and optional fields are included only when set.
 func normalizeLintCommandJSON(cmd *cmdrunner.Command) map[string]any {
 	out := map[string]any{
 		"command": cmd.Command,
