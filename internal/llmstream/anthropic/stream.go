@@ -13,9 +13,9 @@ import (
 
 // Stream decodes SSE events for one streaming request.
 type Stream struct {
-	sse     *sseclient.Stream
-	mu      sync.Mutex
-	stopped bool
+	sse     *sseclient.Stream // sse is the underlying SSE stream for the response body.
+	mu      sync.Mutex        // mu guards stopped.
+	stopped bool              // stopped records whether message_stop has been received.
 }
 
 func newStream(sse *sseclient.Stream) *Stream {
@@ -72,6 +72,7 @@ func (s *Stream) RequestID() string {
 	return resp.Header.Get("request-id")
 }
 
+// decodeEvent decodes an SSE event from Anthropic into an Event.
 func decodeEvent(sseEvent sseclient.Event) (Event, error) {
 	raw := json.RawMessage([]byte(sseEvent.Data))
 	eventType := sseEvent.Type

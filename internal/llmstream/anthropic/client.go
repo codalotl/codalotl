@@ -52,11 +52,11 @@ func WithBeta(beta string) Option {
 
 // Client sends streaming requests to Anthropic Messages API.
 type Client struct {
-	apiKey     string
-	httpClient *http.Client
-	baseURL    string
-	version    string
-	betas      []string
+	apiKey     string       // apiKey is sent as the x-api-key request header.
+	httpClient *http.Client // httpClient performs outbound HTTP requests.
+	baseURL    string       // baseURL is the Anthropic API origin.
+	version    string       // version is sent as the anthropic-version request header.
+	betas      []string     // betas are sent as the comma-separated anthropic-beta request header.
 }
 
 // New constructs a Client. apiKey is sent as x-api-key.
@@ -83,20 +83,21 @@ func New(apiKey string, opts ...Option) *Client {
 	return client
 }
 
+// streamMessageRequest is the JSON body for a streaming Messages API request.
 type streamMessageRequest struct {
-	Model         string             `json:"model"`
-	MaxTokens     int64              `json:"max_tokens"`
-	System        string             `json:"system,omitempty"`
-	Messages      []MessageParam     `json:"messages"`
-	Tools         []ToolParam        `json:"tools,omitempty"`
-	ToolChoice    *ToolChoiceParam   `json:"tool_choice,omitempty"`
-	Temperature   *float64           `json:"temperature,omitempty"`
-	ServiceTier   string             `json:"service_tier,omitempty"`
-	StopSequences []string           `json:"stop_sequences,omitempty"`
-	Thinking      *ThinkingParam     `json:"thinking,omitempty"`
-	OutputConfig  *OutputConfigParam `json:"output_config,omitempty"`
-	CacheControl  *CacheControlParam `json:"cache_control,omitempty"`
-	Stream        bool               `json:"stream"`
+	Model         string             `json:"model"`                    // Model is the Anthropic model name.
+	MaxTokens     int64              `json:"max_tokens"`               // MaxTokens is the maximum number of tokens to generate.
+	System        string             `json:"system,omitempty"`         // System is the optional system prompt.
+	Messages      []MessageParam     `json:"messages"`                 // Messages is the conversation history to send.
+	Tools         []ToolParam        `json:"tools,omitempty"`          // Tools is the set of tools available to the model.
+	ToolChoice    *ToolChoiceParam   `json:"tool_choice,omitempty"`    // ToolChoice controls whether and how the model may use tools.
+	Temperature   *float64           `json:"temperature,omitempty"`    // Temperature controls sampling; nil omits the parameter.
+	ServiceTier   string             `json:"service_tier,omitempty"`   // ServiceTier is the Anthropic service tier.
+	StopSequences []string           `json:"stop_sequences,omitempty"` // StopSequences are custom sequences that stop generation.
+	Thinking      *ThinkingParam     `json:"thinking,omitempty"`       // Thinking configures Anthropic thinking when set.
+	OutputConfig  *OutputConfigParam `json:"output_config,omitempty"`  // OutputConfig configures Anthropic output options when set.
+	CacheControl  *CacheControlParam `json:"cache_control,omitempty"`  // CacheControl configures prompt caching for the request.
+	Stream        bool               `json:"stream"`                   // Stream requests SSE streaming and is always true for StreamMessages.
 }
 
 // StreamMessages starts POST /v1/messages in streaming mode.
