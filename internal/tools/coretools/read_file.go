@@ -18,24 +18,27 @@ import (
 //go:embed read_file.md
 var descriptionReadFile string
 
+// A toolReadFile implements the read_file tool for returning authorized file contents within the package read limits.
 type toolReadFile struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // This is the absolute sandbox root used to resolve relative read paths.
+	authorizer    authdomain.Authorizer // This authorizes read requests before files are opened.
 }
 
+// ParamsReadFile contains the JSON arguments for the read_file tool.
 type ParamsReadFile struct {
-	Path              string `json:"path"`
-	LineNumbers       bool   `json:"line_numbers"`
-	RequestPermission bool   `json:"request_permission"`
+	Path              string `json:"path"`               // Path is the file to read. Relative paths are resolved from the sandbox root.
+	LineNumbers       bool   `json:"line_numbers"`       // LineNumbers reports whether output lines should include 1-based line number prefixes.
+	RequestPermission bool   `json:"request_permission"` // RequestPermission asks for approval to read the file when policy requires it.
 }
 
 const (
-	ToolNameReadFile         = "read_file"
-	maxReadFileBytes   int64 = 250 * 1024 // 250KB
+	ToolNameReadFile         = "read_file" // ToolNameReadFile is the registered name of the read_file tool.
+	maxReadFileBytes   int64 = 250 * 1024  // 250KB
 	maxReadFileLines   int   = 10000
 	maxLineLengthChars int   = 2000
 )
 
+// NewReadFileTool returns a read_file tool that reads authorized files resolved relative to authorizer's sandbox. The authorizer must be non-nil.
 func NewReadFileTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolReadFile{
@@ -44,14 +47,18 @@ func NewReadFileTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns ToolNameReadFile, the registered name of the read_file tool.
 func (t *toolReadFile) Name() string {
 	return ToolNameReadFile
 }
 
+// Presenter returns the semantic presenter for read_file tool calls and results.
 func (t *toolReadFile) Presenter() llmstream.Presenter {
 	return readFilePresenterInstance
 }
 
+// Info returns the tool metadata for read_file, including its embedded description and JSON parameters. The returned schema requires path and accepts optional line_numbers
+// and request_permission parameters.
 func (t *toolReadFile) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameReadFile,
@@ -74,6 +81,9 @@ func (t *toolReadFile) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes a read_file tool call and returns the requested file as a tagged text payload. It parses ParamsReadFile from call.Input, requires an existing file
+// path, and authorizes the read when configured. Successful output is a `<file>` block containing valid UTF-8 content, optional 1-based line numbers, and metadata
+// for the displayed name, processed line count, byte count, and truncation state. Parameter, path, authorization, and I/O failures are returned as error tool results.
 func (t *toolReadFile) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params ParamsReadFile
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -239,6 +249,7 @@ func (t *toolReadFile) Run(ctx context.Context, call llmstream.ToolCall) llmstre
 	return llmstream.ToolResult{CallID: call.CallID, Name: call.Name, Type: call.Type, Result: final.String()}
 }
 
+// The truncateRunes function returns the first maxRunes runes of s without splitting UTF-8 sequences. It returns an empty string when maxRunes is zero or negative.
 func truncateRunes(s string, maxRunes int) string {
 	if maxRunes <= 0 {
 		return ""
@@ -262,8 +273,11 @@ func truncateRunes(s string, maxRunes int) string {
 
 var readFilePresenterInstance llmstream.Presenter = readFilePresenter{}
 
+// A readFilePresenter presents read_file tool calls as replacement summaries in the form "Read <path>".
 type readFilePresenter struct{}
 
+// Present returns a replacement presentation with the summary "Read <path>" for a read_file tool call. It uses the requested path when available and falls back
+// to the call or tool name; result is ignored.
 func (p readFilePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	_ = result
 

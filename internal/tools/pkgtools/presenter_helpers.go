@@ -11,9 +11,10 @@ import (
 
 var usageResultPattern = regexp.MustCompile(`^\d+:`)
 
+// The pkgToolResultEnvelope type represents a JSON package-tool result payload.
 type pkgToolResultEnvelope struct {
-	Content string `json:"content"`
-	Error   string `json:"error"`
+	Content string `json:"content"` // Content is the user-visible result text.
+	Error   string `json:"error"`   // Error is the user-visible error text.
 }
 
 func pkgToolPresenterFallbackSummary(call llmstream.ToolCall) llmstream.Line {
@@ -103,6 +104,7 @@ func pkgToolResultPayloadContent(result llmstream.ToolResult) (string, string, b
 	return trimmed, "", false
 }
 
+// parsePkgToolResultEnvelope parses raw as a package-tool result envelope.
 func parsePkgToolResultEnvelope(raw string) (pkgToolResultEnvelope, bool) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil || fields == nil {
@@ -131,6 +133,7 @@ func parsePkgToolResultEnvelope(raw string) (pkgToolResultEnvelope, bool) {
 	return payload, true
 }
 
+// pkgToolUsageResultCount counts usage-result lines in a successful get_usage result. The boolean reports whether the result could be summarized.
 func pkgToolUsageResultCount(result llmstream.ToolResult) (int, bool) {
 	if result.IsError {
 		return 0, false

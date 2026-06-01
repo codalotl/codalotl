@@ -6,14 +6,18 @@ import (
 	"strings"
 )
 
+// ANSIReset is the ANSI SGR sequence that resets text attributes and colors to terminal defaults.
 const ANSIReset = "\x1b[0m"
 
+// StyleSet describes a tri-state choice for Style's boolean SGR attributes. StyleSetUnspecified leaves an attribute unchanged, StyleSetOn enables it, and StyleSetOff
+// removes it when Style.Apply is used.
 type StyleSet int
 
+// StyleSet values describe whether a boolean SGR attribute should be left unchanged, enabled, or disabled.
 const (
-	StyleSetUnspecified StyleSet = iota
-	StyleSetOn
-	StyleSetOff
+	StyleSetUnspecified StyleSet = iota // StyleSetUnspecified leaves the attribute unchanged.
+	StyleSetOn                          // StyleSetOn enables the attribute.
+	StyleSetOff                         // StyleSetOff disables the attribute when Style.Apply is used.
 )
 
 // Style represets a set of ANSI control code styles that can be applied to text. Each value generally has three values:
@@ -29,13 +33,17 @@ const (
 //  2. someStyle.Wrap("your text") -- mostly sugar over the above, but allows someStyle.Wrap(otherStyle.Wrap("your text")) without dup'ing reset
 //  3. someStyle.Apply("<bold>your text<reset> - more text") -- applies styles to mixed-style text. Canonicalizes result.
 type Style struct {
-	Foreground    Color
-	Background    Color
-	Bold          StyleSet
-	Italic        StyleSet
-	Underline     StyleSet
-	Overline      StyleSet
-	StrikeThrough StyleSet
+	// Foreground selects the text foreground color; nil leaves it unchanged. NoColor is ignored by OpeningControlCodes/Wrap and clears existing foreground in Apply.
+	Foreground Color
+
+	// Background selects the text background color; nil leaves it unchanged. NoColor is ignored by OpeningControlCodes/Wrap and clears existing background in Apply.
+	Background Color
+
+	Bold          StyleSet // Bold controls bold text.
+	Italic        StyleSet // Italic controls italic text.
+	Underline     StyleSet // Underline controls underlined text.
+	Overline      StyleSet // Overline controls overlined text.
+	StrikeThrough StyleSet // StrikeThrough controls strikethrough text.
 	Reverse       StyleSet // Color inversion
 
 	// Faint         StyleSet - purposefully not implemented. Apparently weak support in terminals according to ChatGPT.
@@ -203,6 +211,8 @@ func styleSetToParam(set StyleSet, onVal string) string {
 	return ""
 }
 
+// parseSGRParameters parses semicolon-separated ANSI SGR parameters. It returns false when any parameter is not a base-10 integer. Empty content and empty fields
+// are interpreted as 0.
 func parseSGRParameters(content string) ([]int, bool) {
 	if content == "" {
 		return []int{0}, true
@@ -224,21 +234,23 @@ func parseSGRParameters(content string) ([]int, bool) {
 	return params, true
 }
 
+// state records the active ANSI SGR attributes at a position in terminal text.
 type state struct {
-	bold          bool
-	italic        bool
-	underline     bool
-	overline      bool
-	strikeThrough bool
-	reverse       bool
-	fg            Color
-	bg            Color
+	bold          bool  // Bold text is active.
+	italic        bool  // Italic text is active.
+	underline     bool  // Underlined text is active.
+	overline      bool  // Overlined text is active.
+	strikeThrough bool  // Strikethrough text is active.
+	reverse       bool  // Reverse video is active.
+	fg            Color // Foreground color is nil when the terminal default is active.
+	bg            Color // Background color is nil when the terminal default is active.
 }
 
 func defaultState() state {
 	return state{}
 }
 
+// mergeState applies style to base and returns the resulting ANSI state.
 func mergeState(base state, style Style) state {
 	merged := base
 
@@ -303,6 +315,7 @@ func mergeState(base state, style Style) state {
 	return merged
 }
 
+// equals reports whether s and other describe the same active SGR attributes and colors.
 func (s state) equals(other state) bool {
 	return s.bold == other.bold &&
 		s.italic == other.italic &&
@@ -314,10 +327,12 @@ func (s state) equals(other state) bool {
 		colorsEqual(s.bg, other.bg)
 }
 
+// isDefault reports whether s has no active attributes and uses the default foreground and background colors.
 func (s state) isDefault() bool {
 	return s.equals(defaultState())
 }
 
+// applyParams applies SGR parameters to s and reports whether any reset parameter was seen. Unknown or malformed parameters are ignored.
 func applyParams(s state, params []int) (state, bool) {
 	if len(params) == 0 {
 		return s, false
@@ -413,6 +428,7 @@ func colorFromCode(p int) Color {
 	return ANSIColor(idx)
 }
 
+// parseExtendedColor parses an SGR extended color payload starting at idx. It supports 256-color form "5;n" and true-color form "2;r;g;b".
 func parseExtendedColor(params []int, idx int) (Color, bool) {
 	if idx+1 >= len(params) {
 		return nil, false
@@ -465,6 +481,8 @@ func writeSegment(segment string, out *strings.Builder, target state, active *st
 	*wroteText = true
 }
 
+// writeTransition writes the SGR sequence needed to move active to target and updates active. If forceReset is true, it resets the terminal state before applying
+// target.
 func writeTransition(out *strings.Builder, target state, active *state, forceReset bool) {
 	if active.equals(target) {
 		return

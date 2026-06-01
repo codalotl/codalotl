@@ -131,6 +131,8 @@ func PackageList(absDir, search string, includeDepPackages bool) ([]string, stri
 	return all, contextStr, nil
 }
 
+// moduleRootAndDirectDeps locates the Go module containing absDir and returns its root, module path, and direct dependency module paths. Direct dependencies are
+// require entries in go.mod that are not marked indirect, returned in sorted order.
 func moduleRootAndDirectDeps(absDir string) (moduleRoot string, modulePath string, directDepModules []string, err error) {
 	dir := filepath.Clean(absDir)
 	if !filepath.IsAbs(dir) {
@@ -198,6 +200,8 @@ func findNearestGoModDir(startDir string) (string, error) {
 	}
 }
 
+// goListImportPaths runs go list for pattern from moduleRoot and returns the unique import paths it prints, sorted. It disables workspace mode, uses packageListGoListTimeout,
+// and includes stderr in command errors.
 func goListImportPaths(moduleRoot string, pattern string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), packageListGoListTimeout)
 	defer cancel()
@@ -256,6 +260,8 @@ func filterDepInternalPackages(depModule string, importPaths []string) []string 
 	return filtered
 }
 
+// isInternalToModule reports whether importPath is at or below an internal directory within modulePath. It returns false for empty inputs, the module root itself,
+// and paths outside modulePath.
 func isInternalToModule(modulePath, importPath string) bool {
 	if modulePath == "" || importPath == "" {
 		return false
@@ -298,6 +304,9 @@ func renderPackageSection(title, modulePath string, pkgs []string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// collapsePackageList returns package-list display lines, replacing selected import-path subtrees with expandable summary lines when the list exceeds maxLines.
+// It returns pkgs unchanged when maxLines is non-positive, the list already fits, or no useful collapse is found. Collapsed results are sorted, and each collapsed
+// line includes a search regexp that expands the omitted prefix.
 func collapsePackageList(modulePath string, pkgs []string, maxLines int) []string {
 	if maxLines <= 0 || len(pkgs) <= maxLines {
 		return pkgs
@@ -347,18 +356,20 @@ func collapsePackageList(modulePath string, pkgs []string, maxLines int) []strin
 	return out
 }
 
+// pkgTrie indexes package import paths for a module so large package lists can be collapsed by prefix.
 type pkgTrie struct {
-	modulePath string
-	root       *pkgTrieNode
+	modulePath string       // ModulePath is the module import path represented by the root node.
+	root       *pkgTrieNode // Root is the trie root for modulePath.
 }
 
+// pkgTrieNode is a node in a pkgTrie, representing one import-path prefix and its package-count metadata.
 type pkgTrieNode struct {
-	segment             string
-	fullPrefix          string
-	children            map[string]*pkgTrieNode
-	isPackage           bool
-	subtreePackageCount int
-	parent              *pkgTrieNode
+	segment             string                  // Segment is the path component represented by this node; it is empty for the root.
+	fullPrefix          string                  // FullPrefix is the complete import-path prefix represented by this node.
+	children            map[string]*pkgTrieNode // Children maps the next path segment to its trie node.
+	isPackage           bool                    // IsPackage reports whether fullPrefix is itself a package import path.
+	subtreePackageCount int                     // SubtreePackageCount is the number of package import paths at or below this node.
+	parent              *pkgTrieNode            // Parent is the node's parent; it is nil for the root.
 }
 
 func newPkgTrie(modulePath string, pkgs []string) *pkgTrie {
@@ -379,6 +390,8 @@ func newPkgTrie(modulePath string, pkgs []string) *pkgTrie {
 	return tr
 }
 
+// insert adds importPath to tr and marks its terminal node as a package. It is intended for import paths within tr.modulePath; paths outside that module are still
+// inserted below the root so the trie remains renderable.
 func (tr *pkgTrie) insert(importPath string) {
 	n := tr.root
 	if importPath == tr.modulePath {
@@ -416,6 +429,7 @@ func (tr *pkgTrie) insert(importPath string) {
 	n.isPackage = true
 }
 
+// computeSubtreeCounts recomputes subtreePackageCount for n and all descendants. It returns n's package count, including n itself when isPackage is true.
 func (n *pkgTrieNode) computeSubtreeCounts() int {
 	count := 0
 	if n.isPackage {
@@ -428,6 +442,7 @@ func (n *pkgTrieNode) computeSubtreeCounts() int {
 	return count
 }
 
+// nodes returns every node in tr, including the root. Parents are returned before descendants; sibling order is unspecified.
 func (tr *pkgTrie) nodes() []*pkgTrieNode {
 	var out []*pkgTrieNode
 	var walk func(n *pkgTrieNode)
@@ -441,6 +456,8 @@ func (tr *pkgTrie) nodes() []*pkgTrieNode {
 	return out
 }
 
+// countUnderPrefix returns the number of package import paths in the subtree rooted at prefix. It returns 0 for prefixes outside the trie or missing from it; counts
+// reflect the most recent computeSubtreeCounts call.
 func (tr *pkgTrie) countUnderPrefix(prefix string) int {
 	if prefix == tr.modulePath {
 		return tr.root.subtreePackageCount
@@ -463,6 +480,8 @@ func (tr *pkgTrie) countUnderPrefix(prefix string) int {
 	return n.subtreePackageCount
 }
 
+// chooseCollapsePrefixes chooses import-path prefixes whose package subtrees can be rendered as collapsed lines. It returns nil when the trie already fits within
+// maxLines; otherwise, it uses subtreePackageCount values to prefer dense, high-savings subtrees and returns sorted prefixes.
 func (tr *pkgTrie) chooseCollapsePrefixes(maxLines int) []string {
 	currentLines := tr.root.subtreePackageCount
 	if currentLines <= maxLines {

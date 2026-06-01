@@ -15,19 +15,30 @@ import (
 //go:embed write.md
 var descriptionWrite string
 
+// ToolNameWrite is the registered name of the write tool.
 const ToolNameWrite = "write"
 
+// The toolWrite type implements the write tool by creating or replacing file contents.
 type toolWrite struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-	postChecks    *WritePostChecks
-}
-type ParamsWrite struct {
-	Path              string  `json:"path"`
-	Content           *string `json:"content"`
-	RequestPermission bool    `json:"request_permission"`
+	sandboxAbsDir string                // This is the absolute sandbox root for path resolution and post-checks.
+	authorizer    authdomain.Authorizer // This authorizes writes to the target file before writing.
+	postChecks    *WritePostChecks      // This configures optional diagnostics and lint hooks after a successful write.
 }
 
+// ParamsWrite contains the JSON arguments for the write tool.
+type ParamsWrite struct {
+	// Path is the file to create or replace. Relative paths are resolved from the sandbox root, and parent directories are created as needed.
+	Path string `json:"path"`
+
+	// Content is the complete file content to write. A nil Content is rejected as missing, but an empty string is valid.
+	Content *string `json:"content"`
+
+	// RequestPermission asks for approval to write the file when policy requires it.
+	RequestPermission bool `json:"request_permission"`
+}
+
+// NewWriteTool returns a write tool that creates or replaces files using authorizer for sandbox resolution and write authorization. The authorizer must be non-nil.
+// If postChecks is provided, only the first value is used to configure post-write checks.
 func NewWriteTool(authorizer authdomain.Authorizer, postChecks ...*WritePostChecks) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	var configuredPostChecks *WritePostChecks
@@ -40,14 +51,19 @@ func NewWriteTool(authorizer authdomain.Authorizer, postChecks ...*WritePostChec
 		postChecks:    configuredPostChecks,
 	}
 }
+
+// Name returns the registered name of the write tool.
 func (t *toolWrite) Name() string {
 	return ToolNameWrite
 }
 
+// Presenter returns the presenter used to display write calls as semantic file diffs.
 func (t *toolWrite) Presenter() llmstream.Presenter {
 	return writePresenterInstance
 }
 
+// Info returns the tool metadata for write, including its embedded description and JSON parameters. The returned schema requires path and content, and accepts request_permission
+// for authorization escalation.
 func (t *toolWrite) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameWrite,
@@ -69,6 +85,9 @@ func (t *toolWrite) Info() llmstream.ToolInfo {
 		Required: []string{"path", "content"},
 	}
 }
+
+// Run executes a write tool call by parsing its JSON parameters, validating and authorizing the target file, creating parent directories, and writing the complete
+// content. On success it returns the written path and appends configured post-check output; input, authorization, and filesystem failures are returned as tool errors.
 func (t *toolWrite) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params ParamsWrite
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {

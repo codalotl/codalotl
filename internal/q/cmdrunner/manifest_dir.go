@@ -27,10 +27,11 @@ var defaultManifestFilenames = map[string][]string{
 	"ts":    {"package.json"},
 }
 
+// manifestDirResolver locates the nearest relevant language manifest directory for a path.
 type manifestDirResolver struct {
-	rootDir      string
-	langOverride string
-	manifestMap  map[string][]string
+	rootDir      string              // rootDir is returned when no manifest is found and stops searches that reach it.
+	langOverride string              // langOverride forces manifest lookup to use a specific language when non-empty.
+	manifestMap  map[string][]string // manifestMap maps language keys to candidate manifest filenames.
 }
 
 func newManifestDirResolver(rootDir string, inputs map[string]any) *manifestDirResolver {
@@ -50,6 +51,7 @@ func newManifestDirResolver(rootDir string, inputs map[string]any) *manifestDirR
 	}
 }
 
+// manifestDir returns the nearest relevant manifest directory for path.
 func (r *manifestDirResolver) manifestDir(path string) (string, error) {
 	startDir := r.startDir(path)
 	lang := r.langOverride
@@ -87,6 +89,7 @@ func (r *manifestDirResolver) manifestDir(path string) (string, error) {
 	return r.rootDir, nil
 }
 
+// startDir returns the existing directory from which searches for path should begin.
 func (r *manifestDirResolver) startDir(p string) string {
 	if p == "" {
 		return r.rootDir
@@ -116,6 +119,7 @@ func (r *manifestDirResolver) startDir(p string) string {
 	return filepath.Clean(candidate)
 }
 
+// detectLanguage searches upward from startDir for files that identify a known language.
 func (r *manifestDirResolver) detectLanguage(startDir string) string {
 	current := startDir
 	for {
@@ -137,6 +141,7 @@ func (r *manifestDirResolver) detectLanguage(startDir string) string {
 	return ""
 }
 
+// isRoot reports whether path is the resolver root directory.
 func (r *manifestDirResolver) isRoot(path string) bool {
 	if r.rootDir == "" {
 		return false
@@ -144,6 +149,7 @@ func (r *manifestDirResolver) isRoot(path string) bool {
 	return samePath(r.rootDir, path)
 }
 
+// detectLanguageInDir returns the first known language extension found among files in dir.
 func detectLanguageInDir(dir string, manifestMap map[string][]string) string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

@@ -15,14 +15,16 @@ import (
 //go:embed run_project_tests.md
 var descriptionRunProjectTests string
 
+// ToolNameRunProjectTests is the registered tool name for the project-wide test tool.
 const ToolNameRunProjectTests = "run_project_tests"
 
 var runProjectTestsPresenterInstance llmstream.Presenter = runProjectTestsPresenter{}
 
+// toolRunProjectTests implements the project-wide Go test tool.
 type toolRunProjectTests struct {
-	sandboxAbsDir string
-	pkgDirAbsPath string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // This is the absolute sandbox root used to resolve the project test base path.
+	pkgDirAbsPath string                // This is the optional package path used to choose the containing Go module for project tests.
+	authorizer    authdomain.Authorizer // This is the authorizer associated with the tool sandbox.
 }
 
 // type runProjectTestsParams struct{}
@@ -38,16 +40,20 @@ func NewRunProjectTestsTool(pkgDirAbsPath string, authorizer authdomain.Authoriz
 	}
 }
 
+// Name returns ToolNameRunProjectTests.
 func (t *toolRunProjectTests) Name() string {
 	return ToolNameRunProjectTests
 }
 
+// Presenter returns the project-test presentation formatter.
 func (t *toolRunProjectTests) Presenter() llmstream.Presenter {
 	return runProjectTestsPresenterInstance
 }
 
+// runProjectTestsPresenter formats project-wide test tool calls and results for display.
 type runProjectTestsPresenter struct{}
 
+// Present returns the display presentation for a project-wide test tool call or result.
 func (p runProjectTestsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Run Tests"
 	if result != nil {
@@ -88,6 +94,7 @@ func (p runProjectTestsPresenter) Present(call llmstream.ToolCall, result *llmst
 	return presentation
 }
 
+// Info returns the project-test tool metadata.
 func (t *toolRunProjectTests) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameRunProjectTests,
@@ -96,6 +103,7 @@ func (t *toolRunProjectTests) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes project-wide Go tests and returns a test-status result.
 func (t *toolRunProjectTests) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	basePath := t.pkgDirAbsPath
 
@@ -137,6 +145,9 @@ func newGoProjectTestRunner() *cmdrunner.Runner {
 	return r
 }
 
+// extractRunProjectTestsContent returns the project-wide test success state and display content from result. It understands extToolPayload JSON and raw result text.
+// Payload success values take precedence; otherwise success is inferred from XML-like ok attributes, payload errors, and result.IsError. If payload content is blank,
+// a non-blank payload error is returned as the content.
 func extractRunProjectTestsContent(result llmstream.ToolResult) (bool, string) {
 	success := true
 	trimmed := strings.TrimSpace(result.Result)
@@ -171,6 +182,7 @@ func extractRunProjectTestsContent(result llmstream.ToolResult) (bool, string) {
 	return success, trimmed
 }
 
+// extractRunProjectTestsFailures returns unique failing package or test lines from project test output.
 func extractRunProjectTestsFailures(content string) []string {
 	content = stripOuterXMLTag(strings.TrimSpace(content))
 	content = strings.ReplaceAll(content, "\r\n", "\n")

@@ -1,0 +1,152 @@
+# PR
+
+## User Summary (do not modify)
+
+In this PR, run the docs-add refactor across all Go packages in the current module.
+
+Target: all Go packages in the current module
+Selected refactor flow: docs-add
+
+For each package in the current module:
+1. refactor("name": "docs-add", "package": "<package>")
+
+Additional instructions:
+- Inspect each refactor result and diff before moving to the next package.
+- Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package or small package group.
+- Skip no-op packages without a commit and add a note in this PR file.
+- If a package looks risky or outside scope, do not fix-forward aggressively; revert/skip it and add a note in this PR file explaining why.
+- Due to CAS, packages already up to date for this refactor may be no-ops.
+- No CAS namespace is currently recertifiable specifically for this refactor. If accepted package changes invalidate other applicable CAS records, recertify those after final changes.
+
+## Plan
+
+### Preflight
+- [DONE] Identify all Go packages in the current module with `go list ./...`.
+- [DONE] Clarify-public-api CAS records are present. Per orchestrator CAS policy, resolve them with `docs-improve-from-clarify` before continuing broad `docs-add` work, then commit any accepted doc improvements with consumed CAS records.
+- No `SPEC.md` changes are planned for this PR because the requested work is documentation-only and should not change package behavior.
+
+### No-op/skipped notes
+- `docs-improve-from-clarify` returned `no_opportunity` for `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`; no files or CAS records changed.
+- Batch 1 no-ops: `internal/agentbuilder`, `internal/agentsmd`.
+- Batch 1 skipped for refactor-tool failures with no file changes: `internal/agentformatter` (token budget exceeded), `internal/applypatch` (generated snippets failed), `internal/cli` (token budget exceeded).
+- Batch 2 no-ops: `internal/diff`.
+- Batch 2 skipped for refactor-tool failures with no file changes: `internal/docubot` (token budget exceeded).
+- Batch 3 no-ops: `internal/gocode`, `internal/gocodetesting`, `internal/gotypes`.
+- Batch 4 skipped for refactor-tool failures with no file changes: `internal/llmstream` (token budget exceeded).
+- Batch 5 no-ops: `internal/q/semver`.
+- Batch 6 no-ops: `internal/reorgbot`.
+- Batch 6 skipped for refactor-tool failures with no file changes: `internal/tui` (token budget exceeded).
+
+### Refactor batches
+
+Run `refactor("name": "docs-add", "package": "<package>")` for each package below, inspect the result and diff, commit useful changes in focused batches, and note no-op/skipped packages here.
+
+#### [DONE] Batch 1: root and core agent/app packages
+- [DONE] `github.com/codalotl/codalotl` - added root package `doc.go`; `go test .` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/agent` - documented `defaultAgentCreator.defaults`; `go test ./internal/agent` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/agentbuilder` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/agentformatter` - skipped after token-budget refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/agentregistry` - added package docs and important field/type docs; `go test ./internal/agentregistry` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/agentsmd` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/applypatch` - skipped after generated-snippet refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/cli` - skipped after token-budget refactor failure; no file changes.
+
+#### [DONE] Batch 2: code/doc/git/gocas packages
+- [DONE] `github.com/codalotl/codalotl/internal/codeunit` - added package docs and important field/helper docs; `go test ./internal/codeunit` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/detectlang` - added package docs and important language/helper docs; `go test ./internal/detectlang` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/diff` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/docubot` - skipped after token-budget refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/docubot/cmd` - added command package docs and important config/helper docs; `go test ./internal/docubot/cmd` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gittools` - added package docs and important helper/type docs; `go test ./internal/gittools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gittools/cmd/changedfiles` - added command package docs; `go test ./internal/gittools/cmd/changedfiles` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gittools/cmd/mergebase` - added command package docs; `go test ./internal/gittools/cmd/mergebase` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocas` - added package docs and important helper/type docs; `go test ./internal/gocas` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocas/casclarify` - added important field/helper docs; `go test ./internal/gocas/casclarify` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocas/casconformance` - added package docs and metadata field docs; `go test ./internal/gocas/casconformance` passed.
+
+#### [DONE] Batch 3: Go analysis/refactor packages
+- [DONE] `github.com/codalotl/codalotl/internal/goclitools` - added important field docs; `go test ./internal/goclitools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocode` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/gocodecontext` - added important helper/type docs; `go test ./internal/gocodecontext` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gocodetesting` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/gograph` - added package docs and important graph helper/type docs; `go test ./internal/gograph` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gopackagediff` - added package docs and important diff helper/field docs; `go test ./internal/gopackagediff` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gorenamer` - added package docs and identifier-rename field docs; `go test ./internal/gorenamer` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/gotypes` - no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/gousage` - added package docs and usage field docs; `go test ./internal/gousage` passed.
+
+#### [DONE] Batch 4: orchestration/runtime packages
+- [DONE] `github.com/codalotl/codalotl/internal/initialcontext` - added package docs and important field/helper docs; `go test ./internal/initialcontext` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/iterate` - added package docs and important iteration helper docs; `go test ./internal/iterate` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/lints` - added package docs and important lint type/helper docs; `go test ./internal/lints` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/llmmodel` - added important model/provider docs; `go test ./internal/llmmodel` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/llmstream` - skipped after token-budget refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/llmstream/anthropic` - added package docs and important stream helper docs; `go test ./internal/llmstream/anthropic` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/llmstream/gemini` - added package docs and important stream helper docs; `go test ./internal/llmstream/gemini` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/mockllm/mockopenai` - added package docs and important mock handler docs; `go test ./internal/mockllm/mockopenai` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/noninteractive` - added package docs and important session/output helper docs; `go test ./internal/noninteractive` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/noninteractive/integration` - added package docs and important integration helper/config docs; `go test ./internal/noninteractive/integration` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/noninteractive/integration/cmd/create` - added package docs and command entrypoint docs; `go test ./internal/noninteractive/integration/cmd/create` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/prompt` - added package docs and important prompt/type docs; `go test ./internal/prompt` passed.
+
+#### [DONE] Batch 5: `internal/q` support packages
+- [DONE] `github.com/codalotl/codalotl/internal/q/cas` - added important helper/record docs; `go test ./internal/q/cas` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/cascade` - added important helper/provenance docs; `go test ./internal/q/cascade` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/cli` - added important command/flag/run docs; `go test ./internal/q/cli` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/clipboard` - added package docs and important backend docs; `go test ./internal/q/clipboard` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/cmdrunner` - added package docs and important runner/template/result docs; `go test ./internal/q/cmdrunner` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/health` - added package docs and important context/error docs; `go test ./internal/q/health` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/remotemonitor` - added important monitor option docs; `go test ./internal/q/remotemonitor` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/semver` - no file changes; `go test ./internal/q/semver` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/sseclient` - added package docs and important SSE client/stream docs; `go test ./internal/q/sseclient` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/termformat` - added package docs and important terminal formatting docs; `go test ./internal/q/termformat` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/termformat/cmd` - added command package docs; `go test ./internal/q/termformat/cmd` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui` - added package docs and important terminal/input/session docs; `go test ./internal/q/tui` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui/cmd` - added command package docs and demo model docs; `go test ./internal/q/tui/cmd` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui/tuicontrols` - added package docs and important keymap/text-area/view docs; `go test ./internal/q/tui/tuicontrols` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui/tuicontrols/cmd/chatlog` - added command package docs and demo model docs; `go test ./internal/q/tui/tuicontrols/cmd/chatlog` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/uni` - added package docs and important iterator docs; `go test ./internal/q/uni` passed.
+
+#### [DONE] Batch 6: skills/tools/tui/update packages
+- [DONE] `github.com/codalotl/codalotl/internal/reorgbot` - no file changes; `go test ./internal/reorgbot` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/simplelogger` - added package docs; `go test ./internal/simplelogger` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/skills` - added package docs and important skill install/validation docs; `go test ./internal/skills` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/specmd` - added important SPEC.md parsing/conformance docs; `go test ./internal/specmd` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/subscriptions/openaisub` - added important subscription auth/token docs; `go test ./internal/subscriptions/openaisub` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/authdomain` - added important authorizer/grant/shell-policy docs; `go test ./internal/tools/authdomain` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/cli` - added important CLI tool/streaming docs; `go test ./internal/tools/cli` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/coretools` - added package docs and important core tool/presenter docs; `go test ./internal/tools/coretools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/exttools` - added package docs and important diagnostics/test/lint tool docs; `go test ./internal/tools/exttools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/pkgtools` - added package docs and important package workflow tool docs; `go test ./internal/tools/pkgtools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/refactor` - added clarify-record cleanup docs; `go test ./internal/tools/refactor` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/spectools` - added package docs and important conformance tool docs; `go test ./internal/tools/spectools` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/tools/toolsetinterface` - added important option field docs; `go test ./internal/tools/toolsetinterface` passed (`[no test files]`).
+- [DONE] `github.com/codalotl/codalotl/internal/tui` - skipped after token-budget refactor failure; no file changes.
+- [DONE] `github.com/codalotl/codalotl/internal/updatedocs` - added package docs and important documentation-update helper docs; `go test ./internal/updatedocs` passed.
+
+### Validation
+- After implementation batches are done, run `go test ./...` unless an accepted refactor batch already demonstrates equivalent validation.
+- Run full `review` once and `check_spec_conformance({"only_changed": true})` once after all planned implementation work is done.
+- Resolve non-latent SPEC conformance issues before completion.
+
+## Review
+
+Not yet run.
+
+## Summary
+
+TBD.
+
+## State
+
+- Branch: `jn/refactor-docs-add-all-packages`
+- PR file: `.prs/2026-05-30_1780158779_refactor-docs-add-all-packages.md`
+- Current request is broad docs-add refactoring across all Go packages.
+- `go list ./...` currently reports 67 packages.
+- Clarify CAS records exist for target packages `internal/gocas`, `internal/q/cas`, and `internal/subscriptions/openaisub`, but the clarify doc-improvement refactor found no opportunities for all three packages.
+- Batch 1 complete. Accepted source changes for root package, `internal/agent`, and `internal/agentregistry`; other Batch 1 packages were no-op or skipped with no file changes.
+- Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
+- Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
+- Batch 4 complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, `internal/noninteractive/integration`, `internal/noninteractive/integration/cmd/create`, and `internal/prompt`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
+- Batch 5 complete. Accepted source changes for `internal/q/cas`, `internal/q/cascade`, `internal/q/cli`, `internal/q/clipboard`, `internal/q/cmdrunner`, `internal/q/health`, `internal/q/remotemonitor`, `internal/q/sseclient`, `internal/q/termformat`, `internal/q/termformat/cmd`, `internal/q/tui`, `internal/q/tui/cmd`, `internal/q/tui/tuicontrols`, `internal/q/tui/tuicontrols/cmd/chatlog`, and `internal/q/uni`; `internal/q/semver` was a no-op; targeted tests for accepted/no-op packages pass.
+- Batch 6 complete. `internal/reorgbot` was a no-op; `internal/tui` was skipped after a token-budget failure with no file changes; accepted source changes for `internal/simplelogger`, `internal/skills`, `internal/specmd`, `internal/subscriptions/openaisub`, `internal/tools/authdomain`, `internal/tools/cli`, `internal/tools/coretools`, `internal/tools/exttools`, `internal/tools/pkgtools`, `internal/tools/refactor`, `internal/tools/spectools`, `internal/tools/toolsetinterface`, and `internal/updatedocs`; targeted tests for accepted/no-op packages pass.

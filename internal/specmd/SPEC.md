@@ -13,7 +13,7 @@ SPEC.md files are currently assumed to be for Go packages only.
 ## Conformance
 
 ImplementationDiffs finds differences between SPEC.md and implementation. An implementation snippet **conforms** to a SPEC.md snippet as follows:
-- For functions, the function body is ignored (functions in SPEC.md shouldn't even typically have bodies).
+- For function and method declarations, the body is ignored (functions in SPEC.md shouldn't even typically have bodies).
 - Exact matches conform.
 - If a decl (or field, or similar) in the SPEC.md has a comment, the implementation must have the **exact** same comment (in the same spot - doc vs eol).
 - If a decl (or field, or similar) in the SPEC.md does NOT have a comment, the implementation MAY have a comment without affecting conformance.
@@ -186,7 +186,7 @@ type SpecDiff struct {
 // ImplementationDiffs finds differences between the public API declared in the SPEC.md and the actual public API in the corresponding Go package. It only checks
 // those identifiers defined in the SPEC.md - if the public API is a strict superset, no differences are returned. If no differences are found, nil is returned.
 //   - Only PublicAPIGoCodeBlocks are checked.
-//   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
+//   - If PublicAPIGoCodeBlocks contains function or method declaration bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
 //   - If the corresponding Go package cannot be loaded (ex: syntax error; no Go files), an error is returned.
 func (s *Spec) ImplementationDiffs() ([]SpecDiff, error)

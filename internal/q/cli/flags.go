@@ -7,31 +7,33 @@ import (
 	"time"
 )
 
+// flagKind identifies the parser and destination pointer type for a registered flag.
 type flagKind uint8
 
+// flagKind constants identify the supported flag value types.
 const (
-	flagBool flagKind = iota + 1
-	flagString
-	flagInt
-	flagDuration
+	flagBool     flagKind = iota + 1 // Boolean flags parse bool values and may omit an explicit value.
+	flagString                       // String flags store raw string values.
+	flagInt                          // Integer flags parse decimal int values.
+	flagDuration                     // Duration flags parse time.Duration values such as "5s".
 )
 
 // FlagSet is a typed flag registry for a command.
 type FlagSet struct {
-	byLong  map[string]*flagDef
-	byShort map[rune]*flagDef
+	byLong  map[string]*flagDef // Long-name index maps names without "--" to definitions.
+	byShort map[rune]*flagDef   // Short-name index maps shorthand runes without "-" to definitions.
 }
 
+// flagDef stores the parser metadata and destination pointer for one registered flag.
 type flagDef struct {
-	name      string
-	shorthand rune
-	usage     string
-	kind      flagKind
-
-	boolPtr     *bool
-	stringPtr   *string
-	intPtr      *int
-	durationPtr *time.Duration
+	name        string         // name is the long flag name without the leading "--".
+	shorthand   rune           // shorthand is the optional short flag rune without the leading "-"; zero means none.
+	usage       string         // usage is the help text for the flag.
+	kind        flagKind       // kind selects how raw values are parsed and which destination pointer is used.
+	boolPtr     *bool          // boolPtr receives parsed values when kind is flagBool.
+	stringPtr   *string        // stringPtr receives parsed values when kind is flagString.
+	intPtr      *int           // intPtr receives parsed values when kind is flagInt.
+	durationPtr *time.Duration // durationPtr receives parsed values when kind is flagDuration.
 }
 
 func newFlagSet() *FlagSet {
@@ -41,6 +43,7 @@ func newFlagSet() *FlagSet {
 	}
 }
 
+// Bool registers a bool flag and returns the storage updated during parsing.
 func (fs *FlagSet) Bool(name string, shorthand rune, def bool, usage string) *bool {
 	if name == "" {
 		panic("cli: flag name must be non-empty")
@@ -57,6 +60,7 @@ func (fs *FlagSet) Bool(name string, shorthand rune, def bool, usage string) *bo
 	return ptr
 }
 
+// String registers a string flag and returns the storage updated during parsing.
 func (fs *FlagSet) String(name string, shorthand rune, def string, usage string) *string {
 	if name == "" {
 		panic("cli: flag name must be non-empty")
@@ -73,6 +77,7 @@ func (fs *FlagSet) String(name string, shorthand rune, def string, usage string)
 	return ptr
 }
 
+// Int registers an int flag and returns the storage updated during parsing.
 func (fs *FlagSet) Int(name string, shorthand rune, def int, usage string) *int {
 	if name == "" {
 		panic("cli: flag name must be non-empty")
@@ -89,6 +94,7 @@ func (fs *FlagSet) Int(name string, shorthand rune, def int, usage string) *int 
 	return ptr
 }
 
+// Duration registers a time.Duration flag and returns the storage updated during parsing.
 func (fs *FlagSet) Duration(name string, shorthand rune, def time.Duration, usage string) *time.Duration {
 	if name == "" {
 		panic("cli: flag name must be non-empty")
@@ -105,6 +111,7 @@ func (fs *FlagSet) Duration(name string, shorthand rune, def time.Duration, usag
 	return ptr
 }
 
+// add registers def in fs's long-name and optional shorthand indexes.
 func (fs *FlagSet) add(def *flagDef) {
 	if _, ok := fs.byLong[def.name]; ok {
 		panic("cli: duplicate flag: --" + def.name)
@@ -118,11 +125,13 @@ func (fs *FlagSet) add(def *flagDef) {
 	}
 }
 
+// activeFlags is the merged set of flags accepted at the current point in command resolution.
 type activeFlags struct {
-	byLong  map[string]*flagDef
-	byShort map[rune]*flagDef
+	byLong  map[string]*flagDef // Long-name index maps names without "--" to active definitions.
+	byShort map[rune]*flagDef   // Short-name index maps shorthand runes without "-" to active definitions.
 }
 
+// activeFlags returns the flags accepted for c: inherited persistent flags plus c's local flags.
 func (c *Command) activeFlags() activeFlags {
 	byLong := map[string]*flagDef{}
 	byShort := map[rune]*flagDef{}
@@ -158,11 +167,13 @@ func addActiveFlag(byLong map[string]*flagDef, byShort map[rune]*flagDef, def *f
 	}
 }
 
+// flagHelp is the presentation model for a flag in generated help.
 type flagHelp struct {
-	def  *flagDef
-	kind string
+	def  *flagDef // def is the flag definition to display.
+	kind string   // kind is the lower-case value type shown for the flag.
 }
 
+// flagsForHelp returns cmd's active flags in deterministic help order, excluding the reserved help flag.
 func flagsForHelp(cmd *Command) []flagHelp {
 	active := cmd.activeFlags()
 	var helps []flagHelp
@@ -187,6 +198,7 @@ func flagsForHelp(cmd *Command) []flagHelp {
 	return helps
 }
 
+// parseAndSet looks up a flag, parses its value, stores it, and reports whether nextValue was consumed.
 func (a activeFlags) parseAndSet(token string, hasDashDash bool, name string, shorthand rune, value *string, nextValue *string) (bool, error) {
 	var def *flagDef
 	if name != "" {
@@ -232,6 +244,7 @@ func (a activeFlags) parseAndSet(token string, hasDashDash bool, name string, sh
 	return consumeNext, nil
 }
 
+// setFlagValue parses raw according to def's kind and stores it in the registered destination pointer.
 func setFlagValue(def *flagDef, raw string) error {
 	switch def.kind {
 	case flagBool:

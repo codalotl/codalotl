@@ -25,22 +25,27 @@ const (
 	fixtureRepoRoot = "testdata/repo"
 )
 
+// A testCaseConfig describes the config.json inputs and replay expectations for an integration case.
 type testCaseConfig struct {
-	Prompt            string                   `json:"prompt"`
-	PackagePath       string                   `json:"package_path,omitempty"`
-	ReflowWidth       int                      `json:"reflowwidth,omitempty"`
-	Lints             lints.Lints              `json:"lints,omitempty"`
-	Expected          []map[string]any         `json:"expected"`
+	Prompt      string           `json:"prompt"`                 // Prompt is the user prompt passed to noninteractive.Exec and must be non-empty.
+	PackagePath string           `json:"package_path,omitempty"` // PackagePath is the repository-relative package path under test; empty runs without package mode.
+	ReflowWidth int              `json:"reflowwidth,omitempty"`  // ReflowWidth is the optional width passed to lint step resolution.
+	Lints       lints.Lints      `json:"lints,omitempty"`        // Lints configures the lint pipeline used during replay.
+	Expected    []map[string]any `json:"expected"`               // Expected lists JSON event matchers that must appear as an ordered subsequence of the replay output.
+
+	// ExpectedRepoFiles lists repository-relative file content matchers to verify after replay.
 	ExpectedRepoFiles []expectedRepoFileConfig `json:"expected_repo_files,omitempty"`
 }
 
+// expectedRepoFileConfig describes an expected changed or created file in a replayed case.
 type expectedRepoFileConfig struct {
-	Path  string         `json:"path"`
-	Match map[string]any `json:"match"`
+	Path  string         `json:"path"`  // Path is the repository-relative file path to check.
+	Match map[string]any `json:"match"` // Match is the matcher applied to the file contents.
 }
 
 var runNoninteractiveExec = noninteractive.Exec
 
+// ListCaseNames returns the sorted names of integration case directories under root.
 func ListCaseNames(root string) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -58,6 +63,11 @@ func ListCaseNames(root string) ([]string, error) {
 	return caseNames, nil
 }
 
+// RunCaseDir replays the integration case in caseDir and verifies its recorded expectations.
+//
+// The case directory must contain config.json and http.json. If it contains a repo directory, that repository is used; otherwise the shared fixture repository is
+// copied into a temporary work tree. RunCaseDir runs noninteractive in JSON mode against a mock OpenAI server, then checks the expected event subsequence, expected
+// repository snapshots, configured expected file matchers, and that all consumable mock responses were used.
 func RunCaseDir(caseDir string) error {
 	cfg, err := readConfig(filepath.Join(caseDir, "config.json"))
 	if err != nil {
@@ -262,6 +272,7 @@ func marshalHTTPFixtureData(cfg httpFixtureConfig, roots []string) ([]byte, erro
 	return normalizedData, nil
 }
 
+// augmentReplayMockOpenAIError adds mock OpenAI request-mismatch diagnostics to runErr when they are available.
 func augmentReplayMockOpenAIError(runErr error, handler http.Handler, fixture httpFixtureConfig, roots []string) error {
 	debugInfo, err := mockopenai.DebugInfo(handler)
 	if err != nil || debugInfo.LastUnmatchedRequest == nil {
@@ -361,6 +372,9 @@ func insertImplicitStartSubagentEvents(events []map[string]any) []map[string]any
 	return out
 }
 
+// shouldInsertImplicitStartSubagent reports whether event is the first observed event for an unseen non-root agent ID. An event is eligible when it has an agent
+// object with a non-empty ID and a depth greater than zero. It records eligible agent IDs in seenAgentIDs so later events for the same agent do not request another
+// implicit start event.
 func shouldInsertImplicitStartSubagent(event map[string]any, seenAgentIDs map[string]struct{}) bool {
 	agentValue, ok := event["agent"].(map[string]any)
 	if !ok {
@@ -414,6 +428,7 @@ func assertNoTerminalFailure(actual []map[string]any) error {
 	return nil
 }
 
+// assertEventSubsequence verifies that expected events appear in actual in order.
 func assertEventSubsequence(expected []map[string]any, actual []map[string]any, roots []string) error {
 	actualIdx := 0
 	for expectedIdx, want := range expected {
@@ -448,6 +463,7 @@ func assertEventSubsequence(expected []map[string]any, actual []map[string]any, 
 	return nil
 }
 
+// matchesValue reports whether actual satisfies expected using the integration matcher rules.
 func matchesValue(expected any, actual any, roots []string) bool {
 	if matcher, ok := expected.(map[string]any); ok && isTextMatcher(matcher) {
 		return matchesTextMatcher(matcher, actual, roots)
@@ -494,6 +510,8 @@ func matchesValue(expected any, actual any, roots []string) bool {
 	}
 }
 
+// isTextMatcher reports whether v has the supported text matcher shape. A text matcher contains exactly one of "text" or "texts" and may also contain "match"; maps
+// with both keys or unrelated keys are not matchers.
 func isTextMatcher(v map[string]any) bool {
 	if _, ok := v["text"]; !ok {
 		if _, ok := v["texts"]; !ok {
@@ -525,6 +543,7 @@ func isTextMatcher(v map[string]any) bool {
 	return false
 }
 
+// matchesTextMatcher reports whether actual satisfies a text matcher after path normalization.
 func matchesTextMatcher(matcher map[string]any, actual any, roots []string) bool {
 	matchType := "exact"
 	if rawMatchType, ok := matcher["match"]; ok {
@@ -645,6 +664,7 @@ func structuredValueContainsText(actual any, needle string) bool {
 	return false
 }
 
+// copyTree recursively copies the contents of src into dst.
 func copyTree(src string, dst string) error {
 	info, err := os.Stat(src)
 	if err != nil {
@@ -683,6 +703,7 @@ func copyTree(src string, dst string) error {
 	})
 }
 
+// ensureGitRootMarker creates a minimal .git marker when repoRoot does not already contain one.
 func ensureGitRootMarker(repoRoot string) error {
 	gitPath := filepath.Join(repoRoot, ".git")
 	if _, err := os.Stat(gitPath); err == nil {
@@ -705,6 +726,8 @@ func ensureGitRootMarker(repoRoot string) error {
 	return nil
 }
 
+// assertExpectedRepo verifies that expectedRoot contains exactly the files changed or created in actualRoot relative to originalRoot, with byte-identical contents.
+// If expectedRoot is absent or contains no files, assertExpectedRepo performs no checks. Deleted files are not modeled.
 func assertExpectedRepo(expectedRoot string, originalRoot string, actualRoot string) error {
 	expectedFiles, err := listFilesIfPresent(expectedRoot)
 	if err != nil {
@@ -743,6 +766,11 @@ func assertExpectedRepo(expectedRoot string, originalRoot string, actualRoot str
 	return nil
 }
 
+// assertExpectedRepoFileConfigs verifies configured expected file matchers against replay output.
+//
+// originalRoot and actualRoot are the repository roots before and after replay. An empty expected list is a no-op. Otherwise, expected must name the complete set
+// of changed or created files with non-empty relative paths, and each file's matcher is applied to the corresponding actual file contents. Deleted files are not
+// modeled.
 func assertExpectedRepoFileConfigs(expected []expectedRepoFileConfig, originalRoot string, actualRoot string) error {
 	if len(expected) == 0 {
 		return nil
@@ -792,6 +820,8 @@ func assertExpectedRepoFileConfigs(expected []expectedRepoFileConfig, originalRo
 	return nil
 }
 
+// listFilesIfPresent returns the files under root as paths relative to root. It returns nil, nil when root does not exist, omits .git metadata, and returns an error
+// when root exists but is not a directory or cannot be walked.
 func listFilesIfPresent(root string) ([]string, error) {
 	info, err := os.Stat(root)
 	if err != nil {
@@ -832,6 +862,8 @@ func listFilesIfPresent(root string) ([]string, error) {
 	return files, nil
 }
 
+// changedOrCreatedFiles returns files that exist under actualRoot and are either missing from originalRoot or have different bytes. It reports paths relative to
+// the roots and does not report deletions.
 func changedOrCreatedFiles(originalRoot string, actualRoot string) ([]string, error) {
 	actualFiles, err := listFilesIfPresent(actualRoot)
 	if err != nil {

@@ -41,6 +41,7 @@ func (r Result) ToXML(tag string) string {
 	}
 }
 
+// renderResultBlock renders one command result as an XML-like block.
 func renderResultBlock(tag string, res CommandResult, trailingNewline bool) string {
 	var b strings.Builder
 
@@ -70,6 +71,7 @@ func renderResultBlock(tag string, res CommandResult, trailingNewline bool) stri
 	return b.String()
 }
 
+// commandAttributes returns the XML-like attributes for a command result.
 func commandAttributes(res CommandResult) string {
 	parts := []string{fmt.Sprintf(`ok="%s"`, boolString(res.Outcome == OutcomeSuccess))}
 

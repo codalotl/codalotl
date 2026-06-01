@@ -11,6 +11,7 @@ import (
 	"github.com/codalotl/codalotl/internal/noninteractive/integration"
 )
 
+// main records a noninteractive integration test case from command-line flags.
 func main() {
 	var (
 		repoPath          = flag.String("repo", "", "path to the repo to record")

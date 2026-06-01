@@ -7,6 +7,12 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 )
 
+// updateFunctionDoc applies the documentation comment from ps to the matching function or method declaration in pkg.
+//
+// It panics if ps is not a validated function snippet containing exactly one function declaration. It returns an updated file only when a comment is inserted or
+// replaced; snippets without a doc comment are no-ops. It returns a SnippetError when the target declaration cannot be found and a non-nil error only for fatal
+// persistence failures. If options.RejectUpdates prevents replacing existing documentation, updateFunctionDoc leaves the file unchanged and marks ps as partially
+// rejected.
 func updateFunctionDoc(pkg *gocode.Package, ps *parsedSnippet, options Options) (*gocode.File, *SnippetError, error) {
 	if ps.kind != snippetKindFunc {
 		panic("expected function kind")

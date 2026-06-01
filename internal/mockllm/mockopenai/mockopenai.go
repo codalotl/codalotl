@@ -19,57 +19,64 @@ const (
 	chunkRunes      = 24
 )
 
+// The rawConfig type is the top-level JSON fixture format before validation and compilation.
 type rawConfig struct {
-	Responses []rawResponse `json:"responses"`
+	Responses []rawResponse `json:"responses"` // Responses contains the mock responses checked in fixture order.
 }
 
+// The rawResponse type is one mock response entry before validation and compilation.
 type rawResponse struct {
-	Name     string                     `json:"name"`
-	Consume  bool                       `json:"consume"`
-	Request  map[string]json.RawMessage `json:"request"`
-	Headers  []rawHeader                `json:"headers"`
-	Response json.RawMessage            `json:"response"`
+	Name     string                     `json:"name"`     // Name is an optional label used in diagnostics.
+	Consume  bool                       `json:"consume"`  // Consume makes the response unavailable after its first match.
+	Request  map[string]json.RawMessage `json:"request"`  // Request maps request body fields to matcher definitions.
+	Headers  []rawHeader                `json:"headers"`  // Headers lists request header matchers required for this response.
+	Response json.RawMessage            `json:"response"` // Response is the JSON payload streamed when this entry matches.
 }
 
+// The rawHeader type is one configured request header matcher before compilation.
 type rawHeader struct {
-	Name  string          `json:"name"`
-	Value json.RawMessage `json:"value"`
+	Name  string          `json:"name"`  // Name is the HTTP header name to match.
+	Value json.RawMessage `json:"value"` // Value is the matcher definition applied to the header's values.
 }
 
+// The compiledResponse type is one mock response entry prepared for runtime matching.
 type compiledResponse struct {
-	name            string
-	consume         bool
-	requestMatchers map[string]valueMatcher
-	headerMatchers  []headerMatcher
-	response        any
-	consumed        bool
+	name            string                  // Name is the optional diagnostic label from the fixture.
+	consume         bool                    // Consume reports whether this response may be matched only once.
+	requestMatchers map[string]valueMatcher // RequestMatchers contains compiled matchers for request body fields.
+	headerMatchers  []headerMatcher         // HeaderMatchers contains compiled request header matchers.
+	response        any                     // Response is the decoded JSON payload streamed when this entry matches.
+	consumed        bool                    // Consumed reports whether a consume-on-use response has already matched.
 }
 
+// The headerMatcher type is a compiled matcher for one HTTP request header.
 type headerMatcher struct {
-	name  string
-	value valueMatcher
+	name  string       // Name is the HTTP header name to match.
+	value valueMatcher // Value matches at least one value of the named header.
 }
 
+// The valueMatcher type matches a decoded JSON value or header value against a compiled matcher definition.
 type valueMatcher struct {
-	matchType  string
-	text       string
-	texts      []string
-	hasLiteral bool
-	literal    string
-	object     map[string]valueMatcher
-	array      []valueMatcher
+	matchType  string                  // MatchType is the text matching mode, such as exact or partial.
+	text       string                  // Text is the single text fragment used for exact or partial text matching.
+	texts      []string                // Texts are ordered text fragments required for partial matching without overlap.
+	hasLiteral bool                    // HasLiteral reports whether literal contains an exact JSON value matcher.
+	literal    string                  // Literal is the canonical JSON representation required for exact literal matching.
+	object     map[string]valueMatcher // Object contains recursive field matchers for JSON object subset matching.
+	array      []valueMatcher          // Array contains positional matchers for JSON arrays with the same length.
 }
 
+// The handler type serves mock OpenAI Responses API requests and tracks matching state.
 type handler struct {
-	mu                   sync.Mutex
-	responses            []compiledResponse
-	lastUnmatchedRequest map[string]any
+	mu                   sync.Mutex         // Mu protects responses and lastUnmatchedRequest.
+	responses            []compiledResponse // Responses contains the configured mock responses in matching order.
+	lastUnmatchedRequest map[string]any     // LastUnmatchedRequest is a cloned decoded body from the most recent unmatched request.
 }
 
 // DebugState describes recent matching state for a mock handler.
 type DebugState struct {
-	LastUnmatchedRequest        map[string]any
-	NextUnconsumedConsumedIndex int
+	LastUnmatchedRequest        map[string]any // LastUnmatchedRequest is the decoded body from the most recent unmatched request, or nil if none is recorded.
+	NextUnconsumedConsumedIndex int            // NextUnconsumedConsumedIndex is the next unmatched consume-on-use response index, or -1 if none remain.
 }
 
 // NewHandlerFromFile creates a mock OpenAI Responses API handler from a JSON or JSON-with-comments file.
@@ -118,6 +125,7 @@ func DebugInfo(h http.Handler) (DebugState, error) {
 	return mockHandler.debugState(), nil
 }
 
+// The assertAllConsumed method reports an error for each consume-on-use response that has not been matched.
 func (h *handler) assertAllConsumed() error {
 	if h == nil {
 		return nil
@@ -165,6 +173,7 @@ func parseConfig(data []byte) ([]compiledResponse, error) {
 	return compiled, nil
 }
 
+// The compileResponse function validates one raw fixture response and converts its matchers and response payload into runtime form.
 func compileResponse(raw rawResponse) (compiledResponse, error) {
 	compiled := compiledResponse{
 		name:            raw.Name,
@@ -212,6 +221,7 @@ func parseValueMatcher(data json.RawMessage) (valueMatcher, error) {
 	return matcher, err
 }
 
+// The parseValueMatcherInternal function parses a raw JSON matcher into its recursive runtime representation.
 func parseValueMatcherInternal(data json.RawMessage) (valueMatcher, bool, error) {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(data, &object); err == nil {
@@ -249,6 +259,7 @@ func parseValueMatcherInternal(data json.RawMessage) (valueMatcher, bool, error)
 	return matcher, false, err
 }
 
+// The parseDirectTextMatcher function parses a direct text matcher object and reports whether the object has that matcher shape.
 func parseDirectTextMatcher(object map[string]json.RawMessage) (valueMatcher, bool, error) {
 	if len(object) == 0 {
 		return valueMatcher{}, false, nil
@@ -345,6 +356,7 @@ func parseLiteralMatcher(data json.RawMessage) (valueMatcher, error) {
 	}, nil
 }
 
+// ServeHTTP handles mock Responses API HTTP requests and streams the matching response as SSE.
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != pathResponses && r.URL.Path != pathV1Responses {
 		http.NotFound(w, r)
@@ -380,6 +392,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// The matchResponse method returns the first configured response that matches the request body and headers.
 func (h *handler) matchResponse(request map[string]any, headers http.Header) (any, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -408,6 +421,7 @@ func (h *handler) matchResponse(request map[string]any, headers http.Header) (an
 	return nil, false
 }
 
+// The debugState method returns a snapshot of the handler's recent unmatched request and consume-on-use progress.
 func (h *handler) debugState() DebugState {
 	if h == nil {
 		return DebugState{NextUnconsumedConsumedIndex: -1}
@@ -445,6 +459,7 @@ func matchesRequest(matchers map[string]valueMatcher, request map[string]any) bo
 	return true
 }
 
+// The matchesHeaders function reports whether all configured header matchers are satisfied by the request headers.
 func matchesHeaders(matchers []headerMatcher, headers http.Header) bool {
 	for _, matcher := range matchers {
 		values := headers.Values(matcher.name)
@@ -467,6 +482,7 @@ func matchesHeaders(matchers []headerMatcher, headers http.Header) bool {
 	return true
 }
 
+// The matches method reports whether actual satisfies the matcher.
 func (m valueMatcher) matches(actual any) bool {
 	if m.object != nil {
 		actualObject, ok := actual.(map[string]any)
@@ -619,6 +635,7 @@ func canonicalJSON(value any) (string, error) {
 	return string(encoded), nil
 }
 
+// The writeSSE function writes a matched response as a server-sent event stream.
 func writeSSE(w http.ResponseWriter, response any) error {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -674,6 +691,7 @@ func writeSSE(w http.ResponseWriter, response any) error {
 	return nil
 }
 
+// The streamResponseOutput function streams supported output items from a decoded response payload.
 func streamResponseOutput(send func(any) error, response any, sequenceNumber *int64) error {
 	responseObject, ok := response.(map[string]any)
 	if !ok {
@@ -713,6 +731,7 @@ func streamResponseOutput(send func(any) error, response any, sequenceNumber *in
 	return nil
 }
 
+// The streamMessageOutput function streams text deltas and completion events for a message output item.
 func streamMessageOutput(send func(any) error, itemID string, outputIndex int, item map[string]any, sequenceNumber *int64) error {
 	rawContent, ok := item["content"].([]any)
 	if !ok {
@@ -761,6 +780,7 @@ func streamMessageOutput(send func(any) error, itemID string, outputIndex int, i
 	return nil
 }
 
+// The streamFunctionCall function streams argument deltas and completion events for a function_call output item.
 func streamFunctionCall(send func(any) error, itemID string, outputIndex int, item map[string]any, sequenceNumber *int64) error {
 	arguments, _ := item["arguments"].(string)
 	name, _ := item["name"].(string)
@@ -795,6 +815,7 @@ func streamFunctionCall(send func(any) error, itemID string, outputIndex int, it
 	return streamOutputItemDone(send, outputIndex, completedOutputItem(item), sequenceNumber)
 }
 
+// The streamCustomToolCall function streams input deltas and completion events for a custom_tool_call output item.
 func streamCustomToolCall(send func(any) error, itemID string, outputIndex int, item map[string]any, sequenceNumber *int64) error {
 	input, _ := item["input"].(string)
 
@@ -912,6 +933,7 @@ func cloneJSONValue(value any) any {
 	return cloned
 }
 
+// The splitText function splits text into UTF-8-safe chunks for streaming.
 func splitText(text string) []string {
 	if text == "" {
 		return nil
@@ -937,6 +959,7 @@ func splitText(text string) []string {
 	return chunks
 }
 
+// The stripComments function removes JSONC line and block comments that appear outside string literals.
 func stripComments(data []byte) []byte {
 	result := make([]byte, 0, len(data))
 	inString := false
@@ -1007,6 +1030,7 @@ func stripComments(data []byte) []byte {
 	return result
 }
 
+// The stripTrailingCommas function removes JSONC trailing commas that appear outside string literals.
 func stripTrailingCommas(data []byte) []byte {
 	result := make([]byte, 0, len(data))
 	inString := false

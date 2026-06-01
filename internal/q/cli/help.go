@@ -184,6 +184,7 @@ func commandUsageFragment(cmd *Command) string {
 	return "[command]"
 }
 
+// positionalUsageFragment returns the positional-argument usage fragment for cmd.
 func positionalUsageFragment(cmd *Command) string {
 	if cmd.Run == nil {
 		return ""

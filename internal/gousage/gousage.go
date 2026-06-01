@@ -6,9 +6,10 @@ import (
 	"sort"
 )
 
+// Usage describes a package in a module that imports another package.
 type Usage struct {
-	ImportPath   string
-	AbsolutePath string
+	ImportPath   string // ImportPath is the Go import path of the using package.
+	AbsolutePath string // AbsolutePath is the absolute filesystem path to the using package directory.
 	RelativePath string // relative to containing module
 }
 

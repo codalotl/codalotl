@@ -235,8 +235,7 @@ func (s *ShellAllowedCommands) RemoveSafe(m CommandMatcher) error
 //     or not add go to the safe list.
 //   - inscrutable is returned if we detect argv contains a set of pipes, subshells, xargs, or various other non-simple elements, which we don't support reasoning
 //     about.
-//   - a command is marked as dangerous if it does not match any list and argv[0] is a path-qualified command (absolute or uses ".."); this is treated as "outside
-//     sandbox" heuristically.
+//   - a command is marked as dangerous if it does not match any list and argv[0] lexically looks outside the current tree (absolute or uses "..").
 //   - a scrutable command that is on no list is 'none'.
 func (s *ShellAllowedCommands) Check(argv []string) (CommandCheckResult, error)
 

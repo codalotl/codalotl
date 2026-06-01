@@ -6,15 +6,16 @@ import "strings"
 //
 // Coordinates are 0-based where (0,0) is the upper-left cell.
 type MouseEvent struct {
-	X      int
-	Y      int
-	Shift  bool
-	Alt    bool
-	Ctrl   bool
-	Action MouseAction
-	Button MouseButton
+	X      int         // X is the zero-based horizontal cell coordinate.
+	Y      int         // Y is the zero-based vertical cell coordinate.
+	Shift  bool        // Shift reports whether Shift was held during the event.
+	Alt    bool        // Alt reports whether Alt was held during the event.
+	Ctrl   bool        // Ctrl reports whether Ctrl was held during the event.
+	Action MouseAction // Action is the reported mouse interaction.
+	Button MouseButton // Button is the reported button or wheel direction.
 }
 
+// IsWheel reports whether m is a wheel event in any direction.
 func (m MouseEvent) IsWheel() bool {
 	switch m.Button {
 	case MouseButtonWheelUp, MouseButtonWheelDown, MouseButtonWheelLeft, MouseButtonWheelRight:
@@ -24,6 +25,9 @@ func (m MouseEvent) IsWheel() bool {
 	}
 }
 
+// String returns a compact human-readable description of m, such as "ctrl+wheel up" or "left press".
+//
+// The result is intended for display and debugging, not parsing.
 func (m MouseEvent) String() string {
 	var b strings.Builder
 	if m.Ctrl {
@@ -48,15 +52,20 @@ func (m MouseEvent) String() string {
 	return b.String()
 }
 
+// MouseAction identifies the kind of mouse interaction reported by a MouseEvent.
 type MouseAction int
 
+// MouseAction constants describe the interaction phase of a MouseEvent.
 const (
-	MouseActionNone MouseAction = iota
-	MouseActionPress
-	MouseActionRelease
-	MouseActionMotion
+	MouseActionNone    MouseAction = iota // MouseActionNone indicates that no mouse action is specified.
+	MouseActionPress                      // MouseActionPress identifies a mouse button press.
+	MouseActionRelease                    // MouseActionRelease identifies a mouse button release.
+	MouseActionMotion                     // MouseActionMotion identifies mouse motion.
 )
 
+// String returns the lower-case label for a.
+//
+// It returns an empty string for MouseActionNone and unrecognized values.
 func (a MouseAction) String() string {
 	switch a {
 	case MouseActionPress:
@@ -70,23 +79,28 @@ func (a MouseAction) String() string {
 	}
 }
 
+// MouseButton identifies the mouse button or wheel direction involved in a MouseEvent.
 type MouseButton int
 
+// MouseButton constants identify mouse buttons and wheel directions in a MouseEvent.
 const (
-	MouseButtonNone MouseButton = iota
-	MouseButtonLeft
-	MouseButtonMiddle
-	MouseButtonRight
-	MouseButtonWheelUp
-	MouseButtonWheelDown
-	MouseButtonWheelLeft
-	MouseButtonWheelRight
-	MouseButtonBackward
-	MouseButtonForward
-	MouseButton10
-	MouseButton11
+	MouseButtonNone       MouseButton = iota // MouseButtonNone indicates that no specific button is known.
+	MouseButtonLeft                          // MouseButtonLeft identifies the left mouse button.
+	MouseButtonMiddle                        // MouseButtonMiddle identifies the middle mouse button.
+	MouseButtonRight                         // MouseButtonRight identifies the right mouse button.
+	MouseButtonWheelUp                       // MouseButtonWheelUp identifies an upward wheel event.
+	MouseButtonWheelDown                     // MouseButtonWheelDown identifies a downward wheel event.
+	MouseButtonWheelLeft                     // MouseButtonWheelLeft identifies a leftward horizontal wheel event.
+	MouseButtonWheelRight                    // MouseButtonWheelRight identifies a rightward horizontal wheel event.
+	MouseButtonBackward                      // MouseButtonBackward identifies the backward auxiliary mouse button.
+	MouseButtonForward                       // MouseButtonForward identifies the forward auxiliary mouse button.
+	MouseButton10                            // MouseButton10 identifies extended mouse button 10.
+	MouseButton11                            // MouseButton11 identifies extended mouse button 11.
 )
 
+// String returns the lower-case label for b.
+//
+// It returns "none" for MouseButtonNone and an empty string for unrecognized values.
 func (b MouseButton) String() string {
 	switch b {
 	case MouseButtonNone:
@@ -188,6 +202,9 @@ func parseSGRMouseEvent(buf []byte) (MouseEvent, bool, bool) {
 	return ev, true, false
 }
 
+// The parseDecIntUntil function parses a non-empty decimal integer from buf starting at *i and ending at term.
+//
+// On success it returns the value, advances *i past term, and reports true. On failure it returns false, and callers should treat *i as unspecified.
 func parseDecIntUntil(buf []byte, i *int, term byte) (int, bool) {
 	if i == nil || *i < 0 || *i >= len(buf) {
 		return 0, false

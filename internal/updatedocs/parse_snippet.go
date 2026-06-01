@@ -70,6 +70,7 @@ const (
 	snippetKindConst
 )
 
+// String returns the label for k, or "unknown" for unrecognized values.
 func (k snippetKind) String() string {
 	switch k {
 	case snippetKindPackageDoc:
@@ -87,8 +88,9 @@ func (k snippetKind) String() string {
 	}
 }
 
+// A rejectionError marks an error as a non-fatal snippet rejection.
 type rejectionError struct {
-	error
+	error // The embedded error provides the rejection reason.
 }
 
 // parseValidateSnippet parses *snippet* as if it were a Go source file and returns the parsed *ast.File, the token.FileSet used during parsing, plus the snippet's

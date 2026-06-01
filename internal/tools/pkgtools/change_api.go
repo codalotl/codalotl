@@ -22,6 +22,7 @@ import (
 //go:embed change_api.md
 var descriptionChangeAPI string
 
+// ToolNameChangeAPI is the registered name of the change_api tool.
 const ToolNameChangeAPI = "change_api"
 
 // This mirrors internal/agentbuilder.AgentPackageModeDefaultContext without importing that package and creating an import cycle.
@@ -30,35 +31,40 @@ const changeAPIAgentName = "package_mode_default_context"
 var changeAPIPresenterInstance llmstream.Presenter = changeAPIPresenter{}
 var subAgentCreatorFromContext = agent.SubAgentCreatorFromContext
 
+// The toolChangeAPI type implements the change_api tool for direct upstream packages.
 type toolChangeAPI struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-	toolset       toolsetinterface.Toolset
-	agentInvoker  toolsetinterface.AgentInvoker
-	model         llmmodel.ModelID
+	sandboxAbsDir string                        // The sandbox root is used to resolve package paths and constrain changes.
+	authorizer    authdomain.Authorizer         // The authorizer controls current-package reads and upstream-package writes.
+	toolset       toolsetinterface.Toolset      // The toolset is retained for compatibility with existing builders.
+	agentInvoker  toolsetinterface.AgentInvoker // The agent invoker creates or invokes the package-update subagent.
+	model         llmmodel.ModelID              // The model is used by the package-update subagent.
 
 	// pkgDirAbsPath is the package directory of the agent that is invoking this tool. The tool only allows changing packages that this package directly imports.
 	pkgDirAbsPath string
 
+	// The lint steps are run by the package-update subagent after changes.
 	lintSteps []lints.Step
 }
 
+// The changeAPIParams type contains JSON parameters for the change_api tool.
 type changeAPIParams struct {
-	Path         string `json:"path"`
-	Instructions string `json:"instructions"`
+	Path         string `json:"path"`         // Path identifies the direct upstream package to change.
+	Instructions string `json:"instructions"` // Instructions describe the requested API change and the reason for it.
 }
 
+// ChangeAPIToolOptions configures optional dependencies for NewChangeAPITool.
 type ChangeAPIToolOptions struct {
-	AgentInvoker toolsetinterface.AgentInvoker
+	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker invokes subagents; nil makes change_api unavailable.
 }
 
+// The changeAPIPresenter type formats change_api tool progress and results.
 type changeAPIPresenter struct{}
 
 // NewChangeAPITool creates a tool that can update upstream packages that the current package directly imports.
 //
 // authorizer should be a sandbox authorizer (not a package-jail authorizer). If the calling agent is jailed, pass authorizer.WithoutCodeUnit().
 //
-// toolset is injected into the subagent that performs the package update (ex: toolsets.PackageAgentTools).
+// toolset is retained for compatibility with existing builders; registry-backed subagent invocation is driven by AgentInvoker.
 func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, model llmmodel.ModelID, lintSteps []lints.Step, options ...ChangeAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	var option ChangeAPIToolOptions
@@ -76,18 +82,23 @@ func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, to
 	}
 }
 
+// Name returns the registered tool name, "change_api".
 func (t *toolChangeAPI) Name() string {
 	return ToolNameChangeAPI
 }
 
+// Presenter returns the presenter that formats change_api progress and results.
 func (t *toolChangeAPI) Presenter() llmstream.Presenter {
 	return changeAPIPresenterInstance
 }
 
+// SubagentFinalMessage hides final messages from change_api descendant subagents.
 func (p changeAPIPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
 	return nil
 }
 
+// Present returns the change_api presentation for call and result. It appends progress, renders a changing or changed summary for the target package, and shows
+// instructions while in progress or successful result output after completion.
 func (p changeAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Changing API"
 	if result != nil {
@@ -147,6 +158,7 @@ func changeAPIPresenterParamsFromCall(call llmstream.ToolCall) (path string, ins
 	return path, instructions, true
 }
 
+// Info returns the LLM-facing metadata for the change_api tool, including the required upstream package path and change instructions.
 func (t *toolChangeAPI) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameChangeAPI,
@@ -165,6 +177,14 @@ func (t *toolChangeAPI) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes a change_api tool call for a direct upstream package.
+//
+// The call input must be a JSON object with "path" and "instructions" strings. Path must name a package by sandbox-relative directory or Go import path, must resolve
+// inside the sandbox, must be imported directly by the invoking package, and must not name the invoking package itself. Run authorizes the read and write operations
+// when an authorizer is configured, then invokes the package update subagent scoped to the target package.
+//
+// The result contains the subagent's final answer, trimmed of surrounding whitespace. Run returns an error tool result for invalid input, rejected package paths,
+// authorization failures, package-loading failures, or subagent failures.
 func (t *toolChangeAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params changeAPIParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -303,6 +323,8 @@ func subAgentCreatorFromContextSafe(ctx context.Context) (creator agent.SubAgent
 	return creator, nil
 }
 
+// invokeChangeAPIAgent runs the change_api subagent for packageAbsDir and returns its final assistant text. It propagates the caller sandbox, package authorizer,
+// model, lint steps, and nested-agent invoker to the subagent.
 func invokeChangeAPIAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, sandboxAbsDir string, pkgAuthorizer authdomain.Authorizer, packageAbsDir string, model llmmodel.ModelID, lintSteps []lints.Step, nestedAgentInvoker toolsetinterface.AgentInvoker, instructions string) (string, error) {
 	if invoker == nil {
 		return "", fmt.Errorf("change_api agent unavailable")

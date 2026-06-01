@@ -9,20 +9,22 @@ import (
 	"github.com/codalotl/codalotl/internal/q/uni"
 )
 
+// LayoutBlock describes a text block and its position in a Layout result.
 type LayoutBlock struct {
-	Block string
-	X     int // 0: left-most. Increasing X -> rightward.
-	Y     int // 0: top-most. Increasing Y -> downward.
+	Block string // Block is the text content to place.
+	X     int    // 0: left-most. Increasing X -> rightward.
+	Y     int    // 0: top-most. Increasing Y -> downward.
 }
 
 var errLayoutOverlap = errors.New("termformat: blocks overlap")
 
+// normalizedLayoutBlock stores a LayoutBlock after styling has been normalized for placement.
 type normalizedLayoutBlock struct {
-	x      int
-	y      int
-	width  int
-	height int
-	lines  []string
+	x      int      // X is the zero-based horizontal position in terminal cells.
+	y      int      // Y is the zero-based vertical position in terminal rows.
+	width  int      // Width is the block display width in terminal cells.
+	height int      // Height is the block height in terminal rows.
+	lines  []string // Lines contains the normalized block rows with ANSI sequences preserved.
 }
 
 // Layout lays out blocks onto a new string. Each existing block is a block of a given size (it has a height and a width). It will be placed at X, Y. Each block
@@ -141,15 +143,22 @@ func Layout(blocks []LayoutBlock, fillBGColor Color) (string, error) {
 // right or bottom edge on the right or bottom edge of the background. Values in between those are valid.
 type OverlayRelativePosition float64
 
+// These constants define common overlay anchor positions along an axis.
 const (
-	OverlayRelativePositionCenter        OverlayRelativePosition = 0.0
-	OverlayRelativePositionTopOrLeft     OverlayRelativePosition = -1.0
+	// OverlayRelativePositionCenter centers the overlay along the axis.
+	OverlayRelativePositionCenter OverlayRelativePosition = 0.0
+
+	// OverlayRelativePositionTopOrLeft aligns the top or left edge with the background.
+	OverlayRelativePositionTopOrLeft OverlayRelativePosition = -1.0
+
+	// OverlayRelativePositionBottomOrRight aligns the bottom or right edge with the background.
 	OverlayRelativePositionBottomOrRight OverlayRelativePosition = 1.0
 )
 
+// OverlayPosition controls where Overlay places the dialog on the background. The zero value centers the dialog on both axes.
 type OverlayPosition struct {
-	AutoX OverlayRelativePosition
-	AutoY OverlayRelativePosition
+	AutoX OverlayRelativePosition // AutoX positions the dialog horizontally; -1 aligns left, 0 centers, and 1 aligns right.
+	AutoY OverlayRelativePosition // AutoY positions the dialog vertically; -1 aligns top, 0 centers, and 1 aligns bottom.
 
 	// If necessary, we can use:
 	// Precise *struct {
@@ -266,14 +275,18 @@ func blocksOverlap(a, b normalizedLayoutBlock) bool {
 		a.y+a.height > b.y
 }
 
+// lineSplit contains the result of splitting a terminal line by display-cell width.
 type lineSplit struct {
-	prefix     string
-	middle     string
-	suffix     string
-	startState state
-	endState   state
+	prefix     string // Prefix contains content before the selected cell range.
+	middle     string // Middle contains content within the selected cell range.
+	suffix     string // Suffix contains content after the selected cell range.
+	startState state  // StartState is the SGR state active at the beginning of middle.
+	endState   state  // EndState is the SGR state active immediately after middle.
 }
 
+// splitLineByWidth splits a single terminal line into the content before, within, and after the display-cell range [start, start+length). ANSI escape sequences
+// do not contribute to display width; SGR sequences update the returned startState and endState. Grapheme clusters are kept whole and are assigned to the segment
+// containing their starting cell. start and length must be non-negative.
 func splitLineByWidth(line string, start, length int) lineSplit {
 	var (
 		prefixBuilder strings.Builder

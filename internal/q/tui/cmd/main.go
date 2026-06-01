@@ -7,16 +7,18 @@ import (
 	"github.com/codalotl/codalotl/internal/q/tui"
 )
 
+// model stores the state rendered by the terminal UI.
 type model struct {
-	width, height int
-
-	runes string
+	width, height int    // Width and height are the latest terminal dimensions in cells.
+	runes         string // Runes is the key input or control-key description currently shown by View.
 }
 
+// Init intentionally leaves the model unchanged.
 func (m *model) Init(t *tui.TUI) {
 
 }
 
+// Update applies TUI messages to the model state.
 func (m *model) Update(t *tui.TUI, msg tui.Message) {
 
 	switch evt := msg.(type) {
@@ -45,6 +47,7 @@ func (m *model) Update(t *tui.TUI, msg tui.Message) {
 	}
 }
 
+// View returns a single-line rendering of the current terminal size and displayed input.
 func (m *model) View() string {
 	return fmt.Sprintf("hello world. width=%d height=%d runes='%s'", m.width, m.height, m.runes)
 }

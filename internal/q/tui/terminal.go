@@ -27,14 +27,18 @@ const (
 
 var errNoFileDescriptor = errors.New("tui: raw mode requires *os.File input")
 
+// A noopTerminal is a terminalController that performs no terminal setup or teardown.
 type noopTerminal struct{}
 
+// Enter satisfies terminalController without changing terminal state.
 func (n *noopTerminal) Enter() error { return nil }
 
+// Exit satisfies terminalController without changing terminal state.
 func (n *noopTerminal) Exit() error { return nil }
 
 // mouseModeSetter is an internal hook used by the default terminal controller to optionally enable mouse tracking based on Options.
 type mouseModeSetter interface {
+	// The setMouseEnabled method records whether the next Enter call should enable terminal mouse tracking.
 	setMouseEnabled(enabled bool)
 }
 
@@ -49,17 +53,16 @@ func defaultTerminalFactory(input io.Reader, output io.Writer) (terminalControll
 	return newRealTerminal(file, output), nil
 }
 
+// A realTerminal controls raw mode, alternate-screen rendering, and related terminal modes for a real TTY.
 type realTerminal struct {
-	in          *os.File
-	out         io.Writer
-	state       *term.State
-	vtRestore   func() error
-	mouseActive bool
-
-	mu      sync.Mutex
-	entered bool
-
-	enableMouse bool
+	in          *os.File     // in is the terminal input file used for raw-mode configuration.
+	out         io.Writer    // out receives terminal escape sequences.
+	state       *term.State  // state is the terminal state saved before entering raw mode.
+	vtRestore   func() error // vtRestore restores platform-specific virtual terminal state changed by Enter.
+	mouseActive bool         // mouseActive reports whether mouse tracking was enabled by the active Enter call.
+	mu          sync.Mutex   // mu protects terminal state changed by Enter, Exit, and setMouseEnabled.
+	entered     bool         // entered reports whether the terminal is currently in TUI mode.
+	enableMouse bool         // enableMouse reports whether Enter should enable terminal mouse tracking.
 }
 
 func newRealTerminal(in *os.File, out io.Writer) *realTerminal {
@@ -69,12 +72,16 @@ func newRealTerminal(in *os.File, out io.Writer) *realTerminal {
 	}
 }
 
+// The setMouseEnabled method sets whether Enter enables terminal mouse tracking.
 func (rt *realTerminal) setMouseEnabled(enabled bool) {
 	rt.mu.Lock()
 	rt.enableMouse = enabled
 	rt.mu.Unlock()
 }
 
+// Enter switches rt into raw, alternate-screen rendering mode.
+//
+// It is idempotent and enables bracketed paste and configured mouse tracking until Exit.
 func (rt *realTerminal) Enter() error {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
@@ -114,6 +121,9 @@ func (rt *realTerminal) Enter() error {
 	return nil
 }
 
+// Exit restores terminal state changed by Enter.
+//
+// It is idempotent and returns the first restore or output error encountered.
 func (rt *realTerminal) Exit() error {
 	rt.mu.Lock()
 	if !rt.entered {
@@ -153,6 +163,7 @@ func (rt *realTerminal) Exit() error {
 	return firstErr
 }
 
+// The writeString method writes s to the terminal output, if there is output to write.
 func (rt *realTerminal) writeString(s string) error {
 	if rt.out == nil || len(s) == 0 {
 		return nil

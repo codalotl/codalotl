@@ -23,23 +23,23 @@ var NamespaceSpec = gocas.NamespaceSpec{
 
 // Entry is one clarification captured for a target package.
 type Entry struct {
-	OriginPackage string `json:"origin_package"`
-	TargetPackage string `json:"target_package"`
-	Identifier    string `json:"identifier"`
-	Question      string `json:"question"`
-	Answer        string `json:"answer"`
+	OriginPackage string `json:"origin_package"` // OriginPackage is the import path of the package that requested the clarification.
+	TargetPackage string `json:"target_package"` // TargetPackage is the import path of the package whose API is being clarified.
+	Identifier    string `json:"identifier"`     // Identifier is the package API symbol the clarification applies to.
+	Question      string `json:"question"`       // Question is the clarification prompt.
+	Answer        string `json:"answer"`         // Answer is the clarification response.
 }
 
 // Metadata is the stored JSON payload.
 type Metadata struct {
-	Entries []Entry `json:"entries"`
+	Entries []Entry `json:"entries"` // Entries contains the stored clarification entries.
 }
 
 // InPlayRecord is a clarify CAS record selected for the current workstream.
 type InPlayRecord struct {
-	Path          string // Absolute path to the CAS record file.
-	TargetPackage string // Target package import path, when known.
-	Metadata      Metadata
+	Path          string   // Absolute path to the CAS record file.
+	TargetPackage string   // Target package import path, when known.
+	Metadata      Metadata // Metadata is the clarify payload loaded from the record.
 }
 
 // Append stores entry alongside any existing entries for pkg.
@@ -137,11 +137,13 @@ func (record InPlayRecord) Delete() error {
 	return nil
 }
 
+// A recordFile identifies a CAS record file and the hash encoded by its path.
 type recordFile struct {
-	Path string
-	Hash string
+	Path string // Path is the path to the record file.
+	Hash string // Hash is the CAS hash encoded by the shard directory and file name.
 }
 
+// listRecordFiles returns the CAS record files stored under namespaceDir.
 func listRecordFiles(namespaceDir string) ([]recordFile, error) {
 	shards, err := os.ReadDir(namespaceDir)
 	if err != nil {
@@ -176,12 +178,14 @@ func listRecordFiles(namespaceDir string) ([]recordFile, error) {
 	return files, nil
 }
 
+// A gitState records the repository paths that can make clarify records in play.
 type gitState struct {
-	repoRoot        string
-	branchAdded     map[string]struct{}
-	worktreeChanged map[string]struct{}
+	repoRoot        string              // RepoRoot is the absolute path to the git repository root.
+	branchAdded     map[string]struct{} // BranchAdded contains repo-relative slash paths added on the current branch.
+	worktreeChanged map[string]struct{} // WorktreeChanged contains repo-relative slash paths changed in the index or worktree.
 }
 
+// readGitState reads the git state used to find in-play clarify records.
 func readGitState(workDir, namespaceDir string) (gitState, bool) {
 	repoRoot, err := gitOutput(workDir, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -219,10 +223,12 @@ func readGitState(workDir, namespaceDir string) (gitState, bool) {
 	}, true
 }
 
+// relPath returns path as a repo-relative slash path.
 func (state gitState) relPath(path string) (string, bool) {
 	return relSlash(state.repoRoot, path)
 }
 
+// mergeBase returns the best available git base revision for repoRoot.
 func mergeBase(repoRoot string) (string, bool) {
 	currentBranch, _ := gitOutput(repoRoot, "branch", "--show-current")
 	currentBranch = strings.TrimRight(currentBranch, "\r\n")
@@ -309,8 +315,10 @@ func canonicalPath(path string) string {
 	return resolved
 }
 
+// A hashString adapts a literal CAS hash to the hash interface used by storage lookups.
 type hashString string
 
+// Hash returns the underlying CAS hash.
 func (h hashString) Hash() string {
 	return string(h)
 }
@@ -333,9 +341,10 @@ func metadataTargetPackage(metadata Metadata) string {
 	return ""
 }
 
+// A currentPackageHash caches the current hash lookup for a target package.
 type currentPackageHash struct {
-	hash string
-	ok   bool
+	hash string // Hash is the computed current package hash.
+	ok   bool   // Ok reports whether hash contains a valid computed value.
 }
 
 func matchesCurrentPackageHash(db *gocas.DB, mod *gocode.Module, targetPackage, recordHash string, cache map[string]currentPackageHash) bool {
@@ -351,6 +360,7 @@ func matchesCurrentPackageHash(db *gocas.DB, mod *gocode.Module, targetPackage, 
 	return current.ok && current.hash == recordHash
 }
 
+// packageCurrentHash returns the current CAS hash for targetPackage within mod.
 func packageCurrentHash(db *gocas.DB, mod *gocode.Module, targetPackage string) (string, bool) {
 	moduleAbsDir, _, packageRelDir, _, err := mod.ResolvePackageByImport(targetPackage)
 	if err != nil {

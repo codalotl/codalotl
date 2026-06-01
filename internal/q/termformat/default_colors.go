@@ -38,6 +38,7 @@ func convertRGBToProfile(color RGBColor, profile ColorProfile) Color {
 	}
 }
 
+// parseColorFGBG parses COLORFGBG into default foreground and background RGB colors.
 func parseColorFGBG(value string) (RGBColor, RGBColor, bool) {
 	if !strings.Contains(value, ";") {
 		return "", "", false

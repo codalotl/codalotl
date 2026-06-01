@@ -27,8 +27,8 @@ func RuneWidth(r rune, opts *Options) int {
 
 // Iterator iterates over grapheme clusters.
 type Iterator[T string | []byte] struct {
-	iter *graphemes.Iterator[T]
-	cond *runewidth.Condition
+	iter *graphemes.Iterator[T] // This is the underlying grapheme segmentation iterator.
+	cond *runewidth.Condition   // This controls text width calculations for the iterator's current value.
 }
 
 // NewGraphemeIterator returns a new grapheme iterator for str (string or []byte). If opts is nil, locale is assumed to be non-East Asian.
@@ -40,10 +40,12 @@ func NewGraphemeIterator[T string | []byte](str T, opts *Options) *Iterator[T] {
 	}
 }
 
+// Next advances the iterator to the next grapheme cluster. It returns false when iteration is complete.
 func (iter *Iterator[T]) Next() bool {
 	return iter.iter.Next()
 }
 
+// Value returns the current grapheme cluster. Call it only after Next returns true.
 func (iter *Iterator[T]) Value() T {
 	return iter.iter.Value()
 }

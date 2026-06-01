@@ -7,9 +7,10 @@ import (
 	"text/template"
 )
 
+// templateHelperProvider provides path-related functions used while rendering command templates.
 type templateHelperProvider struct {
-	rootDir string
-	inputs  map[string]any
+	rootDir string         // rootDir is the absolute root directory used to resolve relative paths.
+	inputs  map[string]any // inputs are normalized runner inputs used by template helpers.
 }
 
 func newTemplateHelperProvider(rootDir string, inputs map[string]any) *templateHelperProvider {
@@ -19,6 +20,7 @@ func newTemplateHelperProvider(rootDir string, inputs map[string]any) *templateH
 	}
 }
 
+// funcMap returns the template functions supported by command templates.
 func (p *templateHelperProvider) funcMap() template.FuncMap {
 	return template.FuncMap{
 		"manifestDir": p.manifestDir,
@@ -27,6 +29,7 @@ func (p *templateHelperProvider) funcMap() template.FuncMap {
 	}
 }
 
+// manifestDir returns the nearest relevant manifest directory for path.
 func (p *templateHelperProvider) manifestDir(path string) (string, error) {
 	resolver := newManifestDirResolver(p.rootDir, p.inputs)
 	resolvedPath := p.resolvePath(path)
@@ -38,6 +41,7 @@ func (p *templateHelperProvider) manifestDir(path string) (string, error) {
 	return dir, nil
 }
 
+// relativeTo returns path relative to base after resolving relative inputs against the provider root.
 func (p *templateHelperProvider) relativeTo(path, base string) (string, error) {
 	if base == "" {
 		return "", fmt.Errorf("relativeTo: base path is empty")
@@ -54,6 +58,7 @@ func (p *templateHelperProvider) relativeTo(path, base string) (string, error) {
 	return relative, nil
 }
 
+// repoDir returns the nearest containing Git repository directory for path, or rootDir if none is found before the search terminates.
 func (p *templateHelperProvider) repoDir(path string) (string, error) {
 	resolver := newManifestDirResolver(p.rootDir, p.inputs)
 	startDir := resolver.startDir(p.resolvePath(path))
@@ -76,6 +81,7 @@ func (p *templateHelperProvider) repoDir(path string) (string, error) {
 	}
 }
 
+// resolvePath resolves path against the provider root directory.
 func (p *templateHelperProvider) resolvePath(path string) string {
 	if path == "" {
 		return p.rootDir

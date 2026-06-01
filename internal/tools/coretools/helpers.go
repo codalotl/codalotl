@@ -8,18 +8,23 @@ import (
 	"strings"
 )
 
+// NewToolErrorResult returns an error result for call with msg and records srcErr as the source error.
 func NewToolErrorResult(call llmstream.ToolCall, msg string, srcErr error) llmstream.ToolResult {
 	res := llmstream.NewErrorToolResult(msg, call)
 	res.SourceErr = srcErr
 	return res
 }
 
+// WantPathType specifies how NormalizePath should validate or coerce the resolved path.
+//
+// Valid values are WantPathTypeAny, WantPathTypeDir, and WantPathTypeFile.
 type WantPathType int
 
+// WantPathType values describe how NormalizePath should validate or coerce a resolved path.
 const (
-	WantPathTypeAny WantPathType = iota
-	WantPathTypeDir
-	WantPathTypeFile
+	WantPathTypeAny  WantPathType = iota // WantPathTypeAny accepts any path kind without file-type coercion.
+	WantPathTypeDir                      // WantPathTypeDir requests a directory path; an existing file is coerced to its parent directory.
+	WantPathTypeFile                     // WantPathTypeFile requests a file path; an existing directory is rejected.
 )
 
 // NormalizePath accepts a path provided by the LLM, and absSandboxDir (which MUST be an absolute dir), and what the caller wants path to be (anything, a file, or

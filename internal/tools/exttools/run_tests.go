@@ -17,23 +17,28 @@ import (
 //go:embed run_tests.md
 var descriptionRunTests string
 
+// ToolNameRunTests is the registered tool name for the package test tool.
 const ToolNameRunTests = "run_tests"
 
 var runTestsPresenterInstance llmstream.Presenter = runTestsPresenter{}
 
+// toolRunTests implements the package test tool with optional lint checks.
 type toolRunTests struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-	lintSteps     []lints.Step
+	sandboxAbsDir string                // This is the absolute sandbox root used to resolve requested paths.
+	authorizer    authdomain.Authorizer // This authorizes reads before tests and test-time lints run.
+	lintSteps     []lints.Step          // This is the configured lint pipeline used after tests run.
 }
 
+// runTestsParams contains the JSON parameters for the package test tool.
 type runTestsParams struct {
-	Path     string `json:"path"`
-	TestName string `json:"test_name"`
-	Verbose  bool   `json:"verbose"`
-	Env      string `json:"env"`
+	Path     string `json:"path"`      // This is the package path to test.
+	TestName string `json:"test_name"` // This optionally selects tests to run with go test -run.
+	Verbose  bool   `json:"verbose"`   // This enables verbose go test output when true.
+	Env      string `json:"env"`       // This optionally supplies environment variables for go test.
 }
 
+// NewRunTestsTool returns a tool that runs tests for a package path. The tool resolves requested paths from authorizer's sandbox, uses authorizer to authorize reads,
+// and uses the provided lint steps for optional lint checks after tests. authorizer must be non-nil.
 func NewRunTestsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolRunTests{
@@ -43,16 +48,20 @@ func NewRunTestsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) l
 	}
 }
 
+// Name returns ToolNameRunTests.
 func (t *toolRunTests) Name() string {
 	return ToolNameRunTests
 }
 
+// Presenter returns the test presentation formatter.
 func (t *toolRunTests) Presenter() llmstream.Presenter {
 	return runTestsPresenterInstance
 }
 
+// runTestsPresenter formats package test tool calls and results for display.
 type runTestsPresenter struct{}
 
+// Present returns the display presentation for a package test tool call or result.
 func (p runTestsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Run Tests"
 	if result != nil {
@@ -89,6 +98,7 @@ func (p runTestsPresenter) Present(call llmstream.ToolCall, result *llmstream.To
 	return presentation
 }
 
+// Info returns the test tool metadata and parameter schema.
 func (t *toolRunTests) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameRunTests,
@@ -115,6 +125,7 @@ func (t *toolRunTests) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes tests and test-time lints for the requested package path.
 func (t *toolRunTests) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params runTestsParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -190,6 +201,8 @@ func RunTests(ctx context.Context, sandboxDir string, pkgDirPath string, namePat
 	return result.ToXML("test-status"), nil
 }
 
+// newGoTestRunner constructs a command runner for a single go test invocation. The runner requires path, accepts namePattern and verbose inputs, runs from the manifest
+// directory for the requested path, and applies envAssignments to the command environment.
 func newGoTestRunner(envAssignments []string) *cmdrunner.Runner {
 	inputSchema := map[string]cmdrunner.InputType{
 		"path":        cmdrunner.InputTypePathDir,
@@ -260,18 +273,21 @@ func runTestsPresenterTarget(call llmstream.ToolCall) string {
 	return ToolNameRunTests
 }
 
+// runTestsXMLSection describes a discovered XML-like test or lint status section.
 type runTestsXMLSection struct {
-	found   bool
-	okFound bool
-	ok      bool
+	found   bool // This reports whether the section tag was present.
+	okFound bool // This reports whether the section tag included a parseable ok attribute.
+	ok      bool // This is the parsed ok attribute value when okFound is true.
 }
 
+// runTestsSectionsSummary summarizes discovered test and lint status sections.
 type runTestsSectionsSummary struct {
-	tests runTestsXMLSection
-	lints runTestsXMLSection
-	line  string
+	tests runTestsXMLSection // This is the discovered test-status section.
+	lints runTestsXMLSection // This is the discovered lint-status section.
+	line  string             // This is the concise display line for the presentation body.
 }
 
+// extractRunTestsXMLSection extracts the presence and ok status of a named XML-like section.
 func extractRunTestsXMLSection(content string, tagName string) runTestsXMLSection {
 	needle := "<" + tagName
 	openStart := strings.Index(content, needle)
@@ -303,6 +319,7 @@ func runTestsStatusWord(section runTestsXMLSection) string {
 	return "fail"
 }
 
+// summarizeRunTestsSections extracts test and lint status sections into a concise presentation summary.
 func summarizeRunTestsSections(content string) (runTestsSectionsSummary, bool) {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -329,6 +346,8 @@ func summarizeRunTestsSections(content string) (runTestsSectionsSummary, bool) {
 	return summary, true
 }
 
+// runTestsPresenterStatus returns the explicit presentation status for a run_tests result. Payload success takes precedence, followed by parsed test-status and
+// lint-status ok attributes, and finally result.IsError. When no failure signal is present, it returns PresentationStatusSuccess.
 func runTestsPresenterStatus(result llmstream.ToolResult, payload extToolPayload, summary runTestsSectionsSummary) llmstream.PresentationStatus {
 	if payload.Success != nil {
 		if *payload.Success {

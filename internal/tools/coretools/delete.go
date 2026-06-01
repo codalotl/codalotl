@@ -14,17 +14,22 @@ import (
 //go:embed delete.md
 var descriptionDelete string
 
+// ToolNameDelete is the registered name of the delete tool.
 const ToolNameDelete = "delete"
 
+// A toolDelete implements the delete tool for removing authorized files.
 type toolDelete struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-}
-type ParamsDelete struct {
-	Path              string `json:"path"`
-	RequestPermission bool   `json:"request_permission"`
+	sandboxAbsDir string                // This is the absolute sandbox root used to resolve relative delete paths.
+	authorizer    authdomain.Authorizer // This authorizes delete requests before files are removed.
 }
 
+// ParamsDelete contains the JSON arguments for the delete tool.
+type ParamsDelete struct {
+	Path              string `json:"path"`               // Path is the file to delete. Relative paths are resolved from the sandbox root.
+	RequestPermission bool   `json:"request_permission"` // RequestPermission asks for approval to delete the file when policy requires it.
+}
+
+// NewDeleteTool returns a delete tool that removes authorized files resolved relative to authorizer's sandbox. The authorizer must be non-nil.
 func NewDeleteTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolDelete{
@@ -32,14 +37,19 @@ func NewDeleteTool(authorizer authdomain.Authorizer) llmstream.Tool {
 		authorizer:    authorizer,
 	}
 }
+
+// Name returns ToolNameDelete, the registered name of the delete tool.
 func (t *toolDelete) Name() string {
 	return ToolNameDelete
 }
 
+// Presenter returns the semantic presenter for delete tool calls and results.
 func (t *toolDelete) Presenter() llmstream.Presenter {
 	return deletePresenterInstance
 }
 
+// Info returns the tool metadata for delete, including its embedded description and JSON parameters. The returned schema requires path and accepts request_permission
+// for authorization escalation.
 func (t *toolDelete) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameDelete,
@@ -57,6 +67,9 @@ func (t *toolDelete) Info() llmstream.ToolInfo {
 		Required: []string{"path"},
 	}
 }
+
+// Run executes a delete tool call by parsing its JSON parameters, validating and authorizing the target file, and removing it. It returns a tool error result for
+// malformed input, missing or invalid paths, authorization failures, or filesystem removal errors.
 func (t *toolDelete) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	_ = ctx
 	var params ParamsDelete
@@ -92,8 +105,11 @@ func (t *toolDelete) Run(ctx context.Context, call llmstream.ToolCall) llmstream
 
 var deletePresenterInstance llmstream.Presenter = deletePresenter{}
 
+// A deletePresenter presents delete tool calls as replacement summaries in the form "Delete <path>".
 type deletePresenter struct{}
 
+// Present returns a replacement presentation with the summary "Delete <path>" for a delete tool call. It uses the requested path when available and falls back to
+// the call or tool name; result is ignored.
 func (p deletePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	_ = result
 

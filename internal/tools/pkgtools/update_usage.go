@@ -23,32 +23,37 @@ import (
 //go:embed update_usage.md
 var descriptionUpdateUsage string
 
+// ToolNameUpdateUsage is the registered name of the update_usage tool.
 const ToolNameUpdateUsage = "update_usage"
 
 // This mirrors internal/agentbuilder.AgentLimitedPackageMode without importing that package and creating an import cycle.
 const updateUsageAgentName = "limited_package_mode"
 
+// The toolUpdateUsage type implements the update_usage tool for downstream packages.
 type toolUpdateUsage struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-	toolset       toolsetinterface.Toolset
-	agentInvoker  toolsetinterface.AgentInvoker
-	model         llmmodel.ModelID
-	pkgDirAbsPath string
-	lintSteps     []lints.Step
+	sandboxAbsDir string                        // The sandbox root is used to resolve package paths.
+	authorizer    authdomain.Authorizer         // The authorizer controls source-package reads and downstream-package writes.
+	toolset       toolsetinterface.Toolset      // The toolset is retained for compatibility with existing builders.
+	agentInvoker  toolsetinterface.AgentInvoker // The agent invoker creates or invokes downstream update subagents.
+	model         llmmodel.ModelID              // The model is used by downstream update subagents.
+	pkgDirAbsPath string                        // The package directory identifies the source package whose usages are updated.
+	lintSteps     []lints.Step                  // The lint steps are run by downstream update subagents after changes.
 }
 
+// The updateUsageParams type contains JSON parameters for the update_usage tool.
 type updateUsageParams struct {
-	Instructions string   `json:"instructions"`
-	Paths        []string `json:"paths"`
+	Instructions string   `json:"instructions"` // Instructions describe the downstream usage update to perform.
+	Paths        []string `json:"paths"`        // Paths identifies downstream packages that import the source package.
 }
 
+// UpdateUsageToolOptions configures optional dependencies for NewUpdateUsageTool.
 type UpdateUsageToolOptions struct {
-	AgentInvoker toolsetinterface.AgentInvoker
+	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker invokes subagents; nil makes update_usage unavailable.
 }
 
 var updateUsagePresenterInstance llmstream.Presenter = updateUsagePresenter{}
 
+// The updateUsagePresenter type formats update_usage tool progress and results.
 type updateUsagePresenter struct{}
 
 // authorizer should be the "sandbox" authorizer, not a package-jailed authorizer.
@@ -73,18 +78,23 @@ func NewUpdateUsageTool(pkgDirAbsPath string, authorizer authdomain.Authorizer, 
 	}
 }
 
+// Name returns the registered tool name, "update_usage".
 func (t *toolUpdateUsage) Name() string {
 	return ToolNameUpdateUsage
 }
 
+// Presenter returns the presenter that formats update_usage progress and results.
 func (t *toolUpdateUsage) Presenter() llmstream.Presenter {
 	return updateUsagePresenterInstance
 }
 
+// SubagentFinalMessage hides final messages from update_usage descendant subagents.
 func (p updateUsagePresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
 	return nil
 }
 
+// Present returns the update_usage presentation for call and result. It appends progress, renders an updating or updated summary for the target packages, and shows
+// instructions while in progress or successful result output after completion.
 func (p updateUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Updating Usage"
 	if result != nil {
@@ -109,6 +119,7 @@ func (p updateUsagePresenter) Present(call llmstream.ToolCall, result *llmstream
 	return presentation
 }
 
+// updateUsagePresenterSummary returns the summary line for an update_usage presentation. If ok is false, it returns a fallback summary derived from call.
 func updateUsagePresenterSummary(action string, call llmstream.ToolCall, paths []string, ok bool) llmstream.Line {
 	if !ok {
 		return pkgToolPresenterFallbackSummary(call)
@@ -151,6 +162,7 @@ func updateUsagePresenterParamsFromCall(call llmstream.ToolCall) (instructions s
 	return instructions, paths, true
 }
 
+// Info returns the LLM-facing metadata for the update_usage tool, including the required update instructions and downstream package paths.
 func (t *toolUpdateUsage) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameUpdateUsage,
@@ -172,6 +184,17 @@ func (t *toolUpdateUsage) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes an update_usage tool call for downstream packages that import the source package.
+//
+// The call input must be a JSON object with a non-empty "instructions" string and a non-empty "paths" array. Each path must name a downstream package by sandbox-relative
+// directory or Go import path, must resolve inside the sandbox and current module, and must import the configured source package. Duplicate paths that resolve to
+// the same import path are updated once, in first-seen order.
+//
+// Run authorizes the read and write operations when an authorizer is configured, invokes one usage-update subagent per target package, and returns the per-package
+// reports separated by blank lines. If no downstream packages import the source package, Run returns a successful result saying so. Empty subagent answers are reported
+// as "no changes reported".
+//
+// Run returns an error tool result for invalid input, rejected package paths, authorization failures, package-loading or usage-discovery failures, or subagent failures.
 func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params updateUsageParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -346,6 +369,15 @@ func (t *toolUpdateUsage) Run(ctx context.Context, call llmstream.ToolCall) llms
 	}
 }
 
+// invokeUpdateUsageAgent invokes the downstream usage-update subagent and returns its final assistant text.
+//
+// The request uses these inputs:
+//   - The invoker and agentCreator parameters create and run the subagent.
+//   - The sandboxAbsDir, pkgAuthorizer, and packageAbsDir parameters scope the subagent to the downstream package.
+//   - The model, lintSteps, and nestedAgentInvoker parameters configure the subagent's tools.
+//   - The instructions parameter is sent as the initial user message.
+//
+// It returns an error if invoker is nil, the subagent cannot be invoked, or the event stream terminates unsuccessfully.
 func invokeUpdateUsageAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, sandboxAbsDir string, pkgAuthorizer authdomain.Authorizer, packageAbsDir string, model llmmodel.ModelID, lintSteps []lints.Step, nestedAgentInvoker toolsetinterface.AgentInvoker, instructions string) (string, error) {
 	if invoker == nil {
 		return "", fmt.Errorf("update_usage agent unavailable")

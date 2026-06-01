@@ -34,33 +34,35 @@ type ClientConfig struct {
 	// such as https://host/v1beta. This package appends /v1beta/... itself.
 	HTTPOptions HTTPOptions
 
+	// Environment variable provider supplies values used for API key and base URL defaults. Nil uses the process environment.
 	envVarProvider func() map[string]string
 }
 
 // Client is a Gemini streaming client.
 type Client struct {
-	apiKey      string
-	httpClient  *http.Client
-	baseURL     string
-	apiVersion  string
-	baseHeaders http.Header
-	Models      Models
+	apiKey      string       // API key sent with each Gemini request.
+	httpClient  *http.Client // HTTP client used for outgoing requests.
+	baseURL     string       // Unversioned API root used to build request URLs.
+	apiVersion  string       // Gemini API version appended to request URLs.
+	baseHeaders http.Header  // Client-wide headers copied into outgoing requests.
+	Models      Models       // Models exposes model-scoped operations for this client.
 }
 
 // Models exposes model-scoped operations.
 type Models struct {
-	client *Client
+	client *Client // Client used to send model-scoped requests.
 }
 
 // APIError is a Gemini API error parsed from an HTTP failure response.
 type APIError struct {
-	StatusCode int
-	Status     string
-	Message    string
-	Reason     string
-	RetryAfter string
+	StatusCode int    // StatusCode is the numeric HTTP status code or API error code.
+	Status     string // Status is the Gemini canonical status or HTTP status text.
+	Message    string // Message is the human-readable error message returned by Gemini.
+	Reason     string // Reason is the machine-readable error reason from structured details.
+	RetryAfter string // RetryAfter is the retry delay reported by Gemini, when present.
 }
 
+// Error returns a human-readable Gemini API error string. For a nil receiver, it returns "<nil>".
 func (e *APIError) Error() string {
 	if e == nil {
 		return "<nil>"
@@ -99,6 +101,7 @@ func (e *APIError) Error() string {
 	return b.String()
 }
 
+// Retryable reports whether e represents a 429 or 5xx response that may be retried.
 func (e *APIError) Retryable() bool {
 	if e == nil {
 		return false
@@ -106,6 +109,7 @@ func (e *APIError) Retryable() bool {
 	return e.StatusCode == http.StatusTooManyRequests || (e.StatusCode >= 500 && e.StatusCode <= 599)
 }
 
+// IsRateLimit reports whether e represents a Gemini rate-limit response.
 func (e *APIError) IsRateLimit() bool {
 	if e == nil {
 		return false
@@ -233,22 +237,25 @@ func (m Models) GenerateContentStream(ctx context.Context, model string, content
 	}
 }
 
+// The streamGenerateContentRequest type is the JSON body sent to the Gemini streamGenerateContent endpoint.
 type streamGenerateContentRequest struct {
-	Contents          []*Content              `json:"contents,omitempty"`
-	SystemInstruction *Content                `json:"systemInstruction,omitempty"`
-	Tools             []*Tool                 `json:"tools,omitempty"`
-	ToolConfig        *ToolConfig             `json:"toolConfig,omitempty"`
-	GenerationConfig  *generationConfigFields `json:"generationConfig,omitempty"`
+	Contents          []*Content              `json:"contents,omitempty"`          // Contents are the conversation messages sent to the model.
+	SystemInstruction *Content                `json:"systemInstruction,omitempty"` // SystemInstruction is the optional system-level instruction.
+	Tools             []*Tool                 `json:"tools,omitempty"`             // Tools are the function tools made available to the model.
+	ToolConfig        *ToolConfig             `json:"toolConfig,omitempty"`        // ToolConfig controls how the model may use tools.
+	GenerationConfig  *generationConfigFields `json:"generationConfig,omitempty"`  // GenerationConfig contains supported generation options.
 }
 
+// The generationConfigFields type is the supported subset of Gemini generationConfig.
 type generationConfigFields struct {
-	Temperature     *float32        `json:"temperature,omitempty"`
-	CandidateCount  int32           `json:"candidateCount,omitempty"`
-	MaxOutputTokens int32           `json:"maxOutputTokens,omitempty"`
-	StopSequences   []string        `json:"stopSequences,omitempty"`
-	ThinkingConfig  *ThinkingConfig `json:"thinkingConfig,omitempty"`
+	Temperature     *float32        `json:"temperature,omitempty"`     // Temperature controls sampling randomness when set.
+	CandidateCount  int32           `json:"candidateCount,omitempty"`  // CandidateCount requests the number of response candidates.
+	MaxOutputTokens int32           `json:"maxOutputTokens,omitempty"` // MaxOutputTokens limits generated output tokens.
+	StopSequences   []string        `json:"stopSequences,omitempty"`   // StopSequences stop generation when any sequence is produced.
+	ThinkingConfig  *ThinkingConfig `json:"thinkingConfig,omitempty"`  // ThinkingConfig configures Gemini thinking options.
 }
 
+// The buildStreamRequest function converts public stream inputs into the Gemini REST request body.
 func buildStreamRequest(contents []*Content, config *GenerateContentConfig) *streamGenerateContentRequest {
 	req := &streamGenerateContentRequest{
 		Contents: contents,
@@ -275,6 +282,7 @@ func buildStreamRequest(contents []*Content, config *GenerateContentConfig) *str
 	return req
 }
 
+// The streamGenerateContentURL method builds the SSE streamGenerateContent endpoint URL for model.
 func (c *Client) streamGenerateContentURL(model string, config *GenerateContentConfig) (string, error) {
 	baseURL := c.baseURL
 	if config != nil && config.HTTPOptions != nil && config.HTTPOptions.BaseURL != "" {
@@ -321,23 +329,27 @@ func apiKeyFromEnv(env map[string]string) string {
 	return env["GEMINI_API_KEY"]
 }
 
+// The apiErrorEnvelope type is the outer JSON wrapper used by Gemini error responses.
 type apiErrorEnvelope struct {
-	Error apiErrorPayload `json:"error"`
+	Error apiErrorPayload `json:"error"` // Error is the structured Gemini error payload.
 }
 
+// The apiErrorPayload type is the structured Gemini error payload.
 type apiErrorPayload struct {
-	Code    int              `json:"code"`
-	Message string           `json:"message"`
-	Status  string           `json:"status"`
-	Details []apiErrorDetail `json:"details"`
+	Code    int              `json:"code"`    // Code is the numeric error code.
+	Message string           `json:"message"` // Message is the human-readable error message.
+	Status  string           `json:"status"`  // Status is the Gemini canonical error status.
+	Details []apiErrorDetail `json:"details"` // Details are structured error metadata entries.
 }
 
+// The apiErrorDetail type is one structured detail entry from a Gemini error response.
 type apiErrorDetail struct {
-	Type       string `json:"@type"`
-	Reason     string `json:"reason"`
-	RetryDelay string `json:"retryDelay"`
+	Type       string `json:"@type"`      // Type is the structured detail type URL.
+	Reason     string `json:"reason"`     // Reason is the machine-readable error reason.
+	RetryDelay string `json:"retryDelay"` // RetryDelay is the retry delay reported by Gemini.
 }
 
+// The normalizeOpenStreamError function converts unexpected HTTP status stream-open failures into APIError values.
 func normalizeOpenStreamError(err error) error {
 	var openErr *sseclient.OpenError
 	if !errors.As(err, &openErr) || !errors.Is(err, sseclient.ErrUnexpectedStatus) {

@@ -9,23 +9,24 @@ import (
 	"strings"
 )
 
+// Options configures one call to Run.
 type Options struct {
 	Args []string  // Args is the argv excluding the program name (typically os.Args[1:]).
 	In   io.Reader // In/Out/Err override standard I/O. If nil, defaults are used.
-	Out  io.Writer
-	Err  io.Writer
+	Out  io.Writer // Out receives normal output and help text; nil uses os.Stdout.
+	Err  io.Writer // Err receives usage and handler errors; nil uses os.Stderr.
 }
 
 // Context is passed to a command handler.
 //
 // Positional args are in Args. Flag values are typically read via variables bound at command construction time (e.g. fs.Bool(...)).
 type Context struct {
-	context.Context
-	Command *Command
-	Args    []string
-	In      io.Reader
-	Out     io.Writer
-	Err     io.Writer
+	context.Context           // Context carries cancellation, deadlines, and values from Run's ctx argument.
+	Command         *Command  // Command is the selected command being executed.
+	Args            []string  // Args contains parsed positional arguments for Command.
+	In              io.Reader // In is the handler input stream.
+	Out             io.Writer // Out is the handler output stream for normal output.
+	Err             io.Writer // Err is the handler output stream for diagnostics and errors.
 }
 
 // Run executes a command tree as a CLI program and returns a process exit code.
@@ -90,6 +91,7 @@ func Run(ctx context.Context, root *Command, opts Options) int {
 
 var errHelpPrinted = errors.New("help printed")
 
+// parseArgv resolves argv from root, sets parsed flag values, and returns the selected command with positional args.
 func parseArgv(root *Command, argv []string, out io.Writer) (*Command, []string, error) {
 	selected := root
 	selectionEnded := false
@@ -142,6 +144,7 @@ func isFlagToken(token string) bool {
 	return strings.HasPrefix(token, "-") && token != "-" // "-" is a valid positional arg.
 }
 
+// parseFlagToken parses token as a flag at argv[idx] and returns the number of following tokens consumed.
 func parseFlagToken(active activeFlags, token string, argv []string, idx int) (int, error) {
 	nextValue, hasNext := nextTokenValue(argv, idx)
 	hasDashDash := hasNext && nextValue == "--"

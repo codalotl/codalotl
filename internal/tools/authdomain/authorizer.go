@@ -227,28 +227,35 @@ func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, e
 	}
 }
 
+// The sandboxAuthorizer type implements strict sandbox authorization.
 type sandboxAuthorizer struct {
-	*baseAuthorizer
-	sandboxDir string
-	commands   *ShellAllowedCommands
+	*baseAuthorizer                       // Embedded base authorizer manages approval requests, read grants, and close state.
+	sandboxDir      string                // Normalized sandbox root for filesystem paths and shell working directories.
+	commands        *ShellAllowedCommands // Shell command policy used by IsShellAuthorized.
 }
 
+// SandboxDir returns the normalized sandbox root used by this authorizer.
 func (a *sandboxAuthorizer) SandboxDir() string {
 	return a.sandboxDir
 }
 
+// CodeUnitDir returns an empty string because sandboxAuthorizer does not enforce a code-unit domain.
 func (a *sandboxAuthorizer) CodeUnitDir() string {
 	return ""
 }
 
+// IsCodeUnitDomain reports false because sandboxAuthorizer enforces only the sandbox domain.
 func (a *sandboxAuthorizer) IsCodeUnitDomain() bool {
 	return false
 }
 
+// WithoutCodeUnit returns the receiver because sandboxAuthorizer has no code-unit restrictions.
 func (a *sandboxAuthorizer) WithoutCodeUnit() Authorizer {
 	return a
 }
 
+// IsAuthorizedForRead reports whether all paths may be read under the strict sandbox policy. Paths outside SandboxDir are denied without prompting. Inside paths
+// are allowed unless requestPermission is true, in which case ungranted paths require user approval and requestReason is included in the prompt.
 func (a *sandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -275,6 +282,8 @@ func (a *sandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestR
 	return nil
 }
 
+// IsAuthorizedForWrite reports whether all paths may be written under the strict sandbox policy. Paths outside SandboxDir are denied without prompting. Inside paths
+// are allowed unless requestPermission is true, in which case the paths require user approval and requestReason is included in the prompt.
 func (a *sandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -300,6 +309,9 @@ func (a *sandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, request
 	return nil
 }
 
+// IsShellAuthorized reports whether command may run from cwd under the strict sandbox policy. A non-empty cwd is normalized and must be inside SandboxDir. The command
+// is classified with ShellAllowedCommands: safe commands are allowed unless requestPermission asks the user, blocked commands are denied, and dangerous, inscrutable,
+// or unmatched commands require user approval.
 func (a *sandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -336,32 +348,40 @@ func (a *sandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestRea
 	}
 }
 
+// Close releases shared authorizer resources and unblocks pending user requests. It delegates to baseAuthorizer.Close and is idempotent.
 func (a *sandboxAuthorizer) Close() {
 	a.baseAuthorizer.Close()
 }
 
+// The permissiveSandboxAuthorizer type implements permissive sandbox authorization.
 type permissiveSandboxAuthorizer struct {
-	*baseAuthorizer
-	sandboxDir string
-	commands   *ShellAllowedCommands
+	*baseAuthorizer                       // Embedded base authorizer manages approval requests, read grants, and close state.
+	sandboxDir      string                // Normalized sandbox root used to classify filesystem paths and shell working directories.
+	commands        *ShellAllowedCommands // Shell command policy used by IsShellAuthorized.
 }
 
+// SandboxDir returns the normalized sandbox root used by this authorizer.
 func (a *permissiveSandboxAuthorizer) SandboxDir() string {
 	return a.sandboxDir
 }
 
+// CodeUnitDir returns an empty string because permissiveSandboxAuthorizer does not enforce a code-unit domain.
 func (a *permissiveSandboxAuthorizer) CodeUnitDir() string {
 	return ""
 }
 
+// IsCodeUnitDomain reports false because permissiveSandboxAuthorizer enforces only the sandbox domain.
 func (a *permissiveSandboxAuthorizer) IsCodeUnitDomain() bool {
 	return false
 }
 
+// WithoutCodeUnit returns the receiver because permissiveSandboxAuthorizer has no code-unit restrictions.
 func (a *permissiveSandboxAuthorizer) WithoutCodeUnit() Authorizer {
 	return a
 }
 
+// IsAuthorizedForRead reports whether all paths may be read under the permissive sandbox policy. Inside paths are allowed unless requestPermission is true. Outside
+// paths require user approval unless covered by a read grant, and requestReason is included in any prompt.
 func (a *permissiveSandboxAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -391,6 +411,8 @@ func (a *permissiveSandboxAuthorizer) IsAuthorizedForRead(requestPermission bool
 	return nil
 }
 
+// IsAuthorizedForWrite reports whether all paths may be written under the permissive sandbox policy. Inside paths are allowed unless requestPermission is true.
+// Outside paths require user approval, and requestReason is included in any prompt.
 func (a *permissiveSandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -416,6 +438,9 @@ func (a *permissiveSandboxAuthorizer) IsAuthorizedForWrite(requestPermission boo
 	return nil
 }
 
+// IsShellAuthorized reports whether command may run from cwd under the permissive sandbox policy. A non-empty cwd is normalized; an outside-sandbox cwd requires
+// user approval rather than immediate denial. The command is classified with ShellAllowedCommands: safe and unmatched commands are allowed inside the sandbox unless
+// requestPermission asks the user, blocked commands are denied, and dangerous or inscrutable commands require user approval.
 func (a *permissiveSandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -461,52 +486,68 @@ func (a *permissiveSandboxAuthorizer) IsShellAuthorized(requestPermission bool, 
 	}
 }
 
+// Close releases shared authorizer resources and unblocks pending user requests. It delegates to baseAuthorizer.Close and is idempotent.
 func (a *permissiveSandboxAuthorizer) Close() {
 	a.baseAuthorizer.Close()
 }
 
+// autoApproveAuthorizer is an Authorizer implementation that allows every operation without prompting.
 type autoApproveAuthorizer struct {
-	sandboxDir string
+	sandboxDir string // sandboxDir is the normalized sandbox root reported by SandboxDir.
 }
 
+// SandboxDir returns the normalized sandbox root configured for this authorizer.
 func (a autoApproveAuthorizer) SandboxDir() string {
 	return a.sandboxDir
 }
 
+// addGrantUserMessage ignores grant messages because auto-approve authorizers already allow all reads.
 func (autoApproveAuthorizer) addGrantUserMessage(string) {}
 
+// CodeUnitDir returns an empty string because auto-approve authorization is not scoped to a code unit.
 func (autoApproveAuthorizer) CodeUnitDir() string {
 	return ""
 }
 
+// IsCodeUnitDomain reports false because auto-approve authorization is not scoped to a code unit.
 func (autoApproveAuthorizer) IsCodeUnitDomain() bool {
 	return false
 }
 
+// WithoutCodeUnit returns the auto-approve authorizer unchanged because it has no code-unit wrapper.
 func (a autoApproveAuthorizer) WithoutCodeUnit() Authorizer {
 	return a
 }
 
+// IsAuthorizedForRead always authorizes reads without prompting or inspecting paths.
 func (autoApproveAuthorizer) IsAuthorizedForRead(bool, string, string, ...string) error {
 	return nil
 }
 
+// IsAuthorizedForWrite always authorizes writes without prompting or inspecting paths.
 func (autoApproveAuthorizer) IsAuthorizedForWrite(bool, string, string, ...string) error {
 	return nil
 }
 
+// IsShellAuthorized always authorizes shell execution without prompting or inspecting the command.
 func (autoApproveAuthorizer) IsShellAuthorized(bool, string, string, []string) error {
 	return nil
 }
 
+// Close releases no resources because auto-approve authorizers do not create pending requests.
 func (autoApproveAuthorizer) Close() {}
 
+// codeUnitAuthorizer restricts filesystem authorization to a code unit before delegating to a fallback Authorizer.
+//
+// It applies code-unit checks to writes for all tools and to reads for tools that require strict reads. Shell authorization is delegated unchanged because shell
+// command paths are not modeled precisely.
 type codeUnitAuthorizer struct {
-	unit     *codeunit.CodeUnit
-	fallback Authorizer
-	grants   *grantStore
+	unit     *codeunit.CodeUnit // Unit is the code unit whose membership is enforced.
+	fallback Authorizer         // Fallback is the underlying authorizer that applies sandbox policy and user prompts.
+	grants   *grantStore        // Grants stores lazy read grants extracted from user messages.
 }
 
+// addGrantUserMessage records a user grant message for the code-unit authorizer when grant storage is available.
 func (a *codeUnitAuthorizer) addGrantUserMessage(userMessage string) {
 	if a.grants == nil {
 		return
@@ -514,18 +555,22 @@ func (a *codeUnitAuthorizer) addGrantUserMessage(userMessage string) {
 	a.grants.addGrantUserMessage(userMessage)
 }
 
+// SandboxDir returns the sandbox root reported by the fallback authorizer.
 func (a *codeUnitAuthorizer) SandboxDir() string {
 	return a.fallback.SandboxDir()
 }
 
+// CodeUnitDir returns the active code unit's base directory.
 func (a *codeUnitAuthorizer) CodeUnitDir() string {
 	return a.unit.BaseDir()
 }
 
+// IsCodeUnitDomain reports that this authorizer enforces a code-unit domain.
 func (a *codeUnitAuthorizer) IsCodeUnitDomain() bool {
 	return true
 }
 
+// WithoutCodeUnit returns the fallback authorizer with code-unit restrictions removed.
 func (a *codeUnitAuthorizer) WithoutCodeUnit() Authorizer {
 	return a.fallback
 }
@@ -536,6 +581,10 @@ func toolRequiresStrictReads(toolName string) bool {
 	return slices.Contains(codeUnitStrictReadToolNames, toolName)
 }
 
+// IsAuthorizedForRead authorizes read access under the active code-unit policy.
+//
+// Tools that require strict code-unit reads must request paths inside the code unit, unless the tool supports read grants and a grant applies. The code-unit check
+// itself does not prompt; after it passes, authorization is delegated to the fallback authorizer. A rejected code-unit path returns an error matching ErrCodeUnitPathOutside.
 func (a *codeUnitAuthorizer) IsAuthorizedForRead(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if toolRequiresStrictReads(toolName) {
 		if toolAllowsReadGrants(toolName) {
@@ -551,6 +600,10 @@ func (a *codeUnitAuthorizer) IsAuthorizedForRead(requestPermission bool, request
 	return a.fallback.IsAuthorizedForRead(requestPermission, requestReason, toolName, absPath...)
 }
 
+// IsAuthorizedForWrite authorizes writes only when every path is inside the active code unit and the fallback authorizer also allows the write.
+//
+// Code-unit rejection is immediate and does not request user approval; requestPermission and requestReason are passed only to the fallback after the code-unit check
+// succeeds.
 func (a *codeUnitAuthorizer) IsAuthorizedForWrite(requestPermission bool, requestReason string, toolName string, absPath ...string) error {
 	if err := a.ensurePathsIncluded(absPath...); err != nil {
 		return err
@@ -558,30 +611,40 @@ func (a *codeUnitAuthorizer) IsAuthorizedForWrite(requestPermission bool, reques
 	return a.fallback.IsAuthorizedForWrite(requestPermission, requestReason, toolName, absPath...)
 }
 
+// IsShellAuthorized delegates shell authorization to the fallback authorizer without applying code-unit path checks.
+//
+// Shell command paths are not modeled precisely enough for code-unit filtering.
 func (a *codeUnitAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
 	return a.fallback.IsShellAuthorized(requestPermission, requestReason, cwd, command)
 }
 
+// Close delegates cleanup to the fallback authorizer.
 func (a *codeUnitAuthorizer) Close() {
 	a.fallback.Close()
 }
 
 const codeUnitOutsideToolsHint = "Consider using other tools (ex: get_public_api; clarify_public_api; get_usage; update_usage; change_api)"
 
+// codeUnitPathOutsideError reports that a requested path is outside the active code unit.
 type codeUnitPathOutsideError struct {
-	path     string
-	unitName string
-	unitDir  string
+	path     string // path is the requested path that was outside the code unit.
+	unitName string // unitName is the code unit name used in the error message.
+	unitDir  string // unitDir is the code unit base directory used in the error message.
 }
 
+// Error returns the denial message for a path outside the active code unit, including the unit name, root directory, and tool-use hint.
 func (e codeUnitPathOutsideError) Error() string {
 	return fmt.Sprintf("path %q is outside %q rooted at %q. %s", e.path, e.unitName, e.unitDir, codeUnitOutsideToolsHint)
 }
 
+// Is reports whether target is ErrCodeUnitPathOutside for errors.Is matching.
 func (e codeUnitPathOutsideError) Is(target error) bool {
 	return target == ErrCodeUnitPathOutside
 }
 
+// newCodeUnitPathOutsideError returns an error describing path as outside the active code unit.
+//
+// The error includes the code unit name and base directory for display to the caller.
 func (a *codeUnitAuthorizer) newCodeUnitPathOutsideError(path string) error {
 	return codeUnitPathOutsideError{
 		path:     path,
@@ -590,6 +653,9 @@ func (a *codeUnitAuthorizer) newCodeUnitPathOutsideError(path string) error {
 	}
 }
 
+// ensurePathsIncluded returns nil if every path is included in the active code unit.
+//
+// It returns a codeUnitPathOutsideError for the first path outside the unit. Relative rejected paths are reported from the code unit base directory.
 func (a *codeUnitAuthorizer) ensurePathsIncluded(paths ...string) error {
 	for _, path := range paths {
 		if a.unit.Includes(path) {
@@ -604,6 +670,10 @@ func (a *codeUnitAuthorizer) ensurePathsIncluded(paths ...string) error {
 	return nil
 }
 
+// ensurePathsIncludedOrGranted returns nil if every path is included in the code unit or has a read grant for toolName.
+//
+// Rejected paths are canonicalized for grant matching and error reporting. The method does not prompt the user; it returns a codeUnitPathOutsideError for the first
+// path that is neither included nor granted.
 func (a *codeUnitAuthorizer) ensurePathsIncludedOrGranted(toolName string, paths ...string) error {
 	for _, path := range paths {
 		if a.unit.Includes(path) {
@@ -625,17 +695,16 @@ func (a *codeUnitAuthorizer) ensurePathsIncludedOrGranted(toolName string, paths
 	return nil
 }
 
+// The baseAuthorizer type contains shared state for authorizers that manage user approval requests, read grants, and shutdown.
 type baseAuthorizer struct {
-	requests chan UserRequest
-	grants   *grantStore
-
-	mu       sync.Mutex
-	isClosed bool
-	pending  map[*pendingRequest]struct{}
-
-	wg        sync.WaitGroup
-	closedCh  chan struct{}
-	closeOnce sync.Once
+	requests  chan UserRequest             // Requests carries pending user approval prompts and is closed by Close.
+	grants    *grantStore                  // Grants stores user-message read grants that are evaluated during authorization.
+	mu        sync.Mutex                   // Mu protects isClosed and pending.
+	isClosed  bool                         // IsClosed records that Close has started and new authorization work must fail.
+	pending   map[*pendingRequest]struct{} // Pending tracks unresolved approval requests so Close can unblock them.
+	wg        sync.WaitGroup               // Wg waits for in-flight request enqueues before requests is closed.
+	closedCh  chan struct{}                // ClosedCh is closed by Close to wake enqueues waiting to send on requests.
+	closeOnce sync.Once                    // CloseOnce makes Close idempotent.
 }
 
 func newBaseAuthorizer() *baseAuthorizer {
@@ -647,6 +716,7 @@ func newBaseAuthorizer() *baseAuthorizer {
 	}
 }
 
+// addGrantUserMessage records a user grant message for the base authorizer when grant storage is available.
 func (b *baseAuthorizer) addGrantUserMessage(userMessage string) {
 	if b.grants == nil {
 		return
@@ -654,6 +724,7 @@ func (b *baseAuthorizer) addGrantUserMessage(userMessage string) {
 	b.grants.addGrantUserMessage(userMessage)
 }
 
+// The checkOpen method reports whether the authorizer is still accepting work. It returns ErrAuthorizerClosed after Close has started.
 func (b *baseAuthorizer) checkOpen() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -664,6 +735,9 @@ func (b *baseAuthorizer) checkOpen() error {
 	return nil
 }
 
+// The promptForPaths method asks the user to approve a filesystem operation for paths. It returns nil immediately when paths is empty. Otherwise it builds a prompt
+// from toolName, operation, scope, paths, requestReason, and requestPermission, then returns the result of the approval request; sandbox is accepted for call-site
+// consistency and is not used.
 func (b *baseAuthorizer) promptForPaths(toolName string, operation string, scope pathScope, sandbox string, paths []string, requestReason string, requestPermission bool) error {
 	if len(paths) == 0 {
 		return nil
@@ -675,12 +749,18 @@ func (b *baseAuthorizer) promptForPaths(toolName string, operation string, scope
 	return b.requestApproval(prompt, toolName, nil)
 }
 
+// The promptForCommand method requests user approval for a shell command.
+//
+// The prompt includes the command classification, explicit permission request, outside-sandbox working-directory status, and request reason. The request carries
+// command in UserRequest.Argv and returns nil only when approved.
 func (b *baseAuthorizer) promptForCommand(cwd string, command []string, requestReason string, result CommandCheckResult, requestPermission bool, cwdOutside bool) error {
 	commandString := strings.Join(command, " ")
 	prompt := buildCommandPrompt(commandString, requestReason, result, requestPermission, cwdOutside)
 	return b.requestApproval(prompt, "", command)
 }
 
+// The requestApproval method queues a UserRequest and waits for the user's decision. It returns nil when the request is allowed, ErrAuthorizationDenied when it
+// is denied, and ErrAuthorizerClosed if the authorizer closes before the request completes. argv is copied into UserRequest.Argv when provided.
 func (b *baseAuthorizer) requestApproval(prompt string, toolName string, argv []string) error {
 	if err := b.checkOpen(); err != nil {
 		return err
@@ -717,6 +797,10 @@ func (b *baseAuthorizer) requestApproval(prompt string, toolName string, argv []
 	}
 }
 
+// The enqueueRequest method records pending as active and delivers req to the user-request channel.
+//
+// It may block until the request is sent or Close interrupts the send. If the authorizer is already closed or Close prevents delivery, enqueueRequest removes the
+// pending request and returns ErrAuthorizerClosed. It does not wait for the user's decision.
 func (b *baseAuthorizer) enqueueRequest(req UserRequest, pending *pendingRequest) error {
 	b.mu.Lock()
 	if b.isClosed {
@@ -742,6 +826,9 @@ func (b *baseAuthorizer) enqueueRequest(req UserRequest, pending *pendingRequest
 	}
 }
 
+// The resolvePending method records decision for a pending user request and wakes its waiter.
+//
+// It removes the request from the active pending set when the authorizer is still open. Repeated resolutions are safe because pendingRequest.finish is idempotent.
 func (b *baseAuthorizer) resolvePending(pending *pendingRequest, decision authDecision) {
 	b.mu.Lock()
 	if !b.isClosed {
@@ -751,6 +838,8 @@ func (b *baseAuthorizer) resolvePending(pending *pendingRequest, decision authDe
 	pending.finish(decision)
 }
 
+// Close stops accepting authorization work and unblocks pending approval requests. It is idempotent. After Close starts, new authorization work fails with ErrAuthorizerClosed,
+// the requests channel is closed after in-flight sends complete, and pending requests resolve as closed.
 func (b *baseAuthorizer) Close() {
 	b.closeOnce.Do(func() {
 		b.mu.Lock()
@@ -776,6 +865,7 @@ func (b *baseAuthorizer) Close() {
 	})
 }
 
+// authDecision is the internal result of a pending authorization request. It distinguishes approval, denial, and authorizer closure.
 type authDecision int
 
 const (
@@ -784,9 +874,10 @@ const (
 	decisionClosed
 )
 
+// pendingRequest tracks the decision for one queued user authorization request.
 type pendingRequest struct {
-	once     sync.Once
-	decision chan authDecision
+	once     sync.Once         // Once ensures the decision is recorded at most once.
+	decision chan authDecision // Decision receives the approval, denial, or close result.
 }
 
 func newPendingRequest() *pendingRequest {
@@ -795,16 +886,21 @@ func newPendingRequest() *pendingRequest {
 	}
 }
 
+// finish records decision and wakes any waiter.
+//
+// Only the first call has an effect.
 func (p *pendingRequest) finish(decision authDecision) {
 	p.once.Do(func() {
 		p.decision <- decision
 	})
 }
 
+// The wait method blocks until Allow, Disallow, or Close resolves the request and returns the recorded decision.
 func (p *pendingRequest) wait() authDecision {
 	return <-p.decision
 }
 
+// pathScope describes where requested paths are relative to the sandbox for approval prompts.
 type pathScope string
 
 const (
@@ -812,6 +908,8 @@ const (
 	scopeOutsideSandbox pathScope = "outside-sandbox"
 )
 
+// buildPathPrompt returns the user-facing approval prompt for a filesystem operation. The prompt names toolName when provided, summarizes paths by value or count,
+// includes the sandbox scope, and appends requestPermission and reason context when present.
 func buildPathPrompt(toolName string, operation string, scope pathScope, reason string, paths []string, requestPermission bool) string {
 	var actor string
 	if toolName != "" {
@@ -859,6 +957,9 @@ func buildPathPrompt(toolName string, operation string, scope pathScope, reason 
 	return builder.String()
 }
 
+// The buildCommandPrompt function formats the user-facing approval prompt for a shell command.
+//
+// The prompt includes the command, any command classification, outside-sandbox working-directory context, explicit permission marker, and request reason.
 func buildCommandPrompt(command string, reason string, result CommandCheckResult, requestPermission bool, cwdOutside bool) string {
 	var builder strings.Builder
 	builder.WriteString("Allow execution of `")

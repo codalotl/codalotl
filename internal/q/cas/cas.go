@@ -21,8 +21,10 @@ type Hasher interface {
 	Hash() string
 }
 
+// A stringHasher adapts an already-computed hash string to the Hasher interface.
 type stringHasher string
 
+// Hash returns the stored hash string unchanged.
 func (h stringHasher) Hash() string { return string(h) }
 
 // NewFileSetHasher returns a Hasher for paths and their current contents. Path order does not matter.
@@ -75,6 +77,12 @@ func NewBytesHasher(b []byte) Hasher {
 	return stringHasher(hex.EncodeToString(sum[:]))
 }
 
+// The newFileSetHasher function returns a Hasher for the current contents of the files named by paths.
+//
+// Paths are treated as a set: input order does not affect the hash, and duplicate path strings are ignored. If transform is non-nil, it derives the path identity
+// used in the hash; files are still read from the original paths. The path identity is normalized to a cleaned, slash-separated form.
+//
+// It returns an error if transform fails or a file cannot be read.
 func newFileSetHasher(paths []string, transform func(string) (string, error)) (Hasher, error) {
 	// Treat this as a set: order doesn't matter, and duplicates should not change the hash.
 	pathsCopy := append([]string(nil), paths...)
@@ -119,7 +127,7 @@ func newFileSetHasher(paths []string, transform func(string) (string, error)) (H
 
 // DB is a filesystem-backed metadata store rooted at AbsRoot.
 type DB struct {
-	AbsRoot string
+	AbsRoot string // AbsRoot is the root directory under which records are stored. It must be non-empty before Store, Retrieve, or Delete is called.
 }
 
 // AdditionalInfo is saved and retrieved besides the primary Store payload.
@@ -140,13 +148,14 @@ type AdditionalInfo struct {
 
 // Options let callers supply AdditionalInfo fields if desired. Also exists for future Store extensibility.
 type Options struct {
-	AdditionalInfo
+	AdditionalInfo // AdditionalInfo is optional provenance data stored alongside metadata when non-zero.
 }
 
+// A recordV1 is the JSON representation of a version 1 CAS record.
 type recordV1 struct {
-	Kind           string          `json:"kind"`
-	Metadata       json.RawMessage `json:"metadata"`
-	AdditionalInfo *AdditionalInfo `json:"additional_info,omitempty"`
+	Kind           string          `json:"kind"`                      // Kind identifies the record schema version.
+	Metadata       json.RawMessage `json:"metadata"`                  // Metadata contains the caller-supplied JSON payload.
+	AdditionalInfo *AdditionalInfo `json:"additional_info,omitempty"` // AdditionalInfo contains optional provenance data stored with the metadata.
 }
 
 // Store serializes jsonable as JSON (using json.Marshal) and stores it for (namespace, hasher.Hash()).
@@ -282,6 +291,9 @@ func (db *DB) Delete(hasher Hasher, namespace string) error {
 	return nil
 }
 
+// The recordPath method returns the filesystem path for namespace and hash under db.AbsRoot.
+//
+// The returned path is sharded as <AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>. The caller must pass a validated record key with a hash at least three bytes long.
 func (db *DB) recordPath(namespace, hash string) string {
 	return filepath.Join(db.AbsRoot, namespace, hash[:2], hash[2:])
 }

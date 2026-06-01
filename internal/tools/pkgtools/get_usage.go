@@ -17,22 +17,32 @@ import (
 //go:embed get_usage.md
 var descriptionGetUsage string
 
+// ToolNameGetUsage is the registered name of the get_usage tool.
 const ToolNameGetUsage = "get_usage"
 
+// The toolGetUsage type implements the get_usage tool by reporting uses of an identifier defined by a package.
 type toolGetUsage struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // The sandbox root is used to resolve sandbox-relative package paths.
+	authorizer    authdomain.Authorizer // The authorizer controls reads of sandbox packages.
 }
 
+// getUsageParams contains the JSON parameters for a get_usage call. All fields are required.
 type getUsageParams struct {
+	// DefiningPackagePath identifies the package that defines Identifier, as a sandbox-relative directory or Go import path.
 	DefiningPackagePath string `json:"defining_package_path"`
-	Identifier          string `json:"identifier"`
+
+	// Identifier names the symbol whose references should be summarized.
+	Identifier string `json:"identifier"`
 }
 
 var getUsagePresenterInstance llmstream.Presenter = getUsagePresenter{}
 
+// The getUsagePresenter type formats get_usage tool summaries and result counts.
 type getUsagePresenter struct{}
 
+// NewGetUsageTool returns a get_usage tool that resolves package paths from the authorizer sandbox and authorizes package reads with authorizer.
+//
+// The authorizer must be non-nil.
 func NewGetUsageTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolGetUsage{
@@ -41,14 +51,18 @@ func NewGetUsageTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns ToolNameGetUsage.
 func (t *toolGetUsage) Name() string {
 	return ToolNameGetUsage
 }
 
+// Presenter returns the presenter that formats get_usage calls and usage results.
 func (t *toolGetUsage) Presenter() llmstream.Presenter {
 	return getUsagePresenterInstance
 }
 
+// Present returns the get_usage presentation for call and result. It summarizes the requested defining package and identifier, and when a completed result can be
+// counted, adds a body with the number of usage results found.
 func (p getUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	presentation := pkgToolReplaceSummaryPresentation(getUsagePresenterSummary(call))
 	if result == nil {
@@ -64,6 +78,8 @@ func (p getUsagePresenter) Present(call llmstream.ToolCall, result *llmstream.To
 	return presentation
 }
 
+// getUsagePresenterSummary builds the space-joined summary line for a get_usage call. It renders "Read Usage" followed by the requested defining package and identifier;
+// when the package is unavailable, it uses the tool name as the target.
 func getUsagePresenterSummary(call llmstream.ToolCall) llmstream.Line {
 	pkg, identifier, ok := getUsagePresenterParams(call)
 	target := pkg
@@ -97,6 +113,7 @@ func getUsagePresenterParams(call llmstream.ToolCall) (string, string, bool) {
 	return pkg, identifier, pkg != "" || identifier != ""
 }
 
+// Info returns the LLM-facing metadata for the get_usage tool, including the required defining package path and identifier parameters.
 func (t *toolGetUsage) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameGetUsage,
@@ -115,6 +132,9 @@ func (t *toolGetUsage) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes the get_usage tool call and returns an LLM-readable summary of references to a package-defined identifier. The call input must be JSON containing
+// defining_package_path and identifier. The package path may be sandbox-relative or an import path, and parenthesized method identifiers are normalized before lookup.
+// Run returns an error tool result for invalid input, package resolution or authorization failures, or usage lookup errors.
 func (t *toolGetUsage) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	_ = ctx
 

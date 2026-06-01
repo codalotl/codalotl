@@ -142,6 +142,7 @@ func IdentifierUsage(packageAbsDir, identifier string, includeIntraPackageUsages
 	return out, formatIdentifierUsageSummary(mod, out), nil
 }
 
+// IdentifierUsageRef describes one source occurrence that references an identifier. It is returned by IdentifierUsage.
 type IdentifierUsageRef struct {
 	ImportPath       string // using package's import path
 	AbsFilePath      string // using file's absolute path
@@ -324,6 +325,8 @@ func snippetForOffset(usingPkg *gocode.Package, usingFile *gocode.File, byteOffs
 	return nil
 }
 
+// snippetViaAST returns the package-level snippet whose top-level AST declaration contains byteOffset in usingFile. byteOffset is a byte offset into usingFile.Contents.
+// It recognizes functions, methods, types, vars, and consts, and returns nil if parse artifacts are unavailable or no matching snippet exists in usingPkg.
 func snippetViaAST(usingPkg *gocode.Package, usingFile *gocode.File, byteOffset int) gocode.Snippet {
 	if usingFile.FileSet == nil || usingFile.AST == nil {
 		return nil
@@ -373,6 +376,9 @@ func snippetViaAST(usingPkg *gocode.Package, usingFile *gocode.File, byteOffset 
 	return nil
 }
 
+// formatIdentifierUsageSummary renders the opaque LLM summary returned by IdentifierUsage. The summary always starts with a references section, reports when no
+// references are found, and uses module-relative paths when possible. When suitable snippets are available, it appends a small examples section with selected usage
+// snippets.
 func formatIdentifierUsageSummary(mod *gocode.Module, usages []IdentifierUsageRef) string {
 	var b strings.Builder
 	moduleRoot := mod.AbsolutePath
@@ -415,12 +421,15 @@ func formatIdentifierUsageSummary(mod *gocode.Module, usages []IdentifierUsageRe
 	return b.String()
 }
 
+// snippetContext is a usage snippet selected for display in an identifier-usage summary.
 type snippetContext struct {
-	path    string
-	snippet string
-	length  int
+	path    string // Path is the display path for the file that contains the snippet.
+	snippet string // Snippet is the full source text of the selected gocode snippet.
+	length  int    // Length is len(snippet), used to sort shorter examples first.
 }
 
+// selectSnippetContexts returns the snippet examples to include in an identifier-usage summary. It skips empty, duplicate, and overlong snippets, then returns at
+// most maxSnippetContexts snippets sorted by byte length and path.
 func selectSnippetContexts(moduleRoot string, usages []IdentifierUsageRef) []snippetContext {
 	seen := make(map[string]snippetContext)
 	for _, usage := range usages {

@@ -18,6 +18,7 @@ type Color interface {
 	ANSISequence(bg bool) string
 }
 
+// NoColor represents the absence of a terminal color. It implements Color and emits no ANSI escape sequence.
 type NoColor struct{}
 
 // String implements fmt.Stringer.
@@ -64,10 +65,11 @@ var (
 	_ Color = RGBColor(invalidRGBColor)
 )
 
+// labColor stores a color in CIE L*a*b* space for perceptual color comparisons.
 type labColor struct {
-	L float64
-	A float64
-	B float64
+	L float64 // L is the perceptual lightness component.
+	A float64 // A is the green-to-red opponent component.
+	B float64 // B is the blue-to-yellow opponent component.
 }
 
 var ansiLab = buildANSILab()
@@ -99,6 +101,7 @@ func (NoColor) ANSISequence(bg bool) string {
 	return ""
 }
 
+// NewRGBColor returns the RGB color for the given 8-bit red, green, and blue components. The returned value is encoded as "#rrggbb".
 func NewRGBColor(r, g, b uint8) RGBColor {
 	return RGBColor(fmt.Sprintf("#%02x%02x%02x", r, g, b))
 }
@@ -203,6 +206,8 @@ func (ac ANSI256Color) RGBColor() RGBColor {
 	return RGBColor(ansiHex[int(ac)])
 }
 
+// closestANSI256Color returns the ANSI 256-color palette entry nearest to lab. Fixed xterm palette colors are preferred over theme-dependent system colors unless
+// a system color is strictly closer.
 func closestANSI256Color(lab labColor) ANSI256Color {
 	// Prefer the fixed xterm palette (16-255) over system colors (0-15). System
 	// colors are user-theme-mapped in many terminals; fixed colors are stable.
@@ -293,6 +298,7 @@ func (c RGBColor) Valid() bool {
 	return true
 }
 
+// rgb parses rc as "#rrggbb" and returns its 8-bit RGB components. The ok result is false when rc is not a valid RGBColor.
 func (rc RGBColor) rgb() (r, g, b uint8, ok bool) {
 	if !rc.Valid() {
 		return 0, 0, 0, false
@@ -315,6 +321,7 @@ func (rc RGBColor) rgb() (r, g, b uint8, ok bool) {
 	return rv, gv, bv, true
 }
 
+// lab converts rc to CIE L*a*b* space for perceptual color comparison. The ok result is false when rc is not a valid RGBColor.
 func (rc RGBColor) lab() (labColor, bool) {
 	r, g, b, ok := rc.rgb()
 	if !ok {
@@ -335,6 +342,7 @@ func isHexDigit(ch byte) bool {
 	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
 }
 
+// rgbToLab converts an 8-bit sRGB color to CIE L*a*b* space for perceptual comparison.
 func rgbToLab(r, g, b uint8) labColor {
 	R := srgbToLinear(float64(r) / 255.0)
 	G := srgbToLinear(float64(g) / 255.0)

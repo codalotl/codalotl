@@ -35,9 +35,9 @@ const (
 
 // Runner coordinates templating and execution for a collection of commands.
 type Runner struct {
-	inputSchema    map[string]InputType
-	requiredInputs []string
-	commands       []Command
+	inputSchema    map[string]InputType // inputSchema defines accepted input keys and their expected types.
+	requiredInputs []string             // requiredInputs names schema keys that must be provided to Run.
+	commands       []Command            // commands contains the commands executed by Run in registration order.
 }
 
 // NewRunner constructs a Runner with the provided schema and required inputs. Defensive copies are taken to ensure subsequent callers cannot mutate the Runner's
@@ -188,10 +188,10 @@ func (r *Runner) AddCommand(c Command) {
 
 // A Command is a templated command to run. The Command/Args/CWD/Env fields support templates.
 type Command struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-	CWD     string   `json:"cwd"` // optional working directory for the command. Defaults to the root dir.
-	Env     []string `json:"env"` // optional environment variables in KEY=VALUE form, merged onto the current process env.
+	Command string   `json:"command"` // Command is the executable name or path template.
+	Args    []string `json:"args"`    // Args are argument templates; entries rendering to empty strings are omitted.
+	CWD     string   `json:"cwd"`     // optional working directory for the command. Defaults to the root dir.
+	Env     []string `json:"env"`     // optional environment variables in KEY=VALUE form, merged onto the current process env.
 
 	// If OutcomeFailIfAnyOutput, any output causes the command to have a failed outcome (ex: `gofmt -l` is blank when no-lint-issues and non-blank when lint-issues).
 	OutcomeFailIfAnyOutput bool `json:"outcomefailifanyoutput"`
@@ -211,7 +211,7 @@ type Command struct {
 
 // Result aggregates all command executions performed by Run.
 type Result struct {
-	Results []CommandResult
+	Results []CommandResult // Results contains command results in execution order.
 }
 
 // Success returns true if all results are OutcomeSuccess.
@@ -227,12 +227,13 @@ func (r Result) Success() bool {
 // ExecStatus captures how process execution concluded.
 type ExecStatus string
 
+// ExecStatus values describe how process execution concluded.
 const (
 	ExecStatusCompleted     ExecStatus = "completed"       // process exited (any code)
 	ExecStatusFailedToStart ExecStatus = "failed_to_start" // ENOENT, EPERM, bad shebang, cwd missing
-	ExecStatusTimedOut      ExecStatus = "timed_out"
-	ExecStatusCanceled      ExecStatus = "canceled"
-	ExecStatusTerminated    ExecStatus = "terminated" // by signal; see Signal
+	ExecStatusTimedOut      ExecStatus = "timed_out"       // ExecStatusTimedOut means execution stopped because the context deadline was exceeded.
+	ExecStatusCanceled      ExecStatus = "canceled"        // ExecStatusCanceled means execution stopped because the context was canceled.
+	ExecStatusTerminated    ExecStatus = "terminated"      // by signal; see Signal
 )
 
 // Outcome is a semantic command-relative status. Examples:
@@ -247,9 +248,10 @@ const (
 // The default can be changed with flags on the Command type (ex: OutcomeFailIfAnyOutput).
 type Outcome string
 
+// Outcome values describe the semantic result of a command.
 const (
-	OutcomeSuccess Outcome = "success"
-	OutcomeFailed  Outcome = "failed"
+	OutcomeSuccess Outcome = "success" // OutcomeSuccess means the command satisfied its success rules.
+	OutcomeFailed  Outcome = "failed"  // OutcomeFailed means the command did not satisfy its success rules.
 )
 
 // CommandResult captures the execution details for a single command.
@@ -266,14 +268,15 @@ type CommandResult struct {
 	// NOT validated or escaped.
 	Attrs []string
 
-	ExecStatus ExecStatus
-	ExecError  error // if an error is returned from exec'ing the command, it's set here.
-	ExitCode   int
-	Signal     string // if the command was terminated due to a signal (ex: "TERM")
-	Outcome    Outcome
-	Duration   time.Duration
+	ExecStatus ExecStatus    // ExecStatus describes how process execution concluded.
+	ExecError  error         // if an error is returned from exec'ing the command, it's set here.
+	ExitCode   int           // ExitCode is the process exit code, or -1 when no exit code is available.
+	Signal     string        // if the command was terminated due to a signal (ex: "TERM")
+	Outcome    Outcome       // Outcome is the semantic command result after applying command-specific success rules.
+	Duration   time.Duration // Duration is the elapsed time spent executing the command.
 }
 
+// normalizeInputs validates inputs against the runner schema and returns normalized values.
 func (r *Runner) normalizeInputs(rootDir string, inputs map[string]any) (map[string]any, error) {
 	if inputs == nil {
 		inputs = map[string]any{}
@@ -306,6 +309,7 @@ func (r *Runner) normalizeInputs(rootDir string, inputs map[string]any) (map[str
 	return normalized, nil
 }
 
+// normalizeInputValue validates raw according to inputType and returns its normalized value.
 func normalizeInputValue(rootDir string, raw any, inputType InputType) (any, error) {
 	switch inputType {
 	case InputTypeBool:
@@ -333,6 +337,7 @@ func normalizeInputValue(rootDir string, raw any, inputType InputType) (any, err
 	}
 }
 
+// normalizePathInput validates a path input and returns its absolute normalized path.
 func normalizePathInput(rootDir string, raw any, inputType InputType) (string, error) {
 	value, ok := raw.(string)
 	if !ok {
@@ -393,6 +398,7 @@ func renderTemplate(name, tmpl string, funcs template.FuncMap, data map[string]a
 	return buf.String(), nil
 }
 
+// executeCommand executes a rendered command and returns its populated result.
 func executeCommand(ctx context.Context, cmd Command, env []string, result CommandResult) CommandResult {
 	start := time.Now()
 	defer func() {
@@ -459,6 +465,7 @@ func executeCommand(ctx context.Context, cmd Command, env []string, result Comma
 	return result
 }
 
+// determineExecStatus classifies the result of waiting for a process.
 func determineExecStatus(waitErr error, state *os.ProcessState, ctxErr error) ExecStatus {
 	if ctxErr != nil {
 		return statusFromContextError(ctxErr)
@@ -501,17 +508,20 @@ func determineOutcome(exitCode int, status ExecStatus, output string, failIfOutp
 	return OutcomeSuccess
 }
 
+// lockedBuffer is a concurrency-safe wrapper around a bytes.Buffer.
 type lockedBuffer struct {
-	buf *bytes.Buffer
-	mu  *sync.Mutex
+	buf *bytes.Buffer // buf stores the collected bytes.
+	mu  *sync.Mutex   // mu protects all access to buf.
 }
 
+// Write appends p to the buffer while holding the buffer lock.
 func (b *lockedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.Write(p)
 }
 
+// String returns the current buffer contents while holding the buffer lock.
 func (b *lockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()

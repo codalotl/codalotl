@@ -14,9 +14,9 @@ import (
 //   - If a dir is "included", all non-dir files in the dir are definitionally included.
 //   - With the exception of the base dir, a dir can only be included if it's reachable from another included dir.
 type CodeUnit struct {
-	name         string
-	baseDir      string
-	includedDirs map[string]struct{}
+	name         string              // Name is the configured display name; an empty value is reported as "code unit".
+	baseDir      string              // BaseDir is the cleaned absolute root directory for the code unit.
+	includedDirs map[string]struct{} // IncludedDirs contains the cleaned absolute directories whose direct non-directory files are included.
 
 	// We intentionally avoid caching per-file membership so massive codebases stay light,
 	// freshly created files are immediately visible, and because this exists for an LLM loop, which is dominiated
@@ -76,6 +76,9 @@ func defaultGoCodeUnitName(absBaseDir string) string {
 	return "package " + filepath.Base(cleanBase)
 }
 
+// goModuleRelativePackagePath returns absBaseDir's slash-separated package path relative to the nearest containing Go module.
+//
+// The boolean result is false when no containing go.mod file can be found or the module-relative path cannot be determined.
 func goModuleRelativePackagePath(absBaseDir string) (string, bool) {
 	searchDir := filepath.Clean(absBaseDir)
 
@@ -109,6 +112,7 @@ func (c *CodeUnit) Name() string {
 	return c.name
 }
 
+// BaseDir returns the cleaned absolute root directory of the code unit.
 func (c *CodeUnit) BaseDir() string {
 	return c.baseDir
 }
@@ -195,6 +199,10 @@ func (c *CodeUnit) IncludeSubtreeUnlessContains(globPattern ...string) error {
 	return c.includeSubtreeUnlessContainsWithFilter(nil, globPattern...)
 }
 
+// includeSubtreeUnlessContainsWithFilter recursively includes descendant directories under the base directory unless shouldSkipDir rejects the directory or the
+// directory contains a non-directory file matching one of globPattern.
+//
+// Directories that are rejected or matched are not included and are not traversed.
 func (c *CodeUnit) includeSubtreeUnlessContainsWithFilter(shouldSkipDir func(string) bool, globPattern ...string) error {
 	queue := []string{c.baseDir}
 
@@ -271,6 +279,10 @@ func (c *CodeUnit) PruneStructuralDirs() {
 	c.pruneStructuralDirsWithFilter(nil)
 }
 
+// pruneStructuralDirsWithFilter removes included directories that only connect the base directory to other on-disk structure.
+//
+// The base directory is always kept. A non-base directory is kept if it has a non-directory file, has a kept child, or has no entries other than directories rejected
+// by shouldSkipDir.
 func (c *CodeUnit) pruneStructuralDirsWithFilter(shouldSkipDir func(string) bool) {
 	dirs := make([]string, 0, len(c.includedDirs))
 	for dir := range c.includedDirs {
@@ -307,6 +319,9 @@ func (c *CodeUnit) pruneStructuralDirsWithFilter(shouldSkipDir func(string) bool
 	c.includedDirs = keptDirs
 }
 
+// normalizeExistingDir resolves dirPath to a cleaned absolute directory path.
+//
+// Relative paths are resolved against BaseDir. The method returns an error if dirPath is empty, cannot be inspected, or does not name a directory.
 func (c *CodeUnit) normalizeExistingDir(dirPath string) (string, error) {
 	if dirPath == "" {
 		return "", errors.New("directory path is empty")
@@ -331,6 +346,10 @@ func (c *CodeUnit) normalizeExistingDir(dirPath string) (string, error) {
 	return abs, nil
 }
 
+// includeExistingDir adds dirAbs to the included directory set and optionally includes its entire subtree.
+//
+// The parent of dirAbs must already be included unless dirAbs is the base directory. If shouldSkipDir rejects dirAbs, the method does nothing; when includeSubtree
+// is true, rejected child directories are not walked.
 func (c *CodeUnit) includeExistingDir(dirAbs string, includeSubtree bool, shouldSkipDir func(string) bool) error {
 	if shouldSkipDir != nil && shouldSkipDir(dirAbs) {
 		return nil
@@ -361,6 +380,7 @@ func (c *CodeUnit) includeExistingDir(dirAbs string, includeSubtree bool, should
 	})
 }
 
+// ensureParentIncluded verifies that dir is the base directory or that its parent directory is already included.
 func (c *CodeUnit) ensureParentIncluded(dir string) error {
 	if dir == c.baseDir {
 		return nil
@@ -375,6 +395,10 @@ func (c *CodeUnit) ensureParentIncluded(dir string) error {
 	return nil
 }
 
+// includeReachableDirsNamedWithFilter includes every reachable directory with the given base name and its subtree.
+//
+// Search starts at the base directory and descends through directories that are already included or newly included by this method. Directories rejected by shouldSkipDir
+// are ignored.
 func (c *CodeUnit) includeReachableDirsNamedWithFilter(name string, shouldSkipDir func(string) bool) error {
 	queue := []string{c.baseDir}
 	queued := map[string]struct{}{
@@ -424,6 +448,9 @@ func (c *CodeUnit) includeReachableDirsNamedWithFilter(name string, shouldSkipDi
 	return nil
 }
 
+// skipDefaultGoCodeUnitDir reports whether dir should be omitted by the default Go code unit rules.
+//
+// The base directory is never skipped; other directories are skipped when their base name starts with ".".
 func (c *CodeUnit) skipDefaultGoCodeUnitDir(dir string) bool {
 	if dir == c.baseDir {
 		return false
@@ -432,6 +459,9 @@ func (c *CodeUnit) skipDefaultGoCodeUnitDir(dir string) bool {
 	return len(base) > 0 && base[0] == '.'
 }
 
+// dirContainsPattern reports whether dir contains a non-directory entry whose name matches any glob pattern.
+//
+// Patterns use filepath.Match syntax and are matched against entry base names. The method returns false with no error when patterns is empty.
 func (c *CodeUnit) dirContainsPattern(dir string, patterns []string) (bool, error) {
 	if len(patterns) == 0 {
 		return false, nil
@@ -460,6 +490,9 @@ func (c *CodeUnit) dirContainsPattern(dir string, patterns []string) (bool, erro
 	return false, nil
 }
 
+// dirHasNonDirFiles reports whether dir contains at least one non-directory entry.
+//
+// Read errors are reported as false.
 func (c *CodeUnit) dirHasNonDirFiles(dir string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -474,6 +507,9 @@ func (c *CodeUnit) dirHasNonDirFiles(dir string) bool {
 	return false
 }
 
+// dirHasNoNonSkippedEntries reports whether dir has no entries except child directories rejected by shouldSkipDir.
+//
+// If shouldSkipDir is nil, the method reports whether dir is empty. Read errors are reported as false.
 func (c *CodeUnit) dirHasNoNonSkippedEntries(dir string, shouldSkipDir func(string) bool) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

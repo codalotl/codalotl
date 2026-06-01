@@ -30,18 +30,19 @@ func (g *Graph) StronglyConnectedComponents() []map[string]struct{} {
 	return scc.sccs
 }
 
+// An sccState holds the traversal state for finding strongly connected components.
 type sccState struct {
-	graph map[string]map[string]struct{}
-	nodes map[string]struct{}
-
-	sccs    []map[string]struct{}
-	stack   []string
-	onStack map[string]bool
-	disc    map[string]int
-	low     map[string]int
-	index   int
+	graph   map[string]map[string]struct{} // Graph maps each node to its outgoing neighbors.
+	nodes   map[string]struct{}            // Nodes is the complete set of nodes considered by the traversal.
+	sccs    []map[string]struct{}          // Sccs contains the strongly connected components found so far.
+	stack   []string                       // Stack contains nodes in the active depth-first search stack.
+	onStack map[string]bool                // OnStack reports whether a node is currently in stack.
+	disc    map[string]int                 // Disc maps each visited node to its discovery index.
+	low     map[string]int                 // Low maps each visited node to the lowest discovery index reachable through DFS tree edges and edges to nodes still on stack.
+	index   int                            // Index is the next discovery index to assign.
 }
 
+// The find method visits u and records any strongly connected components completed from it.
 func (s *sccState) find(u string) {
 	s.disc[u] = s.index
 	s.low[u] = s.index

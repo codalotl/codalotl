@@ -42,10 +42,12 @@ func IsPrinted(err error) bool {
 	return errors.As(err, &pe)
 }
 
+// printedError marks an error as already printed to the user.
 type printedError struct {
-	err error
+	err error // err is the underlying error that was printed.
 }
 
+// Error returns the message from the wrapped error.
 func (p *printedError) Error() string {
 	if p == nil || p.err == nil {
 		return ""
@@ -53,6 +55,7 @@ func (p *printedError) Error() string {
 	return p.err.Error()
 }
 
+// Unwrap returns the underlying printed error.
 func (p *printedError) Unwrap() error {
 	if p == nil {
 		return nil
@@ -60,6 +63,7 @@ func (p *printedError) Unwrap() error {
 	return p.err
 }
 
+// Options configures a noninteractive agent run or reusable session.
 type Options struct {
 	// working directory / sandbox dir. If "", uses os.Getwd()
 	CWD string
@@ -112,9 +116,10 @@ func rootAgentNewOptionsFromEnv() []agent.NewOptions {
 
 var newSessionForExec = NewSession
 
+// A sessionStart identifies the agent variant used to construct a session agent.
 type sessionStart struct {
-	agentName string
-	pkgMode   bool
+	agentName string // It is the registry name used to prepare the agent.
+	pkgMode   bool   // It reports whether package-mode environment and tool options should be used.
 }
 
 func normalizeSlashCommand(slashCommand string) (string, error) {
@@ -129,11 +134,15 @@ func normalizeSlashCommand(slashCommand string) (string, error) {
 	}
 }
 
+// A lockedWriter serializes writes to a shared output writer.
 type lockedWriter struct {
-	w  io.Writer
-	mu sync.Mutex
+	w  io.Writer  // It receives serialized writes.
+	mu sync.Mutex // It serializes calls to Write.
 }
 
+// Write writes p to the underlying writer while holding the writer lock.
+//
+// A nil receiver or nil underlying writer discards p and reports success.
 func (lw *lockedWriter) Write(p []byte) (int, error) {
 	if lw == nil || lw.w == nil {
 		return len(p), nil
@@ -143,19 +152,20 @@ func (lw *lockedWriter) Write(p []byte) (int, error) {
 	return lw.w.Write(p)
 }
 
+// delayedToolCallPrinter prints tool-call lines only if they remain pending after a delay.
 type delayedToolCallPrinter struct {
-	out   io.Writer
-	delay time.Duration
-
-	mu      sync.Mutex
-	closed  bool
-	pending map[string]*pendingToolCall
+	out     io.Writer                   // out receives printed tool-call lines.
+	delay   time.Duration               // delay is the time to wait before printing a scheduled call.
+	mu      sync.Mutex                  // mu protects closed and pending.
+	closed  bool                        // closed reports whether the printer has stopped accepting work.
+	pending map[string]*pendingToolCall // pending stores scheduled tool calls by trimmed call ID.
 }
 
+// pendingToolCall tracks one delayed tool-call print.
 type pendingToolCall struct {
-	line     string
-	canceled bool
-	timer    *time.Timer
+	line     string      // line is the formatted tool-call line to print.
+	canceled bool        // canceled reports whether the pending print has been suppressed.
+	timer    *time.Timer // timer fires when the delayed line should be printed.
 }
 
 func newDelayedToolCallPrinter(out io.Writer, delay time.Duration) *delayedToolCallPrinter {
@@ -166,6 +176,7 @@ func newDelayedToolCallPrinter(out io.Writer, delay time.Duration) *delayedToolC
 	}
 }
 
+// Schedule delays printing line for callID until the printer's delay elapses.
 func (p *delayedToolCallPrinter) Schedule(callID string, line string) {
 	if p == nil || p.out == nil {
 		return
@@ -200,6 +211,7 @@ func (p *delayedToolCallPrinter) Schedule(callID string, line string) {
 	p.mu.Unlock()
 }
 
+// Cancel suppresses a pending delayed print for callID.
 func (p *delayedToolCallPrinter) Cancel(callID string) {
 	if p == nil {
 		return
@@ -222,6 +234,7 @@ func (p *delayedToolCallPrinter) Cancel(callID string) {
 	delete(p.pending, callID)
 }
 
+// Force immediately prints the pending line for callID, if one exists.
 func (p *delayedToolCallPrinter) Force(callID string) {
 	if p == nil || p.out == nil {
 		return
@@ -255,6 +268,7 @@ func (p *delayedToolCallPrinter) Force(callID string) {
 	_, _ = io.WriteString(p.out, line)
 }
 
+// Close cancels all pending delayed prints and closes the printer.
 func (p *delayedToolCallPrinter) Close() {
 	if p == nil {
 		return
@@ -278,6 +292,7 @@ func (p *delayedToolCallPrinter) Close() {
 	p.mu.Unlock()
 }
 
+// The fire method prints the pending line for callID when its delay expires.
 func (p *delayedToolCallPrinter) fire(callID string) {
 	if p == nil || p.out == nil {
 		return
@@ -326,6 +341,8 @@ func toolCallIDFromEvent(ev agent.Event) string {
 	return ""
 }
 
+// The legacyFormattedToolEvent function returns ev in the shape expected by the legacy human tool formatter. It normalizes tool names and fills matching call or
+// result metadata for tool call and completion events while leaving other events unchanged.
 func legacyFormattedToolEvent(ev agent.Event) agent.Event {
 	name := toolNameFromEvent(ev)
 	if ev.Type != agent.EventTypeToolCall && ev.Type != agent.EventTypeToolComplete {
@@ -407,16 +424,18 @@ func Exec(userPrompt string, opts Options) error {
 	return err
 }
 
+// A grantsAdder adds authorization grants from a user message to an authorizer.
 type grantsAdder func(authorizer authdomain.Authorizer, userMessage string) error
 
 // turnSnapshotConversation adapts an agent's turn history to llmstream.StreamingConversation. It is intentionally read-only: it's only used for debugging/printing
 // helpers.
 type turnSnapshotConversation struct {
-	turns []llmstream.Turn
+	turns []llmstream.Turn // turns is the ordered snapshot of conversation turns.
 }
 
 var _ llmstream.StreamingConversation = (*turnSnapshotConversation)(nil)
 
+// LastTurn returns the final turn in the snapshot.
 func (c *turnSnapshotConversation) LastTurn() llmstream.Turn {
 	if c == nil || len(c.turns) == 0 {
 		return llmstream.Turn{}
@@ -424,6 +443,7 @@ func (c *turnSnapshotConversation) LastTurn() llmstream.Turn {
 	return c.turns[len(c.turns)-1]
 }
 
+// Turns returns the conversation turns in order.
 func (c *turnSnapshotConversation) Turns() []llmstream.Turn {
 	if c == nil {
 		return nil
@@ -431,18 +451,22 @@ func (c *turnSnapshotConversation) Turns() []llmstream.Turn {
 	return c.turns
 }
 
+// AddTools rejects tool additions because the snapshot is read-only.
 func (c *turnSnapshotConversation) AddTools(_ []llmstream.Tool) error {
 	return errors.New("turn snapshot conversation is read-only")
 }
 
+// AddUserTurn rejects user-turn additions because the snapshot is read-only.
 func (c *turnSnapshotConversation) AddUserTurn(_ string) error {
 	return errors.New("turn snapshot conversation is read-only")
 }
 
+// AddToolResults rejects tool-result additions because the snapshot is read-only.
 func (c *turnSnapshotConversation) AddToolResults(_ []llmstream.ToolResult) error {
 	return errors.New("turn snapshot conversation is read-only")
 }
 
+// SendAsync returns a closed event channel because the snapshot cannot send requests.
 func (c *turnSnapshotConversation) SendAsync(_ context.Context, _ ...llmstream.SendOptions) <-chan llmstream.Event {
 	ch := make(chan llmstream.Event)
 	close(ch)
@@ -570,11 +594,14 @@ func idealCachingForProviderTurns(turns []llmstream.Turn) ([]llmstream.Turn, llm
 	return out, session
 }
 
+// doneSuccessReport contains the human-readable completion report for a successful turn.
 type doneSuccessReport struct {
-	UsageAndCaching string
+	UsageAndCaching string   // UsageAndCaching is the optional usage and caching diagnostic text.
 	Lines           []string // lines are returned without trailing newlines
 }
 
+// The buildDoneSuccessReport function builds the human-readable completion report for a successful top-level turn. Its usage and caching diagnostics always reflect
+// actualTurns; when reportIdealCaching is true, the report also includes actual usage and an ideal-caching completion line.
 func buildDoneSuccessReport(modelID llmmodel.ModelID, actualTurns []llmstream.Turn, completedAssistantTurnsByAgent map[string][]llmstream.Turn, actualUsage llmstream.TokenUsage, reportIdealCaching bool) doneSuccessReport {
 	// `UsageAndCaching` is a debug/trace output over the actual conversation and should not
 	// change based on any "ideal caching" visualization.
@@ -653,6 +680,10 @@ func modelReportsCacheWrites(modelID llmmodel.ModelID) bool {
 	return strings.Contains(strings.ToLower(info.ProviderModelID), "opus") || strings.Contains(strings.ToLower(string(modelID)), "opus")
 }
 
+// autoRespondToUserRequests drains permission requests and answers each one automatically.
+//
+// For requests with a non-empty prompt, it writes either a JSON permission event or human-readable permission text before answering. When autoYes is true it allows
+// each request; otherwise it disallows each request. The function returns after requests is closed.
 func autoRespondToUserRequests(requests <-chan authdomain.UserRequest, out io.Writer, autoYes bool, jsonWriter *jsonEventWriter, outputJSON bool) {
 	for req := range requests {
 		if strings.TrimSpace(req.Prompt) != "" {
@@ -686,6 +717,9 @@ func printUserPrompt(out io.Writer, prompt string) error {
 	return err
 }
 
+// normalizeSandboxDir returns an absolute, cleaned sandbox directory.
+//
+// It trims cwd, uses os.Getwd when cwd is empty, and verifies that the result exists and is a directory.
 func normalizeSandboxDir(cwd string) (string, error) {
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
@@ -715,6 +749,7 @@ func normalizeSandboxDir(cwd string) (string, error) {
 	return abs, nil
 }
 
+// normalizePackagePath validates pkgPath inside sandboxDir and returns its sandbox-relative and absolute forms.
 func normalizePackagePath(pkgPath string, sandboxDir string) (string, string, error) {
 	pkgPath = strings.TrimSpace(pkgPath)
 	if pkgPath == "" {
@@ -784,6 +819,8 @@ func detectTerminalWidth(out io.Writer) int {
 	return 0
 }
 
+// buildAgent constructs a session root agent from the configured registry entry. It prepares tools with sandbox, authorization, model, and lint configuration, appends
+// environment context to the initial turns, and honors CODALOTL_ZDR by creating the agent in no-store mode.
 func buildAgent(start sessionStart, sandboxDir string, pkgRelPath string, pkgAbsPath string, modelID llmmodel.ModelID, authorizer authdomain.Authorizer, lintSteps []lints.Step) (*agent.Agent, error) {
 	toolOptions := toolsetinterface.Options{
 		SandboxDir: sandboxDir,
@@ -856,6 +893,7 @@ func buildPackageEnvironmentInfo(sandboxDir string, pkgRelPath string, pkgAbsPat
 	return baseInfo + "\n" + initialContext
 }
 
+// loadGoPackage loads the Go package in pkgAbsPath from its enclosing Go module.
 func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
 	if pkgAbsPath == "" {
 		return nil, fmt.Errorf("empty package path")

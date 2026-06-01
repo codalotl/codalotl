@@ -22,7 +22,7 @@ import (
 //   - no security (allowlist, blacklist, etc)
 
 const (
-	ToolNameShell              = "shell"
+	ToolNameShell              = "shell" // ToolNameShell is the registered name of the shell tool.
 	defaultShellTimeout        = 120 * time.Second
 	defaultShellMaxOutputBytes = 40_000
 	minShellMaxOutputBytes     = 1024
@@ -32,19 +32,27 @@ const (
 //go:embed shell.md
 var descriptionShell string
 
+// The toolShell type implements the shell tool with sandbox-aware working directories and authorization.
 type toolShell struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // This is the absolute sandbox root used as the default working directory and relative cwd base.
+	authorizer    authdomain.Authorizer // This authorizes shell commands before they run.
 }
 
+// shellParams contains the JSON arguments for the shell tool.
 type shellParams struct {
-	Command           []string `json:"command"`
-	TimeoutMS         int64    `json:"timeout_ms"`
-	Cwd               string   `json:"cwd"`
-	MaxOutputBytes    int      `json:"max_output_bytes"`
-	RequestPermission bool     `json:"request_permission"`
+	Command   []string `json:"command"`    // Command is the argv-style command and arguments to execute. It must contain at least the program name.
+	TimeoutMS int64    `json:"timeout_ms"` // TimeoutMS is the optional timeout in milliseconds; a non-positive value uses the default timeout.
+	Cwd       string   `json:"cwd"`        // Cwd is the optional working directory, absolute or relative to the sandbox root. Empty Cwd uses the sandbox root.
+
+	// MaxOutputBytes limits combined stdout and stderr returned in the result; non-positive uses the default.
+	MaxOutputBytes int `json:"max_output_bytes"`
+
+	// RequestPermission asks for approval to run the command when policy requires it.
+	RequestPermission bool `json:"request_permission"`
 }
 
+// NewShellTool returns a shell tool that authorizes commands with authorizer and resolves working directories relative to authorizer's sandbox. The authorizer must
+// be non-nil.
 func NewShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	abs := authorizer.SandboxDir()
 	return &toolShell{
@@ -53,10 +61,14 @@ func NewShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns the registered shell tool name.
 func (t *toolShell) Name() string { return ToolNameShell }
 
+// Presenter returns the semantic presenter for shell tool calls and results.
 func (t *toolShell) Presenter() llmstream.Presenter { return shellPresenterInstance }
 
+// Info returns the tool definition for shell, including its embedded description, required argv-style command parameter, and optional timeout, working-directory,
+// output-limit, and permission-request parameters.
 func (t *toolShell) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameShell,
@@ -219,6 +231,8 @@ func effectiveShellMaxOutputBytes(value int) int {
 	}
 }
 
+// limitShellOutputBytes returns output unchanged when it is within maxBytes or maxBytes is non-positive. Otherwise, it preserves the head and tail around an elision
+// marker and adjusts cut points so UTF-8 encodings are not split. If the marker cannot fit in maxBytes, the marker is returned by itself.
 func limitShellOutputBytes(output []byte, maxBytes int) []byte {
 	if maxBytes <= 0 || len(output) <= maxBytes {
 		return output
@@ -274,6 +288,8 @@ func shellUTF8TailStart(b []byte, start int) int {
 	return start
 }
 
+// The normalizeCwd method returns a cleaned absolute working directory for cwd. It resolves relative paths against the shell tool's sandbox root and cleans absolute
+// paths as given. It validates that cwd and the sandbox root are set, but it does not stat or authorize the path.
 func (t *toolShell) normalizeCwd(cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
 		return "", fmt.Errorf("cwd is required")
@@ -297,8 +313,11 @@ func (t *toolShell) normalizeCwd(cwd string) (string, error) {
 
 var shellPresenterInstance llmstream.Presenter = shellPresenter{}
 
+// A shellPresenter presents shell tool calls as replacement summaries and includes completed command output as the body.
 type shellPresenter struct{}
 
+// Present returns a replacement presentation for a shell tool call. It shows "Running <command>" before a result is available and "Ran <command>" with summarized
+// command output after completion.
 func (p shellPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Running"
 	if result != nil {
@@ -359,6 +378,8 @@ func shellPresenterBody(result llmstream.ToolResult) llmstream.Block {
 	}
 }
 
+// summarizeShellPresenterResult returns up to five display lines for a shell tool result and the number of omitted output lines. It accepts either the shell tool's
+// JSON result payload or a raw result string; tool errors are returned as a single "Error: ..." line.
 func summarizeShellPresenterResult(result llmstream.ToolResult) ([]string, int) {
 	trimmed := strings.TrimSpace(result.Result)
 	if trimmed == "" {
@@ -384,6 +405,8 @@ func summarizeShellPresenterResult(result llmstream.ToolResult) ([]string, int) 
 	return summarizeShellPresenterOutput(trimmed, 5)
 }
 
+// The summarizeShellPresenterOutput function returns display lines for shell output and the number of lines omitted. It starts after an "Output:" marker when present,
+// trims surrounding empty lines, and limits the result to maxLines when maxLines is positive.
 func summarizeShellPresenterOutput(content string, maxLines int) ([]string, int) {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")

@@ -9,10 +9,15 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 )
 
+// EditOp identifies an operation that ApplyLineEdits applies to a source line.
 type EditOp string
 
+// EditOp values are the line-edit operations supported by ApplyLineEdits.
 const (
-	EditOpRemoveBlankLine      EditOp = "remove_blank_line"
+	// EditOpRemoveBlankLine removes the target line, which must be blank.
+	EditOpRemoveBlankLine EditOp = "remove_blank_line"
+
+	// EditOpInsertBlankLineAbove inserts a blank line before the target line.
 	EditOpInsertBlankLineAbove EditOp = "insert_blank_line_above"
 
 	// Upserts a comment at the end of the line. Comment must be single-line. If Line is blank or a comment, it just replaces that line with the comment.
@@ -22,7 +27,9 @@ const (
 	EditOpRemoveEOLComment EditOp = "remove_eol_comment"
 )
 
+// LineEdit describes a single edit to apply to a source line.
 type LineEdit struct {
+	// EditOp is the operation to apply.
 	EditOp EditOp
 
 	// 1-based line number
@@ -33,11 +40,13 @@ type LineEdit struct {
 	Comment string
 }
 
+// LineEditError reports that a specific LineEdit could not be applied.
 type LineEditError struct {
 	LineEdit        // the offending edit
 	Message  string // why LineEdit failed
 }
 
+// Error returns the failure message for e.
 func (e *LineEditError) Error() string {
 	return e.Message
 }

@@ -11,13 +11,12 @@ import (
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
 )
 
+// A model holds the state for the terminal message composer. Use newModel to create a model with initialized controls.
 type model struct {
-	view *tuicontrols.View
-	ta   *tuicontrols.TextArea
-
-	bg termformat.Color
-
-	rawLines []string
+	view     *tuicontrols.View     // The view displays submitted lines and handles scrolling.
+	ta       *tuicontrols.TextArea // The text area edits the message being composed.
+	bg       termformat.Color      // The background color fills rendered view rows.
+	rawLines []string              // Raw lines store submitted text before width-dependent formatting.
 }
 
 func newModel() *model {
@@ -40,9 +39,12 @@ func newModel() *model {
 	}
 }
 
+// Init performs startup initialization for the model. The model's controls are initialized before the TUI starts, so Init does not change the model.
 func (m *model) Init(t *tui.TUI) {
 }
 
+// Update applies a TUI message to the model. It resizes child controls on ResizeEvent, requests interruption on Ctrl+C, submits on Enter, inserts a newline on Alt+Enter,
+// and otherwise passes input to the text area first. Page Up, Page Down, Home, and End are then also forwarded to the submitted-text view for scrolling.
 func (m *model) Update(t *tui.TUI, msg tui.Message) {
 	switch v := msg.(type) {
 	case tui.ResizeEvent:
@@ -65,7 +67,7 @@ func (m *model) Update(t *tui.TUI, msg tui.Message) {
 
 	m.ta.Update(t, msg)
 
-	// Allow scrolling the view without interfering with text editing.
+	// Forward scrolling keys to the view after the text area has handled them.
 	if key, ok := msg.(tui.KeyEvent); ok {
 		switch key.ControlKey {
 		case tui.ControlKeyPageUp, tui.ControlKeyPageDown, tui.ControlKeyHome, tui.ControlKeyEnd:
@@ -74,6 +76,7 @@ func (m *model) Update(t *tui.TUI, msg tui.Message) {
 	}
 }
 
+// View renders the submitted-text view above the text area, omitting empty sections.
 func (m *model) View() string {
 	top := m.view.View()
 	bottom := m.ta.View()
@@ -86,6 +89,8 @@ func (m *model) View() string {
 	return top + "\n" + bottom
 }
 
+// The rebuildContent method regenerates the scrollable view content from rawLines. It formats each raw line for the current view width and background color before
+// replacing the view content.
 func (m *model) rebuildContent() {
 	width := m.view.Width()
 	lines := make([]string, 0, len(m.rawLines))
@@ -95,6 +100,8 @@ func (m *model) rebuildContent() {
 	m.view.SetContent(strings.Join(lines, "\n"))
 }
 
+// The applySize method resizes child controls to fit a terminal of the given cell dimensions. It clamps negative dimensions to zero, gives the text area up to four
+// rows, assigns the remaining rows to the view, and rebuilds width-dependent content.
 func (m *model) applySize(width, height int) {
 	if width < 0 {
 		width = 0
@@ -117,6 +124,8 @@ func (m *model) applySize(width, height int) {
 	m.rebuildContent()
 }
 
+// The submitTextArea method submits the current text area contents as message lines. It returns without change if the text area is nil, clears whitespace-only input,
+// rebuilds the rendered view after successful submission, and preserves bottom-following scroll behavior.
 func (m *model) submitTextArea() {
 	if m.ta == nil {
 		return
@@ -140,6 +149,9 @@ func (m *model) submitTextArea() {
 	}
 }
 
+// The formatBGLine function formats s as a single terminal row with the given background color. It measures width in terminal cells while ignoring ANSI sequences,
+// trims overflow from the right, and returns "" for non-positive widths. When bg produces a background ANSI sequence, it pads short rows to width cells and appends
+// an ANSI reset; otherwise it returns the clipped text without padding. The input s must not contain newlines, and bg must be non-nil.
 func formatBGLine(s string, width int, bg termformat.Color) string {
 	if width <= 0 {
 		return ""

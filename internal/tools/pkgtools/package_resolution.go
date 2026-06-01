@@ -18,16 +18,20 @@ import (
 //
 // Tools must NOT accept absolute paths or file paths.
 type resolvedPackageRef struct {
-	ModuleAbsDir  string
-	PackageAbsDir string
-	PackageRelDir string
-	ImportPath    string
+	ModuleAbsDir  string // ModuleAbsDir is the absolute module root containing the package, when one is available.
+	PackageAbsDir string // PackageAbsDir is the absolute path to the resolved package directory.
+	PackageRelDir string // PackageRelDir is the package directory relative to the resolved root, using slash separators.
+	ImportPath    string // ImportPath is the fully qualified Go import path for the package.
 }
 
+// isWithinSandbox reports whether r's package directory is sandboxAbsDir or a descendant of it. It returns false when either path is empty or the paths cannot be
+// related.
 func (r resolvedPackageRef) isWithinSandbox(sandboxAbsDir string) bool {
 	return isWithinDir(sandboxAbsDir, r.PackageAbsDir)
 }
 
+// resolveToolPackageRef resolves input as a tool package path from mod's build context. It accepts a sandbox-relative package directory or Go import path, rejects
+// absolute paths and paths that escape with "..", and returns a validated package reference.
 func resolveToolPackageRef(mod *gocode.Module, input string) (resolvedPackageRef, error) {
 	if mod == nil {
 		return resolvedPackageRef{}, errors.New("module required")
@@ -166,6 +170,8 @@ func resolvePackagePath(mod *gocode.Module, input string) (moduleAbsDir string, 
 	return res.ModuleAbsDir, res.PackageAbsDir, res.PackageRelDir, res.ImportPath, nil
 }
 
+// loadPackageForResolved loads a package from an already resolved package location and sets its import path to fqImportPath. It supports packages in baseMod, packages
+// in other modules, and standard library packages without a module root.
 func loadPackageForResolved(baseMod *gocode.Module, moduleAbsDir string, packageAbsDir string, packageRelDir string, fqImportPath string) (*gocode.Package, error) {
 	if baseMod == nil {
 		return nil, errors.New("module required")
@@ -218,6 +224,8 @@ func loadPackageForResolved(baseMod *gocode.Module, moduleAbsDir string, package
 	return pkg, nil
 }
 
+// resolvedRelDir returns the slash-separated directory used to load a resolved package. It prefers packageRelDir when supplied, returns "." for packages without
+// a module root, and otherwise computes the path from moduleAbsDir to packageAbsDir.
 func resolvedRelDir(moduleAbsDir string, packageAbsDir string, packageRelDir string) (string, error) {
 	if packageRelDir != "" {
 		if packageRelDir == "." {

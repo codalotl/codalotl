@@ -46,12 +46,14 @@ func BlockHeight(str string) int {
 	return height
 }
 
+// BlockNormalizeMode selects how block normalization handles generated whitespace in ANSI-styled text. The zero value is BlockNormalizeModeNaive.
 type BlockNormalizeMode string
 
+// BlockNormalizeMode values control how normalization adds whitespace around ANSI-styled text.
 const (
-	BlockNormalizeModeNaive     BlockNormalizeMode = ""
-	BlockNormalizeModeTerminate BlockNormalizeMode = "terminate"
-	BlockNormalizeModeExtend    BlockNormalizeMode = "extend"
+	BlockNormalizeModeNaive     BlockNormalizeMode = ""          // BlockNormalizeModeNaive adds whitespace without ANSI-state management.
+	BlockNormalizeModeTerminate BlockNormalizeMode = "terminate" // BlockNormalizeModeTerminate terminates active ANSI styles before generated whitespace.
+	BlockNormalizeModeExtend    BlockNormalizeMode = "extend"    // BlockNormalizeModeExtend extends active ANSI styles over generated whitespace.
 )
 
 // BlockNormalizeWidth will pad all but the longest line with spaces so that all lines are equal width.
@@ -197,6 +199,8 @@ func BlockStylePerLine(str string) string {
 
 }
 
+// blockStylePerLineNeedsRewrite reports whether BlockStylePerLine must rewrite str to keep each line's ANSI SGR state self-contained. It returns true when any line
+// ends with a non-default SGR state; trailing carriage returns are ignored when checking line state.
 func blockStylePerLineNeedsRewrite(str string) bool {
 	lineStart := 0
 
@@ -221,6 +225,7 @@ func blockStylePerLineNeedsRewrite(str string) bool {
 	return false
 }
 
+// lineEndsWithDefaultState reports whether line ends with default ANSI SGR state. A trailing carriage return is ignored, and malformed SGR sequences are ignored.
 func lineEndsWithDefaultState(line string) bool {
 	if len(line) > 0 && line[len(line)-1] == '\r' {
 		line = line[:len(line)-1]
@@ -249,17 +254,20 @@ func lineEndsWithDefaultState(line string) bool {
 	return state.isDefault()
 }
 
+// simpleSGRState tracks whether common ANSI SGR attributes are active. It records only whether foreground and background colors are set, not their exact values.
 type simpleSGRState struct {
-	bold          bool
-	italic        bool
-	underline     bool
-	overline      bool
-	strikeThrough bool
-	reverse       bool
-	fgSet         bool
-	bgSet         bool
+	bold          bool // Bold text is active.
+	italic        bool // Italic text is active.
+	underline     bool // Underlined text is active.
+	overline      bool // Overlined text is active.
+	strikeThrough bool // Strikethrough text is active.
+	reverse       bool // Reverse-video text is active.
+	fgSet         bool // A non-default foreground color is active.
+	bgSet         bool // A non-default background color is active.
 }
 
+// apply updates s as if params were ANSI SGR parameters. It tracks common attributes and whether foreground or background colors are set, but it does not retain
+// exact color values.
 func (s *simpleSGRState) apply(params []int) {
 	for i := 0; i < len(params); i++ {
 		p := params[i]
@@ -312,6 +320,7 @@ func (s *simpleSGRState) apply(params []int) {
 	}
 }
 
+// isDefault reports whether s has no active SGR attributes and uses terminal-default colors.
 func (s simpleSGRState) isDefault() bool {
 	return !s.bold &&
 		!s.italic &&
@@ -343,6 +352,7 @@ func applyExtendedColorParam(params []int, idx int) (bool, int) {
 	return false, idx
 }
 
+// parseSGRParametersInline parses semicolon-separated SGR parameters into buf. Empty content and empty segments are parsed as reset parameter 0.
 func parseSGRParametersInline(content string, buf []int) ([]int, bool) {
 	buf = buf[:0]
 	if content == "" {
@@ -386,6 +396,8 @@ func parseSGRInt(segment string) (int, bool) {
 	return val, true
 }
 
+// simulateSGRState returns the ANSI SGR state that would be active after rendering text from start. It applies complete CSI SGR sequences in text and ignores ordinary
+// text, non-SGR escapes, incomplete sequences, and malformed SGR parameters.
 func simulateSGRState(start state, text string) state {
 	cur := start
 
@@ -436,6 +448,8 @@ func buildStateTransition(target state) string {
 	return b.String()
 }
 
+// wrapStringToWidth wraps each line in str to width display columns where possible. Existing newlines are preserved, and a nonpositive width disables wrapping.
+// Indivisible grapheme clusters wider than width are emitted unchanged and can exceed width.
 func wrapStringToWidth(str string, width int) string {
 	if str == "" {
 		return ""
@@ -468,6 +482,8 @@ func wrapStringToWidth(str string, width int) string {
 	return strings.Join(out, "\n")
 }
 
+// wrapLineToWidth wraps line to width display columns where possible. ANSI escape sequences do not count toward width, and wrapping occurs at grapheme cluster boundaries
+// rather than word boundaries. Indivisible grapheme clusters wider than width are emitted unchanged and can exceed width.
 func wrapLineToWidth(line string, width int) []string {
 	if line == "" {
 		return []string{""}
@@ -543,6 +559,7 @@ func wrapLineToWidth(line string, width int) []string {
 	return out
 }
 
+// padNormalizedToWidth pads each line in str until the block reaches target columns. It panics if non-empty content cannot be padded to target.
 func padNormalizedToWidth(str string, target int, mode BlockNormalizeMode) string {
 	if target <= 0 {
 		if str == "" {
@@ -589,6 +606,9 @@ func padNormalizedToWidth(str string, target int, mode BlockNormalizeMode) strin
 	return strings.Join(lines, "\n")
 }
 
+// padNormalizedToHeight appends generated rows to str until it has at least target rows. str must already be normalized to lineWidth terminal cells per row; generated
+// rows contain lineWidth spaces and use mode for ANSI styling. In BlockNormalizeModeExtend, generated rows inherit the SGR state active at the end of the last content
+// row and are reset when needed. If str already has target or more rows, it is returned unchanged. The function panics when target is not positive and str is non-empty.
 func padNormalizedToHeight(str string, target int, lineWidth int, mode BlockNormalizeMode) string {
 	if target <= 0 {
 		if str == "" {
@@ -652,37 +672,39 @@ func padNormalizedToHeight(str string, target int, lineWidth int, mode BlockNorm
 	return result
 }
 
+// BorderStyle selects the border rendering used by BlockStyle.
 type BorderStyle int
 
+// BorderStyle values select the border rendering used by BlockStyle.
 const (
-	BorderStyleNone BorderStyle = iota
-	BorderStyleBasic
-	BorderStyleThick
-	BorderStyleInnerHalfBlock
-	BorderStyleOuterHalfBlock
-	BorderStyleHidden // we use the background color only
+	BorderStyleNone           BorderStyle = iota // BorderStyleNone disables border rendering.
+	BorderStyleBasic                             // BorderStyleBasic renders a single-line border.
+	BorderStyleThick                             // BorderStyleThick renders a heavy border.
+	BorderStyleInnerHalfBlock                    // BorderStyleInnerHalfBlock renders an inner half-block border.
+	BorderStyleOuterHalfBlock                    // BorderStyleOuterHalfBlock renders an outer half-block border.
+	BorderStyleHidden                            // we use the background color only
 )
 
 // BlockStyle specifies properties for Wrap.
 //
 // Margin goes outside the border, padding inside.
 type BlockStyle struct {
-	BlockNormalizeMode BlockNormalizeMode
-	MarginLeft         int
-	MarginRight        int
-	MarginTop          int
-	MarginBottom       int
-	Margin             int // Margin is used for Margin{Left,Right,Top,Bottom}, if that margin is 0.
-	PaddingLeft        int
-	PaddingRight       int
-	PaddingTop         int
-	PaddingBottom      int
-	Padding            int // Padding is used for Padding{Left,Right,Top,Bottom}, if that padding is 0.
+	BlockNormalizeMode BlockNormalizeMode // BlockNormalizeMode controls how generated whitespace interacts with ANSI styles.
+	MarginLeft         int                // MarginLeft is the number of columns to add outside the left border.
+	MarginRight        int                // MarginRight is the number of columns to add outside the right border.
+	MarginTop          int                // MarginTop is the number of rows to add above the border.
+	MarginBottom       int                // MarginBottom is the number of rows to add below the border.
+	Margin             int                // Margin is used for Margin{Left,Right,Top,Bottom}, if that margin is 0.
+	PaddingLeft        int                // PaddingLeft is the number of columns to add inside the left border.
+	PaddingRight       int                // PaddingRight is the number of columns to add inside the right border.
+	PaddingTop         int                // PaddingTop is the number of rows to add below the top border.
+	PaddingBottom      int                // PaddingBottom is the number of rows to add above the bottom border.
+	Padding            int                // Padding is used for Padding{Left,Right,Top,Bottom}, if that padding is 0.
 
-	// If present, the final styled block will be exactly TotalWidth, including inner text, margin, padding, and border. If the text's block width + margin + padding
-	// + border is less than TotalWidth, spaces will be added to each line of the text using BlockNormalizeMode until the width is achieved. If TotalWidth is too small
-	// for the text+margin+padding+border, text is wrapped and the block is re-normalized using BlockNormalizeMode. If padding+margin+border is greater than TotalWidth,
-	// panic.
+	// If present, the final styled block will be exactly TotalWidth, including inner text, margin, padding, and border. If the text's block width plus margin, padding,
+	// and border is less than TotalWidth, spaces will be added to each line of the text using BlockNormalizeMode until the width is achieved. If TotalWidth is too small
+	// for the text, margin, padding, and border, text is wrapped and the block is re-normalized using BlockNormalizeMode. If padding, margin, and border are greater
+	// than TotalWidth, panic.
 	TotalWidth int
 
 	// If present, the final styled block will be at least MinTotalHeight. Rows with full of spaces will be added to text using BlockNormalizeMode until MinTotalHeight
@@ -695,6 +717,7 @@ type BlockStyle struct {
 	// NOTE: MinTotalWidth is a logical property that might be desired at some point.
 	// MaxTotalHeight is possible if we accept row truncation is okay (not obvious to me that it is).
 
+	// BorderStyle selects the border drawn around the padded content.
 	BorderStyle BorderStyle
 
 	// if set, applies this bg color to the wrapped text block (including spaces added during normalization) using Style.Apply. The entire inner box (not margin/border/padding)

@@ -46,9 +46,9 @@ const (
 
 // NamespaceSpec describes a CAS namespace.
 type NamespaceSpec struct {
-	Name     string
-	Version  int
-	HashMode HashMode
+	Name     string   // Name is the stable, non-versioned namespace name and must be filesystem-safe.
+	Version  int      // Version is the positive namespace version appended to Name in filesystem namespaces.
+	HashMode HashMode // HashMode selects the package or code-unit file set used to derive record hashes.
 }
 
 // Namespace returns the versioned filesystem namespace, such as "specconforms-1".
@@ -111,19 +111,25 @@ type PackageSummary struct {
 // PackageRecertificationStatus describes the outcome of package recertification.
 type PackageRecertificationStatus string
 
+// Package recertification statuses identify the result of a recertification attempt.
 const (
-	PackageRecertificationStatusCurrent     PackageRecertificationStatus = "current"
+	// PackageRecertificationStatusCurrent means the current package hash already has a CAS record.
+	PackageRecertificationStatusCurrent PackageRecertificationStatus = "current"
+
+	// PackageRecertificationStatusRecertified means a matching prior invalidated record was copied to the current package hash.
 	PackageRecertificationStatusRecertified PackageRecertificationStatus = "recertified"
-	PackageRecertificationStatusNoPrior     PackageRecertificationStatus = "no-prior"
+
+	// PackageRecertificationStatusNoPrior means no matching prior invalidated record was found.
+	PackageRecertificationStatusNoPrior PackageRecertificationStatus = "no-prior"
 )
 
 // PackageRecertificationResult describes a package recertification attempt.
 type PackageRecertificationResult struct {
-	Status       PackageRecertificationStatus
-	CurrentHash  string
-	SourceHash   string
-	SourceRecord string
-	Warnings     []string
+	Status       PackageRecertificationStatus // Status is the recertification outcome.
+	CurrentHash  string                       // CurrentHash is the CAS hash derived from the package contents being recertified.
+	SourceHash   string                       // SourceHash is the prior invalidated CAS hash copied when Status is PackageRecertificationStatusRecertified.
+	SourceRecord string                       // SourceRecord is the prior invalidated CAS record identifier copied when Status is PackageRecertificationStatusRecertified.
+	Warnings     []string                     // Warnings describes non-fatal risk signals found while recertifying, such as dirty git state, high churn, or an old source record.
 }
 
 // PruneOptions configures CAS record pruning.
@@ -136,8 +142,8 @@ type PruneOptions struct {
 
 // PruneResult summarizes deleted CAS records.
 type PruneResult struct {
-	DeletedPriorVersionRecords int
-	DeletedSupersededRecords   int
+	DeletedPriorVersionRecords int // DeletedPriorVersionRecords is the number of records removed from prior namespace versions.
+	DeletedSupersededRecords   int // DeletedSupersededRecords is the number of old superseded records removed from active namespaces.
 }
 
 // RootDirForBaseDir returns the absolute CAS root for baseDir.
@@ -445,6 +451,7 @@ func (db *DB) Prune(specs []NamespaceSpec, packages []*gocode.Package, opts Prun
 	return result, nil
 }
 
+// prunePriorNamespaceVersions deletes valid CAS records in namespace directories older than the active specs. It returns the number of record files removed.
 func (db *DB) prunePriorNamespaceVersions(activeSpecs map[string]NamespaceSpec) (int, error) {
 	entries, err := os.ReadDir(db.DB.AbsRoot)
 	if err != nil {
@@ -483,6 +490,10 @@ func isPriorNamespaceVersion(dirName string, spec NamespaceSpec) bool {
 	return version < spec.Version
 }
 
+// pruneNamespaceRecordFiles removes valid CAS record files from namespace and returns the number removed.
+//
+// It skips entries that do not match the CAS record layout, are not regular files, cannot be parsed as CAS records, or cannot be accessed while walking. It stops
+// and returns an error if deleting a selected record fails.
 func (db *DB) pruneNamespaceRecordFiles(namespace Namespace) (int, error) {
 	namespaceDir := db.namespaceDir(namespace)
 	recordPaths := []string{}
@@ -538,6 +549,9 @@ func isRegularDirEntry(d os.DirEntry) bool {
 	return info.Mode().IsRegular()
 }
 
+// DB.pruneSupersededRecords removes superseded package records from the active namespaces in specs. A record is deleted only when it belongs to a supplied package,
+// is older than supersededAge by PackageRecordSummary.Time, has a newer matching record, and is not protected as a current hash or recertification source. The return
+// value is the number of record files deleted.
 func (db *DB) pruneSupersededRecords(specs []NamespaceSpec, packages []*gocode.Package, supersededAge time.Duration) (int, error) {
 	protected, err := db.pruneProtectedHashes(specs, packages)
 	if err != nil {
@@ -593,6 +607,8 @@ func (db *DB) pruneSupersededRecords(specs []NamespaceSpec, packages []*gocode.P
 	return deleted, nil
 }
 
+// pruneProtectedHashes returns hashes that package pruning must not delete. It protects each current package hash for specs and packages and, when a current record
+// is a valid recertification, the source hash recorded in its provenance.
 func (db *DB) pruneProtectedHashes(specs []NamespaceSpec, packages []*gocode.Package) (map[Namespace]map[string]struct{}, error) {
 	protected := map[Namespace]map[string]struct{}{}
 	addProtected := func(namespace Namespace, hash string) {
@@ -680,6 +696,8 @@ func recordHashFromID(id string) (Namespace, string, bool) {
 	return namespace, hash, true
 }
 
+// DB.packageRecordsForPrune returns valid records in namespace that appear to belong to pkg. currentRelPaths must be the active file set for pkg. Missing namespaces
+// and malformed, unreadable, or unrelated records are ignored, and matches are ordered newest first with hash as a tie-breaker.
 func (db *DB) packageRecordsForPrune(namespace Namespace, pkg *gocode.Package, currentRelPaths []string) []*priorPackageRecord {
 	namespaceDir := db.namespaceDir(namespace)
 	records := []*priorPackageRecord{}
@@ -808,6 +826,9 @@ func validateAbsPath(fieldName, p string) error {
 	return nil
 }
 
+// nearestGitRoot returns the nearest ancestor of absBaseDir that contains a .git entry.
+//
+// If absBaseDir names an existing file, the search starts at its parent. It returns an error when filesystem checks fail or no .git entry is found.
 func nearestGitRoot(absBaseDir string) (string, error) {
 	dir := absBaseDir
 	if fi, err := os.Stat(dir); err == nil && !fi.IsDir() {
@@ -831,6 +852,9 @@ func nearestGitRoot(absBaseDir string) (string, error) {
 	}
 }
 
+// validateNamespaceSpec reports whether spec names a usable CAS namespace.
+//
+// It rejects empty or path-containing names, non-positive versions, unsupported hash modes, and generated namespaces that are not filesystem-safe.
 func validateNamespaceSpec(spec NamespaceSpec) error {
 	if spec.Name == "" {
 		return errors.New("namespace spec name is empty")
@@ -852,6 +876,8 @@ func validateNamespaceSpec(spec NamespaceSpec) error {
 	return nil
 }
 
+// validateCommon checks the receiver and namespace configuration shared by package CAS operations. It verifies that db is non-nil, spec names a valid namespace,
+// BaseDir is an existing absolute directory, and the embedded CAS root path is absolute.
 func (db *DB) validateCommon(spec NamespaceSpec) error {
 	if db == nil {
 		return errors.New("gocas DB is nil")
@@ -868,6 +894,8 @@ func (db *DB) validateCommon(spec NamespaceSpec) error {
 	return nil
 }
 
+// hasherForValidatedPackageSpec validates common DB configuration and returns the namespace, hasher, and BaseDir-relative paths for pkg and spec. The caller must
+// pass a non-nil pkg; the returned paths are the files selected by spec.HashMode in the order used by the hasher.
 func (db *DB) hasherForValidatedPackageSpec(pkg *gocode.Package, spec NamespaceSpec) (Namespace, cas.Hasher, []string, error) {
 	if err := db.validateCommon(spec); err != nil {
 		return "", nil, nil, err
@@ -881,6 +909,7 @@ func (db *DB) hasherForValidatedPackageSpec(pkg *gocode.Package, spec NamespaceS
 	return namespace, hasher, relPaths, nil
 }
 
+// store writes jsonable to the CAS with current AdditionalInfo for relPaths. It captures git metadata best-effort and returns errors from the underlying CAS store.
 func (db *DB) store(namespace Namespace, hasher cas.Hasher, relPaths []string, jsonable any) error {
 	additionalInfo := cas.AdditionalInfo{
 		UnixTimestamp: int(time.Now().Unix()),
@@ -893,6 +922,8 @@ func (db *DB) store(namespace Namespace, hasher cas.Hasher, relPaths []string, j
 	})
 }
 
+// retrieve loads and decodes a CAS record into target. It returns ok false without modifying target when no record exists, and it returns the record's AdditionalInfo
+// when present.
 func (db *DB) retrieve(namespace Namespace, hasher cas.Hasher, target any) (ok bool, additionalInfo cas.AdditionalInfo, err error) {
 	var raw json.RawMessage
 	ok, additionalInfo, err = db.DB.Retrieve(hasher, string(namespace), &raw)
@@ -906,14 +937,18 @@ func (db *DB) retrieve(namespace Namespace, hasher cas.Hasher, target any) (ok b
 	return true, additionalInfo, nil
 }
 
+// delete removes the CAS record identified by hasher in namespace.
 func (db *DB) delete(namespace Namespace, hasher cas.Hasher) error {
 	return db.DB.Delete(hasher, string(namespace))
 }
 
+// namespaceDir returns the filesystem directory for namespace under the CAS root.
 func (db *DB) namespaceDir(namespace Namespace) string {
 	return filepath.Join(db.DB.AbsRoot, string(namespace))
 }
 
+// recordPath returns the filesystem path for hash in namespace. It returns ok false when hash cannot be split into a CAS prefix and suffix, and it does not check
+// whether the file exists.
 func (db *DB) recordPath(namespace Namespace, hash string) (string, bool) {
 	prefix, suffix, ok := splitRecordHash(hash)
 	if !ok {
@@ -922,6 +957,7 @@ func (db *DB) recordPath(namespace Namespace, hash string) (string, bool) {
 	return filepath.Join(db.namespaceDir(namespace), prefix, suffix), true
 }
 
+// DB.packageRecordSummary builds a summary for a CAS record, deriving its ordering time from recordPath when needed.
 func (db *DB) packageRecordSummary(hash string, additionalInfo cas.AdditionalInfo, recordPath string) *PackageRecordSummary {
 	return &PackageRecordSummary{
 		Hash:           hash,
@@ -930,6 +966,8 @@ func (db *DB) packageRecordSummary(hash string, additionalInfo cas.AdditionalInf
 	}
 }
 
+// recordTime returns the best available time for a CAS record. It prefers the git commit time of the commit that added recordPath, then AdditionalInfo.UnixTimestamp,
+// then the record file modification time.
 func (db *DB) recordTime(additionalInfo cas.AdditionalInfo, recordPath string) time.Time {
 	if t, ok := db.recordAddCommitTime(recordPath); ok {
 		return t
@@ -937,6 +975,8 @@ func (db *DB) recordTime(additionalInfo cas.AdditionalInfo, recordPath string) t
 	return fallbackRecordTime(additionalInfo, recordPath)
 }
 
+// recordAddCommitTime returns the first git commit time found for the commit that added recordPath. It returns ok false if git is unavailable, recordPath cannot
+// be traced to an adding commit, or the commit time cannot be read.
 func (db *DB) recordAddCommitTime(recordPath string) (time.Time, bool) {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
@@ -966,15 +1006,17 @@ func fallbackRecordTime(additionalInfo cas.AdditionalInfo, recordPath string) ti
 	return fi.ModTime()
 }
 
+// casRecordFile is the on-disk JSON representation of a CAS record.
 type casRecordFile struct {
-	Kind           string             `json:"kind"`
-	Metadata       json.RawMessage    `json:"metadata"`
-	AdditionalInfo cas.AdditionalInfo `json:"additional_info"`
+	Kind           string             `json:"kind"`            // Kind identifies valid CAS record files.
+	Metadata       json.RawMessage    `json:"metadata"`        // Metadata is the primary JSON payload stored in the CAS record.
+	AdditionalInfo cas.AdditionalInfo `json:"additional_info"` // AdditionalInfo contains sidecar metadata stored with the primary payload.
 }
 
+// priorPackageRecord pairs a package record summary with its CAS record file path.
 type priorPackageRecord struct {
-	summary    *PackageRecordSummary
-	recordPath string
+	summary    *PackageRecordSummary // Summary contains the record metadata used for matching, ordering, and pruning.
+	recordPath string                // RecordPath is the filesystem path to the CAS record file.
 }
 
 func readFullCASRecordFile(recordPath string) (casRecordFile, error) {
@@ -1016,6 +1058,7 @@ func splitRecordHash(hash string) (string, string, bool) {
 	return hash[:2], hash[2:], true
 }
 
+// recertificationWarnings returns human-readable warnings for higher-risk package recertifications.
 func (db *DB) recertificationWarnings(currentInfo cas.AdditionalInfo, source *PackageRecordSummary, records []*priorPackageRecord, currentRelPaths []string) []string {
 	warnings := []string{}
 	if currentInfo.GitCommit != "" && !currentInfo.GitClean {
@@ -1030,6 +1073,8 @@ func (db *DB) recertificationWarnings(currentInfo cas.AdditionalInfo, source *Pa
 	return warnings
 }
 
+// DB.priorInvalidatedPackageRecords returns matching non-current records for pkg in namespace. currentRelPaths must be the paths selected for the current hash.
+// Malformed, unreadable, and unrelated records are skipped, and matches are ordered newest first with hash as a tie-breaker.
 func (db *DB) priorInvalidatedPackageRecords(namespace Namespace, currentHash string, pkg *gocode.Package, currentRelPaths []string) []*priorPackageRecord {
 	namespaceDir := db.namespaceDir(namespace)
 	records := []*priorPackageRecord{}
@@ -1097,6 +1142,10 @@ func betterPackageRecord(candidate, incumbent *PackageRecordSummary) bool {
 	return candidate.Hash > incumbent.Hash
 }
 
+// recordPathsMatchPackage reports whether stored record paths appear to belong to pkg.
+//
+// It first checks for any overlap with currentRelPaths. If no current path overlaps, it falls back to matching paths under pkg.RelativeDir; for a root or invalid
+// relative directory, it matches root-level paths. pkg must be non-nil.
 func (db *DB) recordPathsMatchPackage(paths []string, pkg *gocode.Package, currentRelPaths []string) bool {
 	normalizedPaths := db.normalizeStoredPaths(paths)
 	if len(normalizedPaths) == 0 {
@@ -1135,6 +1184,9 @@ func (db *DB) recordPathsMatchPackage(paths []string, pkg *gocode.Package, curre
 	return false
 }
 
+// normalizeStoredPaths normalizes stored CAS metadata paths and returns the valid unique paths in sorted order.
+//
+// Invalid paths are dropped.
 func (db *DB) normalizeStoredPaths(paths []string) []string {
 	seen := make(map[string]struct{}, len(paths))
 	normalized := make([]string, 0, len(paths))
@@ -1153,6 +1205,10 @@ func (db *DB) normalizeStoredPaths(paths []string) []string {
 	return normalized
 }
 
+// normalizeStoredPath converts p from stored CAS metadata into a clean BaseDir-relative slash path.
+//
+// Absolute paths are made relative to db.BaseDir, and relative paths are cleaned as stored. It returns false for empty, current-directory, parent-directory, or
+// outside-BaseDir paths.
 func (db *DB) normalizeStoredPath(p string) (string, bool) {
 	if p == "" {
 		return "", false
@@ -1176,6 +1232,8 @@ func cleanRelPath(p string) (string, bool) {
 	return p, true
 }
 
+// churnPercent returns a best-effort changed-line percentage for currentRelPaths against the first usable prior record. It returns nil when churn cannot be computed
+// from available git metadata.
 func (db *DB) churnPercent(records []*priorPackageRecord, currentRelPaths []string) *float64 {
 	if len(records) == 0 {
 		return nil
@@ -1195,6 +1253,8 @@ func (db *DB) churnPercent(records []*priorPackageRecord, currentRelPaths []stri
 	return nil
 }
 
+// recordChurnPercent estimates changed lines since record as a percentage of the prior record's line count. It returns nil if record metadata is unusable, no matching
+// source commit can be found, git cannot compute the diff, or the prior line count is zero.
 func (db *DB) recordChurnPercent(record *priorPackageRecord, currentRelPaths []string, gitPath string) *float64 {
 	if record == nil || record.summary == nil {
 		return nil
@@ -1225,6 +1285,8 @@ func (db *DB) recordChurnPercent(record *priorPackageRecord, currentRelPaths []s
 	return &churn
 }
 
+// matchingRecordCommit returns the first candidate git commit whose contents for priorPaths reproduce record's CAS hash. It returns ok false if record is invalid,
+// no candidate matches, or the hash cannot be reconstructed.
 func (db *DB) matchingRecordCommit(record *priorPackageRecord, priorPaths []string, gitPath string) (string, bool) {
 	for _, commit := range db.recordCommitCandidates(record, gitPath) {
 		if db.recordHashMatchesCommit(record.summary.Hash, commit, priorPaths, gitPath) {
@@ -1234,6 +1296,8 @@ func (db *DB) matchingRecordCommit(record *priorPackageRecord, priorPaths []stri
 	return "", false
 }
 
+// recordCommitCandidates returns unique git commits that may represent record's source contents. Candidates include AdditionalInfo.GitCommit first, followed by
+// commits that added the CAS record file in git log order; empty values, duplicates, and invalid records are skipped.
 func (db *DB) recordCommitCandidates(record *priorPackageRecord, gitPath string) []string {
 	if record == nil || record.summary == nil {
 		return nil
@@ -1260,6 +1324,10 @@ func (db *DB) recordCommitCandidates(record *priorPackageRecord, gitPath string)
 	return candidates
 }
 
+// gitCommitsAddingRecord returns git commit hashes that added recordPath to the repository.
+//
+// It uses db.BaseDir as the git working directory and returns commits in git log order, normally newest first. It returns nil if recordPath cannot be expressed
+// relative to db.BaseDir or if any git command fails.
 func (db *DB) gitCommitsAddingRecord(recordPath string, gitPath string) []string {
 	if recordPath == "" {
 		return nil
@@ -1293,6 +1361,9 @@ func (db *DB) gitCommitsAddingRecord(recordPath string, gitPath string) []string
 	return commits
 }
 
+// recordHashMatchesCommit reports whether relPaths at commit produce hash under the same relative-path hashing used by the CAS.
+//
+// It reconstructs the files in a temporary directory and returns false if inputs are empty, any file cannot be read from git, any path is invalid, or hashing fails.
 func (db *DB) recordHashMatchesCommit(hash, commit string, relPaths []string, gitPath string) bool {
 	if hash == "" || commit == "" || len(relPaths) == 0 {
 		return false
@@ -1332,6 +1403,9 @@ func (db *DB) recordHashMatchesCommit(hash, commit string, relPaths []string, gi
 	return hasher.Hash() == hash
 }
 
+// mergeRelPaths returns the sorted union of valid relative paths from a and b.
+//
+// Paths are slash-normalized and cleaned with cleanRelPath; invalid paths are ignored.
 func mergeRelPaths(a []string, b []string) []string {
 	seen := make(map[string]struct{}, len(a)+len(b))
 	merged := make([]string, 0, len(a)+len(b))
@@ -1356,6 +1430,8 @@ func mergeRelPaths(a []string, b []string) []string {
 	return merged
 }
 
+// gitChangedLines returns the number of added and deleted lines between commit and the working tree for relPaths. It uses gitPath with dir as the working tree,
+// includes matching untracked non-ignored files, and returns ok false if relPaths is empty or any git, parsing, path, or file-read step fails.
 func gitChangedLines(dir, gitPath, commit string, relPaths []string) (int, bool) {
 	if len(relPaths) == 0 {
 		return 0, false
@@ -1395,6 +1471,10 @@ func gitChangedLines(dir, gitPath, commit string, relPaths []string) (int, bool)
 	return changed, true
 }
 
+// gitUntrackedChangedLines returns the number of lines in untracked, non-ignored files under relPaths.
+//
+// It uses gitPath from dir as the working tree, counts newline-delimited lines in each matching file, and returns false if git, path normalization, or file reads
+// fail.
 func gitUntrackedChangedLines(dir, gitPath string, relPaths []string) (int, bool) {
 	args := []string{"ls-files", "--others", "--exclude-standard", "-z", "--"}
 	args = append(args, relPaths...)
@@ -1512,17 +1592,21 @@ func parseNonNegativeInt(s string) (int, error) {
 	return n, nil
 }
 
+// fileRec records a file selected for hashing in both absolute and BaseDir-relative form.
 type fileRec struct {
-	abs string
-	rel string
+	abs string // The absolute path locates the file on disk.
+	rel string // The BaseDir-relative path identifies the file in the hash.
 }
 
+// fileRecOptions configures appendFileRec validation and missing-file handling.
 type fileRecOptions struct {
-	emptyPathErr    string
-	outsideBaseKind string
-	allowNotExist   bool
+	emptyPathErr    string // EmptyPathErr is the error message returned for an empty candidate path.
+	outsideBaseKind string // OutsideBaseKind names the path kind in errors for files outside BaseDir.
+	allowNotExist   bool   // AllowNotExist skips missing files instead of returning an error.
 }
 
+// hasherForPackageSpec builds the hasher and BaseDir-relative path list selected by spec.HashMode. HashModePackage uses package and test files plus package-local
+// SPEC.md files, HashModeCodeUnit uses the default Go code unit rooted at pkg, and unsupported modes return an error.
 func (db *DB) hasherForPackageSpec(pkg *gocode.Package, spec NamespaceSpec) (cas.Hasher, []string, error) {
 	switch spec.HashMode {
 	case HashModePackage:
@@ -1538,6 +1622,9 @@ func (db *DB) hasherForPackageSpec(pkg *gocode.Package, spec NamespaceSpec) (cas
 	}
 }
 
+// hasherForPackage builds a CAS hasher from pkg's package files, black-box test package files, and package-local SPEC.md files when present. It returns BaseDir-relative
+// paths in hash order, ignores duplicate paths and directories, skips missing SPEC.md files, and rejects required files with empty paths, unreadable files, or paths
+// outside BaseDir.
 func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error) {
 	seen := make(map[string]struct{})
 	recs := make([]fileRec, 0, len(pkg.Files))
@@ -1585,6 +1672,8 @@ func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error
 	return db.hasherForFileRecs(recs)
 }
 
+// hasherForCodeUnit builds a CAS hasher from the files included in unit. It returns the BaseDir-relative paths in hash order and rejects empty paths, missing or
+// unreadable files, and paths outside BaseDir; duplicate paths and directories are ignored.
 func (db *DB) hasherForCodeUnit(unit *codeunit.CodeUnit) (cas.Hasher, []string, error) {
 	seen := make(map[string]struct{})
 	recs := make([]fileRec, 0, len(unit.IncludedFiles()))
@@ -1601,6 +1690,10 @@ func (db *DB) hasherForCodeUnit(unit *codeunit.CodeUnit) (cas.Hasher, []string, 
 	return db.hasherForFileRecs(recs)
 }
 
+// appendFileRec adds abs to recs as a hashable file record when it names a new, non-directory file under db.BaseDir.
+//
+// It ignores duplicates and directories, skips missing files only when opts.allowNotExist is true, and returns an error for empty paths, stat failures, paths outside
+// BaseDir, or relative-path computation failures.
 func (db *DB) appendFileRec(recs *[]fileRec, seen map[string]struct{}, abs string, opts fileRecOptions) error {
 	if abs == "" {
 		return errors.New(opts.emptyPathErr)
@@ -1639,6 +1732,9 @@ func relPathOutsideBase(rel string) bool {
 		strings.HasPrefix(rel, `..\`)
 }
 
+// hasherForFileRecs returns a CAS hasher for recs and the BaseDir-relative paths included in the hash.
+//
+// The returned paths are sorted by relative path in the same order used to build the hasher. The input slice is sorted in place.
 func (db *DB) hasherForFileRecs(recs []fileRec) (cas.Hasher, []string, error) {
 	sort.Slice(recs, func(i, j int) bool { return recs[i].rel < recs[j].rel })
 	fileAbsPaths := make([]string, 0, len(recs))
@@ -1655,6 +1751,8 @@ func (db *DB) hasherForFileRecs(recs []fileRec) (cas.Hasher, []string, error) {
 	return hasher, fileRelPaths, nil
 }
 
+// bestEffortPopulateGitInfo fills ai with git metadata from BaseDir when it can be determined. It silently leaves unavailable fields at their zero values; ai must
+// be non-nil.
 func (db *DB) bestEffortPopulateGitInfo(ai *cas.AdditionalInfo) {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {

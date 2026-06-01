@@ -9,6 +9,11 @@ import (
 	"go/token"
 )
 
+// updateValueDoc applies documentation from a validated var or const snippet to the matching declaration or specs in pkg.
+//
+// ps must describe a var or const snippet whose package-level identifiers all resolve to one source file. Snippet mismatches and other recoverable input problems
+// are returned as *SnippetError; parse, format, persistence, and line editing failures are returned as fatal errors. If options.RejectUpdates blocks a requested
+// replacement, updateValueDoc sets ps.partiallyRejected and leaves the existing documentation unchanged.
 func updateValueDoc(pkg *gocode.Package, ps *parsedSnippet, options Options) (*gocode.File, *SnippetError, error) {
 	if ps.kind != snippetKindVar && ps.kind != snippetKindConst {
 		panic("expected value kind")

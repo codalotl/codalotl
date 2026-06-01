@@ -104,22 +104,24 @@ func ChangedPathsSince(repoDir string, baseCommit string, includeUncommitted boo
 	return paths, nil
 }
 
+// candidateRef describes a possible base ref for the current line of work.
 type candidateRef struct {
-	gitRef      string
-	displayName string
-	logicalKey  string
-	isLocal     bool
-	isDefault   bool
-	isPRBase    bool
+	gitRef      string // gitRef is the ref name passed to git commands.
+	displayName string // displayName is the ref name reported to callers when this candidate is selected.
+	logicalKey  string // logicalKey identifies the logical ref when comparing candidates for ambiguity.
+	isLocal     bool   // isLocal reports whether the candidate is a local branch.
+	isDefault   bool   // isDefault reports whether the candidate is a known primary or default branch.
+	isPRBase    bool   // isPRBase reports whether the candidate matches the detected GitHub PR base branch.
 }
 
+// candidateScore records the heuristic score for a candidate base ref.
 type candidateScore struct {
-	candidate          candidateRef
-	mergeBase          string
-	mergeBaseUnixTime  int64
-	headOnlyCount      int
-	candidateOnlyCount int
-	candidateAncestor  bool
+	candidate          candidateRef // candidate is the base ref being evaluated.
+	mergeBase          string       // mergeBase is the merge-base commit for HEAD and the candidate.
+	mergeBaseUnixTime  int64        // mergeBaseUnixTime is the Unix commit time of mergeBase.
+	headOnlyCount      int          // headOnlyCount is the number of commits from mergeBase to HEAD.
+	candidateOnlyCount int          // candidateOnlyCount is the number of commits from mergeBase to the candidate.
+	candidateAncestor  bool         // candidateAncestor reports whether the candidate ref is an ancestor of HEAD.
 }
 
 func repoRoot(repoDir string) (string, error) {
@@ -135,6 +137,7 @@ func repoRoot(repoDir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// candidateRefs returns possible base refs for the current branch.
 func candidateRefs(repoDir, currentBranch, currentUpstream string, defaultRefs map[string]bool, prBaseBranch string) ([]candidateRef, error) {
 	locals, err := gitLines(repoDir, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {
@@ -225,6 +228,7 @@ func primaryBranchNameSet() map[string]bool {
 	}
 }
 
+// remoteDefaultRefs returns remote default branch names discovered from remote HEAD refs.
 func remoteDefaultRefs(repoDir string) []string {
 	refs, err := gitLines(repoDir, "for-each-ref", "--format=%(refname)", "refs/remotes")
 	if err != nil {
@@ -250,6 +254,7 @@ func remoteDefaultRefs(repoDir string) []string {
 	return defaults
 }
 
+// scoreCandidate evaluates candidate as a possible base ref for HEAD.
 func scoreCandidate(repoDir string, candidate candidateRef) (candidateScore, bool) {
 	mergeBase, err := gitOutput(repoDir, "merge-base", "HEAD", candidate.gitRef)
 	if err != nil {
@@ -287,6 +292,7 @@ func scoreCandidate(repoDir string, candidate candidateRef) (candidateScore, boo
 	}, true
 }
 
+// compareScores compares candidate scores in heuristic preference order.
 func compareScores(a, b candidateScore) int {
 	if a.candidate.isPRBase != b.candidate.isPRBase {
 		if a.candidate.isPRBase {
@@ -378,6 +384,7 @@ func commitUnixTime(repoDir, rev string) (int64, error) {
 	return unixTime, nil
 }
 
+// addChangedPathsFromDiff adds repo-relative paths from a git diff to pathSet.
 func addChangedPathsFromDiff(repoDir string, pathSet map[string]struct{}, revs ...string) error {
 	args := []string{"diff", "--name-status", "-z", "--find-renames"}
 	args = append(args, revs...)
@@ -460,6 +467,7 @@ func gitSuccess(repoDir string, args ...string) bool {
 	return cmd.Run() == nil
 }
 
+// gitOutput runs git in repoDir with args and returns its combined output.
 func gitOutput(repoDir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", repoDir}, args...)...)
 	out, err := cmd.CombinedOutput()
@@ -491,12 +499,14 @@ func remoteDisplayName(ref string) string {
 
 var detectPRBaseBranch = detectGitHubPRBaseBranch
 
+// ghPRView is the portion of gh pr view output used to detect an open PR's base branch.
 type ghPRView struct {
-	BaseRefName string `json:"baseRefName"`
-	HeadRefName string `json:"headRefName"`
-	State       string `json:"state"`
+	BaseRefName string `json:"baseRefName"` // BaseRefName is the pull request's base branch name.
+	HeadRefName string `json:"headRefName"` // HeadRefName is the pull request's head branch name.
+	State       string `json:"state"`       // State is the pull request state.
 }
 
+// detectGitHubPRBaseBranch returns the base branch of an open GitHub PR for currentBranch, if one can be detected.
 func detectGitHubPRBaseBranch(repoDir, currentBranch string) string {
 	if currentBranch == "" || !repoHasGitHubRemote(repoDir) {
 		return ""

@@ -6,17 +6,17 @@ import "os/exec"
 //
 // InstallHint is optional; when provided, it should be a user-facing hint for how to install the tool (for example: "go install ...@latest").
 type ToolRequirement struct {
-	Name        string
-	InstallHint string
+	Name        string // Name is the executable name to resolve with exec.LookPath.
+	InstallHint string // InstallHint is optional user-facing guidance for installing the tool.
 }
 
 // ToolStatus is the result of resolving a ToolRequirement via exec.LookPath.
 //
 // Path is empty when the tool could not be found.
 type ToolStatus struct {
-	Name        string
-	Path        string
-	InstallHint string
+	Name        string // Name is the requested executable name.
+	Path        string // Path is the resolved executable path, or empty when the tool was not found.
+	InstallHint string // InstallHint is the optional installation guidance from the requirement.
 }
 
 // CheckTools resolves each required tool using exec.LookPath and returns a status for each requirement in the same order. It never returns an error; callers can

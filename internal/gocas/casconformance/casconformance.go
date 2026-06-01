@@ -14,7 +14,7 @@ var NamespaceSpec = gocas.NamespaceSpec{
 
 // Metadata is the stored JSON payload.
 type Metadata struct {
-	Conforms bool `json:"conforms"`
+	Conforms bool `json:"conforms"` // Conforms reports whether the package conforms to the spec.
 }
 
 // Store stores spec conformance metadata for pkg.

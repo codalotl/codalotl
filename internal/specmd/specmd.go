@@ -242,7 +242,7 @@ type SpecDiff struct {
 // ImplementationDiffs finds differences between the public API declared in the SPEC.md and the actual public API in the corresponding Go package. It only checks
 // those identifiers defined in the SPEC.md - if the public API is a strict superset, no differences are returned. If no differences are found, nil is returned.
 //   - Only PublicAPIGoCodeBlocks are checked.
-//   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
+//   - If PublicAPIGoCodeBlocks contains function or method declaration bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
 //   - If the corresponding Go package cannot be loaded (ex: syntax error; no Go files), an error is returned.
 func (s *Spec) ImplementationDiffs() ([]SpecDiff, error) {
@@ -317,13 +317,17 @@ func (s *Spec) ImplementationDiffs() ([]SpecDiff, error) {
 	return diffs, nil
 }
 
+// implSnippetPos reports where a matching implementation snippet was found, or why it was not usable.
 type implSnippetPos struct {
-	file       string
-	line       int
-	missing    bool
-	idMismatch bool
+	file       string // The file is the base name of the implementation file when a snippet is found.
+	line       int    // The line is the 1-based implementation line when a snippet is found.
+	missing    bool   // The value is true when at least one required identifier is absent from the implementation package.
+	idMismatch bool   // The value is true when required identifiers exist but come from different declaration blocks.
 }
 
+// findImplForSpecDecl locates the implementation declaration that satisfies sd's identifiers in pkg. It reports absent identifiers with pos.missing and identifiers
+// split across declaration blocks with pos.idMismatch; these cases are not returned as errors. On success, implSnippet is the declaration bytes from gocode.Snippet.Bytes,
+// and pos identifies the base file name and 1-based line where it was found.
 func findImplForSpecDecl(pkg *gocode.Package, sd specDecl) (implSnippet string, pos implSnippetPos, fnErr error) {
 	if len(sd.IDs) == 0 {
 		return "", implSnippetPos{missing: true}, nil
@@ -369,12 +373,16 @@ func loadImplPackageForSpec(specAbsPath string) (*gocode.Package, error) {
 	return pkg, nil
 }
 
+// specDecl represents one package-level declaration extracted from a public API Go code block.
 type specDecl struct {
-	IDs      []string
-	Snippet  string
-	SpecLine int
+	IDs      []string // The identifiers are the package-level symbols introduced by the declaration.
+	Snippet  string   // The snippet is the SPEC.md source for the declaration, including attached documentation and excluding function declaration bodies.
+	SpecLine int      // The line number is the 1-based SPEC.md line where the declaration or its doc comment begins.
 }
 
+// parseSpecDeclsFromCodeBlock parses a Go code fence as a package fragment and extracts its package-level declarations. It returns one specDecl for each supported
+// declaration that introduces identifiers, with snippets including attached declaration documentation and excluding function declaration bodies. codeStartLine is
+// the 1-based SPEC.md line of the first code line and is used to report each declaration's source line.
 func parseSpecDeclsFromCodeBlock(code string, codeStartLine int) ([]specDecl, error) {
 	f, fset, wrapper, err := parseGoFileFragmentWithSource(code)
 	if err != nil {
@@ -407,6 +415,9 @@ func parseSpecDeclsFromCodeBlock(code string, codeStartLine int) ([]specDecl, er
 	}
 	return decls, nil
 }
+
+// idsForDecl returns the package-level identifiers introduced by d in declaration order. Function and method identifiers use gocode.FuncIdentifierFromDecl; unsupported
+// declarations return nil.
 func idsForDecl(d ast.Decl, fset *token.FileSet) []string {
 	switch dd := d.(type) {
 	case *ast.FuncDecl:
@@ -438,6 +449,9 @@ func docGroupForDecl(d ast.Decl) *ast.CommentGroup {
 		return nil
 	}
 }
+
+// specSnippetForDecl returns the source snippet for d from wrapper, including any attached declaration doc comment. Function declaration snippets stop at the end
+// of the signature so bodies are omitted, and invalid positions are returned as errors.
 func specSnippetForDecl(d ast.Decl, fset *token.FileSet, wrapper []byte) (string, error) {
 	start := d.Pos()
 	if doc := docGroupForDecl(d); doc != nil {
@@ -502,6 +516,9 @@ func makeWrappedGoFileSource(code string) []byte {
 	b.WriteString(code)
 	return b.Bytes()
 }
+
+// stripCommentsAndBodies removes documentation/comment attachments and function declaration bodies from d in place. It is used before structural conformance comparisons
+// that should ignore documentation and executable code; function literals inside value declarations are not stripped.
 func stripCommentsAndBodies(d ast.Decl) {
 	ast.Inspect(d, func(n ast.Node) bool {
 		switch nn := n.(type) {
@@ -559,14 +576,17 @@ func gofmtFragment(code string) (formatted string, ok bool) {
 	return string(frag), true
 }
 
+// goCodeBlockReflower owns the temporary Go package used to reflow documentation in code-block fragments.
 type goCodeBlockReflower struct {
-	tempDir     string
-	goFilePath  string
-	mod         *gocode.Module
-	pkg         *gocode.Package
-	reflowWidth int
+	tempDir     string          // The directory is the temporary module root and is removed by close.
+	goFilePath  string          // The path names the temporary Go file that receives each wrapped code fragment.
+	mod         *gocode.Module  // The module loads the temporary package used by updatedocs.
+	pkg         *gocode.Package // The package caches the most recently loaded temporary package for reloads.
+	reflowWidth int             // The width is the maximum documentation line width passed to updatedocs.
 }
 
+// newGoCodeBlockReflower creates a temporary Go module used to reflow documentation to reflowWidth columns. The caller must call close on the returned reflower
+// to remove the temporary files.
 func newGoCodeBlockReflower(reflowWidth int) (*goCodeBlockReflower, error) {
 	dir, err := os.MkdirTemp("", "specmd-reflow-*")
 	if err != nil {
@@ -596,6 +616,7 @@ func newGoCodeBlockReflower(reflowWidth int) (*goCodeBlockReflower, error) {
 	}, nil
 }
 
+// close removes r's temporary module directory. It is safe to call on a nil receiver and ignores cleanup errors.
 func (r *goCodeBlockReflower) close() {
 	if r == nil || r.tempDir == "" {
 		return
@@ -603,6 +624,9 @@ func (r *goCodeBlockReflower) close() {
 	_ = os.RemoveAll(r.tempDir)
 }
 
+// reflow rewrites code in the receiver's temporary Go package and reflows all documentation to r.reflowWidth. It returns the unwrapped fragment and true when the
+// wrapped source can be restored; a nil receiver or an unwrapping failure returns ok=false. The method mutates the temporary file and cached package, and returns
+// errors for temp-file I/O, package loading, or documentation reflow failures.
 func (r *goCodeBlockReflower) reflow(code string) (string, bool, error) {
 	if r == nil {
 		return "", false, nil
@@ -655,12 +679,15 @@ func unwrapWrappedGoFileSource(src []byte) (string, bool) {
 	return string(src[j:]), true
 }
 
+// textEdit describes a byte-range replacement in a source buffer.
 type textEdit struct {
-	start       int
-	end         int
-	replacement []byte
+	start       int    // The start offset is the inclusive byte offset of the range.
+	end         int    // The end offset is the exclusive byte offset of the range.
+	replacement []byte // The replacement bytes are inserted in place of the range.
 }
 
+// applyTextEdits applies edits to a copy of src in the order provided and returns the updated bytes. It clamps each range to the current buffer; callers using original
+// offsets should pass non-overlapping edits from highest start offset to lowest.
 func applyTextEdits(src []byte, edits []textEdit) []byte {
 	updated := append([]byte(nil), src...)
 	for _, e := range edits {

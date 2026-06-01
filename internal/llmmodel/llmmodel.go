@@ -55,6 +55,7 @@ type ModelOverrides struct {
 	ServiceTier     string // ex: "priority"
 }
 
+// ProviderID identifies an LLM provider known to llmmodel.
 type ProviderID string
 
 // DefaultModel returns the default model ID for pid.
@@ -68,13 +69,13 @@ func (pid ProviderID) DefaultModel() ModelID {
 
 // ProviderSubscription is provider-agnostic subscription auth that can be used instead of a provider API key.
 type ProviderSubscription struct {
-	ProviderID       ProviderID
-	AccessToken      string
-	AccountID        string
-	APIEndpointURL   string
-	ExpiresAt        time.Time
-	RequiresNoStore  bool
-	RootInstructions bool
+	ProviderID       ProviderID // ProviderID is the provider this subscription applies to.
+	AccessToken      string     // AccessToken is the subscription access token used to authorize provider requests.
+	AccountID        string     // AccountID is the provider account identifier associated with the subscription.
+	APIEndpointURL   string     // APIEndpointURL is the endpoint used for requests authorized by this subscription.
+	ExpiresAt        time.Time  // ExpiresAt is the time after which the subscription must not be used.
+	RequiresNoStore  bool       // RequiresNoStore reports whether requests using this subscription must request provider no-store behavior.
+	RootInstructions bool       // RootInstructions reports whether requests using this subscription should enable provider-specific root-instruction handling.
 }
 
 // SetProviderSubscription configures subscription auth for a provider.
@@ -245,12 +246,12 @@ func ModelIDOrFallback(id ModelID) ModelID {
 
 // ModelInfo describes a registered model and its provider metadata.
 type ModelInfo struct {
-	ID              ModelID
-	ProviderID      ProviderID
-	SupportedTypes  []ProviderAPIType
-	ProviderModelID string // the model identifier used in API requests.
-	IsDefault       bool
-	APIEndpointURL  string // APIEndpointURL is the provider/default endpoint; per-model overrides remain in ModelOverrides.APIEndpointURL.
+	ID              ModelID           // ID is the user-visible model identifier used by llmmodel consumers.
+	ProviderID      ProviderID        // ProviderID identifies the provider that serves the model.
+	SupportedTypes  []ProviderAPIType // SupportedTypes lists the provider API shapes supported for the model.
+	ProviderModelID string            // the model identifier used in API requests.
+	IsDefault       bool              // IsDefault reports whether this model is the default registered model for its provider.
+	APIEndpointURL  string            // APIEndpointURL is the provider/default endpoint; per-model overrides remain in ModelOverrides.APIEndpointURL.
 
 	// Note on pricing: uniformly modeling pricing across all providers is fraught. These numbers serve as rough guidelines. Some providers might be modeled very poorly.
 	// Some providers have pricing tiers that this flat schema cannot represent:
@@ -268,7 +269,7 @@ type ModelInfo struct {
 	HasReasoningEffort     bool    // HasReasoningEffort reports whether the API accepts a "reasoning_effort" parameter (or similar).
 	SupportsAutocompaction bool    // SupportsAutocompaction reports whether the model supports provider-side context autocompaction.
 	SupportsImages         bool    // SupportsImages reports whether the model accepts image inputs.
-	ModelOverrides
+	ModelOverrides                 // ModelOverrides contains explicit per-model settings that override provider defaults where supported.
 }
 
 // GetModelInfo returns information for the corresponding model ID.
@@ -418,49 +419,65 @@ func GetAPIEndpointURL(id ModelID) string {
 
 // internal structures and initialization.
 
+// providerConfigFile is the top-level schema for an embedded provider JSON config.
 type providerConfigFile struct {
-	ID             string                 `json:"id"`
-	Types          []string               `json:"types"`
-	APIEndpointURL string                 `json:"api_endpoint_url"`
-	APIKey         string                 `json:"api_key"`
-	DefaultModelID string                 `json:"default_model_id"`
-	Models         []providerModelPayload `json:"models"`
+	ID             string                 `json:"id"`               // ID is the provider identifier declared by the config.
+	Types          []string               `json:"types"`            // Types lists the provider API types declared by the config.
+	APIEndpointURL string                 `json:"api_endpoint_url"` // APIEndpointURL is the provider's default API endpoint.
+	APIKey         string                 `json:"api_key"`          // APIKey is the provider's default API key environment variable, optionally prefixed with "$".
+	DefaultModelID string                 `json:"default_model_id"` // DefaultModelID is the provider-side model ID to use as the provider default.
+	Models         []providerModelPayload `json:"models"`           // Models lists the provider-side models declared by the config.
 }
 
+// providerModelPayload is one model entry from an embedded provider JSON config.
 type providerModelPayload struct {
-	ID                     string  `json:"id"`
-	CostPer1MIn            float64 `json:"cost_per_1m_in"`
-	CostPer1MOut           float64 `json:"cost_per_1m_out"`
-	CostPer1MInCached      float64 `json:"cost_per_1m_in_cached"`
-	CostPer1MOutCached     float64 `json:"cost_per_1m_out_cached"`
-	CostPer1MInSaveToCache float64 `json:"cost_per_1m_in_save_to_cache"`
-	ContextWindow          int64   `json:"context_window"`
-	MaxOutput              int64   `json:"max_output"`
-	CanReason              bool    `json:"can_reason"`
-	HasReasoningEffort     bool    `json:"has_reasoning_effort"`
-	SupportsAutocompaction bool    `json:"supports_autocompaction"`
-	SupportsImages         bool    `json:"supports_images"`
-	IsLegacy               bool    `json:"is_legacy"`
+	ID                     string  `json:"id"`                           // ID is the provider-side model identifier sent in API requests.
+	CostPer1MIn            float64 `json:"cost_per_1m_in"`               // CostPer1MIn is the price per 1M input tokens.
+	CostPer1MOut           float64 `json:"cost_per_1m_out"`              // CostPer1MOut is the price per 1M output tokens.
+	CostPer1MInCached      float64 `json:"cost_per_1m_in_cached"`        // CostPer1MInCached is the price per 1M input tokens when cache-read pricing applies.
+	CostPer1MOutCached     float64 `json:"cost_per_1m_out_cached"`       // CostPer1MOutCached is the price per 1M output tokens when cached-output pricing applies.
+	CostPer1MInSaveToCache float64 `json:"cost_per_1m_in_save_to_cache"` // CostPer1MInSaveToCache is the price to write 1M input tokens to a provider cache.
+	ContextWindow          int64   `json:"context_window"`               // ContextWindow is the maximum token capacity supported by the model.
+	MaxOutput              int64   `json:"max_output"`                   // MaxOutput is the maximum number of output tokens the model can generate per request.
+	CanReason              bool    `json:"can_reason"`                   // CanReason reports whether the model supports reasoning capabilities.
+
+	// HasReasoningEffort reports whether the provider API accepts a reasoning-effort parameter for the model.
+	HasReasoningEffort bool `json:"has_reasoning_effort"`
+
+	// SupportsAutocompaction reports whether the model supports provider-side context autocompaction.
+	SupportsAutocompaction bool `json:"supports_autocompaction"`
+
+	// SupportsImages reports whether the model accepts image inputs.
+	SupportsImages bool `json:"supports_images"`
+
+	// IsLegacy reports whether the model should remain in the catalog but be excluded from default registration.
+	IsLegacy bool `json:"is_legacy"`
 }
 
+// providerData is the normalized in-memory representation of a provider config.
 type providerData struct {
-	ID                   ProviderID
-	SupportedTypes       []ProviderAPIType
-	APIEndpointURL       string
-	DefaultProviderModel string
-	APIKeyEnv            string
-	Models               []providerModelPayload
-	ModelByID            map[string]providerModelPayload
+	ID                   ProviderID                      // ID is the provider identifier.
+	SupportedTypes       []ProviderAPIType               // SupportedTypes lists the validated API types supported by the provider.
+	APIEndpointURL       string                          // APIEndpointURL is the provider's default API endpoint.
+	DefaultProviderModel string                          // DefaultProviderModel is the provider-side model ID declared as the provider default.
+	APIKeyEnv            string                          // APIKeyEnv is the provider's default API key environment variable without a leading "$".
+	Models               []providerModelPayload          // Models lists all provider-side model records loaded from the config.
+	ModelByID            map[string]providerModelPayload // ModelByID indexes Models by provider-side model identifier.
 }
 
+// Package registry state stores registered models, provider configuration, API-key overrides, and subscription auth.
 var (
-	modelsMu              sync.RWMutex
-	modelsByID            = make(map[ModelID]ModelInfo)
-	modelOrder            []ModelID
-	providerDefaults      = make(map[ProviderID]ModelID)
-	providerEnvVars       = make(map[ProviderID]string)
-	providerKeyOverrides  = make(map[ProviderID]string)
-	providerCatalog       = make(map[ProviderID]providerData)
+	modelsMu             sync.RWMutex                   // modelsMu protects the mutable package registries in this block.
+	modelsByID           = make(map[ModelID]ModelInfo)  // modelsByID maps registered user-visible model IDs to model metadata.
+	modelOrder           []ModelID                      // modelOrder preserves model registration order for AvailableModelIDs and fallback selection.
+	providerDefaults     = make(map[ProviderID]ModelID) // providerDefaults maps each provider to its default user-visible model ID.
+	providerEnvVars      = make(map[ProviderID]string)  // providerEnvVars maps each provider to its default API key environment variable without a leading "$".
+	providerKeyOverrides = make(map[ProviderID]string)  // providerKeyOverrides stores in-memory provider API keys configured with ConfigureProviderKey.
+
+	// providerCatalog stores normalized provider configs and all provider-side models loaded from embedded config files.
+	providerCatalog = make(map[ProviderID]providerData)
+
+	// providerSubscriptions stores provider-level subscription auth configured with SetProviderSubscription.
 	providerSubscriptions = make(map[ProviderID]ProviderSubscription)
 )
 
@@ -474,6 +491,9 @@ func init() {
 	registerPrimaryModels()
 }
 
+// loadProviders parses and validates embedded provider configs into the provider catalog.
+//
+// It loads providers listed in AllProviderIDs, normalizes API key environment variables, builds provider model indexes, and records default provider env vars.
 func loadProviders() error {
 	for _, pid := range AllProviderIDs {
 		raw, ok := embeddedProviderConfigs[pid]
@@ -529,6 +549,9 @@ func loadProviders() error {
 	return nil
 }
 
+// registerPrimaryModels registers the built-in user-visible models from the provider catalog.
+//
+// It skips legacy models, derives globally unique model IDs, adds required OpenAI reasoning variants, and fills provider defaults.
 func registerPrimaryModels() {
 	modelsMu.Lock()
 	defer modelsMu.Unlock()
@@ -696,6 +719,9 @@ func deriveModelID(pid ProviderID, providerModelID string) ModelID {
 	}
 }
 
+// ensureUniqueModelIDLocked returns an unused user-visible model ID for a non-empty candidate.
+//
+// The caller must hold modelsMu for writing. The function returns ModelIDUnknown unchanged and does not register the returned ID.
 func ensureUniqueModelIDLocked(pid ProviderID, candidate ModelID, providerModelID string) ModelID {
 	if candidate == ModelIDUnknown {
 		return candidate

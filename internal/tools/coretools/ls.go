@@ -16,20 +16,26 @@ import (
 //go:embed ls.md
 var descriptionLs string
 
+// The toolLs type implements the ls tool with sandbox-relative path resolution and read authorization.
 type toolLs struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // This is the absolute sandbox root used to resolve directory paths.
+	authorizer    authdomain.Authorizer // This authorizes directory reads before they run.
 }
 
+// ParamsLS contains the JSON arguments for the ls tool.
 type ParamsLS struct {
-	Path              string `json:"path"`
-	RequestPermission bool   `json:"request_permission"`
+	// Path is the directory to list, or a file whose containing directory should be listed. Relative paths are resolved from the sandbox root.
+	Path string `json:"path"`
+
+	// RequestPermission asks for approval to read the directory when policy requires it.
+	RequestPermission bool `json:"request_permission"`
 }
 
 const (
-	ToolNameLS = "ls"
+	ToolNameLS = "ls" // ToolNameLS is the registered name of the directory listing tool.
 )
 
+// NewLsTool returns an ls tool that lists authorized directories resolved relative to authorizer's sandbox. The authorizer must be non-nil.
 func NewLsTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolLs{
@@ -38,14 +44,18 @@ func NewLsTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns the registered directory listing tool name.
 func (t *toolLs) Name() string {
 	return ToolNameLS
 }
 
+// Presenter returns the semantic presenter for ls tool calls and results.
 func (t *toolLs) Presenter() llmstream.Presenter {
 	return lsPresenterInstance
 }
 
+// Info returns the tool metadata for ls, including its embedded description and JSON parameters. The returned schema requires path and accepts request_permission
+// for authorization escalation.
 func (t *toolLs) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameLS,
@@ -64,6 +74,8 @@ func (t *toolLs) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes an ls tool call. It decodes the JSON parameters, requires a non-empty path, normalizes it as an existing directory, authorizes the read, and returns
+// the RunLs output. Parameter, authorization, normalization, and listing failures are returned as error tool results.
 func (t *toolLs) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params ParamsLS
 
@@ -170,8 +182,11 @@ func RunLs(ctx context.Context, absPath string) (string, error) {
 
 var lsPresenterInstance llmstream.Presenter = lsPresenter{}
 
+// An lsPresenter presents ls tool calls as replacement summaries in the form "List <path>".
 type lsPresenter struct{}
 
+// Present returns a replacement presentation with the summary "List <path>" for an ls tool call. It uses the requested path when available and falls back to the
+// call or tool name; result is ignored.
 func (p lsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	_ = result
 

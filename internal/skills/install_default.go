@@ -107,6 +107,8 @@ func withDefaultInstallLock(skillsRootDir string, fn func() error) error {
 	return fn()
 }
 
+// embeddedDefaultSkillNames returns the sorted names of built-in skill directories embedded under default/. It ignores non-directory entries and returns an error
+// if the embedded directory cannot be read, a directory name is invalid, or no skills are embedded.
 func embeddedDefaultSkillNames() ([]string, error) {
 	entries, err := fs.ReadDir(defaultSkillsFS, "default")
 	if err != nil {
@@ -134,11 +136,15 @@ func embeddedDefaultSkillNames() ([]string, error) {
 	return skillNames, nil
 }
 
+// defaultSkillManifestEntry describes one relative path in an embedded default skill manifest.
 type defaultSkillManifestEntry struct {
-	IsDir    bool
-	Contents []byte
+	IsDir    bool   // IsDir reports whether the manifest entry is a directory.
+	Contents []byte // Contents contains the file bytes for non-directory entries and is nil for directories.
 }
 
+// embeddedDefaultSkillManifest builds a manifest for the embedded default skill named skillName. skillName must name a directory embedded under default/. The returned
+// map is keyed by slash-separated paths relative to default/<skillName> and excludes the skill root itself. File entries include their contents; directory entries
+// have nil Contents.
 func embeddedDefaultSkillManifest(skillName string) (map[string]defaultSkillManifestEntry, error) {
 	srcRoot := path.Join("default", skillName)
 	manifest := make(map[string]defaultSkillManifestEntry)
@@ -177,6 +183,9 @@ func embeddedDefaultSkillManifest(skillName string) (map[string]defaultSkillMani
 	return manifest, nil
 }
 
+// installedDefaultSkillIsCurrent reports whether destSkillDir has the same entries and file contents as the embedded default skill named skillName. File modes are
+// not compared. Missing paths, non-directory destinations, missing or extra entries, directory/file shape differences, and file-content differences are reported
+// as not current with no error. A non-nil error means the comparison could not be completed.
 func installedDefaultSkillIsCurrent(destSkillDir string, skillName string) (bool, error) {
 	manifest, err := embeddedDefaultSkillManifest(skillName)
 	if err != nil {
@@ -242,6 +251,9 @@ func installedDefaultSkillIsCurrent(destSkillDir string, skillName string) (bool
 	return true, nil
 }
 
+// installEmbeddedDefaultSkill copies all files below srcRoot in the embedded default skill filesystem into destSkillDir. srcRoot is a slash-separated embedded path,
+// and destSkillDir is an operating-system path. It creates parent directories, overwrites copied files, uses mode 0755 for shebang files and 0644 for other files,
+// and leaves unrelated destination files in place.
 func installEmbeddedDefaultSkill(srcRoot string, destSkillDir string) error {
 	// WalkDir guarantees lexicographic traversal, which helps determinism and debuggability.
 	return fs.WalkDir(defaultSkillsFS, srcRoot, func(p string, d fs.DirEntry, walkErr error) error {

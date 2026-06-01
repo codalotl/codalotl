@@ -14,22 +14,27 @@ import (
 //go:embed edit.md
 var descriptionEdit string
 
+// ToolNameEdit is the registered name of the edit tool.
 const ToolNameEdit = "edit"
 
+// The toolEdit type implements the edit tool by replacing text in an existing file.
 type toolEdit struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-	postChecks    *EditPostChecks
+	sandboxAbsDir string                // This is the absolute sandbox root for path resolution and post-checks.
+	authorizer    authdomain.Authorizer // This authorizes writes to the target file before editing.
+	postChecks    *EditPostChecks       // This configures optional diagnostics and lint hooks after a successful edit.
 }
 
+// ParamsEdit is the JSON parameter set for the edit tool.
 type ParamsEdit struct {
-	Path              string  `json:"path"`
-	OldText           *string `json:"old_text"`
-	NewText           *string `json:"new_text"`
-	ReplaceAll        bool    `json:"replace_all"`
-	RequestPermission bool    `json:"request_permission"`
+	Path              string  `json:"path"`               // Path is the absolute or sandbox-relative file path to edit.
+	OldText           *string `json:"old_text"`           // OldText is the text to find; it must be present and non-empty.
+	NewText           *string `json:"new_text"`           // NewText is the replacement text; it must be present and may be empty.
+	ReplaceAll        bool    `json:"replace_all"`        // ReplaceAll reports whether every match of OldText should be replaced instead of one unambiguous match.
+	RequestPermission bool    `json:"request_permission"` // RequestPermission asks the authorizer to allow or prompt for a write that may otherwise be denied.
 }
 
+// NewEditTool returns an edit tool that replaces text in authorized files resolved relative to authorizer's sandbox. If postChecks is provided, only the first value
+// is used, and a non-nil value runs post-change checks after a successful edit. The authorizer must be non-nil.
 func NewEditTool(authorizer authdomain.Authorizer, postChecks ...*EditPostChecks) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	var configuredPostChecks *EditPostChecks
@@ -43,14 +48,18 @@ func NewEditTool(authorizer authdomain.Authorizer, postChecks ...*EditPostChecks
 	}
 }
 
+// Name returns the registered edit tool name.
 func (t *toolEdit) Name() string {
 	return ToolNameEdit
 }
 
+// Presenter returns the semantic diff presenter for edit tool calls and results.
 func (t *toolEdit) Presenter() llmstream.Presenter {
 	return editPresenterInstance
 }
 
+// Info returns the tool metadata for edit, including its embedded description and JSON parameters. The returned schema requires path, old_text, and new_text, and
+// accepts replace_all and request_permission.
 func (t *toolEdit) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameEdit,
@@ -81,6 +90,10 @@ func (t *toolEdit) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes an edit tool call by replacing `old_text` with `new_text` in an existing file. It parses ParamsEdit from call.Input, authorizes the write when configured,
+// and requires one unambiguous match unless `replace_all` is true. Parameter, path, authorization, and replacement failures are returned as error tool results.
+// On success, Run returns the edited path and appends any configured post-check output; post-check failures are reported in the result text after the edit has already
+// succeeded.
 func (t *toolEdit) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params ParamsEdit
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {

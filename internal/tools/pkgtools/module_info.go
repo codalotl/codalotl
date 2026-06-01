@@ -17,22 +17,29 @@ import (
 //go:embed module_info.md
 var descriptionModuleInfo string
 
+// ToolNameModuleInfo is the registered name of the module_info tool.
 const ToolNameModuleInfo = "module_info"
 
+// The toolModuleInfo type implements the module_info tool.
 type toolModuleInfo struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // The sandbox root is used to locate the Go module.
+	authorizer    authdomain.Authorizer // The authorizer controls access to module and package information.
 }
 
+// moduleInfoParams contains the JSON parameters for a module_info call. All fields are optional.
 type moduleInfoParams struct {
-	PackageSearch             string `json:"package_search"`
-	IncludeDependencyPackages bool   `json:"include_dependency_packages"`
+	PackageSearch             string `json:"package_search"`              // PackageSearch filters the returned package list when non-empty.
+	IncludeDependencyPackages bool   `json:"include_dependency_packages"` // IncludeDependencyPackages includes packages from direct dependency modules.
 }
 
 var moduleInfoPresenterInstance llmstream.Presenter = moduleInfoPresenter{}
 
+// The moduleInfoPresenter type formats module_info tool summaries and call options.
 type moduleInfoPresenter struct{}
 
+// NewModuleInfoTool returns a module_info tool that locates the module from the authorizer sandbox and authorizes module information reads with authorizer.
+//
+// The authorizer must be non-nil.
 func NewModuleInfoTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolModuleInfo{
@@ -41,14 +48,18 @@ func NewModuleInfoTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns the registered tool name, "module_info".
 func (t *toolModuleInfo) Name() string {
 	return ToolNameModuleInfo
 }
 
+// Presenter returns the presenter that formats module_info calls and results.
 func (t *toolModuleInfo) Presenter() llmstream.Presenter {
 	return moduleInfoPresenterInstance
 }
 
+// Present returns the module_info presentation for call. The presentation replaces prior progress, uses the "Read Module Info" summary, and includes supplied call
+// options in the body when present.
 func (t moduleInfoPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	presentation := pkgToolReplaceSummaryPresentation(pkgToolActionSummary("Read Module Info"))
 	if body, ok := moduleInfoPresenterBody(call); ok {
@@ -65,6 +76,8 @@ func moduleInfoPresenterBody(call llmstream.ToolCall) (llmstream.Paragraph, bool
 	return pkgToolAccentParagraph(options)
 }
 
+// moduleInfoPresenterOptionsText returns the display text for module_info call options. The boolean is false when the call input is invalid or contains no options
+// worth displaying.
 func moduleInfoPresenterOptionsText(call llmstream.ToolCall) (string, bool) {
 	input := call.Input
 	if strings.TrimSpace(input) == "" {
@@ -90,6 +103,7 @@ func moduleInfoPresenterOptionsText(call llmstream.ToolCall) (string, bool) {
 	return strings.Join(parts, "; "), true
 }
 
+// Info returns the LLM-facing metadata for the module_info tool, including its optional package search and dependency-package parameters.
 func (t *toolModuleInfo) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameModuleInfo,
@@ -107,6 +121,9 @@ func (t *toolModuleInfo) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes the module_info tool call and returns Go module metadata and a package list. The call input may be empty or JSON containing optional package_search
+// and include_dependency_packages fields. package_search is used as a Go regexp filter, and include_dependency_packages adds packages from direct dependency modules.
+// Run returns an error tool result for invalid input, module discovery or authorization failures, or module and package listing errors.
 func (t *toolModuleInfo) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	_ = ctx
 
