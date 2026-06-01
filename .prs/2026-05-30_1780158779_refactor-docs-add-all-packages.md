@@ -32,6 +32,7 @@ Additional instructions:
 - Batch 2 no-ops: `internal/diff`.
 - Batch 2 skipped for refactor-tool failures with no file changes: `internal/docubot` (token budget exceeded).
 - Batch 3 no-ops: `internal/gocode`, `internal/gocodetesting`, `internal/gotypes`.
+- Batch 4 skipped for refactor-tool failures with no file changes: `internal/llmstream` (token budget exceeded).
 
 ### Refactor batches
 
@@ -76,11 +77,11 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/iterate` - added package docs and important iteration helper docs; `go test ./internal/iterate` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/lints` - added package docs and important lint type/helper docs; `go test ./internal/lints` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/llmmodel` - added important model/provider docs; `go test ./internal/llmmodel` passed.
-- `github.com/codalotl/codalotl/internal/llmstream`
+- [DONE] `github.com/codalotl/codalotl/internal/llmstream` - skipped after token-budget refactor failure; no file changes.
 - [DONE] `github.com/codalotl/codalotl/internal/llmstream/anthropic` - added package docs and important stream helper docs; `go test ./internal/llmstream/anthropic` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/llmstream/gemini` - added package docs and important stream helper docs; `go test ./internal/llmstream/gemini` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/mockllm/mockopenai` - added package docs and important mock handler docs; `go test ./internal/mockllm/mockopenai` passed.
-- `github.com/codalotl/codalotl/internal/noninteractive`
+- [DONE] `github.com/codalotl/codalotl/internal/noninteractive` - added package docs and important session/output helper docs; `go test ./internal/noninteractive` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/noninteractive/integration` - added package docs and important integration helper/config docs; `go test ./internal/noninteractive/integration` passed.
 - `github.com/codalotl/codalotl/internal/noninteractive/integration/cmd/create`
 - `github.com/codalotl/codalotl/internal/prompt`
@@ -143,4 +144,4 @@ TBD.
 - Batch 1 complete. Accepted source changes for root package, `internal/agent`, and `internal/agentregistry`; other Batch 1 packages were no-op or skipped with no file changes.
 - Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
 - Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
-- Batch 4 partially complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, and `internal/noninteractive/integration`; targeted tests for those packages pass.
+- Batch 4 partially complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, and `internal/noninteractive/integration`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
