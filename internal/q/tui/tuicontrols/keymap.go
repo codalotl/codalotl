@@ -2,11 +2,12 @@ package tuicontrols
 
 import "github.com/codalotl/codalotl/internal/q/tui"
 
+// The keyMapKey type is the comparable form of a tui.KeyEvent used by KeyMap lookups.
 type keyMapKey struct {
-	controlKey tui.ControlKey
-	runes      string
-	alt        bool
-	paste      bool
+	controlKey tui.ControlKey // The controlKey field is the key event's control-key value.
+	runes      string         // The runes field is the key event's rune payload stored as a string.
+	alt        bool           // The alt field is true when the key event included the Alt modifier.
+	paste      bool           // The paste field is true when the key event came from pasted input.
 }
 
 func newKeyMapKey(k tui.KeyEvent) keyMapKey {
@@ -22,9 +23,10 @@ func newKeyMapKey(k tui.KeyEvent) keyMapKey {
 //
 // A semantic event is represented as a string to minimize ceremony and to allow application-level configuration of key bindings.
 type KeyMap struct {
-	m map[keyMapKey]string
+	m map[keyMapKey]string // Mappings store semantic events keyed by normalized key events.
 }
 
+// NewKeyMap returns an empty key map ready to use.
 func NewKeyMap() *KeyMap {
 	return &KeyMap{m: make(map[keyMapKey]string)}
 }

@@ -30,122 +30,128 @@ const (
 	ControlKeyNone ControlKey = -1 // ControlKeyNone indicates no control key was pressed.
 )
 
+// These ControlKey constants represent ASCII control-byte key events.
+//
+// Their numeric values are the corresponding ASCII control bytes.
 const (
 	ControlKeyCtrlAt           ControlKey = 0x00 // ctrl+@
-	ControlKeyCtrlA            ControlKey = 0x01
-	ControlKeyCtrlB            ControlKey = 0x02
-	ControlKeyCtrlC            ControlKey = 0x03
-	ControlKeyCtrlD            ControlKey = 0x04
-	ControlKeyCtrlE            ControlKey = 0x05
-	ControlKeyCtrlF            ControlKey = 0x06
-	ControlKeyCtrlG            ControlKey = 0x07
-	ControlKeyCtrlH            ControlKey = 0x08
-	ControlKeyCtrlI            ControlKey = 0x09
-	ControlKeyCtrlJ            ControlKey = 0x0a
-	ControlKeyCtrlK            ControlKey = 0x0b
-	ControlKeyCtrlL            ControlKey = 0x0c
-	ControlKeyCtrlM            ControlKey = 0x0d
-	ControlKeyCtrlN            ControlKey = 0x0e
-	ControlKeyCtrlO            ControlKey = 0x0f
-	ControlKeyCtrlP            ControlKey = 0x10
-	ControlKeyCtrlQ            ControlKey = 0x11
-	ControlKeyCtrlR            ControlKey = 0x12
-	ControlKeyCtrlS            ControlKey = 0x13
-	ControlKeyCtrlT            ControlKey = 0x14
-	ControlKeyCtrlU            ControlKey = 0x15
-	ControlKeyCtrlV            ControlKey = 0x16
-	ControlKeyCtrlW            ControlKey = 0x17
-	ControlKeyCtrlX            ControlKey = 0x18
-	ControlKeyCtrlY            ControlKey = 0x19
-	ControlKeyCtrlZ            ControlKey = 0x1a
-	ControlKeyCtrlOpenBracket  ControlKey = 0x1b
-	ControlKeyCtrlBackslash    ControlKey = 0x1c
-	ControlKeyCtrlCloseBracket ControlKey = 0x1d
-	ControlKeyCtrlCaret        ControlKey = 0x1e
-	ControlKeyCtrlUnderscore   ControlKey = 0x1f
-	ControlKeyCtrlQuestionMark ControlKey = 0x7f
+	ControlKeyCtrlA            ControlKey = 0x01 // ControlKeyCtrlA represents Ctrl+A.
+	ControlKeyCtrlB            ControlKey = 0x02 // ControlKeyCtrlB represents Ctrl+B.
+	ControlKeyCtrlC            ControlKey = 0x03 // ControlKeyCtrlC represents Ctrl+C.
+	ControlKeyCtrlD            ControlKey = 0x04 // ControlKeyCtrlD represents Ctrl+D.
+	ControlKeyCtrlE            ControlKey = 0x05 // ControlKeyCtrlE represents Ctrl+E.
+	ControlKeyCtrlF            ControlKey = 0x06 // ControlKeyCtrlF represents Ctrl+F.
+	ControlKeyCtrlG            ControlKey = 0x07 // ControlKeyCtrlG represents Ctrl+G.
+	ControlKeyCtrlH            ControlKey = 0x08 // ControlKeyCtrlH represents Ctrl+H.
+	ControlKeyCtrlI            ControlKey = 0x09 // ControlKeyCtrlI represents Ctrl+I and Tab.
+	ControlKeyCtrlJ            ControlKey = 0x0a // ControlKeyCtrlJ represents Ctrl+J and line feed.
+	ControlKeyCtrlK            ControlKey = 0x0b // ControlKeyCtrlK represents Ctrl+K.
+	ControlKeyCtrlL            ControlKey = 0x0c // ControlKeyCtrlL represents Ctrl+L.
+	ControlKeyCtrlM            ControlKey = 0x0d // ControlKeyCtrlM represents Ctrl+M and carriage return.
+	ControlKeyCtrlN            ControlKey = 0x0e // ControlKeyCtrlN represents Ctrl+N.
+	ControlKeyCtrlO            ControlKey = 0x0f // ControlKeyCtrlO represents Ctrl+O.
+	ControlKeyCtrlP            ControlKey = 0x10 // ControlKeyCtrlP represents Ctrl+P.
+	ControlKeyCtrlQ            ControlKey = 0x11 // ControlKeyCtrlQ represents Ctrl+Q.
+	ControlKeyCtrlR            ControlKey = 0x12 // ControlKeyCtrlR represents Ctrl+R.
+	ControlKeyCtrlS            ControlKey = 0x13 // ControlKeyCtrlS represents Ctrl+S.
+	ControlKeyCtrlT            ControlKey = 0x14 // ControlKeyCtrlT represents Ctrl+T.
+	ControlKeyCtrlU            ControlKey = 0x15 // ControlKeyCtrlU represents Ctrl+U.
+	ControlKeyCtrlV            ControlKey = 0x16 // ControlKeyCtrlV represents Ctrl+V.
+	ControlKeyCtrlW            ControlKey = 0x17 // ControlKeyCtrlW represents Ctrl+W.
+	ControlKeyCtrlX            ControlKey = 0x18 // ControlKeyCtrlX represents Ctrl+X.
+	ControlKeyCtrlY            ControlKey = 0x19 // ControlKeyCtrlY represents Ctrl+Y.
+	ControlKeyCtrlZ            ControlKey = 0x1a // ControlKeyCtrlZ represents Ctrl+Z.
+	ControlKeyCtrlOpenBracket  ControlKey = 0x1b // ControlKeyCtrlOpenBracket represents Ctrl+[ and Escape.
+	ControlKeyCtrlBackslash    ControlKey = 0x1c // ControlKeyCtrlBackslash represents Ctrl+Backslash.
+	ControlKeyCtrlCloseBracket ControlKey = 0x1d // ControlKeyCtrlCloseBracket represents Ctrl+].
+	ControlKeyCtrlCaret        ControlKey = 0x1e // ControlKeyCtrlCaret represents Ctrl+^.
+	ControlKeyCtrlUnderscore   ControlKey = 0x1f // ControlKeyCtrlUnderscore represents Ctrl+_.
+	ControlKeyCtrlQuestionMark ControlKey = 0x7f // ControlKeyCtrlQuestionMark represents Ctrl+? and the DEL control byte.
 )
 
+// These ControlKey constants provide named aliases for common ASCII control-byte key events.
 const (
-	ControlKeyBreak     = ControlKeyCtrlC
-	ControlKeyEnter     = ControlKeyCtrlM
-	ControlKeyBackspace = ControlKeyCtrlQuestionMark
-	ControlKeyTab       = ControlKeyCtrlI
-	ControlKeyEsc       = ControlKeyCtrlOpenBracket
-	ControlKeyEscape    = ControlKeyEsc
+	ControlKeyBreak     = ControlKeyCtrlC            // ControlKeyBreak represents Break, encoded as Ctrl+C.
+	ControlKeyEnter     = ControlKeyCtrlM            // ControlKeyEnter represents Enter, encoded as carriage return.
+	ControlKeyBackspace = ControlKeyCtrlQuestionMark // ControlKeyBackspace represents Backspace, encoded as DEL.
+	ControlKeyTab       = ControlKeyCtrlI            // ControlKeyTab represents Tab.
+	ControlKeyEsc       = ControlKeyCtrlOpenBracket  // ControlKeyEsc represents Escape, encoded as Ctrl+[.
+	ControlKeyEscape    = ControlKeyEsc              // ControlKeyEscape is an alias for ControlKeyEsc.
 )
 
 const (
 	controlKeySequenceStart ControlKey = 0x100
 )
 
+// These ControlKey constants identify recognized terminal escape-sequence keys.
 const (
-	ControlKeyUp ControlKey = controlKeySequenceStart + iota
-	ControlKeyDown
-	ControlKeyRight
-	ControlKeyLeft
-	ControlKeyShiftUp
-	ControlKeyShiftDown
-	ControlKeyShiftRight
-	ControlKeyShiftLeft
-	ControlKeyCtrlUp
-	ControlKeyCtrlDown
-	ControlKeyCtrlRight
-	ControlKeyCtrlLeft
-	ControlKeyCtrlShiftUp
-	ControlKeyCtrlShiftDown
-	ControlKeyCtrlShiftRight
-	ControlKeyCtrlShiftLeft
-	ControlKeyHome
-	ControlKeyEnd
-	ControlKeyCtrlHome
-	ControlKeyCtrlEnd
-	ControlKeyShiftHome
-	ControlKeyShiftEnd
-	ControlKeyCtrlShiftHome
-	ControlKeyCtrlShiftEnd
-	ControlKeyPgUp
-	ControlKeyPgDown
-	ControlKeyCtrlPgUp
-	ControlKeyCtrlPgDown
-	ControlKeyInsert
-	ControlKeyDelete
-	ControlKeyShiftTab
-	ControlKeyF1
-	ControlKeyF2
-	ControlKeyF3
-	ControlKeyF4
-	ControlKeyF5
-	ControlKeyF6
-	ControlKeyF7
-	ControlKeyF8
-	ControlKeyF9
-	ControlKeyF10
-	ControlKeyF11
-	ControlKeyF12
-	ControlKeyF13
-	ControlKeyF14
-	ControlKeyF15
-	ControlKeyF16
-	ControlKeyF17
-	ControlKeyF18
-	ControlKeyF19
-	ControlKeyF20
+	ControlKeyUp             ControlKey = controlKeySequenceStart + iota // ControlKeyUp is the Up Arrow key.
+	ControlKeyDown                                                       // ControlKeyDown is the Down Arrow key.
+	ControlKeyRight                                                      // ControlKeyRight is the Right Arrow key.
+	ControlKeyLeft                                                       // ControlKeyLeft is the Left Arrow key.
+	ControlKeyShiftUp                                                    // ControlKeyShiftUp is the Shift-Up Arrow key.
+	ControlKeyShiftDown                                                  // ControlKeyShiftDown is the Shift-Down Arrow key.
+	ControlKeyShiftRight                                                 // ControlKeyShiftRight is the Shift-Right Arrow key.
+	ControlKeyShiftLeft                                                  // ControlKeyShiftLeft is the Shift-Left Arrow key.
+	ControlKeyCtrlUp                                                     // ControlKeyCtrlUp is the Ctrl-Up Arrow key.
+	ControlKeyCtrlDown                                                   // ControlKeyCtrlDown is the Ctrl-Down Arrow key.
+	ControlKeyCtrlRight                                                  // ControlKeyCtrlRight is the Ctrl-Right Arrow key.
+	ControlKeyCtrlLeft                                                   // ControlKeyCtrlLeft is the Ctrl-Left Arrow key.
+	ControlKeyCtrlShiftUp                                                // ControlKeyCtrlShiftUp is the Ctrl-Shift-Up Arrow key.
+	ControlKeyCtrlShiftDown                                              // ControlKeyCtrlShiftDown is the Ctrl-Shift-Down Arrow key.
+	ControlKeyCtrlShiftRight                                             // ControlKeyCtrlShiftRight is the Ctrl-Shift-Right Arrow key.
+	ControlKeyCtrlShiftLeft                                              // ControlKeyCtrlShiftLeft is the Ctrl-Shift-Left Arrow key.
+	ControlKeyHome                                                       // ControlKeyHome is the Home key.
+	ControlKeyEnd                                                        // ControlKeyEnd is the End key.
+	ControlKeyCtrlHome                                                   // ControlKeyCtrlHome is the Ctrl-Home key.
+	ControlKeyCtrlEnd                                                    // ControlKeyCtrlEnd is the Ctrl-End key.
+	ControlKeyShiftHome                                                  // ControlKeyShiftHome is the Shift-Home key.
+	ControlKeyShiftEnd                                                   // ControlKeyShiftEnd is the Shift-End key.
+	ControlKeyCtrlShiftHome                                              // ControlKeyCtrlShiftHome is the Ctrl-Shift-Home key.
+	ControlKeyCtrlShiftEnd                                               // ControlKeyCtrlShiftEnd is the Ctrl-Shift-End key.
+	ControlKeyPgUp                                                       // ControlKeyPgUp is the Page Up key.
+	ControlKeyPgDown                                                     // ControlKeyPgDown is the Page Down key.
+	ControlKeyCtrlPgUp                                                   // ControlKeyCtrlPgUp is the Ctrl-Page Up key.
+	ControlKeyCtrlPgDown                                                 // ControlKeyCtrlPgDown is the Ctrl-Page Down key.
+	ControlKeyInsert                                                     // ControlKeyInsert is the Insert key.
+	ControlKeyDelete                                                     // ControlKeyDelete is the Delete key.
+	ControlKeyShiftTab                                                   // ControlKeyShiftTab is the Shift-Tab key.
+	ControlKeyF1                                                         // ControlKeyF1 is the F1 function key.
+	ControlKeyF2                                                         // ControlKeyF2 is the F2 function key.
+	ControlKeyF3                                                         // ControlKeyF3 is the F3 function key.
+	ControlKeyF4                                                         // ControlKeyF4 is the F4 function key.
+	ControlKeyF5                                                         // ControlKeyF5 is the F5 function key.
+	ControlKeyF6                                                         // ControlKeyF6 is the F6 function key.
+	ControlKeyF7                                                         // ControlKeyF7 is the F7 function key.
+	ControlKeyF8                                                         // ControlKeyF8 is the F8 function key.
+	ControlKeyF9                                                         // ControlKeyF9 is the F9 function key.
+	ControlKeyF10                                                        // ControlKeyF10 is the F10 function key.
+	ControlKeyF11                                                        // ControlKeyF11 is the F11 function key.
+	ControlKeyF12                                                        // ControlKeyF12 is the F12 function key.
+	ControlKeyF13                                                        // ControlKeyF13 is the F13 function key.
+	ControlKeyF14                                                        // ControlKeyF14 is the F14 function key.
+	ControlKeyF15                                                        // ControlKeyF15 is the F15 function key.
+	ControlKeyF16                                                        // ControlKeyF16 is the F16 function key.
+	ControlKeyF17                                                        // ControlKeyF17 is the F17 function key.
+	ControlKeyF18                                                        // ControlKeyF18 is the F18 function key.
+	ControlKeyF19                                                        // ControlKeyF19 is the F19 function key.
+	ControlKeyF20                                                        // ControlKeyF20 is the F20 function key.
 )
 
+// These ControlKey aliases provide full-word names for page keys.
 const (
-	ControlKeyPageUp       = ControlKeyPgUp
-	ControlKeyPageDown     = ControlKeyPgDown
-	ControlKeyCtrlPageUp   = ControlKeyCtrlPgUp
-	ControlKeyCtrlPageDown = ControlKeyCtrlPgDown
+	ControlKeyPageUp       = ControlKeyPgUp       // ControlKeyPageUp is an alias for ControlKeyPgUp.
+	ControlKeyPageDown     = ControlKeyPgDown     // ControlKeyPageDown is an alias for ControlKeyPgDown.
+	ControlKeyCtrlPageUp   = ControlKeyCtrlPgUp   // ControlKeyCtrlPageUp is an alias for ControlKeyCtrlPgUp.
+	ControlKeyCtrlPageDown = ControlKeyCtrlPgDown // ControlKeyCtrlPageDown is an alias for ControlKeyCtrlPgDown.
 )
 
 // KeyEvent is sent when the user presses keys or pastes text.
 type KeyEvent struct {
-	ControlKey ControlKey
-	Runes      []rune
-	Alt        bool
-	Paste      bool
+	ControlKey ControlKey // ControlKey is the control or special key pressed, or ControlKeyNone for rune input.
+	Runes      []rune     // Runes contains non-control text input. It is usually one rune, but may contain multiple runes, especially for pasted text.
+	Alt        bool       // Alt reports whether Alt was held for the key or rune input.
+	Paste      bool       // Paste reports whether Runes came from bracketed paste mode. Paste implies ControlKeyNone, !Alt, and at least one rune.
 }
 
 // IsRunes reports whether the key event consists of non-control runes.
@@ -153,6 +159,7 @@ func (k KeyEvent) IsRunes() bool {
 	return k.ControlKey == ControlKeyNone && len(k.Runes) > 0
 }
 
+// Rune returns the first rune in k.Runes, or 0 if there are none.
 func (k KeyEvent) Rune() rune {
 	if len(k.Runes) > 0 {
 		return k.Runes[0]
@@ -162,8 +169,8 @@ func (k KeyEvent) Rune() rune {
 
 // ResizeEvent is sent during startup and when the terminal window is resized.
 type ResizeEvent struct {
-	Width  int
-	Height int
+	Width  int // Width is the terminal width in cells.
+	Height int // Height is the terminal height in cells.
 }
 
 // SigResumeEvent will be sent when a program resumes from being suspended.
@@ -175,12 +182,12 @@ type CancelFunc func()
 
 // SigTermEvent will be sent when Quit is requested. It can be canceled with Cancel. An uncanceled event causes RunTUI to return with a nil error.
 type SigTermEvent struct {
-	Cancel CancelFunc
+	Cancel CancelFunc // Cancel prevents this termination request from stopping the TUI. It is safe to call more than once.
 }
 
 // SigIntEvent will be sent when Interrupt is requested. It can be canceled with Cancel. An uncanceled event causes RunTUI to return with an ErrInterrupted error.
 type SigIntEvent struct {
-	Cancel CancelFunc
+	Cancel CancelFunc // Cancel prevents this interrupt request from stopping the TUI. It is safe to call more than once.
 }
 
 // Model represents a user program.
@@ -206,11 +213,18 @@ type Model interface {
 	View() string
 }
 
+// A terminalController prepares and restores a terminal for a TUI session.
 type terminalController interface {
+	// Enter switches the terminal into the mode needed for full-screen rendering.
 	Enter() error
+
+	// Exit restores the terminal state changed by Enter.
 	Exit() error
 }
 
+// terminalFactory creates a terminalController for the resolved TUI input and output streams.
+//
+// A nil controller is treated as a noop terminal.
 type terminalFactory func(input io.Reader, output io.Writer) (terminalController, error)
 
 // Options configure RunTUI.
@@ -218,12 +232,12 @@ type Options struct {
 	// Input overrides os.Stdin when non-nil. Primarily used for testing. A non-tty input will still cause tui to open the controlling TTY for real input.
 	Input io.Reader
 
-	Output            io.Writer // Output overrides os.Stdout when non-nil. Primarily used for testing.
-	Framerate         int       // If Framerate is between 60-120 inclusive, the terminal will be refreshed at this framerate (otherwise, it uses 60 FPS).
-	EnableMouse       bool      // EnableMouse enables mouse tracking and delivery of MouseEvent messages. Disabled by default.
-	skipTTYValidation bool
-	terminalFactory   terminalFactory
-	sizeProvider      func() (int, int, error)
+	Output            io.Writer                // Output overrides os.Stdout when non-nil. Primarily used for testing.
+	Framerate         int                      // If Framerate is between 60-120 inclusive, the terminal will be refreshed at this framerate (otherwise, it uses 60 FPS).
+	EnableMouse       bool                     // EnableMouse enables mouse tracking and delivery of MouseEvent messages. Disabled by default.
+	skipTTYValidation bool                     // skipTTYValidation bypasses TTY checks and falls back to a noop terminal when terminal creation fails.
+	terminalFactory   terminalFactory          // terminalFactory overrides terminal controller creation for tests and custom terminals.
+	sizeProvider      func() (int, int, error) // sizeProvider overrides terminal size detection and returns width, height, and any detection error.
 }
 
 // ErrNoTTY is returned when no usable terminal is available.
@@ -246,6 +260,7 @@ func RunTUI(m Model, opts Options) error {
 	return t.run()
 }
 
+// A signalKind identifies the shutdown behavior requested by a signalRequest.
 type signalKind int
 
 const (
@@ -254,16 +269,20 @@ const (
 	signalKindInterrupt
 )
 
+// The signalRequest type tracks a cancellable quit or interrupt request while its event is being processed.
 type signalRequest struct {
-	kind     signalKind
-	canceled atomic.Bool
-	once     sync.Once
+	kind     signalKind  // kind selects the shutdown behavior to apply if the request is not canceled.
+	canceled atomic.Bool // canceled reports whether the event's CancelFunc has been called.
+	once     sync.Once   // once ensures CancelFunc records cancellation at most once.
 }
 
 func newSignalRequest(kind signalKind) *signalRequest {
 	return &signalRequest{kind: kind}
 }
 
+// The cancelFunc method returns a CancelFunc that marks s as canceled exactly once.
+//
+// The receiver must be non-nil; the returned function is safe to call repeatedly.
 func (s *signalRequest) cancelFunc() CancelFunc {
 	return func() {
 		s.once.Do(func() {
@@ -272,65 +291,62 @@ func (s *signalRequest) cancelFunc() CancelFunc {
 	}
 }
 
+// The isCanceled method reports whether s is non-nil and its CancelFunc has been called.
 func (s *signalRequest) isCanceled() bool {
 	return s != nil && s.canceled.Load()
 }
 
+// The messageEnvelope type carries a message and any signal request metadata needed after Update returns.
 type messageEnvelope struct {
-	msg    Message
-	signal *signalRequest
+	msg    Message        // msg is the value delivered to Model.Update.
+	signal *signalRequest // signal is the optional quit or interrupt request associated with msg.
 }
 
+// A suspendRequest asks the TUI loop to suspend the process.
 type suspendRequest struct{}
 
+// TUI controls a running full-screen terminal UI session.
+//
+// RunTUI creates a TUI and passes it to Model methods. Once RunTUI returns, the TUI is inert; its public methods are safe to call but have no effect, and the value
+// cannot be reused.
 type TUI struct {
-	model Model
-
-	opts Options
-
-	frameDuration time.Duration
-
-	term         terminalController
-	termFactory  terminalFactory
-	sizeProvider func() (int, int, error)
-
-	input  io.Reader
-	output io.Writer
-
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	panicWriter io.Writer
-
-	messages chan messageEnvelope
-
-	mu             sync.Mutex
-	stopping       bool
-	err            error
-	stopClosers    []func()
-	cleanupClosers []func()
-
-	sizeMu     sync.Mutex
-	lastWidth  int
-	lastHeight int
-	sizeKnown  bool
-
-	suspendMu sync.Mutex
-	suspended bool
-
-	wg sync.WaitGroup
-
-	panicOnce  sync.Once
-	panicMu    sync.Mutex
-	panicValue any
-	panicStack []byte
-
-	renderMu   sync.Mutex
-	prevLines  []string
-	fullRedraw bool
-	lastRender time.Time
+	model          Model                    // Model is the user program driven by the session.
+	opts           Options                  // Opts is the configuration used to create the session.
+	frameDuration  time.Duration            // FrameDuration is the minimum time between terminal renders.
+	term           terminalController       // Term prepares and restores the terminal for full-screen rendering.
+	termFactory    terminalFactory          // TermFactory creates terminal controllers for resolved streams.
+	sizeProvider   func() (int, int, error) // SizeProvider returns terminal width and height when configured.
+	input          io.Reader                // Input is the resolved input stream used for key, paste, mouse, and signal-related input.
+	output         io.Writer                // Output is the resolved output stream used for rendering and terminal escape sequences.
+	ctx            context.Context          // Ctx is canceled when session shutdown begins.
+	cancel         context.CancelFunc       // Cancel cancels ctx to notify managed work that shutdown has begun.
+	panicWriter    io.Writer                // PanicWriter receives panic reports before captured panics are re-raised.
+	messages       chan messageEnvelope     // Messages queues events and user messages for the main loop.
+	mu             sync.Mutex               // Mu protects stopping, err, stopClosers, and cleanupClosers.
+	stopping       bool                     // Stopping reports whether shutdown has begun.
+	err            error                    // Err is the error RunTUI should return after shutdown.
+	stopClosers    []func()                 // StopClosers run as soon as shutdown begins to unblock active work.
+	cleanupClosers []func()                 // CleanupClosers run after tracked goroutines finish.
+	sizeMu         sync.Mutex               // SizeMu protects the last known terminal dimensions.
+	lastWidth      int                      // LastWidth is the most recently observed terminal width in cells.
+	lastHeight     int                      // LastHeight is the most recently observed terminal height in cells.
+	sizeKnown      bool                     // SizeKnown reports whether a terminal size has been observed.
+	suspendMu      sync.Mutex               // SuspendMu protects suspended.
+	suspended      bool                     // Suspended reports whether the process is currently suspended by the TUI.
+	wg             sync.WaitGroup           // WG tracks goroutines that must finish before final cleanup completes.
+	panicOnce      sync.Once                // PanicOnce ensures only the first recovered panic is recorded.
+	panicMu        sync.Mutex               // PanicMu protects panicValue and panicStack.
+	panicValue     any                      // PanicValue is the first recovered panic value.
+	panicStack     []byte                   // PanicStack is the stack trace captured with panicValue.
+	renderMu       sync.Mutex               // RenderMu serializes output writes and protects render cache state.
+	prevLines      []string                 // PrevLines is the most recent rendered view split into lines.
+	fullRedraw     bool                     // FullRedraw makes the next render clear the screen and repaint all lines.
+	lastRender     time.Time                // LastRender is the time of the most recent terminal write.
 }
 
+// The newTUI function constructs a not-yet-running TUI for m and opts.
+//
+// It normalizes the framerate, wraps the terminal factory to apply mouse settings, and does not touch the terminal.
 func newTUI(m Model, opts Options) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -371,6 +387,9 @@ func newTUI(m Model, opts Options) *TUI {
 	}
 }
 
+// The prepareIO method resolves input and output streams, ensures a usable terminal is available, creates the terminal controller, and registers cleanup.
+//
+// It returns ErrNoTTY when TTY validation is required and no controlling terminal can be opened.
 func (t *TUI) prepareIO() error {
 	input := t.opts.Input
 	if input == nil {
@@ -444,6 +463,10 @@ func (t *TUI) prepareIO() error {
 	return nil
 }
 
+// The setupInputHandle method prepares t.input for reader shutdown and cleanup.
+//
+// It appends any required close functions to stopClosers and cleanupClosers, duplicating shared file descriptors when needed. If inputReplaced is true, it leaves
+// t.input unchanged.
 func (t *TUI) setupInputHandle(stopClosers *[]func(), cleanupClosers *[]func(), inputReplaced bool) error {
 	if inputReplaced {
 		return nil
@@ -488,6 +511,7 @@ func (t *TUI) setupInputHandle(stopClosers *[]func(), cleanupClosers *[]func(), 
 	return nil
 }
 
+// The inputFile method returns Input as an *os.File, or nil when Input is nil or a different reader type.
 func (opts Options) inputFile() *os.File {
 	if f, ok := opts.Input.(*os.File); ok {
 		return f
@@ -509,6 +533,9 @@ func onceFunc(fn func()) func() {
 	}
 }
 
+// The capturePanic method records the first non-nil panic and begins shutdown.
+//
+// If stack is nil, capturePanic records the current goroutine stack.
 func (t *TUI) capturePanic(value any, stack []byte) {
 	if value == nil {
 		return
@@ -525,12 +552,16 @@ func (t *TUI) capturePanic(value any, stack []byte) {
 	})
 }
 
+// The panicInfo method returns the captured panic value and stack trace, if any.
 func (t *TUI) panicInfo() (any, []byte) {
 	t.panicMu.Lock()
 	defer t.panicMu.Unlock()
 	return t.panicValue, t.panicStack
 }
 
+// The run method executes the TUI loop and performs final cleanup before returning.
+//
+// If a panic was captured, run writes the panic report to panicWriter and re-panics after cleanup restores terminal state.
 func (t *TUI) run() (err error) {
 	defer func() {
 		t.cleanup()
@@ -544,6 +575,9 @@ func (t *TUI) run() (err error) {
 	return err
 }
 
+// The loop method runs the main TUI lifecycle and message loop.
+//
+// It initializes terminal processing, dispatches messages to the model, renders after updates, and applies uncanceled quit or interrupt requests.
 func (t *TUI) loop() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -590,6 +624,9 @@ func (t *TUI) loop() (err error) {
 	}
 }
 
+// The render method paints the current model view to the terminal output.
+//
+// It diffs the new view against the previous rendered lines, honors the configured frame duration, and ignores write errors.
 func (t *TUI) render() {
 	if t.output == nil {
 		return
@@ -633,6 +670,9 @@ func splitViewLines(view string) []string {
 	return strings.Split(view, "\n")
 }
 
+// The buildRenderOutputLocked method builds the ANSI output needed to render lines.
+//
+// The caller must hold t.renderMu. The method consumes t.fullRedraw and reports whether any terminal output needs to be written.
 func (t *TUI) buildRenderOutputLocked(lines []string) (string, bool) {
 	prevLen := len(t.prevLines)
 	full := t.fullRedraw
@@ -692,6 +732,9 @@ func appendMoveToLine(b *strings.Builder, row int) {
 	b.WriteString(";1H")
 }
 
+// The invalidateRenderCache method clears cached render state.
+//
+// If forceFull is true, the next render clears the screen and repaints the full view.
 func (t *TUI) invalidateRenderCache(forceFull bool) {
 	t.renderMu.Lock()
 	if forceFull {
@@ -805,12 +848,16 @@ func (t *TUI) Go(f func(ctx context.Context) Message) {
 	}()
 }
 
+// The handleGoPanic method captures a panic from a goroutine started by Go.
 func (t *TUI) handleGoPanic() {
 	if r := recover(); r != nil {
 		t.capturePanic(r, debug.Stack())
 	}
 }
 
+// The enqueueSignal method creates and enqueues the cancellable signal event for kind.
+//
+// Unknown signal kinds are ignored.
 func (t *TUI) enqueueSignal(kind signalKind) {
 	req := newSignalRequest(kind)
 	var msg Message
@@ -830,10 +877,16 @@ func (t *TUI) enqueueSignal(kind signalKind) {
 	})
 }
 
+// The enqueueSuspend method queues a suspend request for the TUI loop.
+//
+// The request is dropped if the TUI is already stopping.
 func (t *TUI) enqueueSuspend() {
 	t.enqueue(messageEnvelope{msg: suspendRequest{}})
 }
 
+// The enqueue method sends env to the TUI loop unless the TUI is stopping.
+//
+// It blocks until the message is queued or the TUI context is canceled.
 func (t *TUI) enqueue(env messageEnvelope) {
 	t.mu.Lock()
 	if t.stopping {
@@ -849,6 +902,9 @@ func (t *TUI) enqueue(env messageEnvelope) {
 	}
 }
 
+// The stop method begins TUI shutdown with err as the return error.
+//
+// It is idempotent, cancels the session context, and runs registered stop closers at most once.
 func (t *TUI) stop(err error) {
 	var closers []func()
 
@@ -873,6 +929,9 @@ func (t *TUI) stop(err error) {
 	}
 }
 
+// The cleanup method performs final TUI cleanup after the main loop exits.
+//
+// It begins shutdown, waits for tracked goroutines to finish, and then runs final cleanup closers.
 func (t *TUI) cleanup() {
 	t.stop(t.err)
 	t.wg.Wait()
@@ -887,6 +946,9 @@ func (t *TUI) cleanup() {
 	}
 }
 
+// The registerStopCloser method records fn to run when shutdown begins.
+//
+// It returns false if the TUI is already stopping; in that case fn is not called.
 func (t *TUI) registerStopCloser(fn func()) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -897,12 +959,18 @@ func (t *TUI) registerStopCloser(fn func()) bool {
 	return true
 }
 
+// The registerCleanupCloser method records fn to run during final cleanup.
+//
+// The function must be non-nil.
 func (t *TUI) registerCleanupCloser(fn func()) {
 	t.mu.Lock()
 	t.cleanupClosers = append(t.cleanupClosers, fn)
 	t.mu.Unlock()
 }
 
+// The enterTerminal method switches the configured terminal controller into TUI mode.
+//
+// A nil terminal controller is treated as a no-op.
 func (t *TUI) enterTerminal() error {
 	if t.term == nil {
 		return nil
@@ -910,6 +978,7 @@ func (t *TUI) enterTerminal() error {
 	return t.term.Enter()
 }
 
+// The startInputReader method starts processing terminal input when an input stream is configured.
 func (t *TUI) startInputReader() {
 	if t.input == nil {
 		return
@@ -917,6 +986,7 @@ func (t *TUI) startInputReader() {
 	newInputProcessor(t, t.input).start()
 }
 
+// The triggerResizeEvent method sends a ResizeEvent when the terminal size changes.
 func (t *TUI) triggerResizeEvent() {
 	width, height, err := t.terminalSize()
 	if err != nil {
@@ -929,6 +999,7 @@ func (t *TUI) triggerResizeEvent() {
 	t.Send(ResizeEvent{Width: width, Height: height})
 }
 
+// The storeSize method records the terminal size and reports whether it changed.
 func (t *TUI) storeSize(width, height int) bool {
 	t.sizeMu.Lock()
 	changed := !t.sizeKnown || t.lastWidth != width || t.lastHeight != height
@@ -941,6 +1012,9 @@ func (t *TUI) storeSize(width, height int) bool {
 	return changed
 }
 
+// The terminalSize method returns the current terminal width and height in cells.
+//
+// It uses the configured size provider when present; otherwise it queries the output file first and the input file second.
 func (t *TUI) terminalSize() (int, int, error) {
 	if t.sizeProvider != nil {
 		return t.sizeProvider()
@@ -967,15 +1041,20 @@ func (t *TUI) terminalSize() (int, int, error) {
 	return 0, 0, errors.New("tui: terminal size unavailable")
 }
 
+// The handleResizeSignal method handles a terminal resize notification.
 func (t *TUI) handleResizeSignal() {
 	t.triggerResizeEvent()
 }
 
+// The signalBinding type associates an operating-system signal with the TUI action that handles it.
 type signalBinding struct {
-	sig    os.Signal
-	action func(*TUI)
+	sig    os.Signal  // Sig is the signal received from the operating system.
+	action func(*TUI) // Action handles sig for the active TUI.
 }
 
+// The startSignalProcessor method starts platform signal handling for the TUI session.
+//
+// It registers the configured signal bindings, dispatches received signals to their actions, and unregisters the signal channel when shutdown begins.
 func (t *TUI) startSignalProcessor() {
 	bindings := signalBindings()
 	if len(bindings) == 0 {
@@ -1020,12 +1099,14 @@ func (t *TUI) startSignalProcessor() {
 	}()
 }
 
+// ttyResources contains the input, output, and cleanup function for an opened controlling terminal.
 type ttyResources struct {
-	reader io.Reader
-	writer io.Writer
-	close  func()
+	reader io.Reader // reader reads from the controlling terminal.
+	writer io.Writer // writer writes to the controlling terminal.
+	close  func()    // close releases the controlling terminal resources.
 }
 
+// openControllingTTY opens the process controlling terminal for input and output.
 func openControllingTTY() (*ttyResources, error) {
 	switch runtime.GOOS {
 	case "windows":

@@ -2,11 +2,15 @@ package tui
 
 import "os"
 
+// An fdProvider exposes an OS file descriptor.
 type fdProvider interface {
+	// Fd returns the underlying OS file descriptor.
 	Fd() uintptr
 }
 
+// A statProvider exposes file metadata.
 type statProvider interface {
+	// Stat returns metadata for the underlying file or stream.
 	Stat() (os.FileInfo, error)
 }
 

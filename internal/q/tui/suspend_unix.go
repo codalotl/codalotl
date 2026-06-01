@@ -8,6 +8,7 @@ func suspendSupported() bool {
 	return true
 }
 
+// The performSuspend method exits terminal mode and sends SIGTSTP to the current process group.
 func (t *TUI) performSuspend() error {
 	t.suspendMu.Lock()
 	if t.suspended {
@@ -25,6 +26,7 @@ func (t *TUI) performSuspend() error {
 	return syscall.Kill(0, syscall.SIGTSTP)
 }
 
+// The resumeFromSuspend method restores terminal mode after the process resumes from suspension.
 func (t *TUI) resumeFromSuspend() {
 	t.suspendMu.Lock()
 	if !t.suspended {

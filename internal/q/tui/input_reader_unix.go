@@ -10,6 +10,9 @@ import (
 
 const inputPollInterval = 50 * time.Millisecond
 
+// The read method reads input into buf while respecting TUI cancellation.
+//
+// When a file descriptor is available, read polls it so shutdown can interrupt input processing; otherwise it delegates to the underlying reader.
 func (p *inputProcessor) read(buf []byte) (int, error) {
 	if p.fd < 0 {
 		return p.reader.Read(buf)

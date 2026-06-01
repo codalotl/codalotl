@@ -16,40 +16,41 @@ import (
 //
 // The caret is rendered as a background color at the location where the next character would be inserted. It does not blink.
 type TextArea struct {
-	Placeholder      string // Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
-	BackgroundColor  termformat.Color
-	ForegroundColor  termformat.Color
-	PlaceholderColor termformat.Color
+	Placeholder      string           // Placeholder is shown as text (in PlaceholderColor) if the TextArea's contents is "".
+	BackgroundColor  termformat.Color // BackgroundColor is applied to the rendered area; when set, View pads each row to Width cells.
+	ForegroundColor  termformat.Color // ForegroundColor is applied to user contents and the prompt.
+	PlaceholderColor termformat.Color // PlaceholderColor is applied to Placeholder text.
 	CaretColor       termformat.Color // CaretColor is the color of the caret/cursor. It should be visible on the background color.
 
 	// Prompt is the first characters to display in the upper-left of the box. The user's first character typed would immediately follow it. Subsequent lines don't have
 	// Prompt, but the user's text is aligned to the column of their first character.
 	Prompt string
 
-	width           int
-	height          int
-	contents        string
-	caretByte       int
-	displayOffset   int
-	preferredCol    int // preferredCol is the desired visual column (cells) used for vertical caret navigation.
-	hasPreferredCol bool
-	keyMap          *KeyMap
-	layoutDirty     bool
-	lastLayoutText  string
-	lastPrompt      string
-	lastWidth       int
-	segments        []displaySegment
+	width           int              // The width is the non-negative rendered width in terminal cells.
+	height          int              // The height is the non-negative rendered height in terminal rows.
+	contents        string           // The contents are sanitized user text, excluding placeholder, prompt, and styles.
+	caretByte       int              // The caret byte is the next insertion offset in contents, clamped to a grapheme boundary.
+	displayOffset   int              // The display offset is the first wrapped display-line index rendered after vertical clipping.
+	preferredCol    int              // preferredCol is the desired visual column (cells) used for vertical caret navigation.
+	hasPreferredCol bool             // The preferred-column flag reports whether preferredCol should be reused for vertical caret navigation.
+	keyMap          *KeyMap          // The key map maps TUI input events to editing operations.
+	layoutDirty     bool             // The layout dirty flag reports whether cached wrapping data must be rebuilt.
+	lastLayoutText  string           // The last layout text is the effective contents or placeholder value used to build the cached layout.
+	lastPrompt      string           // The last prompt is the prompt used to build the cached layout.
+	lastWidth       int              // The last width is the width used to build the cached layout.
+	segments        []displaySegment // The segments are the cached wrapped display lines corresponding to lastLayoutText.
 
 	// promptedLines mirrors segments, but includes the prompt on the first line and the hanging indent on subsequent lines. It is cached alongside segments and is used
 	// by View() so other callers can share identical wrapping logic.
 	promptedLines []string
 }
 
+// A displaySegment describes one display line produced by wrapping source text.
 type displaySegment struct {
-	text          string
-	startByte     int
-	endByte       int
-	endsLogicalLn bool
+	text          string // The text field contains the segment contents, excluding any logical newline.
+	startByte     int    // The startByte field is the byte offset in the source text where text begins.
+	endByte       int    // The endByte field is the byte offset in the source text immediately after text.
+	endsLogicalLn bool   // The endsLogicalLn field reports whether this segment is the final display segment of its logical line.
 }
 
 // NewTextArea returns a new text area of the given size.
@@ -436,12 +437,14 @@ func (ta *TextArea) InsertRune(r rune) {
 	ta.InsertString(string(r))
 }
 
+// updatePreferredColFromCaret stores the caret's current display column as the preferred column for vertical movement.
 func (ta *TextArea) updatePreferredColFromCaret() {
 	ta.hasPreferredCol = true
 	_, col := ta.effectiveCaretDisplayPos()
 	ta.preferredCol = col
 }
 
+// The ensureCaretVisible method adjusts vertical clipping so the caret is visible.
 func (ta *TextArea) ensureCaretVisible() {
 	if ta == nil {
 		return
@@ -561,6 +564,7 @@ func (ta *TextArea) MoveDown() {
 	ta.ensureCaretVisible()
 }
 
+// setCaretOnDisplayLine moves the caret to col on the cached display line at lineIdx.
 func (ta *TextArea) setCaretOnDisplayLine(lineIdx, col int) {
 	if ta == nil {
 		return
@@ -786,6 +790,9 @@ func (ta *TextArea) DeleteToBeginningOfLine() {
 	ta.ensureCaretVisible()
 }
 
+// The effectiveText method returns the text used for layout and rendering: the contents when non-empty, otherwise Placeholder.
+//
+// It returns an empty string for a nil receiver.
 func (ta *TextArea) effectiveText() string {
 	if ta == nil {
 		return ""
@@ -796,6 +803,9 @@ func (ta *TextArea) effectiveText() string {
 	return ta.Placeholder
 }
 
+// The promptWidth method returns the display width of Prompt in terminal cells, or zero for a nil receiver or empty prompt.
+//
+// The returned width is not clipped to the TextArea width.
 func (ta *TextArea) promptWidth() int {
 	if ta == nil || ta.Prompt == "" {
 		return 0
@@ -803,6 +813,9 @@ func (ta *TextArea) promptWidth() int {
 	return uni.TextWidth(ta.Prompt, nil)
 }
 
+// The availableTextWidth method returns the number of terminal cells available for user text after the prompt, clamped to zero.
+//
+// It returns zero for a nil receiver.
 func (ta *TextArea) availableTextWidth() int {
 	if ta == nil {
 		return 0
@@ -814,6 +827,10 @@ func (ta *TextArea) availableTextWidth() int {
 	return avail
 }
 
+// The rebuildLayoutIfNeeded method refreshes the cached display layout when the effective text, prompt, or width changes.
+//
+// It is safe to call on a nil receiver. Rebuilding updates segments and promptedLines, clears layoutDirty, and normalizes the caret byte offset to a valid grapheme
+// boundary in the current contents.
 func (ta *TextArea) rebuildLayoutIfNeeded() {
 	if ta == nil {
 		return
@@ -848,6 +865,10 @@ func (ta *TextArea) rebuildLayoutIfNeeded() {
 	}
 }
 
+// The effectiveCaretDisplayPos method returns the caret's absolute display-line row and text-column cell within the wrapped layout.
+//
+// The column is measured from the first user-text cell, excluding Prompt and hanging indent. It returns (0, 0) for a nil receiver or empty contents, and rebuilds
+// the layout before computing the position.
 func (ta *TextArea) effectiveCaretDisplayPos() (int, int) {
 	if ta == nil {
 		return 0, 0
@@ -884,6 +905,13 @@ func (ta *TextArea) effectiveCaretDisplayPos() (int, int) {
 	return last, col
 }
 
+// renderRow renders a single text-area row from a prefix and an optional wrapped display segment.
+//
+// The prefix is the prompt or hanging indent to write before the text and is expected to already fit in Width() cells. The hasSeg flag reports whether seg contains
+// row content; when it is false, renderRow uses an empty line. The textStyle applies to the segment text, baseStyle supplies the row's base styling, and caretOnLine
+// with caretCol controls caret highlighting. The caretCol value is measured in terminal cells within the segment text.
+//
+// renderRow clips the segment text to the cells remaining after prefix and finalizes the row with finishRow.
 func (ta *TextArea) renderRow(prefix string, seg displaySegment, hasSeg bool, textStyle, baseStyle termformat.Style, caretOnLine bool, caretCol int) string {
 	if ta.width <= 0 {
 		return ""
@@ -1004,6 +1032,9 @@ func (ta *TextArea) renderRow(prefix string, seg displaySegment, hasSeg bool, te
 	return ta.finishRow(&b, styleUsed, fillBG)
 }
 
+// finishRow completes a rendered text-area row and returns it. styleUsed reports whether emitted ANSI styling should be reset. If fillBG is true, finishRow pads
+// the row to Width() terminal cells with the text area's background color. It appends termformat.ANSIReset when fillBG or styleUsed is true. If b is nil, finishRow
+// returns "".
 func (ta *TextArea) finishRow(b *strings.Builder, styleUsed, fillBG bool) string {
 	if b == nil {
 		return ""
@@ -1035,6 +1066,9 @@ func (ta *TextArea) finishRow(b *strings.Builder, styleUsed, fillBG bool) string
 	return b.String()
 }
 
+// The buildDisplaySegments function splits text into logical lines, wraps each line to width cells, and returns the resulting display-line segments.
+//
+// The returned slice is never empty. Segment byte ranges refer to text, exclude logical newline bytes, and mark the final segment of each logical line.
 func buildDisplaySegments(text string, width int) []displaySegment {
 	if text == "" {
 		return []displaySegment{{text: "", startByte: 0, endByte: 0, endsLogicalLn: true}}
@@ -1083,11 +1117,16 @@ func buildDisplaySegments(text string, width int) []displaySegment {
 	return out
 }
 
+// The wrapSeg type describes the half-open byte range [start, end) of a logical line that forms one wrapped display line.
 type wrapSeg struct {
-	start int
-	end   int
+	start int // The start field is the inclusive byte offset within the logical line.
+	end   int // The end field is the exclusive byte offset within the logical line.
 }
 
+// The wrapLineWordBoundary function wraps one logical line into display-line byte ranges.
+//
+// It applies TextArea's tailored word-break rules using grapheme-cell widths and, for widths of at least two cells, reserves the rightmost cell for whitespace and
+// the caret. It falls back to grapheme boundaries to make progress. A nonpositive width disables wrapping, and an empty line returns one empty segment.
 func wrapLineWordBoundary(line string, width int) []wrapSeg {
 	if line == "" {
 		return []wrapSeg{{start: 0, end: 0}}
@@ -1198,18 +1237,22 @@ func wrapLineWordBoundary(line string, width int) []wrapSeg {
 	return out
 }
 
+// The wrapGrapheme type describes one grapheme cluster and the properties used by TextArea wrapping.
 type wrapGrapheme struct {
-	start    int
-	end      int
-	width    int
-	isSpace  bool
-	isAlnum  bool
+	start    int  // Start is the byte index of the cluster's first byte.
+	end      int  // End is the byte index immediately after the cluster.
+	width    int  // Width is the cluster's display width in terminal cells.
+	isSpace  bool // IsSpace is true when the cluster contains Unicode whitespace.
+	isAlnum  bool // IsAlnum is true when the cluster contains a Unicode letter or digit.
 	hasWJ    bool // U+2060 WORD JOINER
 	hasSHY   bool // U+00AD SOFT HYPHEN
 	ascii    byte // only if single-rune ASCII; otherwise 0
-	hasASCII bool
+	hasASCII bool // HasASCII is true when the cluster is exactly one ASCII rune.
 }
 
+// The graphemesForWrap function returns wrapping metadata for each grapheme cluster in s.
+//
+// Each item records byte bounds, terminal-cell width, and the character properties used by TextArea's line-breaking rules. It returns nil for an empty string.
 func graphemesForWrap(s string) []wrapGrapheme {
 	if s == "" {
 		return nil
@@ -1246,6 +1289,11 @@ func graphemesForWrap(s string) []wrapGrapheme {
 	return out
 }
 
+// The wrapBreakOpportunityAfter function reports whether TextArea wrapping may break between gs[i] and gs[i+1].
+//
+// It returns false for out-of-range indexes, for the final grapheme, and across WORD JOINER. It permits breaks after Unicode whitespace; after `/`, `|`, `!`, `?`,
+// and `}`; after `.` or `,` unless between alphanumeric graphemes; and after `-` only when between alphanumeric graphemes. It does not treat SOFT HYPHEN as a break
+// opportunity.
 func wrapBreakOpportunityAfter(gs []wrapGrapheme, i int) bool {
 	if i < 0 || i >= len(gs)-1 {
 		return false
@@ -1316,6 +1364,10 @@ func wrapStickyToRight(gs []wrapGrapheme, i int) bool {
 	return gs[i-1].isAlnum && gs[i+1].isAlnum
 }
 
+// The adjustWrapBreakIndexForWordJoiner function moves a proposed break index left so the break does not cross a WORD JOINER.
+//
+// The breakIdx argument is the index of the first grapheme in the next segment, so the proposed break is between breakIdx-1 and breakIdx. The returned index is
+// never greater than breakIdx and may equal segStartIdx if no safe break remains in the segment. Invalid or empty ranges are returned unchanged.
 func adjustWrapBreakIndexForWordJoiner(gs []wrapGrapheme, segStartIdx, breakIdx int) int {
 	if breakIdx <= segStartIdx {
 		return breakIdx
@@ -1348,6 +1400,7 @@ func sanitizeTextAreaInput(s string) string {
 	return s
 }
 
+// The logicalLineBoundsAt function returns the zero-based logical line row and [start, end) byte range containing caretByte.
 func logicalLineBoundsAt(s string, caretByte int) (row int, start int, end int) {
 	if s == "" {
 		return 0, 0, 0
@@ -1371,6 +1424,10 @@ func logicalLineBoundsAt(s string, caretByte int) (row int, start int, end int) 
 	return row, start, end
 }
 
+// The logicalLineBoundsByRow function returns the byte bounds of the zero-indexed logical line row in s.
+//
+// Lines are delimited by `\n`, and the returned end excludes the terminating newline. Empty content has one logical line at row 0, and a trailing newline creates
+// a final empty logical line. ok is false for negative rows and rows beyond the content.
 func logicalLineBoundsByRow(s string, row int) (start int, end int, ok bool) {
 	if row < 0 {
 		return 0, 0, false
@@ -1396,6 +1453,9 @@ func logicalLineBoundsByRow(s string, row int) (start int, end int, ok bool) {
 	return 0, 0, false
 }
 
+// The byteIndexAtCellCol function returns the byte offset in s for the grapheme boundary at terminal cell column col.
+//
+// If col falls inside a grapheme cluster, it returns the boundary before that cluster. Columns before the start return 0, and columns past the end return len(s).
 func byteIndexAtCellCol(s string, col int) int {
 	if s == "" || col <= 0 {
 		return 0
@@ -1453,6 +1513,8 @@ func nextGraphemeBoundary(s string, pos int) int {
 	return pos + iter.End()
 }
 
+// The clampToGraphemeBoundary function returns a byte offset in s suitable for editing: pos is clamped to [0, len(s)] and moved back to a grapheme-cluster boundary
+// when needed.
 func clampToGraphemeBoundary(s string, pos int) int {
 	if s == "" || pos <= 0 {
 		return 0
@@ -1476,12 +1538,16 @@ func clampToGraphemeBoundary(s string, pos int) int {
 	return lastBoundary
 }
 
+// The graphemeToken type describes one grapheme cluster for word motion and deletion.
 type graphemeToken struct {
-	start int
-	end   int
-	kind  wordTokenKind
+	start int           // Start is the byte index of the token's first byte.
+	end   int           // End is the byte index immediately after the token.
+	kind  wordTokenKind // Kind classifies the token for word motion and deletion.
 }
 
+// The wordTokenKind type classifies graphemes for word-motion and word-deletion operations.
+//
+// Values distinguish whitespace, separator punctuation, and other text.
 type wordTokenKind uint8
 
 const (
@@ -1499,6 +1565,10 @@ var asciiWordSeparator = func() [128]bool {
 	return t
 }()
 
+// The graphemeTokens function tokenizes s into grapheme clusters for word motion and deletion.
+//
+// Tokens are classified as Unicode whitespace, ASCII word-separator punctuation from the TextArea word-navigation rules, or other text. It returns nil for an empty
+// string.
 func graphemeTokens(s string) []graphemeToken {
 	if s == "" {
 		return nil
@@ -1527,6 +1597,10 @@ func graphemeTokens(s string) []graphemeToken {
 	return out
 }
 
+// The moveWordLeftInLine function returns the byte offset of the start of the previous word unit in prefix.
+//
+// It first skips trailing Unicode whitespace, including newlines, then skips the preceding run of either separator punctuation or non-separator text. It returns
+// 0 if no previous word unit exists.
 func moveWordLeftInLine(prefix string) int {
 	toks := graphemeTokens(prefix)
 	if len(toks) == 0 {
@@ -1551,6 +1625,10 @@ func moveWordLeftInLine(prefix string) int {
 	return toks[i+1].start
 }
 
+// The moveWordRightInLine function returns the byte offset at the end of the next word-navigation unit in suffix.
+//
+// It skips leading Unicode whitespace, then consumes the next contiguous run of either ASCII word-separator punctuation or non-separator text. The returned offset
+// is relative to suffix and falls on a grapheme boundary; it is 0 for an empty suffix.
 func moveWordRightInLine(suffix string) int {
 	toks := graphemeTokens(suffix)
 	if len(toks) == 0 {
@@ -1576,6 +1654,7 @@ func moveWordRightInLine(suffix string) int {
 	return toks[i-1].end
 }
 
+// The cutPlainStringToWidth function returns the longest grapheme-cluster prefix of plain text s whose terminal display width is at most width.
 func cutPlainStringToWidth(s string, width int) string {
 	if s == "" || width <= 0 {
 		return ""
@@ -1600,6 +1679,7 @@ func cutPlainStringToWidth(s string, width int) string {
 	return s[:lastEnd]
 }
 
+// The splitAtCellCol function splits plain text s around the grapheme cluster at or spanning terminal cell column col.
 func splitAtCellCol(s string, col int) (before string, grapheme string, after string) {
 	if s == "" {
 		return "", "", ""
@@ -1628,6 +1708,7 @@ func splitAtCellCol(s string, col int) (before string, grapheme string, after st
 	return s, "", ""
 }
 
+// The clampInt function returns n constrained to the inclusive range [lo, hi]; callers should pass lo <= hi.
 func clampInt(n, lo, hi int) int {
 	if n < lo {
 		return lo

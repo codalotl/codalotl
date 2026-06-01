@@ -13,13 +13,13 @@ import (
 //   - Offset() is always in the range [0, number of lines).
 //   - Empty content counts as 1 line.
 type View struct {
-	width                    int
-	height                   int
-	offset                   int
-	content                  string
-	lines                    []string
-	keyMap                   *KeyMap
-	emptyLineBackgroundColor termformat.Color
+	width                    int              // The width field is the nonnegative visible-cell width used for horizontal clipping.
+	height                   int              // The height field is the nonnegative number of rows rendered by the view.
+	offset                   int              // The offset field is the zero-based content line shown at the top of the view.
+	content                  string           // The content field stores the newline-delimited text rendered by the view.
+	lines                    []string         // The lines field caches content split on `\n`; empty content is cached as one empty line.
+	keyMap                   *KeyMap          // The keyMap field maps key events to scroll commands handled by Update.
+	emptyLineBackgroundColor termformat.Color // The emptyLineBackgroundColor field fills rows that have no content; nil disables the fill.
 }
 
 // NewView returns a new view of the given size.
@@ -268,6 +268,9 @@ func (v *View) SetContent(s string) {
 	v.clampOffset()
 }
 
+// The clampOffset method clamps the offset to the valid line range, initializing the line cache from content if necessary.
+//
+// It enforces the basic offset invariant but does not account for height; use normalizeOffset when empty rows below content should be avoided.
 func (v *View) clampOffset() {
 	if v == nil {
 		return
@@ -288,6 +291,7 @@ func (v *View) clampOffset() {
 	}
 }
 
+// The normalizeOffset method clamps the offset and reduces it to the maximum useful offset when needed, avoiding empty rows below content when possible.
 func (v *View) normalizeOffset() {
 	if v == nil {
 		return
@@ -300,6 +304,10 @@ func (v *View) normalizeOffset() {
 	}
 }
 
+// The maxOffset method returns the greatest useful offset for the current content and height.
+//
+// For a positive height, it places the final content line on the last visible row when possible; for a nonpositive height, it returns the last valid line offset.
+// It returns 0 for a nil view or empty line cache.
 func (v *View) maxOffset() int {
 	if v == nil || len(v.lines) == 0 {
 		return 0
@@ -317,6 +325,10 @@ func (v *View) maxOffset() int {
 	return maxOffset
 }
 
+// The renderEmptyRow method returns one background-filled row for an empty part of the view.
+//
+// It returns an empty string when the receiver is nil, the width is nonpositive, no empty-line background color is set, or the color has no ANSI sequence. Otherwise,
+// it emits the background ANSI sequence, the configured width in spaces, and termformat.ANSIReset.
 func (v *View) renderEmptyRow() string {
 	if v == nil {
 		return ""

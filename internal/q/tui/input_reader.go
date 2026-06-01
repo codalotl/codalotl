@@ -13,9 +13,10 @@ var (
 	pasteEndSeq   = []byte{0x1b, '[', '2', '0', '1', '~'}
 )
 
+// A controlSequence describes a recognized terminal escape sequence.
 type controlSequence struct {
-	key ControlKey
-	alt bool
+	key ControlKey // key is the ControlKey emitted for the sequence.
+	alt bool       // alt reports whether the emitted KeyEvent should set Alt.
 }
 
 var controlSequenceMap = map[string]controlSequence{
@@ -178,15 +179,15 @@ func init() {
 	}
 }
 
+// An inputProcessor decodes raw terminal input into key, paste, and mouse messages for a TUI session.
 type inputProcessor struct {
-	t       *TUI
-	reader  io.Reader
-	fd      int
-	pending []byte
-
-	pasteActive bool
-	pasteRunes  []rune
-	lastWasCR   bool
+	t           *TUI      // The TUI receives decoded input messages and provides cancellation state.
+	reader      io.Reader // The reader supplies raw terminal input bytes.
+	fd          int       // The file descriptor is used for pollable reads; -1 means no descriptor is available.
+	pending     []byte    // Pending stores bytes that have not yet formed a complete input event.
+	pasteActive bool      // The flag reports whether bracketed paste input is currently being collected.
+	pasteRunes  []rune    // The paste buffer stores allowed runes collected during the current bracketed paste.
+	lastWasCR   bool      // The flag reports whether the previous control byte was carriage return, so a following line feed can be ignored.
 }
 
 func newInputProcessor(t *TUI, reader io.Reader) *inputProcessor {
@@ -201,6 +202,7 @@ func newInputProcessor(t *TUI, reader io.Reader) *inputProcessor {
 	return ip
 }
 
+// The start method launches the input processor in a tracked goroutine.
 func (p *inputProcessor) start() {
 	p.t.wg.Add(1)
 	go func() {
@@ -209,6 +211,7 @@ func (p *inputProcessor) start() {
 	}()
 }
 
+// The run method reads terminal input until shutdown and processes any bytes received.
 func (p *inputProcessor) run() {
 	buf := make([]byte, 1024)
 
@@ -236,11 +239,13 @@ func (p *inputProcessor) run() {
 	}
 }
 
+// The append method adds data to the pending input buffer and processes complete events.
 func (p *inputProcessor) append(data []byte) {
 	p.pending = append(p.pending, data...)
 	p.processPending()
 }
 
+// The processPending method decodes buffered input into key, paste, and mouse messages until no complete event remains.
 func (p *inputProcessor) processPending() {
 	for len(p.pending) > 0 {
 		if p.pasteActive {
@@ -289,6 +294,9 @@ func (p *inputProcessor) processPending() {
 	}
 }
 
+// The handleControl method handles one ASCII control byte and emits the corresponding KeyEvent.
+//
+// It returns true if b was consumed; it returns false for Escape and printable bytes.
 func (p *inputProcessor) handleControl(b byte) bool {
 	if b == '\n' && p.lastWasCR {
 		p.lastWasCR = false
@@ -317,6 +325,10 @@ func (p *inputProcessor) handleControl(b byte) bool {
 	return false
 }
 
+// The handleEscape method processes an ESC-prefixed sequence at the start of the pending buffer.
+//
+// It emits recognized control keys, Alt-modified rune input, or mouse events, discards complete unrecognized CSI sequences, and returns false only when more input
+// is needed.
 func (p *inputProcessor) handleEscape() bool {
 	if len(p.pending) == 0 {
 		return false
@@ -384,6 +396,10 @@ func (p *inputProcessor) handleEscape() bool {
 	return true
 }
 
+// The handlePaste method processes pending bytes while bracketed paste mode is active.
+//
+// It accumulates allowed paste runes, normalizes carriage returns to newlines, emits a paste KeyEvent when the paste end sequence arrives, and returns false when
+// more input is needed.
 func (p *inputProcessor) handlePaste() bool {
 	if len(p.pending) >= len(pasteEndSeq) && bytes.HasPrefix(p.pending, pasteEndSeq) {
 		p.pending = p.pending[len(pasteEndSeq):]
@@ -419,6 +435,9 @@ func (p *inputProcessor) handlePaste() bool {
 	return true
 }
 
+// The emitPaste method sends the accumulated paste runes as a bracketed-paste KeyEvent.
+//
+// It sends nothing when the paste buffer is empty.
 func (p *inputProcessor) emitPaste() {
 	if len(p.pasteRunes) == 0 {
 		return
@@ -431,14 +450,24 @@ func (p *inputProcessor) emitPaste() {
 	p.emitKey(event)
 }
 
+// The emitKey method sends ev to the TUI as an input message.
+//
+// The receiver must have a non-nil TUI.
 func (p *inputProcessor) emitKey(ev KeyEvent) {
 	p.t.Send(ev)
 }
 
+// The emitMouse method sends ev to the TUI as a Message.
+//
+// The receiver must have a non-nil TUI.
 func (p *inputProcessor) emitMouse(ev MouseEvent) {
 	p.t.Send(ev)
 }
 
+// The handleCSI method parses a CSI sequence at the start of buf.
+//
+// It returns whether a sequence was handled, how many bytes to consume, and whether more input is needed. Recognized mouse sequences emit MouseEvent values when
+// mouse tracking is enabled.
 func (p *inputProcessor) handleCSI(buf []byte) (handled bool, consumed int, needMore bool) {
 	if len(buf) < 2 || buf[0] != 0x1b || buf[1] != '[' {
 		return false, 0, false
