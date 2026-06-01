@@ -30,54 +30,66 @@ import (
 // ClientID is the OpenAI app client ID used for ChatGPT subscription auth.
 const ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
+// These constants define internal OpenAI subscription auth types, endpoints, timeouts, and token handling defaults.
 const (
-	authType              = "openai_subscription"
-	defaultIssuer         = "https://auth.openai.com"
-	defaultOAuthIssuer    = "https://auth.openai.com"
-	deviceCodePath        = "/api/accounts/deviceauth/usercode"
-	deviceTokenPath       = "/api/accounts/deviceauth/token"
-	oauthTokenPath        = "/oauth/token"
-	openAIAuthClaim       = "https://api.openai.com/auth"
-	defaultPollTimeout    = 15 * time.Minute
-	defaultPollInterval   = 5 * time.Second
-	startupRefreshTimeout = 10 * time.Second
-	expiryRefreshSlack    = time.Minute
-	fallbackExpiresIn     = time.Hour
-	responsesBaseURL      = "https://chatgpt.com/backend-api/codex"
+	authType              = "openai_subscription"               // The auth type marks saved credential files that contain OpenAI subscription auth.
+	defaultIssuer         = "https://auth.openai.com"           // The default issuer is the production OpenAI auth host used for device authorization.
+	defaultOAuthIssuer    = "https://auth.openai.com"           // The default OAuth issuer is the production OpenAI auth host used for token exchange and refresh.
+	deviceCodePath        = "/api/accounts/deviceauth/usercode" // The device code path starts OpenAI device authorization.
+	deviceTokenPath       = "/api/accounts/deviceauth/token"    // The device token path polls OpenAI device authorization for an approved authorization code.
+	oauthTokenPath        = "/oauth/token"                      // The OAuth token path exchanges authorization codes and refresh tokens for access tokens.
+	openAIAuthClaim       = "https://api.openai.com/auth"       // The OpenAI auth claim contains nested account auth fields in some OpenAI JWTs.
+	defaultPollTimeout    = 15 * time.Minute                    // The default poll timeout bounds the device authorization wait.
+	defaultPollInterval   = 5 * time.Second                     // The default poll interval is used when OpenAI does not provide a positive polling interval.
+	startupRefreshTimeout = 10 * time.Second                    // The startup refresh timeout bounds explicit default auth refreshes during startup.
+	expiryRefreshSlack    = time.Minute                         // The expiry refresh slack treats tokens as expired shortly before their recorded expiration.
+	fallbackExpiresIn     = time.Hour                           // The fallback token lifetime is used when token responses and JWTs do not expose an expiration.
+
+	// The responses base URL is registered with llmmodel for ChatGPT Codex-compatible Responses requests.
+	responsesBaseURL = "https://chatgpt.com/backend-api/codex"
 )
 
 // Options configures OpenAI subscription auth operations.
 type Options struct {
-	Path        string
-	HTTPClient  *http.Client
-	Now         func() time.Time
-	Issuer      string
-	OAuthIssuer string
+	// Path is the auth file path. An empty Path uses DefaultPath; paths other than DefaultPath are isolated from llmmodel provider subscription sync.
+	Path string
+
+	HTTPClient  *http.Client     // HTTPClient sends device authorization, token exchange, and refresh requests. If nil, http.DefaultClient is used.
+	Now         func() time.Time // Now returns the current time for expiry checks and saved expiry calculations. If nil, time.Now is used.
+	Issuer      string           // Issuer is the base URL for OpenAI device authorization endpoints and redirect URIs. If empty, the default issuer is used.
+	OAuthIssuer string           // OAuthIssuer is the base URL for OpenAI OAuth token endpoints. If empty, the default OAuth issuer is used.
+
+	// OpenBrowser opens the verification URL during Login when browser opening is enabled. If nil, Login uses the platform default opener; returned errors are ignored.
 	OpenBrowser func(string) error
-	Out         io.Writer
+
+	// Out receives user-visible Login messages. If nil, output is discarded; write errors are returned by Login.
+	Out io.Writer
 }
 
 // LoginOptions configures the OpenAI subscription device login flow.
 type LoginOptions struct {
-	Options
-	NoBrowser bool
+	Options        // Options provides shared path, HTTP, clock, endpoint, browser, and output settings for the login.
+	NoBrowser bool // NoBrowser prevents Login from opening the verification URL automatically. The URL and user code are still written to Out.
 }
 
 // Status describes saved OpenAI subscription auth status.
 type Status struct {
-	LoggedIn         bool
-	Path             string
-	ChatGPTAccountID string
-	ExpiresAt        time.Time
+	LoggedIn         bool      // LoggedIn reports whether saved credentials are currently usable.
+	Path             string    // Path is the auth file path that was checked.
+	ChatGPTAccountID string    // ChatGPTAccountID is the ChatGPT account ID associated with the saved credentials.
+	ExpiresAt        time.Time // ExpiresAt is the recorded access-token expiration time.
 }
 
+// An authFile is the persisted OpenAI subscription credential record.
+//
+// It contains secrets and is written only to private auth files.
 type authFile struct {
-	Type             string    `json:"type"`
-	AccessToken      string    `json:"access_token"`
-	RefreshToken     string    `json:"refresh_token,omitempty"`
-	IDToken          string    `json:"id_token,omitempty"`
-	ExpiresAt        time.Time `json:"expires_at"`
-	ChatGPTAccountID string    `json:"chatgpt_account_id"`
+	Type             string    `json:"type"`                    // Type is the credential record type and must equal authType.
+	AccessToken      string    `json:"access_token"`            // AccessToken is the bearer token sent to ChatGPT Codex-compatible subscription APIs.
+	RefreshToken     string    `json:"refresh_token,omitempty"` // RefreshToken renews the access token when present.
+	IDToken          string    `json:"id_token,omitempty"`      // IDToken is an identity token used to recover the ChatGPT account ID when necessary.
+	ExpiresAt        time.Time `json:"expires_at"`              // ExpiresAt is the access-token expiration time used for validity and refresh decisions.
+	ChatGPTAccountID string    `json:"chatgpt_account_id"`      // ChatGPTAccountID identifies the ChatGPT account sent with subscription requests.
 }
 
 func init() {
@@ -102,6 +114,10 @@ func RefreshDefaultProviderSubscription(ctx context.Context) error {
 	return refreshDefaultProviderSubscriptionWithOptions(ctx, Options{})
 }
 
+// The refreshDefaultProviderSubscriptionWithOptions helper refreshes default saved auth when possible and syncs llmmodel's OpenAI provider subscription.
+//
+// It ignores opts.Path and uses the default auth path; other Options fields customize HTTP, clock, and endpoint behavior. Missing auth clears the provider subscription
+// and is not an error.
 func refreshDefaultProviderSubscriptionWithOptions(ctx context.Context, opts Options) error {
 	opts.Path = ""
 	auth, path, err := loadAuth(opts)
@@ -283,6 +299,9 @@ func saveAuth(path string, auth authFile) error {
 	return writePrivateFile(path, data)
 }
 
+// The writePrivateFile helper writes data to path with 0600 permissions, truncating any existing file.
+//
+// The parent directory must already exist.
 func writePrivateFile(path string, data []byte) (err error) {
 	if err := chmodExistingRegularFile(path, 0o600); err != nil {
 		return err
@@ -327,6 +346,7 @@ func chmodExistingRegularFile(path string, mode os.FileMode) error {
 	return os.Chmod(path, mode)
 }
 
+// The normalized method returns a copy of auth with a missing ChatGPT account ID filled from the ID token when possible.
 func (auth authFile) normalized() authFile {
 	if auth.ChatGPTAccountID == "" {
 		auth.ChatGPTAccountID = accountIDFromJWT(auth.IDToken)
@@ -334,6 +354,7 @@ func (auth authFile) normalized() authFile {
 	return auth
 }
 
+// The valid method reports whether auth is usable at now; it does not require a refresh token.
 func (auth authFile) valid(now time.Time) bool {
 	return auth.Type == authType &&
 		strings.TrimSpace(auth.AccessToken) != "" &&
@@ -342,6 +363,7 @@ func (auth authFile) valid(now time.Time) bool {
 		!auth.expired(now)
 }
 
+// The expired method reports whether auth has no expiry or expires within expiryRefreshSlack after now.
 func (auth authFile) expired(now time.Time) bool {
 	return auth.ExpiresAt.IsZero() || !auth.ExpiresAt.After(now.Add(expiryRefreshSlack))
 }
@@ -375,13 +397,17 @@ func isDefaultAuthPath(path string) bool {
 	return filepath.Clean(path) == filepath.Clean(DefaultPath())
 }
 
+// A deviceCodeResponse contains the values returned by OpenAI's device authorization endpoint.
 type deviceCodeResponse struct {
-	DeviceAuthID    string
-	UserCode        string
-	VerificationURL string
-	Interval        time.Duration
+	DeviceAuthID    string        // DeviceAuthID identifies the device authorization session for token polling.
+	UserCode        string        // UserCode is the code the user enters to approve the device login.
+	VerificationURL string        // VerificationURL is the URL the user should open to approve the device login.
+	Interval        time.Duration // Interval is the wait duration between device token polls.
 }
 
+// UnmarshalJSON decodes an OpenAI device authorization response, accepting known field-name variants and interval values in seconds.
+//
+// It defaults Interval to defaultPollInterval when the response omits or cannot parse a positive interval.
 func (r *deviceCodeResponse) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -425,20 +451,23 @@ func decodeInterval(raw json.RawMessage) (time.Duration, bool) {
 	return 0, false
 }
 
+// A deviceTokenResponse contains the authorization code payload returned after device login approval.
 type deviceTokenResponse struct {
-	AuthorizationCode string `json:"authorization_code"`
-	CodeChallenge     string `json:"code_challenge"`
-	CodeVerifier      string `json:"code_verifier"`
+	AuthorizationCode string `json:"authorization_code"` // AuthorizationCode is the OAuth authorization code exchanged for tokens.
+	CodeChallenge     string `json:"code_challenge"`     // CodeChallenge is the PKCE challenge associated with the response when supplied.
+	CodeVerifier      string `json:"code_verifier"`      // CodeVerifier is the PKCE verifier required when exchanging AuthorizationCode.
 }
 
+// A tokenResponse contains OAuth tokens returned by OpenAI token endpoints.
 type tokenResponse struct {
-	IDToken          string `json:"id_token"`
-	AccessToken      string `json:"access_token"`
-	RefreshToken     string `json:"refresh_token"`
-	ExpiresIn        int64  `json:"expires_in"`
-	ChatGPTAccountID string `json:"chatgpt_account_id"`
+	IDToken          string `json:"id_token"`           // IDToken is the identity token returned by OpenAI.
+	AccessToken      string `json:"access_token"`       // AccessToken is the bearer token used for subscription requests.
+	RefreshToken     string `json:"refresh_token"`      // RefreshToken is the token used to renew access after expiration.
+	ExpiresIn        int64  `json:"expires_in"`         // ExpiresIn is the access token lifetime in seconds.
+	ChatGPTAccountID string `json:"chatgpt_account_id"` // ChatGPTAccountID identifies the ChatGPT account when the endpoint returns it directly.
 }
 
+// The expiresAt method derives an access token expiration from ExpiresIn relative to now, then JWT exp claims, then fallbackExpiresIn.
 func (r tokenResponse) expiresAt(now time.Time) time.Time {
 	if r.ExpiresIn > 0 {
 		return now.Add(time.Duration(r.ExpiresIn) * time.Second)
@@ -452,6 +481,9 @@ func (r tokenResponse) expiresAt(now time.Time) time.Time {
 	return now.Add(fallbackExpiresIn)
 }
 
+// The expiryFromJWT helper extracts a UTC expiration time from a JWT exp claim without validating the token signature.
+//
+// It returns false when jwt is malformed, lacks a positive exp claim, or uses an unsupported exp value.
 func expiryFromJWT(jwt string) (time.Time, bool) {
 	parts := strings.Split(jwt, ".")
 	if len(parts) < 2 {
@@ -507,6 +539,9 @@ func requestDeviceCode(ctx context.Context, opts Options, client *http.Client) (
 	return device, nil
 }
 
+// The pollDeviceToken helper polls the device token endpoint until device authorization is approved, ctx is done, or defaultPollTimeout elapses.
+//
+// It returns the authorization code payload needed for the OAuth token exchange.
 func pollDeviceToken(ctx context.Context, opts Options, client *http.Client, device deviceCodeResponse) (deviceTokenResponse, error) {
 	var code deviceTokenResponse
 	body := map[string]string{
@@ -587,6 +622,9 @@ func exchangeCode(ctx context.Context, opts Options, client *http.Client, code d
 	return tokens, nil
 }
 
+// The refresh helper exchanges auth.RefreshToken for a new access token and returns an updated auth file.
+//
+// It preserves the existing refresh token, ID token, or account ID when the refresh response omits replacements.
 func refresh(ctx context.Context, opts Options, auth authFile) (authFile, error) {
 	values := url.Values{}
 	values.Set("client_id", ClientID)
@@ -666,6 +704,9 @@ func readResponse(resp *http.Response) ([]byte, error) {
 	return data, nil
 }
 
+// The accountIDFromJWT helper extracts the ChatGPT account ID from known OpenAI JWT claim locations without validating the token signature.
+//
+// It returns an empty string when jwt is malformed or no account ID claim is present.
 func accountIDFromJWT(jwt string) string {
 	parts := strings.Split(jwt, ".")
 	if len(parts) < 2 {

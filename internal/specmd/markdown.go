@@ -9,27 +9,33 @@ import (
 	"strings"
 )
 
+// parsedMarkdown holds the Go fence blocks extracted from a SPEC.md document.
 type parsedMarkdown struct {
-	allGoFences         []goFenceBlock
-	goFencesInPublicAPI []goFenceBlock
+	allGoFences         []goFenceBlock // The list contains every Go-tagged fence in document order.
+	goFencesInPublicAPI []goFenceBlock // The list contains Go fences selected by a public API section or api flag.
 }
+
+// goFenceBlock records a Go fenced code block and the SPEC.md context needed to edit or classify it.
 type goFenceBlock struct {
-	info             string
-	code             string
-	multiLine        bool
-	contentStart     int // byte offset in source where code content starts
-	contentEnd       int // byte offset in source where code content ends
-	contentStartLine int // 1-based line number in source where code content starts
-	inPublicAPI      bool
-	hasAPIFlag       bool
+	info             string // The complete fence info string is the text after the opening backticks.
+	code             string // The code content excludes the opening and closing fence lines.
+	multiLine        bool   // The value is true when the fence content has at least two parsed content lines.
+	contentStart     int    // byte offset in source where code content starts
+	contentEnd       int    // byte offset in source where code content ends
+	contentStartLine int    // 1-based line number in source where code content starts
+	inPublicAPI      bool   // The value is true when the fence appears under a public API heading.
+	hasAPIFlag       bool   // The value is true when the fence info string contains an api flag.
 }
 
+// markdownHeading records the source location and normalized text of a Markdown heading.
 type markdownHeading struct {
-	level int
-	text  string
-	start int
+	level int    // The level is the Markdown heading depth, with 1 for "#".
+	text  string // The text is the heading content with marker hashes and surrounding space removed.
+	start int    // The start offset is the byte offset of the beginning of the heading line.
 }
 
+// parseMarkdown parses a SPEC.md document and returns its Go fence blocks with public API classification. It validates backtick fences but does not parse or type-check
+// the Go code inside them.
 func parseMarkdown(src []byte) (*parsedMarkdown, error) {
 	if err := validateTripleBacktickFences(src); err != nil {
 		return nil, err
@@ -52,6 +58,10 @@ func parseMarkdown(src []byte) (*parsedMarkdown, error) {
 	}
 	return out, nil
 }
+
+// removePublicAPISections returns a copy of src with every Markdown section whose normalized heading text is exactly "Public API" removed. Each removal starts at
+// the heading and continues until the next heading at the same or a higher level, or EOF. The function validates triple-backtick fences but does not parse Go code
+// fences.
 func removePublicAPISections(src []byte) ([]byte, error) {
 	if err := validateTripleBacktickFences(src); err != nil {
 		return nil, err
@@ -89,6 +99,9 @@ func removePublicAPISections(src []byte) ([]byte, error) {
 	}
 	return applyTextEdits(src, edits), nil
 }
+
+// validateTripleBacktickFences returns an error when src contains an unterminated backtick fence opened with three or more backticks. It ignores non-backtick fence
+// styles.
 func validateTripleBacktickFences(src []byte) error {
 	// Goldmark will happily treat an unterminated fenced code block as running to EOF.
 	// We treat that as invalid markdown for our SPEC.md processing purposes.
@@ -128,6 +141,10 @@ func countLeading(b []byte, c byte) int {
 	}
 	return n
 }
+
+// collectGoFencesWithContext walks root and returns Go fenced code blocks in document order with their source ranges and public-API context. A public API context
+// starts at a heading containing "public api" case-insensitively and ends at the next heading of the same or higher level; an "api" info-string flag is recorded
+// independently. The function classifies fences but does not parse the Go code they contain.
 func collectGoFencesWithContext(src []byte, root ast.Node) ([]goFenceBlock, error) {
 	var blocks []goFenceBlock
 	type publicSection struct {
@@ -183,6 +200,9 @@ func collectGoFencesWithContext(src []byte, root ast.Node) ([]goFenceBlock, erro
 	})
 	return blocks, nil
 }
+
+// collectMarkdownHeadings returns the Markdown headings in root in document order. Each result includes normalized heading text and the byte offset of the heading
+// line in src.
 func collectMarkdownHeadings(src []byte, root ast.Node) []markdownHeading {
 	var headings []markdownHeading
 	ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -210,6 +230,9 @@ func collectMarkdownHeadings(src []byte, root ast.Node) []markdownHeading {
 	})
 	return headings
 }
+
+// headingText returns the normalized text for a Markdown heading using src as the original document bytes. The heading must be non-nil; an empty string is returned
+// when it has no valid source segment.
 func headingText(src []byte, h *ast.Heading) string {
 	lines := h.Lines()
 	if lines == nil || lines.Len() == 0 {
@@ -271,6 +294,9 @@ func isGoInfoString(info string) bool {
 		return false
 	}
 }
+
+// infoStringHasFlag reports whether info contains flag as an exact flag inside a brace group. Flags are case-sensitive and may be separated by commas or whitespace
+// (ex: "{api, other_tag}").
 func infoStringHasFlag(info string, flag string) bool {
 	// Goldmark exposes the full "info string" after the opening ticks.
 	// Our SPEC.md convention uses flags like `{api}` or `{api, other_tag}`.
@@ -301,6 +327,9 @@ func infoStringHasFlag(info string, flag string) bool {
 		info = info[close+1:]
 	}
 }
+
+// fencedCodeContent returns the content of fcb and the byte range that content occupies in src. The end offset is exclusive, and both offsets are -1 when fcb has
+// no content lines.
 func fencedCodeContent(src []byte, fcb *ast.FencedCodeBlock) (code string, start int, end int) {
 	lines := fcb.Lines()
 	if lines == nil || lines.Len() == 0 {

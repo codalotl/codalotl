@@ -30,11 +30,21 @@ type Skill struct {
 	// with a hyphen.
 	Name string
 
-	Description   string
-	License       string
+	// Description is the user-facing summary shown during skill discovery. A valid description is non-empty after trimming space and at most 1024 runes.
+	Description string
+
+	// License is the license value declared in the SKILL.md front matter.
+	License string
+
+	// Compatibility describes optional runtime, model, or environment requirements. When non-empty, a valid compatibility value is not only whitespace and is at most
+	// 500 runes.
 	Compatibility string
-	Metadata      map[string]string
-	Body          string
+
+	// Metadata contains optional string key-value metadata declared in the SKILL.md front matter.
+	Metadata map[string]string
+
+	// Body is the markdown content after the SKILL.md front matter, excluding the delimiters.
+	Body string
 }
 
 // SearchPaths returns absolute directories where skills may be located.
@@ -482,10 +492,12 @@ func (s Skill) Validate() error {
 	return validationError{issues: issues}
 }
 
+// validationError reports one or more validation issues found in a Skill.
 type validationError struct {
-	issues []string
+	issues []string // The issues field contains individual validation messages in reporting order.
 }
 
+// Error returns the validation issues joined by "; "; it returns an empty string for a zero-value validationError.
 func (e validationError) Error() string {
 	return strings.Join(e.issues, "; ")
 }
@@ -502,6 +514,9 @@ func findSkillMD(skillDir string) (string, error) {
 	return "", fmt.Errorf("SKILL.md not found in %s", skillDir)
 }
 
+// parseFrontMatter splits SKILL.md content into YAML front matter and markdown body. The content must start with a --- delimiter on the first line and contain a
+// closing --- delimiter; delimiter lines may end with a carriage return. It returns the text between the delimiters as frontMatter and the text after the closing
+// delimiter as body, without validating the YAML.
 func parseFrontMatter(content string) (frontMatter string, body string, err error) {
 	// YAML frontmatter must start on the first line.
 	lines := strings.Split(content, "\n")

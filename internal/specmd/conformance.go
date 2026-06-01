@@ -35,6 +35,8 @@ func conformanceDiffType(specSnippet, implSnippet string) (bool, DiffType, error
 	return false, DiffTypeDocMismatch, nil
 }
 
+// codeConforms reports whether implSnippet satisfies the code portion of specSnippet under SPEC.md conformance rules. It ignores comments and function bodies, filters
+// implementation-only declarations or members that the spec allows, and returns parse or formatting errors.
 func codeConforms(specSnippet, implSnippet string) (bool, error) {
 	specDecl, err := parseDeclFragment(specSnippet)
 	if err != nil {
@@ -60,6 +62,9 @@ func codeConforms(specSnippet, implSnippet string) (bool, error) {
 	return specNorm == implNorm, nil
 }
 
+// docsConform reports whether implSnippet contains all comments required by specSnippet in the same AST locations. It ignores implementation comments that have
+// no corresponding spec comment and reports whitespaceOnly when the only required-comment mismatch is normalized whitespace. Both snippets must parse as single
+// declarations; function declarations without bodies are accepted.
 func docsConform(specSnippet, implSnippet string) (ok bool, whitespaceOnly bool, err error) {
 	specDecl, err := parseDeclFragment(specSnippet)
 	if err != nil {
@@ -174,6 +179,10 @@ func typeSpecMemberDocsConform(specTS, implTS *ast.TypeSpec) (ok bool, whitespac
 	}
 }
 
+// fieldListDocsConform reports whether implementation field or method documentation satisfies the comments required by specFL. A nil or empty spec list conforms;
+// otherwise the lists are compared positionally and must have the same length. Comments present in the spec must match the implementation in the same doc-comment
+// or end-of-line position, while absent spec comments impose no requirement. If every mismatch differs only by normalized documentation whitespace, ok is false
+// and whitespaceOnly is true.
 func fieldListDocsConform(specFL, implFL *ast.FieldList, recurseNestedStructs bool) (ok bool, whitespaceOnly bool, err error) {
 	if specFL == nil || len(specFL.List) == 0 {
 		return true, false, nil
@@ -215,6 +224,10 @@ func fieldListDocsConform(specFL, implFL *ast.FieldList, recurseNestedStructs bo
 	return false, true, nil
 }
 
+// nestedStructDocsConform reports whether documentation on anonymous structs inside implType satisfies the requirements in the corresponding parts of specType.
+// It recurses through matching parenthesized, pointer, array, map, and channel type expressions, including map keys and values; mismatched container shapes do not
+// conform, and non-struct leaf types impose no documentation requirement. If every mismatch differs only by normalized documentation whitespace, ok is false and
+// whitespaceOnly is true.
 func nestedStructDocsConform(specType, implType ast.Expr) (ok bool, whitespaceOnly bool, err error) {
 	if specType == nil || implType == nil {
 		return true, false, nil
@@ -342,6 +355,8 @@ func parseDeclFragment(code string) (ast.Decl, error) {
 	return nil, err
 }
 
+// snippetStartsWithFuncDecl reports whether code begins with a function declaration after leading whitespace and comments. It recognizes line and block comments,
+// requires func to be followed by whitespace or end of input, and returns false for an unterminated leading block comment.
 func snippetStartsWithFuncDecl(code string) bool {
 	// Determine whether this fragment begins with a function declaration, ignoring any leading
 	// whitespace and comments. This lets us accept SPEC snippets that omit function bodies.
@@ -416,6 +431,8 @@ func filterImplDeclToSpec(specDecl, implDecl ast.Decl) {
 	}
 }
 
+// filterImplGenDeclToSpec mutates impl so it retains only the specs and members required by spec, preserving retained implementation order. It is a no-op for nil
+// declarations, token mismatches, and declaration kinds other than type, var, and const.
 func filterImplGenDeclToSpec(spec, impl *ast.GenDecl) {
 	if spec == nil || impl == nil {
 		return
@@ -479,6 +496,8 @@ func filterImplGenDeclToSpec(spec, impl *ast.GenDecl) {
 	}
 }
 
+// filterImplTypeSpecMembers mutates implTS so its struct fields or interface methods retain only members required by specTS. Struct filtering recurses into anonymous
+// nested struct types; interface filtering does not. Nil type specs, mismatched type kinds, and non-struct or non-interface type specs are no-ops.
 func filterImplTypeSpecMembers(specTS, implTS *ast.TypeSpec) {
 	if specTS == nil || implTS == nil {
 		return
@@ -501,6 +520,9 @@ func filterImplTypeSpecMembers(specTS, implTS *ast.TypeSpec) {
 	}
 }
 
+// filterImplFieldListToSpec mutates implFL so it contains only fields or methods required by specFL. Named fields keep only implementation names present in the
+// spec, embedded fields are matched by formatted type expression, and retained entries keep implementation order. When recurseNestedStructs is true, anonymous struct
+// types inside matched fields are filtered recursively.
 func filterImplFieldListToSpec(specFL, implFL *ast.FieldList, recurseNestedStructs bool) {
 	if specFL == nil || implFL == nil {
 		return
@@ -563,6 +585,9 @@ func filterImplFieldListToSpec(specFL, implFL *ast.FieldList, recurseNestedStruc
 	implFL.List = out
 }
 
+// filterImplNestedStructTypes mutates implType by removing extra fields from anonymous struct types that correspond to anonymous structs in specType. It recurses
+// through matching parenthesized, pointer, array, map, and channel type expressions, including both map keys and values, and stops when the expression shapes differ.
+// Nil expressions and non-struct leaf types are no-ops.
 func filterImplNestedStructTypes(specType, implType ast.Expr) {
 	if specType == nil || implType == nil {
 		return
@@ -610,6 +635,8 @@ func filterImplNestedStructTypes(specType, implType ast.Expr) {
 	}
 }
 
+// filterImplValueSpec removes names from vs that are not required and keeps matching initializer expressions when their positions can be mapped. It mutates vs in
+// place and leaves ambiguous value mappings unchanged.
 func filterImplValueSpec(required map[string]bool, vs *ast.ValueSpec) {
 	if vs == nil {
 		return
