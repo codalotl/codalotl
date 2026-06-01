@@ -10,8 +10,12 @@ import (
 // ErrUnavailable indicates that the clipboard is not usable on this system (typically because the required OS integration or command-line utilities are missing).
 var ErrUnavailable = errors.New("clipboard unavailable")
 
+// A backend provides clipboard read and write operations.
 type backend interface {
+	// It returns the current clipboard text.
 	read() (string, error)
+
+	// It replaces the clipboard contents with the provided text.
 	write(string) error
 }
 

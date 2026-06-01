@@ -11,21 +11,21 @@ type ArgsFunc func(args []string) error
 
 // Command defines one CLI command in a command tree.
 type Command struct {
-	Name             string    // Name is the token used to invoke this command (e.g. "add" in "doc add").
-	Aliases          []string  // Aliases are additional tokens that invoke this command.
-	Hidden           bool      // Hidden hides this command from parent help listings, but it may still be invoked normally by name or alias.
-	Short            string    // Short is a concise one-line description.
-	Long             string    // Long is a longer description for detailed help.
-	Usage            string    // Usage is the complete non-option fragment after the resolved command path.
-	ArgHelp          []ArgHelp // ArgHelp describes positional args in detailed help.
-	Example          string    // Example is example text shown in detailed help.
-	NoPositionalArgs bool      // NoPositionalArgs suppresses generic [args] help.
-	Args             ArgsFunc  // Args validates usage after flag parsing and before Run.
-	Run              RunFunc   // Run handles the command after Args succeeds.
-	parent           *Command
-	children         []*Command
-	localFlags       *FlagSet
-	persistentFlags  *FlagSet
+	Name             string     // Name is the token used to invoke this command (e.g. "add" in "doc add").
+	Aliases          []string   // Aliases are additional tokens that invoke this command.
+	Hidden           bool       // Hidden hides this command from parent help listings, but it may still be invoked normally by name or alias.
+	Short            string     // Short is a concise one-line description.
+	Long             string     // Long is a longer description for detailed help.
+	Usage            string     // Usage is the complete non-option fragment after the resolved command path.
+	ArgHelp          []ArgHelp  // ArgHelp describes positional args in detailed help.
+	Example          string     // Example is example text shown in detailed help.
+	NoPositionalArgs bool       // NoPositionalArgs suppresses generic [args] help.
+	Args             ArgsFunc   // Args validates usage after flag parsing and before Run.
+	Run              RunFunc    // Run handles the command after Args succeeds.
+	parent           *Command   // Parent is the enclosing command; nil means this command is a root or unattached.
+	children         []*Command // Children are the direct subcommands added with AddCommand.
+	localFlags       *FlagSet   // LocalFlags stores flags accepted when this command is selected.
+	persistentFlags  *FlagSet   // PersistentFlags stores flags inherited by this command and its descendants.
 }
 
 // ArgHelp describes one positional argument in help output.
@@ -75,6 +75,7 @@ func (c *Command) PersistentFlags() *FlagSet {
 	return c.persistentFlags
 }
 
+// ChildByToken returns the direct child of c whose name or alias matches token, or nil if none exists.
 func (c *Command) childByToken(token string) *Command {
 	for _, child := range c.children {
 		if child.Name == token {
@@ -89,6 +90,7 @@ func (c *Command) childByToken(token string) *Command {
 	return nil
 }
 
+// PathFromRoot returns c's command path from the root command through c.
 func (c *Command) pathFromRoot() []*Command {
 	var reversed []*Command
 	for cur := c; cur != nil; cur = cur.parent {

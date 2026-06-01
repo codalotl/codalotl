@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+// computeFieldKey returns the case-insensitive configuration key for f.
+//
+// A cascade tag name takes priority over a JSON tag name, which takes priority over the Go field name. A cascade tag name of "-" returns "-"; json:"-" is ignored
+// for naming and does not make the field unavailable.
 func computeFieldKey(f reflect.StructField) string {
 	// Highest priority: cascade tag name (before first comma). If empty, fall back.
 	if tag := f.Tag.Get("cascade"); tag != "" {
@@ -55,6 +59,7 @@ type Loader struct {
 	sources []cascadeSource // Sources are ordered from low to high priority.
 }
 
+// Providence identifies the configuration source that supplied a value. The zero value records no source.
 type Providence struct {
 	SourceType       string // ex: "default", "env", "json_file"
 	SourceIdentifier string // ex: "/path/to/file.json". Can be "" for things without identifiers (default map, env).
@@ -68,10 +73,12 @@ type LoadReport struct {
 	Sources []Providence // Sources are the contributing sources in low->high precedence order.
 }
 
+// IsSet reports whether p records a source.
 func (p Providence) IsSet() bool {
 	return p.SourceType != ""
 }
 
+// Default reports whether p identifies the default source.
 func (p Providence) Default() bool {
 	return p.SourceType == "default"
 }
