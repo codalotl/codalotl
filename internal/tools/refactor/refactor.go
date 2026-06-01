@@ -565,6 +565,8 @@ func writeClarifyPromptBlock(b *strings.Builder, label string, text string) {
 	b.WriteString("\n")
 }
 
+// deleteClarifyRecords deletes consumed clarify in-play CAS records. An empty record list is a no-op, and duplicate paths are deleted only once. It returns an error
+// if CAS write access is not authorized, if a record path is outside the CAS root, or if deleting a record fails.
 func (t refactorTool) deleteClarifyRecords(db *gocas.DB, records []casclarify.InPlayRecord) error {
 	if len(records) == 0 {
 		return nil

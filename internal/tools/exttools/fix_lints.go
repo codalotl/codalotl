@@ -16,20 +16,25 @@ import (
 //go:embed fix_lints.md
 var descriptionFixLints string
 
+// ToolNameFixLints is the registered tool name for the lint-fixing tool.
 const ToolNameFixLints = "fix_lints"
 
 var fixLintsPresenterInstance llmstream.Presenter = fixLintsPresenter{}
 
+// toolFixLints implements the lint-fixing tool for a package path.
 type toolFixLints struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
-	lintSteps     []lints.Step
+	sandboxAbsDir string                // This is the absolute sandbox root used to resolve requested paths.
+	authorizer    authdomain.Authorizer // This authorizes writes before lint fixes run.
+	lintSteps     []lints.Step          // This is the configured lint pipeline used in fix mode.
 }
 
+// fixLintsParams contains the JSON parameters for the lint-fixing tool.
 type fixLintsParams struct {
-	Path string `json:"path"`
+	Path string `json:"path"` // This is the file or directory path whose package lints should be fixed.
 }
 
+// NewFixLintsTool returns a tool that fixes lint issues for a package path. The tool resolves requested paths from authorizer's sandbox, uses authorizer to authorize
+// writes, and runs the provided lint steps in fix mode. authorizer must be non-nil.
 func NewFixLintsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolFixLints{
@@ -39,16 +44,20 @@ func NewFixLintsTool(authorizer authdomain.Authorizer, lintSteps []lints.Step) l
 	}
 }
 
+// Name returns ToolNameFixLints.
 func (t *toolFixLints) Name() string {
 	return ToolNameFixLints
 }
 
+// Presenter returns the lint-fixing presentation formatter.
 func (t *toolFixLints) Presenter() llmstream.Presenter {
 	return fixLintsPresenterInstance
 }
 
+// fixLintsPresenter formats lint-fixing tool calls and results for display.
 type fixLintsPresenter struct{}
 
+// Present returns the display presentation for a lint-fixing tool call or result.
 func (p fixLintsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Fix Lints"
 	if result != nil {
@@ -74,6 +83,7 @@ func (p fixLintsPresenter) Present(call llmstream.ToolCall, result *llmstream.To
 	return presentation
 }
 
+// Info returns the lint-fixing tool metadata and parameter schema.
 func (t *toolFixLints) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameFixLints,
@@ -88,6 +98,7 @@ func (t *toolFixLints) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run fixes lints for the requested package path and returns the lint output.
 func (t *toolFixLints) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	_ = ctx
 
@@ -149,6 +160,8 @@ func fixLintsPresenterTarget(call llmstream.ToolCall) string {
 	return ToolNameFixLints
 }
 
+// stripFixLintsCommandWrappers returns content with fix-lint wrapper tag lines removed. It removes command and lint-status opening and closing tag lines, normalizes
+// CRLF line endings to LF, and preserves other lines. Whitespace-only input returns an empty string.
 func stripFixLintsCommandWrappers(content string) string {
 	if strings.TrimSpace(content) == "" {
 		return ""

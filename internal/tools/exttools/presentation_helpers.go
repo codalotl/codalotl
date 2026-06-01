@@ -7,12 +7,14 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
+// extToolPayload is the JSON payload shape used by external tool results.
 type extToolPayload struct {
-	Content string `json:"content"`
-	Error   string `json:"error"`
-	Success *bool  `json:"success"`
+	Content string `json:"content"` // This is the normal result content.
+	Error   string `json:"error"`   // This is the result error text.
+	Success *bool  `json:"success"` // This optionally reports explicit success or failure.
 }
 
+// extToolSummaryPresentation returns a replace-style presentation with an action and optional target summary.
 func extToolSummaryPresentation(action string, target string) llmstream.Presentation {
 	segments := []llmstream.Segment{{
 		Text: action,
@@ -59,6 +61,8 @@ func extToolResultContent(result llmstream.ToolResult) (string, bool) {
 	return content, ok
 }
 
+// extToolResultSuccess reports the success state encoded in result. It recognizes extToolPayload success and error fields, XML-like ok attributes in payload content
+// or raw result text, and result.IsError. The second return value is false when no usable success signal is present.
 func extToolResultSuccess(result llmstream.ToolResult) (bool, bool) {
 	trimmed := strings.TrimSpace(result.Result)
 	if trimmed == "" {
@@ -94,6 +98,7 @@ func extToolResultSuccess(result llmstream.ToolResult) (bool, bool) {
 	return false, false
 }
 
+// extractXMLishOK returns the boolean ok attribute from an XML-like opening tag.
 func extractXMLishOK(s string) (bool, bool) {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "<") {
@@ -130,6 +135,7 @@ func extractXMLishOK(s string) (bool, bool) {
 	return false, false
 }
 
+// summarizePresenterOutput converts tool output into visible presentation lines with optional truncation.
 func summarizePresenterOutput(content string, maxLines int) (llmstream.Output, bool) {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")
@@ -169,6 +175,7 @@ func trimPresenterEmptyLines(lines []string) []string {
 	return lines
 }
 
+// stripOuterXMLTag removes one matching enclosing XML-like tag pair from s.
 func stripOuterXMLTag(s string) string {
 	s = strings.TrimSpace(s)
 	if len(s) < 3 || s[0] != '<' {

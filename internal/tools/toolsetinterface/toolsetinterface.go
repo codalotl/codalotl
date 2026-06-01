@@ -44,6 +44,7 @@ type Options struct {
 	// ("jail").
 	SandboxDir string
 
+	// Authorizer controls whether tools may access paths, run shell commands, or perform other protected operations.
 	Authorizer authdomain.Authorizer
 
 	// GoPkgAbsDir is the absolute path of the Go package directory that package-scoped toolsets operate on. It is required only for package-scoped toolsets.

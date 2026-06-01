@@ -24,20 +24,23 @@ import (
 //go:embed clarify_public_api.md
 var descriptionClarifyPublicAPI string
 
+// ToolNameClarifyPublicAPI is the registered name of the clarify_public_api tool.
 const ToolNameClarifyPublicAPI = "clarify_public_api"
 
+// The toolClarifyPublicAPI type implements the clarify_public_api tool by asking a read-only subagent to answer API questions about identifiers in a resolved package.
 type toolClarifyPublicAPI struct {
-	sandboxAbsDir       string
-	authorizer          authdomain.Authorizer
-	agentInvoker        toolsetinterface.AgentInvoker
-	model               llmmodel.ModelID
-	originPackageAbsDir string
+	sandboxAbsDir       string                        // The sandbox root is the caller sandbox used for path resolution and sandbox membership checks.
+	authorizer          authdomain.Authorizer         // The authorizer controls sandbox reads and clarification CAS writes.
+	agentInvoker        toolsetinterface.AgentInvoker // The agent invoker starts the read-only clarification subagent.
+	model               llmmodel.ModelID              // The model selects the LLM model used by the clarification subagent.
+	originPackageAbsDir string                        // The origin package directory identifies the caller package recorded in clarification CAS entries.
 }
 
+// clarifyPublicAPIParams contains the JSON parameters for a clarify_public_api call. All fields are required.
 type clarifyPublicAPIParams struct {
-	Path       string `json:"path"`
-	Identifier string `json:"identifier"`
-	Question   string `json:"question"`
+	Path       string `json:"path"`       // Path identifies the package to clarify, as a sandbox-relative directory or Go import path.
+	Identifier string `json:"identifier"` // Identifier names the API symbol to clarify.
+	Question   string `json:"question"`   // Question is the clarification prompt sent to the read-only subagent.
 }
 
 // ClarifyPublicAPIToolOptions configures NewClarifyPublicAPITool.
@@ -53,6 +56,7 @@ type ClarifyPublicAPIToolOptions struct {
 
 var clarifyPublicAPIPresenterInstance llmstream.Presenter = clarifyPublicAPIPresenter{}
 
+// The clarifyPublicAPIPresenter type formats clarify_public_api tool progress and results.
 type clarifyPublicAPIPresenter struct{}
 
 // NewClarifyPublicAPITool returns a tool that asks a read-only subagent to clarify a package's public API. The authorizer supplies the caller sandbox, caller authorization
@@ -77,18 +81,25 @@ func NewClarifyPublicAPITool(authorizer authdomain.Authorizer, toolset toolsetin
 	}
 }
 
+// Name returns ToolNameClarifyPublicAPI.
 func (t *toolClarifyPublicAPI) Name() string {
 	return ToolNameClarifyPublicAPI
 }
 
+// Presenter returns the presenter that formats clarify_public_api progress, questions, and answers.
 func (t *toolClarifyPublicAPI) Presenter() llmstream.Presenter {
 	return clarifyPublicAPIPresenterInstance
 }
 
+// SubagentFinalMessage hides final assistant messages from descendant subagents.
+//
+// It returns nil because clarify_public_api presents the clarification answer as the completed tool result instead.
 func (p clarifyPublicAPIPresenter) SubagentFinalMessage(llmstream.ToolCall, string, string) llmstream.Block {
 	return nil
 }
 
+// Present returns the clarify_public_api presentation for call and result. It appends progress, renders a clarifying or clarified summary for the requested identifier
+// and package, and shows the question while in progress or the successful answer after completion.
 func (p clarifyPublicAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Clarifying API"
 	if result != nil {
@@ -116,6 +127,7 @@ func (p clarifyPublicAPIPresenter) Present(call llmstream.ToolCall, result *llms
 	return presentation
 }
 
+// clarifyPublicAPIPresenterSummary returns the summary line for a clarify_public_api presentation. If ok is false, it returns a fallback summary derived from call.
 func clarifyPublicAPIPresenterSummary(action string, call llmstream.ToolCall, identifier string, path string, ok bool) llmstream.Line {
 	if !ok {
 		return pkgToolPresenterFallbackSummary(call)
@@ -169,6 +181,7 @@ func clarifyPublicAPIPresenterResultContent(result llmstream.ToolResult) (string
 	return content, true
 }
 
+// Info returns the LLM-facing metadata for the clarify_public_api tool, including the required package path, identifier, and clarification question.
 func (t *toolClarifyPublicAPI) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameClarifyPublicAPI,
@@ -191,6 +204,10 @@ func (t *toolClarifyPublicAPI) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes the clarify_public_api tool call by asking a read-only subagent to answer an API question. The call input must be JSON containing path, identifier,
+// and question. The package path may be sandbox-relative or an import path, including dependency and standard-library packages. For sandbox packages, Run checks
+// read authorization and records a successful clarification in CAS when a CAS root can be selected. It returns an error tool result for invalid input, package resolution
+// or authorization failures, subagent setup or invocation failures, or CAS recording errors.
 func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params clarifyPublicAPIParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -301,6 +318,16 @@ func (t *toolClarifyPublicAPI) Run(ctx context.Context, call llmstream.ToolCall)
 	}
 }
 
+// invokeClarifyAgent invokes a read-only clarification subagent and returns its final assistant answer.
+//
+// The request uses these inputs:
+//   - The invoker and agentCreator parameters create and run the clarification subagent.
+//   - The callerSandboxAbsDir and callerAuthorizer parameters describe the calling agent.
+//   - The targetSandboxAbsDir and targetAuthorizer parameters constrain the clarification subagent.
+//   - The path, packageAbsDir, identifier, and question parameters identify the package API question.
+//   - The model parameter selects the model for the subagent.
+//
+// It returns an error if invoker is nil, the request payload cannot be created, the subagent cannot be invoked, or the event stream terminates unsuccessfully.
 func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvoker, agentCreator agent.AgentCreator, callerSandboxAbsDir string, callerAuthorizer authdomain.Authorizer, targetSandboxAbsDir string, targetAuthorizer authdomain.Authorizer, model llmmodel.ModelID, path string, packageAbsDir string, identifier string, question string) (string, error) {
 	if invoker == nil {
 		return "", fmt.Errorf("clarify agent unavailable")
@@ -337,6 +364,8 @@ func invokeClarifyAgent(ctx context.Context, invoker toolsetinterface.AgentInvok
 	return agent.CollectFinalAssistantText(ctx, events)
 }
 
+// recordClarifyCAS records a successful clarification answer for a sandbox package. It is a no-op when the resolved package is outside the tool sandbox or no CAS
+// root can be selected; otherwise, it appends the origin package, target package, identifier, question, and answer to the clarification CAS.
 func (t *toolClarifyPublicAPI) recordClarifyCAS(mod *gocode.Module, resolved resolvedPackageRef, identifier string, question string, answer string) error {
 	if mod == nil {
 		return fmt.Errorf("module required")
@@ -381,6 +410,10 @@ func (t *toolClarifyPublicAPI) recordClarifyCAS(mod *gocode.Module, resolved res
 	return nil
 }
 
+// clarifyOriginPackageIdentity resolves an origin package directory to the import path recorded in clarification CAS entries.
+//
+// A blank originPackageAbsDir returns an empty identity. Relative paths are resolved from mod.AbsolutePath. The origin package and its enclosing module must be
+// within mod, and the package must load successfully.
 func clarifyOriginPackageIdentity(mod *gocode.Module, originPackageAbsDir string) (string, error) {
 	if originPackageAbsDir == "" {
 		return "", nil
@@ -421,6 +454,8 @@ func authorizeClarifyCASWrite(authorizer authdomain.Authorizer, casRootAbsDir st
 	return authorizer.WithoutCodeUnit().IsAuthorizedForWrite(true, "record clarify_public_api answer in selected CAS root", ToolNameClarifyPublicAPI, casRootAbsDir)
 }
 
+// packagePathForSandbox returns packageAbsDir as a slash-separated path relative to sandboxAbsDir. It returns "." for the sandbox root and an error if either path
+// is empty or the package is outside the sandbox.
 func packagePathForSandbox(sandboxAbsDir string, packageAbsDir string) (string, error) {
 	if sandboxAbsDir == "" {
 		return "", fmt.Errorf("sandbox directory required")

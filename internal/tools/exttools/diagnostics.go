@@ -15,19 +15,24 @@ import (
 //go:embed diagnostics.md
 var descriptionDiagnostics string
 
+// ToolNameDiagnostics is the registered tool name for the diagnostics tool.
 const ToolNameDiagnostics = "diagnostics"
 
 var diagnosticsPresenterInstance llmstream.Presenter = diagnosticsPresenter{}
 
+// toolDiagnostics implements the diagnostics tool for collecting Go package diagnostics.
 type toolDiagnostics struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // This is the absolute sandbox root used to resolve requested paths.
+	authorizer    authdomain.Authorizer // This authorizes diagnostic reads before the tool runs.
 }
 
+// diagnosticsParams contains the JSON parameters for the diagnostics tool.
 type diagnosticsParams struct {
-	Path string `json:"path"`
+	Path string `json:"path"` // This is the file or directory path whose package diagnostics should be collected.
 }
 
+// NewDiagnosticsTool returns a tool that collects Go package diagnostics. The tool resolves requested paths from authorizer's sandbox and uses authorizer to authorize
+// diagnostic reads. authorizer must be non-nil.
 func NewDiagnosticsTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolDiagnostics{
@@ -36,16 +41,20 @@ func NewDiagnosticsTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns ToolNameDiagnostics.
 func (t *toolDiagnostics) Name() string {
 	return ToolNameDiagnostics
 }
 
+// Presenter returns the diagnostics presentation formatter.
 func (t *toolDiagnostics) Presenter() llmstream.Presenter {
 	return diagnosticsPresenterInstance
 }
 
+// diagnosticsPresenter formats diagnostics tool calls and results for display.
 type diagnosticsPresenter struct{}
 
+// Present returns the display presentation for a diagnostics tool call or result.
 func (p diagnosticsPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Run Diagnostics"
 	if result != nil {
@@ -61,6 +70,7 @@ func (p diagnosticsPresenter) Present(call llmstream.ToolCall, result *llmstream
 	return presentation
 }
 
+// Info returns the diagnostics tool metadata and parameter schema.
 func (t *toolDiagnostics) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameDiagnostics,
@@ -75,6 +85,7 @@ func (t *toolDiagnostics) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes diagnostics for the requested package path and returns the diagnostic output.
 func (t *toolDiagnostics) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params diagnosticsParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -128,6 +139,7 @@ func RunDiagnostics(ctx context.Context, sandboxDir string, pkgDirPath string) (
 	return result.ToXML("diagnostics-status"), nil
 }
 
+// newGoDiagnosticsRunner returns a command runner configured to collect Go build diagnostics.
 func newGoDiagnosticsRunner() *cmdrunner.Runner {
 	const successMessage = "build succeeded"
 

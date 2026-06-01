@@ -9,14 +9,16 @@ import (
 	"strings"
 )
 
+// ToolNameUpdatePlan is the registered name of the update_plan tool.
 const ToolNameUpdatePlan = "update_plan"
 
 // toolUpdatePlan communicates plan updates to the harness. It does not read or write files.
 type toolUpdatePlan struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // This is the absolute sandbox root associated with the tool session.
+	authorizer    authdomain.Authorizer // This is the session authorizer; update_plan does not use it for filesystem access.
 }
 
+// NewUpdatePlanTool returns an update_plan tool that communicates plan updates to the harness without reading or writing files. The authorizer must be non-nil.
 func NewUpdatePlanTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolUpdatePlan{
@@ -25,14 +27,18 @@ func NewUpdatePlanTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns ToolNameUpdatePlan, the registered name of the update_plan tool.
 func (t *toolUpdatePlan) Name() string {
 	return ToolNameUpdatePlan
 }
 
+// Presenter returns the semantic checklist presenter for update_plan tool calls and results.
 func (t *toolUpdatePlan) Presenter() llmstream.Presenter {
 	return updatePlanPresenterInstance
 }
 
+// Info returns the tool metadata for update_plan. The returned schema requires a plan array of step/status items, accepts an optional explanation, and restricts
+// statuses to pending, in_progress, or completed.
 func (t *toolUpdatePlan) Info() llmstream.ToolInfo {
 	// The schema mirrors the desired plan format. Do not load or embed external schema files.
 	return llmstream.ToolInfo{
@@ -66,20 +72,26 @@ func (t *toolUpdatePlan) Info() llmstream.ToolInfo {
 	}
 }
 
+// An updatePlanItem is one step in an update_plan request.
 type updatePlanItem struct {
-	Step   string `json:"step"`
-	Status string `json:"status"`
+	Step   string `json:"step"`   // This is the user-facing description of the plan step.
+	Status string `json:"status"` // This is the step state: "pending", "in_progress", or "completed".
 }
 
+// updatePlanParams contains the JSON arguments for update_plan. Plan must be present. Each item must have a non-empty step and a status of "pending", "in_progress",
+// or "completed", with at most one "in_progress" item.
 type updatePlanParams struct {
-	Explanation string           `json:"explanation"`
-	Plan        []updatePlanItem `json:"plan"`
+	Explanation string           `json:"explanation"` // Explanation is optional text shown above the checklist when non-empty.
+	Plan        []updatePlanItem `json:"plan"`        // Plan is the ordered checklist of plan items and may be empty.
 }
 
 var updatePlanPresenterInstance llmstream.Presenter = updatePlanPresenter{}
 
+// updatePlanPresenter formats update_plan calls as a replacing presentation with an "Update Plan" summary and checklist body.
 type updatePlanPresenter struct{}
 
+// Present returns a replacement presentation for an update_plan call with an "Update Plan" summary. Valid JSON input is rendered as a checklist body with an optional
+// explanation; invalid input returns the summary only.
 func (p updatePlanPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	presentation := llmstream.Presentation{
 		Behavior: llmstream.CompletionBehaviorReplace,
@@ -103,6 +115,8 @@ func (p updatePlanPresenter) Present(call llmstream.ToolCall, result *llmstream.
 	return presentation
 }
 
+// The updatePlanPresenterBody function builds the checklist body for an update_plan presentation. It includes a nonblank explanation as the checklist overview,
+// preserves plan order, and highlights the first unfinished item and any in-progress items. It returns nil when there is nothing to present.
 func updatePlanPresenterBody(params updatePlanParams) llmstream.Block {
 	items := make([]llmstream.ChecklistItem, 0, len(params.Plan))
 	nextUpIndex := updatePlanNextUpIndex(params.Plan)
@@ -159,6 +173,8 @@ func updatePlanChecklistStatus(status string) llmstream.ChecklistStatus {
 	}
 }
 
+// Run validates and accepts an update_plan request. It requires a present plan array, allows an empty plan, enforces non-empty steps with pending, in_progress,
+// or completed statuses, and rejects more than one in_progress item.
 func (t *toolUpdatePlan) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params updatePlanParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {

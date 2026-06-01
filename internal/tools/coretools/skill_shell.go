@@ -15,25 +15,30 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
+// ToolNameSkillShell is the registered tool name for the skill_shell tool.
 const ToolNameSkillShell = "skill_shell"
 
 //go:embed skill_shell.md
 var descriptionSkillShell string
 
+// The toolSkillShell type implements the skill_shell tool for commands requested by a named skill.
 type toolSkillShell struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // This is the absolute sandbox root used as the default working directory and relative cwd base.
+	authorizer    authdomain.Authorizer // This authorizes shell commands before they run.
 }
 
+// The skillShellParams type is the JSON parameter set for the skill_shell tool.
 type skillShellParams struct {
-	Command           []string `json:"command"`
-	Skill             string   `json:"skill"`
-	TimeoutMS         int64    `json:"timeout_ms"`
-	Cwd               string   `json:"cwd"`
-	MaxOutputBytes    int      `json:"max_output_bytes"`
-	RequestPermission bool     `json:"request_permission"`
+	Command           []string `json:"command"`            // Command is the argv vector to execute; the first element is the executable.
+	Skill             string   `json:"skill"`              // Skill is the name of the skill requesting the command.
+	TimeoutMS         int64    `json:"timeout_ms"`         // TimeoutMS is the optional command timeout in milliseconds; values <= 0 use the default timeout.
+	Cwd               string   `json:"cwd"`                // Cwd is the optional working directory; an empty value uses the sandbox root.
+	MaxOutputBytes    int      `json:"max_output_bytes"`   // MaxOutputBytes is the optional output byte limit; zero uses the default limit.
+	RequestPermission bool     `json:"request_permission"` // RequestPermission asks the authorizer to allow or prompt for a command that may otherwise be denied.
 }
 
+// NewSkillShellTool returns a skill_shell tool that authorizes commands with authorizer and resolves working directories relative to authorizer's sandbox. The authorizer
+// must be non-nil.
 func NewSkillShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	abs := authorizer.SandboxDir()
 	return &toolSkillShell{
@@ -42,10 +47,14 @@ func NewSkillShellTool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns the registered skill_shell tool name.
 func (t *toolSkillShell) Name() string { return ToolNameSkillShell }
 
+// Presenter returns the shell presenter used for skill_shell tool calls and results.
 func (t *toolSkillShell) Presenter() llmstream.Presenter { return shellPresenterInstance }
 
+// Info returns the tool definition for skill_shell, including its embedded description, required argv-style command and skill parameters, and optional timeout,
+// working-directory, output-limit, and permission-request parameters.
 func (t *toolSkillShell) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameSkillShell,
@@ -190,6 +199,8 @@ func (t *toolSkillShell) Run(ctx context.Context, call llmstream.ToolCall) llmst
 	return result
 }
 
+// The normalizeCwd method returns a cleaned absolute working directory for cwd. It resolves relative paths against the skill shell tool's sandbox root and cleans
+// absolute paths as given. It validates that cwd and the sandbox root are set, but it does not stat or authorize the path.
 func (t *toolSkillShell) normalizeCwd(cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
 		return "", fmt.Errorf("cwd is required")

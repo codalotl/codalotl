@@ -18,6 +18,7 @@ import (
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 )
 
+// ToolNameCodalotlCLI is the LLM tool name for the in-process codalotl CLI wrapper.
 const ToolNameCodalotlCLI = "codalotl_cli"
 
 const (
@@ -45,23 +46,25 @@ func NewCodalotlCLITool(newCommandTree CommandTreeFunc) llmstream.Tool {
 
 // Params are the codalotl_cli tool parameters.
 type Params struct {
-	Subcommand string   `json:"subcommand"`
-	Argv       []string `json:"argv"`
+	Subcommand string   `json:"subcommand"` // Subcommand is the command path after codalotl (ex: "context initial"); flags and positional args belong in Argv.
+	Argv       []string `json:"argv"`       // Argv is the exact flag and positional argument vector for Subcommand; nil is treated as empty.
 }
 
 // Result is the machine-readable codalotl_cli tool result.
 type Result struct {
-	Success  bool     `json:"success"`
-	Command  []string `json:"command"`
-	ExitCode int      `json:"exit_code"`
-	Stdout   string   `json:"stdout"`
-	Stderr   string   `json:"stderr"`
+	Success  bool     `json:"success"`   // Success reports whether ExitCode is 0.
+	Command  []string `json:"command"`   // Command is the command vector, starting with "codalotl".
+	ExitCode int      `json:"exit_code"` // ExitCode is the process-style exit code returned by the command.
+	Stdout   string   `json:"stdout"`    // Stdout is the command's captured standard output.
+	Stderr   string   `json:"stderr"`    // Stderr is the command's captured standard error.
 }
 
+// codalotlCLITool implements llmstream.Tool by running a whitelisted q/cli command tree in-process.
 type codalotlCLITool struct {
-	newCommandTree CommandTreeFunc
+	newCommandTree CommandTreeFunc // The factory is called for each run to obtain an isolated whitelisted command tree.
 }
 
+// Info returns the LLM-visible metadata and parameter schema for codalotl_cli.
 func (t *codalotlCLITool) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name: ToolNameCodalotlCLI,
@@ -85,14 +88,19 @@ func (t *codalotlCLITool) Info() llmstream.ToolInfo {
 	}
 }
 
+// Name returns ToolNameCodalotlCLI.
 func (t *codalotlCLITool) Name() string {
 	return ToolNameCodalotlCLI
 }
 
+// Presenter returns the semantic presenter used for codalotl_cli status lines.
 func (t *codalotlCLITool) Presenter() llmstream.Presenter {
 	return codalotlCLIPresenter{}
 }
 
+// Run executes a codalotl_cli tool call against a fresh whitelisted command tree. It parses call.Input as Params, captures stdout and stderr, streams stdout visibly
+// when supported, and propagates ctx to command handlers. Malformed parameters and command-tree construction failures are returned as tool infrastructure errors;
+// command usage errors and non-zero exits are encoded in Result.
 func (t *codalotlCLITool) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	params, err := parseParams(call.Input)
 	if err != nil {
@@ -148,6 +156,7 @@ func (t *codalotlCLITool) Run(ctx context.Context, call llmstream.ToolCall) llms
 	})
 }
 
+// freshCommandTree returns a new command tree rooted at the public codalotl command name. It reports nil factories, factory panics, and nil roots as errors.
 func (t *codalotlCLITool) freshCommandTree() (root *qcli.Command, err error) {
 	if t.newCommandTree == nil {
 		return nil, errors.New("codalotl_cli command tree factory is nil")
@@ -165,6 +174,8 @@ func (t *codalotlCLITool) freshCommandTree() (root *qcli.Command, err error) {
 	return root, nil
 }
 
+// parseParams decodes a single JSON object into Params. It requires subcommand and argv, rejects unknown fields and extra JSON values, and treats a null argv as
+// nil.
 func parseParams(input string) (Params, error) {
 	var raw map[string]json.RawMessage
 	decoder := json.NewDecoder(strings.NewReader(input))
@@ -236,8 +247,11 @@ func errorToolResult(call llmstream.ToolCall, msg string, srcErr error) llmstrea
 	}
 }
 
+// codalotlCLIPresenter presents codalotl_cli calls as concise running and completed command summaries.
 type codalotlCLIPresenter struct{}
 
+// Present returns a replace-style summary for call. It uses "Running" before a result is available and "Ran" after completion, formatting the command as a shell
+// command when the input can be parsed.
 func (codalotlCLIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Running"
 	if result != nil {
@@ -280,9 +294,10 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// streamingStdoutWriter captures stdout while mirroring it to display-only visible output.
 type streamingStdoutWriter struct {
-	capture io.Writer
-	stream  *visibleOutputStreamer
+	capture io.Writer              // The capture writer receives stdout bytes for Result.Stdout.
+	stream  *visibleOutputStreamer // The stream emits sanitized display-only stdout chunks.
 }
 
 func newStreamingStdoutWriter(ctx context.Context, capture io.Writer) *streamingStdoutWriter {
@@ -292,6 +307,8 @@ func newStreamingStdoutWriter(ctx context.Context, capture io.Writer) *streaming
 	}
 }
 
+// Write writes p to the capture writer and mirrors the successfully captured prefix to the visible output stream. It returns the byte count and error reported by
+// the capture writer.
 func (w *streamingStdoutWriter) Write(p []byte) (int, error) {
 	n, err := w.capture.Write(p)
 	if n > 0 {
@@ -300,10 +317,12 @@ func (w *streamingStdoutWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// Close flushes and closes the visible output stream. It does not close the capture writer.
 func (w *streamingStdoutWriter) Close() {
 	w.stream.Close()
 }
 
+// visibleFlushMode selects how much pending visible output a flush may emit.
 type visibleFlushMode int
 
 const (
@@ -311,23 +330,25 @@ const (
 	visibleFlushNewline
 )
 
+// visibleOutputStreamer buffers stdout and emits sanitized, bounded visible-output chunks.
 type visibleOutputStreamer struct {
-	ctx  context.Context
-	emit func(context.Context, string)
-
-	mu              sync.Mutex
-	pending         []byte
-	timer           *time.Timer
-	timerGeneration uint64
-	closed          bool
-	emittedBytes    int
-	elided          bool
+	ctx             context.Context               // The context is passed to the visible-output emitter.
+	emit            func(context.Context, string) // The emitter receives display-only stdout chunks; nil disables visible emission.
+	mu              sync.Mutex                    // The mutex protects all mutable fields below.
+	pending         []byte                        // Pending stores raw bytes waiting for a scheduled or final flush.
+	timer           *time.Timer                   // Timer triggers the next scheduled flush, when one is pending.
+	timerGeneration uint64                        // The timer generation invalidates callbacks from canceled or replaced timers.
+	closed          bool                          // Closed records whether the streamer has been closed.
+	emittedBytes    int                           // The emitted byte count tracks visible content prepared against the total output budget.
+	elided          bool                          // Elided records whether the total visible-output budget has been exhausted.
 }
 
 func newVisibleOutputStreamer(ctx context.Context, emit func(context.Context, string)) *visibleOutputStreamer {
 	return &visibleOutputStreamer{ctx: ctx, emit: emit}
 }
 
+// Write buffers raw stdout bytes for visible emission and schedules a flush. Newline-containing buffers are flushed soon as complete-line content; other partial
+// buffers are flushed after the partial-output delay. Write ignores empty input, writes after Close, and writes after the stream has been elided.
 func (s *visibleOutputStreamer) Write(p []byte) {
 	if len(p) == 0 {
 		return
@@ -349,11 +370,14 @@ func (s *visibleOutputStreamer) Write(p []byte) {
 	}
 }
 
+// Close emits all pending visible output and prevents future emission. It is safe to call more than once.
 func (s *visibleOutputStreamer) Close() {
 	content := s.close()
 	s.emitContent(content)
 }
 
+// The close helper marks s closed, cancels scheduled flushes, and returns all remaining visible content for the caller to emit. It is idempotent and returns an
+// empty string after the first close.
 func (s *visibleOutputStreamer) close() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -370,6 +394,7 @@ func (s *visibleOutputStreamer) close() string {
 	return s.takeLocked(visibleFlushAll)
 }
 
+// scheduleLocked schedules a future flush and invalidates any previously scheduled flush. The caller must hold s.mu.
 func (s *visibleOutputStreamer) scheduleLocked(wait time.Duration, mode visibleFlushMode) {
 	s.timerGeneration++
 	generation := s.timerGeneration
@@ -381,11 +406,14 @@ func (s *visibleOutputStreamer) scheduleLocked(wait time.Duration, mode visibleF
 	})
 }
 
+// flushScheduled runs a scheduled flush and emits any content it produces.
 func (s *visibleOutputStreamer) flushScheduled(generation uint64, mode visibleFlushMode) {
 	content := s.flush(generation, mode)
 	s.emitContent(content)
 }
 
+// flush processes a scheduled flush for generation and returns content to emit. It ignores stale callbacks and closed streams, and it reschedules another flush
+// when pending content remains.
 func (s *visibleOutputStreamer) flush(generation uint64, mode visibleFlushMode) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -406,6 +434,8 @@ func (s *visibleOutputStreamer) flush(generation uint64, mode visibleFlushMode) 
 	return content
 }
 
+// takeLocked removes pending bytes selected by mode, prepares them for visible emission, and returns the content to emit. The caller must hold s.mu. It returns
+// an empty string when there is no flushable content.
 func (s *visibleOutputStreamer) takeLocked(mode visibleFlushMode) string {
 	if len(s.pending) == 0 || s.elided {
 		return ""
@@ -425,6 +455,8 @@ func (s *visibleOutputStreamer) takeLocked(mode visibleFlushMode) string {
 	return s.prepareVisibleContentLocked(raw)
 }
 
+// prepareVisibleContentLocked sanitizes raw output and enforces visible-output chunk and total byte limits. The caller must hold s.mu. It returns an empty string
+// for content that becomes empty after sanitization and marks the stream elided when the total budget is exhausted.
 func (s *visibleOutputStreamer) prepareVisibleContentLocked(raw string) string {
 	content := sanitizeVisibleOutput(raw)
 	if content == "" {
@@ -448,6 +480,7 @@ func (s *visibleOutputStreamer) prepareVisibleContentLocked(raw string) string {
 	return content
 }
 
+// emitContent sends non-empty visible output to the configured emitter. It does nothing when content is empty or no emitter is configured.
 func (s *visibleOutputStreamer) emitContent(content string) {
 	if content == "" || s.emit == nil {
 		return
@@ -455,6 +488,8 @@ func (s *visibleOutputStreamer) emitContent(content string) {
 	s.emit(s.ctx, content)
 }
 
+// sanitizeVisibleOutput converts raw command output into display-safe text. It normalizes invalid UTF-8, strips ANSI sequences, normalizes carriage returns, expands
+// tabs, replaces control characters, and elides overly long lines.
 func sanitizeVisibleOutput(raw string) string {
 	raw = strings.ToValidUTF8(raw, "?")
 	raw = stripANSISequences(raw)
@@ -495,6 +530,7 @@ func writeVisibleToken(out *strings.Builder, token string, lineLen *int, lineEli
 	}
 }
 
+// stripANSISequences removes ANSI CSI escape sequences from s and replaces unsupported escape bytes with "?".
 func stripANSISequences(s string) string {
 	var out strings.Builder
 	for i := 0; i < len(s); {

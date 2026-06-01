@@ -8,9 +8,12 @@ import (
 	"sync"
 )
 
+// ErrAuthorizerCannotAcceptGrants is returned when an authorizer cannot record grant messages.
 var ErrAuthorizerCannotAcceptGrants = errors.New("authdomain: authorizer cannot accept grants")
 
+// grantMessageAcceptor is implemented by authorizers that can record user messages containing grants.
 type grantMessageAcceptor interface {
+	// addGrantUserMessage records a raw user message that may contain grant tokens.
 	addGrantUserMessage(userMessage string)
 }
 
@@ -62,15 +65,17 @@ func slicesContains(items []string, value string) bool {
 	return false
 }
 
+// grantStore stores user-supplied grant messages and evaluates them lazily during read authorization.
 type grantStore struct {
-	mu           sync.RWMutex
-	userMessages []string
+	mu           sync.RWMutex // mu protects userMessages.
+	userMessages []string     // userMessages stores raw user messages that may contain grant tokens.
 }
 
 func newGrantStore() *grantStore {
 	return &grantStore{}
 }
 
+// addGrantUserMessage records a non-empty raw user message for lazy grant evaluation.
 func (g *grantStore) addGrantUserMessage(userMessage string) {
 	if userMessage == "" {
 		return
@@ -80,6 +85,10 @@ func (g *grantStore) addGrantUserMessage(userMessage string) {
 	g.mu.Unlock()
 }
 
+// The isGrantedForRead method reports whether a stored user grant authorizes toolName to read absPath.
+//
+// The requested path is cleaned and, when relative, resolved against sandboxDir. It returns false for nil stores, tools that do not support read grants, and outside-sandbox
+// paths when allowOutsideSandbox is false.
 func (g *grantStore) isGrantedForRead(sandboxDir string, absPath string, toolName string, allowOutsideSandbox bool) bool {
 	if g == nil || !toolAllowsReadGrants(toolName) {
 		return false
@@ -132,6 +141,10 @@ func (g *grantStore) isGrantedForRead(sandboxDir string, absPath string, toolNam
 	return false
 }
 
+// exactGrantAllowsPath reports whether a non-glob grant token authorizes absPath.
+//
+// Relative grants are resolved against sandboxDir. A granted directory authorizes its entire subtree, a granted file authorizes only itself, filesystem root is
+// never authorized, and when allowOutsideSandbox is false the grant must stay within sandboxDir. The grant path must exist; stat errors deny the grant.
 func (g *grantStore) exactGrantAllowsPath(sandboxDir string, absPath string, grant string, allowOutsideSandbox bool) bool {
 	grantAbs := grant
 	if !filepath.IsAbs(grantAbs) {
@@ -157,6 +170,10 @@ func (g *grantStore) exactGrantAllowsPath(sandboxDir string, absPath string, gra
 	return grantAbs == absPath
 }
 
+// globGrantAllowsPath reports whether any glob grant in message matches absPath.
+//
+// Absolute grant patterns match absPath; relative grant patterns match relPath, which should be absPath relative to sandboxDir. Invalid patterns and non-glob tokens
+// are ignored, and when allowOutsideSandbox is false absPath must be inside sandboxDir.
 func (g *grantStore) globGrantAllowsPath(absPath string, relPath string, message string, allowOutsideSandbox bool, sandboxDir string) bool {
 	if !allowOutsideSandbox && !withinSandbox(sandboxDir, absPath) {
 		return false
@@ -186,6 +203,10 @@ func (g *grantStore) globGrantAllowsPath(absPath string, relPath string, message
 	return false
 }
 
+// globGrantAllowsLsOnSegment reports whether a glob grant in message permits listing absPath so matching entries can be discovered.
+//
+// The listable directory is the directory segment before the grant's first glob metacharacter. Filesystem root is never listable, and when allowOutsideSandbox is
+// false the listable directory must be inside sandboxDir.
 func (g *grantStore) globGrantAllowsLsOnSegment(absPath string, message string, allowOutsideSandbox bool, sandboxDir string) bool {
 	cleanAbsPath := filepath.Clean(absPath)
 
@@ -249,6 +270,8 @@ func containsGlobMetachar(pattern string) bool {
 	return strings.ContainsAny(pattern, "*?[")
 }
 
+// extractGrantPatterns returns grant patterns found in a raw user message. It accepts unquoted @path tokens and quoted @"path with spaces" tokens, trims trailing
+// punctuation, and does not validate or stat the returned paths.
 func extractGrantPatterns(message string) []string {
 	var patterns []string
 	for i := 0; i < len(message); i++ {

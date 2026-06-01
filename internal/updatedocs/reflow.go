@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// A reflowGroupKind classifies a parsed documentation fragment during reflow.
 type reflowGroupKind int
 
 const (
@@ -41,11 +42,12 @@ func (r reflowGroupKind) String() string {
 	}
 }
 
+// reflowGroup represents a contiguous documentation fragment to preserve or reflow as a unit.
 type reflowGroup struct {
-	kind      reflowGroupKind
-	lines     []string      // raw lines input
-	text      string        // only for paragraph and list item: the words without "//" and no newlines
-	listItems []reflowGroup // all groups here must be reflowGroupKindListItem
+	kind      reflowGroupKind // kind classifies the fragment for reflow output.
+	lines     []string        // raw lines input
+	text      string          // only for paragraph and list item: the words without "//" and no newlines
+	listItems []reflowGroup   // all groups here must be reflowGroupKindListItem
 }
 
 // reflowDocComment reflows "//" doc comments to fit within softMaxCols columns, adding or removing newlines so that each line is approximately softMaxCols cols.
@@ -241,6 +243,7 @@ func formatDocComment(lines []string) (string, error) {
 	return strings.Join(commentLines, "\n") + "\n", nil
 }
 
+// wrapWords wraps words to approximately width columns without splitting tokens.
 func wrapWords(words []string, width int) []string {
 	if len(words) == 0 {
 		return nil
@@ -272,6 +275,7 @@ func wrapWords(words []string, width int) []string {
 	return lines
 }
 
+// groupDocLines groups formatted line-comment documentation into fragments for later text extraction and reflow.
 func groupDocLines(lines []string) []reflowGroup {
 
 	// Notes on how gofmt handles lists and code.

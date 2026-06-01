@@ -10,20 +10,26 @@ import (
 var editPresenterInstance llmstream.Presenter = editPresenter{}
 var writePresenterInstance llmstream.Presenter = writePresenter{}
 
+// The editPresenter type implements llmstream.Presenter for the edit tool. It presents file edits as semantic diffs and has a ready-to-use zero value.
 type editPresenter struct{}
 
+// Present returns the semantic diff presentation for an edit tool call. If the call input cannot be converted to a diff, it returns an "Edit" fallback summary.
 func (p editPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	diff, ok := editPresenterDiff(call)
 	return fileEditPresenterPresentation(call, result, diff, ok, "Edit")
 }
 
+// The writePresenter type implements llmstream.Presenter for the write tool. It presents file writes as semantic diffs and has a ready-to-use zero value.
 type writePresenter struct{}
 
+// Present returns the semantic diff presentation for a write tool call. If the call input cannot be converted to a diff, it returns a "Write" fallback summary.
 func (p writePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	diff, ok := writePresenterDiff(call)
 	return fileEditPresenterPresentation(call, result, diff, ok, "Write")
 }
 
+// The fileEditPresenterPresentation function builds the shared presentation for edit-like file tools. It returns a fallback action summary when no diff can be built;
+// otherwise it uses the diff body and attaches tool errors to the last edit.
 func fileEditPresenterPresentation(call llmstream.ToolCall, result *llmstream.ToolResult, diff llmstream.Diff, ok bool, fallbackAction string) llmstream.Presentation {
 	presentation := llmstream.Presentation{
 		Behavior: llmstream.CompletionBehaviorReplace,
@@ -69,18 +75,21 @@ func fileEditPresenterAttachError(diff llmstream.Diff, message string) llmstream
 	return diff
 }
 
+// The editPresenterParams type is the JSON input shape used to build an edit diff presentation.
 type editPresenterParams struct {
-	Path       string `json:"path"`
-	FilePath   string `json:"file_path"`
-	OldString  string `json:"old_string"`
-	OldText    string `json:"old_text"`
-	Find       string `json:"find"`
-	NewString  string `json:"new_string"`
-	NewText    string `json:"new_text"`
-	Replace    string `json:"replace"`
-	ReplaceAll bool   `json:"replace_all"`
+	Path       string `json:"path"`        // Path is the primary file path parameter.
+	FilePath   string `json:"file_path"`   // FilePath is an alternate file path parameter accepted for compatibility.
+	OldString  string `json:"old_string"`  // OldString is the first source-text alias used for deleted diff lines.
+	OldText    string `json:"old_text"`    // OldText is the second source-text alias used for deleted diff lines.
+	Find       string `json:"find"`        // Find is the third source-text alias used for deleted diff lines.
+	NewString  string `json:"new_string"`  // NewString is the first replacement-text alias used for added diff lines.
+	NewText    string `json:"new_text"`    // NewText is the second replacement-text alias used for added diff lines.
+	Replace    string `json:"replace"`     // Replace is the third replacement-text alias used for added diff lines.
+	ReplaceAll bool   `json:"replace_all"` // ReplaceAll reports whether the diff represents replacing every match.
 }
 
+// editPresenterDiff builds a semantic edit diff from an edit tool call. It returns false when the call input is not valid JSON or does not include a path; otherwise
+// it includes the matched text as deleted lines, the replacement text as added lines, and preserves replace_all.
 func editPresenterDiff(call llmstream.ToolCall) (llmstream.Diff, bool) {
 	var params editPresenterParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -119,15 +128,18 @@ func editPresenterDiff(call llmstream.ToolCall) (llmstream.Diff, bool) {
 	}, true
 }
 
+// The writePresenterParams type is the JSON input shape used to build a write diff presentation.
 type writePresenterParams struct {
-	Path     string `json:"path"`
-	FilePath string `json:"file_path"`
-	Content  string `json:"content"`
-	Contents string `json:"contents"`
-	Text     string `json:"text"`
-	FileText string `json:"file_text"`
+	Path     string `json:"path"`      // Path is the primary file path parameter.
+	FilePath string `json:"file_path"` // FilePath is an alternate file path parameter accepted for compatibility.
+	Content  string `json:"content"`   // Content is the primary file content parameter.
+	Contents string `json:"contents"`  // Contents is an alternate file content parameter accepted for compatibility.
+	Text     string `json:"text"`      // Text is an alternate file content parameter accepted for compatibility.
+	FileText string `json:"file_text"` // FileText is an alternate file content parameter accepted for compatibility.
 }
 
+// The writePresenterDiff function builds the semantic diff shown for a write tool call. It accepts compatible path and content parameter names and returns ok false
+// when the call input is invalid or has no path.
 func writePresenterDiff(call llmstream.ToolCall) (llmstream.Diff, bool) {
 	var params writePresenterParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {

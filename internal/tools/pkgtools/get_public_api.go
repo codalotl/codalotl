@@ -17,22 +17,29 @@ import (
 //go:embed get_public_api.md
 var descriptionGetPublicAPI string
 
+// ToolNameGetPublicAPI is the registered name of the get_public_api tool.
 const ToolNameGetPublicAPI = "get_public_api"
 
+// The toolGetPublicAPI type implements the get_public_api tool by returning public API documentation for a resolved package and optional identifiers.
 type toolGetPublicAPI struct {
-	sandboxAbsDir string
-	authorizer    authdomain.Authorizer
+	sandboxAbsDir string                // The sandbox root is used to resolve sandbox-relative package paths.
+	authorizer    authdomain.Authorizer // The authorizer controls reads of sandbox packages.
 }
 
+// The getPublicAPIParams type contains JSON parameters for the get_public_api tool.
 type getPublicAPIParams struct {
-	Path        string   `json:"path"`
-	Identifiers []string `json:"identifiers"`
+	Path        string   `json:"path"`        // Path identifies the package whose public API should be read.
+	Identifiers []string `json:"identifiers"` // Identifiers optionally restrict output to specific public API identifiers.
 }
 
 var getPublicAPIPresenterInstance llmstream.Presenter = getPublicAPIPresenter{}
 
+// The getPublicAPIPresenter type formats get_public_api tool summaries and requested identifiers.
 type getPublicAPIPresenter struct{}
 
+// NewGetPublicAPITool returns a get_public_api tool that resolves package paths from the authorizer sandbox and authorizes package reads with authorizer.
+//
+// The authorizer must be non-nil.
 func NewGetPublicAPITool(authorizer authdomain.Authorizer) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	return &toolGetPublicAPI{
@@ -41,14 +48,18 @@ func NewGetPublicAPITool(authorizer authdomain.Authorizer) llmstream.Tool {
 	}
 }
 
+// Name returns the registered tool name, "get_public_api".
 func (t *toolGetPublicAPI) Name() string {
 	return ToolNameGetPublicAPI
 }
 
+// Presenter returns the presenter that formats get_public_api calls and public API results.
 func (t *toolGetPublicAPI) Presenter() llmstream.Presenter {
 	return getPublicAPIPresenterInstance
 }
 
+// Present returns the get_public_api presentation for call. The presentation replaces prior progress, summarizes the requested package, and includes requested identifiers
+// in the body when the call supplied any.
 func (p getPublicAPIPresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	presentation := pkgToolReplaceSummaryPresentation(getPublicAPIPresenterSummary(call))
 	if body, ok := getPublicAPIPresenterBody(call); ok {
@@ -96,6 +107,7 @@ func getPublicAPIPresenterParams(call llmstream.ToolCall) (string, []string, boo
 	return path, identifiers, path != "" || len(identifiers) > 0
 }
 
+// Info returns the LLM-facing metadata for the get_public_api tool, including its required package path and optional identifier filter.
 func (t *toolGetPublicAPI) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameGetPublicAPI,
@@ -117,6 +129,9 @@ func (t *toolGetPublicAPI) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes the get_public_api tool call and returns godoc-like public API documentation for a package. The call input must be JSON containing path and may include
+// identifiers to restrict output to selected public API symbols. The package path may be sandbox-relative or an import path. Run returns an error tool result for
+// invalid input, package resolution or authorization failures, package loading failures, or documentation generation errors.
 func (t *toolGetPublicAPI) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	_ = ctx
 

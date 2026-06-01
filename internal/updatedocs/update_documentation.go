@@ -21,15 +21,17 @@ type SnippetError struct {
 	PartiallyRejected bool   // at least part of (maybe all of) this snippet was not applied due to Reject flags (ex: RejectUpdates) in the Options
 }
 
+// parsedSnippet holds a validated documentation snippet and the state needed to apply it.
 type parsedSnippet struct {
-	originalSnippet   string
-	unwrappedSnippet  string
-	ast               *ast.File
-	fileSet           *token.FileSet
-	kind              snippetKind
-	partiallyRejected bool // set to true during application if any rejected components of snippet
+	originalSnippet   string         // originalSnippet is the exact snippet text supplied by the caller.
+	unwrappedSnippet  string         // unwrappedSnippet is the snippet text after removing optional triple-backtick fences.
+	ast               *ast.File      // ast is the parsed Go syntax tree for the snippet.
+	fileSet           *token.FileSet // fileSet maps ast positions to snippet source positions.
+	kind              snippetKind    // kind is the validated semantic category of the snippet.
+	partiallyRejected bool           // set to true during application if any rejected components of snippet
 }
 
+// Options configures documentation updates and comment reflow behavior.
 type Options struct {
 	//
 	// Reflow options:

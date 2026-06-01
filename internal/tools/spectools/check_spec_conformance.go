@@ -32,6 +32,7 @@ import (
 //go:embed check_spec_conformance.md
 var descriptionCheckSpecConformance string
 
+// ToolNameCheckSpecConformance is the tool name used to register and invoke SPEC.md conformance checks.
 const ToolNameCheckSpecConformance = "check_spec_conformance"
 
 const defaultMaxConcurrency = 5
@@ -39,80 +40,105 @@ const defaultMaxConcurrency = 5
 // This mirrors internal/agentbuilder.AgentLimitedPackageMode without importing that package and creating an import cycle.
 const checkSpecConformanceAgentName = "limited_package_mode"
 
+// CheckSpecConformanceToolOptions configures NewCheckSpecConformanceTool.
 type CheckSpecConformanceToolOptions struct {
-	AgentInvoker   toolsetinterface.AgentInvoker
-	Model          llmmodel.ModelID
-	MaxConcurrency int // 0: use default concurrency
+	AgentInvoker   toolsetinterface.AgentInvoker // AgentInvoker creates package-check subagents. If nil, package checks fail with an agent-unavailable error.
+	Model          llmmodel.ModelID              // Model is passed to package-check subagents as their requested model.
+	MaxConcurrency int                           // 0: use default concurrency
 }
 
+// toolCheckSpecConformance implements the check_spec_conformance tool for the current Go module.
 type toolCheckSpecConformance struct {
-	sandboxAbsDir  string
-	authorizer     authdomain.Authorizer
-	agentInvoker   toolsetinterface.AgentInvoker
-	model          llmmodel.ModelID
-	maxConcurrency int
+	sandboxAbsDir   string                                                      // sandboxAbsDir is the absolute sandbox root used to load the module and configure subagents.
+	authorizer      authdomain.Authorizer                                       // authorizer authorizes module reads and CAS writes; nil disables authorization checks.
+	agentInvoker    toolsetinterface.AgentInvoker                               // agentInvoker creates package-check subagents.
+	model           llmmodel.ModelID                                            // model is the model passed to package-check subagents.
+	maxConcurrency  int                                                         // maxConcurrency bounds concurrent package checks; values less than one use the default.
+	git             gitRunner                                                   // git runs git commands used for branch, diff, and untracked-file discovery.
+	specDiffContext func(pkg *gocode.Package) (string, error)                   // specDiffContext computes extra SPEC diff context for a package; nil omits it.
+	heuristicBase   func(repoDir string) (commit string, ref string, err error) // heuristicBase selects the comparison base commit and parent ref.
 
-	git                        gitRunner
-	specDiffContext            func(pkg *gocode.Package) (string, error)
-	heuristicBase              func(repoDir string) (commit string, ref string, err error)
-	changedPaths               func(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error)
-	runPackageCheck            packageCheckRunner
+	// changedPaths returns repository paths changed since the comparison base.
+	changedPaths func(repoDir string, baseCommit string, includeUncommitted bool) ([]string, error)
+
+	// runPackageCheck checks one package and returns its final JSON verdict.
+	runPackageCheck packageCheckRunner
+
+	// subAgentCreatorFromContext returns the active tool-call subagent creator; nil uses the default.
 	subAgentCreatorFromContext func(ctx context.Context) (agent.SubAgentCreator, error)
-	runAgentTurn               func(ctx context.Context, agent *agent.Agent, message string) (string, error)
+
+	// runAgentTurn sends one prompt to a package-check subagent and returns its answer; nil uses the default.
+	runAgentTurn func(ctx context.Context, agent *agent.Agent, message string) (string, error)
 }
 
+// The checkSpecConformanceParams type is the JSON request payload for check_spec_conformance.
 type checkSpecConformanceParams struct {
-	OnlyChanged bool     `json:"only_changed"`
-	Packages    []string `json:"packages"`
+	OnlyChanged bool     `json:"only_changed"` // OnlyChanged restricts checks to packages with package-scoped changes since the comparison base.
+	Packages    []string `json:"packages"`     // Packages optionally names explicit packages by current-module import path or sandbox-relative package path.
 }
 
+// The comparisonBase type identifies the git state used as the diff baseline for a conformance run.
 type comparisonBase struct {
-	Branch       string
-	ParentBranch string
-	Commit       string
+	Branch       string // Branch is the current branch being checked.
+	ParentBranch string // ParentBranch is the heuristic parent branch for Branch, when one is known.
+	Commit       string // Commit is the comparison-base commit hash.
 }
 
+// The repoChanges type records changed repository paths split by git tracking state.
 type repoChanges struct {
-	tracked   []string
-	untracked []string
+	tracked   []string // Tracked contains changed tracked paths relative to the repository root.
+	untracked []string // Untracked contains changed untracked paths relative to the repository root.
 }
 
+// The packagePathScope type defines the package boundary used to attribute changed paths.
 type packagePathScope struct {
-	codeUnit        *codeunit.CodeUnit
-	moduleAbsDir    string
-	packageRelDir   string
-	blockedSubtrees []string
+	codeUnit        *codeunit.CodeUnit // CodeUnit classifies existing files that belong to the package.
+	moduleAbsDir    string             // ModuleAbsDir is the absolute module root used to resolve relative paths.
+	packageRelDir   string             // PackageRelDir is the normalized module-relative package directory, or "" for the module root.
+	blockedSubtrees []string           // BlockedSubtrees contains module-relative descendant package and hidden directories excluded from missing-path attribution.
 }
 
+// The eligiblePackage type records a package selected for SPEC.md conformance checking.
 type eligiblePackage struct {
-	Key     string
-	Package *gocode.Package
-	HasDiff bool
+	Key     string          // Key is the module-relative package key used in the result map.
+	Package *gocode.Package // Package is the Go package selected for checking.
+	HasDiff bool            // HasDiff reports whether the package scope changed relative to the comparison base.
 }
 
+// The packageCheckRequest type carries package-specific context for a SPEC.md conformance check.
 type packageCheckRequest struct {
-	Key            string
-	Package        *gocode.Package
-	HasDiff        bool
-	PackageDiff    string
-	SpecDiff       string
-	ComparisonBase comparisonBase
+	Key            string          // Key is the module-relative package key used in tool results and subagent labels.
+	Package        *gocode.Package // Package is the Go package being checked.
+	HasDiff        bool            // HasDiff reports whether the package scope changed relative to ComparisonBase.
+	PackageDiff    string          // PackageDiff is the package diff against the comparison-base commit.
+	SpecDiff       string          // SpecDiff is the precomputed SPEC.md diff context for the package.
+	ComparisonBase comparisonBase  // ComparisonBase identifies the git state used to produce PackageDiff.
 }
 
+// packageCheckRunner checks one package for SPEC.md conformance and returns its JSON result. A non-nil error indicates that no valid package verdict was produced.
 type packageCheckRunner func(ctx context.Context, req packageCheckRequest) (string, error)
 
+// The packageCheckResult type represents one package's machine-readable SPEC.md conformance result.
 type packageCheckResult struct {
-	Conforms        *bool          `json:"conforms,omitempty"`
+	// Conforms is true for conforming packages, false for nonconforming packages, and nil only when Error is set.
+	Conforms *bool `json:"conforms,omitempty"`
+
+	// Nonconformances lists one or more SPEC.md issues when Conforms is false and must be empty when Conforms is true.
 	Nonconformances []packageIssue `json:"nonconformances,omitempty"`
-	Error           string         `json:"error,omitempty"`
-	PostcheckError  string         `json:"postcheck_error,omitempty"`
+
+	// Error reports a package-scoped failure before a valid verdict was produced.
+	Error string `json:"error,omitempty"`
+
+	// PostcheckError reports package-scoped work that failed after a valid verdict was produced.
+	PostcheckError string `json:"postcheck_error,omitempty"`
 }
 
+// The packageIssue type describes one SPEC.md nonconformance in a package-check result.
 type packageIssue struct {
-	Severity string `json:"severity"`
-	Latent   bool   `json:"latent"`
-	Message  string `json:"message"`
-	Analysis string `json:"analysis,omitempty"`
+	Severity string `json:"severity"`           // Severity is "trivial", "minor", or "major".
+	Latent   bool   `json:"latent"`             // Latent is true when the issue predates the comparison base.
+	Message  string `json:"message"`            // Message is the human-readable nonconformance explanation.
+	Analysis string `json:"analysis,omitempty"` // Analysis explains fix-vs-spec-update considerations for orchestrators.
 }
 
 // CheckSpecConformancePackageResult is one package entry in a check_spec_conformance tool result.
@@ -126,32 +152,36 @@ type CheckSpecConformanceResults map[string]CheckSpecConformancePackageResult
 
 // CheckSpecConformanceSummary groups package result counts and sorted package keys.
 type CheckSpecConformanceSummary struct {
-	ConformingCount       int
-	NonconformingCount    int
-	ErrorCount            int
-	ConformingPackages    []string
-	NonconformingPackages []string
-	ErrorPackages         []string
-	PostcheckErrors       []CheckSpecConformancePostcheckError
+	ConformingCount       int                                  // ConformingCount is len(ConformingPackages).
+	NonconformingCount    int                                  // NonconformingCount is len(NonconformingPackages).
+	ErrorCount            int                                  // ErrorCount is len(ErrorPackages) and does not count PostcheckErrors.
+	ConformingPackages    []string                             // ConformingPackages contains sorted package keys with valid conforming verdicts.
+	NonconformingPackages []string                             // NonconformingPackages contains sorted package keys with valid nonconforming verdicts.
+	ErrorPackages         []string                             // ErrorPackages contains sorted package keys whose checks failed before producing valid verdicts.
+	PostcheckErrors       []CheckSpecConformancePostcheckError // PostcheckErrors contains package-scoped failures that happened after valid verdicts.
 }
 
 // CheckSpecConformancePostcheckError is a package-scoped failure that happened after a valid verdict.
 type CheckSpecConformancePostcheckError struct {
-	Package string
-	Error   string
+	Package string // Package is the module-relative package key associated with the failure.
+	Error   string // Error is the human-readable postcheck failure message.
 }
 
+// The packageResultValidationOptions type controls package-check result validation.
 type packageResultValidationOptions struct {
-	allowError          bool
-	allowPostcheckError bool
-	requireAnalysis     bool
-	hasDiff             *bool
+	allowError          bool  // AllowError permits an error-only package result instead of a verdict.
+	allowPostcheckError bool  // AllowPostcheckError permits postcheck_error to accompany a valid verdict.
+	requireAnalysis     bool  // RequireAnalysis requires every nonconformance to include analysis text.
+	hasDiff             *bool // HasDiff, when non-nil, reports package diff presence and marks all issues latent when false.
 }
 
+// The gitRunner interface runs git commands in a repository.
 type gitRunner interface {
+	// Output runs git with args in repoAbsDir and returns standard output.
 	Output(ctx context.Context, repoAbsDir string, args ...string) (string, error)
 }
 
+// execGitRunner runs Git commands through the local git executable. The zero value is ready to use.
 type execGitRunner struct{}
 
 // NewCheckSpecConformanceTool creates a tool that checks SPEC.md conformance for packages in the current module and records conforming packages in CAS.
@@ -185,14 +215,18 @@ func NewCheckSpecConformanceTool(authorizer authdomain.Authorizer, options ...Ch
 	return tool
 }
 
+// Name returns the registered tool name for SPEC.md conformance checks.
 func (t *toolCheckSpecConformance) Name() string {
 	return ToolNameCheckSpecConformance
 }
 
+// Presenter returns the semantic presenter for check_spec_conformance tool calls and results.
 func (t *toolCheckSpecConformance) Presenter() llmstream.Presenter {
 	return checkSpecConformancePresenterInstance
 }
 
+// Info returns the LLM-facing registration metadata for the check_spec_conformance tool. The metadata declares only_changed as required and packages as an optional
+// list of current-module import paths or module-relative package paths.
 func (t *toolCheckSpecConformance) Info() llmstream.ToolInfo {
 	return llmstream.ToolInfo{
 		Name:        ToolNameCheckSpecConformance,
@@ -214,6 +248,10 @@ func (t *toolCheckSpecConformance) Info() llmstream.ToolInfo {
 	}
 }
 
+// Run executes the check_spec_conformance tool call and returns package conformance results as JSON.
+//
+// The call input must be a JSON-encoded checkSpecConformanceParams value. Run returns "{}" when no packages are eligible. Failures before package checking starts
+// are returned as error tool results; once package checking starts, package-scoped failures are reported in the JSON result.
 func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolCall) llmstream.ToolResult {
 	var params checkSpecConformanceParams
 	if err := json.Unmarshal([]byte(call.Input), &params); err != nil {
@@ -286,11 +324,15 @@ func (t *toolCheckSpecConformance) Run(ctx context.Context, call llmstream.ToolC
 	}
 }
 
+// The packageEligibilityOptions type controls how candidate packages are filtered before checks run.
 type packageEligibilityOptions struct {
-	onlyChanged       bool
-	explicitSelection bool
+	onlyChanged       bool // OnlyChanged keeps only packages whose package scope changed.
+	explicitSelection bool // ExplicitSelection disables CAS reuse and makes missing SPEC.md an error.
 }
 
+// The findEligiblePackages method filters pkgs to the packages that should run SPEC.md conformance checks. It sorts pkgs in place by result key, skips packages
+// without SPEC.md unless explicitly selected, skips cached conforming packages unless explicitly selected, and applies the only_changed filter. Each returned entry
+// contains the result key and whether the package scope changed relative to changes.
 func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, changes repoChanges, options packageEligibilityOptions) ([]eligiblePackage, error) {
 	sort.Slice(pkgs, func(i, j int) bool {
 		return packageResultKey(pkgs[i].RelativeDir) < packageResultKey(pkgs[j].RelativeDir)
@@ -334,6 +376,8 @@ func (t *toolCheckSpecConformance) findEligiblePackages(pkgs []*gocode.Package, 
 	return eligible, nil
 }
 
+// The resolveRequestedPackages method resolves requested package names and removes duplicate package result keys. Entries may be module-relative package paths or
+// current-module import paths, and the first occurrence of each resolved package is preserved.
 func (t *toolCheckSpecConformance) resolveRequestedPackages(mod *gocode.Module, requested []string) ([]*gocode.Package, error) {
 	seen := make(map[string]struct{}, len(requested))
 	pkgs := make([]*gocode.Package, 0, len(requested))
@@ -353,6 +397,8 @@ func (t *toolCheckSpecConformance) resolveRequestedPackages(mod *gocode.Module, 
 	return pkgs, nil
 }
 
+// The resolveRequestedPackage method resolves raw as a module-relative package path or a current-module import path. It trims surrounding whitespace, rejects empty
+// or absolute paths, prefers relative-path resolution, and returns a loaded package that has a SPEC.md file.
 func (t *toolCheckSpecConformance) resolveRequestedPackage(mod *gocode.Module, raw string) (*gocode.Package, error) {
 	requested, err := normalizeRequestedPackage(raw)
 	if err != nil {
@@ -372,6 +418,9 @@ func (t *toolCheckSpecConformance) resolveRequestedPackage(mod *gocode.Module, r
 	return pkg, nil
 }
 
+// The resolveRequestedPackageRelative method resolves requested as a package directory in the current module.
+//
+// The returned package is loaded and guaranteed to have a SPEC.md file.
 func (t *toolCheckSpecConformance) resolveRequestedPackageRelative(mod *gocode.Module, requested string) (*gocode.Package, error) {
 	moduleAbsDir, _, packageRelDir, _, err := mod.ResolvePackageByRelativeDir(requested)
 	if err != nil {
@@ -391,6 +440,9 @@ func (t *toolCheckSpecConformance) resolveRequestedPackageRelative(mod *gocode.M
 	return pkg, nil
 }
 
+// The resolveRequestedPackageImport method resolves requested as an import path in the current module.
+//
+// The returned package is loaded and guaranteed to have a SPEC.md file.
 func (t *toolCheckSpecConformance) resolveRequestedPackageImport(mod *gocode.Module, requested string) (*gocode.Package, error) {
 	moduleAbsDir, _, _, fqImportPath, err := mod.ResolvePackageByImport(requested)
 	if err != nil {
@@ -430,6 +482,8 @@ func normalizeRequestedPackage(raw string) (string, error) {
 	return requested, nil
 }
 
+// The checkEligiblePackages method checks all eligible packages and returns results keyed by package result key. Checks run concurrently up to maxConcurrency, or
+// defaultMaxConcurrency when maxConcurrency is less than one. Package-scoped failures are recorded in their package results.
 func (t *toolCheckSpecConformance) checkEligiblePackages(ctx context.Context, moduleAbsDir string, eligible []eligiblePackage, base comparisonBase, changes repoChanges) map[string]packageCheckResult {
 	maxConcurrency := t.maxConcurrency
 	if maxConcurrency <= 0 {
@@ -461,6 +515,9 @@ func (t *toolCheckSpecConformance) checkEligiblePackages(ctx context.Context, mo
 	return results
 }
 
+// The checkPackage method runs one package's SPEC.md conformance check and returns its machine-readable result. It builds diff context, invokes the package-check
+// runner, validates the runner's final JSON, and records or clears cached conformance after a valid verdict. Failures before a valid verdict are returned in Error,
+// while CAS failures after a valid verdict are appended to PostcheckError.
 func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDir string, pkg eligiblePackage, base comparisonBase, changes repoChanges) packageCheckResult {
 	// Once package checking begins, package-scoped failures stay in the per-package result
 	// so partial successes and CAS writes are still surfaced to the caller.
@@ -509,6 +566,9 @@ func (t *toolCheckSpecConformance) checkPackage(ctx context.Context, moduleAbsDi
 	return result
 }
 
+// runPackageCheckWithSubagent checks one package for SPEC.md conformance by running a limited package-mode subagent. It returns the package's JSON verdict, adding
+// follow-up analysis for nonconforming results when available. Failures before a valid verdict is produced are returned as errors; analysis failures after a nonconforming
+// verdict are encoded in the returned result as postcheck errors.
 func (t *toolCheckSpecConformance) runPackageCheckWithSubagent(ctx context.Context, req packageCheckRequest) (string, error) {
 	if t.agentInvoker == nil {
 		return "", fmt.Errorf("check_spec_conformance agent unavailable")
@@ -608,11 +668,13 @@ func runPackageCheckAgentTurn(ctx context.Context, subagent *agent.Agent, messag
 	return agent.CollectFinalAssistantText(ctx, subagent.SendUserMessage(ctx, message))
 }
 
+// The labeledSubAgentCreator type wraps a subagent creator and applies a stable label to every created subagent.
 type labeledSubAgentCreator struct {
-	base  agent.SubAgentCreator
-	label string
+	base  agent.SubAgentCreator // Base is the creator that performs the actual subagent construction.
+	label string                // Label is the value assigned to the created subagent.
 }
 
+// New delegates to the wrapped creator after applying c.label as the subagent label.
 func (c labeledSubAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...agent.NewOptions) (*agent.Agent, error) {
 	if len(options) == 0 {
 		return c.base.New(systemPrompt, tools, agent.NewOptions{SubagentLabel: c.label})
@@ -623,6 +685,7 @@ func (c labeledSubAgentCreator) New(systemPrompt string, tools []llmstream.Tool,
 	return c.base.New(systemPrompt, tools, forwarded...)
 }
 
+// The buildPackageCheckInstructions function returns first-turn instructions for a package-check subagent to produce a strict JSON SPEC.md conformance verdict.
 func buildPackageCheckInstructions(req packageCheckRequest) string {
 	var body strings.Builder
 	body.WriteString("Use the $spec-md check-conformance workflow for this package.\n")
@@ -672,6 +735,8 @@ func buildPackageCheckInstructions(req packageCheckRequest) string {
 	return body.String()
 }
 
+// The buildPackageAnalysisInstructions function returns second-turn instructions for adding decision-oriented analysis to a nonconforming package verdict without
+// changing the verdict itself.
 func buildPackageAnalysisInstructions(req packageCheckRequest, verdict packageCheckResult) string {
 	verdictJSON, err := marshalPackageCheckResult(verdict)
 	if err != nil {
@@ -706,6 +771,7 @@ func buildPackageAnalysisInstructions(req packageCheckRequest, verdict packageCh
 	return body.String()
 }
 
+// The describe method returns human-readable comparison-base text, shortening the commit hash and including branch context when it is known.
 func (b comparisonBase) describe() string {
 	if b.ParentBranch != "" {
 		return fmt.Sprintf("branch %s, parent branch %s, compare on-disk state against comparison-base commit %s", b.Branch, b.ParentBranch, shortCommit(b.Commit))
@@ -713,6 +779,7 @@ func (b comparisonBase) describe() string {
 	return shortCommit(b.Commit)
 }
 
+// computeSpecDiffContext returns formatted SPEC.md implementation-diff context for pkg. It returns an empty string when the package spec has no implementation diffs.
 func computeSpecDiffContext(pkg *gocode.Package) (string, error) {
 	specPath := filepath.Join(pkg.AbsolutePath(), "SPEC.md")
 	spec, err := specmd.Read(specPath)
@@ -735,6 +802,8 @@ func computeSpecDiffContext(pkg *gocode.Package) (string, error) {
 	return strings.TrimRight(buf.String(), "\n"), nil
 }
 
+// The determineComparisonBase method selects the git commit used as the diff baseline for a conformance run. It requires a named current branch and a configured
+// heuristic-base helper, and returns the current branch, optional parent branch, and comparison-base commit.
 func (t *toolCheckSpecConformance) determineComparisonBase(ctx context.Context, repoAbsDir string) (comparisonBase, error) {
 	branch, err := t.git.Output(ctx, repoAbsDir, "branch", "--show-current")
 	if err != nil {
@@ -764,6 +833,8 @@ func (t *toolCheckSpecConformance) determineComparisonBase(ctx context.Context, 
 	}, nil
 }
 
+// The collectRepoChanges method returns repository paths changed since baseCommit, split into tracked and untracked paths. It includes uncommitted changes, requires
+// a configured changed-paths helper, and reports paths relative to repoAbsDir.
 func (t *toolCheckSpecConformance) collectRepoChanges(ctx context.Context, repoAbsDir string, baseCommit string) (repoChanges, error) {
 	if t.changedPaths == nil {
 		return repoChanges{}, fmt.Errorf("collect repo changes: changed-paths helper unavailable")
@@ -808,6 +879,9 @@ func packageHasChanges(pkg *gocode.Package, changes repoChanges) (bool, error) {
 	return len(trackedPaths) > 0 || len(untrackedPaths) > 0, nil
 }
 
+// The buildPackageDiff method returns the diff context for pkg relative to baseCommit.
+//
+// The diff includes tracked changes from git and synthesized diffs for untracked files in the package scope.
 func (t *toolCheckSpecConformance) buildPackageDiff(ctx context.Context, repoAbsDir string, pkg *gocode.Package, baseCommit string, changes repoChanges) (string, error) {
 	trackedPaths, untrackedPaths, err := packageChangedPaths(pkg, changes)
 	if err != nil {
@@ -903,6 +977,8 @@ func packageChangedPaths(pkg *gocode.Package, changes repoChanges) ([]string, []
 	return filterPackagePaths(scope, changes.tracked), filterPackagePaths(scope, changes.untracked), nil
 }
 
+// newPackageScope builds the path scope used to attribute repository changes to pkg. The scope uses the default Go code unit and excludes descendant package and
+// hidden-directory subtrees discovered on disk or from tracked changes.
 func newPackageScope(pkg *gocode.Package, changes repoChanges) (*packagePathScope, error) {
 	codeUnitScope, err := codeunit.DefaultGoCodeUnit(pkg.AbsolutePath())
 	if err != nil {
@@ -929,6 +1005,8 @@ func newPackageScope(pkg *gocode.Package, changes repoChanges) (*packagePathScop
 	}, nil
 }
 
+// descendantPackageDirsOnDisk returns descendant directories under pkg that contain Go files. Returned directories are module-relative slash paths. It excludes
+// pkg itself, skips testdata descendants, and does not descend into reported package directories.
 func descendantPackageDirsOnDisk(pkg *gocode.Package) ([]string, error) {
 	rootAbsDir := pkg.AbsolutePath()
 	moduleAbsDir := pkg.Module.AbsolutePath
@@ -970,6 +1048,8 @@ func descendantPackageDirsOnDisk(pkg *gocode.Package) ([]string, error) {
 	return descendantDirs, nil
 }
 
+// descendantHiddenDirsOnDisk returns hidden descendant directories that currently exist under pkg. Returned directories are module-relative slash paths. The package
+// root itself is not included.
 func descendantHiddenDirsOnDisk(pkg *gocode.Package) ([]string, error) {
 	rootAbsDir := pkg.AbsolutePath()
 	moduleAbsDir := pkg.Module.AbsolutePath
@@ -1039,6 +1119,8 @@ func filterPackagePaths(scope *packagePathScope, relPaths []string) []string {
 	return filtered
 }
 
+// The pathInPackage function reports whether a repository-relative path belongs to scope. Existing paths are checked with the code unit; missing paths are checked
+// against the package directory and excluded subtrees.
 func pathInPackage(scope *packagePathScope, relPath string) bool {
 	absPath := filepath.Join(scope.moduleAbsDir, filepath.FromSlash(relPath))
 	if scope.codeUnit.Includes(absPath) {
@@ -1077,6 +1159,8 @@ func pathWithinRelativeDir(relPath string, relDir string) bool {
 	return relPath == relDir || strings.HasPrefix(relPath, relDir+"/")
 }
 
+// compactRelativeDirs returns a sorted minimal set of non-root relative directories. It removes duplicates and drops directories already covered by an included
+// ancestor.
 func compactRelativeDirs(relDirs []string) []string {
 	if len(relDirs) == 0 {
 		return nil
@@ -1114,6 +1198,8 @@ func compactRelativeDirs(relDirs []string) []string {
 	return compacted
 }
 
+// hiddenAncestorDirs returns hidden ancestor directories of relPath below packageRelDir. Returned directories are module-relative slash paths. It returns nil when
+// relPath is outside packageRelDir.
 func hiddenAncestorDirs(relPath string, packageRelDir string) []string {
 	relPath = filepath.ToSlash(relPath)
 	packageRelDir = normalizeRelativeDir(packageRelDir)
@@ -1270,6 +1356,8 @@ func parseFinalPackageCheckResult(answer string, hasDiff bool) (packageCheckResu
 	})
 }
 
+// parsePackageAnalysisResult extracts a package-check JSON object from answer and validates it as follow-up analysis for verdict. The result must keep the package
+// nonconforming, preserve the original issues, and add analysis text to each issue.
 func parsePackageAnalysisResult(answer string, verdict packageCheckResult) (packageCheckResult, error) {
 	payload := extractJSONObject(answer)
 	if payload == "" {
@@ -1298,6 +1386,8 @@ func parsePackageAnalysisResult(answer string, verdict packageCheckResult) (pack
 	return analysisResult, nil
 }
 
+// The extractJSONObject function extracts an object-shaped JSON payload from raw, fenced, or text-wrapped model output. It returns an empty string when no such
+// payload is found; callers are responsible for JSON decoding.
 func extractJSONObject(answer string) string {
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
@@ -1357,6 +1447,8 @@ func decodePackageCheckResult(payload string) (packageCheckResult, error) {
 	return result, nil
 }
 
+// The validatePackageCheckResult function verifies that result has a permitted package-result shape and returns the normalized result. When options.hasDiff is set
+// to false, it marks all reported nonconformances as latent.
 func validatePackageCheckResult(result packageCheckResult, options packageResultValidationOptions) (packageCheckResult, error) {
 	if result.Error != "" {
 		if !options.allowError {
@@ -1405,6 +1497,7 @@ func validatePackageCheckResult(result packageCheckResult, options packageResult
 	return result, nil
 }
 
+// The validateAnalysisMatchesVerdict function reports whether analysisResult preserves verdict and only adds analysis text.
 func validateAnalysisMatchesVerdict(verdict packageCheckResult, analysisResult packageCheckResult) error {
 	if verdict.Conforms == nil || *verdict.Conforms {
 		return fmt.Errorf("analysis requested for conforming verdict")
@@ -1453,6 +1546,8 @@ func clearPackageCheckAnalysis(result packageCheckResult) packageCheckResult {
 	return result
 }
 
+// formatPackageCheckResultBlock formats a package-check result for package-slot display. It renders errors, conforming verdicts, or nonconforming issues in human-readable
+// form and omits analysis text.
 func formatPackageCheckResultBlock(result packageCheckResult) llmstream.Block {
 	if result.Error != "" {
 		return llmstream.Paragraph{
@@ -1540,6 +1635,7 @@ func retrieveConformanceState(pkg *gocode.Package) (bool, bool, error) {
 	return casconformance.Retrieve(db, pkg)
 }
 
+// The storeConformanceState method records that pkg conforms to its SPEC.md in CAS.
 func (t *toolCheckSpecConformance) storeConformanceState(pkg *gocode.Package) error {
 	db, casRoot, err := conformanceCASDB(pkg)
 	if err != nil {
@@ -1556,6 +1652,9 @@ func (t *toolCheckSpecConformance) storeConformanceState(pkg *gocode.Package) er
 	return casconformance.Store(db, pkg, true)
 }
 
+// The deleteConformanceState method removes cached SPEC conformance metadata for pkg.
+//
+// Deleting from a missing CAS root is a no-op.
 func (t *toolCheckSpecConformance) deleteConformanceState(pkg *gocode.Package) error {
 	db, casRoot, err := conformanceCASDB(pkg)
 	if err != nil {
@@ -1667,6 +1766,8 @@ func formatCompactCheckSpecConformanceSummaryBlock(summary CheckSpecConformanceS
 	return llmstream.Paragraph{Lines: lines}
 }
 
+// Output runs git with args in repoAbsDir and returns the command's combined output. It honors ctx and returns an error with the git invocation and command output
+// when the command fails.
 func (execGitRunner) Output(ctx context.Context, repoAbsDir string, args ...string) (string, error) {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
@@ -1703,12 +1804,16 @@ func subAgentCreatorFromContextSafe(ctx context.Context) (creator agent.SubAgent
 
 var checkSpecConformancePresenterInstance llmstream.Presenter = checkSpecConformancePresenter{}
 
+// The checkSpecConformancePresenter type renders check_spec_conformance progress, summaries, and package subagent results.
 type checkSpecConformancePresenter struct{}
 
+// SubagentFinalMessage formats a package-check subagent's final JSON as human-readable status instead of raw JSON.
 func (checkSpecConformancePresenter) SubagentFinalMessage(_ llmstream.ToolCall, _ string, finalMessage string) llmstream.Block {
 	return formatCheckSpecConformancePackageFinalMessage(finalMessage)
 }
 
+// Present returns the progress or completion presentation for a check_spec_conformance tool call. A nil result produces the in-progress presentation; a successful
+// result may include a compact summary body.
 func (checkSpecConformancePresenter) Present(call llmstream.ToolCall, result *llmstream.ToolResult) llmstream.Presentation {
 	action := "Checking SPEC conformance"
 	if result != nil {

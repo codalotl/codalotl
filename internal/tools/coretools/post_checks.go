@@ -6,19 +6,37 @@ import (
 	"strings"
 )
 
+// ToolPostChecks configures optional post-change hooks for file-mutating tools.
+//
+// Hooks run only for changes that resolve to one directory inside the sandbox. When both hooks are set, RunDiagnostics runs before FixLints.
 type ToolPostChecks struct {
+	// RunDiagnostics checks the changed target directory and returns text to append to the tool result.
+	//
+	// sandboxDir is the sandbox root, targetDir is the directory containing the changed file, and a non-nil error is reported as a post-check failure.
 	RunDiagnostics func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
-	FixLints       func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
+
+	// FixLints runs lint fixes for the changed target directory and returns text to append to the tool result.
+	//
+	// sandboxDir is the sandbox root, targetDir is the directory containing the changed file, and a non-nil error is reported as a post-check failure.
+	FixLints func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
 }
 
+// ApplyPatchPostChecks is an alias for ToolPostChecks that names optional post-change hooks for the apply_patch tool.
 type ApplyPatchPostChecks = ToolPostChecks
+
+// EditPostChecks is an alias for ToolPostChecks that names optional post-change hooks for the edit tool.
 type EditPostChecks = ToolPostChecks
+
+// WritePostChecks is an alias for ToolPostChecks that names optional post-change hooks for the write tool.
 type WritePostChecks = ToolPostChecks
 
 func shouldRunPostChecks(postChecks *ToolPostChecks) bool {
 	return postChecks != nil && (postChecks.RunDiagnostics != nil || postChecks.FixLints != nil)
 }
 
+// The runPostChecks function runs configured post-change hooks for changed files in a single sandbox directory. It ignores changed paths outside the sandbox and
+// treats relative paths as sandbox-relative. If no hooks are configured, no eligible paths remain, or eligible paths span multiple directories, it returns no output
+// and no error. RunDiagnostics runs before FixLints, and the first hook error stops processing and is returned.
 func runPostChecks(ctx context.Context, sandboxAbsDir string, postChecks *ToolPostChecks, changedPaths []string) ([]string, error) {
 	if len(changedPaths) == 0 || !shouldRunPostChecks(postChecks) {
 		return nil, nil
@@ -78,6 +96,8 @@ func runPostChecks(ctx context.Context, sandboxAbsDir string, postChecks *ToolPo
 	return outputs, nil
 }
 
+// The isPathWithinSandbox function reports whether path is the sandbox root or one of its descendants. Relative paths are interpreted from sandboxAbsDir, and the
+// check is lexical rather than symlink-aware.
 func isPathWithinSandbox(sandboxAbsDir string, path string) bool {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(sandboxAbsDir, path)

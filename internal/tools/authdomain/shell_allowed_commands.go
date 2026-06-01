@@ -21,6 +21,7 @@ const (
 // ErrCommandMatcherNotFound is returned when attempting to remove a matcher that is not registered.
 var ErrCommandMatcherNotFound = errors.New("command matcher not found")
 
+// CommandMatcher describes a shell command pattern used for authorization decisions.
 type CommandMatcher struct {
 	// main command. ex: "go"
 	Command string
@@ -36,10 +37,10 @@ type CommandMatcher struct {
 //
 // The zero value ShellAllowedCommands{} has empty lists.
 type ShellAllowedCommands struct {
-	mu        sync.RWMutex
-	blocked   map[string]CommandMatcher
-	dangerous map[string]CommandMatcher
-	safe      map[string]CommandMatcher
+	mu        sync.RWMutex              // Mu protects blocked, dangerous, and safe.
+	blocked   map[string]CommandMatcher // Blocked stores matchers that classify matching commands as blocked unless a safe matcher takes precedence.
+	dangerous map[string]CommandMatcher // Dangerous stores matchers that classify matching commands as requiring extra authorization.
+	safe      map[string]CommandMatcher // Safe stores matchers that classify matching commands as safe before blocked or dangerous matchers are considered.
 }
 
 // NewShellAllowedCommands creates a new ShellAllowedCommands with default blocked/dangerous/safe lists.
@@ -367,6 +368,7 @@ func (s *ShellAllowedCommands) RemoveSafe(m CommandMatcher) error {
 	return nil
 }
 
+// ensureMapsLocked initializes nil matcher maps so the zero value can be mutated. The caller must hold s.mu for writing.
 func (s *ShellAllowedCommands) ensureMapsLocked() {
 	if s.blocked == nil {
 		s.blocked = make(map[string]CommandMatcher)
@@ -427,6 +429,8 @@ func matcherKey(m CommandMatcher) string {
 	return builder.String()
 }
 
+// matcherLess reports whether a sorts before b in deterministic command matcher order. The order compares Command, then CommandArgsPrefix, then Flags lexicographically,
+// with shorter slices first when all compared elements are equal.
 func matcherLess(a, b CommandMatcher) bool {
 	if a.Command != b.Command {
 		return a.Command < b.Command

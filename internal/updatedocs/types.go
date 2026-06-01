@@ -11,6 +11,12 @@ import (
 	"strings"
 )
 
+// updateTypeDoc applies the documentation comments from ps to the matching type declaration in pkg, including comments for struct fields and interface methods.
+//
+// The first type spec in ps identifies the target type. updateTypeDoc panics if ps is not a validated type snippet containing a type declaration. It returns an
+// updated, formatted file when at least one comment is applied and returns a SnippetError when the target type cannot be found, when no comments can be applied,
+// or when a comment is invalid for the target. A non-nil error reports fatal parse, formatting, persistence, or line-edit failures. When reflow is enabled, updateTypeDoc
+// also normalizes block and struct spacing for the updated type. It may mutate ps while consuming comments and recording partial rejections.
 func updateTypeDoc(pkg *gocode.Package, ps *parsedSnippet, options Options) (*gocode.File, *SnippetError, error) {
 	if ps.kind != snippetKindType {
 		panic("expected type kind")
@@ -647,6 +653,8 @@ func identsKey(idents []*ast.Ident) string {
 	}
 }
 
+// fieldKey returns a stable key for field. Named fields use identsKey. Unnamed fields derive their key from the embedded type or interface type term, ignoring generic
+// type arguments. fieldKey panics if field has an unsupported type shape.
 func fieldKey(field *ast.Field) string {
 	if len(field.Names) > 0 {
 		return identsKey(field.Names)

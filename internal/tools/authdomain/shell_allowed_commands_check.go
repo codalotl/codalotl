@@ -72,6 +72,8 @@ func matchAny(argv []string, matchers map[string]CommandMatcher) bool {
 	return false
 }
 
+// commandMatches reports whether argv satisfies m. It requires argv[0] to equal m.Command, m.CommandArgsPrefix to match immediately after it, and every required
+// flag to be present after the command.
 func commandMatches(m CommandMatcher, argv []string) bool {
 	if len(argv) == 0 || m.Command != argv[0] {
 		return false
@@ -114,6 +116,9 @@ func flagPresent(args []string, flag string) bool {
 	return false
 }
 
+// isInscrutableCommand reports whether argv contains shell syntax that Check cannot classify reliably.
+//
+// It treats shell control operators, pipes, backgrounding, xargs, command substitution, and process substitution as inscrutable.
 func isInscrutableCommand(argv []string) bool {
 	inscrutableTokens := map[string]struct{}{
 		"|":  {},
@@ -146,6 +151,10 @@ func isInscrutableCommand(argv []string) bool {
 	return false
 }
 
+// isOutsideSandboxCommand reports whether command lexically names an executable outside the sandbox.
+//
+// It returns true for absolute paths and parent-directory references such as ".." or "../bin/tool"; ordinary command names and paths below the current directory
+// return false.
 func isOutsideSandboxCommand(command string) bool {
 	if command == "" {
 		return false
@@ -170,6 +179,10 @@ func isOutsideSandboxCommand(command string) bool {
 	return false
 }
 
+// The unwrapShellCommand function recognizes simple bash, sh, and zsh -c wrappers and returns the command string as an argv slice.
+//
+// The handled result reports whether argv was a shell-wrapper form this function could classify. If handled and inscrutable are both true, the wrapper was recognized
+// but could not be parsed safely. Simple command strings are split with strings.Fields; shell quoting and escapes are treated as inscrutable.
 func unwrapShellCommand(argv []string) ([]string, bool, bool) {
 	if len(argv) < 2 {
 		return nil, false, false
@@ -211,6 +224,8 @@ func unwrapShellCommand(argv []string) ([]string, bool, bool) {
 	return fields, true, false
 }
 
+// shellCommandStringIndex returns the argv index that contains a shell -c command string. It accepts login flags before -c and reports handled with inscrutable
+// when an unknown shell option prevents safe parsing.
 func shellCommandStringIndex(argv []string) (int, bool, bool) {
 	if len(argv) < 2 {
 		return -1, false, false
