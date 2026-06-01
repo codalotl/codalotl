@@ -71,11 +71,13 @@ func GetBasicPrompt() string {
 	return renderFragment(strings.TrimSpace(basicDefault), data)
 }
 
+// GoPackageModePromptKind identifies which package-mode prompt variant to render.
 type GoPackageModePromptKind string
 
+// Package mode prompt kinds select the package-mode instructions appended to the base prompt.
 const (
-	GoPackageModePromptKindFull        GoPackageModePromptKind = "full"
-	GoPackageModePromptKindUpdateUsage GoPackageModePromptKind = "update_usage"
+	GoPackageModePromptKindFull        GoPackageModePromptKind = "full"         // GoPackageModePromptKindFull selects the full package-mode prompt.
+	GoPackageModePromptKindUpdateUsage GoPackageModePromptKind = "update_usage" // GoPackageModePromptKindUpdateUsage selects the update-usage subagent prompt.
 )
 
 // GetGoPackageModeModePrompt returns a system prompt using the globally configured agent name and model that extends GetFullPrompt with a package mode of the requested
@@ -132,9 +134,10 @@ func modelDisplayName(modelID llmmodel.ModelID) string {
 	return name
 }
 
+// FileEditTools contains prompt text for the file editing tools available to a model.
 type fileEditTools struct {
-	list      string
-	afterEach string
+	list      string // List describes the available file editing tools.
+	afterEach string // AfterEach describes an edit operation for follow-up instructions.
 }
 
 func decideFileEditTools(modelID llmmodel.ModelID) fileEditTools {
