@@ -34,6 +34,7 @@ Additional instructions:
 - Batch 3 no-ops: `internal/gocode`, `internal/gocodetesting`, `internal/gotypes`.
 - Batch 4 skipped for refactor-tool failures with no file changes: `internal/llmstream` (token budget exceeded).
 - Batch 5 no-ops: `internal/q/semver`.
+- Batch 6 no-ops: `internal/reorgbot`.
 
 ### Refactor batches
 
@@ -106,11 +107,11 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/q/uni` - added package docs and important iterator docs; `go test ./internal/q/uni` passed.
 
 #### Batch 6: skills/tools/tui/update packages
-- `github.com/codalotl/codalotl/internal/reorgbot`
-- `github.com/codalotl/codalotl/internal/simplelogger`
-- `github.com/codalotl/codalotl/internal/skills`
-- `github.com/codalotl/codalotl/internal/specmd`
-- `github.com/codalotl/codalotl/internal/subscriptions/openaisub`
+- [DONE] `github.com/codalotl/codalotl/internal/reorgbot` - no file changes; `go test ./internal/reorgbot` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/simplelogger` - added package docs; `go test ./internal/simplelogger` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/skills` - added package docs and important skill install/validation docs; `go test ./internal/skills` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/specmd` - added important SPEC.md parsing/conformance docs; `go test ./internal/specmd` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/subscriptions/openaisub` - added important subscription auth/token docs; `go test ./internal/subscriptions/openaisub` passed.
 - `github.com/codalotl/codalotl/internal/tools/authdomain`
 - `github.com/codalotl/codalotl/internal/tools/cli`
 - `github.com/codalotl/codalotl/internal/tools/coretools`
@@ -147,3 +148,4 @@ TBD.
 - Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
 - Batch 4 complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, `internal/noninteractive/integration`, `internal/noninteractive/integration/cmd/create`, and `internal/prompt`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
 - Batch 5 complete. Accepted source changes for `internal/q/cas`, `internal/q/cascade`, `internal/q/cli`, `internal/q/clipboard`, `internal/q/cmdrunner`, `internal/q/health`, `internal/q/remotemonitor`, `internal/q/sseclient`, `internal/q/termformat`, `internal/q/termformat/cmd`, `internal/q/tui`, `internal/q/tui/cmd`, `internal/q/tui/tuicontrols`, `internal/q/tui/tuicontrols/cmd/chatlog`, and `internal/q/uni`; `internal/q/semver` was a no-op; targeted tests for accepted/no-op packages pass.
+- Batch 6 in progress. `internal/reorgbot` was a no-op; accepted source changes for `internal/simplelogger`, `internal/skills`, `internal/specmd`, and `internal/subscriptions/openaisub`; targeted tests for accepted/no-op packages pass.
