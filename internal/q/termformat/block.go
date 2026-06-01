@@ -448,7 +448,8 @@ func buildStateTransition(target state) string {
 	return b.String()
 }
 
-// wrapStringToWidth wraps each line in str to at most width display columns. Existing newlines are preserved, and a nonpositive width disables wrapping.
+// wrapStringToWidth wraps each line in str to width display columns where possible. Existing newlines are preserved, and a nonpositive width disables wrapping.
+// Indivisible grapheme clusters wider than width are emitted unchanged and can exceed width.
 func wrapStringToWidth(str string, width int) string {
 	if str == "" {
 		return ""
@@ -481,8 +482,8 @@ func wrapStringToWidth(str string, width int) string {
 	return strings.Join(out, "\n")
 }
 
-// wrapLineToWidth wraps line to at most width display columns per output line. ANSI escape sequences do not count toward width, and wrapping occurs at grapheme
-// cluster boundaries rather than word boundaries.
+// wrapLineToWidth wraps line to width display columns where possible. ANSI escape sequences do not count toward width, and wrapping occurs at grapheme cluster boundaries
+// rather than word boundaries. Indivisible grapheme clusters wider than width are emitted unchanged and can exceed width.
 func wrapLineToWidth(line string, width int) []string {
 	if line == "" {
 		return []string{""}
@@ -700,10 +701,10 @@ type BlockStyle struct {
 	PaddingBottom      int                // PaddingBottom is the number of rows to add above the bottom border.
 	Padding            int                // Padding is used for Padding{Left,Right,Top,Bottom}, if that padding is 0.
 
-	// If present, the final styled block will be exactly TotalWidth, including inner text, margin, padding, and border. If the text's block width + margin + padding
-	// + border is less than TotalWidth, spaces will be added to each line of the text using BlockNormalizeMode until the width is achieved. If TotalWidth is too small
-	// for the text+margin+padding+border, text is wrapped and the block is re-normalized using BlockNormalizeMode. If padding+margin+border is greater than TotalWidth,
-	// panic.
+	// If present, the final styled block will be exactly TotalWidth, including inner text, margin, padding, and border. If the text's block width plus margin, padding,
+	// and border is less than TotalWidth, spaces will be added to each line of the text using BlockNormalizeMode until the width is achieved. If TotalWidth is too small
+	// for the text, margin, padding, and border, text is wrapped and the block is re-normalized using BlockNormalizeMode. If padding, margin, and border are greater
+	// than TotalWidth, panic.
 	TotalWidth int
 
 	// If present, the final styled block will be at least MinTotalHeight. Rows with full of spaces will be added to text using BlockNormalizeMode until MinTotalHeight

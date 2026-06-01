@@ -134,10 +134,10 @@ func modelDisplayName(modelID llmmodel.ModelID) string {
 	return name
 }
 
-// FileEditTools contains prompt text for the file editing tools available to a model.
+// fileEditTools contains prompt text for the file editing tools available to a model.
 type fileEditTools struct {
-	list      string // List describes the available file editing tools.
-	afterEach string // AfterEach describes an edit operation for follow-up instructions.
+	list      string // list describes the available file editing tools.
+	afterEach string // afterEach describes an edit operation for follow-up instructions.
 }
 
 func decideFileEditTools(modelID llmmodel.ModelID) fileEditTools {

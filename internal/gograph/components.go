@@ -38,7 +38,7 @@ type sccState struct {
 	stack   []string                       // Stack contains nodes in the active depth-first search stack.
 	onStack map[string]bool                // OnStack reports whether a node is currently in stack.
 	disc    map[string]int                 // Disc maps each visited node to its discovery index.
-	low     map[string]int                 // Low maps each visited node to the lowest discovery index reachable from it.
+	low     map[string]int                 // Low maps each visited node to the lowest discovery index reachable through DFS tree edges and edges to nodes still on stack.
 	index   int                            // Index is the next discovery index to assign.
 }
 

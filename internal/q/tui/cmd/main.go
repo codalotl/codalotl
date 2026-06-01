@@ -10,10 +10,10 @@ import (
 // model stores the state rendered by the terminal UI.
 type model struct {
 	width, height int    // Width and height are the latest terminal dimensions in cells.
-	runes         string // Runes is the last key input or control-key description shown by View.
+	runes         string // Runes is the key input or control-key description currently shown by View.
 }
 
-// Init prepares the model for a TUI session.
+// Init intentionally leaves the model unchanged.
 func (m *model) Init(t *tui.TUI) {
 
 }
@@ -47,7 +47,7 @@ func (m *model) Update(t *tui.TUI, msg tui.Message) {
 	}
 }
 
-// View returns a single-line rendering of the current terminal size and last input.
+// View returns a single-line rendering of the current terminal size and displayed input.
 func (m *model) View() string {
 	return fmt.Sprintf("hello world. width=%d height=%d runes='%s'", m.width, m.height, m.runes)
 }

@@ -16,8 +16,7 @@ var ErrEmptyCommand = errors.New("shell command argv is empty")
 //     or not add go to the safe list.
 //   - inscrutable is returned if we detect argv contains a set of pipes, subshells, xargs, or various other non-simple elements, which we don't support reasoning
 //     about.
-//   - a command is marked as dangerous if it does not match any list and argv[0] is a path-qualified command (absolute or uses ".."); this is treated as "outside
-//     sandbox" heuristically.
+//   - a command is marked as dangerous if it does not match any list and argv[0] lexically looks outside the current tree (absolute or uses "..").
 //   - a scrutable command that is on no list is 'none'.
 func (s *ShellAllowedCommands) Check(argv []string) (CommandCheckResult, error) {
 	if len(argv) == 0 {
@@ -151,7 +150,7 @@ func isInscrutableCommand(argv []string) bool {
 	return false
 }
 
-// isOutsideSandboxCommand reports whether command lexically names an executable outside the sandbox.
+// isOutsideSandboxCommand reports whether command has an absolute or parent-relative path shape.
 //
 // It returns true for absolute paths and parent-directory references such as ".." or "../bin/tool"; ordinary command names and paths below the current directory
 // return false.

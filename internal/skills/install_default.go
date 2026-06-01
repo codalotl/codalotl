@@ -184,8 +184,8 @@ func embeddedDefaultSkillManifest(skillName string) (map[string]defaultSkillMani
 }
 
 // installedDefaultSkillIsCurrent reports whether destSkillDir has the same entries and file contents as the embedded default skill named skillName. File modes are
-// not compared. Missing paths, non-directory destinations, missing or extra entries, type mismatches, and file-content differences are reported as not current with
-// no error. A non-nil error means the comparison could not be completed.
+// not compared. Missing paths, non-directory destinations, missing or extra entries, directory/file shape differences, and file-content differences are reported
+// as not current with no error. A non-nil error means the comparison could not be completed.
 func installedDefaultSkillIsCurrent(destSkillDir string, skillName string) (bool, error) {
 	manifest, err := embeddedDefaultSkillManifest(skillName)
 	if err != nil {

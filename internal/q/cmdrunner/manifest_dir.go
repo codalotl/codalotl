@@ -29,7 +29,7 @@ var defaultManifestFilenames = map[string][]string{
 
 // manifestDirResolver locates the nearest relevant language manifest directory for a path.
 type manifestDirResolver struct {
-	rootDir      string              // rootDir bounds upward searches and is returned when no manifest is found.
+	rootDir      string              // rootDir is returned when no manifest is found and stops searches that reach it.
 	langOverride string              // langOverride forces manifest lookup to use a specific language when non-empty.
 	manifestMap  map[string][]string // manifestMap maps language keys to candidate manifest filenames.
 }

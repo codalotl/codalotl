@@ -33,8 +33,12 @@ const (
 //  2. someStyle.Wrap("your text") -- mostly sugar over the above, but allows someStyle.Wrap(otherStyle.Wrap("your text")) without dup'ing reset
 //  3. someStyle.Apply("<bold>your text<reset> - more text") -- applies styles to mixed-style text. Canonicalizes result.
 type Style struct {
-	Foreground    Color    // Foreground selects the text foreground color; nil leaves it unchanged, and NoColor selects the terminal default.
-	Background    Color    // Background selects the text background color; nil leaves it unchanged, and NoColor selects the terminal default.
+	// Foreground selects the text foreground color; nil leaves it unchanged. NoColor is ignored by OpeningControlCodes/Wrap and clears existing foreground in Apply.
+	Foreground Color
+
+	// Background selects the text background color; nil leaves it unchanged. NoColor is ignored by OpeningControlCodes/Wrap and clears existing background in Apply.
+	Background Color
+
 	Bold          StyleSet // Bold controls bold text.
 	Italic        StyleSet // Italic controls italic text.
 	Underline     StyleSet // Underline controls underlined text.

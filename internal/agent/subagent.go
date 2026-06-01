@@ -28,10 +28,11 @@ func NewAgentCreator(options ...NewOptions) AgentCreator {
 
 // defaultAgentCreator constructs root agents using configured default options.
 type defaultAgentCreator struct {
-	defaults NewOptions // Defaults are applied to each new root agent unless overridden by call-specific options.
+	defaults NewOptions // Defaults are merged into each new root agent; NoStore stays true once set.
 }
 
-// New constructs a root Agent using the creator's default options unless options override them.
+// New constructs a root Agent using the creator's default options merged with call-specific options. NoStore remains true if either the defaults or call-specific
+// options set it.
 func (c *defaultAgentCreator) New(systemPrompt string, tools []llmstream.Tool, options ...NewOptions) (*Agent, error) {
 	opts := make([]NewOptions, 0, 1+len(options))
 	opts = append(opts, c.defaults)

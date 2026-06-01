@@ -96,8 +96,8 @@ func runPostChecks(ctx context.Context, sandboxAbsDir string, postChecks *ToolPo
 	return outputs, nil
 }
 
-// The isPathWithinSandbox function reports whether path is the sandbox root or one of its descendants. Relative paths are interpreted from sandboxAbsDir, and the
-// check is lexical rather than symlink-aware.
+// The isPathWithinSandbox function reports whether path is the sandbox root or lexically relative to it without a leading "..". Relative paths are interpreted from
+// sandboxAbsDir, and the check is lexical rather than symlink-aware.
 func isPathWithinSandbox(sandboxAbsDir string, path string) bool {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(sandboxAbsDir, path)

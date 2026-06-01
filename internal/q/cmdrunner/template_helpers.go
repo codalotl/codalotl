@@ -58,7 +58,7 @@ func (p *templateHelperProvider) relativeTo(path, base string) (string, error) {
 	return relative, nil
 }
 
-// repoDir returns the nearest containing Git repository directory for path.
+// repoDir returns the nearest containing Git repository directory for path, or rootDir if none is found before the search terminates.
 func (p *templateHelperProvider) repoDir(path string) (string, error) {
 	resolver := newManifestDirResolver(p.rootDir, p.inputs)
 	startDir := resolver.startDir(p.resolvePath(path))

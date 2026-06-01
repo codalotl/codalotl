@@ -7,10 +7,10 @@ import (
 	"time"
 )
 
-// Flag kind identifies the parser and destination pointer type for a registered flag.
+// flagKind identifies the parser and destination pointer type for a registered flag.
 type flagKind uint8
 
-// Flag kinds identify the supported flag value types.
+// flagKind constants identify the supported flag value types.
 const (
 	flagBool     flagKind = iota + 1 // Boolean flags parse bool values and may omit an explicit value.
 	flagString                       // String flags store raw string values.
@@ -26,14 +26,14 @@ type FlagSet struct {
 
 // flagDef stores the parser metadata and destination pointer for one registered flag.
 type flagDef struct {
-	name        string         // Name is the long flag name without the leading "--".
-	shorthand   rune           // Shorthand is the optional short flag rune without the leading "-"; zero means none.
-	usage       string         // Usage is the help text for the flag.
-	kind        flagKind       // Kind selects how raw values are parsed and which destination pointer is used.
-	boolPtr     *bool          // BoolPtr receives parsed values when Kind is flagBool.
-	stringPtr   *string        // StringPtr receives parsed values when Kind is flagString.
-	intPtr      *int           // IntPtr receives parsed values when Kind is flagInt.
-	durationPtr *time.Duration // DurationPtr receives parsed values when Kind is flagDuration.
+	name        string         // name is the long flag name without the leading "--".
+	shorthand   rune           // shorthand is the optional short flag rune without the leading "-"; zero means none.
+	usage       string         // usage is the help text for the flag.
+	kind        flagKind       // kind selects how raw values are parsed and which destination pointer is used.
+	boolPtr     *bool          // boolPtr receives parsed values when kind is flagBool.
+	stringPtr   *string        // stringPtr receives parsed values when kind is flagString.
+	intPtr      *int           // intPtr receives parsed values when kind is flagInt.
+	durationPtr *time.Duration // durationPtr receives parsed values when kind is flagDuration.
 }
 
 func newFlagSet() *FlagSet {
@@ -111,7 +111,7 @@ func (fs *FlagSet) Duration(name string, shorthand rune, def time.Duration, usag
 	return ptr
 }
 
-// Add registers def in fs's long-name and optional shorthand indexes.
+// add registers def in fs's long-name and optional shorthand indexes.
 func (fs *FlagSet) add(def *flagDef) {
 	if _, ok := fs.byLong[def.name]; ok {
 		panic("cli: duplicate flag: --" + def.name)
@@ -131,7 +131,7 @@ type activeFlags struct {
 	byShort map[rune]*flagDef   // Short-name index maps shorthand runes without "-" to active definitions.
 }
 
-// ActiveFlags returns the flags accepted for c: inherited persistent flags plus c's local flags.
+// activeFlags returns the flags accepted for c: inherited persistent flags plus c's local flags.
 func (c *Command) activeFlags() activeFlags {
 	byLong := map[string]*flagDef{}
 	byShort := map[rune]*flagDef{}
@@ -169,8 +169,8 @@ func addActiveFlag(byLong map[string]*flagDef, byShort map[rune]*flagDef, def *f
 
 // flagHelp is the presentation model for a flag in generated help.
 type flagHelp struct {
-	def  *flagDef // Def is the flag definition to display.
-	kind string   // Kind is the lower-case value type shown for the flag.
+	def  *flagDef // def is the flag definition to display.
+	kind string   // kind is the lower-case value type shown for the flag.
 }
 
 // flagsForHelp returns cmd's active flags in deterministic help order, excluding the reserved help flag.
@@ -198,7 +198,7 @@ func flagsForHelp(cmd *Command) []flagHelp {
 	return helps
 }
 
-// ParseAndSet looks up a flag, parses its value, stores it, and reports whether nextValue was consumed.
+// parseAndSet looks up a flag, parses its value, stores it, and reports whether nextValue was consumed.
 func (a activeFlags) parseAndSet(token string, hasDashDash bool, name string, shorthand rune, value *string, nextValue *string) (bool, error) {
 	var def *flagDef
 	if name != "" {

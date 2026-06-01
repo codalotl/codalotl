@@ -511,7 +511,7 @@ func stepEnabledOutsideInitial(step Step) bool {
 }
 
 // normalizeStepWidths ensures reflow-related steps carry the configured documentation width. It adds missing --width flags to reflow commands and, when reflow is
-// enabled, to spec-fmt commands. Existing invalid width flags are returned as errors, and non-positive widths use defaultReflowWidth.
+// enabled, to spec-fmt commands. Existing malformed width flags are returned as errors, and non-positive configured widths use defaultReflowWidth.
 func normalizeStepWidths(steps []Step, reflowWidth int) ([]Step, error) {
 	reflowWidth = normalizeReflowWidth(reflowWidth)
 
@@ -535,8 +535,8 @@ func normalizeStepWidths(steps []Step, reflowWidth int) ([]Step, error) {
 	return steps, nil
 }
 
-// normalizeStepCommandWidths ensures the step's check and fix commands have valid width arguments. It mutates step in place, skips nil commands, and returns an
-// error that identifies the command when an existing width argument is invalid.
+// normalizeStepCommandWidths ensures the step's check and fix commands include width arguments. It mutates step in place, skips nil commands, and returns an error
+// that identifies the command when an existing width argument is malformed.
 func normalizeStepCommandWidths(step *Step, reflowWidth int) error {
 	commands := []struct {
 		name string
@@ -571,8 +571,8 @@ func stepsEnableReflow(steps []Step) bool {
 	return false
 }
 
-// ensureWidthArg returns a command whose arguments include a --width flag. It validates any existing width flag, leaves commands that already set one unchanged,
-// and appends --width=<reflowWidth> to a shallow copy otherwise. Non-positive widths use defaultReflowWidth.
+// ensureWidthArg returns a command whose arguments include a --width flag. It parses any existing width flag, leaves commands that already set one unchanged, and
+// appends --width=<reflowWidth> to a shallow copy otherwise. Non-positive configured widths use defaultReflowWidth.
 func ensureWidthArg(c *cmdrunner.Command, reflowWidth int) (*cmdrunner.Command, error) {
 	if c == nil {
 		return nil, errors.New("command is nil")
@@ -593,8 +593,9 @@ func ensureWidthArg(c *cmdrunner.Command, reflowWidth int) (*cmdrunner.Command, 
 	return &cc, nil
 }
 
-// parseWidthFlag returns the value and argument index of a --width flag in args. It accepts both --width=N and --width N forms. If no width is present, it returns
-// ok=false and idx=-1. Duplicate flags, missing values, and non-integer values return an error.
+// parseWidthFlag returns the integer value and argument index of a --width flag in args. It accepts both --width=N and --width N forms. If no width is present,
+// it returns ok=false and idx=-1. Duplicate flags, missing values, and non-integer values return an error; integer values are not checked for semantic validity
+// here.
 func parseWidthFlag(args []string) (width int, idx int, ok bool, err error) {
 	width = 0
 	idx = -1

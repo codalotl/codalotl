@@ -242,7 +242,7 @@ type SpecDiff struct {
 // ImplementationDiffs finds differences between the public API declared in the SPEC.md and the actual public API in the corresponding Go package. It only checks
 // those identifiers defined in the SPEC.md - if the public API is a strict superset, no differences are returned. If no differences are found, nil is returned.
 //   - Only PublicAPIGoCodeBlocks are checked.
-//   - If PublicAPIGoCodeBlocks contains method bodies, they are ignored (we're only checking the interface).
+//   - If PublicAPIGoCodeBlocks contains function or method declaration bodies, they are ignored (we're only checking the interface).
 //   - That being said, variable declarations must match (and an anonymous function can be assigned to a variable - it is checked in this case).
 //   - If the corresponding Go package cannot be loaded (ex: syntax error; no Go files), an error is returned.
 func (s *Spec) ImplementationDiffs() ([]SpecDiff, error) {
@@ -376,13 +376,13 @@ func loadImplPackageForSpec(specAbsPath string) (*gocode.Package, error) {
 // specDecl represents one package-level declaration extracted from a public API Go code block.
 type specDecl struct {
 	IDs      []string // The identifiers are the package-level symbols introduced by the declaration.
-	Snippet  string   // The snippet is the SPEC.md source for the declaration, including attached documentation and excluding function bodies.
+	Snippet  string   // The snippet is the SPEC.md source for the declaration, including attached documentation and excluding function declaration bodies.
 	SpecLine int      // The line number is the 1-based SPEC.md line where the declaration or its doc comment begins.
 }
 
 // parseSpecDeclsFromCodeBlock parses a Go code fence as a package fragment and extracts its package-level declarations. It returns one specDecl for each supported
-// declaration that introduces identifiers, with snippets including attached declaration documentation and excluding function bodies. codeStartLine is the 1-based
-// SPEC.md line of the first code line and is used to report each declaration's source line.
+// declaration that introduces identifiers, with snippets including attached declaration documentation and excluding function declaration bodies. codeStartLine is
+// the 1-based SPEC.md line of the first code line and is used to report each declaration's source line.
 func parseSpecDeclsFromCodeBlock(code string, codeStartLine int) ([]specDecl, error) {
 	f, fset, wrapper, err := parseGoFileFragmentWithSource(code)
 	if err != nil {
@@ -450,8 +450,8 @@ func docGroupForDecl(d ast.Decl) *ast.CommentGroup {
 	}
 }
 
-// specSnippetForDecl returns the source snippet for d from wrapper, including any attached declaration doc comment. Function snippets stop at the end of the signature
-// so bodies are omitted, and invalid positions are returned as errors.
+// specSnippetForDecl returns the source snippet for d from wrapper, including any attached declaration doc comment. Function declaration snippets stop at the end
+// of the signature so bodies are omitted, and invalid positions are returned as errors.
 func specSnippetForDecl(d ast.Decl, fset *token.FileSet, wrapper []byte) (string, error) {
 	start := d.Pos()
 	if doc := docGroupForDecl(d); doc != nil {
@@ -517,8 +517,8 @@ func makeWrappedGoFileSource(code string) []byte {
 	return b.Bytes()
 }
 
-// stripCommentsAndBodies removes documentation/comment attachments and function bodies from d in place. It is used before structural conformance comparisons that
-// should ignore documentation and executable code.
+// stripCommentsAndBodies removes documentation/comment attachments and function declaration bodies from d in place. It is used before structural conformance comparisons
+// that should ignore documentation and executable code; function literals inside value declarations are not stripped.
 func stripCommentsAndBodies(d ast.Decl) {
 	ast.Inspect(d, func(n ast.Node) bool {
 		switch nn := n.(type) {

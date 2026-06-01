@@ -35,7 +35,7 @@ var subAgentCreatorFromContext = agent.SubAgentCreatorFromContext
 type toolChangeAPI struct {
 	sandboxAbsDir string                        // The sandbox root is used to resolve package paths and constrain changes.
 	authorizer    authdomain.Authorizer         // The authorizer controls current-package reads and upstream-package writes.
-	toolset       toolsetinterface.Toolset      // The toolset is supplied to the package-update subagent.
+	toolset       toolsetinterface.Toolset      // The toolset is retained for compatibility with existing builders.
 	agentInvoker  toolsetinterface.AgentInvoker // The agent invoker creates or invokes the package-update subagent.
 	model         llmmodel.ModelID              // The model is used by the package-update subagent.
 
@@ -54,7 +54,7 @@ type changeAPIParams struct {
 
 // ChangeAPIToolOptions configures optional dependencies for NewChangeAPITool.
 type ChangeAPIToolOptions struct {
-	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker overrides the default subagent invoker when set.
+	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker invokes subagents; nil makes change_api unavailable.
 }
 
 // The changeAPIPresenter type formats change_api tool progress and results.
@@ -64,7 +64,7 @@ type changeAPIPresenter struct{}
 //
 // authorizer should be a sandbox authorizer (not a package-jail authorizer). If the calling agent is jailed, pass authorizer.WithoutCodeUnit().
 //
-// toolset is injected into the subagent that performs the package update (ex: toolsets.PackageAgentTools).
+// toolset is retained for compatibility with existing builders; registry-backed subagent invocation is driven by AgentInvoker.
 func NewChangeAPITool(pkgDirAbsPath string, authorizer authdomain.Authorizer, toolset toolsetinterface.Toolset, model llmmodel.ModelID, lintSteps []lints.Step, options ...ChangeAPIToolOptions) llmstream.Tool {
 	sandboxAbsDir := authorizer.SandboxDir()
 	var option ChangeAPIToolOptions

@@ -44,7 +44,7 @@ func (m *model) Init(t *tui.TUI) {
 }
 
 // Update applies a TUI message to the model. It resizes child controls on ResizeEvent, requests interruption on Ctrl+C, submits on Enter, inserts a newline on Alt+Enter,
-// and otherwise passes editing input to the text area. Page Up, Page Down, Home, and End scroll the submitted-text view without interfering with text editing.
+// and otherwise passes input to the text area first. Page Up, Page Down, Home, and End are then also forwarded to the submitted-text view for scrolling.
 func (m *model) Update(t *tui.TUI, msg tui.Message) {
 	switch v := msg.(type) {
 	case tui.ResizeEvent:
@@ -67,7 +67,7 @@ func (m *model) Update(t *tui.TUI, msg tui.Message) {
 
 	m.ta.Update(t, msg)
 
-	// Allow scrolling the view without interfering with text editing.
+	// Forward scrolling keys to the view after the text area has handled them.
 	if key, ok := msg.(tui.KeyEvent); ok {
 		switch key.ControlKey {
 		case tui.ControlKeyPageUp, tui.ControlKeyPageDown, tui.ControlKeyHome, tui.ControlKeyEnd:

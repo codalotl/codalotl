@@ -293,7 +293,7 @@ func (db *DB) Delete(hasher Hasher, namespace string) error {
 
 // The recordPath method returns the filesystem path for namespace and hash under db.AbsRoot.
 //
-// The returned path is sharded as <AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>. The caller must pass a validated record key with a hash at least two bytes long.
+// The returned path is sharded as <AbsRoot>/<namespace>/<hash[0:2]>/<hash[2:]>. The caller must pass a validated record key with a hash at least three bytes long.
 func (db *DB) recordPath(namespace, hash string) string {
 	return filepath.Join(db.AbsRoot, namespace, hash[:2], hash[2:])
 }

@@ -59,7 +59,7 @@ func LogNewErr(logger *slog.Logger, msg string, args ...any) error {
 	return LogErr(logger, NewErr(msg, args...))
 }
 
-// LogNewErr creates a new error with msg and args, logs it, and returns it.
+// LogWrappedErr creates a new error wrapping wrapped with msg and args, logs it, and returns it.
 func LogWrappedErr(logger *slog.Logger, msg string, wrapped error, args ...any) error {
 	return LogErr(logger, Wrap(msg, wrapped, args...))
 }
@@ -70,7 +70,7 @@ func LogWrappedErr(logger *slog.Logger, msg string, wrapped error, args ...any) 
 //	// or...
 //	return health.LogErr(logger, health.NewErr("myerr", "errkv", v), "otherkv", 3)
 //
-// When err is a health error (created via NewWrr or Wrap), it gets special treatment, including:
+// When err is a health error (created via NewErr or Wrap), it gets special treatment, including:
 //   - Logging it's kvs to the logger (these will be logged first, and *then* args -- duplicates are permitted)
 //   - Logging the wrapped error with a "via" kv
 func LogErr(logger *slog.Logger, err error, args ...any) error {

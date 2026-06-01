@@ -488,8 +488,8 @@ func (s *visibleOutputStreamer) emitContent(content string) {
 	s.emit(s.ctx, content)
 }
 
-// sanitizeVisibleOutput converts raw command output into display-safe text. It normalizes invalid UTF-8, strips ANSI sequences, normalizes carriage returns, expands
-// tabs, replaces control characters, and elides overly long lines.
+// sanitizeVisibleOutput converts raw command output into display-safe text. It normalizes invalid UTF-8, strips ESC [ CSI sequences, replaces unsupported ESC bytes
+// and other control characters, normalizes carriage returns, expands tabs, and elides overly long lines.
 func sanitizeVisibleOutput(raw string) string {
 	raw = strings.ToValidUTF8(raw, "?")
 	raw = stripANSISequences(raw)

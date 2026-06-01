@@ -31,7 +31,7 @@ type addDocsFlagValues struct {
 type addDocsConfig struct {
 	commonConfig                // CommonConfig provides model, reflow, and log-file settings shared with other commands.
 	documentTestFiles  bool     // DocumentTestFiles includes eligible test-file identifiers when adding documentation.
-	onlyPublicAPI      bool     // OnlyPublicAPI limits documentation to exported identifiers.
+	onlyPublicAPI      bool     // OnlyPublicAPI limits identifier documentation to exported identifiers; package docs may still be created.
 	excludeIdentifiers []string // ExcludeIdentifiers names identifiers that should be skipped.
 	tokenBudget        int      // TokenBudget limits one LLM request; zero uses the docubot default.
 }

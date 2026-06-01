@@ -1623,7 +1623,8 @@ func (db *DB) hasherForPackageSpec(pkg *gocode.Package, spec NamespaceSpec) (cas
 }
 
 // hasherForPackage builds a CAS hasher from pkg's package files, black-box test package files, and package-local SPEC.md files when present. It returns BaseDir-relative
-// paths in hash order, ignores duplicate paths and directories, skips missing SPEC.md files, and rejects required files that are empty, unreadable, or outside BaseDir.
+// paths in hash order, ignores duplicate paths and directories, skips missing SPEC.md files, and rejects required files with empty paths, unreadable files, or paths
+// outside BaseDir.
 func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error) {
 	seen := make(map[string]struct{})
 	recs := make([]fileRec, 0, len(pkg.Files))
@@ -1671,8 +1672,8 @@ func (db *DB) hasherForPackage(pkg *gocode.Package) (cas.Hasher, []string, error
 	return db.hasherForFileRecs(recs)
 }
 
-// hasherForCodeUnit builds a CAS hasher from the files included in unit. It returns the BaseDir-relative paths in hash order and rejects empty, missing, or out-of-BaseDir
-// files; duplicate paths and directories are ignored.
+// hasherForCodeUnit builds a CAS hasher from the files included in unit. It returns the BaseDir-relative paths in hash order and rejects empty paths, missing or
+// unreadable files, and paths outside BaseDir; duplicate paths and directories are ignored.
 func (db *DB) hasherForCodeUnit(unit *codeunit.CodeUnit) (cas.Hasher, []string, error) {
 	seen := make(map[string]struct{})
 	recs := make([]fileRec, 0, len(unit.IncludedFiles()))

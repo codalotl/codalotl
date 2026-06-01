@@ -1400,7 +1400,7 @@ func sanitizeTextAreaInput(s string) string {
 	return s
 }
 
-// The logicalLineBoundsAt function returns the zero-based logical line row and [start, end) byte range containing caretByte.
+// The logicalLineBoundsAt function returns the zero-based logical line row and [start, end) byte range for the logical line around caretByte.
 func logicalLineBoundsAt(s string, caretByte int) (row int, start int, end int) {
 	if s == "" {
 		return 0, 0, 0

@@ -74,7 +74,7 @@ type toolCheckSpecConformance struct {
 // The checkSpecConformanceParams type is the JSON request payload for check_spec_conformance.
 type checkSpecConformanceParams struct {
 	OnlyChanged bool     `json:"only_changed"` // OnlyChanged restricts checks to packages with package-scoped changes since the comparison base.
-	Packages    []string `json:"packages"`     // Packages optionally names explicit packages by current-module import path or sandbox-relative package path.
+	Packages    []string `json:"packages"`     // Packages optionally names explicit packages by current-module import path or module-relative package path.
 }
 
 // The comparisonBase type identifies the git state used as the diff baseline for a conformance run.
@@ -177,7 +177,7 @@ type packageResultValidationOptions struct {
 
 // The gitRunner interface runs git commands in a repository.
 type gitRunner interface {
-	// Output runs git with args in repoAbsDir and returns standard output.
+	// Output runs git with args in repoAbsDir and returns command output.
 	Output(ctx context.Context, repoAbsDir string, args ...string) (string, error)
 }
 
@@ -238,7 +238,7 @@ func (t *toolCheckSpecConformance) Info() llmstream.ToolInfo {
 			},
 			"packages": map[string]any{
 				"type":        "array",
-				"description": "Optional package list. Entries may be current-module import paths or sandbox-relative package paths.",
+				"description": "Optional package list. Entries may be current-module import paths or module-relative package paths.",
 				"items": map[string]any{
 					"type": "string",
 				},

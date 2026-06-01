@@ -316,7 +316,7 @@ type TUI struct {
 	term           terminalController       // Term prepares and restores the terminal for full-screen rendering.
 	termFactory    terminalFactory          // TermFactory creates terminal controllers for resolved streams.
 	sizeProvider   func() (int, int, error) // SizeProvider returns terminal width and height when configured.
-	input          io.Reader                // Input is the resolved input stream used for key, paste, mouse, and signal-related input.
+	input          io.Reader                // Input is the resolved input stream used for key, paste, and mouse input.
 	output         io.Writer                // Output is the resolved output stream used for rendering and terminal escape sequences.
 	ctx            context.Context          // Ctx is canceled when session shutdown begins.
 	cancel         context.CancelFunc       // Cancel cancels ctx to notify managed work that shutdown has begun.

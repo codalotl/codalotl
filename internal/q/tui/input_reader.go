@@ -294,7 +294,7 @@ func (p *inputProcessor) processPending() {
 	}
 }
 
-// The handleControl method handles one ASCII control byte and emits the corresponding KeyEvent.
+// The handleControl method handles one ASCII control byte, emitting a KeyEvent except when suppressing LF after CR.
 //
 // It returns true if b was consumed; it returns false for Escape and printable bytes.
 func (p *inputProcessor) handleControl(b byte) bool {

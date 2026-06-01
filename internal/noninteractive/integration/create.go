@@ -282,7 +282,8 @@ func ensureEmptyOrMissingDir(path string) error {
 	return nil
 }
 
-// validatePackagePath validates that packagePath is empty or names an existing directory inside repoPath. It rejects absolute paths and paths that escape the repository.
+// validatePackagePath validates that packagePath is empty or names an existing directory inside repoPath. It rejects absolute paths and lexical escapes from the
+// repository; the escape check does not evaluate symlinks and is not symlink-safe.
 func validatePackagePath(repoPath string, packagePath string) error {
 	if packagePath == "" {
 		return nil

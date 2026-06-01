@@ -35,8 +35,9 @@ func conformanceDiffType(specSnippet, implSnippet string) (bool, DiffType, error
 	return false, DiffTypeDocMismatch, nil
 }
 
-// codeConforms reports whether implSnippet satisfies the code portion of specSnippet under SPEC.md conformance rules. It ignores comments and function bodies, filters
-// implementation-only declarations or members that the spec allows, and returns parse or formatting errors.
+// codeConforms reports whether implSnippet satisfies the code portion of specSnippet under SPEC.md conformance rules. It ignores comments and function declaration
+// bodies, filters implementation-only declarations or members that the spec allows, and returns parse or formatting errors. Function literals inside value declarations
+// remain part of the compared AST.
 func codeConforms(specSnippet, implSnippet string) (bool, error) {
 	specDecl, err := parseDeclFragment(specSnippet)
 	if err != nil {

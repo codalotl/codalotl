@@ -14,7 +14,7 @@ type ToolRequirement struct {
 //
 // Path is empty when the tool could not be found.
 type ToolStatus struct {
-	Name        string // Name is the executable name that was resolved.
+	Name        string // Name is the requested executable name.
 	Path        string // Path is the resolved executable path, or empty when the tool was not found.
 	InstallHint string // InstallHint is the optional installation guidance from the requirement.
 }

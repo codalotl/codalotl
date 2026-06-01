@@ -48,7 +48,7 @@ type updateUsageParams struct {
 
 // UpdateUsageToolOptions configures optional dependencies for NewUpdateUsageTool.
 type UpdateUsageToolOptions struct {
-	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker overrides the default subagent invoker when set.
+	AgentInvoker toolsetinterface.AgentInvoker // AgentInvoker invokes subagents; nil makes update_usage unavailable.
 }
 
 var updateUsagePresenterInstance llmstream.Presenter = updateUsagePresenter{}

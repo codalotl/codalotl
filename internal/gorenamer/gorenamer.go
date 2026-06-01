@@ -32,7 +32,8 @@ type IdentifierRename struct {
 	Err error
 }
 
-// Rename performs the renames in pkg. It returns (successful renames, failed renames, error). An error is returned for a fatal error like I/O failure.
+// Rename performs the renames in pkg. It returns (successful renames, failed renames, error). An error is returned for a fatal error like I/O failure; when that
+// happens, later requested renames may be absent from both result slices.
 //
 // If an element of renames fails to work (without triggering overall failure), its Err field will be set with the reason for failure. Possible reasons include:
 //   - invalid identifier in From or To

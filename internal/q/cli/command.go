@@ -22,10 +22,10 @@ type Command struct {
 	NoPositionalArgs bool       // NoPositionalArgs suppresses generic [args] help.
 	Args             ArgsFunc   // Args validates usage after flag parsing and before Run.
 	Run              RunFunc    // Run handles the command after Args succeeds.
-	parent           *Command   // Parent is the enclosing command; nil means this command is a root or unattached.
-	children         []*Command // Children are the direct subcommands added with AddCommand.
-	localFlags       *FlagSet   // LocalFlags stores flags accepted when this command is selected.
-	persistentFlags  *FlagSet   // PersistentFlags stores flags inherited by this command and its descendants.
+	parent           *Command   // parent is the enclosing command; nil means this command is a root or unattached.
+	children         []*Command // children are the direct subcommands added with AddCommand.
+	localFlags       *FlagSet   // localFlags stores flags accepted when this command is selected.
+	persistentFlags  *FlagSet   // persistentFlags stores flags defined on this command, not inherited ancestor flags.
 }
 
 // ArgHelp describes one positional argument in help output.
@@ -75,7 +75,7 @@ func (c *Command) PersistentFlags() *FlagSet {
 	return c.persistentFlags
 }
 
-// ChildByToken returns the direct child of c whose name or alias matches token, or nil if none exists.
+// childByToken returns the direct child of c whose name or alias matches token, or nil if none exists.
 func (c *Command) childByToken(token string) *Command {
 	for _, child := range c.children {
 		if child.Name == token {
@@ -90,7 +90,7 @@ func (c *Command) childByToken(token string) *Command {
 	return nil
 }
 
-// PathFromRoot returns c's command path from the root command through c.
+// pathFromRoot returns c's command path from the root command through c.
 func (c *Command) pathFromRoot() []*Command {
 	var reversed []*Command
 	for cur := c; cur != nil; cur = cur.parent {

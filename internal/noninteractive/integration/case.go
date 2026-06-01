@@ -372,8 +372,9 @@ func insertImplicitStartSubagentEvents(events []map[string]any) []map[string]any
 	return out
 }
 
-// shouldInsertImplicitStartSubagent reports whether event starts the first observed non-root agent. An event is eligible when it has an agent object with a non-empty
-// ID and a depth greater than zero. It records eligible agent IDs in seenAgentIDs so later events for the same agent do not request another implicit start event.
+// shouldInsertImplicitStartSubagent reports whether event is the first observed event for an unseen non-root agent ID. An event is eligible when it has an agent
+// object with a non-empty ID and a depth greater than zero. It records eligible agent IDs in seenAgentIDs so later events for the same agent do not request another
+// implicit start event.
 func shouldInsertImplicitStartSubagent(event map[string]any, seenAgentIDs map[string]struct{}) bool {
 	agentValue, ok := event["agent"].(map[string]any)
 	if !ok {
