@@ -87,11 +87,11 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/prompt` - added package docs and important prompt/type docs; `go test ./internal/prompt` passed.
 
 #### Batch 5: `internal/q` support packages
-- `github.com/codalotl/codalotl/internal/q/cas`
-- `github.com/codalotl/codalotl/internal/q/cascade`
-- `github.com/codalotl/codalotl/internal/q/cli`
-- `github.com/codalotl/codalotl/internal/q/clipboard`
-- `github.com/codalotl/codalotl/internal/q/cmdrunner`
+- [DONE] `github.com/codalotl/codalotl/internal/q/cas` - added important helper/record docs; `go test ./internal/q/cas` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/cascade` - added important helper/provenance docs; `go test ./internal/q/cascade` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/cli` - added important command/flag/run docs; `go test ./internal/q/cli` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/clipboard` - added package docs and important backend docs; `go test ./internal/q/clipboard` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/cmdrunner` - added package docs and important runner/template/result docs; `go test ./internal/q/cmdrunner` passed.
 - `github.com/codalotl/codalotl/internal/q/health`
 - `github.com/codalotl/codalotl/internal/q/remotemonitor`
 - `github.com/codalotl/codalotl/internal/q/semver`
@@ -145,3 +145,4 @@ TBD.
 - Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
 - Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
 - Batch 4 complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, `internal/noninteractive/integration`, `internal/noninteractive/integration/cmd/create`, and `internal/prompt`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
+- Batch 5 in progress. Accepted source changes for `internal/q/cas`, `internal/q/cascade`, `internal/q/cli`, `internal/q/clipboard`, and `internal/q/cmdrunner`; targeted tests for accepted packages pass.
