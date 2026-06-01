@@ -17,23 +17,33 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/authdomain"
 )
 
+// A sessionConfig selects the agent and initial-message rules for a session.
 type sessionConfig struct {
-	agentName             string
-	pkgMode               bool
-	allowEmptyInitialUser bool
+	agentName             string // It is the registry name used to prepare the agent.
+	pkgMode               bool   // It reports whether package-mode behavior is active.
+	allowEmptyInitialUser bool   // It reports whether the first user message may be empty.
 }
 
+// sessionAgent is the agent contract required by a reusable noninteractive session.
 type sessionAgent interface {
+	// SendUserMessage sends message to the agent and streams events until the turn finishes.
 	SendUserMessage(ctx context.Context, message string) <-chan agent.Event
+
+	// TokenUsage returns the token usage accumulated by the agent conversation.
 	TokenUsage() llmstream.TokenUsage
+
+	// ContextUsagePercent returns the current context-window usage percentage.
 	ContextUsagePercent() int
+
+	// Turns returns the current conversation turns.
 	Turns() []llmstream.Turn
 }
 
+// A stepStartOutput contains the values emitted at the start of a session step.
 type stepStartOutput struct {
-	sandboxDir string
-	pkgRelPath string
-	modelID    llmmodel.ModelID
+	sandboxDir string           // It is the normalized sandbox directory reported as the run CWD.
+	pkgRelPath string           // It is the package path relative to the sandbox, or empty outside package mode.
+	modelID    llmmodel.ModelID // It is the effective model ID used by the session.
 }
 
 // Result reports structured metadata for one top-level noninteractive step.
@@ -46,49 +56,55 @@ type Result struct {
 
 // Session holds a reusable noninteractive agent conversation.
 type Session struct {
-	opts                           Options
-	config                         sessionConfig
-	startInfo                      stepStartOutput
-	out                            io.Writer
-	jsonWriter                     *jsonEventWriter
-	formatter                      agentformatter.Formatter
-	modelID                        llmmodel.ModelID
-	terminalWidth                  int
-	agent                          sessionAgent
-	authorizer                     authdomain.Authorizer
-	addGrants                      grantsAdder
-	completedAssistantTurnsByAgent map[string][]llmstream.Turn
-	stepsSent                      int
-	mu                             sync.Mutex
-	closeOnce                      sync.Once
-	requestLoopWG                  sync.WaitGroup
-	closed                         bool
+	opts                           Options                     // opts stores the options used to create the session.
+	config                         sessionConfig               // config stores the resolved agent and initial-message rules.
+	startInfo                      stepStartOutput             // startInfo contains the values emitted at the start of each session step.
+	out                            io.Writer                   // out receives all serialized session output.
+	jsonWriter                     *jsonEventWriter            // jsonWriter emits newline-delimited JSON events when JSON output is enabled.
+	formatter                      agentformatter.Formatter    // formatter formats events for human-readable output.
+	modelID                        llmmodel.ModelID            // modelID is the effective model selected for the session.
+	terminalWidth                  int                         // terminalWidth is the detected output width used for human-readable formatting.
+	agent                          sessionAgent                // agent is the underlying reusable agent conversation.
+	authorizer                     authdomain.Authorizer       // authorizer controls tool permissions and is closed with the session.
+	addGrants                      grantsAdder                 // addGrants applies authorization grants derived from each user message.
+	completedAssistantTurnsByAgent map[string][]llmstream.Turn // completedAssistantTurnsByAgent records completed assistant turns by agent ID for reporting.
+	stepsSent                      int                         // stepsSent counts top-level user messages started on the session.
+	mu                             sync.Mutex                  // mu serializes session steps and protects mutable session state.
+	closeOnce                      sync.Once                   // closeOnce ensures session cleanup runs at most once.
+	requestLoopWG                  sync.WaitGroup              // requestLoopWG waits for the permission request loop to exit.
+	closed                         bool                        // closed reports whether Close has been called.
 }
 
+// activeToolDisplayState records display metadata for an active tool call.
 type activeToolDisplayState struct {
-	call                  llmstream.ToolCall
-	finalMessagePresenter llmstream.SubagentFinalMessagePresenter
+	call                  llmstream.ToolCall                      // call is the active tool call.
+	finalMessagePresenter llmstream.SubagentFinalMessagePresenter // finalMessagePresenter optionally customizes direct subagent final messages.
 }
 
+// agentDisplayScope describes how a descendant agent's output should be displayed.
 type agentDisplayScope struct {
-	call                  llmstream.ToolCall
-	finalMessagePresenter llmstream.SubagentFinalMessagePresenter
-	launcherAgentID       string
-	launcherToolCall      string
-	subagentLabel         string
+	call                  llmstream.ToolCall                      // call is the tool call that launched the scoped subagent.
+	finalMessagePresenter llmstream.SubagentFinalMessagePresenter // finalMessagePresenter optionally customizes the subagent's final visible message.
+	launcherAgentID       string                                  // launcherAgentID is the ID of the agent that launched the subagent.
+	launcherToolCall      string                                  // launcherToolCall is the call ID of the launching tool call.
+	subagentLabel         string                                  // subagentLabel is the optional label used for concurrent labeled subagent output.
 }
 
+// A labeledSubagentState records display state for an active labeled subagent.
 type labeledSubagentState struct {
-	agent     agent.AgentMeta
-	scope     agentDisplayScope
-	finalText string
+	agent     agent.AgentMeta   // It identifies the labeled subagent that owns the active scope.
+	scope     agentDisplayScope // It describes the launching tool call and label presentation settings.
+	finalText string            // It is the finalizing assistant text captured before the terminal event.
 }
 
+// subagentDisplayFilter tracks subagent display state while preparing agent events for output.
 type subagentDisplayFilter struct {
-	humanReadable         bool
-	activeTools           map[string]activeToolDisplayState
-	agentScopes           map[string]agentDisplayScope
-	agentParents          map[string]string
+	humanReadable bool                              // humanReadable enables human-readable-only labeled subagent presentation.
+	activeTools   map[string]activeToolDisplayState // activeTools maps an agent ID to its currently active tool call display state.
+	agentScopes   map[string]agentDisplayScope      // agentScopes maps a subagent ID to the display scope inherited from the tool call that launched it.
+	agentParents  map[string]string                 // agentParents maps an agent ID to its parent agent ID.
+
+	// activeLabeledSubagent maps a labeled subagent ID to the state used to hide descendant output until completion.
 	activeLabeledSubagent map[string]labeledSubagentState
 }
 
@@ -102,6 +118,9 @@ func newSubagentDisplayFilter(humanReadable bool) *subagentDisplayFilter {
 	}
 }
 
+// Prepare updates f with ev, applies subagent display rules, and returns adjustments for the caller to apply before writing ev. The returned events are synthetic
+// events to flush first, forceToolCallID names a delayed tool call that must be printed immediately, and hide reports whether ev itself should be suppressed. A
+// nil receiver returns no adjustments.
 func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, string, bool) {
 	if f == nil {
 		return nil, "", false
@@ -153,6 +172,7 @@ func (f *subagentDisplayFilter) Prepare(ev agent.Event) ([]agent.Event, string, 
 	}}, "", true
 }
 
+// rememberAgent records meta's parent relationship for descendant display filtering.
 func (f *subagentDisplayFilter) rememberAgent(meta agent.AgentMeta) {
 	if f == nil || meta.ID == "" {
 		return
@@ -160,6 +180,7 @@ func (f *subagentDisplayFilter) rememberAgent(meta agent.AgentMeta) {
 	f.agentParents[meta.ID] = meta.Parent
 }
 
+// scopeForAgent returns the cached or derived display scope for a non-root agent.
 func (f *subagentDisplayFilter) scopeForAgent(meta agent.AgentMeta) agentDisplayScope {
 	if f == nil || strings.TrimSpace(meta.ID) == "" || meta.Depth == 0 {
 		return agentDisplayScope{}
@@ -186,6 +207,7 @@ func (f *subagentDisplayFilter) scopeForAgent(meta agent.AgentMeta) agentDisplay
 	return scope
 }
 
+// updateToolState records active tool and subagent display scope metadata from ev.
 func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
 	if f == nil {
 		return
@@ -204,6 +226,10 @@ func (f *subagentDisplayFilter) updateToolState(ev agent.Event) {
 	}
 }
 
+// The prepareLabeledSubagentEvent method applies the human-readable display rules for labeled subagent events. It starts and finishes labeled scopes, captures the
+// labeled subagent's finalizing assistant text, and hides descendant output while a labeled scope is active. It returns synthetic status events to flush, the launching
+// tool call ID to force-print when a labeled subagent starts, whether ev should be hidden, and whether labeled-subagent handling consumed ev. A nil receiver returns
+// no handling.
 func (f *subagentDisplayFilter) prepareLabeledSubagentEvent(ev agent.Event) ([]agent.Event, string, bool, bool) {
 	if f == nil {
 		return nil, "", false, false
@@ -245,6 +271,10 @@ func (f *subagentDisplayFilter) prepareLabeledSubagentEvent(ev agent.Event) ([]a
 	}
 }
 
+// activeLabeledOwner reports whether meta belongs to an active labeled subagent.
+//
+// It returns the active labeled subagent's agent ID and state when meta is the labeled subagent itself or a descendant of it. The boolean is false when there is
+// no active labeled owner, f is nil, or meta has no ID.
 func (f *subagentDisplayFilter) activeLabeledOwner(meta agent.AgentMeta) (string, labeledSubagentState, bool) {
 	if f == nil || meta.ID == "" {
 		return "", labeledSubagentState{}, false
@@ -263,6 +293,8 @@ func (f *subagentDisplayFilter) activeLabeledOwner(meta agent.AgentMeta) (string
 	return "", labeledSubagentState{}, false
 }
 
+// labeledSubagentCompletionText returns the single visible terminal message for a labeled subagent. Errors and cancellations are reported explicitly with any terminal
+// error text; successful completion prefers presenter-customized text, then captured finalizing assistant text, and finally a finished fallback.
 func (f *subagentDisplayFilter) labeledSubagentCompletionText(state labeledSubagentState, terminal agent.Event) string {
 	switch terminal.Type {
 	case agent.EventTypeError, agent.EventTypeCanceled:
@@ -294,6 +326,7 @@ func (f *subagentDisplayFilter) labeledSubagentCompletionText(state labeledSubag
 	return prefixLabeledSubagentContent(state.scope.subagentLabel, content)
 }
 
+// syntheticAssistantText returns an assistant-text event for meta with content.
 func (f *subagentDisplayFilter) syntheticAssistantText(meta agent.AgentMeta, content string) agent.Event {
 	return agent.Event{
 		Agent: meta,
@@ -352,6 +385,7 @@ func toolCallFromToolEvent(ev agent.Event) llmstream.ToolCall {
 	return call
 }
 
+// scopeFromStartSubagent builds the display scope for a start-subagent event.
 func (f *subagentDisplayFilter) scopeFromStartSubagent(ev agent.Event) agentDisplayScope {
 	scope := agentDisplayScope{
 		launcherAgentID:  ev.StartSubagent.CallingAgentID,
@@ -370,6 +404,7 @@ func (f *subagentDisplayFilter) scopeFromStartSubagent(ev agent.Event) agentDisp
 	return scope
 }
 
+// buildSessionConfig selects the session agent and initial-message rules from opts.
 func buildSessionConfig(opts Options) (sessionConfig, error) {
 	slashCommand, err := normalizeSlashCommand(opts.SlashCommand)
 	if err != nil {
@@ -708,6 +743,7 @@ func renderPresentationLine(line llmstream.Line) string {
 	return b.String()
 }
 
+// writeFilteredEvents writes prepared display events according to the session output mode.
 func (s *Session) writeFilteredEvents(events []agent.Event) error {
 	for _, ev := range events {
 		if ev.Type == agent.EventTypeStartSubagent {
