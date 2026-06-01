@@ -87,7 +87,7 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/noninteractive/integration/cmd/create` - added package docs and command entrypoint docs; `go test ./internal/noninteractive/integration/cmd/create` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/prompt` - added package docs and important prompt/type docs; `go test ./internal/prompt` passed.
 
-#### Batch 5: `internal/q` support packages
+#### [DONE] Batch 5: `internal/q` support packages
 - [DONE] `github.com/codalotl/codalotl/internal/q/cas` - added important helper/record docs; `go test ./internal/q/cas` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/q/cascade` - added important helper/provenance docs; `go test ./internal/q/cascade` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/q/cli` - added important command/flag/run docs; `go test ./internal/q/cli` passed.
@@ -99,11 +99,11 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/q/sseclient` - added package docs and important SSE client/stream docs; `go test ./internal/q/sseclient` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/q/termformat` - added package docs and important terminal formatting docs; `go test ./internal/q/termformat` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/q/termformat/cmd` - added command package docs; `go test ./internal/q/termformat/cmd` passed.
-- `github.com/codalotl/codalotl/internal/q/tui`
-- `github.com/codalotl/codalotl/internal/q/tui/cmd`
-- `github.com/codalotl/codalotl/internal/q/tui/tuicontrols`
-- `github.com/codalotl/codalotl/internal/q/tui/tuicontrols/cmd/chatlog`
-- `github.com/codalotl/codalotl/internal/q/uni`
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui` - added package docs and important terminal/input/session docs; `go test ./internal/q/tui` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui/cmd` - added command package docs and demo model docs; `go test ./internal/q/tui/cmd` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui/tuicontrols` - added package docs and important keymap/text-area/view docs; `go test ./internal/q/tui/tuicontrols` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/tui/tuicontrols/cmd/chatlog` - added command package docs and demo model docs; `go test ./internal/q/tui/tuicontrols/cmd/chatlog` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/uni` - added package docs and important iterator docs; `go test ./internal/q/uni` passed.
 
 #### Batch 6: skills/tools/tui/update packages
 - `github.com/codalotl/codalotl/internal/reorgbot`
@@ -146,4 +146,4 @@ TBD.
 - Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
 - Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
 - Batch 4 complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, `internal/noninteractive/integration`, `internal/noninteractive/integration/cmd/create`, and `internal/prompt`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
-- Batch 5 in progress. Accepted source changes for `internal/q/cas`, `internal/q/cascade`, `internal/q/cli`, `internal/q/clipboard`, `internal/q/cmdrunner`, `internal/q/health`, `internal/q/remotemonitor`, `internal/q/sseclient`, `internal/q/termformat`, and `internal/q/termformat/cmd`; `internal/q/semver` was a no-op; targeted tests for accepted/no-op packages pass.
+- Batch 5 complete. Accepted source changes for `internal/q/cas`, `internal/q/cascade`, `internal/q/cli`, `internal/q/clipboard`, `internal/q/cmdrunner`, `internal/q/health`, `internal/q/remotemonitor`, `internal/q/sseclient`, `internal/q/termformat`, `internal/q/termformat/cmd`, `internal/q/tui`, `internal/q/tui/cmd`, `internal/q/tui/tuicontrols`, `internal/q/tui/tuicontrols/cmd/chatlog`, and `internal/q/uni`; `internal/q/semver` was a no-op; targeted tests for accepted/no-op packages pass.
