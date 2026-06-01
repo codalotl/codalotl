@@ -38,6 +38,8 @@ func TextWidthWithANSICodes(str string) int {
 	return width
 }
 
+// ansiSequenceLength returns the byte length of the ANSI escape sequence at the start of s. It recognizes CSI, OSC, DCS, PM, APC, and single-character ESC sequences.
+// It returns 0 when s does not start with ESC or when a multi-byte sequence is incomplete.
 func ansiSequenceLength(s string) int {
 	if len(s) == 0 || s[0] != '\x1b' {
 		return 0

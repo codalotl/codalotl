@@ -16,6 +16,8 @@ import (
 	"golang.org/x/term"
 )
 
+// queryDefaultFBBGColor queries the terminal for its default foreground and background colors. The ok result is false when the query is unsupported, unavailable,
+// or incomplete.
 func queryDefaultFBBGColor() (RGBColor, RGBColor, bool, error) {
 	stdout := os.Stdout
 	if !term.IsTerminal(int(stdout.Fd())) {
@@ -129,6 +131,7 @@ func parseOSCColor(buffer []byte, code string) (RGBColor, bool) {
 	return NewRGBColor(r, g, b), true
 }
 
+// parsePayload parses an OSC color payload into 8-bit RGB components. The ok result is false for empty, query, unsupported, or malformed payloads.
 func parsePayload(payload string) (r, g, b uint8, ok bool) {
 	if payload == "" || payload == "?" {
 		return 0, 0, 0, false
@@ -156,6 +159,7 @@ func parsePayload(payload string) (r, g, b uint8, ok bool) {
 	return comps[0], comps[1], comps[2], true
 }
 
+// parseHexComponentPayload parses a hexadecimal OSC color component and scales it to 8 bits.
 func parseHexComponentPayload(component string) (uint8, bool) {
 	component = strings.TrimSpace(component)
 	if component == "" {

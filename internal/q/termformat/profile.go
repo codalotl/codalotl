@@ -9,13 +9,16 @@ import (
 // ColorProfile is a color profile: None, ANSI, ANSI256, or TrueColor.
 type ColorProfile string
 
+// These color profiles describe the terminal color capabilities used when converting colors.
 const (
-	ColorProfileTrueColor ColorProfile = "true_color"
-	ColorProfileANSI256   ColorProfile = "ansi256"
-	ColorProfileANSI      ColorProfile = "ansi16"
-	ColorProfileUncolored ColorProfile = "uncolored"
+	ColorProfileTrueColor ColorProfile = "true_color" // ColorProfileTrueColor represents 24-bit RGB ANSI color support.
+	ColorProfileANSI256   ColorProfile = "ansi256"    // ColorProfileANSI256 represents xterm-compatible 256-color ANSI support.
+	ColorProfileANSI      ColorProfile = "ansi16"     // ColorProfileANSI represents the 16-color ANSI palette.
+	ColorProfileUncolored ColorProfile = "uncolored"  // ColorProfileUncolored represents output where color should be disabled.
 )
 
+// GetColorProfile reports the terminal color profile to use for output. It honors NO_COLOR, CLICOLOR, and CLICOLOR_FORCE; if terminal detection fails, it returns
+// ColorProfileUncolored with the detection error.
 func GetColorProfile() (ColorProfile, error) {
 	if envNoColor() {
 		return ColorProfileUncolored, nil

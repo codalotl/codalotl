@@ -53,9 +53,9 @@ type Monitor struct {
 	// or timeouts; the replacement must be safe for concurrent use.
 	httpClient *http.Client
 
-	panicReportingDisabled bool
-	errorReportingDisabled bool
-	eventReportingDisabled bool
+	panicReportingDisabled bool // Panic reports are disabled when this is true; the default false value leaves them enabled.
+	errorReportingDisabled bool // Error reports are disabled when this is true; the default false value leaves them enabled.
+	eventReportingDisabled bool // Event reports are disabled when this is true; the default false value leaves them enabled.
 }
 
 // NewMonitor creates a new monitor with current version and host. If version is "dev" or "", version is considered unset.

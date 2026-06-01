@@ -1,8 +1,9 @@
 package health
 
+// HumanErr represents an error with separate user-facing and health-logging messages. Error returns HumanMessage, while LogErr logs the embedded HealthErr.
 type HumanErr struct {
-	HumanMessage string
-	HealthErr
+	HumanMessage string // HumanMessage is the end-user-facing message returned by Error.
+	HealthErr           // HealthErr carries the logging-oriented message, attributes, and optional cause.
 }
 
 // NewHumanErr returns a HumanErr, which has both a message suitable for end-users and a message suitable for logging.

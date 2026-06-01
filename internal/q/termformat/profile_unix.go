@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// osColorProfile detects the terminal color profile from stdout and environment variables.
 func osColorProfile() (ColorProfile, error) {
 	if !stdoutIsTTY() {
 		return ColorProfileUncolored, nil

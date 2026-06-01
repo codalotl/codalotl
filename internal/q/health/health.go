@@ -8,10 +8,12 @@ import (
 	"strings"
 )
 
+// HealthErr represents an error with a diagnostic message, optional cause, and structured logging attributes. Its string form includes all stored context, and LogErr
+// logs its attributes as structured fields.
 type HealthErr struct {
-	Message string
-	wrapped error
-	attrs   []any // NOTE: i expect to make this exported at some point.
+	Message string // Message is the primary diagnostic message for Error output and logs.
+	wrapped error  // Wrapped is the optional underlying cause returned by Unwrap.
+	attrs   []any  // NOTE: i expect to make this exported at some point.
 }
 
 // Error satisfies the error interface. All aspects will be serialized to the string: msg, wrapped error, and all attrs.
@@ -33,6 +35,7 @@ func (e *HealthErr) Error() string {
 	return b.String()
 }
 
+// Unwrap returns the underlying cause of e, or nil if no cause was set. It enables errors.Is and errors.As to inspect wrapped health errors.
 func (e *HealthErr) Unwrap() error {
 	return e.wrapped
 }
@@ -133,7 +136,7 @@ func writeAttrs(b *strings.Builder, attrs []any) {
 
 // noNewlineWriter wraps an io.Writer and strips a single trailing newline from p before writing it to the underlying writer.
 type noNewlineWriter struct {
-	w io.Writer
+	w io.Writer // Writer receives trimmed writes and must be non-nil before Write is called.
 }
 
 // Write implements io.Writer.

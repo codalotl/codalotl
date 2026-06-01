@@ -30,8 +30,8 @@ func init() {
 //
 // Reconnect policy is caller-managed.
 type Client struct {
-	httpClient     *http.Client
-	defaultHeaders http.Header
+	httpClient     *http.Client // The HTTP client sends stream requests.
+	defaultHeaders http.Header  // Default headers are added to opened requests unless the request already sets the header.
 }
 
 // Option configures Client.
@@ -70,12 +70,15 @@ func WithHeader(key, value string) Option {
 
 // OpenError wraps failures from OpenRequest and OpenURL. Use errors.Is(err, ErrUnexpectedStatus/ErrUnexpectedContentType).
 type OpenError struct {
-	Request      *http.Request
+	Request      *http.Request  // Request is the request that was attempted; it may be nil for setup failures.
 	Response     *http.Response // nil for transport/setup failures
-	ResponseBody []byte
-	Err          error
+	ResponseBody []byte         // ResponseBody contains captured response bytes for status or content-type failures when available.
+	Err          error          // Err is the underlying open failure.
 }
 
+// Error returns a human-readable description of the open failure.
+//
+// The message includes request information when available and adds response status or content type details for handshake validation failures.
 func (e *OpenError) Error() string {
 	if e == nil {
 		return "<nil>"
@@ -99,6 +102,9 @@ func (e *OpenError) Error() string {
 	return fmt.Sprintf("open sse stream %s %s: %s", e.Request.Method, e.Request.URL.String(), errText)
 }
 
+// Unwrap returns the underlying open failure.
+//
+// It returns nil for a nil receiver.
 func (e *OpenError) Unwrap() error {
 	if e == nil {
 		return nil
@@ -108,13 +114,13 @@ func (e *OpenError) Unwrap() error {
 
 // Stream decodes SSE events from one HTTP response body.
 type Stream struct {
-	response   *http.Response
-	results    chan recvResult
-	mu         sync.RWMutex
-	state      State
-	userClosed bool
-	closeErr   error
-	closeOnce  sync.Once
+	response   *http.Response  // response is the successful handshake response being consumed.
+	results    chan recvResult // results carries decoded events and receive errors from the read loop.
+	mu         sync.RWMutex    // mu protects state and close-related flags shared with the read loop.
+	state      State           // state tracks sticky SSE reconnect hints observed while parsing.
+	userClosed bool            // userClosed records whether Close was called by the caller.
+	closeErr   error           // closeErr records the result of closing the response body.
+	closeOnce  sync.Once       // closeOnce ensures the response body is closed at most once.
 }
 
 // OpenRequest issues req and returns a stream on success.
@@ -259,7 +265,7 @@ func (s *Stream) State() State {
 
 // State carries reconnect-relevant stream state.
 type State struct {
-	LastEventID string
+	LastEventID string        // LastEventID is the sticky last event ID observed while parsing.
 	Retry       time.Duration // zero means no server retry hint observed
 }
 
@@ -270,11 +276,16 @@ type Event struct {
 	Data string // Data is concatenated data lines joined with "\n" (no trailing newline).
 }
 
+// recvResult carries one read-loop result to a stream receiver.
 type recvResult struct {
-	event Event
-	err   error
+	event Event // The decoded event is returned when err is nil.
+	err   error // The receive error is returned instead of an event when non-nil.
 }
 
+// readLoop reads and dispatches SSE events from the response body.
+//
+// It updates sticky reconnect state while parsing, sends decoded events and terminal errors on results, treats caller-initiated Close as clean EOF, and closes results
+// before returning.
 func (s *Stream) readLoop() {
 	reader := newLineReader(s.response.Body)
 	var (
@@ -335,6 +346,10 @@ func (s *Stream) readLoop() {
 	}
 }
 
+// dispatch converts a completed SSE event buffer into an Event.
+//
+// It returns false when no data is pending. When dispatching, it defaults an empty event type to "message", trims the trailing data newline, and uses the current
+// sticky LastEventID.
 func (s *Stream) dispatch(data, eventType string) (Event, bool) {
 	if data == "" {
 		return Event{}, false
@@ -355,6 +370,7 @@ func (s *Stream) dispatch(data, eventType string) (Event, bool) {
 	}, true
 }
 
+// wasClosedByUser reports whether the caller has closed the stream.
 func (s *Stream) wasClosedByUser() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -411,9 +427,12 @@ func readOpenErrorBody(resp *http.Response) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, maxOpenErrorBodyBytes))
 }
 
+// lineReader reads SSE wire-format lines from an input stream.
+//
+// It recognizes LF, CR, and CRLF line endings, converts invalid UTF-8 to U+FFFD, and strips a leading UTF-8 BOM from the first line.
 type lineReader struct {
-	r       *bufio.Reader
-	atStart bool
+	r       *bufio.Reader // The buffered reader supplies bytes from the stream.
+	atStart bool          // atStart reports whether the next completed line is the first line.
 }
 
 func newLineReader(r io.Reader) *lineReader {
@@ -423,6 +442,9 @@ func newLineReader(r io.Reader) *lineReader {
 	}
 }
 
+// ReadLine reads the next SSE line without its line ending.
+//
+// It accepts LF, CR, and CRLF endings. If EOF occurs after line bytes have been read, ReadLine returns the final unterminated line instead of io.EOF.
 func (l *lineReader) ReadLine() (string, error) {
 	var b []byte
 	for {
@@ -448,6 +470,9 @@ func (l *lineReader) ReadLine() (string, error) {
 	}
 }
 
+// finishLine converts raw line bytes into a decoded SSE line.
+//
+// It replaces invalid UTF-8 with U+FFFD and strips a leading UTF-8 BOM from only the first line.
 func (l *lineReader) finishLine(b []byte) string {
 	line := strings.ToValidUTF8(string(b), "\uFFFD")
 	if l.atStart {
