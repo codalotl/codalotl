@@ -72,7 +72,7 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/gotypes` - no file changes.
 - [DONE] `github.com/codalotl/codalotl/internal/gousage` - added package docs and usage field docs; `go test ./internal/gousage` passed.
 
-#### Batch 4: orchestration/runtime packages
+#### [DONE] Batch 4: orchestration/runtime packages
 - [DONE] `github.com/codalotl/codalotl/internal/initialcontext` - added package docs and important field/helper docs; `go test ./internal/initialcontext` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/iterate` - added package docs and important iteration helper docs; `go test ./internal/iterate` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/lints` - added package docs and important lint type/helper docs; `go test ./internal/lints` passed.
@@ -83,8 +83,8 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/mockllm/mockopenai` - added package docs and important mock handler docs; `go test ./internal/mockllm/mockopenai` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/noninteractive` - added package docs and important session/output helper docs; `go test ./internal/noninteractive` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/noninteractive/integration` - added package docs and important integration helper/config docs; `go test ./internal/noninteractive/integration` passed.
-- `github.com/codalotl/codalotl/internal/noninteractive/integration/cmd/create`
-- `github.com/codalotl/codalotl/internal/prompt`
+- [DONE] `github.com/codalotl/codalotl/internal/noninteractive/integration/cmd/create` - added package docs and command entrypoint docs; `go test ./internal/noninteractive/integration/cmd/create` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/prompt` - added package docs and important prompt/type docs; `go test ./internal/prompt` passed.
 
 #### Batch 5: `internal/q` support packages
 - `github.com/codalotl/codalotl/internal/q/cas`
@@ -144,4 +144,4 @@ TBD.
 - Batch 1 complete. Accepted source changes for root package, `internal/agent`, and `internal/agentregistry`; other Batch 1 packages were no-op or skipped with no file changes.
 - Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
 - Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
-- Batch 4 partially complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, and `internal/noninteractive/integration`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
+- Batch 4 complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, `internal/noninteractive/integration`, `internal/noninteractive/integration/cmd/create`, and `internal/prompt`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
