@@ -33,6 +33,7 @@ Additional instructions:
 - Batch 2 skipped for refactor-tool failures with no file changes: `internal/docubot` (token budget exceeded).
 - Batch 3 no-ops: `internal/gocode`, `internal/gocodetesting`, `internal/gotypes`.
 - Batch 4 skipped for refactor-tool failures with no file changes: `internal/llmstream` (token budget exceeded).
+- Batch 5 no-ops: `internal/q/semver`.
 
 ### Refactor batches
 
@@ -92,12 +93,12 @@ Run `refactor("name": "docs-add", "package": "<package>")` for each package belo
 - [DONE] `github.com/codalotl/codalotl/internal/q/cli` - added important command/flag/run docs; `go test ./internal/q/cli` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/q/clipboard` - added package docs and important backend docs; `go test ./internal/q/clipboard` passed.
 - [DONE] `github.com/codalotl/codalotl/internal/q/cmdrunner` - added package docs and important runner/template/result docs; `go test ./internal/q/cmdrunner` passed.
-- `github.com/codalotl/codalotl/internal/q/health`
-- `github.com/codalotl/codalotl/internal/q/remotemonitor`
-- `github.com/codalotl/codalotl/internal/q/semver`
-- `github.com/codalotl/codalotl/internal/q/sseclient`
-- `github.com/codalotl/codalotl/internal/q/termformat`
-- `github.com/codalotl/codalotl/internal/q/termformat/cmd`
+- [DONE] `github.com/codalotl/codalotl/internal/q/health` - added package docs and important context/error docs; `go test ./internal/q/health` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/remotemonitor` - added important monitor option docs; `go test ./internal/q/remotemonitor` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/semver` - no file changes; `go test ./internal/q/semver` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/sseclient` - added package docs and important SSE client/stream docs; `go test ./internal/q/sseclient` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/termformat` - added package docs and important terminal formatting docs; `go test ./internal/q/termformat` passed.
+- [DONE] `github.com/codalotl/codalotl/internal/q/termformat/cmd` - added command package docs; `go test ./internal/q/termformat/cmd` passed.
 - `github.com/codalotl/codalotl/internal/q/tui`
 - `github.com/codalotl/codalotl/internal/q/tui/cmd`
 - `github.com/codalotl/codalotl/internal/q/tui/tuicontrols`
@@ -145,4 +146,4 @@ TBD.
 - Batch 2 complete. Accepted source changes for `internal/codeunit`, `internal/detectlang`, `internal/docubot/cmd`, `internal/gittools`, `internal/gittools/cmd/changedfiles`, `internal/gittools/cmd/mergebase`, `internal/gocas`, `internal/gocas/casclarify`, and `internal/gocas/casconformance`; `internal/diff` was no-op and `internal/docubot` was skipped after a token-budget failure.
 - Batch 3 complete. Accepted source changes for `internal/goclitools`, `internal/gocodecontext`, `internal/gograph`, `internal/gopackagediff`, `internal/gorenamer`, and `internal/gousage`; `internal/gocode`, `internal/gocodetesting`, and `internal/gotypes` were no-ops.
 - Batch 4 complete. Accepted source changes for `internal/initialcontext`, `internal/iterate`, `internal/lints`, `internal/llmmodel`, `internal/llmstream/anthropic`, `internal/llmstream/gemini`, `internal/mockllm/mockopenai`, `internal/noninteractive`, `internal/noninteractive/integration`, `internal/noninteractive/integration/cmd/create`, and `internal/prompt`; `internal/llmstream` was skipped after a token-budget failure with no file changes; targeted tests for accepted packages pass.
-- Batch 5 in progress. Accepted source changes for `internal/q/cas`, `internal/q/cascade`, `internal/q/cli`, `internal/q/clipboard`, and `internal/q/cmdrunner`; targeted tests for accepted packages pass.
+- Batch 5 in progress. Accepted source changes for `internal/q/cas`, `internal/q/cascade`, `internal/q/cli`, `internal/q/clipboard`, `internal/q/cmdrunner`, `internal/q/health`, `internal/q/remotemonitor`, `internal/q/sseclient`, `internal/q/termformat`, and `internal/q/termformat/cmd`; `internal/q/semver` was a no-op; targeted tests for accepted/no-op packages pass.
