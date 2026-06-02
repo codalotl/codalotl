@@ -51,6 +51,7 @@ Validation:
 ### Review follow-up
 
 - [DONE] Fix review finding: streamed `response.output_item.done` compaction can be lost when final `response.completed` has non-empty output, because completed output parts replace streamed parts instead of merging retained compaction state.
+- [DONE] Fix review finding: streamed-only compaction must preserve provider output order when merged with non-empty completed output, otherwise no-store pruning can drop post-compaction assistant content.
 
 ## Review
 
@@ -79,6 +80,13 @@ Decision:
 
 - Review finding is actionable. Fix by retaining streamed output ordering metadata for compaction state so merged completed turns place streamed-only compaction at the provider output position relative to completed output items.
 
+Ordered merge follow-up implementation on 2026-06-02:
+
+- Commit `9baca8d` retains streamed output-index metadata and inserts streamed-only compaction state at the correct relative position among completed output parts.
+- Added regression coverage for compaction streamed before a completed message, and no-store replay coverage proving post-compaction message content remains in the next request.
+- `go test -count=1 ./internal/llmstream` passed.
+- `go test ./...` passed.
+
 ## Summary
 
 ## State
@@ -94,3 +102,4 @@ Decision:
 - Validation found an actionable review issue: streamed compaction state can be dropped if completed response output is non-empty. Next step should fix this before final validation.
 - Review follow-up commit `2b9ec76` fixes streamed compaction preservation and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
 - Latest validation found a second actionable review issue: streamed-only compaction must preserve provider output order when merged with non-empty completed output, otherwise no-store pruning can drop post-compaction assistant content. Next step should fix ordering, then rerun review/conformance.
+- Ordered merge follow-up commit `9baca8d` fixes provider output ordering for streamed-only compaction and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
