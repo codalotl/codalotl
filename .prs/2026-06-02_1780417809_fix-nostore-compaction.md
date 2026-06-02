@@ -43,10 +43,25 @@ Validation:
 ### Validation
 
 - [DONE] Run `go test ./internal/llmstream`.
-- Run relevant integration tests with `INTEGRATION_TEST=1` and OpenAI credentials when available.
+- [DONE] Run `go test ./...`.
+- [DONE] Run focused mock/request-shape compaction tests.
+- Attempt relevant OpenAI integration tests with `INTEGRATION_TEST=1` and OpenAI credentials when available.
 - Validate manually with `go run . exec`, temporarily forcing a low compaction threshold if needed to observe compaction.
 
+### Review follow-up
+
+- Fix review finding: streamed `response.output_item.done` compaction can be lost when final `response.completed` has non-empty output, because completed output parts replace streamed parts instead of merging retained compaction state.
+
 ## Review
+
+Validation pass on 2026-06-02:
+
+- `go test ./...` passed.
+- `go test -count=1 ./internal/llmstream -run 'TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer|TestBuildOpenAIResponsesRequestParams_NoStoreReplaysLatestCompactionAndPrunesHistory'` passed.
+- `INTEGRATION_TEST=1 go test -count=1 -v ./internal/llmstream -run TestOpenAIResponsesProvider_NoStoreZDR` skipped both targeted OpenAI tests because `OPENAI_API_KEY` is unset in this environment.
+- Manual `go run . exec` compaction validation not completed; actual OpenAI credential/low-threshold run still needed.
+- `review` against `main`: patch incorrect. Finding: preserve streamed compaction with non-empty completions in `internal/llmstream/open_ai_responses.go`.
+- `check_spec_conformance({"only_changed":true})`: `internal/llmstream` conforms.
 
 ## Summary
 
@@ -60,3 +75,4 @@ Validation:
 - Missing support: output item `type:"compaction"` is dropped; request building has no compaction input item; no-store history is not pruned from latest compaction.
 - Implementation commit `2316747` adds `CompactionContent`, captures/scrubs/replays OpenAI compaction items, prunes no-store replay before latest compaction, and adds mock/request-shape coverage.
 - Validation run this step: `go test -count=1 ./internal/llmstream` passed.
+- Validation found an actionable review issue: streamed compaction state can be dropped if completed response output is non-empty. Next step should fix this before final validation.
