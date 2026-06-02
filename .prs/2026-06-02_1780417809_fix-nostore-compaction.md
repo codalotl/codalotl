@@ -70,6 +70,15 @@ Review follow-up implementation on 2026-06-02:
 - `go test -count=1 ./internal/llmstream` passed.
 - `go test ./...` passed.
 
+Validation pass after review follow-up on 2026-06-02:
+
+- `review` against `main`: patch incorrect. Finding: preserve streamed compaction output order. Current merge appends streamed-only compaction after completed parts, which can make later no-store latest-compaction pruning drop assistant content that actually followed compaction.
+- `check_spec_conformance({"only_changed":true})`: `internal/llmstream` conforms.
+
+Decision:
+
+- Review finding is actionable. Fix by retaining streamed output ordering metadata for compaction state so merged completed turns place streamed-only compaction at the provider output position relative to completed output items.
+
 ## Summary
 
 ## State
@@ -84,3 +93,4 @@ Review follow-up implementation on 2026-06-02:
 - Validation run this step: `go test -count=1 ./internal/llmstream` passed.
 - Validation found an actionable review issue: streamed compaction state can be dropped if completed response output is non-empty. Next step should fix this before final validation.
 - Review follow-up commit `2b9ec76` fixes streamed compaction preservation and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
+- Latest validation found a second actionable review issue: streamed-only compaction must preserve provider output order when merged with non-empty completed output, otherwise no-store pruning can drop post-compaction assistant content. Next step should fix ordering, then rerun review/conformance.
