@@ -31,18 +31,18 @@ Validation:
 
 ## Plan
 
-### Package `internal/llmstream`
+### Package `internal/llmstream` [DONE]
 
-- Implement OpenAI no-store server-side compaction as retained opaque state, per `internal/llmstream/SPEC.md`.
-- Add a sealed content part for compaction state, preserve it from completed Responses output and streaming output-item events, and scrub provider IDs in no-store retained turns.
-- Replay compaction state as an OpenAI Responses input item during `SendOptions.NoStore` stateless request building.
-- When the latest compaction state is present, build no-store replay input from that compaction item forward instead of replaying earlier local history.
-- Keep existing stored-mode `previous_response_id` behavior unchanged.
-- Add focused unit/request-shape coverage and an OpenAI integration test that exercises no-store compaction replay.
+- [DONE] Implement OpenAI no-store server-side compaction as retained opaque state, per `internal/llmstream/SPEC.md`.
+- [DONE] Add a sealed content part for compaction state, preserve it from completed Responses output and streaming output-item events, and scrub provider IDs in no-store retained turns.
+- [DONE] Replay compaction state as an OpenAI Responses input item during `SendOptions.NoStore` stateless request building.
+- [DONE] When the latest compaction state is present, build no-store replay input from that compaction item forward instead of replaying earlier local history.
+- [DONE] Keep existing stored-mode `previous_response_id` behavior unchanged.
+- [DONE] Add focused unit/request-shape coverage and an OpenAI integration test that exercises no-store compaction replay.
 
 ### Validation
 
-- Run `go test ./internal/llmstream`.
+- [DONE] Run `go test ./internal/llmstream`.
 - Run relevant integration tests with `INTEGRATION_TEST=1` and OpenAI credentials when available.
 - Validate manually with `go run . exec`, temporarily forcing a low compaction threshold if needed to observe compaction.
 
@@ -58,3 +58,5 @@ Validation:
 - Current code enables `context_management` for OpenAI autocompaction models, then sets `store=false` for no-store.
 - Existing no-store support already avoids `previous_response_id`, replays visible history, and replays encrypted reasoning state.
 - Missing support: output item `type:"compaction"` is dropped; request building has no compaction input item; no-store history is not pruned from latest compaction.
+- Implementation commit `2316747` adds `CompactionContent`, captures/scrubs/replays OpenAI compaction items, prunes no-store replay before latest compaction, and adds mock/request-shape coverage.
+- Validation run this step: `go test -count=1 ./internal/llmstream` passed.
