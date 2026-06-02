@@ -50,7 +50,7 @@ Validation:
 
 ### Review follow-up
 
-- Fix review finding: streamed `response.output_item.done` compaction can be lost when final `response.completed` has non-empty output, because completed output parts replace streamed parts instead of merging retained compaction state.
+- [DONE] Fix review finding: streamed `response.output_item.done` compaction can be lost when final `response.completed` has non-empty output, because completed output parts replace streamed parts instead of merging retained compaction state.
 
 ## Review
 
@@ -62,6 +62,13 @@ Validation pass on 2026-06-02:
 - Manual `go run . exec` compaction validation not completed; actual OpenAI credential/low-threshold run still needed.
 - `review` against `main`: patch incorrect. Finding: preserve streamed compaction with non-empty completions in `internal/llmstream/open_ai_responses.go`.
 - `check_spec_conformance({"only_changed":true})`: `internal/llmstream` conforms.
+
+Review follow-up implementation on 2026-06-02:
+
+- Commit `2b9ec76` preserves streamed-only compaction state when completed output is non-empty, while keeping completed output authoritative for message/tool/reasoning parts.
+- Added regression coverage for a streamed compaction item followed by non-empty completed output without compaction.
+- `go test -count=1 ./internal/llmstream` passed.
+- `go test ./...` passed.
 
 ## Summary
 
@@ -76,3 +83,4 @@ Validation pass on 2026-06-02:
 - Implementation commit `2316747` adds `CompactionContent`, captures/scrubs/replays OpenAI compaction items, prunes no-store replay before latest compaction, and adds mock/request-shape coverage.
 - Validation run this step: `go test -count=1 ./internal/llmstream` passed.
 - Validation found an actionable review issue: streamed compaction state can be dropped if completed response output is non-empty. Next step should fix this before final validation.
+- Review follow-up commit `2b9ec76` fixes streamed compaction preservation and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
