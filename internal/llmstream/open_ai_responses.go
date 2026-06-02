@@ -460,8 +460,15 @@ type openAIResponsesContentBuilders struct {
 	idToReasoningBuilder map[string]*strings.Builder
 	idToTextDone         map[string]bool
 	idToReasoningDone    map[string]bool
-	streamedParts        []ContentPart
+	streamedParts        []openAIResponsesStreamedPart
 	streamedPartIndex    map[string]int
+}
+
+type openAIResponsesStreamedPart struct {
+	key         string
+	part        ContentPart
+	outputIndex int64
+	order       int
 }
 
 func newOpenAIResponsesContentBuilders() *openAIResponsesContentBuilders {
@@ -474,7 +481,7 @@ func newOpenAIResponsesContentBuilders() *openAIResponsesContentBuilders {
 	}
 }
 
-func (b *openAIResponsesContentBuilders) rememberStreamedPart(key string, part ContentPart) {
+func (b *openAIResponsesContentBuilders) rememberStreamedPart(key string, outputIndex int64, part ContentPart) {
 	if b == nil || key == "" || part == nil {
 		return
 	}
@@ -482,19 +489,43 @@ func (b *openAIResponsesContentBuilders) rememberStreamedPart(key string, part C
 		b.streamedPartIndex = make(map[string]int)
 	}
 	if idx, ok := b.streamedPartIndex[key]; ok {
-		b.streamedParts[idx] = part
+		b.streamedParts[idx].part = part
+		b.streamedParts[idx].outputIndex = outputIndex
 		return
 	}
 	b.streamedPartIndex[key] = len(b.streamedParts)
-	b.streamedParts = append(b.streamedParts, part)
+	b.streamedParts = append(b.streamedParts, openAIResponsesStreamedPart{
+		key:         key,
+		part:        part,
+		outputIndex: outputIndex,
+		order:       len(b.streamedParts),
+	})
 }
 
-func (b *openAIResponsesContentBuilders) streamedTurnParts() []ContentPart {
+func (b *openAIResponsesContentBuilders) streamedTurnPartRecords() []openAIResponsesStreamedPart {
 	if b == nil || len(b.streamedParts) == 0 {
 		return nil
 	}
-	parts := make([]ContentPart, len(b.streamedParts))
-	copy(parts, b.streamedParts)
+	records := make([]openAIResponsesStreamedPart, len(b.streamedParts))
+	copy(records, b.streamedParts)
+	sort.SliceStable(records, func(i, j int) bool {
+		if records[i].outputIndex == records[j].outputIndex {
+			return records[i].order < records[j].order
+		}
+		return records[i].outputIndex < records[j].outputIndex
+	})
+	return records
+}
+
+func (b *openAIResponsesContentBuilders) streamedTurnParts() []ContentPart {
+	records := b.streamedTurnPartRecords()
+	if len(records) == 0 {
+		return nil
+	}
+	parts := make([]ContentPart, 0, len(records))
+	for _, record := range records {
+		parts = append(parts, record.part)
+	}
 	return parts
 }
 
@@ -553,7 +584,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 			}
 			builder.WriteString(evtDelta.Delta)
 			text := TextContent{ProviderID: itemID, Content: builder.String()}
-			builders.rememberStreamedPart("text:"+itemID, text)
+			builders.rememberStreamedPart("text:"+itemID, evtDelta.OutputIndex, text)
 			return &Event{Type: EventTypeTextDelta, Delta: evtDelta.Delta, Text: &text, Done: false}, true, nil
 		}
 	case "response.output_text.done":
@@ -572,7 +603,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 			}
 			deltaTxt := strings.TrimPrefix(evtDone.Text, builder.String())
 			text := TextContent{ProviderID: itemID, Content: evtDone.Text}
-			builders.rememberStreamedPart("text:"+itemID, text)
+			builders.rememberStreamedPart("text:"+itemID, evtDone.OutputIndex, text)
 			return &Event{Type: EventTypeTextDelta, Delta: deltaTxt, Text: &text, Done: true}, true, nil
 		}
 	case "response.reasoning_text.done":
@@ -596,7 +627,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 			}
 			builder.WriteString(evtDelta.Delta)
 			reasoning := ReasoningContent{ProviderID: itemID, Content: builder.String()}
-			builders.rememberStreamedPart("reasoning_summary:"+subItemID, reasoning)
+			builders.rememberStreamedPart("reasoning_summary:"+subItemID, evtDelta.OutputIndex, reasoning)
 			return &Event{Type: EventTypeReasoningDelta, Delta: evtDelta.Delta, Reasoning: &reasoning, Done: false}, true, nil
 		}
 		return nil, true, nil
@@ -617,7 +648,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 			}
 			deltaTxt := strings.TrimPrefix(evtDone.Part.Text, builder.String())
 			reasoning := ReasoningContent{ProviderID: itemID, Content: evtDone.Part.Text}
-			builders.rememberStreamedPart("reasoning_summary:"+subItemID, reasoning)
+			builders.rememberStreamedPart("reasoning_summary:"+subItemID, evtDone.OutputIndex, reasoning)
 			return &Event{Type: EventTypeReasoningDelta, Delta: deltaTxt, Reasoning: &reasoning, Done: true}, true, nil
 		}
 	case "response.output_item.done":
@@ -633,7 +664,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				Input:      fn.Arguments,
 				Type:       item.Type,
 			}
-			builders.rememberStreamedPart("tool:"+tc.Type+":"+tc.CallID, *tc)
+			builders.rememberStreamedPart("tool:"+tc.Type+":"+tc.CallID, evtOutputItem.OutputIndex, *tc)
 			return &Event{Type: EventTypeToolUse, ToolCall: tc}, true, nil
 		case "custom_tool_call":
 			custom := item.AsCustomToolCall()
@@ -644,7 +675,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				Input:      custom.Input,
 				Type:       item.Type,
 			}
-			builders.rememberStreamedPart("tool:"+tc.Type+":"+tc.CallID, *tc)
+			builders.rememberStreamedPart("tool:"+tc.Type+":"+tc.CallID, evtOutputItem.OutputIndex, *tc)
 			return &Event{Type: EventTypeToolUse, ToolCall: tc}, true, nil
 		case "reasoning":
 			reasoning := item.AsReasoning()
@@ -654,12 +685,14 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 				}
 				builders.rememberStreamedPart(
 					fmt.Sprintf("reasoning_summary:%s:%d", reasoning.ID, i),
+					evtOutputItem.OutputIndex,
 					ReasoningContent{ProviderID: reasoning.ID, Content: summaryItem.Text},
 				)
 			}
 			if reasoning.EncryptedContent != "" {
 				builders.rememberStreamedPart(
 					"reasoning_state:"+reasoning.ID,
+					evtOutputItem.OutputIndex,
 					ReasoningContent{ProviderID: reasoning.ID, ProviderState: reasoning.EncryptedContent},
 				)
 			}
@@ -668,6 +701,7 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 			if compaction.EncryptedContent != "" {
 				builders.rememberStreamedPart(
 					"compaction_state:"+compaction.ID,
+					evtOutputItem.OutputIndex,
 					CompactionContent{ProviderID: compaction.ID, ProviderState: compaction.EncryptedContent},
 				)
 			}
@@ -917,12 +951,12 @@ func openaiResponesMapMessageRole(role Role) responses.EasyInputMessageRole {
 
 func openAIResponsesBuildCompletedResponse(resp responses.Response, builders *openAIResponsesContentBuilders) *Turn {
 	turn := openaiResponesBuildResponse(resp)
-	streamedParts := builders.streamedTurnParts()
 	if len(resp.Output) != 0 {
-		turn.Parts = openAIResponsesMergeStreamedCompactions(turn.Parts, streamedParts)
+		turn.Parts = openAIResponsesMergeStreamedCompactions(turn.Parts, builders.streamedTurnPartRecords())
 		return turn
 	}
 
+	streamedParts := builders.streamedTurnParts()
 	if len(streamedParts) == 0 {
 		return turn
 	}
@@ -931,14 +965,23 @@ func openAIResponsesBuildCompletedResponse(resp responses.Response, builders *op
 	return turn
 }
 
-func openAIResponsesMergeStreamedCompactions(completedParts, streamedParts []ContentPart) []ContentPart {
+func openAIResponsesMergeStreamedCompactions(completedParts []ContentPart, streamedParts []openAIResponsesStreamedPart) []ContentPart {
 	if len(streamedParts) == 0 {
 		return completedParts
 	}
 
 	compactionIDs := make(map[string]bool)
 	compactionStates := make(map[string]bool)
+	streamedOutputIndexByProviderID := make(map[string]int64)
+	completedOrdinalByProviderID := make(map[string]int64)
+	nextCompletedOrdinal := int64(0)
 	for _, part := range completedParts {
+		if providerID := openAIResponsesContentPartProviderID(part); providerID != "" {
+			if _, ok := completedOrdinalByProviderID[providerID]; !ok {
+				completedOrdinalByProviderID[providerID] = nextCompletedOrdinal
+				nextCompletedOrdinal++
+			}
+		}
 		compaction, ok := part.(CompactionContent)
 		if !ok || compaction.ProviderState == "" {
 			continue
@@ -948,10 +991,15 @@ func openAIResponsesMergeStreamedCompactions(completedParts, streamedParts []Con
 		}
 		compactionStates[compaction.ProviderState] = true
 	}
+	for _, record := range streamedParts {
+		if providerID := openAIResponsesContentPartProviderID(record.part); providerID != "" {
+			streamedOutputIndexByProviderID[providerID] = record.outputIndex
+		}
+	}
 
-	parts := completedParts
-	for _, part := range streamedParts {
-		compaction, ok := part.(CompactionContent)
+	var parts []ContentPart
+	for _, record := range streamedParts {
+		compaction, ok := record.part.(CompactionContent)
 		if !ok || compaction.ProviderState == "" {
 			continue
 		}
@@ -962,15 +1010,59 @@ func openAIResponsesMergeStreamedCompactions(completedParts, streamedParts []Con
 			continue
 		}
 		if parts == nil {
-			parts = make([]ContentPart, 0, len(completedParts)+1)
+			parts = make([]ContentPart, len(completedParts))
+			copy(parts, completedParts)
 		}
-		parts = append(parts, compaction)
+		insertAt := openAIResponsesStreamedCompactionInsertIndex(parts, record.outputIndex, streamedOutputIndexByProviderID, completedOrdinalByProviderID)
+		parts = append(parts, nil)
+		copy(parts[insertAt+1:], parts[insertAt:])
+		parts[insertAt] = compaction
 		if compaction.ProviderID != "" {
 			compactionIDs[compaction.ProviderID] = true
 		}
 		compactionStates[compaction.ProviderState] = true
 	}
+	if parts == nil {
+		return completedParts
+	}
 	return parts
+}
+
+func openAIResponsesStreamedCompactionInsertIndex(parts []ContentPart, compactionOutputIndex int64, streamedOutputIndexByProviderID, completedOrdinalByProviderID map[string]int64) int {
+	for i, part := range parts {
+		if _, ok := part.(CompactionContent); ok {
+			continue
+		}
+		providerID := openAIResponsesContentPartProviderID(part)
+		if providerID == "" {
+			continue
+		}
+		if outputIndex, ok := streamedOutputIndexByProviderID[providerID]; ok {
+			if compactionOutputIndex < outputIndex {
+				return i
+			}
+			continue
+		}
+		if ordinal, ok := completedOrdinalByProviderID[providerID]; ok && compactionOutputIndex <= ordinal {
+			return i
+		}
+	}
+	return len(parts)
+}
+
+func openAIResponsesContentPartProviderID(part ContentPart) string {
+	switch p := part.(type) {
+	case TextContent:
+		return p.ProviderID
+	case ReasoningContent:
+		return p.ProviderID
+	case CompactionContent:
+		return p.ProviderID
+	case ToolCall:
+		return p.ProviderID
+	default:
+		return ""
+	}
 }
 
 func openAIResponsesPartsHaveToolCalls(parts []ContentPart) bool {
