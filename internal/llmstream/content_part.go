@@ -44,6 +44,14 @@ func (c TextContent) String() string {
 
 func (c TextContent) isPart() {}
 
+// CompactionContent stores opaque provider compaction state for stateless replay.
+type CompactionContent struct {
+	ProviderID    string `json:"provider_id"`
+	ProviderState string `json:"provider_state,omitempty"`
+}
+
+func (c CompactionContent) isPart() {}
+
 type ToolCall struct {
 	ProviderID string `json:"provider_id"` // Provider ID.
 	CallID     string `json:"call_id"`     // Ex: "call_EMPsaazgTBezpruyU2FkwCMC".

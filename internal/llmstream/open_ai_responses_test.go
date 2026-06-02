@@ -60,6 +60,37 @@ func TestOpenAIResponesBuildResponse_CapturesEncryptedReasoningState(t *testing.
 	assert.Contains(t, turn.Parts, TextContent{ProviderID: "msg_123", Content: "answer"})
 }
 
+func TestOpenAIResponesBuildResponse_CapturesCompactionState(t *testing.T) {
+	var resp responses.Response
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "resp_123",
+		"status": "completed",
+		"output": [
+			{
+				"id": "cmp_123",
+				"type": "compaction",
+				"encrypted_content": "encrypted_compaction_blob",
+				"created_by": "server"
+			},
+			{
+				"id": "msg_123",
+				"type": "message",
+				"role": "assistant",
+				"status": "completed",
+				"content": [
+					{"type": "output_text", "text": "answer"}
+				]
+			}
+		]
+	}`), &resp))
+
+	turn := openaiResponesBuildResponse(resp)
+
+	require.NotNil(t, turn)
+	assert.Contains(t, turn.Parts, CompactionContent{ProviderID: "cmp_123", ProviderState: "encrypted_compaction_blob"})
+	assert.Contains(t, turn.Parts, TextContent{ProviderID: "msg_123", Content: "answer"})
+}
+
 func TestOpenAIResponsesResolveAuth_UsesEligibleProviderSubscription(t *testing.T) {
 	registerTestOpenAIProviderSubscription(t, "https://chatgpt.com/backend-api/codex", true)
 
@@ -242,6 +273,140 @@ func TestSendAsyncOpenAIResponses_SubscriptionAuthUsesEndpointHeaderAndForcesNoS
 	assert.Equal(t, "hello", sc.LastTurn().TextContent())
 }
 
+func TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer(t *testing.T) {
+	var requests []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var gotRequest map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&gotRequest)
+		requests = append(requests, gotRequest)
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if len(requests) == 1 {
+			writeOpenAISSEEvent(t, w, "response.completed", `{
+				"type":"response.completed",
+				"sequence_number":0,
+				"response":{
+					"id":"resp_compacted",
+					"object":"response",
+					"created_at":0,
+					"model":"gpt-5.5-high",
+					"status":"completed",
+					"output":[
+						{
+							"id":"msg_first",
+							"type":"message",
+							"role":"assistant",
+							"status":"completed",
+							"content":[{"type":"output_text","text":"first answer"}]
+						},
+						{
+							"id":"cmp_first",
+							"type":"compaction",
+							"encrypted_content":"encrypted_compaction_blob",
+							"created_by":"server"
+						}
+					],
+					"usage":{
+						"input_tokens":100,
+						"input_tokens_details":{"cached_tokens":0},
+						"output_tokens":10,
+						"output_tokens_details":{"reasoning_tokens":0},
+						"total_tokens":110
+					}
+				}
+			}`)
+			return
+		}
+		writeOpenAISSEEvent(t, w, "response.completed", `{
+			"type":"response.completed",
+			"sequence_number":0,
+			"response":{
+				"id":"resp_second",
+				"object":"response",
+				"created_at":0,
+				"model":"gpt-5.5-high",
+				"status":"completed",
+				"output":[
+					{
+						"id":"msg_second",
+						"type":"message",
+						"role":"assistant",
+						"status":"completed",
+						"content":[{"type":"output_text","text":"second answer"}]
+					}
+				],
+				"usage":{
+					"input_tokens":20,
+					"input_tokens_details":{"cached_tokens":0},
+					"output_tokens":2,
+					"output_tokens_details":{"reasoning_tokens":0},
+					"total_tokens":22
+				}
+			}
+		}`)
+	}))
+	defer server.Close()
+	registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+	conv := NewConversation(llmmodel.DefaultModel, "system instructions")
+	require.NoError(t, conv.AddUserTurn("first question"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var firstTurn *Turn
+	for ev := range conv.SendAsync(ctx) {
+		switch ev.Type {
+		case EventTypeError:
+			require.NoError(t, ev.Error)
+		case EventTypeCompletedSuccess:
+			firstTurn = ev.Turn
+		}
+	}
+
+	require.NotNil(t, firstTurn)
+	assert.Equal(t, "first answer", firstTurn.TextContent())
+	assertOpenAINoStoreTurnScrubbed(t, firstTurn)
+	assert.Equal(t, []string{"encrypted_compaction_blob"}, openAICompactionProviderStates(firstTurn.Parts))
+	assert.Empty(t, conv.(*streamingConversation).providerConversationID)
+
+	require.NoError(t, conv.AddUserTurn("second question"))
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+
+	var secondTurn *Turn
+	for ev := range conv.SendAsync(ctx2) {
+		switch ev.Type {
+		case EventTypeError:
+			require.NoError(t, ev.Error)
+		case EventTypeCompletedSuccess:
+			secondTurn = ev.Turn
+		}
+	}
+
+	require.NotNil(t, secondTurn)
+	assert.Equal(t, "second answer", secondTurn.TextContent())
+	require.Len(t, requests, 2)
+
+	secondRequest := requests[1]
+	assert.Equal(t, false, secondRequest["store"])
+	assert.NotContains(t, secondRequest, "previous_response_id")
+	compactionItems := openAIResponsesRequestCompactionInputItems(t, secondRequest)
+	require.Len(t, compactionItems, 1)
+	assert.Equal(t, "encrypted_compaction_blob", compactionItems[0]["encrypted_content"])
+	assert.NotContains(t, compactionItems[0], "id")
+
+	secondRequestJSON := mustMarshalDiagnosticJSON(t, secondRequest)
+	assert.Contains(t, secondRequestJSON, "second question")
+	assert.NotContains(t, secondRequestJSON, "first question")
+	assert.NotContains(t, secondRequestJSON, "first answer")
+	assert.NotContains(t, secondRequestJSON, "resp_compacted")
+	assert.NotContains(t, secondRequestJSON, "msg_first")
+	assert.NotContains(t, secondRequestJSON, "cmp_first")
+}
+
 func TestBuildOpenAIResponsesRequestParams_DefaultLinksAndTrimsHistory(t *testing.T) {
 	sc := openAIRequestShapeConversation(t)
 
@@ -360,6 +525,17 @@ func TestOpenAIResponsesProcessEvent_CompletedEmptyOutputUsesStreamedState(t *te
 				"encrypted_content":"encrypted_reasoning_blob"
 			}
 		}`,
+		`{
+			"type":"response.output_item.done",
+			"sequence_number":3,
+			"output_index":3,
+			"item":{
+				"id":"cmp_1",
+				"type":"compaction",
+				"encrypted_content":"encrypted_compaction_blob",
+				"created_by":"server"
+			}
+		}`,
 	}
 	for _, raw := range events {
 		processed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, raw), builders)
@@ -370,7 +546,7 @@ func TestOpenAIResponsesProcessEvent_CompletedEmptyOutputUsesStreamedState(t *te
 
 	completed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, `{
 		"type":"response.completed",
-		"sequence_number":3,
+		"sequence_number":4,
 		"response":{
 			"id":"resp_1",
 			"object":"response",
@@ -409,6 +585,116 @@ func TestOpenAIResponsesProcessEvent_CompletedEmptyOutputUsesStreamedState(t *te
 	})
 	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_1", Content: "reasoning summary"})
 	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_1", ProviderState: "encrypted_reasoning_blob"})
+	assert.Contains(t, turn.Parts, CompactionContent{ProviderID: "cmp_1", ProviderState: "encrypted_compaction_blob"})
+}
+
+func TestOpenAIResponsesProcessEvent_CompletedNonEmptyOutputKeepsStreamedCompaction(t *testing.T) {
+	builders := newOpenAIResponsesContentBuilders()
+
+	events := []string{
+		`{
+			"type":"response.output_text.delta",
+			"sequence_number":0,
+			"item_id":"msg_streamed",
+			"output_index":0,
+			"content_index":0,
+			"delta":"streamed draft"
+		}`,
+		`{
+			"type":"response.output_item.done",
+			"sequence_number":1,
+			"output_index":1,
+			"item":{
+				"id":"cmp_streamed",
+				"type":"compaction",
+				"encrypted_content":"encrypted_compaction_blob",
+				"created_by":"server"
+			}
+		}`,
+	}
+	for _, raw := range events {
+		processed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, raw), builders)
+		require.NoError(t, err)
+		assert.True(t, cont)
+		_ = processed
+	}
+
+	completed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, `{
+		"type":"response.completed",
+		"sequence_number":2,
+		"response":{
+			"id":"resp_1",
+			"object":"response",
+			"created_at":0,
+			"model":"gpt-4o-mini",
+			"status":"completed",
+			"output":[
+				{
+					"id":"msg_completed",
+					"type":"message",
+					"role":"assistant",
+					"status":"completed",
+					"content":[{"type":"output_text","text":"completed answer"}]
+				}
+			],
+			"usage":{
+				"input_tokens":10,
+				"input_tokens_details":{"cached_tokens":2},
+				"output_tokens":5,
+				"output_tokens_details":{"reasoning_tokens":1},
+				"total_tokens":15
+			}
+		}
+	}`), builders)
+	require.NoError(t, err)
+	assert.False(t, cont)
+	require.NotNil(t, completed)
+	require.NotNil(t, completed.Turn)
+
+	turn := completed.Turn
+	assert.Equal(t, "resp_1", turn.ProviderID)
+	assert.Equal(t, "completed answer", turn.TextContent())
+	assert.Equal(t, FinishReasonEndTurn, turn.FinishReason)
+	assert.Contains(t, turn.Parts, TextContent{ProviderID: "msg_completed", Content: "completed answer"})
+	assert.NotContains(t, turn.Parts, TextContent{ProviderID: "msg_streamed", Content: "streamed draft"})
+	assert.Contains(t, turn.Parts, CompactionContent{ProviderID: "cmp_streamed", ProviderState: "encrypted_compaction_blob"})
+}
+
+func TestOpenAIResponsesProcessEvent_CompletedNonEmptyOutputMergesStreamedCompactionBeforeLaterMessage(t *testing.T) {
+	turn := openAIResponsesMergedStreamedCompactionBeforeCompletedMessageTurn(t)
+
+	require.Len(t, turn.Parts, 2)
+	assert.Equal(t, CompactionContent{ProviderID: "cmp_streamed", ProviderState: "encrypted_compaction_blob"}, turn.Parts[0])
+	assert.Equal(t, TextContent{ProviderID: "msg_completed", Content: "completed answer after compaction"}, turn.Parts[1])
+	assert.Equal(t, "completed answer after compaction", turn.TextContent())
+	assert.NotContains(t, turn.Parts, TextContent{ProviderID: "msg_completed", Content: "streamed draft"})
+}
+
+func TestBuildOpenAIResponsesRequestParams_NoStoreReplayKeepsMessageAfterStreamedCompaction(t *testing.T) {
+	turn := openAIResponsesMergedStreamedCompactionBeforeCompletedMessageTurn(t)
+	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("question before compaction"))
+	sc.turns = append(sc.turns, openAIResponsesScrubNoStoreTurn(*turn))
+	require.NoError(t, sc.AddUserTurn("latest question"))
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIRequestShapeModelInfo(), &SendOptions{NoStore: true})
+	require.NoError(t, err)
+
+	req, _ := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, false, req["store"])
+	assert.NotContains(t, req, "previous_response_id")
+
+	compactionItems := openAIResponsesRequestCompactionInputItems(t, req)
+	require.Len(t, compactionItems, 1)
+	assert.Equal(t, "encrypted_compaction_blob", compactionItems[0]["encrypted_content"])
+	assert.NotContains(t, compactionItems[0], "id")
+
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "completed answer after compaction")
+	assert.Contains(t, inputJSON, "latest question")
+	assert.NotContains(t, inputJSON, "question before compaction")
+	assert.NotContains(t, inputJSON, "msg_completed")
+	assert.NotContains(t, inputJSON, "cmp_streamed")
 }
 
 func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWithoutProviderIDs(t *testing.T) {
@@ -451,6 +737,66 @@ func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWitho
 	assert.NotContains(t, reqJSON, "rs_unstored")
 	assert.NotContains(t, reqJSON, "private reasoning summary")
 	assert.NotContains(t, reqJSON, "msg_unstored")
+}
+
+func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysLatestCompactionAndPrunesHistory(t *testing.T) {
+	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
+	require.NoError(t, sc.AddUserTurn("old question before compaction"))
+	sc.turns = append(sc.turns, Turn{
+		Role:       RoleAssistant,
+		ProviderID: "resp_compacted",
+		Parts: []ContentPart{
+			TextContent{ProviderID: "msg_old", Content: "old answer before compaction"},
+			ReasoningContent{ProviderID: "rs_old", ProviderState: "encrypted_reasoning_before_compaction"},
+			CompactionContent{ProviderID: "cmp_latest", ProviderState: "encrypted_compaction_blob"},
+		},
+	})
+	require.NoError(t, sc.AddUserTurn("question after compaction"))
+	sc.turns = append(sc.turns, Turn{
+		Role:       RoleAssistant,
+		ProviderID: "resp_after_compaction",
+		Parts: []ContentPart{
+			ReasoningContent{ProviderID: "rs_after", ProviderState: "encrypted_reasoning_after_compaction"},
+			TextContent{ProviderID: "msg_after", Content: "answer after compaction"},
+		},
+	})
+	require.NoError(t, sc.AddUserTurn("latest question"))
+	sc.providerConversationID = "resp_after_compaction"
+
+	params, err := sc.buildOpenAIResponsesRequestParams(openAIReasoningRequestShapeModelInfo(), &SendOptions{NoStore: true})
+	require.NoError(t, err)
+
+	req, reqJSON := mustMarshalOpenAIResponsesRequest(t, params)
+	assert.Equal(t, false, req["store"])
+	assert.NotContains(t, req, "previous_response_id")
+	assertOpenAIRequestIncludesEncryptedReasoning(t, req)
+	assertOpenAIRequestInstructions(t, req, "system instructions")
+
+	compactionItems := openAIResponsesRequestCompactionInputItems(t, req)
+	require.Len(t, compactionItems, 1)
+	assert.Equal(t, "compaction", compactionItems[0]["type"])
+	assert.Equal(t, "encrypted_compaction_blob", compactionItems[0]["encrypted_content"])
+	assert.NotContains(t, compactionItems[0], "id")
+
+	reasoningItems := openAIResponsesRequestReasoningInputItems(t, req)
+	require.Len(t, reasoningItems, 1)
+	assert.Equal(t, "encrypted_reasoning_after_compaction", reasoningItems[0]["encrypted_content"])
+
+	inputJSON := openAIResponsesRequestInputJSON(t, req)
+	assert.Contains(t, inputJSON, "question after compaction")
+	assert.Contains(t, inputJSON, "answer after compaction")
+	assert.Contains(t, inputJSON, "latest question")
+	assert.NotContains(t, inputJSON, "system instructions")
+	assert.NotContains(t, inputJSON, "old question before compaction")
+	assert.NotContains(t, inputJSON, "old answer before compaction")
+	assert.NotContains(t, reqJSON, "resp_compacted")
+	assert.NotContains(t, reqJSON, "resp_after_compaction")
+	assert.NotContains(t, reqJSON, "cmp_latest")
+	assert.NotContains(t, reqJSON, "msg_old")
+	assert.NotContains(t, reqJSON, "rs_old")
+	assert.NotContains(t, reqJSON, "encrypted_reasoning_before_compaction")
+	assert.NotContains(t, reqJSON, "rs_after")
+	assert.NotContains(t, reqJSON, "msg_after")
 }
 
 func TestBuildOpenAIResponsesRequestParams_NoStoreOmitsPersistedProviderItemIDs(t *testing.T) {
@@ -530,6 +876,7 @@ func TestOpenAIResponsesPrepareCompletedSuccessEvent_NoStoreScrubsEventTurn(t *t
 		ProviderID: "resp_unstored",
 		Parts: []ContentPart{
 			ReasoningContent{ProviderID: "rs_unstored", Content: "private reasoning summary", ProviderState: "encrypted_reasoning_blob"},
+			CompactionContent{ProviderID: "cmp_unstored", ProviderState: "encrypted_compaction_blob"},
 			TextContent{ProviderID: "msg_unstored", Content: "assistant value answer"},
 			functionCall,
 			customCall,
@@ -552,9 +899,10 @@ func TestOpenAIResponsesPrepareCompletedSuccessEvent_NoStoreScrubsEventTurn(t *t
 		{CallID: "call_custom_value", Name: "structured_answer", Type: "custom_tool_call", Input: "answer:7"},
 	}, prepared.Turn.ToolCalls())
 	assert.Equal(t, []string{"encrypted_reasoning_blob"}, openAIReasoningProviderStates(prepared.Turn.Parts))
+	assert.Equal(t, []string{"encrypted_compaction_blob"}, openAICompactionProviderStates(prepared.Turn.Parts))
 
 	assert.Equal(t, "resp_unstored", originalTurn.ProviderID)
-	require.Len(t, originalTurn.Parts, 4)
+	require.Len(t, originalTurn.Parts, 5)
 }
 
 func TestOpenAIResponsesPrepareCompletedSuccessEvent_OnlyScrubsNoStoreCompletedEvents(t *testing.T) {
@@ -769,6 +1117,72 @@ func mustUnmarshalOpenAIStreamEvent(t *testing.T, raw string) responses.Response
 	return evt
 }
 
+func openAIResponsesMergedStreamedCompactionBeforeCompletedMessageTurn(t *testing.T) *Turn {
+	t.Helper()
+
+	builders := newOpenAIResponsesContentBuilders()
+	events := []string{
+		`{
+			"type":"response.output_item.done",
+			"sequence_number":0,
+			"output_index":0,
+			"item":{
+				"id":"cmp_streamed",
+				"type":"compaction",
+				"encrypted_content":"encrypted_compaction_blob",
+				"created_by":"server"
+			}
+		}`,
+		`{
+			"type":"response.output_text.delta",
+			"sequence_number":1,
+			"item_id":"msg_completed",
+			"output_index":1,
+			"content_index":0,
+			"delta":"streamed draft"
+		}`,
+	}
+	for _, raw := range events {
+		processed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, raw), builders)
+		require.NoError(t, err)
+		assert.True(t, cont)
+		_ = processed
+	}
+
+	completed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, `{
+		"type":"response.completed",
+		"sequence_number":2,
+		"response":{
+			"id":"resp_1",
+			"object":"response",
+			"created_at":0,
+			"model":"gpt-4o-mini",
+			"status":"completed",
+			"output":[
+				{
+					"id":"msg_completed",
+					"type":"message",
+					"role":"assistant",
+					"status":"completed",
+					"content":[{"type":"output_text","text":"completed answer after compaction"}]
+				}
+			],
+			"usage":{
+				"input_tokens":10,
+				"input_tokens_details":{"cached_tokens":2},
+				"output_tokens":5,
+				"output_tokens_details":{"reasoning_tokens":1},
+				"total_tokens":15
+			}
+		}
+	}`), builders)
+	require.NoError(t, err)
+	assert.False(t, cont)
+	require.NotNil(t, completed)
+	require.NotNil(t, completed.Turn)
+	return completed.Turn
+}
+
 func openAIProviderItemReplayConversation(t *testing.T) *streamingConversation {
 	t.Helper()
 
@@ -836,6 +1250,9 @@ func assertOpenAINoStoreTurnScrubbed(t *testing.T, turn *Turn) {
 		case ReasoningContent:
 			assert.Empty(t, part.ProviderID)
 			assert.Empty(t, part.Content)
+			assert.NotEmpty(t, part.ProviderState)
+		case CompactionContent:
+			assert.Empty(t, part.ProviderID)
 			assert.NotEmpty(t, part.ProviderState)
 		}
 	}
@@ -913,12 +1330,37 @@ func openAIResponsesRequestReasoningInputItems(t *testing.T, req map[string]any)
 	return reasoningItems
 }
 
+func openAIResponsesRequestCompactionInputItems(t *testing.T, req map[string]any) []map[string]any {
+	t.Helper()
+
+	var compactionItems []map[string]any
+	for _, raw := range openAIResponsesRequestInput(t, req) {
+		item, ok := raw.(map[string]any)
+		require.True(t, ok)
+		if item["type"] == "compaction" {
+			compactionItems = append(compactionItems, item)
+		}
+	}
+	return compactionItems
+}
+
 func openAIReasoningProviderStates(parts []ContentPart) []string {
 	var states []string
 	for _, part := range parts {
 		reasoning, ok := part.(ReasoningContent)
 		if ok && reasoning.ProviderState != "" {
 			states = append(states, reasoning.ProviderState)
+		}
+	}
+	return states
+}
+
+func openAICompactionProviderStates(parts []ContentPart) []string {
+	var states []string
+	for _, part := range parts {
+		compaction, ok := part.(CompactionContent)
+		if ok && compaction.ProviderState != "" {
+			states = append(states, compaction.ProviderState)
 		}
 	}
 	return states
