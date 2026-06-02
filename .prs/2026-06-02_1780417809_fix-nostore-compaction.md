@@ -87,6 +87,11 @@ Ordered merge follow-up implementation on 2026-06-02:
 - `go test -count=1 ./internal/llmstream` passed.
 - `go test ./...` passed.
 
+Final validation pass on 2026-06-02:
+
+- `review` against `main`: patch correct; no findings.
+- `check_spec_conformance({"only_changed":true})`: `internal/llmstream` conforms.
+
 ## Summary
 
 ## State
@@ -103,3 +108,4 @@ Ordered merge follow-up implementation on 2026-06-02:
 - Review follow-up commit `2b9ec76` fixes streamed compaction preservation and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
 - Latest validation found a second actionable review issue: streamed-only compaction must preserve provider output order when merged with non-empty completed output, otherwise no-store pruning can drop post-compaction assistant content. Next step should fix ordering, then rerun review/conformance.
 - Ordered merge follow-up commit `9baca8d` fixes provider output ordering for streamed-only compaction and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
+- Final validation: review passed with no findings; `internal/llmstream` SPEC conformance passed. OpenAI credential-dependent integration/manual exec validation remains not run in this environment.
