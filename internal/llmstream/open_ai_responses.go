@@ -409,6 +409,11 @@ func openAIResponsesScrubNoStoreTurn(turn Turn) Turn {
 				continue
 			}
 			parts = append(parts, ReasoningContent{ProviderState: p.ProviderState})
+		case CompactionContent:
+			if p.ProviderState == "" {
+				continue
+			}
+			parts = append(parts, CompactionContent{ProviderState: p.ProviderState})
 		case ToolCall:
 			p.ProviderID = ""
 			parts = append(parts, p)
@@ -658,6 +663,14 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 					ReasoningContent{ProviderID: reasoning.ID, ProviderState: reasoning.EncryptedContent},
 				)
 			}
+		case "compaction":
+			compaction := item.AsCompaction()
+			if compaction.EncryptedContent != "" {
+				builders.rememberStreamedPart(
+					"compaction_state:"+compaction.ID,
+					CompactionContent{ProviderID: compaction.ID, ProviderState: compaction.EncryptedContent},
+				)
+			}
 		}
 	case "response.function_call_arguments.delta":
 		evtFCDelta := evt.AsResponseFunctionCallArgumentsDelta()
@@ -677,6 +690,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	// The previous_response_id will provide the assistant content to the provider.
 	resps := sc.turns
 	respsToEncode := resps
+	firstPartIndex := 0
 	if openAIResponsesUsesStoredLink(opt) && sc.providerConversationID != "" {
 		lastAssistantIdx := -1
 		for i := len(resps) - 1; i >= 0; i-- {
@@ -688,21 +702,30 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		if lastAssistantIdx >= 0 && lastAssistantIdx+1 < len(resps) {
 			respsToEncode = resps[lastAssistantIdx+1:]
 		}
+	} else if opt != nil && opt.NoStore {
+		if turnIdx, partIdx, ok := openAIResponsesLatestCompactionPosition(resps); ok {
+			respsToEncode = resps[turnIdx:]
+			firstPartIndex = partIdx
+		}
 	}
 
 	inputItems := make(responses.ResponseInputParam, 0, len(respsToEncode))
 	includeProviderItemIDs := openAIResponsesUsesStoredLink(opt)
 	replayEncryptedReasoning := opt != nil && opt.NoStore
-	for _, resp := range respsToEncode {
+	for respIdx, resp := range respsToEncode {
 		if resp.Role == RoleSystem {
 			continue
+		}
+		partsToEncode := resp.Parts
+		if respIdx == 0 && firstPartIndex > 0 {
+			partsToEncode = partsToEncode[firstPartIndex:]
 		}
 
 		// Collect all text parts. A text part maps to a message, for a single msg on our side, we only want to make one message on their side.
 		// I have no idea these parts exist in practice, but in theory they could be interleaved in msg.Parts. So the first part we see, we write a message with all text parts.
 		// Note that we want to insert this message in the order it goes based on msg.parts, so we can't just dump in the message first.
 		var allTextParts []TextContent
-		for _, part := range resp.Parts {
+		for _, part := range partsToEncode {
 			switch tpart := part.(type) {
 			case TextContent:
 				allTextParts = append(allTextParts, tpart)
@@ -711,7 +734,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 
 		// We need to group reasoning parts by ID, b/c that's Responses data model.
 		idToReasoningParts := map[string][]ReasoningContent{}
-		for _, part := range resp.Parts {
+		for _, part := range partsToEncode {
 			switch tpart := part.(type) {
 			case ReasoningContent:
 				if tpart.Content != "" {
@@ -721,7 +744,7 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 		}
 		idToAddedResponse := map[string]bool{} // keep track if we added the ID ("rs_blahblah") yet
 
-		for _, part := range resp.Parts {
+		for _, part := range partsToEncode {
 			switch tpart := part.(type) {
 			case TextContent:
 				contentList := make(responses.ResponseInputMessageContentListParam, 0, len(allTextParts))
@@ -782,6 +805,10 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 				default:
 					return responses.ResponseNewParams{}, fmt.Errorf("unknown or missing call type for tool result %s", tpart.CallID)
 				}
+			case CompactionContent:
+				if tpart.ProviderState != "" {
+					inputItems = append(inputItems, openAIResponsesCompactionInputItem(tpart, includeProviderItemIDs))
+				}
 			case ReasoningContent:
 				if replayEncryptedReasoning && tpart.ProviderState != "" {
 					inputItems = append(inputItems, openAIResponsesEncryptedReasoningInputItem(tpart.ProviderState))
@@ -832,6 +859,18 @@ func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.M
 	return req, nil
 }
 
+func openAIResponsesLatestCompactionPosition(turns []Turn) (turnIdx int, partIdx int, ok bool) {
+	for i := len(turns) - 1; i >= 0; i-- {
+		for j := len(turns[i].Parts) - 1; j >= 0; j-- {
+			compaction, isCompaction := turns[i].Parts[j].(CompactionContent)
+			if isCompaction && compaction.ProviderState != "" {
+				return i, j, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
 func (sc *streamingConversation) openAIResponsesInstructions() string {
 	if len(sc.turns) == 0 {
 		return ""
@@ -853,6 +892,14 @@ func openAIResponsesEncryptedReasoningInputItem(encrypted string) responses.Resp
 		"summary":           []any{},
 		"encrypted_content": encrypted,
 	})
+}
+
+func openAIResponsesCompactionInputItem(compaction CompactionContent, includeProviderID bool) responses.ResponseInputItemUnionParam {
+	item := responses.ResponseCompactionItemParam{EncryptedContent: compaction.ProviderState}
+	if includeProviderID && compaction.ProviderID != "" {
+		item.ID = param.NewOpt(compaction.ProviderID)
+	}
+	return responses.ResponseInputItemUnionParam{OfCompaction: &item}
 }
 
 func openaiResponesMapMessageRole(role Role) responses.EasyInputMessageRole {
@@ -925,6 +972,11 @@ func openaiResponesBuildResponse(resp responses.Response) *Turn {
 			}
 			if reasoning.EncryptedContent != "" {
 				parts = append(parts, ReasoningContent{ProviderID: reasoning.ID, ProviderState: reasoning.EncryptedContent})
+			}
+		case "compaction":
+			compaction := item.AsCompaction()
+			if compaction.EncryptedContent != "" {
+				parts = append(parts, CompactionContent{ProviderID: compaction.ID, ProviderState: compaction.EncryptedContent})
 			}
 		}
 	}

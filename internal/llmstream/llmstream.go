@@ -38,7 +38,8 @@ type SendOptions struct {
 	//   - OpenAI Responses: when set to "priority" or "flex", sets service_tier in the request.
 	ServiceTier string
 
-	// NoStore enables provider no-store/ZDR behavior. OpenAI Responses sends store=false, disables server-side response linking, and resends full local history.
+	// NoStore enables provider no-store/ZDR behavior. OpenAI Responses sends store=false, disables server-side response linking, and replays local stateless history.
+	// If OpenAI returns encrypted reasoning or compaction state, it is retained and replayed without provider IDs.
 	NoStore bool
 }
 

@@ -760,6 +760,10 @@ func openAIProviderItemIDs(parts []ContentPart) []string {
 			if part.ProviderID != "" {
 				ids = append(ids, part.ProviderID)
 			}
+		case CompactionContent:
+			if part.ProviderID != "" {
+				ids = append(ids, part.ProviderID)
+			}
 		case ToolCall:
 			if part.ProviderID != "" {
 				ids = append(ids, part.ProviderID)
