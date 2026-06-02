@@ -94,6 +94,27 @@ Final validation pass on 2026-06-02:
 
 ## Summary
 
+Fix OpenAI Responses no-store server-side compaction replay.
+
+- Add retained `CompactionContent` for opaque OpenAI compaction state.
+- Capture compaction output from completed Responses payloads and streamed output-item events.
+- Scrub no-store retained provider IDs while preserving encrypted reasoning/compaction state needed for stateless replay.
+- Replay compaction state as OpenAI Responses compaction input items for `SendOptions.NoStore`.
+- Prune no-store replay history from the latest compaction item forward, preserving post-compaction content and stored-mode `previous_response_id` behavior.
+- Preserve streamed compaction state when final completed output is non-empty, including provider output ordering so pruning does not drop content that followed compaction.
+- Add focused request-shape, streaming, and no-store replay regression coverage.
+
+Validation:
+
+- `go test -count=1 ./internal/llmstream`
+- `go test ./...`
+- `review` against `main`: patch correct; no findings.
+- `check_spec_conformance({"only_changed":true})`: `internal/llmstream` conforms.
+
+Not run in this environment:
+
+- OpenAI credential-dependent integration/manual `go run . exec` compaction validation; `OPENAI_API_KEY` is unset.
+
 ## State
 
 - Active branch: `jn/fix-nostore-compaction`.
@@ -109,3 +130,4 @@ Final validation pass on 2026-06-02:
 - Latest validation found a second actionable review issue: streamed-only compaction must preserve provider output order when merged with non-empty completed output, otherwise no-store pruning can drop post-compaction assistant content. Next step should fix ordering, then rerun review/conformance.
 - Ordered merge follow-up commit `9baca8d` fixes provider output ordering for streamed-only compaction and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
 - Final validation: review passed with no findings; `internal/llmstream` SPEC conformance passed. OpenAI credential-dependent integration/manual exec validation remains not run in this environment.
+- PR summary written after final validation.
