@@ -917,17 +917,60 @@ func openaiResponesMapMessageRole(role Role) responses.EasyInputMessageRole {
 
 func openAIResponsesBuildCompletedResponse(resp responses.Response, builders *openAIResponsesContentBuilders) *Turn {
 	turn := openaiResponesBuildResponse(resp)
+	streamedParts := builders.streamedTurnParts()
 	if len(resp.Output) != 0 {
+		turn.Parts = openAIResponsesMergeStreamedCompactions(turn.Parts, streamedParts)
 		return turn
 	}
 
-	streamedParts := builders.streamedTurnParts()
 	if len(streamedParts) == 0 {
 		return turn
 	}
 	turn.Parts = streamedParts
 	turn.FinishReason = openaiResponesMapFinishReason(resp, openAIResponsesPartsHaveToolCalls(streamedParts))
 	return turn
+}
+
+func openAIResponsesMergeStreamedCompactions(completedParts, streamedParts []ContentPart) []ContentPart {
+	if len(streamedParts) == 0 {
+		return completedParts
+	}
+
+	compactionIDs := make(map[string]bool)
+	compactionStates := make(map[string]bool)
+	for _, part := range completedParts {
+		compaction, ok := part.(CompactionContent)
+		if !ok || compaction.ProviderState == "" {
+			continue
+		}
+		if compaction.ProviderID != "" {
+			compactionIDs[compaction.ProviderID] = true
+		}
+		compactionStates[compaction.ProviderState] = true
+	}
+
+	parts := completedParts
+	for _, part := range streamedParts {
+		compaction, ok := part.(CompactionContent)
+		if !ok || compaction.ProviderState == "" {
+			continue
+		}
+		if compaction.ProviderID != "" && compactionIDs[compaction.ProviderID] {
+			continue
+		}
+		if compactionStates[compaction.ProviderState] {
+			continue
+		}
+		if parts == nil {
+			parts = make([]ContentPart, 0, len(completedParts)+1)
+		}
+		parts = append(parts, compaction)
+		if compaction.ProviderID != "" {
+			compactionIDs[compaction.ProviderID] = true
+		}
+		compactionStates[compaction.ProviderState] = true
+	}
+	return parts
 }
 
 func openAIResponsesPartsHaveToolCalls(parts []ContentPart) bool {

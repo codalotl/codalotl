@@ -588,6 +588,78 @@ func TestOpenAIResponsesProcessEvent_CompletedEmptyOutputUsesStreamedState(t *te
 	assert.Contains(t, turn.Parts, CompactionContent{ProviderID: "cmp_1", ProviderState: "encrypted_compaction_blob"})
 }
 
+func TestOpenAIResponsesProcessEvent_CompletedNonEmptyOutputKeepsStreamedCompaction(t *testing.T) {
+	builders := newOpenAIResponsesContentBuilders()
+
+	events := []string{
+		`{
+			"type":"response.output_text.delta",
+			"sequence_number":0,
+			"item_id":"msg_streamed",
+			"output_index":0,
+			"content_index":0,
+			"delta":"streamed draft"
+		}`,
+		`{
+			"type":"response.output_item.done",
+			"sequence_number":1,
+			"output_index":1,
+			"item":{
+				"id":"cmp_streamed",
+				"type":"compaction",
+				"encrypted_content":"encrypted_compaction_blob",
+				"created_by":"server"
+			}
+		}`,
+	}
+	for _, raw := range events {
+		processed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, raw), builders)
+		require.NoError(t, err)
+		assert.True(t, cont)
+		_ = processed
+	}
+
+	completed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, `{
+		"type":"response.completed",
+		"sequence_number":2,
+		"response":{
+			"id":"resp_1",
+			"object":"response",
+			"created_at":0,
+			"model":"gpt-4o-mini",
+			"status":"completed",
+			"output":[
+				{
+					"id":"msg_completed",
+					"type":"message",
+					"role":"assistant",
+					"status":"completed",
+					"content":[{"type":"output_text","text":"completed answer"}]
+				}
+			],
+			"usage":{
+				"input_tokens":10,
+				"input_tokens_details":{"cached_tokens":2},
+				"output_tokens":5,
+				"output_tokens_details":{"reasoning_tokens":1},
+				"total_tokens":15
+			}
+		}
+	}`), builders)
+	require.NoError(t, err)
+	assert.False(t, cont)
+	require.NotNil(t, completed)
+	require.NotNil(t, completed.Turn)
+
+	turn := completed.Turn
+	assert.Equal(t, "resp_1", turn.ProviderID)
+	assert.Equal(t, "completed answer", turn.TextContent())
+	assert.Equal(t, FinishReasonEndTurn, turn.FinishReason)
+	assert.Contains(t, turn.Parts, TextContent{ProviderID: "msg_completed", Content: "completed answer"})
+	assert.NotContains(t, turn.Parts, TextContent{ProviderID: "msg_streamed", Content: "streamed draft"})
+	assert.Contains(t, turn.Parts, CompactionContent{ProviderID: "cmp_streamed", ProviderState: "encrypted_compaction_blob"})
+}
+
 func TestBuildOpenAIResponsesRequestParams_NoStoreReplaysEncryptedReasoningWithoutProviderIDs(t *testing.T) {
 	sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
 	require.NoError(t, sc.AddUserTurn("first question"))
