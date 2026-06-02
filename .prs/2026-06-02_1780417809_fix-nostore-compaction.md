@@ -45,8 +45,8 @@ Validation:
 - [DONE] Run `go test ./internal/llmstream`.
 - [DONE] Run `go test ./...`.
 - [DONE] Run focused mock/request-shape compaction tests.
-- Attempt relevant OpenAI integration tests with `INTEGRATION_TEST=1` and OpenAI credentials when available.
-- Validate manually with `go run . exec`, temporarily forcing a low compaction threshold if needed to observe compaction.
+- [DONE] Attempt relevant OpenAI integration tests with `INTEGRATION_TEST=1`; targeted tests skipped because `OPENAI_API_KEY` is unset.
+- [DONE] Validate manually with `go run . exec`, temporarily forcing a low compaction threshold to observe compaction.
 
 ### Review follow-up
 
@@ -92,6 +92,14 @@ Final validation pass on 2026-06-02:
 - `review` against `main`: patch correct; no findings.
 - `check_spec_conformance({"only_changed":true})`: `internal/llmstream` conforms.
 
+Manual runtime validation on 2026-06-02:
+
+- Temporarily forced the OpenAI Responses compaction threshold to `2000` in the uncommitted worktree, then restored it after validation.
+- Ran `CODALOTL_ZDR=true LLMSTREAM_LOG_FILE=manual_nostore_compaction.log LLMSTREAM_EVENTS_LOG_FILE=manual_nostore_compaction.events.log go run . exec --json --model gpt-5.5-high <large prompt>`.
+- The run exited 0 and returned `VALIDATION_OK`.
+- Debug logs confirmed `store=false`, `context_management` with `compact_threshold=2000`, provider-subscription auth through the Codalotl/ChatGPT endpoint, and streamed `response.output_item.added` compaction events. The parsed completed assistant turn retained opaque `provider_state` parts around the visible assistant text.
+- Temporary logs were removed after inspection.
+
 ## Summary
 
 Fix OpenAI Responses no-store server-side compaction replay.
@@ -110,10 +118,11 @@ Validation:
 - `go test ./...`
 - `review` against `main`: patch correct; no findings.
 - `check_spec_conformance({"only_changed":true})`: `internal/llmstream` conforms.
+- `go run . exec --json --model gpt-5.5-high <large prompt>` with `CODALOTL_ZDR=true` and a temporary low compaction threshold: exited 0, returned `VALIDATION_OK`, and debug logs confirmed actual streamed OpenAI compaction output items with `store=false`.
 
-Not run in this environment:
+Credential-dependent integration tests:
 
-- OpenAI credential-dependent integration/manual `go run . exec` compaction validation; `OPENAI_API_KEY` is unset.
+- `INTEGRATION_TEST=1 go test -count=1 -v ./internal/llmstream -run TestOpenAIResponsesProvider_NoStoreZDR` was attempted earlier and skipped because `OPENAI_API_KEY` is unset.
 
 ## State
 
@@ -129,5 +138,6 @@ Not run in this environment:
 - Review follow-up commit `2b9ec76` fixes streamed compaction preservation and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
 - Latest validation found a second actionable review issue: streamed-only compaction must preserve provider output order when merged with non-empty completed output, otherwise no-store pruning can drop post-compaction assistant content. Next step should fix ordering, then rerun review/conformance.
 - Ordered merge follow-up commit `9baca8d` fixes provider output ordering for streamed-only compaction and passed `go test -count=1 ./internal/llmstream` plus `go test ./...`. Next step should rerun `review` and `check_spec_conformance({"only_changed":true})`.
-- Final validation: review passed with no findings; `internal/llmstream` SPEC conformance passed. OpenAI credential-dependent integration/manual exec validation remains not run in this environment.
+- Final validation: review passed with no findings; `internal/llmstream` SPEC conformance passed. Credential-dependent OpenAI integration tests were attempted and skipped because `OPENAI_API_KEY` is unset.
+- Manual runtime validation: `go run . exec` with `CODALOTL_ZDR=true`, a large prompt, and a temporary low compaction threshold exited 0 with `VALIDATION_OK`; debug logs confirmed `store=false`, `context_management`, streamed compaction output-item events, and retained opaque provider state. The temporary threshold and logs were removed afterward.
 - PR summary written after final validation.
