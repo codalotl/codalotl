@@ -4,6 +4,12 @@ Codalotl, or `codalotl` (the binary), is an AI-powered software construction sys
 
 It is a TUI and CLI.
 
+## Index
+
+- Read `PRODUCT-SPEC-GUIDANCE.md` to understand how the product spec works.
+- Read `PHILOSOPHY.md` to understand design choices.
+- `features/` contains individual features.
+
 ## Environment
 
 ### OSes

@@ -14,12 +14,13 @@ It owns OpenAI-specific device login, token refresh, credential persistence, and
 - Startup paths needing subscription-backed model availability explicitly refresh expired default saved auth when possible.
 - Logout removes saved auth. Missing saved auth is not an error.
 - Options support alternate auth paths, HTTP clients, clock functions, auth endpoint URLs, browser-opening behavior, and user-visible output.
+- Default saved auth presence requires OpenAI subscription auth while the default auth file exists.
 - Usable saved/login/refreshed auth registers OpenAI subscription auth with `llmmodel`.
 	- Access token is used as bearer auth.
 	- ChatGPT account ID is sent with subscription requests.
 	- Registered endpoint targets ChatGPT Codex-compatible Responses.
 	- Registered subscription requires no-store Responses semantics and root instructions.
-- Unusable status and logout clear registered OpenAI subscription auth.
+- Unusable status clears registered OpenAI subscription auth, but default saved auth suppresses OpenAI API-key fallback while present.
 
 ## Public API
 
@@ -81,5 +82,9 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error)
 //
 // It is the explicit startup hook for callers that need to refresh expired default credentials before model selection or requests depend on subscription auth. Package
 // initialization only loads already usable default saved auth.
+//
+// Missing default saved auth is treated as logged out: it clears llmmodel's OpenAI subscription requirement and returns nil. If default saved auth exists but cannot
+// be loaded, refreshed, saved, or used, llmmodel is synced to require OpenAI subscription auth while having no usable subscription configured, preventing API-key
+// fallback for that provider.
 func RefreshDefaultProviderSubscription(ctx context.Context) error
 ```

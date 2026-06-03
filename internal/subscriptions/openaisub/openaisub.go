@@ -2,7 +2,9 @@
 //
 // Operations that use DefaultPath also keep llmmodel's OpenAI provider subscription auth in sync. Package initialization loads usable default saved auth without
 // network I/O. Login, CheckStatus, CheckStatusWithOptions, and RefreshDefaultProviderSubscription can update or clear the provider subscription as they save, load,
-// or refresh default credentials. Operations using a non-default Options.Path only affect that auth file and do not configure llmmodel provider subscription auth.
+// or refresh default credentials. Missing default credentials clear the subscription requirement; existing but unusable default credentials keep OpenAI subscription
+// auth required while clearing usable subscription auth. Operations using a non-default Options.Path only affect that auth file and do not configure llmmodel provider
+// subscription auth.
 package openaisub
 
 import (
@@ -99,6 +101,12 @@ func init() {
 func loadDefaultProviderSubscription() {
 	auth, path, err := loadAuth(Options{})
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			clearProviderSubscription(path)
+			return
+		}
+		requireProviderSubscription(path)
+		clearUsableProviderSubscription(path)
 		return
 	}
 	syncProviderSubscription(path, auth, nowFunc(Options{})())
@@ -108,6 +116,10 @@ func loadDefaultProviderSubscription() {
 //
 // It is the explicit startup hook for callers that need to refresh expired default credentials before model selection or requests depend on subscription auth. Package
 // initialization only loads already usable default saved auth.
+//
+// Missing default saved auth is treated as logged out: it clears llmmodel's OpenAI subscription requirement and returns nil. If default saved auth exists but cannot
+// be loaded, refreshed, saved, or used, llmmodel is synced to require OpenAI subscription auth while having no usable subscription configured, preventing API-key
+// fallback for that provider.
 func RefreshDefaultProviderSubscription(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, startupRefreshTimeout)
 	defer cancel()
@@ -126,7 +138,8 @@ func refreshDefaultProviderSubscriptionWithOptions(ctx context.Context, opts Opt
 		return nil
 	}
 	if err != nil {
-		clearProviderSubscription(path)
+		requireProviderSubscription(path)
+		clearUsableProviderSubscription(path)
 		return err
 	}
 	now := nowFunc(opts)()
@@ -138,7 +151,8 @@ func refreshDefaultProviderSubscriptionWithOptions(ctx context.Context, opts Opt
 		}
 		auth = refreshed
 		if err := saveAuth(path, auth); err != nil {
-			clearProviderSubscription(path)
+			requireProviderSubscription(path)
+			clearUsableProviderSubscription(path)
 			return err
 		}
 		now = nowFunc(opts)()
@@ -242,7 +256,8 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 		return Status{Path: path}, nil
 	}
 	if err != nil {
-		clearProviderSubscription(path)
+		requireProviderSubscription(path)
+		clearUsableProviderSubscription(path)
 		return Status{Path: path}, err
 	}
 
@@ -255,7 +270,8 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 		}
 		auth = refreshed
 		if err := saveAuth(path, auth); err != nil {
-			clearProviderSubscription(path)
+			requireProviderSubscription(path)
+			clearUsableProviderSubscription(path)
 			return Status{Path: path}, err
 		}
 		now = nowFunc(opts)()
@@ -372,8 +388,9 @@ func syncProviderSubscription(path string, auth authFile, now time.Time) {
 	if !isDefaultAuthPath(path) {
 		return
 	}
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 	if !auth.valid(now) {
-		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+		clearUsableProviderSubscription(path)
 		return
 	}
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
@@ -389,7 +406,20 @@ func syncProviderSubscription(path string, auth authFile, now time.Time) {
 
 func clearProviderSubscription(path string) {
 	if isDefaultAuthPath(path) {
+		clearUsableProviderSubscription(path)
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
+	}
+}
+
+func clearUsableProviderSubscription(path string) {
+	if isDefaultAuthPath(path) {
 		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	}
+}
+
+func requireProviderSubscription(path string) {
+	if isDefaultAuthPath(path) {
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/goclitools"
@@ -12,11 +13,14 @@ import (
 
 var refreshOpenAIDefaultProviderSubscription = openaisub.RefreshDefaultProviderSubscription
 
+type startupModelSelector func(Config) []llmmodel.ModelID
+
 type startupValidationError struct {
-	MissingTools []goclitools.ToolStatus
-	MissingLLM   bool
-	LLMAuthError error
-	LLMEnvVars   []string
+	MissingTools                   []goclitools.ToolStatus
+	MissingLLM                     bool
+	OpenAISubscriptionAuthUnusable bool
+	OpenAISubscriptionRefreshError error
+	LLMEnvVars                     []string
 }
 
 func (e startupValidationError) Error() string {
@@ -58,45 +62,62 @@ func (e startupValidationError) Error() string {
 	}
 
 	if e.MissingLLM {
-		b.WriteString("\nNo usable LLM auth or credentials are configured.\n")
+		if e.OpenAISubscriptionAuthUnusable {
+			b.WriteString("\nOpenAI ChatGPT subscription auth is configured but unusable for the selected OpenAI model.\n")
 
-		if e.LLMAuthError != nil {
-			b.WriteString("\nOpenAI subscription auth could not be loaded/refreshed:\n")
-			b.WriteString("- ")
-			b.WriteString(e.LLMAuthError.Error())
-			b.WriteString("\n")
-		}
-
-		relevant := e.LLMEnvVars
-		if len(relevant) > 0 {
-			b.WriteString("\nTo fix, set one of these provider API key ENV variables:\n")
-			for _, ev := range relevant {
+			if e.OpenAISubscriptionRefreshError != nil {
+				b.WriteString("\nOpenAI subscription auth could not be loaded/refreshed:\n")
 				b.WriteString("- ")
-				b.WriteString(ev)
+				b.WriteString(e.OpenAISubscriptionRefreshError.Error())
 				b.WriteString("\n")
 			}
-		}
 
-		b.WriteString("\nOr log in with supported provider subscription auth:\n")
-		b.WriteString("- codalotl auth openai login\n")
+			b.WriteString("\nTo fix, log in again:\n")
+			b.WriteString("- codalotl auth openai login\n")
 
-		b.WriteString("\nOr add an API key to a config file:\n")
-		b.WriteString("- Global: ")
-		b.WriteString(globalConfigPath())
-		b.WriteString("\n")
-		b.WriteString("- Project: .codalotl/config.json\n")
+			b.WriteString("\nOr remove saved OpenAI subscription credentials to allow configured OpenAI API-key billing:\n")
+			b.WriteString("- codalotl auth openai logout\n")
+		} else {
+			b.WriteString("\nNo usable LLM auth or credentials are configured.\n")
 
-		// Keep this snippet aligned with the current ProviderKeys schema.
-		if len(relevant) > 0 {
-			b.WriteString("\nExample config.json:\n")
-			exampleProvider := exampleProviderKeyID(relevant)
-			if exampleProvider == "" {
-				exampleProvider = "openai"
+			if e.OpenAISubscriptionRefreshError != nil {
+				b.WriteString("\nOpenAI subscription auth could not be loaded/refreshed:\n")
+				b.WriteString("- ")
+				b.WriteString(e.OpenAISubscriptionRefreshError.Error())
+				b.WriteString("\n")
 			}
-			b.WriteString(fmt.Sprintf(`{
+
+			relevant := e.LLMEnvVars
+			if len(relevant) > 0 {
+				b.WriteString("\nTo fix, set one of these provider API key ENV variables:\n")
+				for _, ev := range relevant {
+					b.WriteString("- ")
+					b.WriteString(ev)
+					b.WriteString("\n")
+				}
+			}
+
+			b.WriteString("\nOr log in with supported provider subscription auth:\n")
+			b.WriteString("- codalotl auth openai login\n")
+
+			b.WriteString("\nOr add an API key to a config file:\n")
+			b.WriteString("- Global: ")
+			b.WriteString(globalConfigPath())
+			b.WriteString("\n")
+			b.WriteString("- Project: .codalotl/config.json\n")
+
+			// Keep this snippet aligned with the current ProviderKeys schema.
+			if len(relevant) > 0 {
+				b.WriteString("\nExample config.json:\n")
+				exampleProvider := exampleProviderKeyID(relevant)
+				if exampleProvider == "" {
+					exampleProvider = "openai"
+				}
+				b.WriteString(fmt.Sprintf(`{
   "providerkeys": { "%s": "sk-..." }
 }
 `, exampleProvider))
+			}
 		}
 	}
 
@@ -129,7 +150,7 @@ func exampleProviderKeyID(relevantEnvVars []string) string {
 	return ""
 }
 
-func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools.ToolRequirement) error {
+func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools.ToolRequirement, selectedModels ...llmmodel.ModelID) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -142,38 +163,90 @@ func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools
 		}
 	}
 
-	availableModels := llmmodel.AvailableModelIDsWithAuth()
 	var refreshErr error
-	if shouldRefreshOpenAISubscriptionForStartup(cfg, availableModels) {
+	if shouldRefreshOpenAISubscriptionForStartup(cfg, selectedModels...) || shouldRefreshOpenAISubscriptionBeforeMissingAuth() {
 		refreshErr = refreshOpenAIDefaultProviderSubscription(ctx)
-		availableModels = llmmodel.AvailableModelIDsWithAuth()
 	}
+	availableModels := llmmodel.AvailableModelIDsWithAuth()
 	missingLLM := len(availableModels) == 0
+	openAISubscriptionAuthUnusable := openAISubscriptionAuthRequiredButUnusableForStartup(cfg, selectedModels...)
 
-	if len(missingTools) == 0 && !missingLLM {
+	if len(missingTools) == 0 && !missingLLM && !openAISubscriptionAuthUnusable {
 		return nil
 	}
 	return startupValidationError{
-		MissingTools: missingTools,
-		MissingLLM:   missingLLM,
-		LLMAuthError: refreshErr,
-		LLMEnvVars:   llmProviderEnvVarsForDisplay(cfg),
+		MissingTools:                   missingTools,
+		MissingLLM:                     missingLLM || openAISubscriptionAuthUnusable,
+		OpenAISubscriptionAuthUnusable: openAISubscriptionAuthUnusable,
+		OpenAISubscriptionRefreshError: refreshErr,
+		LLMEnvVars:                     llmProviderEnvVarsForDisplay(cfg),
 	}
 }
 
-func shouldRefreshOpenAISubscriptionForStartup(cfg Config, availableModels []llmmodel.ModelID) bool {
-	if len(availableModels) == 0 {
-		return true
+func selectedStartupModels(cfg Config, selectedModels ...llmmodel.ModelID) []llmmodel.ModelID {
+	models := make([]llmmodel.ModelID, 0, len(selectedModels))
+	for _, id := range selectedModels {
+		if strings.TrimSpace(string(id)) == "" {
+			continue
+		}
+		models = append(models, id)
 	}
+	if len(models) == 0 {
+		models = append(models, effectiveModel(cfg))
+	}
+	return models
+}
 
-	effective := effectiveModel(cfg)
-	if effective.ProviderID() != llmmodel.ProviderIDOpenAI {
-		return false
+func startupModelsFromSelectors(cfg Config, selectors []startupModelSelector) []llmmodel.ModelID {
+	var models []llmmodel.ModelID
+	for _, selector := range selectors {
+		if selector == nil {
+			continue
+		}
+		models = append(models, selector(cfg)...)
 	}
-	for _, modelID := range availableModels {
-		if modelID == effective {
-			return false
+	return selectedStartupModels(cfg, models...)
+}
+
+func shouldRefreshOpenAISubscriptionForStartup(cfg Config, selectedModels ...llmmodel.ModelID) bool {
+	for _, id := range selectedStartupModels(cfg, selectedModels...) {
+		if id.ProviderID() == llmmodel.ProviderIDOpenAI {
+			return !llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
 		}
 	}
-	return true
+	return false
+}
+
+func shouldRefreshOpenAISubscriptionBeforeMissingAuth() bool {
+	return !llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI) &&
+		len(llmmodel.AvailableModelIDsWithAuth()) == 0
+}
+
+func openAISubscriptionAuthRequiredButUnusableForStartup(cfg Config, selectedModels ...llmmodel.ModelID) bool {
+	for _, id := range selectedStartupModels(cfg, selectedModels...) {
+		if !modelEligibleForOpenAISubscriptionAuth(id) {
+			continue
+		}
+		return llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI) &&
+			!llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
+	}
+	return false
+}
+
+func modelEligibleForOpenAISubscriptionAuth(id llmmodel.ModelID) bool {
+	info := llmmodel.GetModelInfo(id)
+	return info.ID != llmmodel.ModelIDUnknown &&
+		info.ProviderID == llmmodel.ProviderIDOpenAI &&
+		strings.TrimSpace(info.APIActualKey) == "" &&
+		!apiEnvKeyHasUsableValue(info.APIEnvKey) &&
+		strings.TrimSpace(info.ModelOverrides.APIEndpointURL) == ""
+}
+
+func apiEnvKeyHasUsableValue(envKey string) bool {
+	envKey = strings.TrimSpace(envKey)
+	envKey = strings.TrimPrefix(envKey, "$")
+	if envKey == "" {
+		return false
+	}
+	return strings.TrimSpace(os.Getenv(envKey)) != ""
 }

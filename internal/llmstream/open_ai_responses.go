@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -200,6 +201,10 @@ func openAIResponsesResolveAuth(modelID llmmodel.ModelID, modelInfo llmmodel.Mod
 		}, nil
 	}
 
+	if openAIResponsesProviderSubscriptionRequired(modelInfo) {
+		return openAIResponsesAuthConfig{}, fmt.Errorf("provider subscription auth required but unusable for model_id=%q provider=%s", string(modelID), modelInfo.ProviderID)
+	}
+
 	apiKey := llmmodel.GetAPIKey(modelID)
 	if apiKey == "" {
 		return openAIResponsesAuthConfig{}, fmt.Errorf("api key missing for model_id=%q provider=%s", string(modelID), modelInfo.ProviderID)
@@ -211,14 +216,26 @@ func openAIResponsesResolveAuth(modelID llmmodel.ModelID, modelInfo llmmodel.Mod
 	}, nil
 }
 
+func openAIResponsesProviderSubscriptionRequired(modelInfo llmmodel.ModelInfo) bool {
+	if !llmmodel.ProviderSubscriptionRequired(modelInfo.ProviderID) {
+		return false
+	}
+	return openAIResponsesSubscriptionEligible(modelInfo, llmmodel.ProviderSubscription{ProviderID: modelInfo.ProviderID})
+}
+
 func openAIResponsesSubscriptionEligible(modelInfo llmmodel.ModelInfo, sub llmmodel.ProviderSubscription) bool {
 	if sub.ProviderID != modelInfo.ProviderID {
 		return false
 	}
 	overrides := modelInfo.ModelOverrides
 	return strings.TrimSpace(overrides.APIActualKey) == "" &&
-		strings.TrimSpace(overrides.APIEnvKey) == "" &&
+		!openAIResponsesHasUsableAPIEnvKeyOverride(overrides.APIEnvKey) &&
 		strings.TrimSpace(overrides.APIEndpointURL) == ""
+}
+
+func openAIResponsesHasUsableAPIEnvKeyOverride(envKey string) bool {
+	envKey = strings.TrimPrefix(strings.TrimSpace(envKey), "$")
+	return envKey != "" && os.Getenv(envKey) != ""
 }
 
 func openAIResponsesEffectiveSendOptions(opt *SendOptions, auth openAIResponsesAuthConfig) *SendOptions {

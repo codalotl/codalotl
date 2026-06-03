@@ -30,8 +30,9 @@ Consumers can then configure these:
     - in-memory provider overrides (ConfigureProviderKey)
     - provider default env vars (ex: "OPENAI_API_KEY")
 - Subscription auth may be registered for providers whose non-API-key auth can be adapted to provider requests.
-    - Subscription auth is provider-level, and applies only to models without per-model API key/env or endpoint overrides.
+    - Subscription auth is provider-level, and applies only to models without per-model APIActualKey, currently usable APIEnvKey value, or APIEndpointURL overrides.
     - Provider-level API keys and default provider env vars do not suppress subscription auth.
+    - A provider may require subscription auth; while required and unusable, provider-level API-key fallback is suppressed for subscription-eligible models.
     - To present a model picker that includes both API-key and subscription-auth models, call AvailableModelIDsWithAuth().
 - To check if a provider has a configured key *at the provider level* (ConfigureProviderKey or default env var), call ProviderHasConfiguredKey(providerID).
     - This does NOT consider per-model overrides; those are only visible when checking at the model level.
@@ -147,6 +148,10 @@ type ProviderID string
 func (pid ProviderID) DefaultModel() ModelID
 
 // ProviderSubscription is provider-agnostic subscription auth that can be used instead of a provider API key.
+//
+// Subscription auth is considered usable only when it matches the requested provider, has nonblank AccessToken, AccountID, and APIEndpointURL fields, and has not
+// expired. Subscription auth applies at the provider level only for registered models without per-model APIActualKey, a usable APIEnvKey value, or APIEndpointURL
+// overrides.
 type ProviderSubscription struct {
 	ProviderID       ProviderID
 	AccessToken      string
@@ -163,6 +168,15 @@ func SetProviderSubscription(providerID ProviderID, sub ProviderSubscription)
 // ClearProviderSubscription removes subscription auth for a provider.
 func ClearProviderSubscription(providerID ProviderID)
 
+// SetProviderSubscriptionRequired controls whether provider subscription auth is required for providerID.
+//
+// While required and no usable provider subscription is configured, provider-level API-key fallback is suppressed for models that would otherwise be eligible for
+// provider subscription auth. Per-model APIActualKey and usable APIEnvKey overrides still take precedence and are not suppressed.
+func SetProviderSubscriptionRequired(providerID ProviderID, required bool)
+
+// ProviderSubscriptionRequired reports whether provider subscription auth is required for providerID.
+func ProviderSubscriptionRequired(providerID ProviderID) bool
+
 // GetProviderSubscription returns usable subscription auth for providerID, if set.
 //
 // Usable subscription auth has matching provider, required fields present, and nonexpired ExpiresAt.
@@ -171,8 +185,14 @@ func GetProviderSubscription(providerID ProviderID) (ProviderSubscription, bool)
 // ProviderHasSubscription reports whether usable subscription auth is configured for providerID.
 func ProviderHasSubscription(providerID ProviderID) bool
 
+// ModelUsesProviderSubscription reports whether id is currently callable through usable provider subscription auth.
+//
+// It reports current usable auth, not eligibility in principle: it returns false if no usable subscription is configured. Eligibility is independent of SupportedTypes
+// and requires a known model without per-model APIActualKey, a usable APIEnvKey value, or APIEndpointURL overrides.
+func ModelUsesProviderSubscription(id ModelID) bool
+
 // ProviderAPIType identifies one API "shape" a provider supports. Providers can expose multiple API types simultaneously (ex: OpenAI exposes both Responses and
-// Completions).
+// Completions). It does not describe auth availability or provider subscription eligibility.
 type ProviderAPIType string
 
 // Known API families for chats/completions/responses.
@@ -263,7 +283,7 @@ func GetModelInfo(id ModelID) ModelInfo
 func ConfigureProviderKey(providerID ProviderID, key string)
 
 // EnvHasDefaultKey returns true if the current env has a value for the provider's default key. Example: EnvHasDefaultKey(ProviderIDOpenAI) checks if "OPENAI_API_KEY"
-// is present and non-blank in ENV. Note that this ONLY checks defaults, not any *overridden* env key.
+// is present and non-empty in ENV. Note that this ONLY checks defaults, not any *overridden* env key.
 func EnvHasDefaultKey(providerID ProviderID) bool
 
 // ProviderKeyEnvVars returns a map of provider id to default env var (without $) for all providers in AllProviderIDs. Ex: {ProviderIDOpenAI: "OPENAI_API_KEY", ...}
@@ -276,17 +296,23 @@ func ProviderKeyEnvVars() map[ProviderID]string
 // If you need to consider per-model overrides (APIActualKey / APIEnvKey), filter at the model level using GetAPIKey(modelID) instead.
 func ProviderHasConfiguredKey(providerID ProviderID) bool
 
-// GetAPIKey returns the API key for the model with id ("" if not found). This is the precedence:
+// GetAPIKey returns the effective API key for the model with id ("" if not found or provider-level fallback is suppressed). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIActualKey
 //  2. Env[ModelInfo.ModelOverrides.APIEnvKey]
 //  3. Value from ConfigureProviderKey for id.ProviderID()
 //  4. Env[ProviderKeyEnvVars()[id.ProviderID()]]
+//
+// Env var names loaded from provider configs or registered through AddCustomModel are normalized by removing one leading "$". Env var values are returned as-is;
+// only the empty string is treated as missing.
+//
+// If ProviderSubscriptionRequired is true for the model's provider and no usable subscription is configured, steps 3 and 4 are suppressed for models eligible for
+// provider subscription auth. Per-model overrides in steps 1 and 2 are still honored.
 func GetAPIKey(id ModelID) string
 
 // AvailableModelIDsWithAPIKey returns only the model IDs that currently have a non-empty effective API key (per GetAPIKey).
 func AvailableModelIDsWithAPIKey() []ModelID
 
-// AvailableModelIDsWithAuth returns only the model IDs that currently have a non-empty effective API key or eligible provider subscription auth.
+// AvailableModelIDsWithAuth returns only the model IDs that currently have a non-empty effective API key or currently usable provider subscription auth.
 func AvailableModelIDsWithAuth() []ModelID
 
 // GetAPIEndpointURL returns the API endpoint URL for the model with id ("" if not found). This is the precedence:

@@ -33,6 +33,7 @@ func isolateUserConfig(t *testing.T) {
 	for _, pid := range llmmodel.AllProviderIDs {
 		llmmodel.ConfigureProviderKey(pid, "")
 		llmmodel.ClearProviderSubscription(pid)
+		llmmodel.SetProviderSubscriptionRequired(pid, false)
 	}
 
 	// Keep tests hermetic: don't allow developer env vars to satisfy startup validation.
@@ -1090,7 +1091,7 @@ func TestRun_Config_DefaultOpenAIModelRefreshesOpenAISubscriptionWhenOtherProvid
 	require.True(t, llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI))
 }
 
-func TestRun_Config_APIKeyAuthSkipsOpenAISubscriptionRefresh(t *testing.T) {
+func TestRun_Config_APIKeyAuthRefreshesOpenAISubscriptionBeforeOpenAIFallback(t *testing.T) {
 	isolateUserConfig(t)
 	restoreOpenAISubscriptionRefreshStub(t)
 
@@ -1112,9 +1113,47 @@ func TestRun_Config_APIKeyAuthSkipsOpenAISubscriptionRefresh(t *testing.T) {
 	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
-	require.Equal(t, 0, refreshCalls)
+	require.Equal(t, 1, refreshCalls)
 	require.Empty(t, errOut.String())
 	require.Contains(t, out.String(), "Current Configuration:")
+}
+
+func TestRun_Config_OpenAIAPIKeyDoesNotBypassUnusableSavedOpenAISubscription(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+	t.Cleanup(func() {
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
+	})
+
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
+		return errors.New("saved auth expired")
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 1, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, out.String())
+
+	got := errOut.String()
+	require.Contains(t, got, "OpenAI ChatGPT subscription auth is configured but unusable")
+	require.Contains(t, got, "saved auth expired")
+	require.Contains(t, got, "codalotl auth openai login")
+	require.Contains(t, got, "codalotl auth openai logout")
+	require.NotContains(t, got, "No usable LLM auth or credentials are configured")
 }
 
 func TestRun_Config_NonOpenAIEffectiveModelSkipsOpenAISubscriptionRefresh(t *testing.T) {
@@ -1149,6 +1188,174 @@ func TestRun_Config_NonOpenAIEffectiveModelSkipsOpenAISubscriptionRefresh(t *tes
 	require.Equal(t, 0, refreshCalls)
 	require.Empty(t, errOut.String())
 	require.Contains(t, out.String(), "Effective Model: "+string(llmmodel.ProviderIDAnthropic.DefaultModel()))
+}
+
+func TestRun_Config_NonOpenAIEffectiveModelRefreshesOpenAISubscriptionBeforeMissingAuth(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(`{
+  "preferredprovider": "anthropic"
+}`), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	})
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.Empty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+			ProviderID:      llmmodel.ProviderIDOpenAI,
+			AccessToken:     "test-access-token",
+			AccountID:       "test-account-id",
+			APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+			ExpiresAt:       time.Now().Add(time.Hour),
+			RequiresNoStore: true,
+		})
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Contains(t, out.String(), "Effective Model: "+string(llmmodel.ProviderIDAnthropic.DefaultModel()))
+}
+
+func TestRun_Exec_ModelFlagRefreshesOpenAISubscriptionWhenConfigUsesOtherProvider(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+	openAIModel := llmmodel.ProviderIDOpenAI.DefaultModel()
+	anthropicModel := llmmodel.ProviderIDAnthropic.DefaultModel()
+
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(`{
+  "preferredmodel": "`+string(anthropicModel)+`"
+}`), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
+	})
+
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.NotEmpty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
+			ProviderID:      llmmodel.ProviderIDOpenAI,
+			AccessToken:     "test-access-token",
+			AccountID:       "test-account-id",
+			APIEndpointURL:  "https://chatgpt.com/backend-api/codex",
+			ExpiresAt:       time.Now().Add(time.Hour),
+			RequiresNoStore: true,
+		})
+		return nil
+	}
+
+	origRunNoninteractiveExec := runNoninteractiveExec
+	t.Cleanup(func() { runNoninteractiveExec = origRunNoninteractiveExec })
+
+	var gotPrompt string
+	var gotOpts noninteractive.Options
+	runNoninteractiveExec = func(userPrompt string, opts noninteractive.Options) error {
+		gotPrompt = userPrompt
+		gotOpts = opts
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "exec", "--model", string(openAIModel), "hello"}, &RunOptions{Out: &out, Err: &errOut})
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, errOut.String())
+	require.Equal(t, "hello", gotPrompt)
+	require.Equal(t, openAIModel, gotOpts.ModelID)
+	require.True(t, llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI))
+}
+
+func TestRun_Exec_ModelFlagFailsUnusableOpenAISubscriptionWhenConfigUsesOtherProvider(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+	openAIModel := llmmodel.ProviderIDOpenAI.DefaultModel()
+	anthropicModel := llmmodel.ProviderIDAnthropic.DefaultModel()
+
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(`{
+  "preferredmodel": "`+string(anthropicModel)+`"
+}`), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
+	})
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.NotEmpty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
+		return errors.New("saved auth expired")
+	}
+
+	origRunNoninteractiveExec := runNoninteractiveExec
+	t.Cleanup(func() { runNoninteractiveExec = origRunNoninteractiveExec })
+
+	var execCalled bool
+	runNoninteractiveExec = func(string, noninteractive.Options) error {
+		execCalled = true
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "exec", "--model", string(openAIModel), "hello"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 1, code)
+	require.Equal(t, 1, refreshCalls)
+	require.False(t, execCalled)
+	require.Empty(t, out.String())
+
+	got := errOut.String()
+	require.Contains(t, got, "OpenAI ChatGPT subscription auth is configured but unusable")
+	require.Contains(t, got, "saved auth expired")
+	require.Contains(t, got, "codalotl auth openai login")
+	require.Contains(t, got, "codalotl auth openai logout")
+	require.NotContains(t, got, "No usable LLM auth or credentials are configured")
 }
 
 func TestRun_Config_SubscriptionAuthOnly_Succeeds(t *testing.T) {
