@@ -10,6 +10,7 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 - Sends conversation system message via top-level `instructions` on every create response request; omits it from input items.
 - Uses `llmmodel` OpenAI subscription auth instead of an API key when usable provider subscription auth exists for the model provider and the model has no explicit API key/env or endpoint override.
 	- Default provider API keys do not suppress subscription auth.
+	- If required provider subscription auth is unusable, fails without provider-level API-key fallback.
 	- Sends subscription access token as bearer/API-key auth.
 	- Sends subscription account ID as `ChatGPT-Account-ID`.
 	- Uses subscription endpoint URL for Responses requests.
