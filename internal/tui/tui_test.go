@@ -1644,26 +1644,51 @@ func TestModelCommandListsModelsAvailableThroughProviderSubscription(t *testing.
 	require.Empty(t, llmmodel.GetAPIKey(llmmodel.DefaultModel))
 	require.NotContains(t, llmmodel.AvailableModelIDsWithAPIKey(), llmmodel.DefaultModel)
 	require.Contains(t, llmmodel.AvailableModelIDsWithAuth(), llmmodel.DefaultModel)
+	require.True(t, llmmodel.ModelUsesProviderSubscription(llmmodel.DefaultModel))
 
-	m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
+	for _, cmd := range []string{"/model", "/models"} {
+		t.Run(cmd, func(t *testing.T) {
+			m := newModel(colorPalette{}, noopFormatter{}, nil, sessionConfig{}, nil, nil, nil, nil)
 
-	handled := m.handleSlashCommand("/model")
-	require.True(t, handled)
+			handled := m.handleSlashCommand(cmd)
+			require.True(t, handled)
 
-	require.Len(t, m.messages, 1)
-	msg := m.messages[0]
-	require.Equal(t, messageKindSystem, msg.kind)
-	assert.Contains(t, msg.userMessage, "Current model:")
-	assert.Contains(t, msg.userMessage, "Available models:")
-	assert.Contains(t, msg.userMessage, string(llmmodel.DefaultModel))
+			require.Len(t, m.messages, 1)
+			msg := m.messages[0]
+			require.Equal(t, messageKindSystem, msg.kind)
+			assert.Contains(t, msg.userMessage, "Current model:")
+			assert.Contains(t, msg.userMessage, "Available models:")
+			assert.Contains(t, msg.userMessage, fmt.Sprintf("Current model: %s (subscription)", llmmodel.DefaultModel))
+			assert.Contains(t, msg.userMessage, fmt.Sprintf("• %s (current, subscription)", llmmodel.DefaultModel))
 
-	available := llmmodel.AvailableModelIDsWithAuth()
-	listed := listedModelIDs(msg.userMessage)
-	require.Contains(t, listed, llmmodel.DefaultModel)
-	for _, id := range listed {
-		require.True(t, id.Valid())
-		require.Contains(t, available, id)
+			available := llmmodel.AvailableModelIDsWithAuth()
+			listed := listedModelIDs(msg.userMessage)
+			require.Contains(t, listed, llmmodel.DefaultModel)
+			for _, id := range listed {
+				require.True(t, id.Valid())
+				require.Contains(t, available, id)
+			}
+		})
 	}
+}
+
+func TestTokensCostSectionMarksCurrentModelUsingProviderSubscription(t *testing.T) {
+	clearLLMAuthForTest(t)
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAISubscriptionForTest())
+
+	m := newModel(
+		colorPalette{},
+		noopFormatter{},
+		&session{modelID: llmmodel.DefaultModel, config: sessionConfig{modelID: llmmodel.DefaultModel}},
+		sessionConfig{modelID: llmmodel.DefaultModel},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	section := m.tokensCostSection()
+	assert.Contains(t, section, fmt.Sprintf("Model: %s (subscription)", llmmodel.DefaultModel))
 }
 
 func TestModelCommandEmptyStateMentionsAPIKeysAndProviderSubscriptionLogin(t *testing.T) {

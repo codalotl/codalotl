@@ -30,6 +30,8 @@ const (
 	mouseWheelScrollLines = 3 // mouseWheelScrollLines is the number of lines to scroll per wheel "click".
 )
 
+const providerSubscriptionModelMarker = "subscription"
+
 type messageKind int
 
 const (
@@ -857,18 +859,14 @@ func (m *model) handleModelCommand(arg string) {
 
 	// `/model` (no args): list models + usage help.
 	if arg == "" {
-		current := string(defaultModelID)
-		if m != nil && m.session != nil {
-			if name := strings.TrimSpace(m.session.ModelName()); name != "" {
-				current = name
-			}
-		}
+		currentID := m.currentModelID()
+		current := string(currentID)
 
 		// Only list models that are callable in the current environment.
 		available := llmmodel.AvailableModelIDsWithAuth()
 
 		var b strings.Builder
-		fmt.Fprintf(&b, "Current model: %s\n", current)
+		fmt.Fprintf(&b, "Current model: %s\n", formatModelIDWithAuthMarkers(currentID))
 		b.WriteString("Available models:\n")
 		if len(available) == 0 {
 			b.WriteString("• <none> (no configured API keys or provider subscription logins found)\n")
@@ -889,8 +887,15 @@ func (m *model) handleModelCommand(arg string) {
 		} else {
 			for _, id := range available {
 				line := "• " + string(id)
+				var markers []string
 				if string(id) == current {
-					line += " (current)"
+					markers = append(markers, "current")
+				}
+				if llmmodel.ModelUsesProviderSubscription(id) {
+					markers = append(markers, providerSubscriptionModelMarker)
+				}
+				if len(markers) > 0 {
+					line += " (" + strings.Join(markers, ", ") + ")"
 				}
 				b.WriteString(line)
 				b.WriteByte('\n')
@@ -2366,14 +2371,14 @@ func (m *model) infoPanelContent() string {
 
 func (m *model) tokensCostSection() string {
 	sessionID := "<none>"
-	modelName := string(defaultModelID)
+	modelID := defaultModelID
 	if m != nil && m.session != nil {
 		if id := strings.TrimSpace(m.session.ID()); id != "" {
 			sessionID = id
 		}
-		if name := strings.TrimSpace(m.session.ModelName()); name != "" {
-			modelName = name
-		}
+	}
+	if m != nil {
+		modelID = m.currentModelID()
 	}
 
 	info := m.currentModelInfo()
@@ -2388,7 +2393,7 @@ func (m *model) tokensCostSection() string {
 	lines := make([]string, 0, 4)
 	lines = append(lines,
 		termformat.Sanitize(fmt.Sprintf("Session: %s", sessionID), 4),
-		termformat.Sanitize(fmt.Sprintf("Model: %s", modelName), 4),
+		termformat.Sanitize(fmt.Sprintf("Model: %s", formatModelIDWithAuthMarkers(modelID)), 4),
 	)
 	lines = append(lines, tokensCostLines(info, usage, contextPercent)...)
 
@@ -2417,11 +2422,32 @@ func (m *model) packageSection() string {
 }
 
 func (m *model) currentModelInfo() llmmodel.ModelInfo {
-	modelID := defaultModelID
-	if m != nil && m.session != nil && m.session.modelID != "" {
-		modelID = m.session.modelID
+	return llmmodel.GetModelInfo(m.currentModelID())
+}
+
+func (m *model) currentModelID() llmmodel.ModelID {
+	if m == nil {
+		return defaultModelID
 	}
-	return llmmodel.GetModelInfo(modelID)
+	if m.session != nil && m.session.modelID != "" {
+		return m.session.modelID
+	}
+	if m.sessionConfig.modelID != "" {
+		return m.sessionConfig.modelID
+	}
+	return defaultModelID
+}
+
+func formatModelIDWithAuthMarkers(id llmmodel.ModelID) string {
+	name := string(id)
+	if strings.TrimSpace(name) == "" {
+		name = string(defaultModelID)
+		id = defaultModelID
+	}
+	if llmmodel.ModelUsesProviderSubscription(id) {
+		return name + " (" + providerSubscriptionModelMarker + ")"
+	}
+	return name
 }
 
 func (m *model) currentAgent() *agent.Agent {
