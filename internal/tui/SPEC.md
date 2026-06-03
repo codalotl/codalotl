@@ -100,6 +100,7 @@ If the agent needs permission to use some tool, a Permission Area will be shown 
 - /new - Makes a new session.
 - /skills - Lists installed skills.
 - /models, /model (with no args) - prints the available models and usage help. 
+  Models callable through provider subscription auth are indicated.
 - /model <id> - Switches the active model (validated via `llmmodel`) and starts a new session. If `tui.Config.PersistModelID` is set, the model selection is persisted.
 - /package path/to/pkg - enter Package Mode for a given package.
 - /package - exit Package Mode. Prints a message indicating how Package Mode works.
@@ -231,10 +232,12 @@ Display format:
 
 ```
 Session: 123-abc
-Model: gpt-5.5-high
+Model: gpt-5.5-high (subscription)
 Context: 32% left   |   Cost: $3.24
 Tokens: 123k (input: 42k, cached: 60k, output: 21k)
 ```
+
+The subscription marker appears when the current model uses provider subscription auth.
 
 This information is reset when the /new command is run.
 
