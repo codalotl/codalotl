@@ -135,6 +135,7 @@ func TestLoginOpensBrowserWithVerificationURL(t *testing.T) {
 	sub, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	require.True(t, ok)
 	assert.Equal(t, existing, sub)
+	assert.False(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestLoginPersistsAccountIDFromNamespacedIDToken(t *testing.T) {
@@ -342,6 +343,7 @@ func TestDefaultSavedAuthLoadDoesNotRefreshExpiredAuthFile(t *testing.T) {
 	assert.False(t, requested)
 	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	assert.False(t, ok)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestRefreshDefaultProviderSubscriptionRefreshesExpiredAuthFile(t *testing.T) {
@@ -397,6 +399,7 @@ func TestRefreshDefaultProviderSubscriptionMissingAuthClearsProviderSubscription
 
 	path := useTempDefaultPath(t)
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAIProviderSubscriptionForTest("existing-token", "existing-account"))
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 
 	err := RefreshDefaultProviderSubscription(context.Background())
 	require.NoError(t, err)
@@ -405,6 +408,7 @@ func TestRefreshDefaultProviderSubscriptionMissingAuthClearsProviderSubscription
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	assert.False(t, ok)
+	assert.False(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestRefreshDefaultProviderSubscriptionClearsProviderSubscriptionWhenRefreshFails(t *testing.T) {
@@ -445,6 +449,7 @@ func TestRefreshDefaultProviderSubscriptionClearsProviderSubscriptionWhenRefresh
 	assert.Equal(t, "old-access-token", auth.AccessToken)
 	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	assert.False(t, ok)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestCheckStatusDefaultPathLoadRegistersProviderSubscription(t *testing.T) {
@@ -475,6 +480,7 @@ func TestCheckStatusDefaultPathClearsProviderSubscriptionWhenUnusable(t *testing
 	path := useTempDefaultPath(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAIProviderSubscriptionForTest("existing-token", "existing-account"))
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 
 	status, err := CheckStatusWithOptions(context.Background(), Options{
 		Now: func() time.Time { return now },
@@ -485,6 +491,7 @@ func TestCheckStatusDefaultPathClearsProviderSubscriptionWhenUnusable(t *testing
 	assert.Equal(t, path, status.Path)
 	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	assert.False(t, ok)
+	assert.False(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAIProviderSubscriptionForTest("existing-token", "existing-account"))
 	writeAuthFile(t, path, authFile{
@@ -502,6 +509,25 @@ func TestCheckStatusDefaultPathClearsProviderSubscriptionWhenUnusable(t *testing
 	assert.False(t, status.LoggedIn)
 	_, ok = llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	assert.False(t, ok)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
+}
+
+func TestCheckStatusDefaultPathInvalidAuthKeepsSubscriptionRequired(t *testing.T) {
+	isolateProviderSubscription(t)
+
+	path := useTempDefaultPath(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("{"), 0o600))
+	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAIProviderSubscriptionForTest("existing-token", "existing-account"))
+
+	status, err := CheckStatusWithOptions(context.Background(), Options{})
+	require.Error(t, err)
+
+	assert.False(t, status.LoggedIn)
+	assert.Equal(t, path, status.Path)
+	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
+	assert.False(t, ok)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestAlternatePathStatusDoesNotChangeProviderSubscription(t *testing.T) {
@@ -509,6 +535,7 @@ func TestAlternatePathStatusDoesNotChangeProviderSubscription(t *testing.T) {
 
 	existing := validOpenAIProviderSubscriptionForTest("existing-token", "existing-account")
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, existing)
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 
 	path := filepath.Join(t.TempDir(), "openai_auth.json")
 	now := time.Now().UTC().Truncate(time.Second)
@@ -529,6 +556,7 @@ func TestAlternatePathStatusDoesNotChangeProviderSubscription(t *testing.T) {
 	sub, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	require.True(t, ok)
 	assert.Equal(t, existing, sub)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 
 	writeAuthFile(t, path, authFile{
 		Type:             authType,
@@ -547,6 +575,7 @@ func TestAlternatePathStatusDoesNotChangeProviderSubscription(t *testing.T) {
 	sub, ok = llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	require.True(t, ok)
 	assert.Equal(t, existing, sub)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestSaveAuthCreatesMissingDirWithPrivatePermissions(t *testing.T) {
@@ -607,6 +636,8 @@ func TestSaveAuthPreservesExistingDirPermissionsAndPrivatizesFile(t *testing.T) 
 }
 
 func TestLogoutRemovesAuthAndMissingIsNotError(t *testing.T) {
+	isolateProviderSubscription(t)
+
 	path := filepath.Join(t.TempDir(), "openai_auth.json")
 	writeAuthFile(t, path, authFile{
 		Type:             authType,
@@ -614,11 +645,14 @@ func TestLogoutRemovesAuthAndMissingIsNotError(t *testing.T) {
 		ExpiresAt:        time.Now().Add(time.Hour),
 		ChatGPTAccountID: "account-id",
 	})
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 
 	require.NoError(t, LogoutWithOptions(Options{Path: path}))
 	_, err := os.Stat(path)
 	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 	require.NoError(t, LogoutWithOptions(Options{Path: path}))
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestLogoutDefaultPathClearsProviderSubscription(t *testing.T) {
@@ -632,13 +666,16 @@ func TestLogoutDefaultPathClearsProviderSubscription(t *testing.T) {
 		ChatGPTAccountID: "account-id",
 	})
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, validOpenAIProviderSubscriptionForTest("access-token", "account-id"))
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 
 	require.NoError(t, Logout())
 	_, err := os.Stat(path)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	_, ok := llmmodel.GetProviderSubscription(llmmodel.ProviderIDOpenAI)
 	assert.False(t, ok)
+	assert.False(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 	require.NoError(t, Logout())
+	assert.False(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func TestAccountIDFromJWTReadsNestedAuthClaim(t *testing.T) {
@@ -733,8 +770,10 @@ func useTempDefaultPath(t *testing.T) string {
 func isolateProviderSubscription(t *testing.T) {
 	t.Helper()
 	llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
 	t.Cleanup(func() {
 		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
 	})
 }
 
@@ -749,6 +788,7 @@ func assertOpenAIProviderSubscription(t *testing.T, accessToken string, accountI
 	assert.Equal(t, expiresAt, sub.ExpiresAt)
 	assert.True(t, sub.RequiresNoStore)
 	assert.True(t, sub.RootInstructions)
+	assert.True(t, llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI))
 }
 
 func validOpenAIProviderSubscriptionForTest(accessToken string, accountID string) llmmodel.ProviderSubscription {

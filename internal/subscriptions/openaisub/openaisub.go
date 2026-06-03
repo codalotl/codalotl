@@ -99,6 +99,12 @@ func init() {
 func loadDefaultProviderSubscription() {
 	auth, path, err := loadAuth(Options{})
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			clearProviderSubscription(path)
+			return
+		}
+		requireProviderSubscription(path)
+		clearUsableProviderSubscription(path)
 		return
 	}
 	syncProviderSubscription(path, auth, nowFunc(Options{})())
@@ -126,7 +132,8 @@ func refreshDefaultProviderSubscriptionWithOptions(ctx context.Context, opts Opt
 		return nil
 	}
 	if err != nil {
-		clearProviderSubscription(path)
+		requireProviderSubscription(path)
+		clearUsableProviderSubscription(path)
 		return err
 	}
 	now := nowFunc(opts)()
@@ -138,7 +145,8 @@ func refreshDefaultProviderSubscriptionWithOptions(ctx context.Context, opts Opt
 		}
 		auth = refreshed
 		if err := saveAuth(path, auth); err != nil {
-			clearProviderSubscription(path)
+			requireProviderSubscription(path)
+			clearUsableProviderSubscription(path)
 			return err
 		}
 		now = nowFunc(opts)()
@@ -242,7 +250,8 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 		return Status{Path: path}, nil
 	}
 	if err != nil {
-		clearProviderSubscription(path)
+		requireProviderSubscription(path)
+		clearUsableProviderSubscription(path)
 		return Status{Path: path}, err
 	}
 
@@ -255,7 +264,8 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error) {
 		}
 		auth = refreshed
 		if err := saveAuth(path, auth); err != nil {
-			clearProviderSubscription(path)
+			requireProviderSubscription(path)
+			clearUsableProviderSubscription(path)
 			return Status{Path: path}, err
 		}
 		now = nowFunc(opts)()
@@ -372,8 +382,9 @@ func syncProviderSubscription(path string, auth authFile, now time.Time) {
 	if !isDefaultAuthPath(path) {
 		return
 	}
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 	if !auth.valid(now) {
-		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+		clearUsableProviderSubscription(path)
 		return
 	}
 	llmmodel.SetProviderSubscription(llmmodel.ProviderIDOpenAI, llmmodel.ProviderSubscription{
@@ -389,7 +400,20 @@ func syncProviderSubscription(path string, auth authFile, now time.Time) {
 
 func clearProviderSubscription(path string) {
 	if isDefaultAuthPath(path) {
+		clearUsableProviderSubscription(path)
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
+	}
+}
+
+func clearUsableProviderSubscription(path string) {
+	if isDefaultAuthPath(path) {
 		llmmodel.ClearProviderSubscription(llmmodel.ProviderIDOpenAI)
+	}
+}
+
+func requireProviderSubscription(path string) {
+	if isDefaultAuthPath(path) {
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 	}
 }
 
