@@ -200,6 +200,10 @@ func openAIResponsesResolveAuth(modelID llmmodel.ModelID, modelInfo llmmodel.Mod
 		}, nil
 	}
 
+	if openAIResponsesProviderSubscriptionRequired(modelInfo) {
+		return openAIResponsesAuthConfig{}, fmt.Errorf("provider subscription auth required but unusable for model_id=%q provider=%s", string(modelID), modelInfo.ProviderID)
+	}
+
 	apiKey := llmmodel.GetAPIKey(modelID)
 	if apiKey == "" {
 		return openAIResponsesAuthConfig{}, fmt.Errorf("api key missing for model_id=%q provider=%s", string(modelID), modelInfo.ProviderID)
@@ -209,6 +213,13 @@ func openAIResponsesResolveAuth(modelID llmmodel.ModelID, modelInfo llmmodel.Mod
 		apiKey:  apiKey,
 		baseURL: llmmodel.GetAPIEndpointURL(modelID),
 	}, nil
+}
+
+func openAIResponsesProviderSubscriptionRequired(modelInfo llmmodel.ModelInfo) bool {
+	if !llmmodel.ProviderSubscriptionRequired(modelInfo.ProviderID) {
+		return false
+	}
+	return openAIResponsesSubscriptionEligible(modelInfo, llmmodel.ProviderSubscription{ProviderID: modelInfo.ProviderID})
 }
 
 func openAIResponsesSubscriptionEligible(modelInfo llmmodel.ModelInfo, sub llmmodel.ProviderSubscription) bool {
