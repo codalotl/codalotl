@@ -64,9 +64,9 @@ type startupState struct {
 	err  error
 }
 
-func (s *startupState) validate(ctx context.Context, cfg Config) error {
+func (s *startupState) validate(ctx context.Context, cfg Config, selectedModels ...llmmodel.ModelID) error {
 	s.once.Do(func() {
-		s.err = validateStartup(ctx, cfg, goclitools.DefaultRequiredTools())
+		s.err = validateStartup(ctx, cfg, goclitools.DefaultRequiredTools(), selectedModels...)
 	})
 	return s.err
 }
@@ -110,7 +110,7 @@ func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunStat
 		return m
 	}
 
-	runWithConfig := func(event string, next func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error) qcli.RunFunc {
+	runWithConfig := func(event string, next func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error, startupModelSelectors ...startupModelSelector) qcli.RunFunc {
 		if !loadConfigForRuns {
 			return func(c *qcli.Context) error {
 				runState.setEvent(event)
@@ -130,7 +130,7 @@ func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunStat
 				if m != nil {
 					m.ReportEventAsync(event, nil, true)
 				}
-				if err := startup.validate(c.Context, cfg); err != nil {
+				if err := startup.validate(c.Context, cfg, startupModelsFromSelectors(cfg, startupModelSelectors)...); err != nil {
 					return qcli.ExitError{Code: 1, Err: err}
 				}
 				return next(c, cfg, m)
@@ -161,7 +161,7 @@ func newCLIRunWithConfigNoStartup(loadConfigForRuns bool, runState *cliRunState)
 		return m
 	}
 
-	return func(event string, next func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error) qcli.RunFunc {
+	return func(event string, next func(c *qcli.Context, cfg Config, m *remotemonitor.Monitor) error, _ ...startupModelSelector) qcli.RunFunc {
 		if !loadConfigForRuns {
 			return func(c *qcli.Context) error {
 				runState.setEvent(event)
@@ -275,6 +275,13 @@ codalotl exec --yes --slash-command=orchestrate "Plan this refactor"
 		}
 		return execArgs(args)
 	}
+	execStartupModel := func(Config) []llmmodel.ModelID {
+		modelID := llmmodel.ModelID(strings.TrimSpace(*execModel))
+		if modelID == "" {
+			return nil
+		}
+		return []llmmodel.ModelID{modelID}
+	}
 	execCmd.Run = runWithConfig("exec", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 		userPrompt := strings.TrimSpace(strings.Join(c.Args, " "))
 		slashCommand := strings.TrimSpace(*execSlashCommand)
@@ -317,7 +324,7 @@ codalotl exec --yes --slash-command=orchestrate "Plan this refactor"
 			return qcli.ExitError{Code: 1, Err: errors.New("")}
 		}
 		return err
-	})
+	}, execStartupModel)
 	iterateCmd := newIterateCommand(runWithConfig)
 
 	contextCmd := &qcli.Command{

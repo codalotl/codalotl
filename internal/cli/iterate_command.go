@@ -23,7 +23,7 @@ import (
 const iterateResumePrompt = "Please continue your work."
 const iterateDecisionPromptUnset = "__codalotl_iterate_decision_prompt_unset__"
 
-type runWithConfigFunc func(string, func(*qcli.Context, Config, *remotemonitor.Monitor) error) qcli.RunFunc
+type runWithConfigFunc func(string, func(*qcli.Context, Config, *remotemonitor.Monitor) error, ...startupModelSelector) qcli.RunFunc
 
 type iterateSession interface {
 	SendUserMessage(ctx context.Context, userPrompt string) (noninteractive.Result, error)
@@ -84,6 +84,13 @@ codalotl iterate --orchestrate --yes "Implement this plan"
 		return err
 	}
 
+	iterateStartupModel := func(Config) []llmmodel.ModelID {
+		modelID := llmmodel.ModelID(strings.TrimSpace(*model))
+		if modelID == "" {
+			return nil
+		}
+		return []llmmodel.ModelID{modelID}
+	}
 	iterateCmd.Run = runWithConfig("iterate", func(c *qcli.Context, cfg Config, _ *remotemonitor.Monitor) error {
 		if *maxSteps < 0 {
 			return qcli.UsageError{Message: fmt.Sprintf("invalid --max-steps: must be >= 0 (got %d)", *maxSteps)}
@@ -166,7 +173,7 @@ codalotl iterate --orchestrate --yes "Implement this plan"
 			return qcli.ExitError{Code: 1, Err: errors.New("interrupted")}
 		}
 		return err
-	})
+	}, iterateStartupModel)
 
 	return iterateCmd
 }

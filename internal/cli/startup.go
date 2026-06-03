@@ -13,6 +13,8 @@ import (
 
 var refreshOpenAIDefaultProviderSubscription = openaisub.RefreshDefaultProviderSubscription
 
+type startupModelSelector func(Config) []llmmodel.ModelID
+
 type startupValidationError struct {
 	MissingTools                   []goclitools.ToolStatus
 	MissingLLM                     bool
@@ -148,7 +150,7 @@ func exampleProviderKeyID(relevantEnvVars []string) string {
 	return ""
 }
 
-func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools.ToolRequirement) error {
+func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools.ToolRequirement, selectedModels ...llmmodel.ModelID) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -162,12 +164,12 @@ func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools
 	}
 
 	var refreshErr error
-	if shouldRefreshOpenAISubscriptionForStartup(cfg) || shouldRefreshOpenAISubscriptionBeforeMissingAuth() {
+	if shouldRefreshOpenAISubscriptionForStartup(cfg, selectedModels...) || shouldRefreshOpenAISubscriptionBeforeMissingAuth() {
 		refreshErr = refreshOpenAIDefaultProviderSubscription(ctx)
 	}
 	availableModels := llmmodel.AvailableModelIDsWithAuth()
 	missingLLM := len(availableModels) == 0
-	openAISubscriptionAuthUnusable := openAISubscriptionAuthRequiredButUnusableForStartup(cfg)
+	openAISubscriptionAuthUnusable := openAISubscriptionAuthRequiredButUnusableForStartup(cfg, selectedModels...)
 
 	if len(missingTools) == 0 && !missingLLM && !openAISubscriptionAuthUnusable {
 		return nil
@@ -181,12 +183,38 @@ func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools
 	}
 }
 
-func shouldRefreshOpenAISubscriptionForStartup(cfg Config) bool {
-	effective := effectiveModel(cfg)
-	if effective.ProviderID() != llmmodel.ProviderIDOpenAI {
-		return false
+func selectedStartupModels(cfg Config, selectedModels ...llmmodel.ModelID) []llmmodel.ModelID {
+	models := make([]llmmodel.ModelID, 0, len(selectedModels))
+	for _, id := range selectedModels {
+		if strings.TrimSpace(string(id)) == "" {
+			continue
+		}
+		models = append(models, id)
 	}
-	return !llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
+	if len(models) == 0 {
+		models = append(models, effectiveModel(cfg))
+	}
+	return models
+}
+
+func startupModelsFromSelectors(cfg Config, selectors []startupModelSelector) []llmmodel.ModelID {
+	var models []llmmodel.ModelID
+	for _, selector := range selectors {
+		if selector == nil {
+			continue
+		}
+		models = append(models, selector(cfg)...)
+	}
+	return selectedStartupModels(cfg, models...)
+}
+
+func shouldRefreshOpenAISubscriptionForStartup(cfg Config, selectedModels ...llmmodel.ModelID) bool {
+	for _, id := range selectedStartupModels(cfg, selectedModels...) {
+		if id.ProviderID() == llmmodel.ProviderIDOpenAI {
+			return !llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
+		}
+	}
+	return false
 }
 
 func shouldRefreshOpenAISubscriptionBeforeMissingAuth() bool {
@@ -194,13 +222,15 @@ func shouldRefreshOpenAISubscriptionBeforeMissingAuth() bool {
 		len(llmmodel.AvailableModelIDsWithAuth()) == 0
 }
 
-func openAISubscriptionAuthRequiredButUnusableForStartup(cfg Config) bool {
-	effective := effectiveModel(cfg)
-	if !modelEligibleForOpenAISubscriptionAuth(effective) {
-		return false
+func openAISubscriptionAuthRequiredButUnusableForStartup(cfg Config, selectedModels ...llmmodel.ModelID) bool {
+	for _, id := range selectedStartupModels(cfg, selectedModels...) {
+		if !modelEligibleForOpenAISubscriptionAuth(id) {
+			continue
+		}
+		return llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI) &&
+			!llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
 	}
-	return llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI) &&
-		!llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
+	return false
 }
 
 func modelEligibleForOpenAISubscriptionAuth(id llmmodel.ModelID) bool {
