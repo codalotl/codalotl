@@ -28,6 +28,7 @@ llmstream is an abstraction over LLM providers, offering a unified interface. Pr
 - Default OpenAI behavior stores/links responses server-side where supported.
 - HTTP request debug logs include resolved request path.
 - Streamed events are authoritative for emitted content/tool calls/reasoning; completed responses with empty output produce final turns from streamed state when possible.
+- Retryable OpenAI Responses transport/stream disconnects are retried at the conversation send boundary without appending partial assistant turns.
 
 ### Anthropic
 
