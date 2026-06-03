@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -228,8 +229,13 @@ func openAIResponsesSubscriptionEligible(modelInfo llmmodel.ModelInfo, sub llmmo
 	}
 	overrides := modelInfo.ModelOverrides
 	return strings.TrimSpace(overrides.APIActualKey) == "" &&
-		strings.TrimSpace(overrides.APIEnvKey) == "" &&
+		!openAIResponsesHasUsableAPIEnvKeyOverride(overrides.APIEnvKey) &&
 		strings.TrimSpace(overrides.APIEndpointURL) == ""
+}
+
+func openAIResponsesHasUsableAPIEnvKeyOverride(envKey string) bool {
+	envKey = strings.TrimPrefix(strings.TrimSpace(envKey), "$")
+	return envKey != "" && os.Getenv(envKey) != ""
 }
 
 func openAIResponsesEffectiveSendOptions(opt *SendOptions, auth openAIResponsesAuthConfig) *SendOptions {

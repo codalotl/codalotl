@@ -104,12 +104,50 @@ func TestOpenAIResponsesResolveAuth_UsesEligibleProviderSubscription(t *testing.
 	assert.True(t, auth.requiresNoStore)
 }
 
+func TestOpenAIResponsesResolveAuth_UsesProviderSubscriptionWithUnsetModelAPIEnvKey(t *testing.T) {
+	clearOpenAIAuthForTest(t)
+	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "provider-key")
+	registerTestOpenAIProviderSubscription(t, "https://chatgpt.com/backend-api/codex", true)
+	t.Setenv("TEST_OPENAI_MODEL_KEY_UNSET", "")
+	modelID := llmmodel.ModelID("test-openai-sub-unset-env-key")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{
+		APIEnvKey: "TEST_OPENAI_MODEL_KEY_UNSET",
+	}))
+
+	auth, err := openAIResponsesResolveAuth(modelID, llmmodel.GetModelInfo(modelID))
+	require.NoError(t, err)
+
+	assert.Equal(t, openAIResponsesAuthModeProviderSubscription, auth.mode)
+	assert.Equal(t, "sub-token", auth.apiKey)
+	assert.Equal(t, "https://chatgpt.com/backend-api/codex", auth.baseURL)
+	assert.Equal(t, "acct_123", auth.accountID)
+	assert.True(t, auth.requiresNoStore)
+}
+
 func TestOpenAIResponsesResolveAuth_SubscriptionRequiredBlocksProviderKeyFallback(t *testing.T) {
 	clearOpenAIAuthForTest(t)
 	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "provider-key")
 	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
 
 	auth, err := openAIResponsesResolveAuth(llmmodel.ModelID("gpt-4o-mini"), openAIRequestShapeModelInfo())
+	require.Error(t, err)
+
+	assert.Equal(t, openAIResponsesAuthConfig{}, auth)
+	assert.Contains(t, err.Error(), "provider subscription auth required but unusable")
+	assert.Contains(t, err.Error(), "provider=openai")
+}
+
+func TestOpenAIResponsesResolveAuth_SubscriptionRequiredBlocksProviderKeyFallbackWithUnsetModelAPIEnvKey(t *testing.T) {
+	clearOpenAIAuthForTest(t)
+	llmmodel.ConfigureProviderKey(llmmodel.ProviderIDOpenAI, "provider-key")
+	llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
+	t.Setenv("TEST_OPENAI_MODEL_KEY_REQUIRED_UNSET", "")
+	modelID := llmmodel.ModelID("test-openai-sub-required-unset-env-key")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{
+		APIEnvKey: "TEST_OPENAI_MODEL_KEY_REQUIRED_UNSET",
+	}))
+
+	auth, err := openAIResponsesResolveAuth(modelID, llmmodel.GetModelInfo(modelID))
 	require.Error(t, err)
 
 	assert.Equal(t, openAIResponsesAuthConfig{}, auth)
@@ -186,6 +224,8 @@ func TestOpenAIResponsesSubscriptionEligible(t *testing.T) {
 	tests := []struct {
 		name      string
 		info      llmmodel.ModelInfo
+		envKey    string
+		envValue  string
 		wantAllow bool
 	}{
 		{
@@ -213,13 +253,26 @@ func TestOpenAIResponsesSubscriptionEligible(t *testing.T) {
 			},
 		},
 		{
-			name: "env key override suppresses",
+			name: "env key override without value allows",
 			info: llmmodel.ModelInfo{
 				ProviderID: llmmodel.ProviderIDOpenAI,
 				ModelOverrides: llmmodel.ModelOverrides{
-					APIEnvKey: "CUSTOM_OPENAI_API_KEY",
+					APIEnvKey: "CUSTOM_OPENAI_API_KEY_UNSET",
 				},
 			},
+			envKey:    "CUSTOM_OPENAI_API_KEY_UNSET",
+			wantAllow: true,
+		},
+		{
+			name: "env key override with value suppresses",
+			info: llmmodel.ModelInfo{
+				ProviderID: llmmodel.ProviderIDOpenAI,
+				ModelOverrides: llmmodel.ModelOverrides{
+					APIEnvKey: "$CUSTOM_OPENAI_API_KEY_SET",
+				},
+			},
+			envKey:   "CUSTOM_OPENAI_API_KEY_SET",
+			envValue: "model-key",
 		},
 		{
 			name: "endpoint override suppresses",
@@ -238,6 +291,9 @@ func TestOpenAIResponsesSubscriptionEligible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.envKey != "" {
+				t.Setenv(tt.envKey, tt.envValue)
+			}
 			assert.Equal(t, tt.wantAllow, openAIResponsesSubscriptionEligible(tt.info, sub))
 		})
 	}

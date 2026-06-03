@@ -283,7 +283,7 @@ func GetModelInfo(id ModelID) ModelInfo
 func ConfigureProviderKey(providerID ProviderID, key string)
 
 // EnvHasDefaultKey returns true if the current env has a value for the provider's default key. Example: EnvHasDefaultKey(ProviderIDOpenAI) checks if "OPENAI_API_KEY"
-// is present and non-blank in ENV. Note that this ONLY checks defaults, not any *overridden* env key.
+// is present and non-empty in ENV. Note that this ONLY checks defaults, not any *overridden* env key.
 func EnvHasDefaultKey(providerID ProviderID) bool
 
 // ProviderKeyEnvVars returns a map of provider id to default env var (without $) for all providers in AllProviderIDs. Ex: {ProviderIDOpenAI: "OPENAI_API_KEY", ...}
@@ -301,6 +301,9 @@ func ProviderHasConfiguredKey(providerID ProviderID) bool
 //  2. Env[ModelInfo.ModelOverrides.APIEnvKey]
 //  3. Value from ConfigureProviderKey for id.ProviderID()
 //  4. Env[ProviderKeyEnvVars()[id.ProviderID()]]
+//
+// Env var names loaded from provider configs or registered through AddCustomModel are normalized by removing one leading "$". Env var values are returned as-is;
+// only the empty string is treated as missing.
 //
 // If ProviderSubscriptionRequired is true for the model's provider and no usable subscription is configured, steps 3 and 4 are suppressed for models eligible for
 // provider subscription auth. Per-model overrides in steps 1 and 2 are still honored.
