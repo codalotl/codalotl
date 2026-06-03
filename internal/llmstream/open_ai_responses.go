@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sort"
@@ -91,8 +92,11 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	if err := stream.Err(); err != nil {
 		// NOTE: to look at actual HTTP error: if apiErr, ok := err.(*responses.Error); ok { ... }
 		debugPrint(debugHTTPResponses, "HTTP RESPONSE ERROR: create response(streaming=true)", err)
-		// NOTE: we don't make anything retryable, because the client retries at this stage.
-		return Turn{}, sc.LogWrappedErr("open_ai_send_async.stream_init", err)
+		wrapped := sc.LogWrappedErr("open_ai_send_async.stream_init", err)
+		if openAIResponsesIsRetryableStreamDisconnect(err) {
+			wrapped = makeRetryable(wrapped)
+		}
+		return Turn{}, wrapped
 	}
 
 	builders := newOpenAIResponsesContentBuilders()
@@ -158,9 +162,11 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	}
 
 	if err := stream.Err(); err != nil {
-		// Only retry on actually retryable errors; unknown (non-HTTP) transport failures are considered retryable.
-		// TODO: Look into retries here. I know the client does retries, but I'm unsure what happens once we're in the SSE phase of the request.
-		return Turn{}, sc.LogWrappedErr("open_ai_send_async.stream", err)
+		wrapped := sc.LogWrappedErr("open_ai_send_async.stream", err)
+		if openAIResponsesIsRetryableStreamDisconnect(err) {
+			wrapped = makeRetryable(wrapped)
+		}
+		return Turn{}, wrapped
 	}
 
 	// Only produce a message on successful completion
@@ -173,6 +179,43 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	resp := *finalResp
 	resp.Role = RoleAssistant
 	return resp, nil
+}
+
+func openAIResponsesIsRetryableStreamDisconnect(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var apiErr *responses.Error
+	if errors.As(err, &apiErr) {
+		return false
+	}
+
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	retryableFragments := []string{
+		"stream id",
+		"unexpected eof",
+		"connection reset by peer",
+		"broken pipe",
+		"server closed idle connection",
+		"http2: client connection lost",
+		"http2: server sent goaway",
+		"use of closed network connection",
+	}
+	for _, fragment := range retryableFragments {
+		if strings.Contains(msg, fragment) {
+			return true
+		}
+	}
+
+	return strings.Contains(msg, "internal_error") && strings.Contains(msg, "stream")
 }
 
 type openAIResponsesAuthMode string
