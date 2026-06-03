@@ -2,7 +2,9 @@
 //
 // Operations that use DefaultPath also keep llmmodel's OpenAI provider subscription auth in sync. Package initialization loads usable default saved auth without
 // network I/O. Login, CheckStatus, CheckStatusWithOptions, and RefreshDefaultProviderSubscription can update or clear the provider subscription as they save, load,
-// or refresh default credentials. Operations using a non-default Options.Path only affect that auth file and do not configure llmmodel provider subscription auth.
+// or refresh default credentials. Missing default credentials clear the subscription requirement; existing but unusable default credentials keep OpenAI subscription
+// auth required while clearing usable subscription auth. Operations using a non-default Options.Path only affect that auth file and do not configure llmmodel provider
+// subscription auth.
 package openaisub
 
 import (
@@ -114,6 +116,10 @@ func loadDefaultProviderSubscription() {
 //
 // It is the explicit startup hook for callers that need to refresh expired default credentials before model selection or requests depend on subscription auth. Package
 // initialization only loads already usable default saved auth.
+//
+// Missing default saved auth is treated as logged out: it clears llmmodel's OpenAI subscription requirement and returns nil. If default saved auth exists but cannot
+// be loaded, refreshed, saved, or used, llmmodel is synced to require OpenAI subscription auth while having no usable subscription configured, preventing API-key
+// fallback for that provider.
 func RefreshDefaultProviderSubscription(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, startupRefreshTimeout)
 	defer cancel()

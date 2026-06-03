@@ -82,5 +82,9 @@ func CheckStatusWithOptions(ctx context.Context, opts Options) (Status, error)
 //
 // It is the explicit startup hook for callers that need to refresh expired default credentials before model selection or requests depend on subscription auth. Package
 // initialization only loads already usable default saved auth.
+//
+// Missing default saved auth is treated as logged out: it clears llmmodel's OpenAI subscription requirement and returns nil. If default saved auth exists but cannot
+// be loaded, refreshed, saved, or used, llmmodel is synced to require OpenAI subscription auth while having no usable subscription configured, preventing API-key
+// fallback for that provider.
 func RefreshDefaultProviderSubscription(ctx context.Context) error
 ```
