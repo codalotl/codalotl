@@ -161,7 +161,7 @@ func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools
 	}
 
 	var refreshErr error
-	if shouldRefreshOpenAISubscriptionForStartup(cfg) {
+	if shouldRefreshOpenAISubscriptionForStartup(cfg) || shouldRefreshOpenAISubscriptionBeforeMissingAuth() {
 		refreshErr = refreshOpenAIDefaultProviderSubscription(ctx)
 	}
 	availableModels := llmmodel.AvailableModelIDsWithAuth()
@@ -186,6 +186,11 @@ func shouldRefreshOpenAISubscriptionForStartup(cfg Config) bool {
 		return false
 	}
 	return !llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
+}
+
+func shouldRefreshOpenAISubscriptionBeforeMissingAuth() bool {
+	return !llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI) &&
+		len(llmmodel.AvailableModelIDsWithAuth()) == 0
 }
 
 func openAISubscriptionAuthRequiredButUnusableForStartup(cfg Config) bool {
