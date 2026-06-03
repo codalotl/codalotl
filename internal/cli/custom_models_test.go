@@ -168,6 +168,9 @@ func TestRun_Config_CustomOpenAIModelOverridesBypassUnusableProviderSubscription
 			isolateUserConfig(t)
 			restoreOpenAISubscriptionRefreshStub(t)
 			tc.setupEnv(t)
+			t.Cleanup(func() {
+				llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
+			})
 
 			customID := "custom-" + sanitizeTestModelID(t.Name())
 
@@ -210,4 +213,64 @@ func TestRun_Config_CustomOpenAIModelOverridesBypassUnusableProviderSubscription
 			require.Contains(t, out.String(), "Effective Model: "+customID)
 		})
 	}
+}
+
+func TestRun_Config_CustomOpenAIModelWithUnsetAPIEnvKeyDoesNotBypassUnusableProviderSubscription(t *testing.T) {
+	isolateUserConfig(t)
+	restoreOpenAISubscriptionRefreshStub(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+	customID := "custom-" + sanitizeTestModelID(t.Name())
+	keyEnv := "CODALOTL_TEST_UNSET_CUSTOM_OVERRIDE_KEY"
+	t.Setenv(keyEnv, "   ")
+
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
+	cfgPath := filepath.Join(tmp, ".codalotl", "config.json")
+	cfgJSON := `{
+  "custommodels": [
+    {
+      "id": "` + customID + `",
+      "provider": "openai",
+      "model": "gpt-custom",
+      "apikeyenv": "$` + keyEnv + `"
+    }
+  ],
+  "preferredmodel": "` + customID + `"
+}
+`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(cfgJSON), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Cleanup(func() {
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, false)
+	})
+
+	var refreshCalls int
+	refreshOpenAIDefaultProviderSubscription = func(ctx context.Context) error {
+		refreshCalls++
+		require.NotNil(t, ctx)
+		require.NotEmpty(t, llmmodel.AvailableModelIDsWithAuth())
+		llmmodel.SetProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI, true)
+		return errors.New("saved auth expired")
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "config"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 1, code)
+	require.Equal(t, 1, refreshCalls)
+	require.Empty(t, out.String())
+
+	got := errOut.String()
+	require.Contains(t, got, "OpenAI ChatGPT subscription auth is configured but unusable")
+	require.Contains(t, got, "saved auth expired")
+	require.Contains(t, got, "codalotl auth openai login")
+	require.Contains(t, got, "codalotl auth openai logout")
+	require.NotContains(t, got, "No usable LLM auth or credentials are configured")
 }

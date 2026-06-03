@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/goclitools"
@@ -207,6 +208,15 @@ func modelEligibleForOpenAISubscriptionAuth(id llmmodel.ModelID) bool {
 	return info.ID != llmmodel.ModelIDUnknown &&
 		info.ProviderID == llmmodel.ProviderIDOpenAI &&
 		strings.TrimSpace(info.APIActualKey) == "" &&
-		strings.TrimSpace(info.APIEnvKey) == "" &&
+		!apiEnvKeyHasUsableValue(info.APIEnvKey) &&
 		strings.TrimSpace(info.ModelOverrides.APIEndpointURL) == ""
+}
+
+func apiEnvKeyHasUsableValue(envKey string) bool {
+	envKey = strings.TrimSpace(envKey)
+	envKey = strings.TrimPrefix(envKey, "$")
+	if envKey == "" {
+		return false
+	}
+	return strings.TrimSpace(os.Getenv(envKey)) != ""
 }
