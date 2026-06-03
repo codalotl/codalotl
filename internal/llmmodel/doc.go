@@ -5,4 +5,7 @@
 //
 // Callers can configure provider API keys, resolve effective keys and endpoints, filter models by available API-key or subscription auth, and register custom model
 // aliases or endpoint overrides with AddCustomModel. Environment variable names may be supplied with or without a leading "$".
+//
+// Provider subscription auth is provider-level auth. It applies only to registered models that do not have per-model API key, API-key env var, or endpoint overrides.
+// SupportedTypes describes API request shape, not auth eligibility.
 package llmmodel

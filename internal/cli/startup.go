@@ -189,9 +189,19 @@ func shouldRefreshOpenAISubscriptionForStartup(cfg Config) bool {
 }
 
 func openAISubscriptionAuthRequiredButUnusableForStartup(cfg Config) bool {
-	if effectiveModel(cfg).ProviderID() != llmmodel.ProviderIDOpenAI {
+	effective := effectiveModel(cfg)
+	if !modelEligibleForOpenAISubscriptionAuth(effective) {
 		return false
 	}
 	return llmmodel.ProviderSubscriptionRequired(llmmodel.ProviderIDOpenAI) &&
 		!llmmodel.ProviderHasSubscription(llmmodel.ProviderIDOpenAI)
+}
+
+func modelEligibleForOpenAISubscriptionAuth(id llmmodel.ModelID) bool {
+	info := llmmodel.GetModelInfo(id)
+	return info.ID != llmmodel.ModelIDUnknown &&
+		info.ProviderID == llmmodel.ProviderIDOpenAI &&
+		strings.TrimSpace(info.APIActualKey) == "" &&
+		strings.TrimSpace(info.APIEnvKey) == "" &&
+		strings.TrimSpace(info.ModelOverrides.APIEndpointURL) == ""
 }
