@@ -30,7 +30,7 @@ Consumers can then configure these:
     - in-memory provider overrides (ConfigureProviderKey)
     - provider default env vars (ex: "OPENAI_API_KEY")
 - Subscription auth may be registered for providers whose non-API-key auth can be adapted to provider requests.
-    - Subscription auth is provider-level, and applies only to models without per-model API key/env or endpoint overrides.
+    - Subscription auth is provider-level, and applies only to models without per-model APIActualKey, currently usable APIEnvKey value, or APIEndpointURL overrides.
     - Provider-level API keys and default provider env vars do not suppress subscription auth.
     - A provider may require subscription auth; while required and unusable, provider-level API-key fallback is suppressed for subscription-eligible models.
     - To present a model picker that includes both API-key and subscription-auth models, call AvailableModelIDsWithAuth().
@@ -150,7 +150,8 @@ func (pid ProviderID) DefaultModel() ModelID
 // ProviderSubscription is provider-agnostic subscription auth that can be used instead of a provider API key.
 //
 // Subscription auth is considered usable only when it matches the requested provider, has nonblank AccessToken, AccountID, and APIEndpointURL fields, and has not
-// expired. Subscription auth applies at the provider level only for registered models without per-model APIActualKey, APIEnvKey, or APIEndpointURL overrides.
+// expired. Subscription auth applies at the provider level only for registered models without per-model APIActualKey, a usable APIEnvKey value, or APIEndpointURL
+// overrides.
 type ProviderSubscription struct {
 	ProviderID       ProviderID
 	AccessToken      string
@@ -170,7 +171,7 @@ func ClearProviderSubscription(providerID ProviderID)
 // SetProviderSubscriptionRequired controls whether provider subscription auth is required for providerID.
 //
 // While required and no usable provider subscription is configured, provider-level API-key fallback is suppressed for models that would otherwise be eligible for
-// provider subscription auth. Per-model APIActualKey and APIEnvKey overrides still take precedence and are not suppressed.
+// provider subscription auth. Per-model APIActualKey and usable APIEnvKey overrides still take precedence and are not suppressed.
 func SetProviderSubscriptionRequired(providerID ProviderID, required bool)
 
 // ProviderSubscriptionRequired reports whether provider subscription auth is required for providerID.
@@ -187,7 +188,7 @@ func ProviderHasSubscription(providerID ProviderID) bool
 // ModelUsesProviderSubscription reports whether id is currently callable through usable provider subscription auth.
 //
 // It reports current usable auth, not eligibility in principle: it returns false if no usable subscription is configured. Eligibility is independent of SupportedTypes
-// and requires a known model without per-model APIActualKey, APIEnvKey, or APIEndpointURL overrides.
+// and requires a known model without per-model APIActualKey, a usable APIEnvKey value, or APIEndpointURL overrides.
 func ModelUsesProviderSubscription(id ModelID) bool
 
 // ProviderAPIType identifies one API "shape" a provider supports. Providers can expose multiple API types simultaneously (ex: OpenAI exposes both Responses and

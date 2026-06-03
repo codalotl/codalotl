@@ -70,7 +70,8 @@ func (pid ProviderID) DefaultModel() ModelID {
 // ProviderSubscription is provider-agnostic subscription auth that can be used instead of a provider API key.
 //
 // Subscription auth is considered usable only when it matches the requested provider, has nonblank AccessToken, AccountID, and APIEndpointURL fields, and has not
-// expired. Subscription auth applies at the provider level only for registered models without per-model APIActualKey, APIEnvKey, or APIEndpointURL overrides.
+// expired. Subscription auth applies at the provider level only for registered models without per-model APIActualKey, a usable APIEnvKey value, or APIEndpointURL
+// overrides.
 type ProviderSubscription struct {
 	ProviderID       ProviderID // ProviderID is the provider this subscription applies to.
 	AccessToken      string     // AccessToken is the subscription access token used to authorize provider requests.
@@ -98,7 +99,7 @@ func ClearProviderSubscription(providerID ProviderID) {
 // SetProviderSubscriptionRequired controls whether provider subscription auth is required for providerID.
 //
 // While required and no usable provider subscription is configured, provider-level API-key fallback is suppressed for models that would otherwise be eligible for
-// provider subscription auth. Per-model APIActualKey and APIEnvKey overrides still take precedence and are not suppressed.
+// provider subscription auth. Per-model APIActualKey and usable APIEnvKey overrides still take precedence and are not suppressed.
 func SetProviderSubscriptionRequired(providerID ProviderID, required bool) {
 	modelsMu.Lock()
 	defer modelsMu.Unlock()
@@ -138,7 +139,7 @@ func ProviderHasSubscription(providerID ProviderID) bool {
 // ModelUsesProviderSubscription reports whether id is currently callable through usable provider subscription auth.
 //
 // It reports current usable auth, not eligibility in principle: it returns false if no usable subscription is configured. Eligibility is independent of SupportedTypes
-// and requires a known model without per-model APIActualKey, APIEnvKey, or APIEndpointURL overrides.
+// and requires a known model without per-model APIActualKey, a usable APIEnvKey value, or APIEndpointURL overrides.
 func ModelUsesProviderSubscription(id ModelID) bool {
 	return modelHasEligibleProviderSubscription(id)
 }
@@ -736,8 +737,12 @@ func usableProviderSubscription(providerID ProviderID, sub ProviderSubscription)
 func modelEligibleForProviderSubscription(info ModelInfo) bool {
 	return info.ID != ModelIDUnknown &&
 		info.APIActualKey == "" &&
-		info.APIEnvKey == "" &&
+		!modelHasUsableAPIEnvKey(info) &&
 		info.ModelOverrides.APIEndpointURL == ""
+}
+
+func modelHasUsableAPIEnvKey(info ModelInfo) bool {
+	return info.APIEnvKey != "" && os.Getenv(info.APIEnvKey) != ""
 }
 
 func providerKeyFallbackSuppressed(info ModelInfo) bool {

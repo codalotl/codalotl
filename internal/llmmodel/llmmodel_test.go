@@ -480,26 +480,35 @@ func TestProviderSubscriptionRequiredPreservesPerModelOverrides(t *testing.T) {
 	err = AddCustomModel(envKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_REQUIRED_OPENAI_API_KEY"})
 	require.NoError(t, err)
 
+	unsetEnvKeyID := ModelID("custom-openai-required-unset-env-key")
+	t.Setenv("CUSTOM_REQUIRED_UNSET_OPENAI_API_KEY", "")
+	err = AddCustomModel(unsetEnvKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_REQUIRED_UNSET_OPENAI_API_KEY"})
+	require.NoError(t, err)
+
 	endpointID := ModelID("custom-openai-required-endpoint")
 	err = AddCustomModel(endpointID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEndpointURL: "http://localhost:1234/v1"})
 	require.NoError(t, err)
 
 	require.Equal(t, "literal", GetAPIKey(actualKeyID))
 	require.Equal(t, "alt", GetAPIKey(envKeyID))
+	require.Equal(t, "", GetAPIKey(unsetEnvKeyID))
 	require.Equal(t, "configured", GetAPIKey(endpointID))
 	require.Equal(t, "http://localhost:1234/v1", GetAPIEndpointURL(endpointID))
 
 	require.False(t, ModelUsesProviderSubscription(actualKeyID))
 	require.False(t, ModelUsesProviderSubscription(envKeyID))
+	require.False(t, ModelUsesProviderSubscription(unsetEnvKeyID))
 	require.False(t, ModelUsesProviderSubscription(endpointID))
 
 	apiKeyModels := AvailableModelIDsWithAPIKey()
 	require.Contains(t, apiKeyModels, actualKeyID)
 	require.Contains(t, apiKeyModels, envKeyID)
+	require.NotContains(t, apiKeyModels, unsetEnvKeyID)
 	require.Contains(t, apiKeyModels, endpointID)
 
 	SetProviderSubscription(ProviderIDOpenAI, validProviderSubscription(ProviderIDOpenAI))
 	require.True(t, ModelUsesProviderSubscription(DefaultModel))
+	require.True(t, ModelUsesProviderSubscription(unsetEnvKeyID))
 	require.False(t, ModelUsesProviderSubscription(endpointID))
 }
 
@@ -523,9 +532,14 @@ func TestAvailableModelIDsWithAuthUsesSubscriptionEligibility(t *testing.T) {
 	err = AddCustomModel(actualKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIActualKey: "literal"})
 	require.NoError(t, err)
 
-	envKeyID := ModelID("custom-openai-subscription-env-key")
-	t.Setenv("CUSTOM_SUBSCRIPTION_OPENAI_API_KEY", "")
-	err = AddCustomModel(envKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_OPENAI_API_KEY"})
+	usableEnvKeyID := ModelID("custom-openai-subscription-env-key")
+	t.Setenv("CUSTOM_SUBSCRIPTION_OPENAI_API_KEY", "alt")
+	err = AddCustomModel(usableEnvKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_OPENAI_API_KEY"})
+	require.NoError(t, err)
+
+	unsetEnvKeyID := ModelID("custom-openai-subscription-unset-env-key")
+	t.Setenv("CUSTOM_SUBSCRIPTION_UNSET_OPENAI_API_KEY", "")
+	err = AddCustomModel(unsetEnvKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_UNSET_OPENAI_API_KEY"})
 	require.NoError(t, err)
 
 	endpointID := ModelID("custom-openai-subscription-endpoint")
@@ -535,23 +549,28 @@ func TestAvailableModelIDsWithAuthUsesSubscriptionEligibility(t *testing.T) {
 	require.True(t, modelHasEligibleProviderSubscription(DefaultModel))
 	require.True(t, modelHasEligibleProviderSubscription(noOverrideID))
 	require.False(t, modelHasEligibleProviderSubscription(actualKeyID))
-	require.False(t, modelHasEligibleProviderSubscription(envKeyID))
+	require.False(t, modelHasEligibleProviderSubscription(usableEnvKeyID))
+	require.True(t, modelHasEligibleProviderSubscription(unsetEnvKeyID))
 	require.False(t, modelHasEligibleProviderSubscription(endpointID))
 	require.True(t, ModelUsesProviderSubscription(DefaultModel))
 	require.True(t, ModelUsesProviderSubscription(noOverrideID))
 	require.False(t, ModelUsesProviderSubscription(actualKeyID))
-	require.False(t, ModelUsesProviderSubscription(envKeyID))
+	require.False(t, ModelUsesProviderSubscription(usableEnvKeyID))
+	require.True(t, ModelUsesProviderSubscription(unsetEnvKeyID))
 	require.False(t, ModelUsesProviderSubscription(endpointID))
 
 	authModels := AvailableModelIDsWithAuth()
 	require.Contains(t, authModels, DefaultModel)
 	require.Contains(t, authModels, noOverrideID)
 	require.Contains(t, authModels, actualKeyID)
-	require.NotContains(t, authModels, envKeyID)
+	require.Contains(t, authModels, usableEnvKeyID)
+	require.Contains(t, authModels, unsetEnvKeyID)
 	require.NotContains(t, authModels, endpointID)
 
 	require.NotContains(t, AvailableModelIDsWithAPIKey(), DefaultModel)
 	require.Contains(t, AvailableModelIDsWithAPIKey(), actualKeyID)
+	require.Contains(t, AvailableModelIDsWithAPIKey(), usableEnvKeyID)
+	require.NotContains(t, AvailableModelIDsWithAPIKey(), unsetEnvKeyID)
 
 	ConfigureProviderKey(ProviderIDOpenAI, "configured")
 	t.Setenv("OPENAI_API_KEY", "default")
