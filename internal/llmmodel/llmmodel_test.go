@@ -37,6 +37,7 @@ func clearProviderAuthForTest(t *testing.T) {
 	for _, pid := range AllProviderIDs {
 		ConfigureProviderKey(pid, "")
 		ClearProviderSubscription(pid)
+		SetProviderSubscriptionRequired(pid, false)
 	}
 	for _, envKey := range ProviderKeyEnvVars() {
 		if envKey != "" {
@@ -48,6 +49,7 @@ func clearProviderAuthForTest(t *testing.T) {
 		for _, pid := range AllProviderIDs {
 			ConfigureProviderKey(pid, "")
 			ClearProviderSubscription(pid)
+			SetProviderSubscriptionRequired(pid, false)
 		}
 	})
 }
@@ -378,6 +380,12 @@ func TestAvailableModelIDsWithAPIKeyAndProviderHasConfiguredKey(t *testing.T) {
 func TestProviderSubscriptionRequiresUsableAuth(t *testing.T) {
 	clearProviderAuthForTest(t)
 
+	require.False(t, ProviderSubscriptionRequired(ProviderIDOpenAI))
+	SetProviderSubscriptionRequired(ProviderIDOpenAI, true)
+	require.True(t, ProviderSubscriptionRequired(ProviderIDOpenAI))
+	SetProviderSubscriptionRequired(ProviderIDOpenAI, false)
+	require.False(t, ProviderSubscriptionRequired(ProviderIDOpenAI))
+
 	valid := validProviderSubscription(ProviderIDOpenAI)
 	SetProviderSubscription(ProviderIDOpenAI, valid)
 
@@ -426,6 +434,75 @@ func TestProviderSubscriptionRequiresUsableAuth(t *testing.T) {
 	}
 }
 
+func TestProviderSubscriptionRequiredSuppressesProviderKeyFallback(t *testing.T) {
+	clearProviderAuthForTest(t)
+
+	ConfigureProviderKey(ProviderIDOpenAI, "configured")
+	t.Setenv("OPENAI_API_KEY", "default")
+	require.True(t, ProviderHasConfiguredKey(ProviderIDOpenAI))
+	require.Equal(t, "configured", GetAPIKey(DefaultModel))
+
+	SetProviderSubscriptionRequired(ProviderIDOpenAI, true)
+	require.True(t, ProviderSubscriptionRequired(ProviderIDOpenAI))
+	require.Equal(t, "", GetAPIKey(DefaultModel))
+	require.False(t, ModelUsesProviderSubscription(DefaultModel))
+	require.NotContains(t, AvailableModelIDsWithAPIKey(), DefaultModel)
+	require.NotContains(t, AvailableModelIDsWithAuth(), DefaultModel)
+
+	expired := validProviderSubscription(ProviderIDOpenAI)
+	expired.ExpiresAt = time.Now().Add(-time.Second)
+	SetProviderSubscription(ProviderIDOpenAI, expired)
+	require.False(t, ProviderHasSubscription(ProviderIDOpenAI))
+	require.Equal(t, "", GetAPIKey(DefaultModel))
+	require.NotContains(t, AvailableModelIDsWithAuth(), DefaultModel)
+
+	SetProviderSubscription(ProviderIDOpenAI, validProviderSubscription(ProviderIDOpenAI))
+	require.True(t, ModelUsesProviderSubscription(DefaultModel))
+	require.Contains(t, AvailableModelIDsWithAuth(), DefaultModel)
+
+	ClearProviderSubscription(ProviderIDOpenAI)
+	SetProviderSubscriptionRequired(ProviderIDOpenAI, false)
+	require.Equal(t, "configured", GetAPIKey(DefaultModel))
+}
+
+func TestProviderSubscriptionRequiredPreservesPerModelOverrides(t *testing.T) {
+	clearProviderAuthForTest(t)
+
+	ConfigureProviderKey(ProviderIDOpenAI, "configured")
+	SetProviderSubscriptionRequired(ProviderIDOpenAI, true)
+
+	actualKeyID := ModelID("custom-openai-required-actual-key")
+	err := AddCustomModel(actualKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIActualKey: "literal"})
+	require.NoError(t, err)
+
+	envKeyID := ModelID("custom-openai-required-env-key")
+	t.Setenv("CUSTOM_REQUIRED_OPENAI_API_KEY", "alt")
+	err = AddCustomModel(envKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_REQUIRED_OPENAI_API_KEY"})
+	require.NoError(t, err)
+
+	endpointID := ModelID("custom-openai-required-endpoint")
+	err = AddCustomModel(endpointID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEndpointURL: "http://localhost:1234/v1"})
+	require.NoError(t, err)
+
+	require.Equal(t, "literal", GetAPIKey(actualKeyID))
+	require.Equal(t, "alt", GetAPIKey(envKeyID))
+	require.Equal(t, "configured", GetAPIKey(endpointID))
+	require.Equal(t, "http://localhost:1234/v1", GetAPIEndpointURL(endpointID))
+
+	require.False(t, ModelUsesProviderSubscription(actualKeyID))
+	require.False(t, ModelUsesProviderSubscription(envKeyID))
+	require.False(t, ModelUsesProviderSubscription(endpointID))
+
+	apiKeyModels := AvailableModelIDsWithAPIKey()
+	require.Contains(t, apiKeyModels, actualKeyID)
+	require.Contains(t, apiKeyModels, envKeyID)
+	require.Contains(t, apiKeyModels, endpointID)
+
+	SetProviderSubscription(ProviderIDOpenAI, validProviderSubscription(ProviderIDOpenAI))
+	require.True(t, ModelUsesProviderSubscription(DefaultModel))
+	require.False(t, ModelUsesProviderSubscription(endpointID))
+}
+
 func TestAvailableModelIDsWithAuthUsesSubscriptionEligibility(t *testing.T) {
 	clearProviderAuthForTest(t)
 	require.NotContains(t, AvailableModelIDsWithAuth(), DefaultModel)
@@ -460,6 +537,11 @@ func TestAvailableModelIDsWithAuthUsesSubscriptionEligibility(t *testing.T) {
 	require.False(t, modelHasEligibleProviderSubscription(actualKeyID))
 	require.False(t, modelHasEligibleProviderSubscription(envKeyID))
 	require.False(t, modelHasEligibleProviderSubscription(endpointID))
+	require.True(t, ModelUsesProviderSubscription(DefaultModel))
+	require.True(t, ModelUsesProviderSubscription(noOverrideID))
+	require.False(t, ModelUsesProviderSubscription(actualKeyID))
+	require.False(t, ModelUsesProviderSubscription(envKeyID))
+	require.False(t, ModelUsesProviderSubscription(endpointID))
 
 	authModels := AvailableModelIDsWithAuth()
 	require.Contains(t, authModels, DefaultModel)

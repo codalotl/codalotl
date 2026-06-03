@@ -92,6 +92,27 @@ func ClearProviderSubscription(providerID ProviderID) {
 	delete(providerSubscriptions, providerID)
 }
 
+// SetProviderSubscriptionRequired controls whether provider subscription auth is required for providerID.
+//
+// While required and no usable provider subscription is configured, provider-level API-key fallback is suppressed for models that would otherwise be eligible for
+// provider subscription auth.
+func SetProviderSubscriptionRequired(providerID ProviderID, required bool) {
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+	if required {
+		providerSubscriptionRequired[providerID] = true
+		return
+	}
+	delete(providerSubscriptionRequired, providerID)
+}
+
+// ProviderSubscriptionRequired reports whether provider subscription auth is required for providerID.
+func ProviderSubscriptionRequired(providerID ProviderID) bool {
+	modelsMu.RLock()
+	defer modelsMu.RUnlock()
+	return providerSubscriptionRequired[providerID]
+}
+
 // GetProviderSubscription returns usable subscription auth for providerID, if set.
 //
 // Usable subscription auth has matching provider, required fields present, and nonexpired ExpiresAt.
@@ -109,6 +130,11 @@ func GetProviderSubscription(providerID ProviderID) (ProviderSubscription, bool)
 func ProviderHasSubscription(providerID ProviderID) bool {
 	_, ok := GetProviderSubscription(providerID)
 	return ok
+}
+
+// ModelUsesProviderSubscription reports whether id is currently callable through usable provider subscription auth.
+func ModelUsesProviderSubscription(id ModelID) bool {
+	return modelHasEligibleProviderSubscription(id)
 }
 
 // ProviderAPIType identifies one API "shape" a provider supports. Providers can expose multiple API types simultaneously (ex: OpenAI exposes both Responses and
@@ -348,7 +374,7 @@ func ProviderHasConfiguredKey(providerID ProviderID) bool {
 	return os.Getenv(env) != ""
 }
 
-// GetAPIKey returns the API key for the model with id ("" if not found). This is the precedence:
+// GetAPIKey returns the effective API key for the model with id ("" if not found or provider-level fallback is suppressed). This is the precedence:
 //  1. ModelInfo.ModelOverrides.APIActualKey
 //  2. Env[ModelInfo.ModelOverrides.APIEnvKey]
 //  3. Value from ConfigureProviderKey for id.ProviderID()
@@ -365,6 +391,9 @@ func GetAPIKey(id ModelID) string {
 		if val := os.Getenv(envKey); val != "" {
 			return val
 		}
+	}
+	if providerKeyFallbackSuppressed(info) {
+		return ""
 	}
 
 	modelsMu.RLock()
@@ -479,6 +508,9 @@ var (
 
 	// providerSubscriptions stores provider-level subscription auth configured with SetProviderSubscription.
 	providerSubscriptions = make(map[ProviderID]ProviderSubscription)
+
+	// providerSubscriptionRequired tracks providers whose saved subscription auth must be used when subscription auth applies.
+	providerSubscriptionRequired = make(map[ProviderID]bool)
 )
 
 var anthropicVersionSuffix = regexp.MustCompile(`-\d{6,}$`)
@@ -692,12 +724,23 @@ func usableProviderSubscription(providerID ProviderID, sub ProviderSubscription)
 	return sub.ExpiresAt.After(time.Now())
 }
 
-func modelHasEligibleProviderSubscription(id ModelID) bool {
-	info := GetModelInfo(id)
-	if info.ID == ModelIDUnknown {
+func modelEligibleForProviderSubscription(info ModelInfo) bool {
+	return info.ID != ModelIDUnknown &&
+		info.APIActualKey == "" &&
+		info.APIEnvKey == "" &&
+		info.ModelOverrides.APIEndpointURL == ""
+}
+
+func providerKeyFallbackSuppressed(info ModelInfo) bool {
+	if !modelEligibleForProviderSubscription(info) || !ProviderSubscriptionRequired(info.ProviderID) {
 		return false
 	}
-	if info.APIActualKey != "" || info.APIEnvKey != "" || info.ModelOverrides.APIEndpointURL != "" {
+	return !ProviderHasSubscription(info.ProviderID)
+}
+
+func modelHasEligibleProviderSubscription(id ModelID) bool {
+	info := GetModelInfo(id)
+	if !modelEligibleForProviderSubscription(info) {
 		return false
 	}
 	return ProviderHasSubscription(info.ProviderID)
