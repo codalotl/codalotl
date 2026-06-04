@@ -818,6 +818,7 @@ func newDocsCommand(runWithConfig runWithConfigFunc, includeReflow bool) *qcli.C
 	children := []*qcli.Command{
 		newDocsAddCommand(runWithConfig),
 		newDocsFixCommand(runWithConfig),
+		newDocsStatusCommand(runWithConfig),
 	}
 	if includeReflow {
 		children = append(children, newDocsReflowCommand(runWithConfig))

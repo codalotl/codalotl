@@ -191,6 +191,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"context", "packages"},
 		{"docs", "add"},
 		{"docs", "fix"},
+		{"docs", "status"},
 		{"docs", "reflow"},
 		{"auth", "openai", "login"},
 		{"auth", "openai", "logout"},
@@ -212,7 +213,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		require.NotEmpty(t, cmd.Long)
 		require.NotEmpty(t, cmd.Example)
 		switch strings.Join(names, " ") {
-		case "context packages", "auth openai logout", "auth openai status", "spec status", "cas ls-namespaces", "cas prune":
+		case "context packages", "docs status", "auth openai logout", "auth openai status", "spec status", "cas ls-namespaces", "cas prune":
 		default:
 			require.NotEmpty(t, cmd.Usage)
 		}
@@ -268,6 +269,7 @@ func TestHelpMetadata_LeafCatalogIncludesExecutableLeaves(t *testing.T) {
 	require.Contains(t, got, "codalotl auth openai status")
 	require.Contains(t, got, "codalotl docs add")
 	require.Contains(t, got, "codalotl docs fix")
+	require.Contains(t, got, "codalotl docs status")
 	require.NotContains(t, got, "codalotl docs improve-from-clarify")
 	require.Contains(t, got, "codalotl context public")
 	require.Contains(t, got, "codalotl spec diff")
