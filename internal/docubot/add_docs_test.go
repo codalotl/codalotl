@@ -9,6 +9,7 @@ import (
 
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodetesting"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1386,6 +1387,166 @@ func TestAddDocs_SpecMDCountsAgainstTokenBudget(t *testing.T) {
 		require.ErrorIs(t, err, ErrTokenBudgetExceeded)
 		assert.Empty(t, conv.convs)
 	})
+}
+
+func TestAddDocs_DefaultTokenBudget(t *testing.T) {
+	assert.Equal(t, 20000, defaultTokenBudget)
+}
+
+func TestAddDocs_DefaultBudgetExpandsOversizedBatch(t *testing.T) {
+	model, expandedBudget := addDocsExpandableTestModel(t)
+	require.Greater(t, expandedBudget, defaultTokenBudget+5000)
+
+	code := oversizedDocsAddCode((defaultTokenBudget + 2000) * 4)
+	snippet := dedentWithBackticks(`
+		// Big returns a large string.
+		func Big() string
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specContext, err := specContextForPackage(pkg, nil)
+		require.NoError(t, err)
+
+		idents := NewIdentifiersFromPackage(pkg)
+		idents.MarkDocumented(gocode.PackageIdentifier)
+		defaultContextBudget := defaultTokenBudget - addDocsRequestOverhead(pkg, specContext)
+
+		_, _, err = contextForAddDocsPartial(pkg, idents, defaultContextBudget, false, BaseOptions{Model: model})
+		require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions: BaseOptions{
+				Completer: conv,
+				Model:     model,
+			},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+		require.Len(t, conv.convs, 1)
+		assert.Greater(t, countTokens([]byte(conv.convs[0].userMessagesText[0])), defaultTokenBudget)
+	})
+}
+
+func TestAddDocs_DefaultBudgetExpansionRetriesPrunableOversizedBatch(t *testing.T) {
+	model, expandedBudget := addDocsExpandableTestModel(t)
+	code := prunableOversizedDocsAddCode(defaultTokenBudget*2, (expandedBudget+8000)*4)
+	snippet := dedentWithBackticks(`
+		// Widget carries values through the package.
+		type Widget struct{}
+	`)
+	conv := &responsesCompleter{responses: []string{
+		"Here are the documentation snippets:\n\n" + snippet,
+	}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		specContext, err := specContextForPackage(pkg, nil)
+		require.NoError(t, err)
+
+		idents := NewIdentifiersFromPackage(pkg)
+		idents.MarkDocumented(gocode.PackageIdentifier)
+		idents.MarkDocumented("UseWidgetA")
+		idents.MarkDocumented("UseWidgetB")
+		idents.MarkDocumented("UseWidgetC")
+
+		requestOverhead := addDocsRequestOverhead(pkg, specContext)
+		defaultContextBudget := defaultTokenBudget - requestOverhead
+		expandedContextBudget := expandedBudget - requestOverhead
+
+		_, _, err = contextForAddDocsPartial(pkg, idents, defaultContextBudget, false, BaseOptions{Model: model})
+		require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+
+		var tokenErr *tokenBudgetExceededError
+		require.True(t, errors.As(err, &tokenErr))
+		require.Greater(t, tokenErr.RequiredTokens, expandedContextBudget)
+
+		codeCtx, ids, err := contextForAddDocsPartial(pkg, idents, expandedContextBudget, false, BaseOptions{Model: model})
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"Widget"}, ids)
+		assert.LessOrEqual(t, codeCtx.Cost(), expandedContextBudget)
+
+		changes, err := AddDocs(pkg, AddDocsOptions{
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier, "UseWidgetA", "UseWidgetB", "UseWidgetC"},
+			BaseOptions: BaseOptions{
+				Completer: conv,
+				Model:     model,
+			},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, filenamesFromChanges(changes), "code.go")
+		require.Len(t, conv.convs, 1)
+
+		pkg, err = pkg.Reload()
+		require.NoError(t, err)
+		assert.Contains(t, string(pkg.Files["code.go"].Contents), "// Widget carries values through the package.")
+	})
+}
+
+func TestAddDocs_ExplicitDefaultBudgetDoesNotExpandOversizedBatch(t *testing.T) {
+	model, _ := addDocsExpandableTestModel(t)
+	code := oversizedDocsAddCode((defaultTokenBudget + 2000) * 4)
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		_, err := AddDocs(pkg, AddDocsOptions{
+			TokenBudget:        defaultTokenBudget,
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions: BaseOptions{
+				Completer: conv,
+				Model:     model,
+			},
+		})
+		require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+		assert.Empty(t, conv.convs)
+	})
+}
+
+func TestAddDocs_DefaultBudgetExceededBeyondModelExpansionLimit(t *testing.T) {
+	model, expandedBudget := addDocsExpandableTestModel(t)
+	code := oversizedDocsAddCode((expandedBudget + 2000) * 4)
+	conv := &responsesCompleter{responses: []string{"unexpected"}}
+
+	gocodetesting.WithCode(t, code, func(pkg *gocode.Package) {
+		_, err := AddDocs(pkg, AddDocsOptions{
+			ExcludeIdentifiers: []string{gocode.PackageIdentifier},
+			BaseOptions: BaseOptions{
+				Completer: conv,
+				Model:     model,
+			},
+		})
+		require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+		assert.Empty(t, conv.convs)
+	})
+}
+
+func addDocsExpandableTestModel(t *testing.T) (llmmodel.ModelID, int) {
+	t.Helper()
+
+	var bestModel llmmodel.ModelID
+	bestExpandedBudget := int(^uint(0) >> 1)
+	for _, model := range llmmodel.AvailableModelIDs() {
+		expandedBudget := expandedDefaultAddDocsTokenBudget(BaseOptions{Model: model})
+		if expandedBudget <= defaultTokenBudget+5000 || expandedBudget >= bestExpandedBudget {
+			continue
+		}
+
+		bestModel = model
+		bestExpandedBudget = expandedBudget
+	}
+
+	require.NotEmpty(t, bestModel)
+	return bestModel, bestExpandedBudget
+}
+
+func oversizedDocsAddCode(payloadBytes int) string {
+	return "package mypkg\n\nfunc Big() string {\n\treturn \"" + strings.Repeat("x", payloadBytes) + "\"\n}\n"
+}
+
+func prunableOversizedDocsAddCode(keptPayloadBytes, prunedPayloadBytes int) string {
+	return "package mypkg\n\ntype Widget struct{}\n\nfunc UseWidgetA() string {\n\t_ = Widget{}\n\treturn \"" + strings.Repeat("a", keptPayloadBytes) + "\"\n}\n\nfunc UseWidgetB() string {\n\t_ = Widget{}\n\treturn \"" + strings.Repeat("b", keptPayloadBytes) + "\"\n}\n\nfunc UseWidgetC() string {\n\t_ = Widget{}\n\treturn \"" + strings.Repeat("c", prunedPayloadBytes) + "\"\n}\n"
 }
 
 func TestContextForAddDocsPartial_Order(t *testing.T) {

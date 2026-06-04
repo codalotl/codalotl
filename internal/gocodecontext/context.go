@@ -341,6 +341,10 @@ func (c *Context) Code() string {
 // Prune will make a best-effort attempt to preserve context's utility using a variety of techniques. For example:
 //   - Remove "used by" deps, up to a limit.
 //   - If c is the package documentation, we will cut private symbols.
+//
+// For ordinary, non-package-documentation contexts, Prune removes whole UsedByDeps rather than trimming inside a dependency's function body. It does not remove
+// UsedByDeps that were explicitly added to the context, and it keeps at least two UsedByDeps per original group. As a result, small budget reductions can still
+// fail when the remaining required context includes one or two large used-by dependencies.
 func (c *Context) Prune(tokenBudget int) bool {
 	// Already fits:
 	if c.Cost() <= tokenBudget {

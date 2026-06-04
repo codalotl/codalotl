@@ -56,6 +56,8 @@ Mechanics:
 The `AddDocs` function adds missing documentation to a package by directly editing the package's files.
 - By default, it documents all identifiers, excluding test files. It does not document generated identifiers, anonymous identifiers, or init identifiers.
 - It never removes, fixes, or edits an existing comment (other than reflowing).
+- LLM request batches default to a 20k token budget.
+- When using the default budget, the smallest viable documentation batch may expand up to 90% of the selected model context window.
 
 Options include:
 - `DocumentTestFiles`: if true, we also document test files, including black-box tests (package somepkg_test). Does not document TestXxx/BenchmarkXxx/etc functions.

@@ -9,11 +9,12 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 	"github.com/codalotl/codalotl/internal/gocodecontext"
 	"github.com/codalotl/codalotl/internal/gopackagediff"
+	"github.com/codalotl/codalotl/internal/llmmodel"
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
 
 // defaultTokenBudget is used when AddDocsOptions.TokenBudget is zero.
-var defaultTokenBudget = 10000
+var defaultTokenBudget = 20000
 
 // tokenBudgetExceededError contains detailed information about why the token budget was exceeded.
 type tokenBudgetExceededError struct {
@@ -53,10 +54,10 @@ type AddDocsOptions struct {
 // changes if pkg has one). If an error occurs, no changes are returned, except for non-fatal errors like errNoSnippets or errSomeSnippetsFailed, where processing
 // continues and changes may be returned.
 func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Change, error) {
-	return addDocs(pkg, options, nil)
+	return addDocs(pkg, options, nil, options.TokenBudget == 0)
 }
 
-func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module) ([]*gopackagediff.Change, error) {
+func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module, allowTokenBudgetExpansion bool) ([]*gopackagediff.Change, error) {
 	if options.TokenBudget == 0 {
 		options.TokenBudget = defaultTokenBudget
 	}
@@ -68,10 +69,10 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 	options.Log("Entering AddDocs", "DocumentTestFiles", options.DocumentTestFiles, "OnlyDocumentExportedIdentifier", options.OnlyDocumentExportedIdentifiers, "OnlyDocumentImportantIdentifiers", options.OnlyDocumentImportantIdentifiers, "TokenBudget", options.TokenBudget)
 
 	if options.OnlyDocumentExportedIdentifiers {
-		return addDocsOnlyDocumentExportedIdentifier(pkg, options, contextModule)
+		return addDocsOnlyDocumentExportedIdentifier(pkg, options, contextModule, allowTokenBudgetExpansion)
 	}
 	if options.OnlyDocumentImportantIdentifiers {
-		return addDocsOnlyDocumentImportantIdentifiers(pkg, options, contextModule)
+		return addDocsOnlyDocumentImportantIdentifiers(pkg, options, contextModule, allowTokenBudgetExpansion)
 	}
 
 	options.ExcludeIdentifiers = appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg)
@@ -96,7 +97,7 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 		optionsPrime.DocumentTestFiles = false
 
 		options.Log("Documenting non-test identifiers first...")
-		_, err := addDocs(pkg, optionsPrime, contextModule)
+		_, err := addDocs(pkg, optionsPrime, contextModule, allowTokenBudgetExpansion)
 		if err != nil {
 			return nil, options.LogWrappedErr("error documenting non-test identifiers", err)
 		}
@@ -111,7 +112,7 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 		if pkg.HasTestPackage() {
 			options.Log("Now documenting _test-package identifiers...")
 			var err error
-			testPkgChanges, err = addDocs(pkg.TestPackage, options, contextModule)
+			testPkgChanges, err = addDocs(pkg.TestPackage, options, contextModule, allowTokenBudgetExpansion)
 			if err != nil {
 				return nil, options.LogWrappedErr("error documenting _test package identifiers", err)
 			}
@@ -150,7 +151,7 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 	for {
 		// addDocsPartial does one round of doc applications to pkg based on what's needed in idents and options.
 		// It may decide to do big batches, or it may decide to do small targeted leaves first.
-		updatedPkg, _, err := addDocsPartial(pkg, idents, options, contextModule)
+		updatedPkg, _, err := addDocsPartial(pkg, idents, options, contextModule, allowTokenBudgetExpansion)
 
 		// If errNoSnippets or errSomeSnippetsFailed, the LLM or the Fix probably returned something dumb, so keep on going.
 		// If we keep getting errors like this, the noProgressCount failsafe will bail us out.
@@ -220,7 +221,7 @@ func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.
 
 // addDocsOnlyDocumentExportedIdentifier documents the entire package in a scratch clone, then applies only the public snippets from that scratch package to the
 // caller's real package. This lets private declarations inform generated public docs without writing private docs to the real source tree.
-func addDocsOnlyDocumentExportedIdentifier(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module) ([]*gopackagediff.Change, error) {
+func addDocsOnlyDocumentExportedIdentifier(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module, allowTokenBudgetExpansion bool) ([]*gopackagediff.Change, error) {
 	idents := NewIdentifiersFromPackage(pkg)
 	for _, identifier := range appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg) {
 		idents.MarkDocumented(identifier)
@@ -258,7 +259,7 @@ func addDocsOnlyDocumentExportedIdentifier(pkg *gocode.Package, options AddDocsO
 		contextModule = pkg.Module
 	}
 
-	_, err = addDocs(scratchPkg, scratchOptions, contextModule)
+	_, err = addDocs(scratchPkg, scratchOptions, contextModule, allowTokenBudgetExpansion)
 	if err != nil {
 		return nil, options.LogWrappedErr("ensure_docs.public_only.scratch_add_docs", err)
 	}
@@ -397,30 +398,33 @@ func hasDocumentationComment(snippet string) bool {
 // and target identifier list, requests snippets, applies successful updates, and returns the possibly updated package, the set of files changed, and any error.
 //
 // On error, the returned package is nil; updatedFiles still reflects any files modified before the error occurred. Existing docs are never overwritten (redocument=false).
-func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOptions, contextModule *gocode.Module) (*gocode.Package, map[string]struct{}, error) {
-
-	// Reduce the token budget by the size of the prompt and instructions:
-	// NOTE: instructions size isn't known until we already have identifiers to document, but newContextForDocumentation (and gocodecontext.Context's .Cost()) doesn't have knowledge of
-	// instructions at all (they break an abstraction barrier). So we're going to reduce the token budget by 20 identifiers, which emperically is more than the average (but identifiers can
-	// be higher - maybe 60-100 - in some cases, like documenting a bunch of constants). So this is a bit of a hack and can fail in degenerate cases.
-	tokenBudget := options.TokenBudget - promptTokenLen
-	const numFakeIdentifiers = 20
-	fakeIdentifiers := make([]string, 0, numFakeIdentifiers)
-	for range numFakeIdentifiers {
-		fakeIdentifiers = append(fakeIdentifiers, "someFakeIdentifier")
-	}
-	fakeInstructions := llmInstructionsForIdentifiers(pkg, fakeIdentifiers, nil)
-	tokenBudget -= countTokens([]byte(fakeInstructions))
-
+func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOptions, contextModule *gocode.Module, allowTokenBudgetExpansion bool) (*gocode.Package, map[string]struct{}, error) {
 	specContext, err := specContextForPackage(pkg, contextModule)
 	if err != nil {
 		return nil, nil, options.LogWrappedErr("add_docs_partial.spec_context", err)
 	}
-	tokenBudget -= countTokens([]byte(specContext))
+	requestOverhead := addDocsRequestOverhead(pkg, specContext)
+	tokenBudget := options.TokenBudget - requestOverhead
 
 	codeCtx, identifiers, err := contextForAddDocsPartialWithModule(pkg, idents, tokenBudget, options.DocumentTestFiles, contextModule, options.BaseOptions)
 	if err != nil {
-		return nil, nil, options.LogWrappedErr("add_docs_partial.new_context_for_documentation", err)
+		var tokenErr *tokenBudgetExceededError
+		if allowTokenBudgetExpansion && errors.As(err, &tokenErr) {
+			expandedTokenBudget := expandedDefaultAddDocsTokenBudget(options.BaseOptions)
+			if expandedTokenBudget > options.TokenBudget {
+				expandedContextBudget := expandedTokenBudget - requestOverhead
+				options.Log(
+					"add_docs_partial: expanding default token budget",
+					"original_budget", options.TokenBudget,
+					"expanded_budget", expandedTokenBudget,
+					"required_context_tokens", tokenErr.RequiredTokens,
+				)
+				codeCtx, identifiers, err = contextForAddDocsPartialWithModule(pkg, idents, expandedContextBudget, options.DocumentTestFiles, contextModule, options.BaseOptions)
+			}
+		}
+		if err != nil {
+			return nil, nil, options.LogWrappedErr("add_docs_partial.new_context_for_documentation", err)
+		}
 	}
 
 	updatedPkg, updatedFiles, err := generateAndApplyDocs(pkg, codeCtx, identifiers, false, specContext, options.BaseOptions)
@@ -429,6 +433,39 @@ func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOpt
 	}
 
 	return updatedPkg, sliceToSet(updatedFiles), nil
+}
+
+// addDocsRequestOverhead estimates request tokens outside the code context.
+func addDocsRequestOverhead(pkg *gocode.Package, specContext string) int {
+	// NOTE: instructions size isn't known until we already have identifiers to document, but newContextForDocumentation (and gocodecontext.Context's .Cost()) doesn't have knowledge of
+	// instructions at all (they break an abstraction barrier). So we're going to reduce the token budget by 20 identifiers, which empirically is more than the average (but identifiers can
+	// be higher - maybe 60-100 - in some cases, like documenting a bunch of constants). So this is a bit of a hack and can fail in degenerate cases.
+	const numFakeIdentifiers = 20
+	fakeIdentifiers := make([]string, 0, numFakeIdentifiers)
+	for range numFakeIdentifiers {
+		fakeIdentifiers = append(fakeIdentifiers, "someFakeIdentifier")
+	}
+	fakeInstructions := llmInstructionsForIdentifiers(pkg, fakeIdentifiers, nil)
+	return promptTokenLen + countTokens([]byte(fakeInstructions)) + countTokens([]byte(specContext))
+}
+
+// expandedDefaultAddDocsTokenBudget returns the largest request budget allowed for default-budget AddDocs calls.
+func expandedDefaultAddDocsTokenBudget(options BaseOptions) int {
+	info := llmmodel.GetModelInfo(llmmodel.ModelIDOrFallback(options.Model))
+	if info.ContextWindow <= 0 {
+		return defaultTokenBudget
+	}
+
+	maxBudget := info.ContextWindow * 9 / 10
+	if maxBudget <= int64(defaultTokenBudget) {
+		return defaultTokenBudget
+	}
+
+	maxInt := int64(^uint(0) >> 1)
+	if maxBudget > maxInt {
+		return int(maxInt)
+	}
+	return int(maxBudget)
 }
 
 // contextForAddDocsPartial returns a context and identifiers to document for use in generateAndApplyDocs. If no groups initially fit the budget, it selects the
