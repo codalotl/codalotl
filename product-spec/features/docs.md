@@ -7,6 +7,8 @@ Codalotl treats Go documentation as product surface: concise facts attached to G
 - `codalotl docs add`: adds missing Go doc comments.
 - `codalotl docs fix`: finds existing docs that say materially false things, then fixes them.
 - `codalotl docs reflow`: normalizes doc comment shape - width, blank lines, and EOL-vs-Doc placement. No semantic rewrite intended.
+- `codalotl docs status`: prints package-by-package documentation status, similar to `codalotl spec status`, so users can see where missing docs, stale/unset `docs fix` certification, or reflow drift remain.
+    - `docs add` status is computed from current code rather than CAS; `docs fix` status uses its package CAS.
 - `docs-improve-from-clarify`: uses `clarify_public_api` answers to improve public docs.
     - When `clarify_public_api` is used, CAS entries are written, recording the question and answer.
     - This refactor workflow consumes them, updating the docs when it makes sense.
