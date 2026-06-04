@@ -244,6 +244,83 @@ func TestAddDocs_OnlyDocumentImportantIdentifiers_NoopsWhenImportantAlreadyDocum
 	})
 }
 
+func TestNeedsDocs_OnlyDocumentImportantIdentifiers_StaticMissingSkipsGroups(t *testing.T) {
+	oldCountTokens := countTokens
+	countTokens = func([]byte) int {
+		panic("gocodecontext.Groups should not be called")
+	}
+	defer func() {
+		countTokens = oldCountTokens
+	}()
+
+	gocodetesting.WithCode(t, "func Public() {}", func(pkg *gocode.Package) {
+		needsDocs, err := NeedsDocs(pkg, AddDocsOptions{
+			OnlyDocumentImportantIdentifiers: true,
+		})
+		require.NoError(t, err)
+		assert.True(t, needsDocs)
+	})
+}
+
+func TestNeedsDocs_OnlyDocumentImportantIdentifiers_NoGraphCandidatesSkipsGroups(t *testing.T) {
+	oldCountTokens := countTokens
+	countTokens = func([]byte) int {
+		panic("gocodecontext.Groups should not be called")
+	}
+	defer func() {
+		countTokens = oldCountTokens
+	}()
+
+	files := map[string]string{
+		"code.go": dedent(`
+			// Package mypkg has docs.
+			package mypkg
+
+			// Public has docs.
+			func Public() {}
+
+			// small has docs.
+			func small() {}
+		`),
+	}
+
+	gocodetesting.WithMultiCode(t, files, func(pkg *gocode.Package) {
+		needsDocs, err := NeedsDocs(pkg, AddDocsOptions{
+			OnlyDocumentImportantIdentifiers: true,
+		})
+		require.NoError(t, err)
+		assert.False(t, needsDocs)
+	})
+}
+
+func TestNeedsDocs_OnlyDocumentImportantIdentifiers_GraphSelectedIdentifier(t *testing.T) {
+	oldCountTokens := countTokens
+	countTokenCalls := 0
+	countTokens = func(code []byte) int {
+		countTokenCalls++
+		return oldCountTokens(code)
+	}
+	defer func() {
+		countTokens = oldCountTokens
+	}()
+
+	code := dedent(`
+		// Package mypkg has docs.
+		package mypkg
+
+		func highFanIn() {}
+	`) + fanInCallersSource("highFanIn", 10)
+
+	gocodetesting.WithMultiCode(t, map[string]string{"code.go": code}, func(pkg *gocode.Package) {
+		needsDocs, err := NeedsDocs(pkg, AddDocsOptions{
+			OnlyDocumentImportantIdentifiers: true,
+		})
+		require.NoError(t, err)
+		assert.True(t, needsDocs)
+		assert.Positive(t, countTokenCalls)
+	})
+}
+
 func TestImportantScratchExclusions_PreservesImportantAndExistingExclusions(t *testing.T) {
 	code := dedent(`
 		func Public() {}

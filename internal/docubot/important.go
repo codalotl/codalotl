@@ -131,6 +131,110 @@ func importantIdentifiersNeedingDocs(pkg *gocode.Package, includeTest bool, opti
 	return importantIDs, totalImportantUndocumented(idents, importantIDs, includeTest), nil
 }
 
+func needsImportantDocs(pkg *gocode.Package, options AddDocsOptions) (bool, error) {
+	needsDocs, err := needsImportantDocsForPackage(pkg, options.DocumentTestFiles, options, nil)
+	if err != nil {
+		return false, options.LogWrappedErr("needs_docs.important_identifiers", err)
+	}
+	if needsDocs {
+		return true, nil
+	}
+
+	if options.DocumentTestFiles && !pkg.IsTestPackage() && pkg.HasTestPackage() {
+		needsDocs, err := needsImportantDocsForPackage(pkg.TestPackage, true, options, nil)
+		if err != nil {
+			return false, options.LogWrappedErr("needs_docs.test_important_identifiers", err)
+		}
+		return needsDocs, nil
+	}
+
+	return false, nil
+}
+
+func needsImportantDocsForPackage(pkg *gocode.Package, includeTest bool, options AddDocsOptions, contextModule *gocode.Module) (bool, error) {
+	ids := NewIdentifiersFromPackage(pkg)
+	markImportantStatusExclusionsDocumented(ids, pkg, options.ExcludeIdentifiers)
+
+	staticImportant, _ := defaultImportantIdentifierPolicy.staticIdentifiersFromIDs(pkg, ids, includeTest)
+	removeExcludedImportantIdentifiers(staticImportant, options.ExcludeIdentifiers, pkg)
+	if totalImportantUndocumented(ids, staticImportant, includeTest) > 0 {
+		return true, nil
+	}
+
+	graphCandidates := graphImportantCandidatesNeedingDocs(ids, staticImportant, includeTest)
+	if len(graphCandidates) == 0 {
+		return false, nil
+	}
+
+	if contextModule == nil {
+		contextModule = pkg.Module
+	}
+	groups, err := gocodecontext.Groups(contextModule, pkg, gocodecontext.GroupOptions{
+		IncludePackageDocs:             true,
+		IncludeTestFiles:               includeTest,
+		IncludeExternalDeps:            true,
+		CountTokens:                    countTokens,
+		ConsiderAmbiguousDocumented:    true,
+		ConsiderTestFuncsDocumented:    true,
+		ConsiderConstBlocksDocumenting: true,
+	})
+	if err != nil {
+		return false, options.LogWrappedErr("needs_docs.important_identifiers.groups", err)
+	}
+	for _, group := range groups {
+		if group.IsExternal || !defaultImportantIdentifierPolicy.importantGroup(group) {
+			continue
+		}
+		for _, identifier := range group.IDs {
+			if _, needsDocs := graphCandidates[identifier]; needsDocs {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func markImportantStatusExclusionsDocumented(ids *Identifiers, pkg *gocode.Package, excluded []string) {
+	for _, identifier := range appendExclusionForGeneratedFiles(excluded, pkg) {
+		ids.MarkDocumented(identifier)
+	}
+
+	excludedSet := sliceToSet(excluded)
+	for _, fn := range pkg.FuncSnippets {
+		if _, excluded := excludedSet[leadingIdentifier(fn.IndirectedReceiverType())]; excluded {
+			ids.MarkDocumented(fn.Identifier)
+		}
+	}
+}
+
+func graphImportantCandidatesNeedingDocs(ids *Identifiers, staticImportant map[string]struct{}, includeTest bool) map[string]struct{} {
+	candidates := make(map[string]struct{})
+	addIfNeedsDocs := func(identifier string) {
+		if _, alreadyImportant := staticImportant[identifier]; alreadyImportant {
+			return
+		}
+		if !ids.includeIdentifier(identifier, includeTest, false) {
+			return
+		}
+		if _, hasDocs := ids.withDocs[identifier]; !hasDocs {
+			candidates[identifier] = struct{}{}
+		}
+	}
+
+	for _, identifier := range ids.allFuncs {
+		addIfNeedsDocs(identifier)
+	}
+	for _, identifier := range ids.allTypes {
+		addIfNeedsDocs(identifier)
+	}
+	for _, identifier := range ids.allValues {
+		addIfNeedsDocs(identifier)
+	}
+
+	return candidates
+}
+
 func importantIdentifiersForPackage(pkg *gocode.Package, includeTest bool, contextModule *gocode.Module, options BaseOptions) (map[string]struct{}, error) {
 	return defaultImportantIdentifierPolicy.identifiers(pkg, includeTest, contextModule, options)
 }
@@ -141,6 +245,52 @@ func (p importantIdentifierPolicy) identifiers(pkg *gocode.Package, includeTest 
 	}
 
 	ids := NewIdentifiersFromPackage(pkg)
+	important, generatedIDs := p.staticIdentifiersFromIDs(pkg, ids, includeTest)
+	add := func(identifier string) {
+		if _, generated := generatedIDs[identifier]; generated {
+			return
+		}
+		important[identifier] = struct{}{}
+	}
+	addIfIncluded := func(identifier string) {
+		if ids.includeIdentifier(identifier, includeTest, false) {
+			add(identifier)
+		}
+	}
+
+	if !pkg.IsTestPackage() {
+		add(gocode.PackageIdentifier)
+	}
+
+	groups, err := gocodecontext.Groups(contextModule, pkg, gocodecontext.GroupOptions{
+		IncludePackageDocs:             true,
+		IncludeTestFiles:               includeTest,
+		IncludeExternalDeps:            true,
+		CountTokens:                    countTokens,
+		ConsiderAmbiguousDocumented:    true,
+		ConsiderTestFuncsDocumented:    true,
+		ConsiderConstBlocksDocumenting: true,
+	})
+	if err != nil {
+		return nil, options.LogWrappedErr("important_identifiers.groups", err)
+	}
+	for _, group := range groups {
+		if group.IsExternal || !p.importantGroup(group) {
+			continue
+		}
+		for _, identifier := range group.IDs {
+			if identifier == gocode.PackageIdentifier {
+				add(identifier)
+				continue
+			}
+			addIfIncluded(identifier)
+		}
+	}
+
+	return important, nil
+}
+
+func (p importantIdentifierPolicy) staticIdentifiersFromIDs(pkg *gocode.Package, ids *Identifiers, includeTest bool) (map[string]struct{}, map[string]struct{}) {
 	generatedIDs := sliceToSet(appendExclusionForGeneratedFiles(nil, pkg))
 	important := make(map[string]struct{})
 
@@ -193,32 +343,7 @@ func (p importantIdentifierPolicy) identifiers(pkg *gocode.Package, includeTest 
 		}
 	}
 
-	groups, err := gocodecontext.Groups(contextModule, pkg, gocodecontext.GroupOptions{
-		IncludePackageDocs:             true,
-		IncludeTestFiles:               includeTest,
-		IncludeExternalDeps:            true,
-		CountTokens:                    countTokens,
-		ConsiderAmbiguousDocumented:    true,
-		ConsiderTestFuncsDocumented:    true,
-		ConsiderConstBlocksDocumenting: true,
-	})
-	if err != nil {
-		return nil, options.LogWrappedErr("important_identifiers.groups", err)
-	}
-	for _, group := range groups {
-		if group.IsExternal || !p.importantGroup(group) {
-			continue
-		}
-		for _, identifier := range group.IDs {
-			if identifier == gocode.PackageIdentifier {
-				add(identifier)
-				continue
-			}
-			addIfIncluded(identifier)
-		}
-	}
-
-	return important, nil
+	return important, generatedIDs
 }
 
 func importantScratchExclusions(exclude []string, pkg *gocode.Package, importantIDs map[string]struct{}) []string {
