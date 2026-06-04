@@ -162,7 +162,7 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	}
 
 	if err := stream.Err(); err != nil {
-		if finalResp != nil {
+		if finalResp != nil && openAIResponsesIsRetryableStreamDisconnect(err) {
 			debugPrint(debugHTTPResponses, "HTTP RESPONSE ERROR: create response(streaming=true) after response.completed", err)
 			sc.Log("open_ai_send_async.stream_after_completed", "err", err.Error())
 		} else {

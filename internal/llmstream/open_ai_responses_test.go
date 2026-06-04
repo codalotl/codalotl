@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -654,6 +655,108 @@ func TestSendAsyncOpenAIResponses_DoesNotRetryDisconnectAfterCompleted(t *testin
 	assert.Equal(t, "completed answer", final.TextContent())
 	assert.Len(t, conv.Turns(), 3)
 	assert.Equal(t, "completed answer", conv.LastTurn().TextContent())
+}
+
+func TestSendAsyncOpenAIResponses_ReturnsContextErrorAfterCompletedWhileDraining(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "canceled",
+			err:  context.Canceled,
+		},
+		{
+			name: "deadline exceeded",
+			err:  context.DeadlineExceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearOpenAIAuthForTest(t)
+
+			ctx := newOpenAITestDoneContext(tt.err)
+			t.Cleanup(ctx.finish)
+
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+				writeOpenAISSEEvent(t, w, "response.completed", `{
+					"type":"response.completed",
+					"sequence_number":0,
+					"response":{
+						"id":"resp_completed_then_context_done",
+						"object":"response",
+						"created_at":0,
+						"model":"gpt-4o-mini",
+						"status":"completed",
+						"output":[
+							{
+								"id":"msg_completed",
+								"type":"message",
+								"role":"assistant",
+								"status":"completed",
+								"content":[{"type":"output_text","text":"completed before context done"}]
+							}
+						],
+						"usage":{
+							"input_tokens":3,
+							"input_tokens_details":{"cached_tokens":0},
+							"output_tokens":2,
+							"output_tokens_details":{"reasoning_tokens":0},
+							"total_tokens":5
+						}
+					}
+				}`)
+				<-r.Context().Done()
+			}))
+			defer server.Close()
+			registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+			sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
+			require.NoError(t, sc.AddUserTurn("say hello"))
+
+			out := make(chan Event, 16)
+			result := make(chan struct {
+				turn Turn
+				err  error
+			}, 1)
+			go func() {
+				turn, err := sc.sendAsyncOpenAIResponses(ctx, out, nil, openAIRequestShapeModelInfo())
+				result <- struct {
+					turn Turn
+					err  error
+				}{turn: turn, err: err}
+			}()
+
+			select {
+			case ev := <-out:
+				require.Equal(t, EventTypeCompletedSuccess, ev.Type)
+				require.NotNil(t, ev.Turn)
+				assert.Equal(t, "completed before context done", ev.Turn.TextContent())
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for completed event")
+			}
+
+			ctx.finish()
+
+			select {
+			case got := <-result:
+				require.Error(t, got.err)
+				assert.ErrorIs(t, got.err, tt.err)
+				assert.False(t, isRetryable(got.err))
+				assert.Equal(t, Turn{}, got.turn)
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for send result")
+			}
+
+			assert.EqualValues(t, 1, requests.Load())
+			assert.Len(t, sc.Turns(), 2)
+		})
+	}
 }
 
 func TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer(t *testing.T) {
@@ -1596,6 +1699,40 @@ func writeOpenAITruncatedSSEEvent(t *testing.T, w http.ResponseWriter, event str
 	_, err = fmt.Fprintf(rw, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 4096\r\n\r\nevent: %s\ndata: %s\n\n", event, compact.String())
 	require.NoError(t, err)
 	require.NoError(t, rw.Flush())
+}
+
+type openAITestDoneContext struct {
+	context.Context
+	done chan struct{}
+	err  error
+	once sync.Once
+}
+
+func newOpenAITestDoneContext(err error) *openAITestDoneContext {
+	return &openAITestDoneContext{
+		Context: context.Background(),
+		done:    make(chan struct{}),
+		err:     err,
+	}
+}
+
+func (c *openAITestDoneContext) Done() <-chan struct{} {
+	return c.done
+}
+
+func (c *openAITestDoneContext) Err() error {
+	select {
+	case <-c.done:
+		return c.err
+	default:
+		return nil
+	}
+}
+
+func (c *openAITestDoneContext) finish() {
+	c.once.Do(func() {
+		close(c.done)
+	})
 }
 
 func mustUnmarshalOpenAIStreamEvent(t *testing.T, raw string) responses.ResponseStreamEventUnion {
