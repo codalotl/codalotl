@@ -413,20 +413,13 @@ func addDocsPartial(pkg *gocode.Package, idents *Identifiers, options AddDocsOpt
 			expandedTokenBudget := expandedDefaultAddDocsTokenBudget(options.BaseOptions)
 			if expandedTokenBudget > options.TokenBudget {
 				expandedContextBudget := expandedTokenBudget - requestOverhead
-				if tokenErr.RequiredTokens <= expandedContextBudget {
-					options.Log(
-						"add_docs_partial: expanding default token budget",
-						"original_budget", options.TokenBudget,
-						"expanded_budget", expandedTokenBudget,
-						"required_context_tokens", tokenErr.RequiredTokens,
-					)
-					codeCtx, identifiers, err = contextForAddDocsPartialWithModule(pkg, idents, expandedContextBudget, options.DocumentTestFiles, contextModule, options.BaseOptions)
-				} else {
-					err = &tokenBudgetExceededError{
-						RequiredTokens: tokenErr.RequiredTokens,
-						BudgetTokens:   expandedContextBudget,
-					}
-				}
+				options.Log(
+					"add_docs_partial: expanding default token budget",
+					"original_budget", options.TokenBudget,
+					"expanded_budget", expandedTokenBudget,
+					"required_context_tokens", tokenErr.RequiredTokens,
+				)
+				codeCtx, identifiers, err = contextForAddDocsPartialWithModule(pkg, idents, expandedContextBudget, options.DocumentTestFiles, contextModule, options.BaseOptions)
 			}
 		}
 		if err != nil {
