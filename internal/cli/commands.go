@@ -556,11 +556,11 @@ codalotl cas ls-namespaces
 			return nil
 		}),
 	}
-	lsStaleCmd := &qcli.Command{
-		Name:  "ls-stale",
-		Short: "List packages with stale CAS coverage for a namespace.",
-		Long: "Lists module packages, one per line, whose current contents lack a CAS record for the given namespace. " +
-			"Packages with no prior CAS record are always listed; otherwise age and churn thresholds are ORed.",
+	lsPackagesCmd := &qcli.Command{
+		Name:  "ls-packages",
+		Short: "Summarize CAS coverage for packages in the current repo.",
+		Long: "Displays per-package CAS status for a registered namespace across discovered modules in the nearest git repo. " +
+			"Use --state, --min-age, and --min-churn to focus on packages that need first-time or refreshed work.",
 		Usage: "<namespace>",
 		ArgHelp: []qcli.ArgHelp{
 			{
@@ -569,41 +569,30 @@ codalotl cas ls-namespaces
 			},
 		},
 		Example: strings.TrimSpace(`
-codalotl cas ls-stale specconforms
-codalotl cas ls-stale specconforms --stale-after-days=14 --min-churn-percent=10
+codalotl cas ls-packages specconforms
+codalotl cas ls-packages specconforms --state=outdated
+codalotl cas ls-packages specconforms --state=stale --min-age=30d --min-churn=20
+codalotl cas ls-packages specconforms --csv
 `),
 	}
-	lsStaleAfterDays := lsStaleCmd.Flags().Int("stale-after-days", 0, defaultCASLsStaleAfterDays, "List packages whose prior CAS record is at least this many days old.")
-	lsStaleMinChurnPercent := lsStaleCmd.Flags().Int("min-churn-percent", 0, defaultCASLsStaleMinChurnPercent, "List packages whose churn from prior CAS record is at least this percent.")
-	lsStaleCmd.Args = func(args []string) error {
+	lsPackagesFlags := lsPackagesCmd.Flags()
+	lsPackagesCSV := lsPackagesFlags.Bool("csv", 0, false, "Emit CSV instead of a terminal-oriented table.")
+	lsPackagesState := lsPackagesFlags.String("state", 0, "", "Filter rows by state: all, current, outdated, stale, or missing (default: all; thresholds default to stale).")
+	lsPackagesMinAge := lsPackagesFlags.String("min-age", 0, "", "Keep rows whose Age is at least this duration (examples: 12h, 30d, 4w, 1y).")
+	lsPackagesMinChurn := lsPackagesFlags.String("min-churn", 0, "", "Keep rows whose Churn % is at least this percent (examples: 20, 20%).")
+	lsPackagesCmd.Args = func(args []string) error {
 		if err := qcli.ExactArgs(1)(args); err != nil {
 			return err
 		}
-		return validateCASLsStaleThresholds(*lsStaleAfterDays, *lsStaleMinChurnPercent)
+		_, err := parseCASLsPackagesOptions(*lsPackagesCSV, *lsPackagesState, *lsPackagesMinAge, *lsPackagesMinChurn)
+		return err
 	}
-	lsStaleCmd.Run = runWithConfig("cas_ls_stale", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-		return runCASLsStale(c.Context, c.Out, c.Args[0], *lsStaleAfterDays, *lsStaleMinChurnPercent)
-	})
-	lsSummaryCmd := &qcli.Command{
-		Name:  "ls-summary",
-		Short: "Summarize CAS coverage for packages in the current repo.",
-		Long:  "Displays per-package current and prior CAS coverage for a registered namespace across discovered modules in the nearest git repo.",
-		Usage: "<namespace>",
-		ArgHelp: []qcli.ArgHelp{
-			{
-				Display:     "<namespace>",
-				Description: "Registered non-versioned namespace name.",
-			},
-		},
-		Example: strings.TrimSpace(`
-codalotl cas ls-summary specconforms
-codalotl cas ls-summary specconforms --csv
-`),
-		Args: qcli.ExactArgs(1),
-	}
-	lsSummaryCSV := lsSummaryCmd.Flags().Bool("csv", 0, false, "Emit CSV instead of a terminal-oriented table.")
-	lsSummaryCmd.Run = runWithConfig("cas_ls_summary", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-		return runCASLsSummary(c.Context, c.Out, c.Args[0], *lsSummaryCSV)
+	lsPackagesCmd.Run = runWithConfig("cas_ls_packages", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		opts, err := parseCASLsPackagesOptions(*lsPackagesCSV, *lsPackagesState, *lsPackagesMinAge, *lsPackagesMinChurn)
+		if err != nil {
+			return err
+		}
+		return runCASLsPackages(c.Context, c.Out, c.Args[0], opts)
 	})
 	pruneCmd := &qcli.Command{
 		Name:             "prune",
@@ -627,7 +616,7 @@ codalotl cas prune --days=14
 		return runCASPrune(c.Context, c.Out, *pruneDays)
 	})
 	recertifyCmd := newCASRecertifyCommand(runWithConfig)
-	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsSummaryCmd, lsStaleCmd, pruneCmd, recertifyCmd)
+	casCmd.AddCommand(getCmd, lsNamespacesCmd, lsPackagesCmd, pruneCmd, recertifyCmd)
 
 	panicCmd := &qcli.Command{
 		Name:             "panic",

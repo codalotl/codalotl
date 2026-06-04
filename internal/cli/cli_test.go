@@ -204,7 +204,7 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 		{"spec", "status"},
 		{"cas", "get"},
 		{"cas", "ls-namespaces"},
-		{"cas", "ls-stale"},
+		{"cas", "ls-packages"},
 		{"cas", "prune"},
 		{"cas", "recertify"},
 	} {
@@ -220,23 +220,25 @@ func TestCommandMetadata_ToolFacingCommands(t *testing.T) {
 	}
 }
 
-func TestRun_CAS_LSStale_HelpIncludesThresholdFlags(t *testing.T) {
+func TestRun_CAS_LSPackages_HelpIncludesFilterFlags(t *testing.T) {
 	isolateUserConfig(t)
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("PATH", "")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-stale", "--help"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "--help"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
 
 	got := out.String()
-	require.Contains(t, got, "codalotl cas ls-stale")
-	require.Contains(t, got, "--stale-after-days")
-	require.Contains(t, got, "--min-churn-percent")
-	require.Contains(t, got, "codalotl cas ls-stale specconforms")
+	require.Contains(t, got, "codalotl cas ls-packages")
+	require.Contains(t, got, "--state")
+	require.Contains(t, got, "--min-age")
+	require.Contains(t, got, "--min-churn")
+	require.Contains(t, got, "codalotl cas ls-packages specconforms")
+	require.Contains(t, got, "codalotl cas ls-packages specconforms --state=stale --min-age=30d --min-churn=20")
 }
 
 func TestRun_CAS_Prune_HelpIncludesDaysFlag(t *testing.T) {

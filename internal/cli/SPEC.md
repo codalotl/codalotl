@@ -373,7 +373,7 @@ Pretty output is terminal-oriented. `--csv` emits CSV.
 - `stale`: not up to date with prior valid result
 - `missing`: never had valid result
 
-Threshold filters keep rows meeting `--min-age=<duration>` or `--min-churn=<percent>` minimums. If both are supplied, both must match. Thresholds imply `--state=stale` unless `--state` is explicit. With `--state=outdated`, missing rows are kept.
+`--min-age` accepts compact durations such as `12h`, `30d`, `4w`, or `1y`. `--min-churn` accepts plain or percent-suffixed percentages, such as `20` or `20%`. Threshold filters keep rows meeting each supplied minimum; if both are supplied, both must match. Thresholds imply `--state=stale` unless `--state` is explicit. With explicit `--state=outdated`, missing rows are kept.
 
 ### codalotl cas prune [--days=N]
 
