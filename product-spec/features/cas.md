@@ -67,17 +67,31 @@ Prints CAS record if it exists, otherwise exits with status 1.
 
 Lists namespaces and their current version of all CAS types in the codebase (not which records have been saved so far). Does not display hash mode.
 
-### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
+### codalotl cas ls-packages <namespace> [--csv] [--state=<state>] [--min-age=<duration>] [--min-churn=<percent>]
 
-Lists packages (one per line, prefixed with `.`) that have no CAS file for their hash for the namespace. Only lists Go packages (not dirs with no .go files). Packages listed are based on the git repo (see `## CAS files`), and are relative to the git repo.
+Displays a tabular summary of all Go packages in the system with respect to the namespace. Packages are based on the git repo (see `## CAS files`) and are relative to the git repo.
 
-If `--stale-after-days=N` is present, list only packages whose most recent known CAS-covered state became stale at least N days ago.
+If `--csv` is used, instead of printing a pretty table for display in a terminal, prints a CSV.
 
-If `--min-churn-percent=N` is present, list only packages whose current content differs from the most recent CAS-covered state by at least N%. Packages without churn metrics are not included (e.g., we couldn't determine a corresponding git commit).
+Columns:
+- Package
+- Up to date (either `yes` or `no`, for whether there is a CAS entry matching the current package's hash)
+- Stale (either `yes`, `no`, or `-`, for whether the package has a prior valid CAS entry that is now invalidated. If `Up to date` is `yes`, this is `-` for "does not matter")
+- Age (either `-` if N/A, or something like `17d` indicating a relevant CAS record was saved 17 days ago)
+- Churn % (either `-` if N/A, or something like `18%` indicating the package changed by ~18% relative to when the prior CAS record was saved)
 
-If both are passed, the conditions are OR'ed. Note that packages that have never had a CAS entry are always included. If a Go package has no CAS record at all, for any hash, it is always considered stale and is always returned.
+`--state` filters by package status:
+- `all`: every package discovered under the nearest git repo.
+- `current`: only packages whose CAS entry is up to date for the namespace.
+- `outdated`: packages that are not up to date, including both stale and missing packages.
+- `stale`: packages that are not up to date but have a prior valid CAS entry.
+- `missing`: packages that have never had a valid CAS entry for the namespace.
 
-NOTE: there's a lot of nuance and edge cases in the above. These are implementation details.
+`--min-age=<duration>` keeps rows whose displayed age is at least the duration. Durations are compact, with values like `12h`, `30d`, `4w`, or `1y`.
+
+`--min-churn=<percent>` keeps rows whose displayed churn is at least the percent. Percentages may be written like `20` or `20%`.
+
+Threshold filters combine with AND: if both `--min-age` and `--min-churn` are supplied, both must match. Threshold filters imply `--state=stale` unless the user explicitly supplies `--state`, because age and churn are most useful when deciding which stale packages are worth refreshing. If the user explicitly supplies `--state=outdated`, missing packages are kept even though they do not have age or churn metrics.
 
 ### codalotl cas prune [--days=N]
 
@@ -97,24 +111,12 @@ Recertify asserts that a package's current files wrt the namespace are compliant
 
 Problem this solves: agent runs multiple refactors on a package in a row: `dry`, `test-cleanup`, `test-ensure-coverage`, `docs-fix`. Each one writes a CAS entry, and each one invalidates the previous entry. We need a way for the agent to say, "all these refactors are still valid." In theory, a refactor could break a previous refactor. In practice, that's rare. For refactors where that matters a lot, just don't recertify it.
 
-### codalotl cas ls-summary <namespace> [--csv]
-
-Displays a tabular summary of all packages in the system with respect to the namespace. If `--csv` is used, instead of printing a pretty table for display in a terminal, prints a CSV.
-
-Columns:
-- Package
-- CAS (either `yes` or `no`, for is there a CAS entry matching current package's hash)
-- Prev CAS (either `yes`, `no`, or `-`, for is there a CAS entry for this package that has been invalidated. If CAS in prior column is `yes`, this is `-` for "does not matter")
-- Age (either `-` if N/A, or something like `17d` indicating a CAS record was saved 17 days ago)
-- Churn % (either `-` if N/A, or something like `18%` indicating the package had 18% of lines changed relative to when the prior CAS record was saved).
-
 ## Future Design Possibilities
 
 The following are NOT part of the spec, but simply ideas to explore IF certain problems occur:
 - We may want stronger recertify semantics:
     - namespaces opt-in or opt-out to recertification
-    - expose recertification more easily, including in ls-summary
+    - expose recertification more easily, including in ls-packages
     - prune should preserve provenance chains
-- After some experimentation with this system, I think I'd like to unify ls-summary and ls-stale:
-    - add flags to filter in various ways, including by pkg name.
-    - it may be worth a performance pass. this was a bit slow at this relatively low scale. My guess is commit to determine churn.
+- We may want to add package-name filtering to `ls-packages`.
+- It may be worth a performance pass on package-listing commands. Churn calculation may require git history lookups.
