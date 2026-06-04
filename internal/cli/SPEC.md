@@ -44,6 +44,7 @@ Notes:
 	- `codalotl docs fix`
 	- `codalotl docs status`
 	- `codalotl spec status`
+	- `codalotl cas ls-packages`
 	- `codalotl cas recertify`
 
 ### codalotl -h, codalotl --help
@@ -223,10 +224,10 @@ Creates a PR file and branch for refactor orchestrator flows:
 - Does not require LLM configuration or startup tool validation.
 - Exactly one package selector is required:
 	- `--package` follows usual single-package argument semantics.
-	- `--all-packages` targets all Go packages in current module.
+	- `--all-packages` targets Go packages that need the selected refactor across discovered repo modules.
 - `--refactor` optionally selects one refactor. Supported values: `docs-add`, `docs-fix`, `dry`, `test-cleanup`, `test-ensure-coverage`.
 - `--package` without `--refactor` runs all refactors on one package.
-- `--all-packages --refactor=<name>` runs one refactor across all packages.
+- `--all-packages --refactor=<name>` runs one refactor across packages that need it.
 - `--all-packages` without `--refactor` is unsupported.
 - Feature name is generated from target and optional refactor:
 	- `refactor-internal-mypkg` for `--package=internal/mypkg`
@@ -236,6 +237,7 @@ Creates a PR file and branch for refactor orchestrator flows:
 	- target package or all-packages target
 	- selected refactor flow
 	- instructions to inspect each refactor diff, commit accepted changes with relevant CAS files, and skip no-op or risky changes with a PR-file note
+	- for all-packages refactors, instructions to discover needed packages using `codalotl_cli`
 	- instructions to use `codalotl_cli` to recertify CAS namespaces that can be recertified after final accepted refactor changes
 
 ### codalotl context public <path/to/pkg>

@@ -31,3 +31,39 @@ Further, explain how to get a list of needed packages: Use `codalotl_cli` to run
 When the refactor is docs-add specifically, use `codalotl docs status` to find packages that need docs.
 
 The above is the direction. Put on your PM hat and take the above direction across the finish line in terms of specification and design.
+
+## Plan
+
+### [DONE] Package `internal/cli` design/specification
+
+- Update `internal/cli/SPEC.md` so `pr refactor --all-packages` targets packages needing the selected refactor across discovered repo modules, not all packages in one module.
+- Specify that generated all-packages PR instructions tell orchestrators to use `codalotl_cli` to discover the needed package list.
+- Expose `codalotl cas ls-packages` through the `codalotl_cli` tool so orchestrators can query CAS-backed refactor status.
+
+### Package `internal/cli` implementation
+
+- Update `pr refactor --all-packages` help/template text to say "needed packages" and avoid "current module".
+- For all refactors except `docs-add`, instruct orchestrators to run `codalotl_cli` with `codalotl cas ls-packages <namespace> --state=outdated` and then refactor only listed packages.
+- For `docs-add`, instruct orchestrators to run `codalotl_cli` with `codalotl docs status` and use rows whose `docs_add` status is `needed`.
+- Keep existing inspect/commit/skip/recertify guidance, adapted to the discovered package list.
+- Add/update tests for generated PR instructions and `codalotl_cli` whitelist exposure.
+
+### Validation
+
+- Run focused `internal/cli` tests.
+- Run review and changed-package SPEC conformance.
+
+## Review
+
+Pending.
+
+## Summary
+
+Pending.
+
+## State
+
+- Branch: `jn/refactor-all-instructions`.
+- Primary package: `internal/cli`.
+- Relevant files: `internal/cli/pr_new.go`, `internal/cli/pr_new_test.go`, `internal/cli/commands.go`, `internal/cli/codalotl_cli_tool_test.go`, `internal/cli/SPEC.md`.
+- `internal/cli` already has root CLI support for `codalotl cas ls-packages`; `newCodalotlCLICommandTree` currently whitelists only `cas recertify`.
