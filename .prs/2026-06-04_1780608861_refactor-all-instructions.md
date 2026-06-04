@@ -66,7 +66,17 @@ The above is the direction. Put on your PM hat and take the above direction acro
 
 ## Summary
 
-Pending.
+- Update `pr refactor --all-packages` generated PR instructions to target needed packages discovered across repo modules instead of every package in the current module.
+- Add discovery guidance for each supported refactor flow: `docs-add`/`docs-fix` use `codalotl docs status`, while CAS-backed refactors use `codalotl cas ls-packages <namespace> --state=outdated`.
+- Expose `codalotl cas ls-packages` through the `codalotl_cli` tool and add tests covering the generated instructions and whitelist behavior.
+- Clarify multi-module handling so refactor and recertification commands use module-local package arguments from the package's containing module.
+
+Validation:
+- `go test ./internal/cli`
+- `go test ./...`
+- `go run . spec diff internal/cli`
+- Final review: no findings
+- Final changed-package SPEC conformance: `internal/cli` conforms
 
 ## State
 
