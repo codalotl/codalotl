@@ -379,9 +379,9 @@ Additional instructions:
 func prRefactorAllPackagesTemplate(refactorName string) string {
 	discoveryInstructions := prRefactorAllPackagesDiscoveryInstructions(refactorName)
 	recertifyNamespaces := prRefactorCASNamespaces(refactorName)
-	recertifyInstructions := "No CAS namespace is currently recertifiable specifically for this refactor. If accepted package changes invalidate other applicable CAS records, recertify those after final changes."
+	recertifyInstructions := "No CAS namespace is currently recertifiable specifically for this refactor. If accepted package changes invalidate other applicable CAS records, recertify those after final changes from the module containing each package or with module-local package arguments."
 	if recertifyNamespaces != "" {
-		recertifyInstructions = fmt.Sprintf("After final accepted changes, use the codalotl_cli tool for each accepted package that needs recertification:\n  codalotl cas recertify <package> --namespaces=%q\n- Inspect and commit CAS files produced by recertify.", recertifyNamespaces)
+		recertifyInstructions = fmt.Sprintf("After final accepted changes, use the codalotl_cli tool for each accepted package that needs recertification, from the module containing that package or with a module-local package argument:\n  codalotl cas recertify <module-local-package> --namespaces=%q\n- Inspect and commit CAS files produced by recertify.", recertifyNamespaces)
 	}
 
 	return fmt.Sprintf(`# PR
@@ -395,12 +395,17 @@ Selected refactor flow: %s
 
 %s
 
+Discovery commands may return packages from multiple Go modules.
+
 For each discovered needed package:
-1. refactor("name": "%s", "package": "<package>")
+1. Identify the Go module containing the package.
+2. If the package is outside the current module, switch/restart from that package's module root, or convert the discovered package to a module-local package argument before invoking tools.
+3. refactor("name": "%s", "package": "<module-local-package>")
 
 Additional instructions:
 - Refactor only packages in the discovered needed package list.
 - If discovery finds no needed packages, note that in this PR file and stop.
+- Do not pass a cross-module discovered package string directly to refactor; make the package argument resolvable from the module where refactor is running.
 - Inspect each refactor result and diff before moving to the next package.
 - Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package or small package group.
 - Skip no-op packages without a commit and add a note in this PR file.

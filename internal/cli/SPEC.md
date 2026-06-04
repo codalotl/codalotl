@@ -238,6 +238,7 @@ Creates a PR file and branch for refactor orchestrator flows:
 	- selected refactor flow
 	- instructions to inspect each refactor diff, commit accepted changes with relevant CAS files, and skip no-op or risky changes with a PR-file note
 	- for all-packages refactors, instructions to discover needed packages across discovered repo modules using `codalotl_cli`, then refactor only that discovered package list
+		- Discovery may return packages from multiple Go modules; process each package from its containing module using package args resolvable there for refactor and recertification commands.
 		- `docs-add`: run `codalotl docs status`; use packages whose `docs_add` status is `needed`
 		- `docs-fix`: run `codalotl docs status`; use packages whose `docs_fix` status is `needed`
 		- `dry`, `test-cleanup`, `test-ensure-coverage`: run `codalotl cas ls-packages <namespace> --state=outdated`; use listed packages

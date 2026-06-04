@@ -435,8 +435,13 @@ func TestRun_PRRefactor_AllPackagesSingleRefactor_WritesAllPackagesInstructions(
 	require.Contains(t, got, "codalotl docs status")
 	require.Contains(t, got, "Use packages whose docs_fix status is needed")
 	require.NotContains(t, got, "codalotl cas ls-packages docs-fix --state=outdated")
-	require.Contains(t, got, `refactor("name": "docs-fix", "package": "<package>")`)
+	require.Contains(t, got, "Discovery commands may return packages from multiple Go modules")
 	require.Contains(t, got, "For each discovered needed package")
+	require.Contains(t, got, "Identify the Go module containing the package")
+	require.Contains(t, got, "switch/restart from that package's module root")
+	require.Contains(t, got, "module-local package argument")
+	require.Contains(t, got, `refactor("name": "docs-fix", "package": "<module-local-package>")`)
+	require.Contains(t, got, "Do not pass a cross-module discovered package string directly to refactor")
 	require.Contains(t, got, "Refactor only packages in the discovered needed package list")
 	require.Contains(t, got, "If discovery finds no needed packages")
 	require.Contains(t, got, "Inspect each refactor result")
@@ -445,7 +450,7 @@ func TestRun_PRRefactor_AllPackagesSingleRefactor_WritesAllPackagesInstructions(
 	require.Contains(t, got, "Skip no-op packages without a commit and add a note in this PR file")
 	require.Contains(t, got, "add a note in this PR file")
 	require.Contains(t, got, "codalotl_cli")
-	require.Contains(t, got, `codalotl cas recertify <package> --namespaces="docs-fix"`)
+	require.Contains(t, got, `codalotl cas recertify <module-local-package> --namespaces="docs-fix"`)
 	require.NotContains(t, got, "all Go packages in the current module")
 	require.NotContains(t, got, "For each package in the current module")
 }
@@ -463,35 +468,35 @@ func TestPRRefactorAllPackagesTemplate_DiscoveryInstructions(t *testing.T) {
 			refactorName:         prRefactorDocsAdd,
 			wantDiscoveryCommand: "codalotl docs status",
 			wantDiscoveryText:    "Use packages whose docs_add status is needed",
-			wantRecertify:        "No CAS namespace is currently recertifiable specifically for this refactor",
+			wantRecertify:        "module-local package arguments",
 		},
 		{
 			name:                 "docs fix",
 			refactorName:         prRefactorDocsFix,
 			wantDiscoveryCommand: "codalotl docs status",
 			wantDiscoveryText:    "Use packages whose docs_fix status is needed",
-			wantRecertify:        `codalotl cas recertify <package> --namespaces="docs-fix"`,
+			wantRecertify:        `codalotl cas recertify <module-local-package> --namespaces="docs-fix"`,
 		},
 		{
 			name:                 "dry",
 			refactorName:         prRefactorDry,
 			wantDiscoveryCommand: "codalotl cas ls-packages refactor-dry --state=outdated",
 			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
-			wantRecertify:        `codalotl cas recertify <package> --namespaces="refactor-dry"`,
+			wantRecertify:        `codalotl cas recertify <module-local-package> --namespaces="refactor-dry"`,
 		},
 		{
 			name:                 "test cleanup",
 			refactorName:         prRefactorTestCleanup,
 			wantDiscoveryCommand: "codalotl cas ls-packages refactor-test-cleanup --state=outdated",
 			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
-			wantRecertify:        `codalotl cas recertify <package> --namespaces="refactor-test-cleanup"`,
+			wantRecertify:        `codalotl cas recertify <module-local-package> --namespaces="refactor-test-cleanup"`,
 		},
 		{
 			name:                 "test ensure coverage",
 			refactorName:         prRefactorTestEnsureCoverage,
 			wantDiscoveryCommand: "codalotl cas ls-packages refactor-test-ensure-coverage --state=outdated",
 			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
-			wantRecertify:        `codalotl cas recertify <package> --namespaces="refactor-test-ensure-coverage"`,
+			wantRecertify:        `codalotl cas recertify <module-local-package> --namespaces="refactor-test-ensure-coverage"`,
 		},
 	}
 
@@ -502,9 +507,12 @@ func TestPRRefactorAllPackagesTemplate_DiscoveryInstructions(t *testing.T) {
 			require.Contains(t, got, "codalotl_cli")
 			require.Contains(t, got, tt.wantDiscoveryCommand)
 			require.Contains(t, got, tt.wantDiscoveryText)
-			require.Contains(t, got, `refactor("name": "`+tt.refactorName+`", "package": "<package>")`)
+			require.Contains(t, got, "multiple Go modules")
+			require.Contains(t, got, "module-local package argument")
+			require.Contains(t, got, `refactor("name": "`+tt.refactorName+`", "package": "<module-local-package>")`)
 			require.Contains(t, got, tt.wantRecertify)
-			require.NotContains(t, got, "current module")
+			require.NotContains(t, got, "all Go packages in the current module")
+			require.NotContains(t, got, "For each package in the current module")
 		})
 	}
 }
