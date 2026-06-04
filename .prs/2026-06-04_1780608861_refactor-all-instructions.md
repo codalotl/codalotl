@@ -40,7 +40,7 @@ The above is the direction. Put on your PM hat and take the above direction acro
 - Specify that generated all-packages PR instructions tell orchestrators to use `codalotl_cli` to discover the needed package list.
 - Expose `codalotl cas ls-packages` through the `codalotl_cli` tool so orchestrators can query CAS-backed refactor status.
 
-### Package `internal/cli` implementation
+### [DONE] Package `internal/cli` implementation
 
 - Update `pr refactor --all-packages` help/template text to say "needed packages" and avoid "current module".
 - For all refactors except `docs-add`, instruct orchestrators to run `codalotl_cli` with `codalotl cas ls-packages <namespace> --state=outdated` and then refactor only listed packages.
@@ -50,7 +50,9 @@ The above is the direction. Put on your PM hat and take the above direction acro
 
 ### Validation
 
-- Run focused `internal/cli` tests.
+- [DONE] Run focused `internal/cli` tests: `go test ./internal/cli`.
+- [DONE] Run full tests: `go test ./...`.
+- [DONE] Run SPEC API diff: `go run . spec diff internal/cli`.
 - Run review and changed-package SPEC conformance.
 
 ## Review
@@ -66,4 +68,5 @@ Pending.
 - Branch: `jn/refactor-all-instructions`.
 - Primary package: `internal/cli`.
 - Relevant files: `internal/cli/pr_new.go`, `internal/cli/pr_new_test.go`, `internal/cli/commands.go`, `internal/cli/codalotl_cli_tool_test.go`, `internal/cli/SPEC.md`.
-- `internal/cli` already has root CLI support for `codalotl cas ls-packages`; `newCodalotlCLICommandTree` currently whitelists only `cas recertify`.
+- `internal/cli` already had root CLI support for `codalotl cas ls-packages`; implementation now whitelists it in `newCodalotlCLICommandTree`.
+- Verification passed before review: `go test ./internal/cli`, `go test ./...`, `go run . spec diff internal/cli`.
