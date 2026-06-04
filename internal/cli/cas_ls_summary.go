@@ -146,7 +146,7 @@ func parseCASLsPackagesMinChurn(s string) (float64, error) {
 		return 0, qcli.UsageError{Message: "invalid --min-churn: empty percent"}
 	}
 	churn, err := strconv.ParseFloat(raw, 64)
-	if err != nil || churn < 0 {
+	if err != nil || math.IsNaN(churn) || math.IsInf(churn, 0) || churn < 0 {
 		return 0, qcli.UsageError{Message: fmt.Sprintf("invalid --min-churn: expected percent like 20 or 20%% (got %q)", s)}
 	}
 	return churn, nil

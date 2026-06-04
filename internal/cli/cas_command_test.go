@@ -469,6 +469,9 @@ func TestRun_CAS_LSPackages_ValidatesFilters(t *testing.T) {
 		{name: "min age", flag: "--min-age=-1d", want: "invalid --min-age"},
 		{name: "min age overflow", flag: "--min-age=106752d", want: "invalid --min-age"},
 		{name: "min churn", flag: "--min-churn=-1", want: "invalid --min-churn"},
+		{name: "min churn NaN", flag: "--min-churn=NaN", want: "invalid --min-churn"},
+		{name: "min churn Inf", flag: "--min-churn=Inf", want: "invalid --min-churn"},
+		{name: "min churn plus Inf", flag: "--min-churn=+Inf", want: "invalid --min-churn"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
@@ -478,6 +481,33 @@ func TestRun_CAS_LSPackages_ValidatesFilters(t *testing.T) {
 			require.Equal(t, 2, code)
 			require.Empty(t, out.String())
 			require.Contains(t, errOut.String(), tc.want)
+		})
+	}
+}
+
+func TestParseCASLsPackagesMinChurn(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		churn string
+		want  float64
+	}{
+		{name: "number", churn: "20", want: 20},
+		{name: "percent", churn: "20%", want: 20},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseCASLsPackagesMinChurn(tc.churn)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestParseCASLsPackagesMinChurn_RejectsNonFinite(t *testing.T) {
+	for _, churn := range []string{"NaN", "Inf", "+Inf", "-Inf"} {
+		t.Run(churn, func(t *testing.T) {
+			_, err := parseCASLsPackagesMinChurn(churn)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid --min-churn")
 		})
 	}
 }
