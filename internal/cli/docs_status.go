@@ -23,7 +23,7 @@ const (
 	docsStatusError   = "error"
 )
 
-var runDocubotCountMissingDocs = docubot.CountMissingDocs
+var runDocubotNeedsDocs = docubot.NeedsDocs
 
 type docsStatusRow struct {
 	Package string
@@ -110,13 +110,13 @@ func loadPackageFromRepoDir(pkgDir casRepoPackageDir) (*gocode.Package, error) {
 }
 
 func docsAddStatus(pkg *gocode.Package) string {
-	missing, err := runDocubotCountMissingDocs(pkg, docubot.AddDocsOptions{
+	needsDocs, err := runDocubotNeedsDocs(pkg, docubot.AddDocsOptions{
 		OnlyDocumentImportantIdentifiers: true,
 	})
 	if err != nil {
 		return docsStatusError
 	}
-	if missing > 0 {
+	if needsDocs {
 		return docsStatusNeeded
 	}
 	return docsStatusCurrent

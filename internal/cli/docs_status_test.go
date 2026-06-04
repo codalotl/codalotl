@@ -59,25 +59,25 @@ func Baz() {}
 	p2StatBefore, err := os.Stat(p2Path)
 	require.NoError(t, err)
 
-	origCountMissingDocs := runDocubotCountMissingDocs
-	t.Cleanup(func() { runDocubotCountMissingDocs = origCountMissingDocs })
-	countCalls := map[string]bool{}
-	runDocubotCountMissingDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) (int, error) {
+	origNeedsDocs := runDocubotNeedsDocs
+	t.Cleanup(func() { runDocubotNeedsDocs = origNeedsDocs })
+	needsDocsCalls := map[string]bool{}
+	runDocubotNeedsDocs = func(pkg *gocode.Package, opts docubot.AddDocsOptions) (bool, error) {
 		require.True(t, opts.OnlyDocumentImportantIdentifiers)
 		require.False(t, opts.OnlyDocumentExportedIdentifiers)
 		require.False(t, opts.DocumentTestFiles)
-		countCalls[pkg.ImportPath] = true
+		needsDocsCalls[pkg.ImportPath] = true
 
 		switch filepath.Base(pkg.AbsolutePath()) {
 		case "p1":
-			return 0, nil
+			return false, nil
 		case "p2":
-			return 1, nil
+			return true, nil
 		case "p3":
-			return 0, errors.New("count failed")
+			return false, errors.New("needs docs failed")
 		default:
 			t.Fatalf("unexpected package: %s", pkg.ImportPath)
-			return 0, nil
+			return false, nil
 		}
 	}
 
@@ -96,7 +96,7 @@ func Baz() {}
 		"example.com/tmpmod/p1": true,
 		"example.com/tmpmod/p2": true,
 		"example.com/tmpmod/p3": true,
-	}, countCalls)
+	}, needsDocsCalls)
 
 	rows, order := parseDocsStatusRows(out.String())
 	require.Equal(t, []string{"./p1", "./p2", "./p3"}, order)
