@@ -353,32 +353,27 @@ Lists registered CAS namespaces and active versions, sorted by namespace name.
 
 Output: one line per namespace, format `<namespace> <version>`; hash mode omitted.
 
-### codalotl cas ls-summary <namespace> [--csv]
+### codalotl cas ls-packages <namespace> [--csv] [--state=<state>] [--min-age=<duration>] [--min-churn=<percent>]
 
-Displays a per-package CAS summary for a registered namespace across modules discovered from the nearest git repo root via `gocode.DiscoverModules`.
+Displays per-package CAS status for registered namespace across modules under nearest git repo root.
 
 Columns:
 - Package
-- CAS: `yes` or `no`, based on current package content.
-- Prev CAS: `yes`, `no`, or `-` when current CAS exists.
+- Up to date: `yes` or `no`, based on current package content.
+- Stale: `yes`, `no`, or `-` when current CAS exists.
 - Age: `-` or compact age of the relevant CAS entry.
 - Churn %: `-` or approximate line churn relative to the previous CAS-covered state.
 
 Pretty output is terminal-oriented. `--csv` emits CSV.
 
-### codalotl cas ls-stale <namespace> [--stale-after-days=30] [--min-churn-percent=20]
+`--state` filters rows by status:
+- `all` (default)
+- `current`: up to date
+- `outdated`: not up to date
+- `stale`: not up to date with prior valid result
+- `missing`: never had valid result
 
-Lists packages under nearest git repo, printed repo-relative (`./path/to/pkg`), whose current contents lack a CAS record for registered namespace, one per line.
-
-Module discovery uses `gocode.DiscoverModules` from the nearest git repo root.
-
-Defaults: 30 days, 20% churn.
-
-Packages with no prior CAS record are always listed.
-
-Filters are ORed:
-- `--stale-after-days=N`: prior CAS record is at least N days old.
-- `--min-churn-percent=N`: churn from prior CAS record is at least N%.
+Threshold filters keep rows meeting `--min-age=<duration>` or `--min-churn=<percent>` minimums. If both are supplied, both must match. Thresholds imply `--state=stale` unless `--state` is explicit. With `--state=outdated`, missing rows are kept.
 
 ### codalotl cas prune [--days=N]
 
