@@ -53,13 +53,13 @@ The above is the direction. Put on your PM hat and take the above direction acro
 - [DONE] Run focused `internal/cli` tests: `go test ./internal/cli`.
 - [DONE] Run full tests: `go test ./...`.
 - [DONE] Run SPEC API diff: `go run . spec diff internal/cli`.
-- Run review and changed-package SPEC conformance.
+- [DONE] Run review and changed-package SPEC conformance.
 
 ## Review
 
 - [DONE] Formal review against `origin/main` reported one P2 finding: all-packages `docs-fix` discovery via `cas ls-packages docs-fix --state=outdated` can miss packages that have identifier-scoped `docs-fix` CAS records but still need a whole-package docs-fix pass. Fixed by using `codalotl docs status` with `docs_fix=needed` for `docs-fix`.
 - `check_spec_conformance({"only_changed":true})`: `internal/cli` conforms. CAS conformance record produced.
-- Follow-up review against `origin/main` reported one P2 finding: discovery can span multiple modules, but generated `refactor("package": "<package>")` calls may pass packages that the refactor tool cannot resolve from the current module. Plan to update the generated instructions so packages are processed from the module that contains each package.
+- [DONE] Follow-up review against `origin/main` reported one P2 finding: discovery can span multiple modules, but generated `refactor("package": "<package>")` calls may pass packages that the refactor tool cannot resolve from the current module. Fixed by updating generated instructions to process packages from their containing module and use `<module-local-package>` arguments.
 - Follow-up `check_spec_conformance({"only_changed":true})`: `internal/cli` conforms. CAS conformance record produced.
 
 ## Summary
@@ -74,3 +74,4 @@ Pending.
 - `internal/cli` already had root CLI support for `codalotl cas ls-packages`; implementation now whitelists it in `newCodalotlCLICommandTree`.
 - Verification passed before review: `go test ./internal/cli`, `go test ./...`, `go run . spec diff internal/cli`.
 - Review follow-up changed all-packages `docs-fix` discovery to use `codalotl docs status` with `docs_fix=needed`; `dry`, `test-cleanup`, and `test-ensure-coverage` still use CAS package status. Re-verified with `go test ./internal/cli`, `go test ./...`, and `go run . spec diff internal/cli`.
+- Review follow-up changed multi-module all-packages instructions to use module-local package args for `refactor` and recertification. Re-verified with `go test ./internal/cli` and `go run . spec diff internal/cli`.
