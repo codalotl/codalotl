@@ -23,21 +23,13 @@ const (
 	docsStatusError   = "error"
 )
 
-var (
-	runDocubotNeedsDocs                   = docubot.NeedsDocs
-	runUpdatedocsReflowDocumentationPaths = updatedocs.ReflowDocumentationPaths
-)
+var runDocubotNeedsDocs = docubot.NeedsDocs
 
 type docsStatusRow struct {
 	Package string
 	DocsAdd string
 	DocsFix string
 	Reflow  string
-}
-
-type docsStatusLoadedPackage struct {
-	rowIndex int
-	pkg      *gocode.Package
 }
 
 func newDocsStatusCommand(runWithConfig runWithConfigFunc) *qcli.Command {
@@ -73,7 +65,6 @@ func runDocsStatus(ctx context.Context, out io.Writer, reflowWidth int) error {
 	}
 
 	rows := make([]docsStatusRow, 0, len(pkgDirs))
-	loadedPackages := make([]docsStatusLoadedPackage, 0, len(pkgDirs))
 	dbs := map[string]*gocas.DB{}
 	for _, pkgDir := range pkgDirs {
 		display, ok := displayPackagePath(repoRoot, pkgDir.absDir)
@@ -96,14 +87,9 @@ func runDocsStatus(ctx context.Context, out io.Writer, reflowWidth int) error {
 
 		row.DocsAdd = docsAddStatus(pkg)
 		row.DocsFix = docsFixStatus(pkgDir.mod.AbsolutePath, pkg, dbs)
-		loadedPackages = append(loadedPackages, docsStatusLoadedPackage{
-			rowIndex: len(rows),
-			pkg:      pkg,
-		})
+		row.Reflow = docsReflowStatus(pkg, reflowWidth)
 		rows = append(rows, row)
 	}
-
-	applyDocsReflowStatuses(rows, loadedPackages, reflowWidth)
 
 	sort.Slice(rows, func(i, j int) bool {
 		return rows[i].Package < rows[j].Package
@@ -165,7 +151,7 @@ func docsReflowStatus(pkg *gocode.Package, reflowWidth int) string {
 	}
 	defer checkPkg.Module.DeleteClone()
 
-	modified, skipped, err := runUpdatedocsReflowDocumentationPaths([]string{checkPkg.AbsolutePath()}, true, updatedocs.Options{
+	modified, skipped, err := updatedocs.ReflowDocumentationPaths([]string{checkPkg.AbsolutePath()}, true, updatedocs.Options{
 		ReflowMaxWidth: reflowWidth,
 	})
 	if err != nil || len(skipped) > 0 {
@@ -175,83 +161,6 @@ func docsReflowStatus(pkg *gocode.Package, reflowWidth int) string {
 		return docsStatusNeeded
 	}
 	return docsStatusCurrent
-}
-
-func applyDocsReflowStatuses(rows []docsStatusRow, loadedPackages []docsStatusLoadedPackage, reflowWidth int) {
-	moduleGroups := map[string][]docsStatusLoadedPackage{}
-	var moduleRoots []string
-	for _, loaded := range loadedPackages {
-		moduleRoot := loaded.pkg.Module.AbsolutePath
-		if _, ok := moduleGroups[moduleRoot]; !ok {
-			moduleRoots = append(moduleRoots, moduleRoot)
-		}
-		moduleGroups[moduleRoot] = append(moduleGroups[moduleRoot], loaded)
-	}
-
-	for _, moduleRoot := range moduleRoots {
-		statuses := docsReflowStatusesForModule(moduleGroups[moduleRoot], reflowWidth)
-		for rowIndex, status := range statuses {
-			rows[rowIndex].Reflow = status
-		}
-	}
-}
-
-func docsReflowStatusesForModule(loadedPackages []docsStatusLoadedPackage, reflowWidth int) map[int]string {
-	statuses, ok := docsReflowStatusesForModuleBatch(loadedPackages, reflowWidth)
-	if ok {
-		return statuses
-	}
-
-	statuses = make(map[int]string, len(loadedPackages))
-	for _, loaded := range loadedPackages {
-		statuses[loaded.rowIndex] = docsReflowStatus(loaded.pkg, reflowWidth)
-	}
-	return statuses
-}
-
-func docsReflowStatusesForModuleBatch(loadedPackages []docsStatusLoadedPackage, reflowWidth int) (map[int]string, bool) {
-	statuses := make(map[int]string, len(loadedPackages))
-	if len(loadedPackages) == 0 {
-		return statuses, true
-	}
-	for _, loaded := range loadedPackages {
-		statuses[loaded.rowIndex] = docsStatusCurrent
-	}
-
-	cloneMod, err := loadedPackages[0].pkg.Module.CloneWithoutPackages()
-	if err != nil {
-		return nil, false
-	}
-	defer cloneMod.DeleteClone()
-
-	paths := make([]string, 0, len(loadedPackages))
-	packageDirRows := map[string]int{}
-	for _, loaded := range loadedPackages {
-		checkPkg, err := cloneMod.ClonePackage(loaded.pkg)
-		if err != nil {
-			return nil, false
-		}
-
-		path := filepath.Clean(checkPkg.AbsolutePath())
-		paths = append(paths, path)
-		packageDirRows[path] = loaded.rowIndex
-	}
-
-	modified, skipped, err := runUpdatedocsReflowDocumentationPaths(paths, true, updatedocs.Options{
-		ReflowMaxWidth: reflowWidth,
-	})
-	if err != nil || len(skipped) > 0 {
-		return nil, false
-	}
-
-	for _, modifiedFile := range modified {
-		rowIndex, ok := packageDirRows[filepath.Clean(filepath.Dir(modifiedFile))]
-		if !ok {
-			return nil, false
-		}
-		statuses[rowIndex] = docsStatusNeeded
-	}
-	return statuses, true
 }
 
 func writeDocsStatusTable(w io.Writer, rows []docsStatusRow) error {
