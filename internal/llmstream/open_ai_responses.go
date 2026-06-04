@@ -162,16 +162,23 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	}
 
 	if err := stream.Err(); err != nil {
-		wrapped := sc.LogWrappedErr("open_ai_send_async.stream", err)
-		if openAIResponsesIsRetryableStreamDisconnect(err) {
-			wrapped = makeRetryable(wrapped)
+		if finalResp != nil {
+			debugPrint(debugHTTPResponses, "HTTP RESPONSE ERROR: create response(streaming=true) after response.completed", err)
+			sc.Log("open_ai_send_async.stream_after_completed", "err", err.Error())
+		} else {
+			wrapped := sc.LogWrappedErr("open_ai_send_async.stream", err)
+			if openAIResponsesIsRetryableStreamDisconnect(err) {
+				wrapped = makeRetryable(wrapped)
+			}
+			return Turn{}, wrapped
 		}
-		return Turn{}, wrapped
 	}
 
-	// Only produce a message on successful completion
+	// Only produce a message on successful completion. A clean transport close
+	// before response.completed is still an incomplete stream, so retry it at the
+	// conversation boundary instead of surfacing a semantic provider error.
 	if finalResp == nil {
-		return Turn{}, sc.LogNewErr("open_ai_send_async.not_completed")
+		return Turn{}, makeRetryable(sc.LogNewErr("open_ai_send_async.not_completed"))
 	}
 
 	sc.recordOpenAIResponseLink(*finalResp, effectiveOpt)

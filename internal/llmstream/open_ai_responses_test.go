@@ -495,6 +495,167 @@ func TestSendAsyncOpenAIResponses_RetriesRetryableStreamDisconnect(t *testing.T)
 	assert.Equal(t, "retried answer", conv.LastTurn().TextContent())
 }
 
+func TestSendAsyncOpenAIResponses_RetriesCleanStreamEndBeforeCompleted(t *testing.T) {
+	clearOpenAIAuthForTest(t)
+
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := requests.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		if attempt == 1 {
+			writeOpenAISSEEvent(t, w, "response.output_text.delta", `{
+				"type":"response.output_text.delta",
+				"sequence_number":0,
+				"item_id":"msg_first_attempt",
+				"output_index":0,
+				"content_index":0,
+				"delta":"partial"
+			}`)
+			return
+		}
+
+		writeOpenAISSEEvent(t, w, "response.output_text.delta", `{
+			"type":"response.output_text.delta",
+			"sequence_number":0,
+			"item_id":"msg_retry",
+			"output_index":0,
+			"content_index":0,
+			"delta":"retried after clean close"
+		}`)
+		writeOpenAISSEEvent(t, w, "response.completed", `{
+			"type":"response.completed",
+			"sequence_number":1,
+			"response":{
+				"id":"resp_clean_close_retry",
+				"object":"response",
+				"created_at":0,
+				"model":"gpt-4o-mini",
+				"status":"completed",
+				"output":[],
+				"usage":{
+					"input_tokens":3,
+					"input_tokens_details":{"cached_tokens":0},
+					"output_tokens":4,
+					"output_tokens_details":{"reasoning_tokens":0},
+					"total_tokens":7
+				}
+			}
+		}`)
+	}))
+	defer server.Close()
+	registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+	modelID := llmmodel.ModelID("test-openai-retry-clean-stream-end")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+	conv := NewConversation(modelID, "system instructions")
+	require.NoError(t, conv.AddUserTurn("say hello"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var (
+		gotRetry bool
+		final    *Turn
+		errs     []error
+	)
+	for ev := range conv.SendAsync(ctx) {
+		switch ev.Type {
+		case EventTypeRetry:
+			gotRetry = true
+			require.Error(t, ev.Error)
+			assert.True(t, isRetryable(ev.Error))
+		case EventTypeCompletedSuccess:
+			final = ev.Turn
+		case EventTypeError:
+			errs = append(errs, ev.Error)
+		}
+	}
+
+	assert.Empty(t, errs)
+	assert.True(t, gotRetry)
+	assert.EqualValues(t, 2, requests.Load())
+	require.NotNil(t, final)
+	assert.Equal(t, "retried after clean close", final.TextContent())
+	assert.Equal(t, FinishReasonEndTurn, final.FinishReason)
+	assert.Len(t, conv.Turns(), 3)
+	assert.Equal(t, "retried after clean close", conv.LastTurn().TextContent())
+}
+
+func TestSendAsyncOpenAIResponses_DoesNotRetryDisconnectAfterCompleted(t *testing.T) {
+	clearOpenAIAuthForTest(t)
+
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		writeOpenAITruncatedSSEEvent(t, w, "response.completed", `{
+			"type":"response.completed",
+			"sequence_number":0,
+			"response":{
+				"id":"resp_completed_then_disconnect",
+				"object":"response",
+				"created_at":0,
+				"model":"gpt-4o-mini",
+				"status":"completed",
+				"output":[
+					{
+						"id":"msg_completed",
+						"type":"message",
+						"role":"assistant",
+						"status":"completed",
+						"content":[{"type":"output_text","text":"completed answer"}]
+					}
+				],
+				"usage":{
+					"input_tokens":3,
+					"input_tokens_details":{"cached_tokens":0},
+					"output_tokens":2,
+					"output_tokens_details":{"reasoning_tokens":0},
+					"total_tokens":5
+				}
+			}
+		}`)
+	}))
+	defer server.Close()
+	registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+	modelID := llmmodel.ModelID("test-openai-no-retry-after-completed")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+	conv := NewConversation(modelID, "system instructions")
+	require.NoError(t, conv.AddUserTurn("say hello"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var (
+		retryCount     int
+		completedCount int
+		final          *Turn
+		errs           []error
+	)
+	for ev := range conv.SendAsync(ctx) {
+		switch ev.Type {
+		case EventTypeRetry:
+			retryCount++
+		case EventTypeCompletedSuccess:
+			completedCount++
+			final = ev.Turn
+		case EventTypeError:
+			errs = append(errs, ev.Error)
+		}
+	}
+
+	assert.Empty(t, errs)
+	assert.Zero(t, retryCount)
+	assert.Equal(t, 1, completedCount)
+	assert.EqualValues(t, 1, requests.Load())
+	require.NotNil(t, final)
+	assert.Equal(t, "completed answer", final.TextContent())
+	assert.Len(t, conv.Turns(), 3)
+	assert.Equal(t, "completed answer", conv.LastTurn().TextContent())
+}
+
 func TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer(t *testing.T) {
 	var requests []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
