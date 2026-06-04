@@ -57,7 +57,8 @@ The above is the direction. Put on your PM hat and take the above direction acro
 
 ## Review
 
-Pending.
+- Formal review against `origin/main` reported one P2 finding: all-packages `docs-fix` discovery via `cas ls-packages docs-fix --state=outdated` can miss packages that have identifier-scoped `docs-fix` CAS records but still need a whole-package docs-fix pass. This is actionable.
+- `check_spec_conformance({"only_changed":true})`: `internal/cli` conforms. CAS conformance record produced.
 
 ## Summary
 
