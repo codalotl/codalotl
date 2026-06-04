@@ -59,6 +59,8 @@ The above is the direction. Put on your PM hat and take the above direction acro
 
 - [DONE] Formal review against `origin/main` reported one P2 finding: all-packages `docs-fix` discovery via `cas ls-packages docs-fix --state=outdated` can miss packages that have identifier-scoped `docs-fix` CAS records but still need a whole-package docs-fix pass. Fixed by using `codalotl docs status` with `docs_fix=needed` for `docs-fix`.
 - `check_spec_conformance({"only_changed":true})`: `internal/cli` conforms. CAS conformance record produced.
+- Follow-up review against `origin/main` reported one P2 finding: discovery can span multiple modules, but generated `refactor("package": "<package>")` calls may pass packages that the refactor tool cannot resolve from the current module. Plan to update the generated instructions so packages are processed from the module that contains each package.
+- Follow-up `check_spec_conformance({"only_changed":true})`: `internal/cli` conforms. CAS conformance record produced.
 
 ## Summary
 
