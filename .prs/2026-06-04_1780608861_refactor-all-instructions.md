@@ -24,6 +24,10 @@ Additional instructions:
 - Inspect and commit CAS files produced by recertify.
 ```
 
-Change this to say to run that refactor across all needed Go packages (current module is incorrect - there could be multiple modules).
+Change this to say to run that refactor across all *needed* Go packages (current module is also incorrect - there could be multiple modules).
 
-Further, explain how to get a list of needed packages: Use `codalotl_cli` to run `codalotl cas ls-summary refactor-test-cleanup`. This gives you a list of packages that need to be fixed. (cas ls-stale might need to be added )
+Further, explain how to get a list of needed packages: Use `codalotl_cli` to run `codalotl cas ls-packages`. This gives you a list of packages that need to be fixed. (cas ls-packages might need to be added to codalotl_cli).
+
+When the refactor is docs-add specifically, use `codalotl docs status` to find packages that need docs.
+
+The above is the direction. Put on your PM hat and take the above direction across the finish line in terms of specification and design.
