@@ -84,6 +84,7 @@ Notes:
 ## Documentation Status
 
 Documentation status counts missing `AddDocs` targets without editing files or making LLM requests.
+`NeedsDocs` may answer without computing an exact count.
 
 ## Public API
 
@@ -92,4 +93,9 @@ Documentation status counts missing `AddDocs` targets without editing files or m
 //
 // CountMissingDocs does not edit files or make LLM requests.
 func CountMissingDocs(pkg *gocode.Package, options AddDocsOptions) (int, error)
+
+// NeedsDocs reports whether any AddDocs target selected by options lacks docs.
+//
+// NeedsDocs does not edit files or make LLM requests.
+func NeedsDocs(pkg *gocode.Package, options AddDocsOptions) (bool, error)
 ```
