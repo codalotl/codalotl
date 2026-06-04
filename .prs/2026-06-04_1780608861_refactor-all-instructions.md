@@ -57,7 +57,7 @@ The above is the direction. Put on your PM hat and take the above direction acro
 
 ## Review
 
-- Formal review against `origin/main` reported one P2 finding: all-packages `docs-fix` discovery via `cas ls-packages docs-fix --state=outdated` can miss packages that have identifier-scoped `docs-fix` CAS records but still need a whole-package docs-fix pass. This is actionable.
+- [DONE] Formal review against `origin/main` reported one P2 finding: all-packages `docs-fix` discovery via `cas ls-packages docs-fix --state=outdated` can miss packages that have identifier-scoped `docs-fix` CAS records but still need a whole-package docs-fix pass. Fixed by using `codalotl docs status` with `docs_fix=needed` for `docs-fix`.
 - `check_spec_conformance({"only_changed":true})`: `internal/cli` conforms. CAS conformance record produced.
 
 ## Summary
@@ -71,3 +71,4 @@ Pending.
 - Relevant files: `internal/cli/pr_new.go`, `internal/cli/pr_new_test.go`, `internal/cli/commands.go`, `internal/cli/codalotl_cli_tool_test.go`, `internal/cli/SPEC.md`.
 - `internal/cli` already had root CLI support for `codalotl cas ls-packages`; implementation now whitelists it in `newCodalotlCLICommandTree`.
 - Verification passed before review: `go test ./internal/cli`, `go test ./...`, `go run . spec diff internal/cli`.
+- Review follow-up changed all-packages `docs-fix` discovery to use `codalotl docs status` with `docs_fix=needed`; `dry`, `test-cleanup`, and `test-ensure-coverage` still use CAS package status. Re-verified with `go test ./internal/cli`, `go test ./...`, and `go run . spec diff internal/cli`.
