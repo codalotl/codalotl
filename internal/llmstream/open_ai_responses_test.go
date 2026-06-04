@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -405,6 +409,356 @@ func TestSendAsyncOpenAIResponses_SubscriptionAuthUsesEndpointHeaderAndForcesNoS
 	assert.Equal(t, "hello", sc.LastTurn().TextContent())
 }
 
+func TestSendAsyncOpenAIResponses_RetriesRetryableStreamDisconnect(t *testing.T) {
+	clearOpenAIAuthForTest(t)
+
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := requests.Add(1)
+		if attempt == 1 {
+			writeOpenAITruncatedSSEEvent(t, w, "response.output_text.delta", `{
+				"type":"response.output_text.delta",
+				"sequence_number":0,
+				"item_id":"msg_first_attempt",
+				"output_index":0,
+				"content_index":0,
+				"delta":"partial"
+			}`)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		writeOpenAISSEEvent(t, w, "response.output_text.delta", `{
+			"type":"response.output_text.delta",
+			"sequence_number":0,
+			"item_id":"msg_retry",
+			"output_index":0,
+			"content_index":0,
+			"delta":"retried answer"
+		}`)
+		writeOpenAISSEEvent(t, w, "response.completed", `{
+			"type":"response.completed",
+			"sequence_number":1,
+			"response":{
+				"id":"resp_retry",
+				"object":"response",
+				"created_at":0,
+				"model":"gpt-4o-mini",
+				"status":"completed",
+				"output":[],
+				"usage":{
+					"input_tokens":3,
+					"input_tokens_details":{"cached_tokens":0},
+					"output_tokens":2,
+					"output_tokens_details":{"reasoning_tokens":0},
+					"total_tokens":5
+				}
+			}
+		}`)
+	}))
+	defer server.Close()
+	registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+	modelID := llmmodel.ModelID("test-openai-retry-stream-disconnect")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+	conv := NewConversation(modelID, "system instructions")
+	require.NoError(t, conv.AddUserTurn("say hello"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var (
+		gotRetry bool
+		final    *Turn
+		errs     []error
+	)
+	for ev := range conv.SendAsync(ctx) {
+		switch ev.Type {
+		case EventTypeRetry:
+			gotRetry = true
+			require.Error(t, ev.Error)
+			assert.True(t, isRetryable(ev.Error))
+		case EventTypeCompletedSuccess:
+			final = ev.Turn
+		case EventTypeError:
+			errs = append(errs, ev.Error)
+		}
+	}
+
+	assert.Empty(t, errs)
+	assert.True(t, gotRetry)
+	assert.EqualValues(t, 2, requests.Load())
+	require.NotNil(t, final)
+	assert.Equal(t, "retried answer", final.TextContent())
+	assert.Equal(t, FinishReasonEndTurn, final.FinishReason)
+	assert.Len(t, conv.Turns(), 3)
+	assert.Equal(t, "retried answer", conv.LastTurn().TextContent())
+}
+
+func TestSendAsyncOpenAIResponses_RetriesCleanStreamEndBeforeCompleted(t *testing.T) {
+	clearOpenAIAuthForTest(t)
+
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := requests.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		if attempt == 1 {
+			writeOpenAISSEEvent(t, w, "response.output_text.delta", `{
+				"type":"response.output_text.delta",
+				"sequence_number":0,
+				"item_id":"msg_first_attempt",
+				"output_index":0,
+				"content_index":0,
+				"delta":"partial"
+			}`)
+			return
+		}
+
+		writeOpenAISSEEvent(t, w, "response.output_text.delta", `{
+			"type":"response.output_text.delta",
+			"sequence_number":0,
+			"item_id":"msg_retry",
+			"output_index":0,
+			"content_index":0,
+			"delta":"retried after clean close"
+		}`)
+		writeOpenAISSEEvent(t, w, "response.completed", `{
+			"type":"response.completed",
+			"sequence_number":1,
+			"response":{
+				"id":"resp_clean_close_retry",
+				"object":"response",
+				"created_at":0,
+				"model":"gpt-4o-mini",
+				"status":"completed",
+				"output":[],
+				"usage":{
+					"input_tokens":3,
+					"input_tokens_details":{"cached_tokens":0},
+					"output_tokens":4,
+					"output_tokens_details":{"reasoning_tokens":0},
+					"total_tokens":7
+				}
+			}
+		}`)
+	}))
+	defer server.Close()
+	registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+	modelID := llmmodel.ModelID("test-openai-retry-clean-stream-end")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+	conv := NewConversation(modelID, "system instructions")
+	require.NoError(t, conv.AddUserTurn("say hello"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var (
+		gotRetry bool
+		final    *Turn
+		errs     []error
+	)
+	for ev := range conv.SendAsync(ctx) {
+		switch ev.Type {
+		case EventTypeRetry:
+			gotRetry = true
+			require.Error(t, ev.Error)
+			assert.True(t, isRetryable(ev.Error))
+		case EventTypeCompletedSuccess:
+			final = ev.Turn
+		case EventTypeError:
+			errs = append(errs, ev.Error)
+		}
+	}
+
+	assert.Empty(t, errs)
+	assert.True(t, gotRetry)
+	assert.EqualValues(t, 2, requests.Load())
+	require.NotNil(t, final)
+	assert.Equal(t, "retried after clean close", final.TextContent())
+	assert.Equal(t, FinishReasonEndTurn, final.FinishReason)
+	assert.Len(t, conv.Turns(), 3)
+	assert.Equal(t, "retried after clean close", conv.LastTurn().TextContent())
+}
+
+func TestSendAsyncOpenAIResponses_DoesNotRetryDisconnectAfterCompleted(t *testing.T) {
+	clearOpenAIAuthForTest(t)
+
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		writeOpenAITruncatedSSEEvent(t, w, "response.completed", `{
+			"type":"response.completed",
+			"sequence_number":0,
+			"response":{
+				"id":"resp_completed_then_disconnect",
+				"object":"response",
+				"created_at":0,
+				"model":"gpt-4o-mini",
+				"status":"completed",
+				"output":[
+					{
+						"id":"msg_completed",
+						"type":"message",
+						"role":"assistant",
+						"status":"completed",
+						"content":[{"type":"output_text","text":"completed answer"}]
+					}
+				],
+				"usage":{
+					"input_tokens":3,
+					"input_tokens_details":{"cached_tokens":0},
+					"output_tokens":2,
+					"output_tokens_details":{"reasoning_tokens":0},
+					"total_tokens":5
+				}
+			}
+		}`)
+	}))
+	defer server.Close()
+	registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+	modelID := llmmodel.ModelID("test-openai-no-retry-after-completed")
+	require.NoError(t, llmmodel.AddCustomModel(modelID, llmmodel.ProviderIDOpenAI, "gpt-4o-mini", llmmodel.ModelOverrides{}))
+	conv := NewConversation(modelID, "system instructions")
+	require.NoError(t, conv.AddUserTurn("say hello"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var (
+		retryCount     int
+		completedCount int
+		final          *Turn
+		errs           []error
+	)
+	for ev := range conv.SendAsync(ctx) {
+		switch ev.Type {
+		case EventTypeRetry:
+			retryCount++
+		case EventTypeCompletedSuccess:
+			completedCount++
+			final = ev.Turn
+		case EventTypeError:
+			errs = append(errs, ev.Error)
+		}
+	}
+
+	assert.Empty(t, errs)
+	assert.Zero(t, retryCount)
+	assert.Equal(t, 1, completedCount)
+	assert.EqualValues(t, 1, requests.Load())
+	require.NotNil(t, final)
+	assert.Equal(t, "completed answer", final.TextContent())
+	assert.Len(t, conv.Turns(), 3)
+	assert.Equal(t, "completed answer", conv.LastTurn().TextContent())
+}
+
+func TestSendAsyncOpenAIResponses_ReturnsContextErrorAfterCompletedWhileDraining(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "canceled",
+			err:  context.Canceled,
+		},
+		{
+			name: "deadline exceeded",
+			err:  context.DeadlineExceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearOpenAIAuthForTest(t)
+
+			ctx := newOpenAITestDoneContext(tt.err)
+			t.Cleanup(ctx.finish)
+
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+				writeOpenAISSEEvent(t, w, "response.completed", `{
+					"type":"response.completed",
+					"sequence_number":0,
+					"response":{
+						"id":"resp_completed_then_context_done",
+						"object":"response",
+						"created_at":0,
+						"model":"gpt-4o-mini",
+						"status":"completed",
+						"output":[
+							{
+								"id":"msg_completed",
+								"type":"message",
+								"role":"assistant",
+								"status":"completed",
+								"content":[{"type":"output_text","text":"completed before context done"}]
+							}
+						],
+						"usage":{
+							"input_tokens":3,
+							"input_tokens_details":{"cached_tokens":0},
+							"output_tokens":2,
+							"output_tokens_details":{"reasoning_tokens":0},
+							"total_tokens":5
+						}
+					}
+				}`)
+				<-r.Context().Done()
+			}))
+			defer server.Close()
+			registerTestOpenAIProviderSubscription(t, server.URL+"/backend-api/codex", true)
+
+			sc := NewConversation(llmmodel.ModelID("gpt-4o-mini"), "system instructions").(*streamingConversation)
+			require.NoError(t, sc.AddUserTurn("say hello"))
+
+			out := make(chan Event, 16)
+			result := make(chan struct {
+				turn Turn
+				err  error
+			}, 1)
+			go func() {
+				turn, err := sc.sendAsyncOpenAIResponses(ctx, out, nil, openAIRequestShapeModelInfo())
+				result <- struct {
+					turn Turn
+					err  error
+				}{turn: turn, err: err}
+			}()
+
+			select {
+			case ev := <-out:
+				require.Equal(t, EventTypeCompletedSuccess, ev.Type)
+				require.NotNil(t, ev.Turn)
+				assert.Equal(t, "completed before context done", ev.Turn.TextContent())
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for completed event")
+			}
+
+			ctx.finish()
+
+			select {
+			case got := <-result:
+				require.Error(t, got.err)
+				assert.ErrorIs(t, got.err, tt.err)
+				assert.False(t, isRetryable(got.err))
+				assert.Equal(t, Turn{}, got.turn)
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for send result")
+			}
+
+			assert.EqualValues(t, 1, requests.Load())
+			assert.Len(t, sc.Turns(), 2)
+		})
+	}
+}
+
 func TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer(t *testing.T) {
 	var requests []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -718,6 +1072,20 @@ func TestOpenAIResponsesProcessEvent_CompletedEmptyOutputUsesStreamedState(t *te
 	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_1", Content: "reasoning summary"})
 	assert.Contains(t, turn.Parts, ReasoningContent{ProviderID: "rs_1", ProviderState: "encrypted_reasoning_blob"})
 	assert.Contains(t, turn.Parts, CompactionContent{ProviderID: "cmp_1", ProviderState: "encrypted_compaction_blob"})
+}
+
+func TestOpenAIResponsesProcessEvent_OpenAIErrorEventIsNotRetryable(t *testing.T) {
+	processed, cont, err := openAIResponsesProcessEvent(mustUnmarshalOpenAIStreamEvent(t, `{
+		"type":"error",
+		"sequence_number":0,
+		"code":"server_error",
+		"message":"stream ID 9; INTERNAL_ERROR; received from peer"
+	}`), newOpenAIResponsesContentBuilders())
+
+	require.Error(t, err)
+	assert.Nil(t, processed)
+	assert.False(t, cont)
+	assert.False(t, isRetryable(err))
 }
 
 func TestOpenAIResponsesProcessEvent_CompletedNonEmptyOutputKeepsStreamedCompaction(t *testing.T) {
@@ -1189,6 +1557,64 @@ func TestRecordOpenAIResponseLink_NoStoreClearsRetainedLink(t *testing.T) {
 	assert.Contains(t, reqJSON, `"instructions":"system instructions"`)
 }
 
+func TestOpenAIResponsesIsRetryableStreamDisconnect(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil",
+		},
+		{
+			name: "context canceled",
+			err:  context.Canceled,
+		},
+		{
+			name: "context deadline",
+			err:  context.DeadlineExceeded,
+		},
+		{
+			name: "api error is semantic",
+			err:  &responses.Error{Message: "stream ID 9; INTERNAL_ERROR; received from peer"},
+		},
+		{
+			name: "unexpected eof",
+			err:  fmt.Errorf("read event: %w", io.ErrUnexpectedEOF),
+			want: true,
+		},
+		{
+			name: "eof",
+			err:  fmt.Errorf("read event: %w", io.EOF),
+			want: true,
+		},
+		{
+			name: "http2 internal error stream",
+			err:  errors.New("stream ID 9; INTERNAL_ERROR; received from peer"),
+			want: true,
+		},
+		{
+			name: "connection reset",
+			err:  errors.New("read tcp 127.0.0.1: connection reset by peer"),
+			want: true,
+		},
+		{
+			name: "provider semantic failure text",
+			err:  errors.New("openai response failed (code=server_error)"),
+		},
+		{
+			name: "normal openai stream error text",
+			err:  errors.New("openai streaming error (code=rate_limit_exceeded)"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, openAIResponsesIsRetryableStreamDisconnect(tt.err))
+		})
+	}
+}
+
 func openAIRequestShapeConversation(t *testing.T) *streamingConversation {
 	t.Helper()
 
@@ -1256,6 +1682,57 @@ func writeOpenAISSEEvent(t *testing.T, w http.ResponseWriter, event string, data
 	if flusher, ok := w.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+func writeOpenAITruncatedSSEEvent(t *testing.T, w http.ResponseWriter, event string, data string) {
+	t.Helper()
+
+	hijacker, ok := w.(http.Hijacker)
+	require.True(t, ok)
+	conn, rw, err := hijacker.Hijack()
+	require.NoError(t, err)
+	defer conn.Close()
+
+	var compact bytes.Buffer
+	require.NoError(t, json.Compact(&compact, []byte(data)))
+
+	_, err = fmt.Fprintf(rw, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 4096\r\n\r\nevent: %s\ndata: %s\n\n", event, compact.String())
+	require.NoError(t, err)
+	require.NoError(t, rw.Flush())
+}
+
+type openAITestDoneContext struct {
+	context.Context
+	done chan struct{}
+	err  error
+	once sync.Once
+}
+
+func newOpenAITestDoneContext(err error) *openAITestDoneContext {
+	return &openAITestDoneContext{
+		Context: context.Background(),
+		done:    make(chan struct{}),
+		err:     err,
+	}
+}
+
+func (c *openAITestDoneContext) Done() <-chan struct{} {
+	return c.done
+}
+
+func (c *openAITestDoneContext) Err() error {
+	select {
+	case <-c.done:
+		return c.err
+	default:
+		return nil
+	}
+}
+
+func (c *openAITestDoneContext) finish() {
+	c.once.Do(func() {
+		close(c.done)
+	})
 }
 
 func mustUnmarshalOpenAIStreamEvent(t *testing.T, raw string) responses.ResponseStreamEventUnion {
