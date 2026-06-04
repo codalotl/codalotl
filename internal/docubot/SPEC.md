@@ -80,3 +80,16 @@ Notes:
 - Important fan-in and fan-out are based on `gocodecontext.IdentifierGroup` after cyclic grouping. A group's edge counts apply to every identifier selected from that group.
 - If all important identifiers are already documented, `OnlyDocumentImportantIdentifiers` returns without making LLM requests.
 - `OnlyDocumentImportantIdentifiers` and `DocumentTestFiles` should combine as expected: documents important identifiers in main package and test package(s), but not TestXxx/etc functions.
+
+## Documentation Status
+
+Documentation status counts missing `AddDocs` targets without editing files or making LLM requests.
+
+## Public API
+
+```go
+// CountMissingDocs returns how many AddDocs targets selected by options lack docs.
+//
+// CountMissingDocs does not edit files or make LLM requests.
+func CountMissingDocs(pkg *gocode.Package, options AddDocsOptions) (int, error)
+```

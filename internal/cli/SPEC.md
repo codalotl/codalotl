@@ -42,6 +42,7 @@ Notes:
 - `codalotl_cli` exposes these commands:
 	- `codalotl docs add`
 	- `codalotl docs fix`
+	- `codalotl docs status`
 	- `codalotl spec status`
 	- `codalotl cas recertify`
 
@@ -292,6 +293,19 @@ Notes:
 
 Output:
 - Prints concise fix summary without internal CAS metadata.
+
+### codalotl docs status
+
+Prints per-package documentation status across modules discovered from nearest git repo, like `codalotl spec status`.
+
+Columns: package, docs_add, docs_fix, reflow.
+Status values: `current`, `needed`, `error`.
+
+Notes:
+- `docs_add` is computed from current package source, not CAS, using the `docs add --important` target set.
+- `docs_fix` is current only when package current contents have a whole-package `docs-fix` CAS record. Identifier-limited records do not count as current.
+- `reflow` uses deterministic dry-run reflow checking.
+- Read-only; no docs or CAS writes.
 
 ### codalotl spec diff <path/to/pkg_or_SPEC.md>
 
