@@ -22,7 +22,7 @@ var defaultImportantIdentifierPolicy = importantIdentifierPolicy{
 	GroupFanOutThreshold:   12,
 }
 
-func addDocsOnlyDocumentImportantIdentifiers(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module) ([]*gopackagediff.Change, error) {
+func addDocsOnlyDocumentImportantIdentifiers(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module, allowTokenBudgetExpansion bool) ([]*gopackagediff.Change, error) {
 	importantIDs, importantUndocumented, err := importantIdentifiersNeedingDocs(pkg, options.DocumentTestFiles, options, contextModule)
 	if err != nil {
 		return nil, options.LogWrappedErr("ensure_docs.important_only.important_identifiers", err)
@@ -72,7 +72,7 @@ func addDocsOnlyDocumentImportantIdentifiers(pkg *gocode.Package, options AddDoc
 		contextModule = pkg.Module
 	}
 
-	_, err = addDocs(scratchPkg, scratchOptions, contextModule)
+	_, err = addDocs(scratchPkg, scratchOptions, contextModule, allowTokenBudgetExpansion)
 	if err != nil {
 		return nil, options.LogWrappedErr("ensure_docs.important_only.scratch_add_docs", err)
 	}
