@@ -89,6 +89,7 @@ func TestCodalotlCLITool_OnlyExposesWhitelistedCommands(t *testing.T) {
 	require.Equal(t, 0, helpResult.ExitCode)
 	require.Contains(t, helpResult.Stdout, "codalotl docs add")
 	require.Contains(t, helpResult.Stdout, "codalotl docs fix")
+	require.Contains(t, helpResult.Stdout, "codalotl docs status")
 	require.Contains(t, helpResult.Stdout, "codalotl spec status")
 	require.Contains(t, helpResult.Stdout, "codalotl cas recertify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
@@ -123,6 +124,17 @@ func TestCodalotlCLITool_OnlyExposesWhitelistedCommands(t *testing.T) {
 	require.Equal(t, 0, fixHelp.ExitCode)
 	require.Contains(t, fixHelp.Stdout, "codalotl docs fix")
 	require.Contains(t, fixHelp.Stdout, "--identifiers")
+
+	docsStatusHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-docs-status-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"docs status","argv":["--help"]}`,
+	}))
+	require.True(t, docsStatusHelp.Success)
+	require.Equal(t, 0, docsStatusHelp.ExitCode)
+	require.Contains(t, docsStatusHelp.Stdout, "codalotl docs status")
+	require.Contains(t, docsStatusHelp.Stdout, "docs-add, docs-fix, and documentation reflow status")
 
 	statusHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-spec-status-help",
