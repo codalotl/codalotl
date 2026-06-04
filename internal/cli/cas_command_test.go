@@ -239,7 +239,7 @@ func TestRun_CAS_Recertify_NoPriorExitsOne(t *testing.T) {
 	require.Equal(t, []string{"docs-fix: no prior record"}, cliOutputLines(out.String()))
 }
 
-func TestRun_CAS_LSStale_ListsNeverCoveredAndSkipsCurrentAndFreshPrior(t *testing.T) {
+func TestRun_CAS_LSPackages_OutdatedThresholdIncludesMissingAndFiltersFreshPrior(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
@@ -263,14 +263,14 @@ func TestRun_CAS_LSStale_ListsNeverCoveredAndSkipsCurrentAndFreshPrior(t *testin
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", "--state=outdated", "--min-age=30d", "--min-churn=20"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
-	require.Equal(t, []string{"./p2"}, cliOutputLines(out.String()))
+	require.Equal(t, []string{"./p2"}, casSummaryPackageList(out.String()))
 }
 
-func TestRun_CAS_LSStale_UsesRepoRootAcrossGoModules(t *testing.T) {
+func TestRun_CAS_LSPackages_UsesRepoRootAcrossGoModules(t *testing.T) {
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
@@ -299,7 +299,7 @@ func TestRun_CAS_LSStale_UsesRepoRootAcrossGoModules(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", "--state=missing"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
@@ -307,10 +307,10 @@ func TestRun_CAS_LSStale_UsesRepoRootAcrossGoModules(t *testing.T) {
 		"./rootstale",
 		"./services/api",
 		"./services/worker/job",
-	}, cliOutputLines(out.String()))
+	}, casSummaryPackageList(out.String()))
 }
 
-func TestRun_CAS_LSStale_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
+func TestRun_CAS_LSPackages_SummarizesWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
@@ -338,14 +338,14 @@ func TestRun_CAS_LSStale_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", "--state=missing"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
-	require.Equal(t, []string{"./services/api"}, cliOutputLines(out.String()))
+	require.Equal(t, []string{"./services/api"}, casSummaryPackageList(out.String()))
 }
 
-func TestRun_CAS_LSStale_IgnoresTestdataModules(t *testing.T) {
+func TestRun_CAS_LSPackages_IgnoresTestdataModules(t *testing.T) {
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
@@ -372,17 +372,17 @@ func TestRun_CAS_LSStale_IgnoresTestdataModules(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", "--state=missing"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
 	require.Equal(t, []string{
 		"./app",
 		"./services/api",
-	}, cliOutputLines(out.String()))
+	}, casSummaryPackageList(out.String()))
 }
 
-func TestRun_CAS_LSStale_IgnoresHiddenAndUnderscoreFixtureModules(t *testing.T) {
+func TestRun_CAS_LSPackages_IgnoresHiddenAndUnderscoreFixtureModules(t *testing.T) {
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
@@ -406,14 +406,14 @@ func TestRun_CAS_LSStale_IgnoresHiddenAndUnderscoreFixtureModules(t *testing.T) 
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", "--state=missing"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
-	require.Equal(t, []string{"./app"}, cliOutputLines(out.String()))
+	require.Equal(t, []string{"./app"}, casSummaryPackageList(out.String()))
 }
 
-func TestRun_CAS_LSStale_AppliesAgeThreshold(t *testing.T) {
+func TestRun_CAS_LSPackages_AppliesImplicitStaleAgeThreshold(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
@@ -434,32 +434,30 @@ func TestRun_CAS_LSStale_AppliesAgeThreshold(t *testing.T) {
 		var out bytes.Buffer
 		var errOut bytes.Buffer
 		code, err := Run([]string{
-			"codalotl", "cas", "ls-stale", "docs-fix",
-			"--stale-after-days=0",
-			"--min-churn-percent=999",
+			"codalotl", "cas", "ls-packages", "docs-fix",
+			"--min-age=0d",
 		}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
-		require.Equal(t, []string{"./p"}, cliOutputLines(out.String()))
+		require.Equal(t, []string{"./p"}, casSummaryPackageList(out.String()))
 	}
 
 	{
 		var out bytes.Buffer
 		var errOut bytes.Buffer
 		code, err := Run([]string{
-			"codalotl", "cas", "ls-stale", "docs-fix",
-			"--stale-after-days=999",
-			"--min-churn-percent=999",
+			"codalotl", "cas", "ls-packages", "docs-fix",
+			"--min-age=999d",
 		}, &RunOptions{Out: &out, Err: &errOut})
 		require.NoError(t, err)
 		require.Equal(t, 0, code)
 		require.Empty(t, errOut.String())
-		require.Empty(t, cliOutputLines(out.String()))
+		require.Empty(t, casSummaryPackageList(out.String()))
 	}
 }
 
-func TestRun_CAS_LSStale_ValidatesThresholds(t *testing.T) {
+func TestRun_CAS_LSPackages_ValidatesFilters(t *testing.T) {
 	isolateUserConfig(t)
 
 	for _, tc := range []struct {
@@ -467,17 +465,66 @@ func TestRun_CAS_LSStale_ValidatesThresholds(t *testing.T) {
 		flag string
 		want string
 	}{
-		{name: "stale after days", flag: "--stale-after-days=-1", want: "invalid --stale-after-days"},
-		{name: "min churn percent", flag: "--min-churn-percent=-1", want: "invalid --min-churn-percent"},
+		{name: "state", flag: "--state=nope", want: "invalid --state"},
+		{name: "min age", flag: "--min-age=-1d", want: "invalid --min-age"},
+		{name: "min age overflow", flag: "--min-age=106752d", want: "invalid --min-age"},
+		{name: "min churn", flag: "--min-churn=-1", want: "invalid --min-churn"},
+		{name: "min churn NaN", flag: "--min-churn=NaN", want: "invalid --min-churn"},
+		{name: "min churn Inf", flag: "--min-churn=Inf", want: "invalid --min-churn"},
+		{name: "min churn plus Inf", flag: "--min-churn=+Inf", want: "invalid --min-churn"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
 			var errOut bytes.Buffer
-			code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix", tc.flag}, &RunOptions{Out: &out, Err: &errOut})
+			code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", tc.flag}, &RunOptions{Out: &out, Err: &errOut})
 			require.Error(t, err)
 			require.Equal(t, 2, code)
 			require.Empty(t, out.String())
 			require.Contains(t, errOut.String(), tc.want)
+		})
+	}
+}
+
+func TestParseCASLsPackagesMinChurn(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		churn string
+		want  float64
+	}{
+		{name: "number", churn: "20", want: 20},
+		{name: "percent", churn: "20%", want: 20},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseCASLsPackagesMinChurn(tc.churn)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestParseCASLsPackagesMinChurn_RejectsNonFinite(t *testing.T) {
+	for _, churn := range []string{"NaN", "Inf", "+Inf", "-Inf"} {
+		t.Run(churn, func(t *testing.T) {
+			_, err := parseCASLsPackagesMinChurn(churn)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid --min-churn")
+		})
+	}
+}
+
+func TestParseCASLsPackagesMinAge_RejectsCustomUnitOverflow(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		age  string
+	}{
+		{name: "days", age: "106752d"},
+		{name: "weeks", age: "15251w"},
+		{name: "years", age: "293y"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseCASLsPackagesMinAge(tc.age)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid --min-age")
 		})
 	}
 }
@@ -582,7 +629,31 @@ func TestRun_CAS_LSUnset_IsNotUserFacing(t *testing.T) {
 	require.Contains(t, errOut.String(), "unknown subcommand: ls-unset")
 }
 
-func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
+func TestRun_CAS_LSStale_IsNotUserFacing(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-stale", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "unknown subcommand: ls-stale")
+}
+
+func TestRun_CAS_LSSummary_IsNotUserFacing(t *testing.T) {
+	isolateUserConfig(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code, err := Run([]string{"codalotl", "cas", "ls-summary", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	require.Error(t, err)
+	require.Equal(t, 2, code)
+	require.Empty(t, out.String())
+	require.Contains(t, errOut.String(), "unknown subcommand: ls-summary")
+}
+
+func TestRun_CAS_LSPackages_SummarizesCurrentPriorAndMissing(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
@@ -606,11 +677,12 @@ func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-summary", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
-	require.Contains(t, out.String(), "Note: Prev CAS '-' with CAS=yes means not applicable (current CAS exists), not false/no previous record.")
+	require.Contains(t, out.String(), "Up to date")
+	require.Contains(t, out.String(), "Stale")
 
 	rows := casSummaryRowsByPackage(out.String())
 	p1 := requireCASSummaryRow(t, rows, "./p1")
@@ -622,7 +694,50 @@ func TestRun_CAS_LSSummary_SummarizesCurrentPriorAndMissing(t *testing.T) {
 	require.Equal(t, []string{"./p3", "no", "no", "-", "-"}, requireCASSummaryRow(t, rows, "./p3"))
 }
 
-func TestRun_CAS_LSSummary_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
+func TestRun_CAS_LSPackages_FiltersByState(t *testing.T) {
+	isolateUserConfig(t)
+
+	tmp := t.TempDir()
+	createGitRepoMarker(t, tmp)
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
+
+	writePackageFile(t, tmp, "current", "package current\n\nfunc Current() {}\n")
+	writePackageFile(t, tmp, "stale", "package stale\n\nfunc Stale() int { return 1 }\n")
+	writePackageFile(t, tmp, "missing", "package missing\n\nfunc Missing() {}\n")
+
+	t.Setenv(gocas.EnvCASDB, filepath.Join(tmp, "casdb"))
+
+	storeCASTestRecord(t, tmp, "docs-fix", "current", "OK")
+	storeCASTestRecord(t, tmp, "docs-fix", "stale", "OK")
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "stale", "stale.go"), []byte("package stale\n\nfunc Stale() int { return 2 }\n"), 0644))
+
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	for _, tc := range []struct {
+		state string
+		want  []string
+	}{
+		{state: "current", want: []string{"./current"}},
+		{state: "outdated", want: []string{"./missing", "./stale"}},
+		{state: "stale", want: []string{"./stale"}},
+		{state: "missing", want: []string{"./missing"}},
+	} {
+		t.Run(tc.state, func(t *testing.T) {
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", "--state=" + tc.state}, &RunOptions{Out: &out, Err: &errOut})
+			require.NoError(t, err)
+			require.Equal(t, 0, code)
+			require.Empty(t, errOut.String())
+			require.Equal(t, tc.want, casSummaryPackageList(out.String()))
+		})
+	}
+}
+
+func TestRun_CAS_LSPackages_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
@@ -651,7 +766,7 @@ func TestRun_CAS_LSSummary_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-summary", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
@@ -664,7 +779,7 @@ func TestRun_CAS_LSSummary_HonorsWorkspaceDiscoveryFromRepoRoot(t *testing.T) {
 	require.NotContains(t, rows, "./rootnotworkspace")
 }
 
-func TestRun_CAS_LSSummary_CSV(t *testing.T) {
+func TestRun_CAS_LSPackages_CSV(t *testing.T) {
 	isolateUserConfig(t)
 
 	tmp := t.TempDir()
@@ -680,7 +795,7 @@ func TestRun_CAS_LSSummary_CSV(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code, err := Run([]string{"codalotl", "cas", "ls-summary", "docs-fix", "--csv"}, &RunOptions{Out: &out, Err: &errOut})
+	code, err := Run([]string{"codalotl", "cas", "ls-packages", "docs-fix", "--csv"}, &RunOptions{Out: &out, Err: &errOut})
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	require.Empty(t, errOut.String())
@@ -688,7 +803,7 @@ func TestRun_CAS_LSSummary_CSV(t *testing.T) {
 	records, err := csv.NewReader(strings.NewReader(out.String())).ReadAll()
 	require.NoError(t, err)
 	require.Equal(t, [][]string{
-		{"Package", "CAS", "Prev CAS", "Age", "Churn %"},
+		{"Package", "Up to date", "Stale", "Age", "Churn %"},
 		{"./p", "no", "no", "-", "-"},
 	}, records)
 	require.NotContains(t, out.String(), "Note:")
@@ -825,6 +940,18 @@ func casSummaryRowsByPackage(s string) map[string][]string {
 		rows[fields[0]] = fields
 	}
 	return rows
+}
+
+func casSummaryPackageList(s string) []string {
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 5 || fields[0] == "Package" {
+			continue
+		}
+		out = append(out, fields[0])
+	}
+	return out
 }
 
 func requireCASSummaryRow(t *testing.T, rows map[string][]string, pkg string) []string {
