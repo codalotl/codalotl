@@ -87,7 +87,7 @@ func runDocsStatus(ctx context.Context, out io.Writer, reflowWidth int) error {
 
 		row.DocsAdd = docsAddStatus(pkg)
 		row.DocsFix = docsFixStatus(pkgDir.mod.AbsolutePath, pkg, dbs)
-		row.Reflow = docsReflowStatus(pkgDir.absDir, reflowWidth)
+		row.Reflow = docsReflowStatus(pkg, reflowWidth)
 		rows = append(rows, row)
 	}
 
@@ -144,8 +144,14 @@ func docsFixStatus(moduleRoot string, pkg *gocode.Package, dbs map[string]*gocas
 	return docsStatusNeeded
 }
 
-func docsReflowStatus(absPkgDir string, reflowWidth int) string {
-	modified, skipped, err := updatedocs.ReflowDocumentationPaths([]string{absPkgDir}, true, updatedocs.Options{
+func docsReflowStatus(pkg *gocode.Package, reflowWidth int) string {
+	checkPkg, err := pkg.Clone()
+	if err != nil {
+		return docsStatusError
+	}
+	defer checkPkg.Module.DeleteClone()
+
+	modified, skipped, err := updatedocs.ReflowDocumentationPaths([]string{checkPkg.AbsolutePath()}, true, updatedocs.Options{
 		ReflowMaxWidth: reflowWidth,
 	})
 	if err != nil || len(skipped) > 0 {

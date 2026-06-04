@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codalotl/codalotl/internal/docubot"
 	"github.com/codalotl/codalotl/internal/gocas"
@@ -52,6 +53,11 @@ func Baz() {}
 		Identifiers: []string{"Bar"},
 		FixCount:    0,
 	})
+	p2Path := filepath.Join(tmp, "p2", "p2.go")
+	p2ModTime := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	require.NoError(t, os.Chtimes(p2Path, p2ModTime, p2ModTime))
+	p2StatBefore, err := os.Stat(p2Path)
+	require.NoError(t, err)
 
 	origCountMissingDocs := runDocubotCountMissingDocs
 	t.Cleanup(func() { runDocubotCountMissingDocs = origCountMissingDocs })
@@ -98,9 +104,13 @@ func Baz() {}
 	require.Equal(t, docsStatusTestRow{docsAdd: "needed", docsFix: "needed", reflow: "needed"}, rows["./p2"])
 	require.Equal(t, docsStatusTestRow{docsAdd: "error", docsFix: "needed", reflow: "current"}, rows["./p3"])
 
-	gotP2, err := os.ReadFile(filepath.Join(tmp, "p2", "p2.go"))
+	gotP2, err := os.ReadFile(p2Path)
 	require.NoError(t, err)
 	require.Equal(t, p2Source, string(gotP2))
+	p2StatAfter, err := os.Stat(p2Path)
+	require.NoError(t, err)
+	require.Equal(t, p2StatBefore.Mode(), p2StatAfter.Mode())
+	require.Equal(t, p2StatBefore.ModTime(), p2StatAfter.ModTime())
 }
 
 type docsStatusTestRow struct {
