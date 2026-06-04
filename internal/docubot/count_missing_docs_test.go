@@ -158,6 +158,45 @@ func TestCountMissingDocs_ImportantAndExportedOnlyAreMutuallyExclusive(t *testin
 	})
 }
 
+func TestNeedsDocs_DefaultAndExportedModes(t *testing.T) {
+	files := map[string]string{
+		"code.go": dedent(`
+			// Package mypkg has docs.
+			package mypkg
+
+			// Public has docs.
+			func Public() {}
+
+			func private() {}
+		`),
+	}
+
+	gocodetesting.WithMultiCode(t, files, func(pkg *gocode.Package) {
+		needsDocs, err := NeedsDocs(pkg, AddDocsOptions{})
+		require.NoError(t, err)
+		assert.True(t, needsDocs)
+
+		needsDocs, err = NeedsDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers: true,
+		})
+		require.NoError(t, err)
+		assert.False(t, needsDocs)
+	})
+}
+
+func TestNeedsDocs_ImportantAndExportedOnlyAreMutuallyExclusive(t *testing.T) {
+	gocodetesting.WithCode(t, "func Foo() {}", func(pkg *gocode.Package) {
+		needsDocs, err := NeedsDocs(pkg, AddDocsOptions{
+			OnlyDocumentExportedIdentifiers:  true,
+			OnlyDocumentImportantIdentifiers: true,
+		})
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "mutually exclusive")
+		assert.False(t, needsDocs)
+	})
+}
+
 func packageFileContents(t *testing.T, pkg *gocode.Package) map[string]string {
 	t.Helper()
 

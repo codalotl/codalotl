@@ -30,6 +30,36 @@ func CountMissingDocs(pkg *gocode.Package, options AddDocsOptions) (int, error) 
 	return mainCount, nil
 }
 
+// NeedsDocs reports whether any AddDocs target selected by options lacks docs.
+//
+// NeedsDocs does not edit files or make LLM requests.
+func NeedsDocs(pkg *gocode.Package, options AddDocsOptions) (bool, error) {
+	if options.OnlyDocumentExportedIdentifiers && options.OnlyDocumentImportantIdentifiers {
+		return false, options.LogNewErr("OnlyDocumentImportantIdentifiers and OnlyDocumentExportedIdentifiers are mutually exclusive")
+	}
+
+	if options.OnlyDocumentImportantIdentifiers {
+		return needsImportantDocs(pkg, options)
+	}
+
+	if needsDocsForPackage(pkg, options, options.DocumentTestFiles) {
+		return true, nil
+	}
+
+	if options.DocumentTestFiles && !pkg.IsTestPackage() && pkg.HasTestPackage() {
+		return needsDocsForPackage(pkg.TestPackage, options, true), nil
+	}
+
+	return false, nil
+}
+
+func needsDocsForPackage(pkg *gocode.Package, options AddDocsOptions, includeTest bool) bool {
+	if options.OnlyDocumentExportedIdentifiers {
+		return countMissingPublicDocsForPackage(pkg, options, includeTest) > 0
+	}
+	return countMissingDocsForPackage(pkg, options, includeTest) > 0
+}
+
 func countMissingDocsForPackage(pkg *gocode.Package, options AddDocsOptions, includeTest bool) int {
 	idents := NewIdentifiersFromPackage(pkg)
 	for _, identifier := range appendExclusionForGeneratedFiles(options.ExcludeIdentifiers, pkg) {
