@@ -417,6 +417,12 @@ func prRefactorAllPackagesDiscoveryInstructions(refactorName string) string {
   codalotl docs status
 - Use packages whose docs_add status is needed as the discovered needed package list.`
 	}
+	if refactorName == prRefactorDocsFix {
+		return `Discover needed packages first:
+- Use the codalotl_cli tool to run:
+  codalotl docs status
+- Use packages whose docs_fix status is needed as the discovered needed package list.`
+	}
 
 	namespace := prRefactorCASNamespaces(refactorName)
 	return fmt.Sprintf(`Discover needed packages first:

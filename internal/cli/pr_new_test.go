@@ -432,8 +432,9 @@ func TestRun_PRRefactor_AllPackagesSingleRefactor_WritesAllPackagesInstructions(
 	require.Contains(t, got, "Target: needed Go packages discovered for docs-fix")
 	require.Contains(t, got, "Selected refactor flow: docs-fix")
 	require.Contains(t, got, "Discover needed packages first")
-	require.Contains(t, got, "codalotl cas ls-packages docs-fix --state=outdated")
-	require.Contains(t, got, "Use listed packages as the discovered needed package list")
+	require.Contains(t, got, "codalotl docs status")
+	require.Contains(t, got, "Use packages whose docs_fix status is needed")
+	require.NotContains(t, got, "codalotl cas ls-packages docs-fix --state=outdated")
 	require.Contains(t, got, `refactor("name": "docs-fix", "package": "<package>")`)
 	require.Contains(t, got, "For each discovered needed package")
 	require.Contains(t, got, "Refactor only packages in the discovered needed package list")
@@ -467,8 +468,8 @@ func TestPRRefactorAllPackagesTemplate_DiscoveryInstructions(t *testing.T) {
 		{
 			name:                 "docs fix",
 			refactorName:         prRefactorDocsFix,
-			wantDiscoveryCommand: "codalotl cas ls-packages docs-fix --state=outdated",
-			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
+			wantDiscoveryCommand: "codalotl docs status",
+			wantDiscoveryText:    "Use packages whose docs_fix status is needed",
 			wantRecertify:        `codalotl cas recertify <package> --namespaces="docs-fix"`,
 		},
 		{
