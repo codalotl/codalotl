@@ -467,6 +467,7 @@ func TestRun_CAS_LSPackages_ValidatesFilters(t *testing.T) {
 	}{
 		{name: "state", flag: "--state=nope", want: "invalid --state"},
 		{name: "min age", flag: "--min-age=-1d", want: "invalid --min-age"},
+		{name: "min age overflow", flag: "--min-age=106752d", want: "invalid --min-age"},
 		{name: "min churn", flag: "--min-churn=-1", want: "invalid --min-churn"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -477,6 +478,23 @@ func TestRun_CAS_LSPackages_ValidatesFilters(t *testing.T) {
 			require.Equal(t, 2, code)
 			require.Empty(t, out.String())
 			require.Contains(t, errOut.String(), tc.want)
+		})
+	}
+}
+
+func TestParseCASLsPackagesMinAge_RejectsCustomUnitOverflow(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		age  string
+	}{
+		{name: "days", age: "106752d"},
+		{name: "weeks", age: "15251w"},
+		{name: "years", age: "293y"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseCASLsPackagesMinAge(tc.age)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid --min-age")
 		})
 	}
 }

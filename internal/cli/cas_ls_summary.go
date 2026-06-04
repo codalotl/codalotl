@@ -105,6 +105,9 @@ func parseCASPackageState(state string) (casPackageState, error) {
 
 func parseCASLsPackagesMinAge(s string) (time.Duration, error) {
 	raw := strings.TrimSpace(s)
+	usageErr := func() error {
+		return qcli.UsageError{Message: fmt.Sprintf("invalid --min-age: expected duration like 12h, 30d, 4w, or 1y (got %q)", s)}
+	}
 	if raw == "" {
 		return 0, qcli.UsageError{Message: "invalid --min-age: empty duration"}
 	}
@@ -112,21 +115,27 @@ func parseCASLsPackagesMinAge(s string) (time.Duration, error) {
 	if unit == 'd' || unit == 'w' || unit == 'y' {
 		n, err := strconv.ParseInt(strings.TrimSpace(raw[:len(raw)-1]), 10, 64)
 		if err != nil || n < 0 {
-			return 0, qcli.UsageError{Message: fmt.Sprintf("invalid --min-age: expected duration like 12h, 30d, 4w, or 1y (got %q)", s)}
+			return 0, usageErr()
 		}
+		var multiplier time.Duration
 		switch unit {
 		case 'd':
-			return time.Duration(n) * 24 * time.Hour, nil
+			multiplier = 24 * time.Hour
 		case 'w':
-			return time.Duration(n) * 7 * 24 * time.Hour, nil
+			multiplier = 7 * 24 * time.Hour
 		case 'y':
-			return time.Duration(n) * 365 * 24 * time.Hour, nil
+			multiplier = 365 * 24 * time.Hour
 		}
+		const maxDuration = time.Duration(1<<63 - 1)
+		if n > int64(maxDuration/multiplier) {
+			return 0, usageErr()
+		}
+		return time.Duration(n) * multiplier, nil
 	}
 
 	d, err := time.ParseDuration(raw)
 	if err != nil || d < 0 {
-		return 0, qcli.UsageError{Message: fmt.Sprintf("invalid --min-age: expected duration like 12h, 30d, 4w, or 1y (got %q)", s)}
+		return 0, usageErr()
 	}
 	return d, nil
 }
