@@ -428,9 +428,16 @@ func TestRun_PRRefactor_AllPackagesSingleRefactor_WritesAllPackagesInstructions(
 	gotBytes, err := os.ReadFile(prPath)
 	require.NoError(t, err)
 	got := string(gotBytes)
-	require.Contains(t, got, "Target: all Go packages in the current module")
+	require.Contains(t, got, "run the docs-fix refactor across needed Go packages from discovered repo modules")
+	require.Contains(t, got, "Target: needed Go packages discovered for docs-fix")
 	require.Contains(t, got, "Selected refactor flow: docs-fix")
+	require.Contains(t, got, "Discover needed packages first")
+	require.Contains(t, got, "codalotl cas ls-packages docs-fix --state=outdated")
+	require.Contains(t, got, "Use listed packages as the discovered needed package list")
 	require.Contains(t, got, `refactor("name": "docs-fix", "package": "<package>")`)
+	require.Contains(t, got, "For each discovered needed package")
+	require.Contains(t, got, "Refactor only packages in the discovered needed package list")
+	require.Contains(t, got, "If discovery finds no needed packages")
 	require.Contains(t, got, "Inspect each refactor result")
 	require.Contains(t, got, "Commit accepted changes")
 	require.Contains(t, got, "relevant CAS files")
@@ -438,6 +445,67 @@ func TestRun_PRRefactor_AllPackagesSingleRefactor_WritesAllPackagesInstructions(
 	require.Contains(t, got, "add a note in this PR file")
 	require.Contains(t, got, "codalotl_cli")
 	require.Contains(t, got, `codalotl cas recertify <package> --namespaces="docs-fix"`)
+	require.NotContains(t, got, "all Go packages in the current module")
+	require.NotContains(t, got, "For each package in the current module")
+}
+
+func TestPRRefactorAllPackagesTemplate_DiscoveryInstructions(t *testing.T) {
+	tests := []struct {
+		name                 string
+		refactorName         string
+		wantDiscoveryCommand string
+		wantDiscoveryText    string
+		wantRecertify        string
+	}{
+		{
+			name:                 "docs add",
+			refactorName:         prRefactorDocsAdd,
+			wantDiscoveryCommand: "codalotl docs status",
+			wantDiscoveryText:    "Use packages whose docs_add status is needed",
+			wantRecertify:        "No CAS namespace is currently recertifiable specifically for this refactor",
+		},
+		{
+			name:                 "docs fix",
+			refactorName:         prRefactorDocsFix,
+			wantDiscoveryCommand: "codalotl cas ls-packages docs-fix --state=outdated",
+			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
+			wantRecertify:        `codalotl cas recertify <package> --namespaces="docs-fix"`,
+		},
+		{
+			name:                 "dry",
+			refactorName:         prRefactorDry,
+			wantDiscoveryCommand: "codalotl cas ls-packages refactor-dry --state=outdated",
+			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
+			wantRecertify:        `codalotl cas recertify <package> --namespaces="refactor-dry"`,
+		},
+		{
+			name:                 "test cleanup",
+			refactorName:         prRefactorTestCleanup,
+			wantDiscoveryCommand: "codalotl cas ls-packages refactor-test-cleanup --state=outdated",
+			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
+			wantRecertify:        `codalotl cas recertify <package> --namespaces="refactor-test-cleanup"`,
+		},
+		{
+			name:                 "test ensure coverage",
+			refactorName:         prRefactorTestEnsureCoverage,
+			wantDiscoveryCommand: "codalotl cas ls-packages refactor-test-ensure-coverage --state=outdated",
+			wantDiscoveryText:    "Use listed packages as the discovered needed package list",
+			wantRecertify:        `codalotl cas recertify <package> --namespaces="refactor-test-ensure-coverage"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := prRefactorAllPackagesTemplate(tt.refactorName)
+			require.Contains(t, got, "needed Go packages from discovered repo modules")
+			require.Contains(t, got, "codalotl_cli")
+			require.Contains(t, got, tt.wantDiscoveryCommand)
+			require.Contains(t, got, tt.wantDiscoveryText)
+			require.Contains(t, got, `refactor("name": "`+tt.refactorName+`", "package": "<package>")`)
+			require.Contains(t, got, tt.wantRecertify)
+			require.NotContains(t, got, "current module")
+		})
+	}
 }
 
 func TestPRRefactorFeatureName(t *testing.T) {

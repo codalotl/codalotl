@@ -91,6 +91,7 @@ func TestCodalotlCLITool_OnlyExposesWhitelistedCommands(t *testing.T) {
 	require.Contains(t, helpResult.Stdout, "codalotl docs fix")
 	require.Contains(t, helpResult.Stdout, "codalotl docs status")
 	require.Contains(t, helpResult.Stdout, "codalotl spec status")
+	require.Contains(t, helpResult.Stdout, "codalotl cas ls-packages")
 	require.Contains(t, helpResult.Stdout, "codalotl cas recertify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs improve-from-clarify")
 	require.NotContains(t, helpResult.Stdout, "codalotl docs reflow")
@@ -146,6 +147,18 @@ func TestCodalotlCLITool_OnlyExposesWhitelistedCommands(t *testing.T) {
 	require.Equal(t, 0, statusHelp.ExitCode)
 	require.Contains(t, statusHelp.Stdout, "codalotl spec status")
 	require.Contains(t, statusHelp.Stdout, "whether SPEC.md exists")
+
+	lsPackagesHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "call-cas-ls-packages-help",
+		Name:   toolcli.ToolNameCodalotlCLI,
+		Type:   "function_call",
+		Input:  `{"subcommand":"cas ls-packages","argv":["--help"]}`,
+	}))
+	require.True(t, lsPackagesHelp.Success)
+	require.Equal(t, 0, lsPackagesHelp.ExitCode)
+	require.Contains(t, lsPackagesHelp.Stdout, "codalotl cas ls-packages")
+	require.Contains(t, lsPackagesHelp.Stdout, "--state")
+	require.Contains(t, lsPackagesHelp.Stdout, "--csv")
 
 	recertifyHelp := decodeCodalotlCLIToolResult(t, tool.Run(context.Background(), llmstream.ToolCall{
 		CallID: "call-cas-recertify-help",

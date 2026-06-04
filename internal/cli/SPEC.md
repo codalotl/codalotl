@@ -237,7 +237,9 @@ Creates a PR file and branch for refactor orchestrator flows:
 	- target package or all-packages target
 	- selected refactor flow
 	- instructions to inspect each refactor diff, commit accepted changes with relevant CAS files, and skip no-op or risky changes with a PR-file note
-	- for all-packages refactors, instructions to discover needed packages using `codalotl_cli`
+	- for all-packages refactors, instructions to discover needed packages across discovered repo modules using `codalotl_cli`, then refactor only that discovered package list
+		- `docs-add`: run `codalotl docs status`; use packages whose `docs_add` status is `needed`
+		- CAS-backed refactors: run `codalotl cas ls-packages <namespace> --state=outdated`; use listed packages
 	- instructions to use `codalotl_cli` to recertify CAS namespaces that can be recertified after final accepted refactor changes
 
 ### codalotl context public <path/to/pkg>
