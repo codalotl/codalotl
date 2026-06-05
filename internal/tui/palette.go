@@ -50,26 +50,29 @@ const (
 	palettePlainName PaletteName = "plain"
 )
 
+// Palette names select the built-in TUI color palette or disable color output.
 const (
-	PaletteAuto  PaletteName = paletteAutoName
-	PaletteDark  PaletteName = paletteDarkName
-	PaletteLight PaletteName = paletteLightName
-	PalettePlain PaletteName = palettePlainName
+	PaletteAuto  PaletteName = paletteAutoName  // PaletteAuto selects a light or dark palette based on terminal background detection.
+	PaletteDark  PaletteName = paletteDarkName  // PaletteDark selects the built-in dark palette.
+	PaletteLight PaletteName = paletteLightName // PaletteLight selects the built-in light palette.
+	PalettePlain PaletteName = palettePlainName // PalettePlain disables color output.
 )
 
+// colorPalette contains the resolved TUI palette and precomputed animation data. Foreground colors are chosen to be readable on both backgrounds; when colorized
+// is false, color fields and working sequences are empty.
 type colorPalette struct {
-	name               PaletteName
-	colorized          bool
-	isLight            bool
-	primaryBackground  termformat.Color
-	accentBackground   termformat.Color
-	borderColor        termformat.Color
-	primaryForeground  termformat.Color
-	accentForeground   termformat.Color
-	redForeground      termformat.Color
-	greenForeground    termformat.Color
-	colorfulForeground termformat.Color
-	workingSeq         [3]string
+	name               PaletteName      // Name is the resolved palette name selected for rendering.
+	colorized          bool             // Colorized reports whether color output is enabled.
+	isLight            bool             // IsLight reports whether the palette is intended for a light background.
+	primaryBackground  termformat.Color // PrimaryBackground is the default background for the main screen and message area.
+	accentBackground   termformat.Color // AccentBackground is the secondary background for controls, dialogs, and panels.
+	borderColor        termformat.Color // BorderColor is the color used for dialog and panel borders.
+	primaryForeground  termformat.Color // PrimaryForeground is the default color for normal text.
+	accentForeground   termformat.Color // AccentForeground is the color for hints, subdued text, and secondary status text.
+	redForeground      termformat.Color // RedForeground is the color for errors, failures, and removals.
+	greenForeground    termformat.Color // GreenForeground is the color for successes and additions.
+	colorfulForeground termformat.Color // ColorfulForeground is the highlight color for important words and actions.
+	workingSeq         [3]string        // WorkingSeq contains precomputed foreground ANSI sequences for the working indicator animation.
 }
 
 func newColorPalette(cfg Config) colorPalette {
@@ -138,6 +141,7 @@ func disablePaletteColors(p colorPalette) colorPalette {
 	return p
 }
 
+// convertPaletteToProfile returns p converted for profile, disabling colors when color output is unavailable.
 func convertPaletteToProfile(profile termformat.ColorProfile, p colorPalette) colorPalette {
 	if !p.colorized {
 		return disablePaletteColors(p)
@@ -233,6 +237,7 @@ func colorIsLight(c termformat.Color) bool {
 	return brightness >= 160
 }
 
+// blendColors returns an RGB color interpolated from base toward focus by weight.
 func blendColors(focus, base termformat.Color, weight float64) termformat.Color {
 	if base == nil {
 		base = focus
@@ -291,6 +296,7 @@ func workingIndicatorSequences(p colorPalette) [3]string {
 	return seq
 }
 
+// workingIndicatorColors returns the palette-derived foreground colors for the working indicator animation.
 func workingIndicatorColors(p colorPalette) [3]termformat.Color {
 	var colors [3]termformat.Color
 	if !p.colorized {

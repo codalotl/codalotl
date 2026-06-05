@@ -32,18 +32,21 @@ const (
 
 const providerSubscriptionModelMarker = "subscription"
 
+// messageKind classifies a chat message for rendering and message-specific state.
 type messageKind int
 
+// Message kind values classify messages for rendering and message-specific behavior.
 const (
-	messageKindSystem messageKind = iota
-	messageKindSkillsList
-	messageKindWelcome
-	messageKindUser
-	messageKindQueuedUser
-	messageKindAgent
-	messageKindContextStatus
+	messageKindSystem        messageKind = iota // messageKindSystem marks a system or status message shown in the Messages Area.
+	messageKindSkillsList                       // messageKindSkillsList marks the rendered output of the /skills command.
+	messageKindWelcome                          // messageKindWelcome marks the new-session banner and mode-specific help text.
+	messageKindUser                             // messageKindUser marks a user message that has been sent to the agent.
+	messageKindQueuedUser                       // messageKindQueuedUser marks a user message displayed immediately but not yet sent.
+	messageKindAgent                            // messageKindAgent marks an event emitted by the agent, such as assistant text or a tool event.
+	messageKindContextStatus                    // messageKindContextStatus marks Package Mode initial-context gathering status and details.
 )
 
+// packageContextStatus identifies the state of an asynchronous package-mode context-gathering run. The zero value is packageContextStatusPending.
 type packageContextStatus int
 
 const (
@@ -52,77 +55,91 @@ const (
 	packageContextStatusFailure
 )
 
+// contextStatusLine describes the rendered status of an asynchronous package-context operation.
 type contextStatusLine struct {
-	text   string
-	status packageContextStatus
+	text   string               // Text is the user-visible status message.
+	status packageContextStatus // Status determines the operation state and rendered status color.
 }
 
+// packageContextState tracks an asynchronous package-mode context-gathering run.
 type packageContextState struct {
-	runID        int
-	messageIndex int
-	status       packageContextStatus
-	packagePath  string
+	runID        int                  // Run ID identifies this gather attempt and rejects stale results.
+	messageIndex int                  // Message index points to the context-status message in the message list.
+	status       packageContextStatus // Status is the latest state of the gather attempt.
+	packagePath  string               // Package path is the sandbox-relative package being analyzed.
 }
 
+// chatMessage represents one discrete item in the Messages Area, including its kind-specific payload, overlay metadata, and cached rendered text.
 type chatMessage struct {
-	kind                messageKind
-	userMessage         string // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
-	event               agent.Event
-	toolCallID          string
-	toolOutputs         []agent.Event
-	contextStatus       *contextStatusLine
-	contextDetails      string // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
-	contextError        string
-	skillsList          []skills.Skill // skillsList is only set for messageKindSkillsList.
-	skillsIssues        string         // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
-	toolSubagentDisplay *toolSubagentDisplay
+	kind                messageKind          // Kind classifies the message for rendering and behavior.
+	userMessage         string               // the unstyled, unformatted message exactly as the user typed it (also unstyled system messages).
+	event               agent.Event          // Event is the agent event rendered for messageKindAgent messages.
+	toolCallID          string               // ToolCallID identifies the tool call associated with an agent message, tool result, or tool output.
+	toolOutputs         []agent.Event        // ToolOutputs are display-only tool output events shown under the associated tool call in arrival order.
+	contextStatus       *contextStatusLine   // ContextStatus is the rendered Package Mode context-gathering status for messageKindContextStatus messages.
+	contextDetails      string               // contextDetails and contextError are only used for messageKindContextStatus, and are displayed in Overlay Mode > Details.
+	contextError        string               // ContextError is the package-context error text shown in Overlay Mode Details for messageKindContextStatus messages.
+	skillsList          []skills.Skill       // skillsList is only set for messageKindSkillsList.
+	skillsIssues        string               // skillsIssues is only set for messageKindSkillsList and describes skill load/validation errors.
+	toolSubagentDisplay *toolSubagentDisplay // ToolSubagentDisplay tracks stable subagent slots owned by a tool-call message.
 
 	// The ANSI formatted string. Each formatted must have all styles attached to it. It must be the correct block width (all lines padded with spaces to equal width
 	// of the viewport. Background colors must be set on this (if we're not in the uncolored palette). Resize events need to recalculate this.
 	formatted string
 
+	// FormattedWidth is the viewport width used to produce formatted.
 	formattedWidth int
 }
 
+// agentRun tracks an active agent execution and its event stream.
 type agentRun struct {
-	cancel context.CancelFunc
-	events <-chan agent.Event
-	id     int
+	cancel context.CancelFunc // Cancel stops the run context.
+	events <-chan agent.Event // Events receives progress and completion events from the agent.
+	id     int                // ID identifies this run so stale events can be ignored.
 }
 
+// permissionPrompt is a pending user authorization prompt shown or queued in the TUI.
 type permissionPrompt struct {
-	request authdomain.UserRequest
+	request authdomain.UserRequest // Request is the authorization request whose Allow or Disallow callback resolves the prompt.
 }
 
+// agentEventMsg delivers an agent event to the TUI update loop.
 type agentEventMsg struct {
-	event agent.Event
-	runID int
+	event agent.Event // event is the agent event to handle.
+	runID int         // runID identifies the agent run that emitted event.
 }
 
+// agentStreamClosedMsg reports that an agent event stream has closed.
 type agentStreamClosedMsg struct {
-	runID int
+	runID int // runID identifies the agent run that produced the stream.
 }
 
+// workingIndicatorTickMsg requests a refresh of the running-agent working indicator.
 type workingIndicatorTickMsg struct{}
 
+// userRequestMsg delivers a tool authorization request to the TUI update loop.
 type userRequestMsg struct {
-	request  authdomain.UserRequest
-	sourceID int
+	request  authdomain.UserRequest // request is the permission prompt to present to the user.
+	sourceID int                    // sourceID identifies the request listener that received the prompt.
 }
 
+// packageContextResultMsg carries the result of asynchronous package-context gathering.
 type packageContextResultMsg struct {
-	runID  int
-	status packageContextStatus
-	text   string
-	errMsg string
+	runID  int                  // Run ID correlates this result with the active gather attempt.
+	status packageContextStatus // Status is the resulting state of the gather attempt.
+	text   string               // Text is the generated package context.
+	errMsg string               // Error message describes a gather failure.
 }
 
+// specConformanceResultMsg carries the result of an asynchronous SPEC.md conformance check.
 type specConformanceResultMsg struct {
-	runID    int
-	found    bool
-	conforms bool
-	errMsg   string
+	runID    int    // Run ID correlates this result with the active check.
+	found    bool   // Found reports whether conformance metadata was found.
+	conforms bool   // Conforms reports whether the retrieved metadata indicates conformance.
+	errMsg   string // Error message describes a check failure for debug logging.
 }
+
+// queuedMessageDest classifies the delivery target for a queued message.
 type queuedMessageDest int
 
 const (
@@ -130,19 +147,22 @@ const (
 	queuedMessageDestAgent
 )
 
+// queuedMessage is user text waiting to be delivered to the agent.
 type queuedMessage struct {
-	text string
-	dest queuedMessageDest
+	text string            // text is the user message to send.
+	dest queuedMessageDest // dest records where the pending message is queued.
 }
 
+// toolDisplayScope records a tool call whose descendant subagent events are rendered under that tool.
 type toolDisplayScope struct {
-	call                  llmstream.ToolCall
-	finalMessagePresenter llmstream.SubagentFinalMessagePresenter
+	call                  llmstream.ToolCall                      // Call is the tool invocation that opened the display scope.
+	finalMessagePresenter llmstream.SubagentFinalMessagePresenter // FinalMessagePresenter optionally replaces or suppresses final subagent text in this scope.
 }
 
+// toolDisplayScopeRef identifies an active tool display scope by agent and stack index.
 type toolDisplayScopeRef struct {
-	agentID string
-	index   int
+	agentID string // Agent ID selects the owning agent's active tool-scope stack.
+	index   int    // Index selects the scope within the agent's active tool-scope stack.
 }
 
 // Run launches the TUI in an alternate screen buffer.
@@ -183,6 +203,7 @@ func RunWithConfig(cfg Config) error {
 	})
 }
 
+// model stores the mutable state for the coding-agent TUI.
 type model struct {
 	ready bool // ready is set on the first window size event. Only render TUI when ready=true
 
@@ -190,14 +211,17 @@ type model struct {
 	// At any given time, the window height and window width are windowHeight/windowWidth. From this, we must calculate the height/width of all "controls"/"areas", so that they can be cell-perfect aligned.
 	//
 
+	// Window height is the current terminal height in cells.
 	windowHeight int
-	windowWidth  int
+
+	// Window width is the current terminal width in cells.
+	windowWidth int
 
 	// viewportWidth and infoPanelWidth must sum to windowWidth. Below the viewport is the text area. It must be the same width as the viewport.
 	viewportWidth int
 
-	infoPanelWidth       int
-	viewportHeight       int
+	infoPanelWidth       int // Info panel width is the width reserved for the right-side Info Panel in cells.
+	viewportHeight       int // Viewport height is the height reserved for the scrollable Messages Area in cells.
 	textAreaHeight       int // height of text area AND any border around it
 	infoLineHeight       int // height of info area below the text area (ex: could show things like common hotkeys, context usage, etc)
 	permissionViewHeight int // 0 if not shown (activePermission == nil)
@@ -207,72 +231,77 @@ type model struct {
 	//   - permission view width == viewportWidth
 	//   - info panel height == windowHeight
 
-	messages                     []chatMessage
-	messageHistory               []string
-	editedHistoryDrafts          map[int]string
-	cyclingMode                  bool
-	cycleIndex                   int
-	editingHistoryIndex          int
-	viewport                     *tuicontrols.View
-	textarea                     *tuicontrols.TextArea
-	tui                          *qtui.TUI
-	session                      *session
-	sessionConfig                sessionConfig
-	sessionFactory               func(sessionConfig) (*session, error)
-	startAgentRunHook            func(string)
-	agentFormatter               agentformatter.Formatter
-	queuedMessages               []queuedMessage // pending messages not yet sent (either queued into the agent or queued locally)
-	currentRun                   *agentRun
-	runStartedAt                 time.Time
-	nextAgentRunID               int
-	workingIndicatorAnimationPos int
-	workingIndicatorTickerCancel qtui.CancelFunc
+	messages                     []chatMessage                         // Messages are the discrete items rendered in the Messages Area.
+	messageHistory               []string                              // Message history contains sent user messages eligible for Up/Down cycling.
+	editedHistoryDrafts          map[int]string                        // Edited history drafts preserve unsent edits by history index during history navigation.
+	cyclingMode                  bool                                  // Cycling mode is true while Up/Down is browsing previous user messages.
+	cycleIndex                   int                                   // Cycle index is the current history index shown while cycling.
+	editingHistoryIndex          int                                   // Editing history index is the history entry being edited, or historyIndexNone.
+	viewport                     *tuicontrols.View                     // Viewport is the scrollable Messages Area control.
+	textarea                     *tuicontrols.TextArea                 // Textarea is the user input control.
+	tui                          *qtui.TUI                             // TUI is the running terminal UI runtime.
+	session                      *session                              // Session is the active agent session, or nil before session startup.
+	sessionConfig                sessionConfig                         // Session config is the normalized configuration for the active or next session.
+	sessionFactory               func(sessionConfig) (*session, error) // Session factory constructs sessions during startup and reset.
+	startAgentRunHook            func(string)                          // Start agent run hook overrides normal run startup, primarily for tests.
+	agentFormatter               agentformatter.Formatter              // Agent formatter renders agent events for the Messages Area.
+	queuedMessages               []queuedMessage                       // pending messages not yet sent (either queued into the agent or queued locally)
+	currentRun                   *agentRun                             // Current run is the active agent execution, or nil when the agent is idle.
+	runStartedAt                 time.Time                             // Run started at records when the active run began for the working indicator.
+	nextAgentRunID               int                                   // Next agent run ID is assigned to the next run so stale events can be ignored.
+	workingIndicatorAnimationPos int                                   // Working indicator animation position selects the current animation frame.
+	workingIndicatorTickerCancel qtui.CancelFunc                       // Working indicator ticker cancel stops periodic working-indicator updates.
 
 	// When `/new` is invoked mid-run we mark the reset as pending so the cleanup happens only after `agentStreamClosedMsg` fires; that way we don't tear down session
 	// state while events are still draining from the agent.
 	pendingSessionConfig *sessionConfig
 
-	permissionQueue      []*permissionPrompt
-	activePermission     *permissionPrompt
-	permissionViewText   string
-	requests             <-chan authdomain.UserRequest
-	requestSource        int
-	requestCancel        context.CancelFunc
-	palette              colorPalette
+	permissionQueue      []*permissionPrompt                     // Permission queue contains prompts waiting behind the active permission prompt.
+	activePermission     *permissionPrompt                       // Active permission is the prompt currently shown to the user.
+	permissionViewText   string                                  // Permission view text is the rendered text for the visible permission prompt.
+	requests             <-chan authdomain.UserRequest           // Requests receives authorization prompts from the current session.
+	requestSource        int                                     // Request source identifies the request listener so stale prompt messages can be ignored.
+	requestCancel        context.CancelFunc                      // Request cancel stops the active authorization-request listener.
+	palette              colorPalette                            // Palette is the resolved color palette used for rendering.
 	persistModelID       func(newModelID llmmodel.ModelID) error // If set, /model persists the selected model ID back to the caller's config source.
-	packageContext       *packageContextState
-	nextPackageContextID int
+	packageContext       *packageContextState                    // Package context tracks an asynchronous Package Mode context-gathering run.
+	nextPackageContextID int                                     // Next package context ID is assigned to the next context-gathering run.
 
 	// pendingPostResetMessage is appended as a system message immediately after a session reset. This is primarily used by slash commands that start a new session (ex:
 	// /model) but still want to confirm what happened.
 	pendingPostResetMessage string
 
-	pendingPostResetUserMessage string
-	pendingPostResetStartRun    bool
-	monitor                     *remotemonitor.Monitor
-	latestVersion               string
-	versionCheckStarted         bool
-	casDB                       *cas.DB
-	specConformance             *specConformanceState
-	nextSpecConformanceID       int
-	overlayMode                 bool              // Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
-	overlayCopyFeedback         map[int]time.Time // overlayCopyFeedback tracks transient "copied!" feedback per message index.
-	overlayTargets              []overlayTarget   // overlayTargets are computed on each refreshViewport; they map viewport content rows to message indices for hit-testing.
-	lastLeftClickAt             time.Time         // lastLeftClick* is used for best-effort double-click detection.
-	lastLeftClickX              int
-	lastLeftClickY              int
-	clipboardSetter             func(text string) // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
-	osClipboardAvailable        func() bool       // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
-	osClipboardWrite            func(text string) error
-	now                         func() time.Time // now allows deterministic tests around transient UI state (ex: "copied!").
-	detailsDialog               *detailsDialog   // detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and package context gathering.
-	agentParents                map[string]string
-	subagentLabels              map[string]string
-	activeToolScopes            map[string][]toolDisplayScope
-	toolSubagentDisplays        map[string]*toolSubagentDisplay
-	toolCompletionByCallID      map[string]llmstream.CompletionBehavior
+	pendingPostResetUserMessage string                 // Pending post-reset user message is sent after the next session reset.
+	pendingPostResetStartRun    bool                   // Pending post-reset start run starts the agent after reset, even without an initial user message.
+	monitor                     *remotemonitor.Monitor // Monitor provides latest-version checks for the Info Panel.
+	latestVersion               string                 // Latest version is the version reported by the remote monitor.
+	versionCheckStarted         bool                   // Version check started prevents launching duplicate latest-version checks.
+	casDB                       *cas.DB                // CAS DB enables optional CAS-backed metadata checks in the UI.
+	specConformance             *specConformanceState  // Spec conformance tracks the asynchronous SPEC.md conformance check.
+	nextSpecConformanceID       int                    // Next spec conformance ID is assigned to the next SPEC.md conformance check.
+	overlayMode                 bool                   // Overlay Mode: show clickable UI affordances in the viewport (currently: per-message copy).
+	overlayCopyFeedback         map[int]time.Time      // overlayCopyFeedback tracks transient "copied!" feedback per message index.
+	overlayTargets              []overlayTarget        // overlayTargets are computed on each refreshViewport; they map viewport content rows to message indices for hit-testing.
+	lastLeftClickAt             time.Time              // lastLeftClick* is used for best-effort double-click detection.
+	lastLeftClickX              int                    // Last left click X records the column used for double-click detection.
+	lastLeftClickY              int                    // Last left click Y records the row used for double-click detection.
+	clipboardSetter             func(text string)      // clipboardSetter is injected from *qtui.TUI in Init/Update, but can be overridden in tests.
+	osClipboardAvailable        func() bool            // OS clipboard integration (best-effort); separated for testability so unit tests don't mutate the real system clipboard.
+
+	// OS clipboard write performs best-effort direct clipboard writes.
+	osClipboardWrite func(text string) error
+
+	now                    func() time.Time                        // now allows deterministic tests around transient UI state (ex: "copied!").
+	detailsDialog          *detailsDialog                          // detailsDialog is a modal "Details" overlay, opened from Overlay Mode for tool calls and package context gathering.
+	agentParents           map[string]string                       // Agent parents maps agent IDs to parent agent IDs for hierarchy routing.
+	subagentLabels         map[string]string                       // Subagent labels stores labels announced by subagent-start events.
+	activeToolScopes       map[string][]toolDisplayScope           // Active tool scopes records tool calls whose descendants render under that tool.
+	toolSubagentDisplays   map[string]*toolSubagentDisplay         // Tool subagent displays tracks stable-slot displays by tool call ID.
+	toolCompletionByCallID map[string]llmstream.CompletionBehavior // Tool completion by call ID caches result display behavior by tool call ID.
 }
 
+// newModel constructs an initialized TUI model from the supplied session, rendering dependencies, and optional integrations. If initialSession is non-nil, the model
+// adopts its normalized config, records its authorization request channel, and starts with a welcome message.
 func newModel(
 	palette colorPalette,
 	formatter agentformatter.Formatter,
@@ -328,6 +357,8 @@ func newModel(
 	return m
 }
 
+// Init attaches the model to the running TUI and starts session-scoped background listeners and checks. It preserves any injected clipboard setter, otherwise using
+// the TUI's OSC52 clipboard integration when available.
 func (m *model) Init(t *qtui.TUI) {
 	m.tui = t
 	if m.clipboardSetter == nil && t != nil {
@@ -340,6 +371,8 @@ func (m *model) Init(t *qtui.TUI) {
 	m.startSpecConformanceCheck()
 }
 
+// Update applies a runtime message to the TUI model. It is the central event loop for user input, terminal events, agent events, permission prompts, session resets,
+// and asynchronous UI updates.
 func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 	if m.tui == nil && t != nil {
 		m.tui = t
@@ -419,6 +452,8 @@ func (m *model) Update(t *qtui.TUI, msg qtui.Message) {
 	m.updateTextareaHeight()
 }
 
+// View renders the current TUI frame. It returns placeholder text until the terminal is ready or large enough, and otherwise composes the message viewport, input
+// areas, optional info panel, and any open modal.
 func (m *model) View() string {
 	if !m.ready {
 		return "initializing"
@@ -484,6 +519,7 @@ func (m *model) View() string {
 	}
 }
 
+// handleWindowSize applies a resize event and recalculates the TUI layout.
 func (m *model) handleWindowSize(msg qtui.ResizeEvent) {
 	debugLogf("resize event: w=%v h=%v\n", msg.Width, msg.Height)
 	m.windowHeight = msg.Height
@@ -497,6 +533,7 @@ func (m *model) handleWindowSize(msg qtui.ResizeEvent) {
 	m.ready = true
 }
 
+// HandleMouseEvent applies mouse input to the active TUI view. Wheel events scroll the details dialog when one is open, otherwise they scroll the messages viewport.
 func (m *model) handleMouseEvent(ev qtui.MouseEvent) {
 	if m.viewport == nil {
 		return
@@ -595,6 +632,10 @@ func viewportInfoPanelWidths(terminalWidth int) (int, int) {
 	return viewport, info
 }
 
+// handleKeyEvent handles a key event that belongs to the TUI shell and reports whether it consumed the event.
+//
+// A false return means the caller should forward the key to the text area. The method gives modal dialogs and permission prompts exclusive handling, applies global
+// shortcuts, submits messages, and manages history navigation.
 func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 	if key.ControlKey == qtui.ControlKeyCtrlC {
 		// Ctrl-C is "stop agent" when the agent is currently running; otherwise it quits
@@ -751,6 +792,7 @@ func (m *model) handleKeyEvent(key qtui.KeyEvent) (skipTextarea bool) {
 	return false
 }
 
+// HandleSlashCommand dispatches a slash command and updates the TUI state for the command result. It returns true when the command input has been consumed.
 func (m *model) handleSlashCommand(cmd string) bool {
 	fields := strings.Fields(cmd)
 	if len(fields) == 0 {
@@ -831,6 +873,8 @@ func (m *model) handleSlashCommand(cmd string) bool {
 	}
 }
 
+// handleNewSessionCommand handles /new by requesting a fresh session with the current configuration. It preserves the current mode and displays a stopping message
+// when an active run must be canceled first.
 func (m *model) handleNewSessionCommand() {
 	cfg := m.sessionConfig
 	message := ""
@@ -840,6 +884,8 @@ func (m *model) handleNewSessionCommand() {
 	m.requestSessionReset(cfg, message)
 }
 
+// handleGenericCommand handles /generic by requesting a new Generic Mode session. It clears Package Mode and any specialized agent selection while preserving the
+// remaining session configuration.
 func (m *model) handleGenericCommand() {
 	cfg := m.sessionConfig
 	cfg.packagePath = ""
@@ -847,6 +893,8 @@ func (m *model) handleGenericCommand() {
 	m.requestSessionReset(cfg, "Generic mode enabled. Use `/package path/to/pkg` (path relative to sandbox) to select a package.")
 }
 
+// handleOrchestrateCommand handles /orchestrate by starting a fresh Generic Mode pr-orchestrator session. arg is used as the initial user message when non-blank;
+// otherwise the orchestrator run starts with no initial message.
 func (m *model) handleOrchestrateCommand(arg string) {
 	cfg := m.sessionConfig
 	cfg.packagePath = ""
@@ -854,6 +902,8 @@ func (m *model) handleOrchestrateCommand(arg string) {
 	m.requestSessionResetWithFollowUp(cfg, "", "", arg, true)
 }
 
+// handleModelCommand handles `/model` command input. With an empty argument it lists the current and callable models; with one model ID it validates the ID, persists
+// it best-effort when configured, and starts a new session using that model.
 func (m *model) handleModelCommand(arg string) {
 	arg = strings.TrimSpace(arg)
 
@@ -997,6 +1047,8 @@ func (m *model) handleModelCommand(arg string) {
 	)
 }
 
+// handleSkillsCommand appends the current session's installed skills and skill discovery issues to the Messages Area. Valid skills are shown sorted by name; if
+// no session is active, skills are discovered from the current working directory as a fallback.
 func (m *model) handleSkillsCommand() {
 	var available []skills.Skill
 	var invalid []skills.Skill
@@ -1041,6 +1093,7 @@ func (m *model) handleSkillsCommand() {
 	}
 }
 
+// formatSkillsIssues returns display text for skill discovery and validation issues.
 func formatSkillsIssues(invalid []skills.Skill, failed []error, loadErr error) string {
 	var parts []string
 	if loadErr != nil {
@@ -1073,6 +1126,9 @@ func formatSkillsIssues(invalid []skills.Skill, failed []error, loadErr error) s
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
+// handlePackageCommand handles /package by entering Package Mode for arg or exiting to Generic Mode when arg is blank. Non-blank paths are normalized relative to
+// the current sandbox; validation failures are shown as system messages and do not reset the session. On success, it clears specialized agent selection and requests
+// a new Package Mode session.
 func (m *model) handlePackageCommand(arg string) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
@@ -1096,14 +1152,21 @@ func (m *model) handlePackageCommand(arg string) {
 	m.requestSessionReset(cfg, "Switching to package mode...")
 }
 
+// requestSessionReset requests a reset to cfg without any post-reset message or user message. If an agent run is active, message is displayed while the run is stopped
+// and the reset is deferred until run events finish draining.
 func (m *model) requestSessionReset(cfg sessionConfig, message string) {
 	m.requestSessionResetWithFollowUp(cfg, message, "", "", false)
 }
 
+// requestSessionResetWithPostMessage requests a session reset and displays postResetMessage after the new session starts.
 func (m *model) requestSessionResetWithPostMessage(cfg sessionConfig, message string, postResetMessage string) {
 	m.requestSessionResetWithFollowUp(cfg, message, postResetMessage, "", false)
 }
 
+// requestSessionResetWithFollowUp requests a session reset using cfg and optional follow-up work. If an agent run is active, it leaves an existing pending reset
+// unchanged; otherwise it cancels the run, rejects outstanding permissions, clears queued user messages, optionally shows message, and defers the reset until run
+// events finish draining. After the new session starts, postResetMessage is displayed, postResetUserMessage is sent, and postResetStartRun starts the agent even
+// when there is no message.
 func (m *model) requestSessionResetWithFollowUp(cfg sessionConfig, message string, postResetMessage string, postResetUserMessage string, postResetStartRun bool) {
 	message = strings.TrimSpace(message)
 	postResetMessage = strings.TrimSpace(postResetMessage)
@@ -1135,6 +1198,7 @@ func (m *model) requestSessionResetWithFollowUp(cfg sessionConfig, message strin
 	m.runPostResetActions(postResetMessage, postResetUserMessage, postResetStartRun)
 }
 
+// normalizeConfigForCurrentSandbox normalizes cfg using cfg.sandboxDir, the active session sandbox, or the current working directory.
 func (m *model) normalizeConfigForCurrentSandbox(cfg sessionConfig) (sessionConfig, error) {
 	sandboxDir := strings.TrimSpace(cfg.sandboxDir)
 	if sandboxDir == "" {
@@ -1155,6 +1219,7 @@ func (m *model) normalizeConfigForCurrentSandbox(cfg sessionConfig) (sessionConf
 	return normalizedCfg, err
 }
 
+// runPostResetActions performs queued follow-up work after a session reset.
 func (m *model) runPostResetActions(postResetMessage string, postResetUserMessage string, postResetStartRun bool) {
 	if postResetMessage != "" {
 		m.appendSystemMessage(postResetMessage)
@@ -1173,6 +1238,9 @@ func (m *model) runPostResetActions(postResetMessage string, postResetUserMessag
 	}
 }
 
+// shouldExitCyclingForKey reports whether msg should turn the currently cycled history entry into an editable draft.
+//
+// It returns false when Cycling Mode is inactive or when msg is a cycling, submission, overlay, or viewport-navigation key.
 func (m *model) shouldExitCyclingForKey(msg qtui.KeyEvent) bool {
 	if !m.cyclingMode {
 		return false
@@ -1202,6 +1270,7 @@ func (m *model) shouldExitCyclingForKey(msg qtui.KeyEvent) bool {
 	return true
 }
 
+// handlePermissionKey resolves or swallows key input while a permission prompt is active.
 func (m *model) handlePermissionKey(msg qtui.KeyEvent) bool {
 	if m.activePermission == nil {
 		return true
@@ -1230,6 +1299,7 @@ func (m *model) handlePermissionKey(msg qtui.KeyEvent) bool {
 	return true
 }
 
+// resolvePermission resolves the active permission prompt and advances to the next prompt.
 func (m *model) resolvePermission(allow bool) {
 	if m.activePermission == nil {
 		return
@@ -1246,6 +1316,7 @@ func (m *model) resolvePermission(allow bool) {
 	m.advancePermissionQueue()
 }
 
+// recordSubmittedMessage records value in message history if it is eligible for history cycling.
 func (m *model) recordSubmittedMessage(value string) {
 	m.exitEditingState()
 	if len(m.editedHistoryDrafts) > 0 {
@@ -1256,6 +1327,7 @@ func (m *model) recordSubmittedMessage(value string) {
 	}
 }
 
+// shouldSaveToHistory reports whether value should be kept for Up/Down message-history cycling.
 func (m *model) shouldSaveToHistory(value string) bool {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -1275,6 +1347,7 @@ func (m *model) shouldSaveToHistory(value string) bool {
 	return len(fields) > 1
 }
 
+// enterCyclingMode starts message-history cycling at the most recent saved message.
 func (m *model) enterCyclingMode() bool {
 	if len(m.messageHistory) == 0 {
 		return false
@@ -1286,6 +1359,7 @@ func (m *model) enterCyclingMode() bool {
 	return true
 }
 
+// cyclePrevious moves history navigation to the previous saved message.
 func (m *model) cyclePrevious() {
 	if !m.cyclingMode {
 		return
@@ -1299,6 +1373,7 @@ func (m *model) cyclePrevious() {
 	m.showHistoryEntry(m.cycleIndex)
 }
 
+// cycleNext moves history navigation to the next saved message or exits at the end.
 func (m *model) cycleNext() {
 	if !m.cyclingMode {
 		return
@@ -1311,6 +1386,7 @@ func (m *model) cycleNext() {
 	m.showHistoryEntry(m.cycleIndex)
 }
 
+// exitCyclingModeToDefault leaves history navigation and restores a blank input area.
 func (m *model) exitCyclingModeToDefault() {
 	m.exitEditingState()
 	if m.textarea != nil {
@@ -1319,6 +1395,7 @@ func (m *model) exitCyclingModeToDefault() {
 	m.updateTextareaHeight()
 }
 
+// exitCyclingModeForEditing leaves Cycling Mode and marks the current history entry as being edited.
 func (m *model) exitCyclingModeForEditing() {
 	if !m.cyclingMode {
 		return
@@ -1328,16 +1405,19 @@ func (m *model) exitCyclingModeForEditing() {
 	m.cycleIndex = historyIndexNone
 }
 
+// exitEditingState leaves history cycling and editing state without changing the text area.
 func (m *model) exitEditingState() {
 	m.cyclingMode = false
 	m.cycleIndex = historyIndexNone
 	m.editingHistoryIndex = historyIndexNone
 }
 
+// isEditingHistory reports whether a history entry is active for editing.
 func (m *model) isEditingHistory() bool {
 	return m.editingHistoryIndex != historyIndexNone
 }
 
+// showHistoryEntry loads the history entry at index into the text area for history navigation.
 func (m *model) showHistoryEntry(index int) {
 	if index < 0 || index >= len(m.messageHistory) {
 		return
@@ -1350,6 +1430,7 @@ func (m *model) showHistoryEntry(index int) {
 	m.updateTextareaHeight()
 }
 
+// historyValue returns the current editable value for the history entry at index.
 func (m *model) historyValue(index int) string {
 	if index < 0 || index >= len(m.messageHistory) {
 		return ""
@@ -1360,6 +1441,7 @@ func (m *model) historyValue(index int) string {
 	return m.messageHistory[index]
 }
 
+// persistEditedHistoryDraft saves the current text area contents for the active history entry.
 func (m *model) persistEditedHistoryDraft() {
 	if !m.isEditingHistory() {
 		return
@@ -1376,6 +1458,7 @@ func (m *model) persistEditedHistoryDraft() {
 	}
 }
 
+// sendOrQueueMessage reflects value in the Messages Area and queues it for delivery when the agent can accept it.
 func (m *model) sendOrQueueMessage(value string) {
 	// Package context gathering can be in-flight during package-mode session start. In
 	// that window, queue locally and send only after the context has been applied.
@@ -1418,6 +1501,7 @@ func (m *model) sendOrQueueMessage(value string) {
 	}
 }
 
+// startAgentRunIfPossible starts an agent run unless session, run, or package-context state prevents it.
 func (m *model) startAgentRunIfPossible(value string) {
 	if m.session == nil || m.isAgentRunning() || m.packageContextPending() {
 		return
@@ -1429,6 +1513,7 @@ func (m *model) startAgentRunIfPossible(value string) {
 	m.startAgentRun(value)
 }
 
+// startAgentRun starts an agent turn for value and connects its event stream to the TUI.
 func (m *model) startAgentRun(value string) {
 	if m.session == nil || m.tui == nil {
 		return
@@ -1457,6 +1542,7 @@ func (m *model) startAgentRun(value string) {
 	m.forwardAgentEvents(runID, events)
 }
 
+// forwardAgentEvents forwards events from an agent run into the TUI update loop.
 func (m *model) forwardAgentEvents(runID int, events <-chan agent.Event) {
 	if events == nil || m.tui == nil {
 		return
@@ -1470,12 +1556,14 @@ func (m *model) forwardAgentEvents(runID int, events <-chan agent.Event) {
 	}(runID, events)
 }
 
+// stopAgentRun requests cancellation of the active agent run.
 func (m *model) stopAgentRun() {
 	if m.currentRun != nil {
 		m.currentRun.cancel()
 	}
 }
 
+// finishAgentRun clears active-run UI state after an agent event stream has ended.
 func (m *model) finishAgentRun() {
 	m.stopWorkingIndicatorTicker()
 	m.currentRun = nil
@@ -1486,6 +1574,7 @@ func (m *model) finishAgentRun() {
 	m.refreshViewport(m.shouldAutoScrollOnUpdate())
 }
 
+// startWorkingIndicatorTicker starts or replaces the periodic working-indicator refresh ticker.
 func (m *model) startWorkingIndicatorTicker() {
 	m.stopWorkingIndicatorTicker()
 	if m.tui == nil {
@@ -1494,6 +1583,7 @@ func (m *model) startWorkingIndicatorTicker() {
 	m.workingIndicatorTickerCancel = m.tui.SendPeriodically(workingIndicatorTickMsg{}, time.Second)
 }
 
+// stopWorkingIndicatorTicker stops periodic working-indicator updates. It is safe to call when the ticker is not running.
 func (m *model) stopWorkingIndicatorTicker() {
 	if m.workingIndicatorTickerCancel != nil {
 		m.workingIndicatorTickerCancel()
@@ -1501,6 +1591,7 @@ func (m *model) stopWorkingIndicatorTicker() {
 	}
 }
 
+// startNextQueuedMessage sends the oldest queued user message when the session is ready.
 func (m *model) startNextQueuedMessage() {
 	if len(m.queuedMessages) == 0 || m.session == nil || m.packageContextPending() {
 		return
@@ -1516,6 +1607,7 @@ func (m *model) startNextQueuedMessage() {
 	m.startAgentRun(next)
 }
 
+// startUserRequestListener forwards authorization requests from requests into the TUI update loop with sourceID.
 func (m *model) startUserRequestListener(sourceID int, requests <-chan authdomain.UserRequest) {
 	m.stopUserRequestListener()
 	if requests == nil || m.tui == nil {
@@ -1539,6 +1631,7 @@ func (m *model) startUserRequestListener(sourceID int, requests <-chan authdomai
 	}(sourceID, requests, ctx)
 }
 
+// stopUserRequestListener stops forwarding authorization requests into the TUI.
 func (m *model) stopUserRequestListener() {
 	if m.requestCancel != nil {
 		m.requestCancel()
@@ -1546,6 +1639,8 @@ func (m *model) stopUserRequestListener() {
 	}
 }
 
+// restoreQueuedMessagesToInput returns queued user messages to the text area after an interruption. It joins multiple queued messages with newlines, clears the
+// queue, and updates the input height.
 func (m *model) restoreQueuedMessagesToInput() {
 	if len(m.queuedMessages) == 0 {
 		return
@@ -1563,6 +1658,7 @@ func (m *model) restoreQueuedMessagesToInput() {
 	m.updateTextareaHeight()
 }
 
+// appendUserMessage appends value as a sent or queued user message. Callers are responsible for refreshing the viewport after updating message state.
 func (m *model) appendUserMessage(value string, queued bool) {
 	kind := messageKindUser
 	if queued {
@@ -1574,6 +1670,7 @@ func (m *model) appendUserMessage(value string, queued bool) {
 	})
 }
 
+// appendSystemMessage appends value as a system message in the Messages Area.
 func (m *model) appendSystemMessage(value string) {
 	m.messages = append(m.messages, chatMessage{
 		kind:        messageKindSystem,
@@ -1581,6 +1678,7 @@ func (m *model) appendSystemMessage(value string) {
 	})
 }
 
+// appendContextStatusMessage appends a context-status message and returns its message index.
 func (m *model) appendContextStatusMessage(text string, status packageContextStatus) int {
 	msg := chatMessage{
 		kind:          messageKindContextStatus,
@@ -1591,6 +1689,7 @@ func (m *model) appendContextStatusMessage(text string, status packageContextSta
 	return len(m.messages) - 1
 }
 
+// updateContextStatusMessage changes a context-status message and invalidates its cached formatting. It does nothing when index is outside the message list.
 func (m *model) updateContextStatusMessage(index int, status packageContextStatus) {
 	if index < 0 || index >= len(m.messages) {
 		return
@@ -1605,6 +1704,8 @@ func (m *model) updateContextStatusMessage(index int, status packageContextStatu
 	msg.formattedWidth = 0
 }
 
+// handleAgentEvent applies ev to the TUI message state and refreshes the viewport. It preserves manual scroll position, routes subagent and tool-display events,
+// and renders user, assistant, tool, and status events according to the message-area rules.
 func (m *model) handleAgentEvent(ev agent.Event) {
 	m.recordAgentMeta(ev.Agent)
 	m.recordSubagentStart(ev)
@@ -1668,6 +1769,7 @@ func (m *model) handleAgentEvent(ev agent.Event) {
 	m.refreshViewport(autoScroll)
 }
 
+// dropQueuedMessage removes the first queued user message matching message.
 func (m *model) dropQueuedMessage(message string) {
 	if len(m.queuedMessages) == 0 {
 		return
@@ -1681,6 +1783,8 @@ func (m *model) dropQueuedMessage(message string) {
 	}
 }
 
+// handlePackageContextResult applies the result of an asynchronous Package Mode context-gathering run. It updates the visible status and details, adds gathered
+// context to the active agent, and starts queued work when the agent is idle.
 func (m *model) handlePackageContextResult(msg packageContextResultMsg) {
 	if m.packageContext == nil || m.packageContext.runID != msg.runID {
 		return
@@ -1709,6 +1813,8 @@ func (m *model) handlePackageContextResult(msg packageContextResultMsg) {
 	m.refreshViewport(true)
 }
 
+// shouldAutoScrollOnUpdate reports whether the viewport should stay pinned to the bottom. It preserves manual scroll position by returning true only when the viewport
+// is already at the bottom.
 func (m *model) shouldAutoScrollOnUpdate() bool {
 	// Only auto-scroll if the user was already at the bottom. This makes manual
 	// scrolling (mouse wheel / page up) usable during streaming output.
@@ -1729,6 +1835,7 @@ func (m *model) withForegroundColor(str string, accent bool) string {
 	return termformat.Style{Foreground: color}.Wrap(str)
 }
 
+// appendAgentEvent records ev as an agent message without refreshing the viewport.
 func (m *model) appendAgentEvent(ev agent.Event) {
 	toolCallID := eventToolCallID(ev)
 	msg := chatMessage{
@@ -1742,6 +1849,7 @@ func (m *model) appendAgentEvent(ev agent.Event) {
 	m.messages = append(m.messages, msg)
 }
 
+// appendToolOutput appends ev to its tool-call message and reports whether it was displayed.
 func (m *model) appendToolOutput(ev agent.Event) bool {
 	callID := eventToolCallID(ev)
 	if callID == "" || !toolOutputVisible(ev) {
@@ -1760,6 +1868,7 @@ func (m *model) appendToolOutput(ev agent.Event) bool {
 	return false
 }
 
+// replaceToolEvent replaces the displayed tool-call event for callID and reports whether it found one.
 func (m *model) replaceToolEvent(callID string, ev agent.Event) bool {
 	if callID == "" {
 		return false
@@ -1797,6 +1906,7 @@ func toolName(ev agent.Event) string {
 	return ""
 }
 
+// shouldReplaceToolCallWithResult reports whether a tool result should replace its prior tool-call message.
 func (m *model) shouldReplaceToolCallWithResult(ev agent.Event) bool {
 	if callID := eventToolCallID(ev); callID != "" && m.toolCallHasVisibleOutput(callID) {
 		return false
@@ -1809,6 +1919,7 @@ func (m *model) shouldReplaceToolCallWithResult(ev agent.Event) bool {
 	}
 }
 
+// toolCallHasVisibleOutput reports whether callID has visible tool output in the Messages Area.
 func (m *model) toolCallHasVisibleOutput(callID string) bool {
 	if callID == "" {
 		return false
@@ -1826,6 +1937,7 @@ func toolOutputVisible(ev agent.Event) bool {
 	return strings.TrimSpace(ev.ToolOutput.Content) != ""
 }
 
+// toolCompletionBehavior reports whether ev's tool result should replace or append to the tool-call presentation.
 func (m *model) toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehavior {
 	if ev.Tool != nil && ev.ToolCall != nil {
 		if presenter := ev.Tool.Presenter(); presenter != nil {
@@ -1846,6 +1958,7 @@ func (m *model) toolCompletionBehavior(ev agent.Event) llmstream.CompletionBehav
 	return llmstream.CompletionBehaviorReplace
 }
 
+// recordAgentMeta records the parent relationship for an agent event when the agent ID is present.
 func (m *model) recordAgentMeta(meta agent.AgentMeta) {
 	if meta.ID == "" {
 		return
@@ -1853,6 +1966,7 @@ func (m *model) recordAgentMeta(meta agent.AgentMeta) {
 	m.agentParents[meta.ID] = meta.Parent
 }
 
+// resetToolDisplayState clears all per-run tool and subagent display routing state.
 func (m *model) resetToolDisplayState() {
 	clear(m.agentParents)
 	clear(m.subagentLabels)
@@ -1861,6 +1975,7 @@ func (m *model) resetToolDisplayState() {
 	clear(m.toolCompletionByCallID)
 }
 
+// beginToolDisplayScope records a tool call whose descendant subagent events may render under that call.
 func (m *model) beginToolDisplayScope(ev agent.Event) {
 	if ev.ToolCall == nil {
 		return
@@ -1878,6 +1993,7 @@ func (m *model) beginToolDisplayScope(ev agent.Event) {
 	m.activeToolScopes[ev.Agent.ID] = append(m.activeToolScopes[ev.Agent.ID], scope)
 }
 
+// clearCompletedToolState removes cached completion behavior for ev's tool call.
 func (m *model) clearCompletedToolState(ev agent.Event) {
 	callID := eventToolCallID(ev)
 	if callID == "" {
@@ -1886,6 +2002,7 @@ func (m *model) clearCompletedToolState(ev agent.Event) {
 	delete(m.toolCompletionByCallID, callID)
 }
 
+// endToolDisplayScope removes the completed tool call from active descendant-display routing.
 func (m *model) endToolDisplayScope(ev agent.Event) {
 	if ev.Agent.ID == "" {
 		return
@@ -1921,6 +2038,8 @@ func toolSubagentFinalMessagePresenter(ev agent.Event) (llmstream.SubagentFinalM
 	return finalMessagePresenter, ok
 }
 
+// handleDescendantSubagentFinalMessage renders or suppresses final descendant subagent text with its enclosing tool presenter. It returns true when the event was
+// consumed.
 func (m *model) handleDescendantSubagentFinalMessage(ev agent.Event, autoScroll bool) bool {
 	if ev.Type != agent.EventTypeAssistantText || !ev.AssistantTextFinalizing {
 		return false
@@ -1938,6 +2057,8 @@ func (m *model) handleDescendantSubagentFinalMessage(ev agent.Event, autoScroll 
 	return m.handleCustomizedDescendantFinalMessage(ref, ev, autoScroll)
 }
 
+// enclosingToolDisplayScope returns the nearest active tool display scope enclosing meta. It returns false when none of meta's ancestors has an active tool display
+// scope.
 func (m *model) enclosingToolDisplayScope(meta agent.AgentMeta) (toolDisplayScopeRef, bool) {
 	for agentID := meta.Parent; agentID != ""; agentID = m.agentParents[agentID] {
 		scopes := m.activeToolScopes[agentID]
@@ -1949,6 +2070,7 @@ func (m *model) enclosingToolDisplayScope(meta agent.AgentMeta) (toolDisplayScop
 	return toolDisplayScopeRef{}, false
 }
 
+// toolDisplayScope returns the active tool display scope identified by ref. It returns nil when ref does not identify an existing scope.
 func (m *model) toolDisplayScope(ref toolDisplayScopeRef) *toolDisplayScope {
 	scopes := m.activeToolScopes[ref.agentID]
 	if ref.index < 0 || ref.index >= len(scopes) {
@@ -1957,6 +2079,7 @@ func (m *model) toolDisplayScope(ref toolDisplayScopeRef) *toolDisplayScope {
 	return &scopes[ref.index]
 }
 
+// handleCustomizedDescendantFinalMessage renders or suppresses a descendant subagent final message with the owning tool presenter.
 func (m *model) handleCustomizedDescendantFinalMessage(ref toolDisplayScopeRef, ev agent.Event, autoScroll bool) bool {
 	scope := m.toolDisplayScope(ref)
 	if scope == nil {
@@ -1990,6 +2113,7 @@ func (m *model) handleCustomizedDescendantFinalMessage(ref toolDisplayScopeRef, 
 	return true
 }
 
+// recordSubagentStart records the label for a started subagent when ev is a subagent-start event.
 func (m *model) recordSubagentStart(ev agent.Event) {
 	if ev.Type != agent.EventTypeStartSubagent || ev.Agent.ID == "" {
 		return
@@ -2040,6 +2164,9 @@ func (m *model) refreshViewport(autoScroll bool) {
 	}
 }
 
+// ensureMessageFormatted renders msg for width and caches the result in msg.formatted. msg must be non-nil. Widths less than one use agentformatter.MinTerminalWidth,
+// and an existing cache for the same width is reused. The rendered block includes the palette styling, background, and padding needed for direct insertion into
+// the Messages Area.
 func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 	if width <= 0 {
 		width = agentformatter.MinTerminalWidth
@@ -2089,6 +2216,8 @@ func (m *model) ensureMessageFormatted(msg *chatMessage, width int) {
 
 }
 
+// renderSkillsListMessage returns styled, unpadded display text for the `/skills` message. The available skills are rendered in their input order, unnamed skills
+// are skipped, and names, descriptions, and issue lines are sanitized for terminal display.
 func (m *model) renderSkillsListMessage(available []skills.Skill, issues string) string {
 	primary := termformat.Style{Foreground: m.palette.primaryForeground}
 	accent := termformat.Style{Foreground: m.palette.accentForeground}
@@ -2179,6 +2308,7 @@ func (m *model) renderUserMessageBlock(content string, queued bool, width int) s
 	return bs.Apply(content)
 }
 
+// renderWorkingIndicator renders the running-agent status line at width cells.
 func (m *model) renderWorkingIndicator(width int) string {
 	text := m.workingIndicatorText()
 	if text == "" {
@@ -2191,6 +2321,7 @@ func (m *model) renderWorkingIndicator(width int) string {
 	return m.setMessageWidthBG(styled, width, background)
 }
 
+// renderContextStatusLine renders a package-context status line with a status-colored bullet.
 func (m *model) renderContextStatusLine(line *contextStatusLine) string {
 	if line == nil {
 		return ""
@@ -2215,6 +2346,7 @@ func (m *model) renderContextStatusLine(line *contextStatusLine) string {
 	return bullet + " " + rest
 }
 
+// workingIndicatorText returns the running-agent status text for the working indicator.
 func (m *model) workingIndicatorText() string {
 	if !m.isAgentRunning() {
 		return ""
@@ -2271,6 +2403,7 @@ func (m *model) padViewportContentHeight(content string, targetHeight int, width
 	return b.String()
 }
 
+// blankRow returns a row of width space cells styled with background. If width is less than one, it returns one cell.
 func (m *model) blankRow(width int, background termformat.Color) string {
 	if width <= 0 {
 		width = 1
@@ -2278,6 +2411,7 @@ func (m *model) blankRow(width int, background termformat.Color) string {
 	return termformat.Style{Background: background}.Wrap(strings.Repeat(" ", width))
 }
 
+// updateTextareaHeight resizes the input area to fit its visible contents within the configured limits.
 func (m *model) updateTextareaHeight() {
 	lines := 1
 	if m.textarea != nil {
@@ -2314,6 +2448,7 @@ func (m *model) updateTextareaHeight() {
 	}
 }
 
+// infoLineView renders the bottom help line for the current viewport width.
 func (m *model) infoLineView() string {
 	hints := []string{"ctrl-c to quit", "esc to clear / stop", "ctrl-j for newline", "ctrl-o overlay"}
 	infoLineText := "  "
@@ -2337,6 +2472,7 @@ func (m *model) infoLineView() string {
 	return infoLine
 }
 
+// infoPanelBlock renders the right-side Info Panel at the configured width and window height.
 func (m *model) infoPanelBlock() string {
 	body := m.infoPanelContent()
 	if strings.TrimSpace(body) == "" {
@@ -2355,6 +2491,7 @@ func (m *model) infoPanelBlock() string {
 	}.Apply(content)
 }
 
+// infoPanelContent returns the Info Panel body assembled from all non-empty sections.
 func (m *model) infoPanelContent() string {
 	var sections []string
 	if versionSection := m.versionUpgradeNoticeSection(); versionSection != "" {
@@ -2369,6 +2506,7 @@ func (m *model) infoPanelContent() string {
 	return strings.Join(sections, "\n\n")
 }
 
+// tokensCostSection renders the Info Panel session, model, context, cost, and token summary.
 func (m *model) tokensCostSection() string {
 	sessionID := "<none>"
 	modelID := defaultModelID
@@ -2400,6 +2538,7 @@ func (m *model) tokensCostSection() string {
 	return strings.Join(lines, "\n")
 }
 
+// packageSection renders the Info Panel package-mode status section.
 func (m *model) packageSection() string {
 	pkgPath := ""
 	switch {
@@ -2421,10 +2560,12 @@ func (m *model) packageSection() string {
 	return strings.Join(lines, "\n")
 }
 
+// currentModelInfo returns metadata for the model selected for the active or next session.
 func (m *model) currentModelInfo() llmmodel.ModelInfo {
 	return llmmodel.GetModelInfo(m.currentModelID())
 }
 
+// currentModelID returns the model selected for the active or next session. It falls back to the default model when no session or configured model is available.
 func (m *model) currentModelID() llmmodel.ModelID {
 	if m == nil {
 		return defaultModelID
@@ -2450,6 +2591,7 @@ func formatModelIDWithAuthMarkers(id llmmodel.ModelID) string {
 	return name
 }
 
+// currentAgent returns the agent for the active session, or nil when no session is active.
 func (m *model) currentAgent() *agent.Agent {
 	if m == nil || m.session == nil {
 		return nil
@@ -2457,6 +2599,7 @@ func (m *model) currentAgent() *agent.Agent {
 	return m.session.agent
 }
 
+// startLatestVersionCheck starts the latest-version check if it has not already been started.
 func (m *model) startLatestVersionCheck() {
 	if m == nil || m.versionCheckStarted || m.monitor == nil || m.tui == nil {
 		return
@@ -2471,10 +2614,12 @@ func (m *model) startLatestVersionCheck() {
 	}()
 }
 
+// permissionView returns the rendered Permission Area, or an empty string when no prompt is visible.
 func (m *model) permissionView() string {
 	return m.permissionViewText
 }
 
+// refreshPermissionView rebuilds the Permission Area from the active permission and current layout.
 func (m *model) refreshPermissionView() {
 	if m.activePermission == nil {
 		m.permissionViewText = ""
@@ -2547,14 +2692,17 @@ func (m *model) refreshPermissionView() {
 	m.updateSizes()
 }
 
+// isAgentRunning reports whether an agent execution is currently active.
 func (m *model) isAgentRunning() bool {
 	return m.currentRun != nil
 }
 
+// packageContextPending reports whether Package Mode context gathering is still in progress.
 func (m *model) packageContextPending() bool {
 	return m.packageContext != nil && m.packageContext.status == packageContextStatusPending
 }
 
+// updatePlaceholder updates the text area placeholder to reflect whether the agent is running.
 func (m *model) updatePlaceholder() {
 	if m.textarea == nil {
 		return
@@ -2566,6 +2714,7 @@ func (m *model) updatePlaceholder() {
 	}
 }
 
+// enqueuePermissionRequest shows req as the active permission prompt or queues it behind the current prompt.
 func (m *model) enqueuePermissionRequest(req authdomain.UserRequest) {
 	prompt := &permissionPrompt{request: req}
 	if m.activePermission == nil {
@@ -2576,6 +2725,7 @@ func (m *model) enqueuePermissionRequest(req authdomain.UserRequest) {
 	m.permissionQueue = append(m.permissionQueue, prompt)
 }
 
+// triggerPermissionDemo enqueues a synthetic permission request for exercising permission handling.
 func (m *model) triggerPermissionDemo() {
 	if m.activePermission != nil || len(m.permissionQueue) > 0 {
 		m.appendSystemMessage("Resolve pending permissions before starting /permission.")
@@ -2626,6 +2776,7 @@ func (m *model) triggerPermissionDemo() {
 	}
 }
 
+// advancePermissionQueue shows the next queued permission prompt, or hides the Permission Area when none remain.
 func (m *model) advancePermissionQueue() {
 	if len(m.permissionQueue) == 0 {
 		m.activePermission = nil
@@ -2638,6 +2789,7 @@ func (m *model) advancePermissionQueue() {
 	m.refreshPermissionView()
 }
 
+// rejectOutstandingPermissions denies and clears all active and queued permission requests.
 func (m *model) rejectOutstandingPermissions() {
 	if m.activePermission != nil {
 		m.activePermission.request.Disallow()
@@ -2650,6 +2802,8 @@ func (m *model) rejectOutstandingPermissions() {
 	m.refreshPermissionView()
 }
 
+// startPackageContextGather starts asynchronous initial-context gathering for the active Package Mode session. It records a pending status message and sends the
+// completed result back through the TUI runtime.
 func (m *model) startPackageContextGather() {
 	if m == nil || m.session == nil || !m.session.config.packageMode() {
 		m.packageContext = nil
@@ -2697,6 +2851,8 @@ func (m *model) startPackageContextGather() {
 	}()
 }
 
+// resetSessionWithConfig replaces the active session with a new session built from cfg and resets session-scoped UI state. On startup failure, it keeps the current
+// session and displays the failure in the Messages Area. Callers should use requestSessionResetWithFollowUp while an agent run is still draining.
 func (m *model) resetSessionWithConfig(cfg sessionConfig) {
 	if m.sessionFactory == nil {
 		m.appendSystemMessage("Failed to start new session: no session factory configured.")

@@ -9,21 +9,24 @@ import (
 	"github.com/codalotl/codalotl/internal/q/tui/tuicontrols"
 )
 
+// toolSubagentDisplay tracks stable subagent slots owned by a tool-call message.
 type toolSubagentDisplay struct {
-	messageIndex  int
-	slots         []toolSubagentSlot
-	slotIndexByID map[string]int
+	messageIndex  int                // Message index is the index of the owning tool-call message in model.messages.
+	slots         []toolSubagentSlot // Slots are the stable subagent slots in display order.
+	slotIndexByID map[string]int     // Slot index by ID maps direct child subagent IDs to indices in slots.
 }
 
+// toolSubagentSlot stores display state for one labeled direct subagent slot.
 type toolSubagentSlot struct {
-	agentID    string
-	label      string
-	done       bool
-	stateKind  toolSubagentSlotStateKind
-	stateEvent agent.Event
-	stateText  string
+	agentID    string                    // Agent ID is the direct child subagent represented by this slot.
+	label      string                    // Label is the user-visible stable slot label.
+	done       bool                      // Done reports whether the slot has reached a terminal display state.
+	stateKind  toolSubagentSlotStateKind // State kind selects how the slot body is rendered.
+	stateEvent agent.Event               // State event is the live or terminal event rendered for event states.
+	stateText  string                    // State text is the terminal text rendered for text states.
 }
 
+// toolSubagentSlotStateKind classifies the content currently displayed in a stable subagent slot.
 type toolSubagentSlotStateKind int
 
 const (
@@ -33,6 +36,7 @@ const (
 	toolSubagentSlotStateTerminalText
 )
 
+// startToolSubagentDisplay initializes stable-slot display state for a tool-call event.
 func (m *model) startToolSubagentDisplay(ev agent.Event) {
 	if ev.Type != agent.EventTypeToolCall || ev.ToolCall == nil {
 		return
@@ -50,6 +54,10 @@ func (m *model) startToolSubagentDisplay(ev agent.Event) {
 	}
 }
 
+// handleToolSubagentDescendantEvent routes ev into a stable subagent slot owned by an active tool call. Labeled direct subagent start events create slots; later
+// events from that subagent or any descendant update the slot, including final presenter text and terminal states. It returns true when the event belongs to such
+// a display and should not be rendered by the normal message path. When the slot state changes, it invalidates the owning message and refreshes the viewport, using
+// autoScroll to decide whether to scroll to the bottom.
 func (m *model) handleToolSubagentDescendantEvent(ev agent.Event, autoScroll bool) bool {
 	scopeRef, ok := m.owningToolDisplayScope(ev.Agent)
 	if !ok {
@@ -158,6 +166,8 @@ func (m *model) handleToolSubagentDescendantEvent(ev agent.Event, autoScroll boo
 	return true
 }
 
+// renderToolSpecificMessage renders a detailed tool call or result when it has visible output or stable subagent slots. It returns false when the message should
+// use the normal agent formatter.
 func (m *model) renderToolSpecificMessage(msg *chatMessage, width int) (string, bool) {
 	if msg == nil || msg.kind != messageKindAgent {
 		return "", false
@@ -174,6 +184,7 @@ func (m *model) renderToolSpecificMessage(msg *chatMessage, width int) (string, 
 	return m.renderToolMessageWithDetails(msg, width), true
 }
 
+// renderToolMessageWithDetails renders a tool message together with its output and stable subagent slots.
 func (m *model) renderToolMessageWithDetails(msg *chatMessage, width int) string {
 	if msg == nil {
 		return ""
@@ -192,6 +203,7 @@ func (m *model) renderToolMessageWithDetails(msg *chatMessage, width int) string
 	return strings.Join(sections, "\n")
 }
 
+// renderToolOutputs renders display-only tool output events as one message block.
 func (m *model) renderToolOutputs(outputs []agent.Event, width int) string {
 	if len(outputs) == 0 {
 		return ""
@@ -207,6 +219,7 @@ func (m *model) renderToolOutputs(outputs []agent.Event, width int) string {
 	return strings.Join(sections, "\n")
 }
 
+// renderToolSubagentSlots renders all stable subagent slots for display.
 func (m *model) renderToolSubagentSlots(display *toolSubagentDisplay, width int) string {
 	if display == nil || len(display.slots) == 0 {
 		return ""
@@ -218,6 +231,7 @@ func (m *model) renderToolSubagentSlots(display *toolSubagentDisplay, width int)
 	return strings.Join(sections, "\n")
 }
 
+// renderToolSubagentSlot renders one stable subagent slot.
 func (m *model) renderToolSubagentSlot(slot toolSubagentSlot, width int) string {
 	label := strings.TrimSpace(slot.label)
 	if label == "" {
@@ -231,6 +245,7 @@ func (m *model) renderToolSubagentSlot(slot toolSubagentSlot, width int) string 
 	return header + "\n" + body
 }
 
+// renderToolSubagentSlotBody renders the indented body for one stable subagent slot.
 func (m *model) renderToolSubagentSlotBody(slot toolSubagentSlot, width int) string {
 	innerWidth := max(width-4, 1)
 	switch slot.stateKind {
@@ -243,6 +258,7 @@ func (m *model) renderToolSubagentSlotBody(slot toolSubagentSlot, width int) str
 	}
 }
 
+// formatToolSubagentFinalText formats the final text shown for a subagent slot.
 func (m *model) formatToolSubagentFinalText(scope *toolDisplayScope, label string, finalMessage string) string {
 	if scope != nil && scope.finalMessagePresenter != nil {
 		block := scope.finalMessagePresenter.SubagentFinalMessage(scope.call, label, finalMessage)
@@ -254,11 +270,13 @@ func (m *model) formatToolSubagentFinalText(scope *toolDisplayScope, label strin
 	return strings.TrimSpace(finalMessage)
 }
 
+// normalizeToolSubagentSlotEvent returns ev adjusted for rendering inside a stable subagent slot.
 func (m *model) normalizeToolSubagentSlotEvent(ev agent.Event) agent.Event {
 	ev.Agent.Depth = 0
 	return ev
 }
 
+// owningToolDisplayScope returns the tool display scope that owns rendering for meta.
 func (m *model) owningToolDisplayScope(meta agent.AgentMeta) (toolDisplayScopeRef, bool) {
 	nearest, ok := m.enclosingToolDisplayScope(meta)
 	if !ok {
@@ -284,6 +302,7 @@ func (m *model) owningToolDisplayScope(meta agent.AgentMeta) (toolDisplayScopeRe
 	return nearest, true
 }
 
+// toolScopeDirectChildAgentID returns the direct child of scopeAgentID that contains agentID.
 func (m *model) toolScopeDirectChildAgentID(scopeAgentID string, agentID string) (string, bool) {
 	for current := agentID; current != ""; current = m.agentParents[current] {
 		if m.agentParents[current] == scopeAgentID {
@@ -293,6 +312,7 @@ func (m *model) toolScopeDirectChildAgentID(scopeAgentID string, agentID string)
 	return "", false
 }
 
+// invalidateMessage clears cached formatted output for the message at index.
 func (m *model) invalidateMessage(index int) {
 	if index < 0 || index >= len(m.messages) {
 		return
@@ -301,6 +321,7 @@ func (m *model) invalidateMessage(index int) {
 	m.messages[index].formattedWidth = 0
 }
 
+// slot returns the existing slot for agentID, or nil if no valid slot exists.
 func (d *toolSubagentDisplay) slot(agentID string) *toolSubagentSlot {
 	if d == nil {
 		return nil
@@ -312,6 +333,7 @@ func (d *toolSubagentDisplay) slot(agentID string) *toolSubagentSlot {
 	return &d.slots[idx]
 }
 
+// ensureSlot returns the slot for agentID, creating a starting slot when needed.
 func (d *toolSubagentDisplay) ensureSlot(agentID string, label string) *toolSubagentSlot {
 	if idx, ok := d.slotIndexByID[agentID]; ok {
 		slot := &d.slots[idx]
@@ -331,6 +353,7 @@ func (d *toolSubagentDisplay) ensureSlot(agentID string, label string) *toolSuba
 	return &d.slots[idx]
 }
 
+// renderToolSubagentTextBlock renders subagent text as a wrapped, styled slot body.
 func (m *model) renderToolSubagentTextBlock(text string, width int) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -350,6 +373,7 @@ func (m *model) renderToolSubagentTextBlock(text string, width int) string {
 	return strings.Join(rendered, "\n")
 }
 
+// indentToolSubagentBlock prefixes each line of block and returns the indented text.
 func (m *model) indentToolSubagentBlock(block string, prefix string) string {
 	if block == "" {
 		return ""
@@ -361,6 +385,7 @@ func (m *model) indentToolSubagentBlock(block string, prefix string) string {
 	return strings.Join(lines, "\n")
 }
 
+// styleToolSubagentLine sanitizes s and applies the normal subagent line style.
 func (m *model) styleToolSubagentLine(s string) string {
 	return termformat.Style{Foreground: m.palette.primaryForeground}.Wrap(termformatSanitizeLine(s))
 }

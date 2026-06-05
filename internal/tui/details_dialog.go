@@ -20,16 +20,18 @@ const (
 	detailsMaxHexBytes  = 64 << 10 // 64 KiB
 )
 
+// detailsDialog contains the content and viewport state for the modal Details overlay.
 type detailsDialog struct {
-	messageIndex    int
-	title           string
-	body            string
-	view            *tuicontrols.View
-	lastInnerWidth  int // Cached sizing/layout info so we can keep the scroll viewport stable across renders.
-	lastInnerHeight int
-	titleLines      []string
+	messageIndex    int               // MessageIndex is the source message index in model.messages.
+	title           string            // Title is the dialog heading shown above the scrollable details.
+	body            string            // Body is the raw detail content displayed in the scrollable view.
+	view            *tuicontrols.View // View scrolls the styled body content within the dialog.
+	lastInnerWidth  int               // Cached sizing/layout info so we can keep the scroll viewport stable across renders.
+	lastInnerHeight int               // LastInnerHeight is the cached inner dialog height used for layout reuse.
+	titleLines      []string          // TitleLines is the sanitized, wrapped title cached for the current inner width.
 }
 
+// openDetailsDialog opens the Details overlay for the message at messageIndex. It does nothing when messageIndex is invalid or the message has no details payload.
 func (m *model) openDetailsDialog(messageIndex int) {
 	if m == nil || messageIndex < 0 || messageIndex >= len(m.messages) {
 		return
@@ -75,10 +77,12 @@ func styleEachLine(s string, style termformat.Style) string {
 	return strings.Join(lines, "\n")
 }
 
+// closeDetailsDialog closes the active Details dialog.
 func (m *model) closeDetailsDialog() {
 	m.detailsDialog = nil
 }
 
+// detailsDialogScrollUp scrolls the open details dialog up by n lines.
 func (m *model) detailsDialogScrollUp(n int) {
 	if m == nil || m.detailsDialog == nil || m.detailsDialog.view == nil {
 		return
@@ -86,6 +90,7 @@ func (m *model) detailsDialogScrollUp(n int) {
 	m.detailsDialog.view.ScrollUp(n)
 }
 
+// detailsDialogScrollDown scrolls the open details dialog down by n lines.
 func (m *model) detailsDialogScrollDown(n int) {
 	if m == nil || m.detailsDialog == nil || m.detailsDialog.view == nil {
 		return
@@ -93,6 +98,7 @@ func (m *model) detailsDialogScrollDown(n int) {
 	m.detailsDialog.view.ScrollDown(n)
 }
 
+// detailsDialogPageUp scrolls the open details dialog up by one page.
 func (m *model) detailsDialogPageUp() {
 	if m == nil || m.detailsDialog == nil || m.detailsDialog.view == nil {
 		return
@@ -100,6 +106,7 @@ func (m *model) detailsDialogPageUp() {
 	m.detailsDialog.view.PageUp()
 }
 
+// detailsDialogPageDown scrolls the open details dialog down by one page.
 func (m *model) detailsDialogPageDown() {
 	if m == nil || m.detailsDialog == nil || m.detailsDialog.view == nil {
 		return
@@ -107,6 +114,7 @@ func (m *model) detailsDialogPageDown() {
 	m.detailsDialog.view.PageDown()
 }
 
+// detailsDialogScrollToTop moves the open details dialog to the top of its content.
 func (m *model) detailsDialogScrollToTop() {
 	if m == nil || m.detailsDialog == nil || m.detailsDialog.view == nil {
 		return
@@ -114,6 +122,7 @@ func (m *model) detailsDialogScrollToTop() {
 	m.detailsDialog.view.ScrollToTop()
 }
 
+// detailsDialogScrollToBottom moves the open details dialog to the bottom of its content.
 func (m *model) detailsDialogScrollToBottom() {
 	if m == nil || m.detailsDialog == nil || m.detailsDialog.view == nil {
 		return
@@ -121,6 +130,7 @@ func (m *model) detailsDialogScrollToBottom() {
 	m.detailsDialog.view.ScrollToBottom()
 }
 
+// detailsDialogEnsureSized recalculates the open details dialog layout for the current terminal size.
 func (m *model) detailsDialogEnsureSized() {
 	if m == nil || m.detailsDialog == nil || m.detailsDialog.view == nil {
 		return
@@ -290,6 +300,8 @@ func (m *model) detailsDialogView(_ string) string {
 	return view
 }
 
+// detailsTitleForMessage returns the title for the Details dialog for the message at messageIndex. It uses the first rendered line of the message, strips styling
+// and a leading bullet, sanitizes it for terminal display, and falls back to "Details" when no title is available.
 func (m *model) detailsTitleForMessage(messageIndex int) string {
 	if m == nil || messageIndex < 0 || messageIndex >= len(m.messages) {
 		return "Details"
@@ -316,6 +328,7 @@ func (m *model) detailsTitleForMessage(messageIndex int) string {
 	return termformat.Sanitize(firstLine, 4)
 }
 
+// detailsBodyForMessage builds the plain-text Details dialog body for a message. It returns an empty string when the message has no supported details payload.
 func (m *model) detailsBodyForMessage(messageIndex int) string {
 	if m == nil || messageIndex < 0 || messageIndex >= len(m.messages) {
 		return ""
@@ -417,6 +430,8 @@ func packageContextStatusString(status packageContextStatus) string {
 	}
 }
 
+// detailsFormatBlob formats raw detail data for safe display in the Details dialog. It truncates large data, renders invalid UTF-8 as hex, pretty-prints JSON when
+// possible, and sanitizes terminal control characters.
 func detailsFormatBlob(s string) string {
 	if s == "" {
 		return "<empty>"
