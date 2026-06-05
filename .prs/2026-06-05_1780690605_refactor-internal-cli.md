@@ -47,7 +47,11 @@ Run the requested safe refactor sequence one refactor at a time. After each refa
 
 ## Review
 
-Not started.
+- Review against `main`: passed; no findings. Latest review verdict: patch is correct.
+- Initial changed-package SPEC conformance found stale `internal/cli/SPEC.md` Public API docs for `Config.PreferredProvider` and `RunOptions`.
+- Updated `internal/cli/SPEC.md` to match implementation docs; SPEC review feedback was positive.
+- Reran changed-package SPEC conformance: `internal/cli` conforms.
+- Tests: `go test ./internal/cli` passed after source/test refactors; final `go test ./...` passed.
 
 ## Summary
 
@@ -67,3 +71,4 @@ Not written yet.
 - `test-cleanup` deduplicated docs reflow and PR scaffold test setup; committed as `0cb751e`.
 - `test-ensure-coverage` added tests for CAS summary duration/churn formatting; committed as `ed2621d`.
 - Recertified requested CAS namespaces for `internal/cli`; committed as `488adf4`.
+- Review against `main` returned no findings. Changed-package SPEC conformance passes after syncing `internal/cli/SPEC.md`; conformance CAS was written.
