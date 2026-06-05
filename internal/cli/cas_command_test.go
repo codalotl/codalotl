@@ -529,6 +529,39 @@ func TestParseCASLsPackagesMinAge_RejectsCustomUnitOverflow(t *testing.T) {
 	}
 }
 
+func TestFormatCASSummaryDuration(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		age  time.Duration
+		want string
+	}{
+		{name: "seconds", age: 59 * time.Second, want: "59s"},
+		{name: "minutes", age: 59 * time.Minute, want: "59m"},
+		{name: "hours", age: 23 * time.Hour, want: "23h"},
+		{name: "days", age: 364 * 24 * time.Hour, want: "364d"},
+		{name: "years", age: 365 * 24 * time.Hour, want: "1y"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, formatCASSummaryDuration(tc.age))
+		})
+	}
+}
+
+func TestFormatCASSummaryChurn(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		churn float64
+		want  string
+	}{
+		{name: "rounds", churn: 19.5, want: "20%"},
+		{name: "clamps negative", churn: -1, want: "0%"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, formatCASSummaryChurn(tc.churn))
+		})
+	}
+}
+
 func TestRun_CAS_Prune_DefaultOutputShape(t *testing.T) {
 	isolateUserConfig(t)
 
