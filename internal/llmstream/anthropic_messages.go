@@ -475,8 +475,8 @@ func (s *anthropicStreamState) onContentBlockStart(index int, block *anthropicap
 	}
 }
 
-// onContentBlockDelta applies an Anthropic content block delta to the matching block state. It emits cumulative text or reasoning deltas, accumulates streamed tool
-// input JSON and thinking signatures, and returns an error if a delta references an unknown block index.
+// onContentBlockDelta applies an Anthropic content block delta to the matching block state. It emits incremental text or reasoning deltas with cumulative content
+// on the event part, accumulates streamed tool input JSON and thinking signatures, and returns an error if a delta references an unknown block index.
 func (s *anthropicStreamState) onContentBlockDelta(index int, delta *anthropicapi.ContentBlockDelta) (*Event, bool, error) {
 	if delta == nil {
 		return nil, false, nil

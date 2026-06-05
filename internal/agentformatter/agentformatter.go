@@ -25,7 +25,7 @@ const MinTerminalWidth = 30
 
 const sanitizeTabWidth = 4
 
-// sanitizeText normalizes text for terminal display by expanding tabs and escaping non-printing control bytes.
+// sanitizeText normalizes text for terminal display by expanding tabs and escaping non-line-break control bytes.
 func sanitizeText(s string) string {
 	if s == "" {
 		return ""
@@ -180,7 +180,7 @@ func (f *textTUIFormatter) formatTUI(e agent.Event, terminalWidth int) string {
 	}
 }
 
-// cliAssistantText formats assistant text as a single CLI assistant line.
+// cliAssistantText formats assistant text for CLI assistant output.
 func (f *textTUIFormatter) cliAssistantText(content string) string {
 	content = sanitizeText(content)
 	if strings.TrimSpace(content) == "" {

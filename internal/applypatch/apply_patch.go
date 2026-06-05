@@ -176,7 +176,7 @@ type fileHunk struct {
 	MoveTo      string      // MoveTo is the destination path for an update hunk that renames the file.
 	AddLines    []string    // AddLines contains add-file content lines without patch prefixes.
 	ChangeSets  []changeSet // ChangeSets contains the update regions for an update hunk.
-	NoFinalNL   bool        // NoFinalNL reports whether the hunk requests that no final newline be written.
+	NoFinalNL   bool        // NoFinalNL is reserved for parsed no-final-newline markers; it is not currently set or consumed.
 	rawLineSpan [2]int      // rawLineSpan is the zero-based half-open line range occupied by the hunk in the parsed patch.
 }
 
@@ -195,7 +195,7 @@ type changeLine struct {
 // FileChangeKind identifies the kind of file-level change produced by ApplyPatch.
 type FileChangeKind int
 
-// FileChangeAdded means the patch created the file.
+// FileChangeAdded means ApplyPatch classified the path as an added output, such as an Add File target or move destination.
 const FileChangeAdded FileChangeKind = 1
 
 // FileChangeModified means the patch edited an existing file in place.

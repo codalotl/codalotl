@@ -83,6 +83,7 @@ func displayPackagePath(moduleAbsDir, packageAbsDir string) (string, bool) {
 	}
 	return "./" + filepath.ToSlash(rel), true
 }
+
 // goListPackageDirs returns sorted unique package directories matching pattern from the current working directory. It runs `go list -e -f {{.Dir}}`, with ctx controlling
 // the command lifetime. If go list reports an error after producing no directories, the returned error includes stderr when available.
 func goListPackageDirs(ctx context.Context, pattern string) ([]string, error) {

@@ -69,6 +69,10 @@ Latest review:
 - SPEC conformance: changed packages conform. The rerun checked the updated `internal/agentformatter` state after prior conforming packages wrote CAS records.
 - Additional validation: `go test ./...` passed; final `codalotl docs status` reports `docs_add` current for all discovered target packages.
 
+Weak-agent follow-up assessment:
+- Accepted 6/12 low-priority documentation findings and fixed them: `internal/agentformatter` sanitization wording, `internal/agentformatter` assistant text line wording, `internal/applypatch` `NoFinalNL` wording, `internal/applypatch` `FileChangeAdded` wording, `internal/cli` `StepFinish` JSON-vs-human wording, and `internal/llmstream` Anthropic delta wording.
+- Rejected the remaining findings as either stylistic exported-comment-name nits for unexported methods, adequately covered by existing wording, ambiguous debug-only behavior, or lower-priority TUI wording that did not justify more churn.
+
 ## Summary
 
 Adds missing documentation comments for all packages discovered with `docs_add` needed:
@@ -96,4 +100,5 @@ Validation:
 - Implementation status: docs-add targets are complete; `codalotl docs status` reports `docs_add` current for all discovered target packages.
 - Conformance follow-up: `internal/agentformatter` threshold wording fixed without behavior changes.
 - Validation status: code review clean, SPEC conformance clean, full Go test suite passing.
+- Weak-review follow-up: accepted and fixed exactly half of the reported low-priority documentation issues; fixes are comment/formatting-only.
 

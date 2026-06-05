@@ -353,8 +353,9 @@ func (w iterateLifecycleWriter) StepStart(step iterate.Step) error {
 	return writeStringln(w.out, fmt.Sprintf("iterate: iteration %d %s starting (mode=%s)", step.Iteration, step.Kind, step.Mode))
 }
 
-// StepFinish writes the lifecycle event emitted after an iterate step completes. In JSON mode it emits an iterate_step_finish object; otherwise it writes a concise
-// human-readable status line. The event includes the iteration, step kind, continue mode, terminal event type, and context usage percentage.
+// StepFinish writes the lifecycle event emitted after an iterate step completes. In JSON mode it emits an iterate_step_finish object that includes the iteration,
+// step kind, continue mode, terminal event type, and context usage percentage. Otherwise it writes a concise human-readable status line that omits the continue
+// mode.
 func (w iterateLifecycleWriter) StepFinish(step iterate.Step, result iterate.StepResult) error {
 	if w.outputJSON {
 		return w.writeJSON(iterateLifecycleEvent{
