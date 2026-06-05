@@ -54,7 +54,7 @@ Completed:
 Notes:
 - `./internal/applypatch` initially needed manual documentation cleanup after docs-add snippet application failed, then a final docs-add pass completed successfully.
 
-### Validate and complete
+### Validate and complete [DONE]
 
 Run final review and changed-package SPEC conformance. Address required conformance failures or actionable review feedback, then write PR summary.
 
@@ -64,7 +64,10 @@ Initial review:
 - Code review: no findings; patch judged correct.
 - SPEC conformance: one non-latent trivial issue in `internal/agentformatter`; `MinTerminalWidth` comment implied wrapping at the threshold, while behavior and SPEC wrap only above the threshold. Fixed by updating the comment only.
 
-Latest review pending after the conformance follow-up.
+Latest review:
+- Code review: no findings; patch judged correct.
+- SPEC conformance: changed packages conform. The rerun checked the updated `internal/agentformatter` state after prior conforming packages wrote CAS records.
+- Additional validation: `go test ./...` passed; final `codalotl docs status` reports `docs_add` current for all discovered target packages.
 
 ## Summary
 
@@ -77,4 +80,5 @@ Pending.
 - Discovery source: `codalotl docs status`
 - Implementation status: docs-add targets are complete; `codalotl docs status` reports `docs_add` current for all discovered target packages.
 - Conformance follow-up: `internal/agentformatter` threshold wording fixed without behavior changes.
+- Validation status: code review clean, SPEC conformance clean, full Go test suite passing.
 
