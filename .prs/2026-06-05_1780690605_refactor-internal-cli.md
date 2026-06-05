@@ -26,7 +26,7 @@ Additional instructions:
 
 ## Plan
 
-### Package internal/cli
+### [DONE] Package internal/cli
 
 Run the requested safe refactor sequence one refactor at a time. After each refactor:
 - Inspect the diff.
@@ -55,7 +55,20 @@ Run the requested safe refactor sequence one refactor at a time. After each refa
 
 ## Summary
 
-Not written yet.
+Refactored `internal/cli` with the requested safe refactor sequence.
+
+- Fixed stale or materially inaccurate documentation comments in `internal/cli`.
+- Deduplicated repeated CLI helper logic for aligned status tables, CAS DB loading, repo package discovery, and package loading.
+- Cleaned up repeated test setup for docs reflow and PR scaffold tests.
+- Added focused coverage for CAS summary duration and churn formatting.
+- Synced `internal/cli/SPEC.md` Public API docs with current implementation comments.
+- Recertified requested CAS namespaces and committed conformance CAS.
+
+Validation:
+- `go test ./internal/cli`
+- `go test ./...`
+- Review against `main`: no findings; patch is correct.
+- Changed-package SPEC conformance: `internal/cli` conforms.
 
 ## State
 
