@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -167,16 +166,7 @@ func runCASLsPackages(ctx context.Context, out io.Writer, namespace string, opts
 		return qcli.UsageError{Message: err.Error()}
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	repoRoot, err := nearestGitRepoRoot(wd)
-	if err != nil {
-		return err
-	}
-
-	pkgDirs, err := goListPackageDirsUnderRepo(ctx, repoRoot)
+	repoRoot, pkgDirs, err := goListPackageDirsUnderNearestGitRepo(ctx)
 	if err != nil {
 		return err
 	}
@@ -186,14 +176,9 @@ func runCASLsPackages(ctx context.Context, out io.Writer, namespace string, opts
 	now := time.Now()
 	for _, pkgDir := range pkgDirs {
 		moduleRoot := pkgDir.mod.AbsolutePath
-		db, ok := dbs[moduleRoot]
-		if !ok {
-			var err error
-			db, err = casReadDBForBaseDir(moduleRoot)
-			if err != nil {
-				return err
-			}
-			dbs[moduleRoot] = db
+		db, err := cachedCASReadDBForBaseDir(dbs, moduleRoot)
+		if err != nil {
+			return err
 		}
 
 		row, ok, err := casSummaryRowForPackage(repoRoot, pkgDir.mod, db, spec, pkgDir.absDir, now)

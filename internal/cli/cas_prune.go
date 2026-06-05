@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -29,16 +28,7 @@ func runCASPrune(ctx context.Context, out io.Writer, days int) error {
 		return err
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	repoRoot, err := nearestGitRepoRoot(wd)
-	if err != nil {
-		return err
-	}
-
-	pkgDirs, err := goListPackageDirsUnderRepo(ctx, repoRoot)
+	_, pkgDirs, err := goListPackageDirsUnderNearestGitRepo(ctx)
 	if err != nil {
 		return err
 	}
