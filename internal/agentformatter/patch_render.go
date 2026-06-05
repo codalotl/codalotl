@@ -7,6 +7,7 @@ import (
 	"github.com/codalotl/codalotl/internal/llmstream"
 )
 
+// patchChangeKind classifies the visible kind of a patch change.
 type patchChangeKind int
 
 const (
@@ -16,6 +17,7 @@ const (
 	patchChangeRenameOnly
 )
 
+// patchLineKind classifies a rendered patch line.
 type patchLineKind int
 
 const (
@@ -25,20 +27,23 @@ const (
 	patchLineGap
 )
 
+// patchChange describes one visible file change in a presenter diff.
 type patchChange struct {
-	kind       patchChangeKind
-	path       string
-	toPath     string
-	replaceAll bool // replaceAll indicates that an edit tool call requested global replacement.
-	lines      []patchLine
+	kind       patchChangeKind // Kind selects the visible change verb.
+	path       string          // Path is the primary displayed file path.
+	toPath     string          // ToPath is the destination path for renames or edits that change paths.
+	replaceAll bool            // replaceAll indicates that an edit tool call requested global replacement.
+	lines      []patchLine     // Lines are the visible diff lines for the change.
 }
 
+// patchLine describes one visible line in a rendered patch.
 type patchLine struct {
-	kind   patchLineKind
-	prefix string
-	text   string
+	kind   patchLineKind // Kind selects the line color and rendering behavior.
+	prefix string        // Prefix is the visible diff marker written before text.
+	text   string        // Text is the line content before final sanitization.
 }
 
+// applyPatchHeaderSegments returns styled header segments for a patch change.
 func applyPatchHeaderSegments(change patchChange) []textSegment {
 	switch change.kind {
 	case patchChangeAdd:
@@ -72,6 +77,7 @@ func applyPatchHeaderSegments(change patchChange) []textSegment {
 	}
 }
 
+// patchChangeFromPresentedDiffEdit converts a semantic diff edit into a renderable patch change.
 func patchChangeFromPresentedDiffEdit(edit llmstream.DiffEdit) patchChange {
 	change := patchChange{
 		path:       sanitizeText(firstNonEmpty(edit.OldPath, edit.NewPath)),
@@ -117,6 +123,7 @@ func patchChangeFromPresentedDiffSummary(diff llmstream.Diff) patchChange {
 	return patchChangeFromPresentedDiffEdit(diff.Edits[0])
 }
 
+// patchLinesFromPresentedDiff converts semantic diff lines into renderable patch lines.
 func patchLinesFromPresentedDiff(lines []llmstream.DiffLine) []patchLine {
 	patchLines := make([]patchLine, 0, len(lines))
 	for _, line := range lines {
@@ -154,6 +161,7 @@ func patchLinesFromPresentedDiff(lines []llmstream.DiffLine) []patchLine {
 	return cleanPatchLines(patchLines)
 }
 
+// buildPatchStyledRunes builds styled display runes for a patch line.
 func (f *textTUIFormatter) buildPatchStyledRunes(line patchLine) []styledRune {
 	base := runeStyle{color: colorNormal}
 	switch line.kind {
@@ -198,6 +206,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// cleanPatchLines removes redundant omitted-context gaps from patch lines.
 func cleanPatchLines(lines []patchLine) []patchLine {
 	if len(lines) == 0 {
 		return lines

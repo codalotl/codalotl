@@ -20,10 +20,12 @@ import (
 	gmtext "github.com/yuin/goldmark/text"
 )
 
+// MinTerminalWidth is the minimum width at which the formatter uses TUI wrapping.
 const MinTerminalWidth = 30
 
 const sanitizeTabWidth = 4
 
+// sanitizeText normalizes text for terminal display by expanding tabs and escaping non-printing control bytes.
 func sanitizeText(s string) string {
 	if s == "" {
 		return ""
@@ -31,6 +33,7 @@ func sanitizeText(s string) string {
 	return termformat.Sanitize(s, sanitizeTabWidth)
 }
 
+// Formatter renders agent events as terminal-ready display text.
 type Formatter interface {
 	// FormatEvent returns the content to print in a chat window or stdout-based CLI.
 	//
@@ -51,10 +54,11 @@ type Config struct {
 	ErrorColor      termformat.Color // If nil, uses a default red suitable for terminals, downsampled to the detected color profile.
 }
 
+// textTUIFormatter formats agent events as styled terminal text for CLI and TUI output.
 type textTUIFormatter struct {
-	cfg     Config
-	palette palette
-	md      goldmark.Markdown
+	cfg     Config            // Configuration used for formatter behavior and color selection.
+	palette palette           // Palette maps semantic formatter roles to terminal styles.
+	md      goldmark.Markdown // Markdown parser used to identify inline code spans.
 }
 
 // NewTUIFormatter creates a new Formatter configured for chat/TUI rendering.
@@ -68,6 +72,7 @@ func NewTUIFormatter(c Config) Formatter {
 	}
 }
 
+// FormatEvent formats e for terminal display, choosing CLI or TUI wrapping based on terminalWidth.
 func (f *textTUIFormatter) FormatEvent(e agent.Event, terminalWidth int) string {
 	if terminalWidth <= 0 {
 		terminalWidth = MinTerminalWidth
@@ -107,6 +112,7 @@ func indentLines(content string, indentWidth int) string {
 	return strings.Join(lines, "\n")
 }
 
+// formatCLI formats e as unwrapped stdout-oriented terminal output. It returns an empty string for event types that this formatter does not render.
 func (f *textTUIFormatter) formatCLI(e agent.Event) string {
 	switch e.Type {
 	case agent.EventTypeUserMessageQueued:
@@ -140,6 +146,7 @@ func (f *textTUIFormatter) formatCLI(e agent.Event) string {
 	}
 }
 
+// formatTUI formats e as fixed-width TUI terminal output, wrapping lines to width. It returns an empty string for event types that this formatter does not render.
 func (f *textTUIFormatter) formatTUI(e agent.Event, terminalWidth int) string {
 	switch e.Type {
 	case agent.EventTypeUserMessageQueued:
@@ -173,6 +180,7 @@ func (f *textTUIFormatter) formatTUI(e agent.Event, terminalWidth int) string {
 	}
 }
 
+// cliAssistantText formats assistant text as a single CLI assistant line.
 func (f *textTUIFormatter) cliAssistantText(content string) string {
 	content = sanitizeText(content)
 	if strings.TrimSpace(content) == "" {
@@ -182,6 +190,7 @@ func (f *textTUIFormatter) cliAssistantText(content string) string {
 	return f.cliSimpleLine(runes, colorAccent)
 }
 
+// tuiAssistantText formats assistant text as a wrapped TUI assistant message.
 func (f *textTUIFormatter) tuiAssistantText(content string, width int) string {
 	content = sanitizeText(content)
 	if strings.TrimSpace(content) == "" {
@@ -191,6 +200,7 @@ func (f *textTUIFormatter) tuiAssistantText(content string, width int) string {
 	return f.wrapStyledText(runes, width, f.bulletPrefix(colorAccent), "  ")
 }
 
+// cliUserMessage formats a user-authored queued-message line for CLI output.
 func (f *textTUIFormatter) cliUserMessage(message string, queued bool) string {
 	message = sanitizeText(message)
 	if strings.TrimSpace(message) == "" {
@@ -205,6 +215,7 @@ func (f *textTUIFormatter) cliUserMessage(message string, queued bool) string {
 	return builder.String()
 }
 
+// tuiUserMessage formats a user-authored queued-message line with TUI wrapping.
 func (f *textTUIFormatter) tuiUserMessage(message string, width int, queued bool) string {
 	message = sanitizeText(message)
 	if strings.TrimSpace(message) == "" {
@@ -217,6 +228,7 @@ func (f *textTUIFormatter) tuiUserMessage(message string, width int, queued bool
 	return f.wrapStyledText(runes, width, f.userPrefix(), "   ")
 }
 
+// userPrefix returns the styled prefix used for user-authored event lines.
 func (f *textTUIFormatter) userPrefix() string {
 	var builder strings.Builder
 	builder.WriteString(" ")
@@ -230,6 +242,7 @@ func (f *textTUIFormatter) userPrefix() string {
 
 var reasoningSummaryPattern = regexp.MustCompile(`(?s)^\s*\*\*(.+?)\*\*\s*(?:\n+(.*))?$`)
 
+// tuiAssistantReasoning formats assistant reasoning as italic wrapped TUI text.
 func (f *textTUIFormatter) tuiAssistantReasoning(content string, width int) string {
 	content = sanitizeText(content)
 	summary, ok := extractReasoningSummary(content)
@@ -242,6 +255,7 @@ func (f *textTUIFormatter) tuiAssistantReasoning(content string, width int) stri
 	return f.wrapStyledText(runes, width, f.bulletPrefix(colorAccent), "  ")
 }
 
+// cliAssistantReasoning formats assistant reasoning as italic CLI text.
 func (f *textTUIFormatter) cliAssistantReasoning(content string) string {
 	content = sanitizeText(content)
 	summary, ok := extractReasoningSummary(content)
@@ -290,6 +304,7 @@ func toolDisplayName(e agent.Event) string {
 	return sanitizeText(name)
 }
 
+// tuiToolOutput formats running tool output as a nested wrapped TUI message.
 func (f *textTUIFormatter) tuiToolOutput(content string, width int) string {
 	content = sanitizeText(content)
 	if strings.TrimSpace(content) == "" {
@@ -299,6 +314,7 @@ func (f *textTUIFormatter) tuiToolOutput(content string, width int) string {
 	return f.wrapStyledText(runes, width, f.nestedToolOutputPrefix(), "    ")
 }
 
+// cliToolOutput formats running tool output as a nested CLI message.
 func (f *textTUIFormatter) cliToolOutput(content string) string {
 	content = sanitizeText(content)
 	if strings.TrimSpace(content) == "" {
@@ -308,10 +324,12 @@ func (f *textTUIFormatter) cliToolOutput(content string) string {
 	return f.wrapStyledText(runes, 1<<30, f.nestedToolOutputPrefix(), "    ")
 }
 
+// nestedToolOutputPrefix returns the styled nested bullet prefix for running tool output.
 func (f *textTUIFormatter) nestedToolOutputPrefix() string {
 	return "  " + f.bulletPrefix(colorAccent)
 }
 
+// presentedBodyLineKind classifies a presenter body line for rendering.
 type presentedBodyLineKind int
 
 const (
@@ -320,12 +338,14 @@ const (
 	presentedBodyLinePatch
 )
 
+// presentedBodyLine represents one normalized line from a presenter body.
 type presentedBodyLine struct {
-	kind  presentedBodyLineKind
-	runes []styledRune
-	patch patchLine
+	kind  presentedBodyLineKind // Kind selects the body-line rendering behavior.
+	runes []styledRune          // Runes contain pre-styled text for standard and section lines.
+	patch patchLine             // Patch contains the diff line to render when kind is presentedBodyLinePatch.
 }
 
+// presenterPresentation returns the semantic tool presentation for e when a presenter supplies one.
 func presenterPresentation(e agent.Event) (llmstream.Presentation, bool) {
 	if e.Tool == nil || e.ToolCall == nil {
 		return llmstream.Presentation{}, false
@@ -408,6 +428,7 @@ func presentationLineSegments(line llmstream.Line) []textSegment {
 	return presentationLineSegmentsWithTransform(line, nil)
 }
 
+// presentationLineSegmentsWithTransform converts a semantic line into styled text segments.
 func presentationLineSegmentsWithTransform(line llmstream.Line, transform func(runeStyle) runeStyle) []textSegment {
 	if len(line.Segments) == 0 {
 		return nil
@@ -435,6 +456,7 @@ func presentationLineSegmentsWithTransform(line llmstream.Line, transform func(r
 	return segments
 }
 
+// tuiPresentedToolSummary formats a presenter summary as a wrapped TUI tool line.
 func (f *textTUIFormatter) tuiPresentedToolSummary(width int, bullet colorRole, presentation llmstream.Presentation) string {
 	if diff, ok := presentationDiffBody(presentation); ok && len(diff.Edits) > 0 {
 		return f.tuiBulletLine(width, bullet, applyPatchHeaderSegments(patchChangeFromPresentedDiffSummary(diff))...)
@@ -442,6 +464,7 @@ func (f *textTUIFormatter) tuiPresentedToolSummary(width int, bullet colorRole, 
 	return f.tuiBulletLine(width, bullet, presentationLineSegments(presentation.Summary)...)
 }
 
+// cliPresentedToolSummary formats a presenter summary as a CLI tool line.
 func (f *textTUIFormatter) cliPresentedToolSummary(bullet colorRole, presentation llmstream.Presentation) string {
 	if diff, ok := presentationDiffBody(presentation); ok && len(diff.Edits) > 0 {
 		return f.cliBulletLine(bullet, applyPatchHeaderSegments(patchChangeFromPresentedDiffSummary(diff))...)
@@ -449,6 +472,7 @@ func (f *textTUIFormatter) cliPresentedToolSummary(bullet colorRole, presentatio
 	return f.cliBulletLine(bullet, presentationLineSegments(presentation.Summary)...)
 }
 
+// presenterCompletionErrorOutput returns shared completion error output for result when it should be rendered.
 func presenterCompletionErrorOutput(result *llmstream.ToolResult) ([]toolOutputLine, bool) {
 	if result == nil {
 		return nil, false
@@ -485,6 +509,7 @@ func presenterCompletionSuccess(e agent.Event, presentation llmstream.Presentati
 	return success, outputLines
 }
 
+// presenterBodyLines converts a presenter body into formatter body lines.
 func (f *textTUIFormatter) presenterBodyLines(presentation llmstream.Presentation) []presentedBodyLine {
 	switch body := presentation.Body.(type) {
 	case llmstream.Paragraph:
@@ -515,6 +540,7 @@ func (f *textTUIFormatter) presenterBodyLines(presentation llmstream.Presentatio
 	return nil
 }
 
+// presenterParagraphBlockLines converts a paragraph body into standard presenter body lines.
 func (f *textTUIFormatter) presenterParagraphBlockLines(paragraph llmstream.Paragraph) []presentedBodyLine {
 	lines := make([]presentedBodyLine, 0, len(paragraph.Lines))
 	for _, line := range paragraph.Lines {
@@ -535,6 +561,7 @@ func checklistMarkerStyle(segments []textSegment, fallback runeStyle) runeStyle 
 	return fallback
 }
 
+// presenterChecklistBlockLines converts a checklist presenter body into ordered body lines.
 func (f *textTUIFormatter) presenterChecklistBlockLines(checklist llmstream.Checklist) []presentedBodyLine {
 	lines := make([]presentedBodyLine, 0, len(checklist.Items)+1)
 	if overview := presentationLineSegments(checklist.Overview); len(overview) > 0 {
@@ -567,6 +594,7 @@ func (f *textTUIFormatter) presenterChecklistBlockLines(checklist llmstream.Chec
 	return lines
 }
 
+// presenterDiffBlockLines converts a diff body into section, patch, and error body lines.
 func (f *textTUIFormatter) presenterDiffBlockLines(diff llmstream.Diff) []presentedBodyLine {
 	var lines []presentedBodyLine
 	for idx, edit := range diff.Edits {
@@ -596,6 +624,7 @@ func (f *textTUIFormatter) presenterDiffBlockLines(diff llmstream.Diff) []presen
 	return lines
 }
 
+// presenterOutputBlockLines converts line-oriented output into presenter body lines.
 func (f *textTUIFormatter) presenterOutputBlockLines(output llmstream.Output) []presentedBodyLine {
 	lines := make([]presentedBodyLine, 0, len(output.Lines)+1)
 	for _, line := range output.Lines {
@@ -615,6 +644,7 @@ func (f *textTUIFormatter) presenterOutputBlockLines(output llmstream.Output) []
 	return lines
 }
 
+// appendPresentedBodyTUI appends presenter body lines using TUI tool-body indentation.
 func (f *textTUIFormatter) appendPresentedBodyTUI(builder *strings.Builder, width int, bullet colorRole, lines []presentedBodyLine) {
 	wroteStandard := false
 	for _, line := range lines {
@@ -653,6 +683,7 @@ func (f *textTUIFormatter) appendPresentedBodyTUI(builder *strings.Builder, widt
 	}
 }
 
+// presentedBodyCLILines formats presenter body lines for CLI output.
 func (f *textTUIFormatter) presentedBodyCLILines(bullet colorRole, lines []presentedBodyLine) []string {
 	if len(lines) == 0 {
 		return nil
@@ -678,6 +709,7 @@ func (f *textTUIFormatter) presentedBodyCLILines(bullet colorRole, lines []prese
 	return result
 }
 
+// tuiToolCall formats a tool-call event for TUI output.
 func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 	if presentation, ok := presenterPresentation(e); ok {
 		var builder strings.Builder
@@ -690,6 +722,7 @@ func (f *textTUIFormatter) tuiToolCall(e agent.Event, width int) string {
 	return f.tuiGenericToolCall(e, width)
 }
 
+// cliToolCall formats a tool-call event for CLI output.
 func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 	if presentation, ok := presenterPresentation(e); ok {
 		lines := []string{f.cliPresentedToolSummary(colorAccent, presentation)}
@@ -703,6 +736,7 @@ func (f *textTUIFormatter) cliToolCall(e agent.Event) string {
 	return f.cliGenericToolCall(e)
 }
 
+// tuiGenericToolCall formats an unpresented tool call as a wrapped TUI summary line.
 func (f *textTUIFormatter) tuiGenericToolCall(e agent.Event, width int) string {
 	name := toolDisplayName(e)
 	segments := []textSegment{
@@ -719,6 +753,7 @@ func (f *textTUIFormatter) tuiGenericToolCall(e agent.Event, width int) string {
 	return f.tuiBulletLine(width, colorAccent, segments...)
 }
 
+// cliGenericToolCall formats an unpresented tool call as a CLI summary line.
 func (f *textTUIFormatter) cliGenericToolCall(e agent.Event) string {
 	name := toolDisplayName(e)
 	segments := []textSegment{
@@ -735,6 +770,7 @@ func (f *textTUIFormatter) cliGenericToolCall(e agent.Event) string {
 	return f.cliBulletLine(colorAccent, segments...)
 }
 
+// tuiToolComplete formats e as a wrapped TUI tool-completion message.
 func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 	if f.isSillyAgentOutsidePackage(e) {
 		return f.tuiSillyAgentOutsidePackage(e, width)
@@ -767,6 +803,7 @@ func (f *textTUIFormatter) tuiToolComplete(e agent.Event, width int) string {
 	return f.tuiGenericToolComplete(e, width, success, outputLines)
 }
 
+// cliToolComplete formats e as an unwrapped CLI tool-completion message.
 func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 	if f.isSillyAgentOutsidePackage(e) {
 		return f.cliSillyAgentOutsidePackage(e)
@@ -804,6 +841,7 @@ func (f *textTUIFormatter) cliToolComplete(e agent.Event) string {
 	return f.cliGenericToolComplete(e, success, outputLines)
 }
 
+// isSillyAgentOutsidePackage reports whether e failed because a tool accessed a path outside the package.
 func (f *textTUIFormatter) isSillyAgentOutsidePackage(e agent.Event) bool {
 	if e.ToolResult == nil || e.ToolResult.SourceErr == nil {
 		return false
@@ -811,6 +849,7 @@ func (f *textTUIFormatter) isSillyAgentOutsidePackage(e agent.Event) bool {
 	return errors.Is(e.ToolResult.SourceErr, authdomain.ErrCodeUnitPathOutside)
 }
 
+// sillyAgentToolAndPath returns the tool name and optional path for an outside-package tool error.
 func sillyAgentToolAndPath(e agent.Event) (tool string, path string, hasPath bool) {
 	tool = strings.TrimSpace(normalizedToolName(e))
 	if tool == "" {
@@ -833,6 +872,7 @@ func sillyAgentToolAndPath(e agent.Event) (tool string, path string, hasPath boo
 	return tool, "", false
 }
 
+// tuiSillyAgentOutsidePackage formats an outside-package tool error for TUI output.
 func (f *textTUIFormatter) tuiSillyAgentOutsidePackage(e agent.Event, width int) string {
 	tool, path, hasPath := sillyAgentToolAndPath(e)
 	msg := "Silly LLM tried " + tool
@@ -845,6 +885,7 @@ func (f *textTUIFormatter) tuiSillyAgentOutsidePackage(e agent.Event, width int)
 	return f.wrapStyledText(runes, width, f.bulletPrefix(colorRed), "  ")
 }
 
+// cliSillyAgentOutsidePackage formats an outside-package tool error for CLI output.
 func (f *textTUIFormatter) cliSillyAgentOutsidePackage(e agent.Event) string {
 	tool, path, hasPath := sillyAgentToolAndPath(e)
 	msg := "Silly LLM tried " + tool
@@ -857,6 +898,7 @@ func (f *textTUIFormatter) cliSillyAgentOutsidePackage(e agent.Event) string {
 	return f.cliSimpleLine(runes, colorRed)
 }
 
+// toolOutputFirstPrefix returns the styled prefix for the first line of tool body output.
 func (f *textTUIFormatter) toolOutputFirstPrefix() string {
 	var builder strings.Builder
 	builder.WriteString("  ")
@@ -865,6 +907,7 @@ func (f *textTUIFormatter) toolOutputFirstPrefix() string {
 	return builder.String()
 }
 
+// cliToolOutputPrefix returns the CLI prefix for a tool output line.
 func (f *textTUIFormatter) cliToolOutputPrefix(first bool) []styledRune {
 	if first {
 		var runes []styledRune
@@ -876,6 +919,7 @@ func (f *textTUIFormatter) cliToolOutputPrefix(first bool) []styledRune {
 	return f.buildStyledRunes("    ", runeStyle{color: colorNormal}, nil)
 }
 
+// appendTUIToolOutput appends tool output lines using TUI tool-body indentation.
 func (f *textTUIFormatter) appendTUIToolOutput(builder *strings.Builder, width int, lines []toolOutputLine) {
 	if len(lines) == 0 {
 		return
@@ -897,6 +941,7 @@ func (f *textTUIFormatter) appendTUIToolOutput(builder *strings.Builder, width i
 	}
 }
 
+// cliToolOutputLines formats tool output lines for CLI output.
 func (f *textTUIFormatter) cliToolOutputLines(lines []toolOutputLine) []string {
 	if len(lines) == 0 {
 		return nil
@@ -916,6 +961,7 @@ func (f *textTUIFormatter) cliToolOutputLines(lines []toolOutputLine) []string {
 	return result
 }
 
+// tuiGenericToolComplete formats an unpresented tool completion for TUI output.
 func (f *textTUIFormatter) tuiGenericToolComplete(e agent.Event, width int, success bool, outputLines []toolOutputLine) string {
 	name := toolDisplayName(e)
 	segments := []textSegment{
@@ -939,6 +985,7 @@ func (f *textTUIFormatter) tuiGenericToolComplete(e agent.Event, width int, succ
 	return builder.String()
 }
 
+// cliGenericToolComplete formats an unpresented tool completion for CLI output.
 func (f *textTUIFormatter) cliGenericToolComplete(e agent.Event, success bool, outputLines []toolOutputLine) string {
 	name := toolDisplayName(e)
 	segments := []textSegment{
@@ -963,6 +1010,7 @@ func (f *textTUIFormatter) cliGenericToolComplete(e agent.Event, success bool, o
 	return strings.Join(lines, "\n")
 }
 
+// tuiStatusLine formats a wrapped TUI status line with an optional error detail.
 func (f *textTUIFormatter) tuiStatusLine(kind string, err error, width int, c colorRole) string {
 	msg := kind
 	if err != nil {
@@ -973,6 +1021,7 @@ func (f *textTUIFormatter) tuiStatusLine(kind string, err error, width int, c co
 	return f.wrapStyledText(runes, width, f.bulletPrefix(c), "  ")
 }
 
+// cliStatusLine formats a CLI status line with an optional error detail.
 func (f *textTUIFormatter) cliStatusLine(kind string, err error, c colorRole) string {
 	msg := kind
 	if err != nil {
@@ -983,18 +1032,21 @@ func (f *textTUIFormatter) cliStatusLine(kind string, err error, c colorRole) st
 	return f.cliSimpleLine(runes, c)
 }
 
+// tuiSimpleLine formats a simple wrapped TUI bullet line.
 func (f *textTUIFormatter) tuiSimpleLine(message string, width int, c colorRole, italic bool) string {
 	message = sanitizeText(message)
 	runes := f.buildStyledRunes(message, runeStyle{color: colorNormal, italic: italic}, nil)
 	return f.wrapStyledText(runes, width, f.bulletPrefix(c), "  ")
 }
 
+// cliPlainLine formats a simple CLI bullet line with normal message text.
 func (f *textTUIFormatter) cliPlainLine(c colorRole, message string) string {
 	message = sanitizeText(message)
 	runes := f.buildStyledRunes(message, runeStyle{color: colorNormal}, nil)
 	return f.cliSimpleLine(runes, c)
 }
 
+// cliSimpleLine formats styled runes after a CLI bullet prefix.
 func (f *textTUIFormatter) cliSimpleLine(runes []styledRune, c colorRole) string {
 	builder := strings.Builder{}
 	builder.WriteString(f.bulletPrefix(c))
@@ -1002,6 +1054,7 @@ func (f *textTUIFormatter) cliSimpleLine(runes []styledRune, c colorRole) string
 	return builder.String()
 }
 
+// tuiTurnComplete formats a completed assistant turn summary for TUI output.
 func (f *textTUIFormatter) tuiTurnComplete(e agent.Event, width int) string {
 	if e.Turn == nil {
 		return ""
@@ -1019,6 +1072,7 @@ func (f *textTUIFormatter) tuiTurnComplete(e agent.Event, width int) string {
 	return f.wrapStyledText(runes, width, f.bulletPrefix(colorAccent), "  ")
 }
 
+// cliTurnComplete formats a completed assistant turn summary for CLI output.
 func (f *textTUIFormatter) cliTurnComplete(e agent.Event) string {
 	if e.Turn == nil {
 		return ""
@@ -1036,10 +1090,11 @@ func (f *textTUIFormatter) cliTurnComplete(e agent.Event) string {
 	return f.cliSimpleLine(runes, colorAccent)
 }
 
+// toolOutputLine describes one formatted tool output line.
 type toolOutputLine struct {
-	text          string
-	style         runeStyle
-	highlightCode bool
+	text          string    // Text is the display text for the line before final wrapping.
+	style         runeStyle // Style is the base style applied to the line text.
+	highlightCode bool      // HighlightCode reports whether inline Markdown code spans should be accent-colored.
 }
 
 // parseToolResult returns success and formatted output lines. Most tools use the default summarized output limit; tool-specific formatters can ignore the returned
@@ -1060,6 +1115,7 @@ func parseToolResult(e agent.Event) (bool, []toolOutputLine) {
 	return success, lines
 }
 
+// toolResultSuccess infers whether result represents success and reports whether the inference was explicit.
 func toolResultSuccess(result llmstream.ToolResult) (bool, bool) {
 	trimmed := strings.TrimSpace(result.Result)
 
@@ -1094,6 +1150,7 @@ func toolResultSuccess(result llmstream.ToolResult) (bool, bool) {
 	return false, false
 }
 
+// extractXMLishOK extracts a boolean ok attribute from an XML-like opening tag.
 func extractXMLishOK(s string) (ok bool, found bool) {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "<") {
@@ -1134,6 +1191,7 @@ func summarizeToolResult(result llmstream.ToolResult) []toolOutputLine {
 	return summarizeToolResultWithMaxLines(result, 5)
 }
 
+// summarizeToolResultWithMaxLines summarizes result into display output lines with an optional line limit.
 func summarizeToolResultWithMaxLines(result llmstream.ToolResult, maxLines int) []toolOutputLine {
 	trimmed := strings.TrimSpace(result.Result)
 	if trimmed == "" {
@@ -1169,6 +1227,7 @@ func summarizeToolResultWithMaxLines(result llmstream.ToolResult, maxLines int) 
 	return summarizeToolContentWithMaxLines(trimmed, maxLines)
 }
 
+// summarizeToolContentWithMaxLines summarizes tool content into accent output lines.
 func summarizeToolContentWithMaxLines(content string, maxLines int) []toolOutputLine {
 	content = sanitizeText(content)
 	content = strings.ReplaceAll(content, "\r\n", "\n")
@@ -1211,11 +1270,13 @@ func trimEmpty(lines []string) []string {
 	return lines
 }
 
+// byteRange identifies a half-open byte range in source text.
 type byteRange struct {
-	start int
-	end   int
+	start int // Start is the inclusive byte offset.
+	end   int // End is the exclusive byte offset.
 }
 
+// codeRanges returns byte ranges for inline Markdown code spans in content.
 func (f *textTUIFormatter) codeRanges(content string) []byteRange {
 	source := []byte(content)
 	reader := gmtext.NewReader(source)
@@ -1255,22 +1316,26 @@ func (f *textTUIFormatter) codeRanges(content string) []byteRange {
 	return ranges
 }
 
+// colorRole identifies a semantic color used by formatted terminal text.
 type colorRole int
 
+// Color roles describe semantic foreground colors used by the formatter.
 const (
-	colorNone colorRole = iota
-	colorNormal
-	colorAccent
-	colorGreen
-	colorRed
-	colorColorful
+	colorNone     colorRole = iota // colorNone leaves text without an explicit formatter color.
+	colorNormal                    // colorNormal uses the primary foreground color.
+	colorAccent                    // colorAccent uses the lower-emphasis accent color.
+	colorGreen                     // colorGreen uses the success color.
+	colorRed                       // colorRed uses the error color.
+	colorColorful                  // colorColorful uses the high-emphasis action color.
 )
 
+// palette maps formatter color roles and effects to terminal styles.
 type palette struct {
-	styles       map[colorRole]termformat.Style
-	allowEffects bool
+	styles       map[colorRole]termformat.Style // Styles maps semantic color roles to terminal styles.
+	allowEffects bool                           // AllowEffects reports whether bold and italic effects may be emitted.
 }
 
+// newPalette returns the semantic style palette described by cfg.
 func newPalette(cfg Config) palette {
 
 	noColorPalette := palette{
@@ -1344,6 +1409,7 @@ func newPalette(cfg Config) palette {
 	}
 }
 
+// style converts a rune style into a terminal style.
 func (p palette) style(rs runeStyle) termformat.Style {
 	style := p.styles[rs.color]
 	if !p.allowEffects {
@@ -1388,24 +1454,28 @@ func perceivedBrightness(r, g, b uint8) float64 {
 	return 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
 }
 
+// runeStyle describes the semantic style applied to text runes.
 type runeStyle struct {
-	color  colorRole
-	italic bool
-	bold   bool
+	color  colorRole // Color selects the semantic foreground role.
+	italic bool      // Italic requests italic text when effects are enabled.
+	bold   bool      // Bold requests bold text when effects are enabled.
 }
 
+// styledRune is a rune with source byte offsets and display styling.
 type styledRune struct {
-	r         rune
-	byteStart int
-	byteEnd   int
-	style     runeStyle
+	r         rune      // R is the Unicode code point to display.
+	byteStart int       // ByteStart is the inclusive source byte offset for r.
+	byteEnd   int       // ByteEnd is the exclusive source byte offset for r.
+	style     runeStyle // Style is the display style applied to r.
 }
 
+// textSegment is a styled text fragment used to build formatted lines.
 type textSegment struct {
-	text  string
-	style runeStyle
+	text  string    // Text is the segment content before sanitization.
+	style runeStyle // Style is the base style for the segment.
 }
 
+// buildStyledRunes converts content into styled runes and accents selected byte ranges.
 func (f *textTUIFormatter) buildStyledRunes(content string, base runeStyle, accentRanges []byteRange) []styledRune {
 	if content == "" {
 		return nil
@@ -1440,6 +1510,7 @@ func (f *textTUIFormatter) buildStyledRunes(content string, base runeStyle, acce
 	return stripColorizedBackticks(runes)
 }
 
+// runesFromSegments converts text segments into sanitized styled runes.
 func (f *textTUIFormatter) runesFromSegments(segments ...textSegment) []styledRune {
 	if len(segments) == 0 {
 		return nil
@@ -1459,16 +1530,19 @@ func (f *textTUIFormatter) runesFromSegments(segments ...textSegment) []styledRu
 	return out
 }
 
+// tuiBulletLine formats text segments as a wrapped TUI bullet line.
 func (f *textTUIFormatter) tuiBulletLine(width int, bulletColor colorRole, segments ...textSegment) string {
 	runes := f.runesFromSegments(segments...)
 	return f.wrapStyledText(runes, width, f.bulletPrefix(bulletColor), "  ")
 }
 
+// cliBulletLine formats text segments as a CLI bullet line.
 func (f *textTUIFormatter) cliBulletLine(bulletColor colorRole, segments ...textSegment) string {
 	runes := f.runesFromSegments(segments...)
 	return f.cliSimpleLine(runes, bulletColor)
 }
 
+// bulletPrefix returns a styled bullet prefix for role.
 func (f *textTUIFormatter) bulletPrefix(role colorRole) string {
 	bulletRune := []styledRune{{
 		r:     '•',
@@ -1480,6 +1554,7 @@ func (f *textTUIFormatter) bulletPrefix(role colorRole) string {
 	return builder.String()
 }
 
+// wrapStyledText wraps styled content to width using separate first-line and continuation prefixes.
 func (f *textTUIFormatter) wrapStyledText(content []styledRune, width int, firstPrefix, restPrefix string) string {
 	var lines []line
 	baseFirstPrefix := firstPrefix
@@ -1585,9 +1660,10 @@ func (f *textTUIFormatter) wrapStyledText(content []styledRune, width int, first
 	return builder.String()
 }
 
+// line represents one wrapped line before final rendering.
 type line struct {
-	prefix string
-	runes  []styledRune
+	prefix string       // Prefix is the already-styled text written before the line content.
+	runes  []styledRune // Runes are the styled content for the line, excluding prefix.
 }
 
 func continuationPaddingForLine(line []styledRune) string {
@@ -1598,6 +1674,7 @@ func continuationPaddingForLine(line []styledRune) string {
 	return strings.Repeat(" ", width)
 }
 
+// listContinuationIndent returns the continuation indentation for a potentially listed line.
 func listContinuationIndent(line []styledRune) int {
 	i := 0
 	for i < len(line) && line[i].r == ' ' {
@@ -1686,6 +1763,7 @@ func isSpace(r rune) bool {
 	return r == ' ' || r == '\t'
 }
 
+// stripColorizedBackticks removes backticks surrounding accent-colored code spans.
 func stripColorizedBackticks(runes []styledRune) []styledRune {
 	if len(runes) == 0 {
 		return runes
@@ -1726,6 +1804,7 @@ func stripColorizedBackticks(runes []styledRune) []styledRune {
 	return result
 }
 
+// appendStyled appends styled runes to builder using the formatter palette.
 func (f *textTUIFormatter) appendStyled(builder *strings.Builder, runes []styledRune) {
 	if len(runes) == 0 {
 		return
@@ -1755,6 +1834,7 @@ func (f *textTUIFormatter) appendStyled(builder *strings.Builder, runes []styled
 	}
 }
 
+// styledString renders styled runes into a terminal-styled string.
 func (f *textTUIFormatter) styledString(runes []styledRune) string {
 	if len(runes) == 0 {
 		return ""
