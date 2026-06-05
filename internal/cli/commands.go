@@ -556,44 +556,7 @@ codalotl cas ls-namespaces
 			return nil
 		}),
 	}
-	lsPackagesCmd := &qcli.Command{
-		Name:  "ls-packages",
-		Short: "Summarize CAS coverage for packages in the current repo.",
-		Long: "Displays per-package CAS status for a registered namespace across discovered modules in the nearest git repo. " +
-			"Use --state, --min-age, and --min-churn to focus on packages that need first-time or refreshed work.",
-		Usage: "<namespace>",
-		ArgHelp: []qcli.ArgHelp{
-			{
-				Display:     "<namespace>",
-				Description: "Registered non-versioned namespace name.",
-			},
-		},
-		Example: strings.TrimSpace(`
-codalotl cas ls-packages specconforms
-codalotl cas ls-packages specconforms --state=outdated
-codalotl cas ls-packages specconforms --state=stale --min-age=30d --min-churn=20
-codalotl cas ls-packages specconforms --csv
-`),
-	}
-	lsPackagesFlags := lsPackagesCmd.Flags()
-	lsPackagesCSV := lsPackagesFlags.Bool("csv", 0, false, "Emit CSV instead of a terminal-oriented table.")
-	lsPackagesState := lsPackagesFlags.String("state", 0, "", "Filter rows by state: all, current, outdated, stale, or missing (default: all; thresholds default to stale).")
-	lsPackagesMinAge := lsPackagesFlags.String("min-age", 0, "", "Keep rows whose Age is at least this duration (examples: 12h, 30d, 4w, 1y).")
-	lsPackagesMinChurn := lsPackagesFlags.String("min-churn", 0, "", "Keep rows whose Churn % is at least this percent (examples: 20, 20%).")
-	lsPackagesCmd.Args = func(args []string) error {
-		if err := qcli.ExactArgs(1)(args); err != nil {
-			return err
-		}
-		_, err := parseCASLsPackagesOptions(*lsPackagesCSV, *lsPackagesState, *lsPackagesMinAge, *lsPackagesMinChurn)
-		return err
-	}
-	lsPackagesCmd.Run = runWithConfig("cas_ls_packages", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
-		opts, err := parseCASLsPackagesOptions(*lsPackagesCSV, *lsPackagesState, *lsPackagesMinAge, *lsPackagesMinChurn)
-		if err != nil {
-			return err
-		}
-		return runCASLsPackages(c.Context, c.Out, c.Args[0], opts)
-	})
+	lsPackagesCmd := newCASLsPackagesCommand(runWithConfig)
 	pruneCmd := &qcli.Command{
 		Name:             "prune",
 		Short:            "Delete obsolete CAS records.",
@@ -737,7 +700,7 @@ func newCodalotlCLICommandTree() *qcli.Command {
 		Short: "Content-addressable metadata storage (CAS).",
 		Long:  "Whitelisted CAS commands.",
 	}
-	casCmd.AddCommand(newCASRecertifyCommand(runWithConfig))
+	casCmd.AddCommand(newCASLsPackagesCommand(runWithConfig), newCASRecertifyCommand(runWithConfig))
 	specCmd := &qcli.Command{
 		Name:  "spec",
 		Short: "SPEC.md tools.",
@@ -763,6 +726,48 @@ codalotl spec status
 		}),
 	}
 	return statusCmd
+}
+
+func newCASLsPackagesCommand(runWithConfig runWithConfigFunc) *qcli.Command {
+	lsPackagesCmd := &qcli.Command{
+		Name:  "ls-packages",
+		Short: "Summarize CAS coverage for packages in the current repo.",
+		Long: "Displays per-package CAS status for a registered namespace across discovered modules in the nearest git repo. " +
+			"Use --state, --min-age, and --min-churn to focus on packages that need first-time or refreshed work.",
+		Usage: "<namespace>",
+		ArgHelp: []qcli.ArgHelp{
+			{
+				Display:     "<namespace>",
+				Description: "Registered non-versioned namespace name.",
+			},
+		},
+		Example: strings.TrimSpace(`
+codalotl cas ls-packages specconforms
+codalotl cas ls-packages specconforms --state=outdated
+codalotl cas ls-packages specconforms --state=stale --min-age=30d --min-churn=20
+codalotl cas ls-packages specconforms --csv
+`),
+	}
+	lsPackagesFlags := lsPackagesCmd.Flags()
+	lsPackagesCSV := lsPackagesFlags.Bool("csv", 0, false, "Emit CSV instead of a terminal-oriented table.")
+	lsPackagesState := lsPackagesFlags.String("state", 0, "", "Filter rows by state: all, current, outdated, stale, or missing (default: all; thresholds default to stale).")
+	lsPackagesMinAge := lsPackagesFlags.String("min-age", 0, "", "Keep rows whose Age is at least this duration (examples: 12h, 30d, 4w, 1y).")
+	lsPackagesMinChurn := lsPackagesFlags.String("min-churn", 0, "", "Keep rows whose Churn % is at least this percent (examples: 20, 20%).")
+	lsPackagesCmd.Args = func(args []string) error {
+		if err := qcli.ExactArgs(1)(args); err != nil {
+			return err
+		}
+		_, err := parseCASLsPackagesOptions(*lsPackagesCSV, *lsPackagesState, *lsPackagesMinAge, *lsPackagesMinChurn)
+		return err
+	}
+	lsPackagesCmd.Run = runWithConfig("cas_ls_packages", func(c *qcli.Context, _ Config, _ *remotemonitor.Monitor) error {
+		opts, err := parseCASLsPackagesOptions(*lsPackagesCSV, *lsPackagesState, *lsPackagesMinAge, *lsPackagesMinChurn)
+		if err != nil {
+			return err
+		}
+		return runCASLsPackages(c.Context, c.Out, c.Args[0], opts)
+	})
+	return lsPackagesCmd
 }
 
 func newCASRecertifyCommand(runWithConfig runWithConfigFunc) *qcli.Command {

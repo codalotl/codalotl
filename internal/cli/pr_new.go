@@ -99,7 +99,7 @@ codalotl pr new cas-prune --no-git
 			},
 			{
 				Display:     "--all-packages",
-				Description: "Target all Go packages in the current module. Requires --refactor.",
+				Description: "Target needed Go packages discovered for the selected refactor. Requires --refactor.",
 			},
 			{
 				Display:     "--refactor=<name>",
@@ -115,7 +115,7 @@ codalotl pr refactor --all-packages --refactor=docs-fix
 	}
 	refactorFlags := refactorCmd.Flags()
 	refactorPackage := refactorFlags.String("package", 'p', "", "Package to refactor (import path or dir; must resolve to a single Go package).")
-	refactorAllPackages := refactorFlags.Bool("all-packages", 0, false, "Target all Go packages in the current module. Requires --refactor.")
+	refactorAllPackages := refactorFlags.Bool("all-packages", 0, false, "Target needed Go packages discovered for the selected refactor. Requires --refactor.")
 	refactorName := refactorFlags.String("refactor", 0, "", "Optional refactor flow: docs-add, docs-fix, dry, test-cleanup, or test-ensure-coverage.")
 	refactorCmd.Args = func(args []string) error {
 		if err := qcli.NoArgs(args); err != nil {
@@ -377,33 +377,59 @@ Additional instructions:
 }
 
 func prRefactorAllPackagesTemplate(refactorName string) string {
+	discoveryInstructions := prRefactorAllPackagesDiscoveryInstructions(refactorName)
 	recertifyNamespaces := prRefactorCASNamespaces(refactorName)
-	recertifyInstructions := "No CAS namespace is currently recertifiable specifically for this refactor. If accepted package changes invalidate other applicable CAS records, recertify those after final changes."
+	recertifyInstructions := "No CAS namespace is currently recertifiable specifically for this refactor. If accepted package changes invalidate other applicable CAS records, recertify those after final changes from the module containing each package or with module-local package arguments."
 	if recertifyNamespaces != "" {
-		recertifyInstructions = fmt.Sprintf("After final accepted changes, use the codalotl_cli tool for each accepted package that needs recertification:\n  codalotl cas recertify <package> --namespaces=%q\n- Inspect and commit CAS files produced by recertify.", recertifyNamespaces)
+		recertifyInstructions = fmt.Sprintf("After final accepted changes, use the codalotl_cli tool for each accepted package that needs recertification, from the module containing that package or with a module-local package argument:\n  codalotl cas recertify <module-local-package> --namespaces=%q\n- Inspect and commit CAS files produced by recertify.", recertifyNamespaces)
 	}
 
 	return fmt.Sprintf(`# PR
 
 ## User Summary (do not modify)
 
-In this PR, run the %s refactor across all Go packages in the current module.
+In this PR, run the %s refactor across needed Go packages from discovered repo modules.
 
-Target: all Go packages in the current module
+Target: needed Go packages discovered for %s
 Selected refactor flow: %s
 
-For each package in the current module:
-1. refactor("name": "%s", "package": "<package>")
+%s
+
+Discovery commands may return packages from multiple Go modules.
+
+For each discovered needed package, run refactor("name": "%s", "package": "<package>").
 
 Additional instructions:
+- Refactor only packages in the discovered needed package list.
+- If discovery finds no needed packages, note that in this PR file and stop.
 - Inspect each refactor result and diff before moving to the next package.
-- Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package or small package group.
+- Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package.
 - Skip no-op packages without a commit and add a note in this PR file.
 - If a package looks risky or outside scope, do not fix-forward aggressively; revert/skip it and add a note in this PR file explaining why.
-- Due to CAS, packages already up to date for this refactor may be no-ops.
 - %s
 
-`, refactorName, refactorName, refactorName, recertifyInstructions)
+`, refactorName, refactorName, refactorName, discoveryInstructions, refactorName, recertifyInstructions)
+}
+
+func prRefactorAllPackagesDiscoveryInstructions(refactorName string) string {
+	if refactorName == prRefactorDocsAdd {
+		return `Discover needed packages first:
+- Use the codalotl_cli tool to run:
+  codalotl docs status
+- Use packages whose docs_add status is needed as the discovered needed package list.`
+	}
+	if refactorName == prRefactorDocsFix {
+		return `Discover needed packages first:
+- Use the codalotl_cli tool to run:
+  codalotl docs status
+- Use packages whose docs_fix status is needed as the discovered needed package list.`
+	}
+
+	namespace := prRefactorCASNamespaces(refactorName)
+	return fmt.Sprintf(`Discover needed packages first:
+- Use the codalotl_cli tool to run:
+  codalotl cas ls-packages %s --state=outdated
+- Use listed packages as the discovered needed package list.`, namespace)
 }
 
 func validatePRNewName(name string, label string) error {
