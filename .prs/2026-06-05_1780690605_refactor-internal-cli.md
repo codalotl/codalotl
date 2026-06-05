@@ -24,3 +24,39 @@ Additional instructions:
   codalotl cas recertify internal/cli --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"
 - Inspect and commit CAS files produced by recertify.
 
+## Plan
+
+### Package internal/cli
+
+Run the requested safe refactor sequence one refactor at a time. After each refactor:
+- Inspect the diff.
+- Commit useful, in-scope changes separately, including relevant CAS artifacts.
+- If the refactor is a no-op, record the skipped result here.
+- If the diff is risky or out of scope, revert or avoid it and record the decision here.
+
+#### Refactor sequence
+
+0. Run `docs-improve-from-clarify` for `internal/cli` because `.codalotl/cas/clarify-public-api-1` is present.
+1. `docs-add` for `internal/cli`.
+2. `docs-fix` for `internal/cli`.
+3. `dry` for `internal/cli`.
+4. `test-cleanup` for `internal/cli`.
+5. `test-ensure-coverage` for `internal/cli`.
+6. Run `codalotl cas recertify internal/cli --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"`.
+7. Inspect and commit recertification CAS artifacts.
+
+## Review
+
+Not started.
+
+## Summary
+
+Not written yet.
+
+## State
+
+- Branch: `jn/refactor-internal-cli`.
+- PR file: `.prs/2026-06-05_1780690605_refactor-internal-cli.md`.
+- Target package: `internal/cli`.
+- Workspace was clean before planning.
+- `.codalotl/cas/clarify-public-api-1` exists; run `docs-improve-from-clarify` before the requested refactor sequence.
