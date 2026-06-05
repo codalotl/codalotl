@@ -1,3 +1,4 @@
+// Package applypatch applies OpenAI-style apply_patch patches and fuzzy text replacements.
 package applypatch
 
 import (
@@ -153,6 +154,7 @@ func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error) {
 
 // ---------- Patch data structures ----------
 
+// hunkKind identifies the kind of file-level operation in a patch hunk.
 type hunkKind int
 
 const (
@@ -162,42 +164,50 @@ const (
 	hunkUpdate
 )
 
+// patchFile represents a parsed apply_patch document.
 type patchFile struct {
-	Hunks []fileHunk
+	Hunks []fileHunk // Hunks contains the file-level operations in patch order.
 }
 
+// fileHunk represents one file-level operation parsed from an apply_patch patch.
 type fileHunk struct {
-	Kind        hunkKind
-	Path        string
-	MoveTo      string
-	AddLines    []string
-	ChangeSets  []changeSet
-	NoFinalNL   bool
-	rawLineSpan [2]int
+	Kind        hunkKind    // Kind identifies whether the hunk adds, deletes, or updates a file.
+	Path        string      // Path is the file path targeted by the hunk.
+	MoveTo      string      // MoveTo is the destination path for an update hunk that renames the file.
+	AddLines    []string    // AddLines contains add-file content lines without patch prefixes.
+	ChangeSets  []changeSet // ChangeSets contains the update regions for an update hunk.
+	NoFinalNL   bool        // NoFinalNL reports whether the hunk requests that no final newline be written.
+	rawLineSpan [2]int      // rawLineSpan is the zero-based half-open line range occupied by the hunk in the parsed patch.
 }
 
+// changeSet represents one anchored update region within a file hunk.
 type changeSet struct {
-	Anchors []string
-	Lines   []changeLine
+	Anchors []string     // Anchors are optional strings that narrow the search location in order.
+	Lines   []changeLine // Lines contains the context, deletion, and insertion operations for the region.
 }
 
+// changeLine represents one context, deletion, or insertion line in an update hunk.
 type changeLine struct {
-	Op   byte
-	Text string
+	Op   byte   // Op is the patch operation: space for context, '-' for delete, or '+' for insert.
+	Text string // Text is the line content after the operation prefix.
 }
 
+// FileChangeKind identifies the kind of file-level change produced by ApplyPatch.
 type FileChangeKind int
 
-const (
-	_ FileChangeKind = iota
-	FileChangeAdded
-	FileChangeModified
-	FileChangeDeleted
-)
+// FileChangeAdded means the patch created the file.
+const FileChangeAdded FileChangeKind = 1
 
+// FileChangeModified means the patch edited an existing file in place.
+const FileChangeModified FileChangeKind = 2
+
+// FileChangeDeleted means the patch removed the file.
+const FileChangeDeleted FileChangeKind = 3
+
+// FileChange describes one relative path changed by ApplyPatch.
 type FileChange struct {
-	Path string
-	Kind FileChangeKind
+	Path string         // Path is slash-separated and relative to the ApplyPatch root.
+	Kind FileChangeKind // Kind reports whether the path was added, modified, or deleted.
 }
 
 var anchorASCIIReplacements = map[rune]string{
@@ -223,6 +233,7 @@ func ensureParentDir(path string) error {
 	return nil
 }
 
+// resolvePatchPath resolves raw to a slash-separated path relative to root and rejects paths outside root.
 func resolvePatchPath(root, raw string) (string, error) {
 	path := filepath.FromSlash(raw)
 	var abs string
@@ -248,9 +259,10 @@ func resolvePatchPath(root, raw string) (string, error) {
 
 // ---------- Parsing ----------
 
+// parser reads normalized patch input one line at a time.
 type parser struct {
-	lines []string
-	idx   int
+	lines []string // lines contains the normalized patch input split by newline.
+	idx   int      // idx is the zero-based index of the next unread line.
 }
 
 func newParser(input string) *parser {
@@ -282,6 +294,7 @@ func unwrapHeredocWrapper(input string) string {
 	return strings.Join(lines[first+1:last], "\n")
 }
 
+// parseHeredocDelimiter parses a heredoc opener and returns its delimiter.
 func parseHeredocDelimiter(line string) (string, bool) {
 	trimmed := strings.TrimSpace(line)
 	switch {
@@ -324,8 +337,10 @@ func lastNonBlankLine(lines []string) int {
 	return -1
 }
 
+// eof reports whether the parser has consumed all input lines.
 func (p *parser) eof() bool { return p.idx >= len(p.lines) }
 
+// peek returns the next unread line without advancing the parser.
 func (p *parser) peek() (string, bool) {
 	if p.eof() {
 		return "", false
@@ -333,6 +348,7 @@ func (p *parser) peek() (string, bool) {
 	return p.lines[p.idx], true
 }
 
+// next returns the next unread line and advances the parser.
 func (p *parser) next() (string, bool) {
 	line, ok := p.peek()
 	if !ok {
@@ -342,10 +358,13 @@ func (p *parser) next() (string, bool) {
 	return line, true
 }
 
+// lineNumber returns the one-based line number of the next unread line.
 func (p *parser) lineNumber() int { return p.idx + 1 }
 
+// mark returns the zero-based index of the next unread line.
 func (p *parser) mark() int { return p.idx }
 
+// parsePatch parses a complete apply_patch document into ordered file hunks.
 func parsePatch(input string) (*patchFile, error) {
 	p := newParser(input)
 	for {
@@ -390,6 +409,7 @@ func parsePatch(input string) (*patchFile, error) {
 	return &pf, nil
 }
 
+// parseFileHunk parses one add, delete, or update file hunk from the parser.
 func parseFileHunk(p *parser) (fileHunk, error) {
 	start := p.mark()
 	rawHeader, ok := p.next()
@@ -475,6 +495,7 @@ func parseAddLines(p *parser, path string) ([]string, error) {
 	return lines, nil
 }
 
+// parseChangeSets parses the change sets in an update hunk until the next file boundary.
 func parseChangeSets(p *parser, path string) ([]changeSet, error) {
 	var sets []changeSet
 	var cur changeSet
@@ -595,6 +616,7 @@ func applyAdd(root string, h fileHunk) error {
 	return os.WriteFile(osPath, []byte(content), 0o644)
 }
 
+// applyDelete deletes the file targeted by h and reports invalid-patch errors for missing files or directories.
 func applyDelete(root string, h fileHunk) error {
 	osPath := filepath.Join(root, filepath.FromSlash(h.Path))
 	info, err := os.Lstat(osPath)
@@ -616,6 +638,7 @@ func applyDelete(root string, h fileHunk) error {
 	return nil
 }
 
+// applyUpdate applies an update hunk under root, writing the updated file and performing any requested move.
 func applyUpdate(root string, h fileHunk) error {
 	src := filepath.Join(root, filepath.FromSlash(h.Path))
 	dst := src
@@ -654,10 +677,11 @@ func applyUpdate(root string, h fileHunk) error {
 
 // ---------- Text helpers ----------
 
+// textFile represents a text file split into lines with its newline style preserved.
 type textFile struct {
-	lines           []string
-	newline         string
-	hadFinalNewline bool
+	lines           []string // lines contains the file contents split into lines without newline terminators.
+	newline         string   // newline is the file's preferred newline sequence.
+	hadFinalNewline bool     // hadFinalNewline reports whether the file ended with a newline.
 }
 
 func readTextFile(path string) (textFile, error) {
@@ -679,6 +703,7 @@ func readTextFile(path string) (textFile, error) {
 	return textFile{lines: parts, newline: newline, hadFinalNewline: hadFinal}, nil
 }
 
+// joinLines joins lines with newline and optionally appends a final newline.
 func joinLines(lines []string, newline string, final bool) string {
 	switch len(lines) {
 	case 0:
@@ -700,6 +725,7 @@ func joinLines(lines []string, newline string, final bool) string {
 	return b.String()
 }
 
+// applyChangeSetsToLines applies ordered change sets to lines and returns the updated lines.
 func applyChangeSetsToLines(orig []string, sets []changeSet) ([]string, error) {
 	out := make([]string, 0, len(orig))
 	pos := 0
@@ -839,6 +865,7 @@ func convertAnchorToASCII(s string) string {
 	return b.String()
 }
 
+// findContextWithIndent finds pattern in orig, allowing consistent indentation remapping when needed.
 func findContextWithIndent(orig, pattern []string, from int, indentMap map[string]string) (int, error) {
 	if len(pattern) == 0 {
 		return from, nil

@@ -84,12 +84,14 @@ func Replace(absPath string, findText string, replacementText string, replaceAll
 	return updated, nil
 }
 
+// textMatch represents a candidate match in source text.
 type textMatch struct {
-	Start int
-	End   int
-	Score float64
+	Start int     // Start is the inclusive byte offset of the match.
+	End   int     // End is the exclusive byte offset of the match.
+	Score float64 // Score is the confidence or similarity score for the match.
 }
 
+// dedupeAndSortMatches removes duplicate ranges, keeps the highest-scoring match for each range, and sorts the result by source order.
 func dedupeAndSortMatches(matches []textMatch) []textMatch {
 	if len(matches) == 0 {
 		return nil
@@ -138,6 +140,8 @@ func selectNonOverlapping(matches []textMatch) []textMatch {
 	}
 	return out
 }
+
+// pickClearNearWinner returns the single clearly best near match, if one exists.
 func pickClearNearWinner(matches []textMatch) (textMatch, bool) {
 	if len(matches) == 0 {
 		return textMatch{}, false
@@ -248,18 +252,22 @@ func directFindMatches(content, find string) []textMatch {
 	return matches
 }
 
+// normalizedText stores normalized text with mappings back to raw byte offsets.
 type normalizedText struct {
-	text   string
-	starts []int
-	ends   []int
+	text   string // text is the normalized byte string.
+	starts []int  // starts maps each normalized byte to its inclusive raw byte offset.
+	ends   []int  // ends maps each normalized byte to its exclusive raw byte offset.
 }
 
+// rawRange converts a non-empty normalized byte range to the corresponding raw byte range.
 func (n normalizedText) rawRange(start, end int) (int, int, bool) {
 	if start < 0 || end > len(n.text) || start >= end {
 		return 0, 0, false
 	}
 	return n.starts[start], n.ends[end-1], true
 }
+
+// findUsingNormalizer finds normalized occurrences of find in content and returns their raw byte ranges.
 func findUsingNormalizer(content, find string, normalize func(string) normalizedText) []textMatch {
 	h := normalize(content)
 	n := normalize(find)
@@ -307,6 +315,8 @@ func normalizeUnicodeAndInvisible(s string) normalizedText {
 func normalizeWhitespaceRelaxed(s string) normalizedText {
 	return normalizeWithOptions(s, true)
 }
+
+// normalizeWithOptions normalizes text and records raw byte offsets for each normalized byte.
 func normalizeWithOptions(s string, collapseHorizontalWhitespace bool) normalizedText {
 	out := make([]byte, 0, len(s))
 	starts := make([]int, 0, len(s))
@@ -408,13 +418,15 @@ func isHorizontalWhitespaceRune(r rune) bool {
 	return mapped && r != '\n' && r != '\r'
 }
 
+// lineSegment represents one line and its byte range in normalized text.
 type lineSegment struct {
-	text       string
-	start      int
-	end        int
-	hasNewline bool
+	text       string // text is the line content without its newline.
+	start      int    // start is the inclusive byte offset of text in the normalized source.
+	end        int    // end is the exclusive byte offset of text in the normalized source.
+	hasNewline bool   // hasNewline reports whether this line was terminated by a newline.
 }
 
+// findIndentationNormalizedMatches finds multiline matches that differ only by a uniform indentation delta.
 func findIndentationNormalizedMatches(content, find string) []textMatch {
 	findNorm := strings.ReplaceAll(find, "\r\n", "\n")
 	if !strings.Contains(findNorm, "\n") {
@@ -452,6 +464,8 @@ func findIndentationNormalizedMatches(content, find string) []textMatch {
 	}
 	return matches
 }
+
+// splitLines splits s into line segments and reports whether s ended with a newline.
 func splitLines(s string) ([]lineSegment, bool) {
 	if s == "" {
 		return nil, false
@@ -480,6 +494,8 @@ func splitLines(s string) ([]lineSegment, bool) {
 	}
 	return lines, strings.HasSuffix(s, "\n")
 }
+
+// linesMatchUniformIndent reports whether candidate matches expected with one uniform indentation delta.
 func linesMatchUniformIndent(expected []lineSegment, candidate []lineSegment) bool {
 	if len(expected) != len(candidate) || len(expected) == 0 {
 		return false
@@ -520,6 +536,8 @@ func linesMatchUniformIndent(expected []lineSegment, candidate []lineSegment) bo
 	}
 	return true
 }
+
+// findNearMatches finds high-similarity normalized matches for find in content.
 func findNearMatches(content, find string) []textMatch {
 	h := normalizeWhitespaceRelaxed(content)
 	n := normalizeWhitespaceRelaxed(find)
@@ -570,6 +588,8 @@ func findNearMatches(content, find string) []textMatch {
 	}
 	return out
 }
+
+// levenshteinWithin returns the byte-wise Levenshtein distance between a and b, or maxDist+1 if it exceeds maxDist.
 func levenshteinWithin(a, b string, maxDist int) int {
 	if abs(len(a)-len(b)) > maxDist {
 		return maxDist + 1
