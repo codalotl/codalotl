@@ -22,10 +22,11 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
+// Session defaults and agent names used by the TUI.
 const (
-	defaultModelID       = llmmodel.DefaultModel
-	tuiAgentName         = "codalotl"
-	orchestrateAgentName = "pr-orchestrator"
+	defaultModelID       = llmmodel.DefaultModel // defaultModelID is the fallback model for sessions without an explicit model.
+	tuiAgentName         = "codalotl"            // tuiAgentName is the canonical name for the main Codalotl TUI agent.
+	orchestrateAgentName = "pr-orchestrator"     // orchestrateAgentName is the registry name for the built-in PR orchestrator agent.
 )
 
 var newRootAgentCreator = agent.NewAgentCreator
