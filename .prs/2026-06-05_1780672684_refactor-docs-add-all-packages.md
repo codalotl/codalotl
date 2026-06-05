@@ -38,9 +38,21 @@ Additional instructions:
 - `./internal/q/termformat`
 - `./internal/tui`
 
-### Run docs-add per target package
+### Run docs-add per target package [DONE]
 
 Run `refactor("docs-add")` on each discovered package only. Inspect each result and diff before moving to the next target. Commit accepted package changes in focused commits.
+
+Completed:
+- `./internal/agentformatter`
+- `./internal/applypatch`
+- `./internal/cli`
+- `./internal/docubot`
+- `./internal/llmstream`
+- `./internal/q/termformat`
+- `./internal/tui`
+
+Notes:
+- `./internal/applypatch` initially needed manual documentation cleanup after docs-add snippet application failed, then a final docs-add pass completed successfully.
 
 ### Validate and complete
 
@@ -59,4 +71,5 @@ Pending.
 - Branch: `jn/refactor-docs-add-all-packages`
 - Active PR file: `.prs/2026-06-05_1780672684_refactor-docs-add-all-packages.md`
 - Discovery source: `codalotl docs status`
+- Implementation status: docs-add targets are complete; `codalotl docs status` reports `docs_add` current for all discovered target packages.
 
