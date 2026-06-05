@@ -391,6 +391,7 @@ func (ids *Identifiers) TotalPublicUndocumented(includeTest bool) int {
 	return ids.totalUndocumented(includeTest, true)
 }
 
+// totalUndocumented returns the number of selected documentation targets that still lack documentation.
 func (ids *Identifiers) totalUndocumented(includeTest bool, publicOnly bool) int {
 	count := 0
 
@@ -411,6 +412,7 @@ func (ids *Identifiers) totalUndocumented(includeTest bool, publicOnly bool) int
 	return count
 }
 
+// countUndocumentedTopLevel counts identifiers that pass the selection filters and lack documentation.
 func (ids *Identifiers) countUndocumentedTopLevel(identifiers []string, includeTest bool, publicOnly bool) int {
 	count := 0
 	for _, identifier := range identifiers {
@@ -424,6 +426,7 @@ func (ids *Identifiers) countUndocumentedTopLevel(identifiers []string, includeT
 	return count
 }
 
+// countUndocumentedTypes counts included types that lack type documentation or relevant field documentation.
 func (ids *Identifiers) countUndocumentedTypes(includeTest bool, publicOnly bool) int {
 	count := 0
 	for _, typ := range ids.allTypes {
@@ -464,6 +467,7 @@ func (ids *Identifiers) countUndocumentedTypes(includeTest bool, publicOnly bool
 	return count
 }
 
+// includeIdentifier reports whether identifier passes the test-file and exported-only filters.
 func (ids *Identifiers) includeIdentifier(identifier string, includeTest bool, publicOnly bool) bool {
 	if _, inTest := ids.isTest[identifier]; inTest && !includeTest {
 		return false
@@ -476,6 +480,7 @@ func (ids *Identifiers) includeIdentifier(identifier string, includeTest bool, p
 	return true
 }
 
+// publicFieldPath reports whether fieldPath reaches a field through only exported field components.
 func publicFieldPath(fieldPath string, allFieldPaths map[string]struct{}) bool {
 	if fieldPath == "" {
 		return false
