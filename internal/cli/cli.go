@@ -18,8 +18,8 @@ var Version = "0.15.2"
 
 // In/Out/Err override standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
-// Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably
-// print to Stdout.
+// Note that if Out/Err are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably print
+// to os.Stdout.
 type RunOptions struct {
 	In  io.Reader // In overrides standard input; nil uses os.Stdin.
 	Out io.Writer // Out overrides standard output; nil uses os.Stdout.

@@ -33,7 +33,8 @@ type Config struct {
 	DisableCrashReporting bool   `json:"disablecrashreporting,omitempty"` // DisableCrashReporting opts out of panic reporting.
 	Theme                 string `json:"theme"`                           // Theme selects the TUI color palette. Allowed values: "", "dark", "light".
 
-	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
+	// Optional. If set, use this provider when computing the effective model for display and startup validation (lower precedence than PreferredModel, though). It does
+	// not by itself select the runtime model for TUI, exec, or iterate. Allowed values are llmmodel's AllProviderIDs().
 	PreferredProvider string `json:"preferredprovider"`
 
 	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().

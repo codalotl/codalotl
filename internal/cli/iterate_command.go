@@ -308,7 +308,7 @@ func (r *iterateSessionRunner) RunStep(ctx context.Context, step iterate.Step) (
 	return stepResult, err
 }
 
-// ReplaceSession makes session active, closing any existing active session first.
+// ReplaceSession makes session active, then closes any existing active session.
 func (r *iterateSessionRunner) replaceSession(session iterateSession) error {
 	if r.session == nil {
 		r.session = session

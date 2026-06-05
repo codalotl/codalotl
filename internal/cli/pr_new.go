@@ -550,7 +550,7 @@ func preparePRNewGit(ctx context.Context, cwd string, branchName string) (string
 
 // createPRNewFile creates a new PR scaffold file under baseDir/.prs. The file name is YYYY-MM-DD_<unix-seconds>_<featureName>.md based on now; featureName must
 // already be validated as filesystem-safe. It creates the .prs directory, never overwrites an existing file, writes content with mode 0644, and returns the relative
-// and absolute paths.
+// path and the path produced by joining baseDir with that relative path.
 func createPRNewFile(baseDir string, featureName string, now time.Time, content string) (string, string, error) {
 	filename := fmt.Sprintf("%s_%d_%s.md", now.Format("2006-01-02"), now.Unix(), featureName)
 	relPath := filepath.Join(".prs", filename)

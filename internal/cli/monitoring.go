@@ -122,7 +122,7 @@ func sanitizeStackForReporting(stack []byte) []byte {
 	return []byte(strings.Join(lines, "\n"))
 }
 
-// withPanicReporting runs f and reports any recovered panic before returning it as an error.
+// withPanicReporting runs f, reports any recovered panic when m is non-nil, and returns the panic as an error.
 func withPanicReporting(m *remotemonitor.Monitor, state *cliRunState, event string, f func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
