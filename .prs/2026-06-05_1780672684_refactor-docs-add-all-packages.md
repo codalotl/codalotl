@@ -60,7 +60,11 @@ Run final review and changed-package SPEC conformance. Address required conforma
 
 ## Review
 
-Not run yet.
+Initial review:
+- Code review: no findings; patch judged correct.
+- SPEC conformance: one non-latent trivial issue in `internal/agentformatter`; `MinTerminalWidth` comment implied wrapping at the threshold, while behavior and SPEC wrap only above the threshold. Fixed by updating the comment only.
+
+Latest review pending after the conformance follow-up.
 
 ## Summary
 
@@ -72,4 +76,5 @@ Pending.
 - Active PR file: `.prs/2026-06-05_1780672684_refactor-docs-add-all-packages.md`
 - Discovery source: `codalotl docs status`
 - Implementation status: docs-add targets are complete; `codalotl docs status` reports `docs_add` current for all discovered target packages.
+- Conformance follow-up: `internal/agentformatter` threshold wording fixed without behavior changes.
 
