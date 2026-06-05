@@ -246,6 +246,7 @@ type state struct {
 	bg            Color // Background color is nil when the terminal default is active.
 }
 
+// defaultState returns the ANSI SGR state with no active attributes and default colors.
 func defaultState() state {
 	return state{}
 }
