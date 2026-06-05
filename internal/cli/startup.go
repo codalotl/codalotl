@@ -13,16 +13,19 @@ import (
 
 var refreshOpenAIDefaultProviderSubscription = openaisub.RefreshDefaultProviderSubscription
 
+// A startupModelSelector returns model IDs that should be included in startup validation.
 type startupModelSelector func(Config) []llmmodel.ModelID
 
+// startupValidationError describes startup validation failures that should be shown to the user.
 type startupValidationError struct {
-	MissingTools                   []goclitools.ToolStatus
-	MissingLLM                     bool
-	OpenAISubscriptionAuthUnusable bool
-	OpenAISubscriptionRefreshError error
-	LLMEnvVars                     []string
+	MissingTools                   []goclitools.ToolStatus // MissingTools lists required tools that were not found on PATH.
+	MissingLLM                     bool                    // MissingLLM reports whether no usable LLM auth is available.
+	OpenAISubscriptionAuthUnusable bool                    // OpenAISubscriptionAuthUnusable reports whether saved OpenAI subscription auth is unusable.
+	OpenAISubscriptionRefreshError error                   // OpenAISubscriptionRefreshError is the saved OpenAI subscription auth refresh failure, if any.
+	LLMEnvVars                     []string                // LLMEnvVars lists provider API key environment variables relevant to the config.
 }
 
+// Error returns the user-facing startup validation failure message.
 func (e startupValidationError) Error() string {
 	var b strings.Builder
 	b.WriteString("codalotl startup validation failed.\n")
@@ -124,6 +127,8 @@ func (e startupValidationError) Error() string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// exampleProviderKeyID returns the providerkeys config key to use in a missing-auth example. It chooses the first known provider exposed by ProviderKeys whose default
+// API-key environment variable appears in relevantEnvVars, or "" if none match.
 func exampleProviderKeyID(relevantEnvVars []string) string {
 	if len(relevantEnvVars) == 0 {
 		return ""
@@ -150,6 +155,7 @@ func exampleProviderKeyID(relevantEnvVars []string) string {
 	return ""
 }
 
+// validateStartup checks required tools and usable LLM authentication before a command runs.
 func validateStartup(ctx context.Context, cfg Config, requiredTools []goclitools.ToolRequirement, selectedModels ...llmmodel.ModelID) error {
 	if ctx == nil {
 		ctx = context.Background()

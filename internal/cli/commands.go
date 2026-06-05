@@ -46,12 +46,14 @@ const packagePathArgDescription = "Go-style package path (for example ., .., ./i
 const specPathArgDescription = "Package import path, package directory, or SPEC.md file path. " +
 	"Import paths take precedence over bare CWD-relative directories. Package patterns with ... are not supported."
 
+// A configState memoizes configuration loading for a CLI invocation.
 type configState struct {
-	once sync.Once
-	cfg  Config
-	err  error
+	once sync.Once // Ensures configuration loading runs at most once.
+	cfg  Config    // Stores the cached configuration.
+	err  error     // Stores the cached configuration loading error, if any.
 }
 
+// get returns the cached configuration, loading it on the first call.
 func (s *configState) get() (Config, error) {
 	s.once.Do(func() {
 		s.cfg, s.err = loadConfig()
@@ -59,11 +61,13 @@ func (s *configState) get() (Config, error) {
 	return s.cfg, s.err
 }
 
+// startupState memoizes startup validation for a CLI invocation.
 type startupState struct {
-	once sync.Once
-	err  error
+	once sync.Once // Ensures startup validation runs at most once.
+	err  error     // Cached validation error returned to callers.
 }
 
+// validate runs startup validation once and returns the cached result.
 func (s *startupState) validate(ctx context.Context, cfg Config, selectedModels ...llmmodel.ModelID) error {
 	s.once.Do(func() {
 		s.err = validateStartup(ctx, cfg, goclitools.DefaultRequiredTools(), selectedModels...)
@@ -85,6 +89,9 @@ func installAgentToolOverrides() {
 	})
 }
 
+// newCLIRunWithConfig returns a command-run wrapper and shared run state for normal commands. When loadConfigForRuns is true, the wrapper loads configuration once,
+// initializes monitoring, reports the command event, runs startup validation once with any selected models, and invokes the handler under panic reporting. When
+// loadConfigForRuns is false, handlers run with the zero Config and no monitor.
 func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunState) {
 	cfgState := &configState{}
 	startup := &startupState{}
@@ -140,6 +147,9 @@ func newCLIRunWithConfig(loadConfigForRuns bool) (runWithConfigFunc, *cliRunStat
 	return runWithConfig, runState
 }
 
+// newCLIRunWithConfigNoStartup returns a command-run wrapper for commands that load configuration and monitoring state but intentionally skip startup validation.
+// It shares runState with the main wrapper so event, monitor, and panic-reporting state remain consistent across the command invocation. When loadConfigForRuns
+// is false, handlers run with the zero Config and no monitor.
 func newCLIRunWithConfigNoStartup(loadConfigForRuns bool, runState *cliRunState) runWithConfigFunc {
 	cfgState := &configState{}
 
@@ -187,6 +197,7 @@ func newCLIRunWithConfigNoStartup(loadConfigForRuns bool, runState *cliRunState)
 	}
 }
 
+// newRootCommand builds the root codalotl command tree and returns the shared run state used by wrapped command handlers.
 func newRootCommand(loadConfigForRuns bool) (*qcli.Command, *cliRunState) {
 	runWithConfig, runState := newCLIRunWithConfig(loadConfigForRuns)
 	runWithConfigNoStartup := newCLIRunWithConfigNoStartup(loadConfigForRuns, runState)
@@ -687,6 +698,8 @@ codalotl context packages --deps
 	return root, runState
 }
 
+// newCodalotlCLICommandTree builds the whitelisted in-process codalotl command tree exposed to agent tools. The returned tree includes docs add/fix/status, spec
+// status, and CAS ls-packages/recertify commands, and uses normal configuration loading and startup validation.
 func newCodalotlCLICommandTree() *qcli.Command {
 	runWithConfig, _ := newCLIRunWithConfig(true)
 	root := &qcli.Command{
@@ -728,6 +741,7 @@ codalotl spec status
 	return statusCmd
 }
 
+// newCASLsPackagesCommand builds the `cas ls-packages` subcommand, including output, state, age, and churn filters, and wires it to runCASLsPackages through runWithConfig.
 func newCASLsPackagesCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	lsPackagesCmd := &qcli.Command{
 		Name:  "ls-packages",
@@ -770,6 +784,8 @@ codalotl cas ls-packages specconforms --csv
 	return lsPackagesCmd
 }
 
+// newCASRecertifyCommand builds the `cas recertify` subcommand, which validates a package path and required namespace list and runs CAS recertification through
+// runWithConfig.
 func newCASRecertifyCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	recertifyCmd := &qcli.Command{
 		Name:  "recertify",
@@ -821,6 +837,7 @@ func newDocsCommand(runWithConfig runWithConfigFunc, includeReflow bool) *qcli.C
 	return docsCmd
 }
 
+// newDocsAddCommand builds the docs add command.
 func newDocsAddCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	addCmd := &qcli.Command{
 		Name:  "add",
@@ -879,6 +896,8 @@ codalotl docs add --include-test ./internal/mypkg
 	return addCmd
 }
 
+// newDocsReflowCommand constructs the `codalotl docs reflow` command. The command reflows documentation comments for one or more paths, using the configured reflow
+// width unless --width overrides it. In --check mode it reports files that would change without writing them.
 func newDocsReflowCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	reflowCmd := &qcli.Command{
 		Name:  "reflow",
@@ -988,6 +1007,8 @@ func writeStringln(w io.Writer, s string) error {
 	return err
 }
 
+// resolveSpecPathArg resolves a SPEC.md command argument to the SPEC.md path for a package directory, import-path package, or SPEC.md file. It rejects package patterns
+// and preserves the usual single-package argument precedence for import paths and fallback directories.
 func resolveSpecPathArg(arg string) (string, error) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {

@@ -45,43 +45,50 @@ var newCLIMonitor = func(currentVersion string) *remotemonitor.Monitor {
 	return m
 }
 
+// cliRunState tracks monitoring and panic-reporting state for a CLI run.
 type cliRunState struct {
-	mu       sync.Mutex
-	monitor  *remotemonitor.Monitor
-	event    string
-	panicked bool // panicked indicates the command panicked (regardless of whether crash reporting was enabled).
+	mu       sync.Mutex             // Protects monitor, event, and panicked.
+	monitor  *remotemonitor.Monitor // Monitor used for telemetry, version checks, and panic reporting; nil when unavailable or disabled.
+	event    string                 // Telemetry event name for the command currently running.
+	panicked bool                   // panicked indicates the command panicked (regardless of whether crash reporting was enabled).
 }
 
+// SetEvent records the telemetry event name for the command currently running.
 func (s *cliRunState) setEvent(event string) {
 	s.mu.Lock()
 	s.event = event
 	s.mu.Unlock()
 }
 
+// Returns the telemetry event name associated with the current CLI command.
 func (s *cliRunState) getEvent() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.event
 }
 
+// SetPanicked records that the current CLI run recovered from a panic.
 func (s *cliRunState) setPanicked() {
 	s.mu.Lock()
 	s.panicked = true
 	s.mu.Unlock()
 }
 
+// Returns whether the current CLI run has recovered from a panic.
 func (s *cliRunState) getPanicked() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.panicked
 }
 
+// SetMonitor records m as the monitor for the current CLI run.
 func (s *cliRunState) setMonitor(m *remotemonitor.Monitor) {
 	s.mu.Lock()
 	s.monitor = m
 	s.mu.Unlock()
 }
 
+// Returns the monitor associated with the CLI run, if one has been initialized.
 func (s *cliRunState) getMonitor() *remotemonitor.Monitor {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -115,6 +122,7 @@ func sanitizeStackForReporting(stack []byte) []byte {
 	return []byte(strings.Join(lines, "\n"))
 }
 
+// withPanicReporting runs f and reports any recovered panic before returning it as an error.
 func withPanicReporting(m *remotemonitor.Monitor, state *cliRunState, event string, f func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -139,6 +147,7 @@ func withPanicReporting(m *remotemonitor.Monitor, state *cliRunState, event stri
 	return f()
 }
 
+// versionStatusOutput returns user-facing version status text for currentVersion and latestVersion.
 func versionStatusOutput(currentVersion, latestVersion string) (string, bool) {
 	if strings.TrimSpace(currentVersion) == "" {
 		return "", false
@@ -177,6 +186,7 @@ func maybeWriteUpdateNotice(w io.Writer, m *remotemonitor.Monitor, currentVersio
 	return err
 }
 
+// latestVersionWithTimeout returns the monitor's latest known version before timeout.
 func latestVersionWithTimeout(m *remotemonitor.Monitor, timeout time.Duration) (string, bool) {
 	if m == nil {
 		return "", false
@@ -215,6 +225,7 @@ func isUpdateAvailable(current, latest string) bool {
 	return qsemver.GreaterThan(l, c)
 }
 
+// reportErrorForExitCode1 reports an exit-code-1 command failure to the monitor.
 func reportErrorForExitCode1(m *remotemonitor.Monitor, event string, msg string) error {
 	if m == nil {
 		return nil

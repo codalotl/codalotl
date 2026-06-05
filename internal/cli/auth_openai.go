@@ -17,6 +17,9 @@ var (
 	runOpenAISubCheckStatus = openaisub.CheckStatusWithOptions
 )
 
+// newAuthCommand builds the `auth` command tree for OpenAI ChatGPT subscription login, logout, and status operations. The returned commands write user-visible output
+// to the command context and use runWithConfig for the caller's configuration and monitoring policy; pass a no-startup wrapper so auth can run without existing
+// LLM configuration.
 func newAuthCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	authCmd := &qcli.Command{
 		Name:  "auth",
@@ -101,6 +104,8 @@ codalotl auth openai status
 	return authCmd
 }
 
+// writeOpenAIAuthStatus writes a human-readable OpenAI ChatGPT subscription auth status to c.Out. Logged-in output may include the ChatGPT account ID, token expiration
+// in UTC RFC3339 format, and credential file path; logged-out output includes the credential path when known.
 func writeOpenAIAuthStatus(c *qcli.Context, status openaisub.Status) error {
 	if !status.LoggedIn {
 		if err := writeStringln(c.Out, "OpenAI ChatGPT subscription: not logged in"); err != nil {

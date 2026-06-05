@@ -45,12 +45,14 @@ var supportedPRRefactors = []string{
 	prRefactorTestEnsureCoverage,
 }
 
+// prRefactorOptions contains the target and refactor selection for a PR refactor scaffold.
 type prRefactorOptions struct {
-	PackageArg   string
-	AllPackages  bool
-	RefactorName string
+	PackageArg   string // PackageArg is the single package selector supplied with --package.
+	AllPackages  bool   // AllPackages selects the all-packages refactor workflow.
+	RefactorName string // RefactorName is the optional selected refactor flow name.
 }
 
+// newPRCommand returns the command tree for PR orchestrator workflow tools.
 func newPRCommand() *qcli.Command {
 	prCmd := &qcli.Command{
 		Name:  "pr",
@@ -149,6 +151,7 @@ func runPRNew(ctx context.Context, out io.Writer, featureName string, noGit bool
 	return runPRScaffold(ctx, out, featureName, noGit, prNewInitialTemplate)
 }
 
+// runPRRefactor creates a refactor PR scaffold for the selected package or all-packages workflow.
 func runPRRefactor(ctx context.Context, out io.Writer, opts prRefactorOptions) error {
 	refactorName := strings.TrimSpace(opts.RefactorName)
 	if err := validatePRRefactorName(refactorName); err != nil {
@@ -178,6 +181,9 @@ func runPRRefactor(ctx context.Context, out io.Writer, opts prRefactorOptions) e
 	return runPRScaffold(ctx, out, featureName, false, prRefactorAllPackageRefactorsTemplate(packagePath))
 }
 
+// runPRScaffold creates a PR scaffold file for featureName and writes the created path to out. When noGit is false, it prepares a clean main or master Git repository,
+// creates and commits the PR file on a new branch, and pushes to origin when origin exists; when noGit is true, it only writes the file under the current working
+// directory. Empty content is replaced with prNewInitialTemplate.
 func runPRScaffold(ctx context.Context, out io.Writer, featureName string, noGit bool, content string) error {
 	featureName = strings.TrimSpace(featureName)
 	if err := validatePRNewName(featureName, "<feature-name>"); err != nil {
@@ -250,6 +256,7 @@ func prRefactorAllPackagesFeatureName(refactorName string) (string, error) {
 	return prRefactorFeatureNameParts(refactorName, "all-packages")
 }
 
+// prRefactorFeatureNameParts builds a safe refactor PR feature name from parts.
 func prRefactorFeatureNameParts(parts ...string) (string, error) {
 	joined := strings.Join(parts, "-")
 	safePath := strings.Trim(strings.Map(func(r rune) rune {
@@ -315,6 +322,8 @@ func prRefactorCASNamespaces(refactorName string) string {
 	}
 }
 
+// prRefactorAllPackageRefactorsTemplate returns the PR-file markdown for running every supported refactor on packagePath. The template lists the refactors in execution
+// order and includes review, commit, skip, and CAS recertification instructions.
 func prRefactorAllPackageRefactorsTemplate(packagePath string) string {
 	const recertifyNamespaces = "docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"
 
@@ -347,6 +356,8 @@ Additional instructions:
 `, packagePath, packagePath, packagePath, packagePath, packagePath, packagePath, packagePath, packagePath, recertifyNamespaces)
 }
 
+// prRefactorSinglePackageTemplate returns the PR-file markdown for running refactorName on packagePath. The template includes the refactor invocation, review and
+// commit guidance, no-op or risky-change skip guidance, and CAS recertification instructions for the selected refactor.
 func prRefactorSinglePackageTemplate(packagePath string, refactorName string) string {
 	recertifyNamespaces := prRefactorCASNamespaces(refactorName)
 	recertifyInstructions := "No CAS namespace is currently recertifiable specifically for this refactor. If accepted changes invalidate other applicable CAS records, recertify those after final changes."
@@ -376,6 +387,9 @@ Additional instructions:
 `, refactorName, packagePath, packagePath, refactorName, refactorName, packagePath, recertifyInstructions)
 }
 
+// prRefactorAllPackagesTemplate returns the PR-file markdown for running refactorName across all discovered packages that need that refactor. The returned template
+// includes package-discovery instructions, per-package refactor instructions, review and commit guidance, and CAS recertification guidance. Callers should pass
+// a validated all-packages refactor name.
 func prRefactorAllPackagesTemplate(refactorName string) string {
 	discoveryInstructions := prRefactorAllPackagesDiscoveryInstructions(refactorName)
 	recertifyNamespaces := prRefactorCASNamespaces(refactorName)
@@ -411,6 +425,8 @@ Additional instructions:
 `, refactorName, refactorName, refactorName, discoveryInstructions, refactorName, recertifyInstructions)
 }
 
+// prRefactorAllPackagesDiscoveryInstructions returns PR instructions for discovering packages that need refactorName. docs-add and docs-fix use codalotl docs status;
+// other supported refactors use the refactor's CAS namespace with codalotl cas ls-packages --state=outdated. Callers must pass a supported refactor name.
 func prRefactorAllPackagesDiscoveryInstructions(refactorName string) string {
 	if refactorName == prRefactorDocsAdd {
 		return `Discover needed packages first:
@@ -464,6 +480,8 @@ func validatePRNewBranchComponent(component string, label string) error {
 	return nil
 }
 
+// preparePRNewGit validates branchName, verifies that cwd is inside a clean Git repository on an up-to-date main or master branch, and creates branchName. It returns
+// the repository root. Repositories without an upstream for the current branch are allowed. The context controls the underlying git commands.
 func preparePRNewGit(ctx context.Context, cwd string, branchName string) (string, error) {
 	if strings.Contains(branchName, "/") {
 		parts := strings.Split(branchName, "/")
@@ -530,6 +548,9 @@ func preparePRNewGit(ctx context.Context, cwd string, branchName string) (string
 	return repoRoot, nil
 }
 
+// createPRNewFile creates a new PR scaffold file under baseDir/.prs. The file name is YYYY-MM-DD_<unix-seconds>_<featureName>.md based on now; featureName must
+// already be validated as filesystem-safe. It creates the .prs directory, never overwrites an existing file, writes content with mode 0644, and returns the relative
+// and absolute paths.
 func createPRNewFile(baseDir string, featureName string, now time.Time, content string) (string, string, error) {
 	filename := fmt.Sprintf("%s_%d_%s.md", now.Format("2006-01-02"), now.Unix(), featureName)
 	relPath := filepath.Join(".prs", filename)
@@ -576,6 +597,7 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	return runPRNewGit(ctx, dir, args...)
 }
 
+// runPRNewGitCommand runs git with args in dir and returns stdout.
 func runPRNewGitCommand(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir

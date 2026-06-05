@@ -16,10 +16,11 @@ import (
 	toolrefactor "github.com/codalotl/codalotl/internal/tools/refactor"
 )
 
+// casRetrieveOutput is the JSON response printed by the CAS get command.
 type casRetrieveOutput struct {
-	OK             bool `json:"ok"`
-	Value          any  `json:"value,omitempty"`
-	AdditionalInfo any  `json:"additionalinfo,omitempty"`
+	OK             bool `json:"ok"`                       // OK reports whether a matching CAS record was found.
+	Value          any  `json:"value,omitempty"`          // Value is the stored CAS value.
+	AdditionalInfo any  `json:"additionalinfo,omitempty"` // AdditionalInfo is metadata associated with the CAS record.
 }
 
 func validateCASNamespace(namespace string) error {
@@ -34,6 +35,7 @@ func validateCASNamespace(namespace string) error {
 	return nil
 }
 
+// parseCASNamespacesFlag parses a comma-separated --namespaces value into registered CAS namespace specs.
 func parseCASNamespacesFlag(namespaces string) ([]gocas.NamespaceSpec, error) {
 	namespaces = strings.TrimSpace(namespaces)
 	if namespaces == "" {
@@ -131,6 +133,9 @@ func casQDBForBaseDir(baseDir string) (*qcas.DB, error) {
 	return &qcas.DB{AbsRoot: absRoot}, nil
 }
 
+// runCASRecertify recertifies packagePath for the comma-separated registered CAS namespaces. It loads the package, opens the module CAS database, copies eligible
+// prior records forward, and writes one result per namespace to out. It returns a usage error for invalid namespace input and exits with code 1 after printing results
+// when any namespace has no prior record to copy.
 func runCASRecertify(out io.Writer, packagePath string, namespaces string) error {
 	specs, err := parseCASNamespacesFlag(namespaces)
 	if err != nil {
@@ -165,6 +170,8 @@ func runCASRecertify(out io.Writer, packagePath string, namespaces string) error
 	return nil
 }
 
+// writeCASRecertifyResult writes the user-visible status for one CAS namespace recertification. It prints one summary line, includes short hashes when available,
+// appends any warnings on indented lines, and returns the first write error.
 func writeCASRecertifyResult(out io.Writer, namespace string, result gocas.PackageRecertificationResult) error {
 	switch result.Status {
 	case gocas.PackageRecertificationStatusCurrent:

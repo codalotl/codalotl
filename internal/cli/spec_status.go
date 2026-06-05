@@ -14,13 +14,17 @@ import (
 	"github.com/codalotl/codalotl/internal/specmd"
 )
 
+// A specStatusRow contains SPEC.md and conformance status for one package.
 type specStatusRow struct {
-	Package  string
-	HasSpec  string
-	APIMatch string
-	Conforms string
+	Package  string // Display package path.
+	HasSpec  string // Whether the package has a SPEC.md file.
+	APIMatch string // Whether the SPEC.md public API matches the implementation.
+	Conforms string // Stored CAS conformance status for the current package contents.
 }
 
+// runSpecStatus writes per-package SPEC.md status for Go modules under the nearest Git repository. It is read-only: it reports SPEC.md presence, public API match
+// status, and current CAS conformance status, sorted for the status command. Package-level SPEC or CAS failures are represented in the table when possible; discovery,
+// database, and output failures are returned as errors.
 func runSpecStatus(ctx context.Context, out io.Writer) error {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -140,6 +144,7 @@ func specMatchesPublicAPI(specPath string) (bool, error) {
 	return len(diffs) == 0, nil
 }
 
+// writeSpecStatusTable writes rows as an aligned SPEC status table.
 func writeSpecStatusTable(w io.Writer, rows []specStatusRow) error {
 	cols := [][]string{
 		{"package"},

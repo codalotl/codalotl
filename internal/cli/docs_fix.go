@@ -28,13 +28,15 @@ const (
 
 var runDocubotFindAndFixDocErrors = docubot.FindAndFixDocErrors
 
+// docsFixCASValue is the stored CAS payload for a docs-fix run.
 type docsFixCASValue struct {
-	Schema      string   `json:"schema"`
-	Mode        string   `json:"mode"`
-	Identifiers []string `json:"identifiers,omitempty"`
-	FixCount    int      `json:"fix_count"`
+	Schema      string   `json:"schema"`                // Schema identifies the docs-fix CAS schema.
+	Mode        string   `json:"mode"`                  // Mode records whether the value covers the whole package or selected identifiers.
+	Identifiers []string `json:"identifiers,omitempty"` // Identifiers is the sorted allowlist covered by an identifier-limited run.
+	FixCount    int      `json:"fix_count"`             // FixCount is the number of documentation fixes applied by the run.
 }
 
+// newDocsFixCommand builds the docs fix command.
 func newDocsFixCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	cmd := &qcli.Command{
 		Name:  "fix",
@@ -89,6 +91,8 @@ codalotl docs fix --identifiers Foo,Bar ./internal/mypkg
 	return cmd
 }
 
+// parseDocsFixIdentifiers parses the docs fix --identifiers flag into a sorted allowlist. An empty flag returns nil. Non-empty values are comma-separated, whitespace-trimmed,
+// deduplicated, and rejected if any element is empty. It does not validate Go identifier syntax.
 func parseDocsFixIdentifiers(s string) ([]string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -112,6 +116,8 @@ func parseDocsFixIdentifiers(s string) ([]string, error) {
 	return identifiers, nil
 }
 
+// storeDocsFixCASRecord stores the docs-fix CAS result for pkg's current contents. A non-empty identifiers slice records an identifier-limited run; otherwise the
+// record covers the whole package. The stored payload includes fixCount and a sorted copy of the identifier allowlist.
 func storeDocsFixCASRecord(pkg *gocode.Package, mod *gocode.Module, identifiers []string, fixCount int) error {
 	db, err := casDBForBaseDir(mod.AbsolutePath)
 	if err != nil {
