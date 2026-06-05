@@ -50,6 +50,23 @@ func nearestGitRepoRoot(start string) (string, error) {
 	}
 }
 
+func goListPackageDirsUnderNearestGitRepo(ctx context.Context) (string, []casRepoPackageDir, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", nil, err
+	}
+	repoRoot, err := nearestGitRepoRoot(wd)
+	if err != nil {
+		return "", nil, err
+	}
+
+	pkgDirs, err := goListPackageDirsUnderRepo(ctx, repoRoot)
+	if err != nil {
+		return "", nil, err
+	}
+	return repoRoot, pkgDirs, nil
+}
+
 // goListPackageDirsUnderRepo returns the Go package directories in modules discovered under repoRoot. It omits packages outside repoRoot, deduplicates package directories
 // found through multiple modules, and returns results sorted by absolute directory. The context controls the underlying go list commands.
 func goListPackageDirsUnderRepo(ctx context.Context, repoRoot string) ([]casRepoPackageDir, error) {

@@ -1,0 +1,87 @@
+# PR
+
+## User Summary (do not modify)
+
+In this PR, refactor internal/cli.
+
+Target package: internal/cli
+Selected refactor flow: all refactors for one package
+
+Run these refactors in order:
+1. refactor("name": "docs-add", "package": "internal/cli")
+2. refactor("name": "docs-fix", "package": "internal/cli")
+3. refactor("name": "dry", "package": "internal/cli")
+4. refactor("name": "test-cleanup", "package": "internal/cli")
+5. refactor("name": "test-ensure-coverage", "package": "internal/cli")
+
+Additional instructions:
+- After each refactor, inspect the diff before continuing.
+- If the diff looks good, commit that refactor separately. Include source changes and relevant CAS files in the commit.
+- If a refactor result is a no-op, skip it with a note in this PR file.
+- If the diff looks risky or outside scope, avoid risky fix-forward behavior. Revert, skip with a note in this PR file, or make only a minimal low-risk correction.
+- These refactors are intended to be safe and low risk. Do not change public API or behavior except for documentation changes.
+- After the final refactor is committed, use the codalotl_cli tool to run:
+  codalotl cas recertify internal/cli --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"
+- Inspect and commit CAS files produced by recertify.
+
+## Plan
+
+### [DONE] Package internal/cli
+
+Run the requested safe refactor sequence one refactor at a time. After each refactor:
+- Inspect the diff.
+- Commit useful, in-scope changes separately, including relevant CAS artifacts.
+- If the refactor is a no-op, record the skipped result here.
+- If the diff is risky or out of scope, revert or avoid it and record the decision here.
+
+#### Refactor sequence
+
+0. [DONE] Run `docs-improve-from-clarify` for `internal/cli` because `.codalotl/cas/clarify-public-api-1` is present. Result: no opportunities found; no source/CAS diff to commit.
+1. [DONE] `docs-add` for `internal/cli`. Result: refactor reported applied, but produced no workspace diff.
+2. [DONE] `docs-fix` for `internal/cli`. Result: committed documentation-only corrections with CAS artifact.
+3. [DONE] `dry` for `internal/cli`. Result: committed helper extraction/deduplication with CAS artifact; `go test ./internal/cli` passed.
+4. [DONE] `test-cleanup` for `internal/cli`. Result: committed test helper cleanup with CAS artifact; `go test ./internal/cli` passed.
+5. [DONE] `test-ensure-coverage` for `internal/cli`. Result: committed CAS formatting coverage with CAS artifact; `go test ./internal/cli` passed.
+6. [DONE] Run `codalotl cas recertify internal/cli --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"`.
+7. [DONE] Inspect and commit recertification CAS artifacts.
+
+## Review
+
+- Review against `main`: passed; no findings. Latest review verdict: patch is correct.
+- Initial changed-package SPEC conformance found stale `internal/cli/SPEC.md` Public API docs for `Config.PreferredProvider` and `RunOptions`.
+- Updated `internal/cli/SPEC.md` to match implementation docs; SPEC review feedback was positive.
+- Reran changed-package SPEC conformance: `internal/cli` conforms.
+- Tests: `go test ./internal/cli` passed after source/test refactors; final `go test ./...` passed.
+
+## Summary
+
+Refactored `internal/cli` with the requested safe refactor sequence.
+
+- Fixed stale or materially inaccurate documentation comments in `internal/cli`.
+- Deduplicated repeated CLI helper logic for aligned status tables, CAS DB loading, repo package discovery, and package loading.
+- Cleaned up repeated test setup for docs reflow and PR scaffold tests.
+- Added focused coverage for CAS summary duration and churn formatting.
+- Synced `internal/cli/SPEC.md` Public API docs with current implementation comments.
+- Recertified requested CAS namespaces and committed conformance CAS.
+
+Validation:
+- `go test ./internal/cli`
+- `go test ./...`
+- Review against `main`: no findings; patch is correct.
+- Changed-package SPEC conformance: `internal/cli` conforms.
+
+## State
+
+- Branch: `jn/refactor-internal-cli`.
+- PR file: `.prs/2026-06-05_1780690605_refactor-internal-cli.md`.
+- Target package: `internal/cli`.
+- Workspace was clean before planning.
+- `.codalotl/cas/clarify-public-api-1` exists; run `docs-improve-from-clarify` before the requested refactor sequence.
+- `docs-improve-from-clarify` on `internal/cli` returned `no_opportunity`.
+- `docs-add` on `internal/cli` reported applied but left the workspace clean.
+- `docs-fix` adjusted comments in `cli.go`, `config.go`, `iterate_command.go`, `monitoring.go`, and `pr_new.go`; committed as `a27b9dd`.
+- `dry` introduced `writeAlignedTable`, shared CAS package discovery / DB helpers, and reused package loading; committed as `8c39bc9`.
+- `test-cleanup` deduplicated docs reflow and PR scaffold test setup; committed as `0cb751e`.
+- `test-ensure-coverage` added tests for CAS summary duration/churn formatting; committed as `ed2621d`.
+- Recertified requested CAS namespaces for `internal/cli`; committed as `488adf4`.
+- Review against `main` returned no findings. Changed-package SPEC conformance passes after syncing `internal/cli/SPEC.md`; conformance CAS was written.

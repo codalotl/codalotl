@@ -22,20 +22,12 @@ func TestRun_PRNew_NoGit_CreatesPRFileWithoutConfigOrGit(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".codalotl"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".codalotl", "config.json"), []byte(`{not-json`), 0644))
 
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmp))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	chdirForTest(t, tmp)
+	stubPRNewNow(t, time.Unix(1779211919, 0).UTC())
 
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779211919, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
-
-	origGit := runPRNewGit
-	runPRNewGit = func(context.Context, string, ...string) (string, error) {
+	stubPRNewGit(t, func(string, []string) (string, error) {
 		return "", errors.New("git should not be called")
-	}
-	t.Cleanup(func() { runPRNewGit = origGit })
+	})
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -69,14 +61,8 @@ func TestRun_PRNew_NormalMode_ValidatesGitCreatesBranchCommitsAndPushes(t *testi
 	cwd := filepath.Join(repo, "subdir")
 	require.NoError(t, os.MkdirAll(cwd, 0755))
 
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(cwd))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779229784, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
+	chdirForTest(t, cwd)
+	stubPRNewNow(t, time.Unix(1779229784, 0).UTC())
 
 	var calls []prNewGitCall
 	stubPRNewGit(t, func(dir string, args []string) (string, error) {
@@ -147,14 +133,8 @@ func TestRun_PRNew_NormalMode_AllowsLocalOnlyRepoWithoutUpstreamAndOrigin(t *tes
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(repo))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779229784, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
+	chdirForTest(t, repo)
+	stubPRNewNow(t, time.Unix(1779229784, 0).UTC())
 
 	var calls []prNewGitCall
 	stubPRNewGit(t, func(dir string, args []string) (string, error) {
@@ -200,14 +180,8 @@ func TestRun_PRNew_NormalMode_DirtyWorkspaceFailsBeforeCreatingFile(t *testing.T
 	isolateUserConfig(t)
 
 	repo := t.TempDir()
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(repo))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779229784, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
+	chdirForTest(t, repo)
+	stubPRNewNow(t, time.Unix(1779229784, 0).UTC())
 
 	stubPRNewGit(t, func(_ string, args []string) (string, error) {
 		switch args[0] {
@@ -238,10 +212,7 @@ func TestRun_PRNew_NormalMode_GitUnavailableIsCommandSpecificError(t *testing.T)
 	t.Setenv("PATH", "")
 
 	tmp := t.TempDir()
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmp))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	chdirForTest(t, tmp)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -273,14 +244,8 @@ func TestRun_PRRefactor_NormalMode_ReusesPRNewGitBehaviorAndWritesInstructions(t
 	repo := t.TempDir()
 	writeTestGoPackage(t, repo, "internal/mypkg")
 
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(repo))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779277562, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
+	chdirForTest(t, repo)
+	stubPRNewNow(t, time.Unix(1779277562, 0).UTC())
 
 	var calls []prNewGitCall
 	stubPRNewGit(t, func(dir string, args []string) (string, error) {
@@ -363,14 +328,8 @@ func TestRun_PRRefactor_PackageSingleRefactor_WritesFocusedInstructions(t *testi
 	repo := t.TempDir()
 	writeTestGoPackage(t, repo, "internal/mypkg")
 
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(repo))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779277562, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
+	chdirForTest(t, repo)
+	stubPRNewNow(t, time.Unix(1779277562, 0).UTC())
 
 	stubPRNewGitForScaffold(t, repo, "refactor-docs-fix-internal-mypkg", "2026-05-20_1779277562_refactor-docs-fix-internal-mypkg.md")
 
@@ -405,14 +364,8 @@ func TestRun_PRRefactor_AllPackagesSingleRefactor_WritesAllPackagesInstructions(
 	repo := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/tmpmod\n\ngo 1.22\n"), 0644))
 
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(repo))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779277562, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
+	chdirForTest(t, repo)
+	stubPRNewNow(t, time.Unix(1779277562, 0).UTC())
 
 	stubPRNewGitForScaffold(t, repo, "refactor-docs-fix-all-packages", "2026-05-20_1779277562_refactor-docs-fix-all-packages.md")
 
@@ -598,14 +551,8 @@ func TestRun_PRRefactor_BypassesStartupValidation(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".codalotl"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, ".codalotl", "config.json"), []byte(`{not-json`), 0644))
 
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(repo))
-	t.Cleanup(func() { _ = os.Chdir(origWD) })
-
-	origNow := prNewNow
-	prNewNow = func() time.Time { return time.Unix(1779277562, 0).UTC() }
-	t.Cleanup(func() { prNewNow = origNow })
+	chdirForTest(t, repo)
+	stubPRNewNow(t, time.Unix(1779277562, 0).UTC())
 
 	stubPRNewGit(t, func(_ string, args []string) (string, error) {
 		switch args[0] {
@@ -651,6 +598,14 @@ func stubPRNewGit(t *testing.T, f func(dir string, args []string) (string, error
 		return f(dir, append([]string(nil), args...))
 	}
 	t.Cleanup(func() { runPRNewGit = orig })
+}
+
+func stubPRNewNow(t *testing.T, now time.Time) {
+	t.Helper()
+
+	orig := prNewNow
+	prNewNow = func() time.Time { return now }
+	t.Cleanup(func() { prNewNow = orig })
 }
 
 func stubPRNewGitForScaffold(t *testing.T, repo string, branchName string, filename string) {

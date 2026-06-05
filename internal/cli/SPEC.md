@@ -432,7 +432,8 @@ type Config struct {
 	DisableCrashReporting bool   `json:"disablecrashreporting,omitempty"`
 	Theme                 string `json:"theme"` // Theme selects the TUI color palette. Allowed values: "", "dark", "light".
 
-	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
+	// Optional. If set, use this provider when computing the effective model for display and startup validation (lower precedence than PreferredModel, though). It does
+	// not by itself select the runtime model for TUI, exec, or iterate. Allowed values are llmmodel's AllProviderIDs().
 	PreferredProvider string `json:"preferredprovider"`
 
 	// Optional. If set, use this model specifically. Allowed values are llmmodel's AvailableModelIDs().
@@ -519,12 +520,12 @@ var Version = "0.1.0"
 ```go
 // In/Out/Err override standard I/O. If nil, defaults are used. Overriding is useful for testing.
 //
-// Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably
-// print to Stdout.
+// Note that if Out/Err are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably print
+// to os.Stdout.
 type RunOptions struct {
-	In  io.Reader
-	Out io.Writer
-	Err io.Writer
+	In  io.Reader // In overrides standard input; nil uses os.Stdin.
+	Out io.Writer // Out overrides standard output; nil uses os.Stdout.
+	Err io.Writer // Err overrides standard error; nil uses os.Stderr.
 }
 
 // Run runs the CLI with args (typically you'd use os.Args).

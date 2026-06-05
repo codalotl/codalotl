@@ -2,12 +2,10 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/codalotl/codalotl/internal/gocas"
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
@@ -26,16 +24,7 @@ type specStatusRow struct {
 // status, and current CAS conformance status, sorted for the status command. Package-level SPEC or CAS failures are represented in the table when possible; discovery,
 // database, and output failures are returned as errors.
 func runSpecStatus(ctx context.Context, out io.Writer) error {
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	repoRoot, err := nearestGitRepoRoot(wd)
-	if err != nil {
-		return err
-	}
-
-	pkgDirs, err := goListPackageDirsUnderRepo(ctx, repoRoot)
+	repoRoot, pkgDirs, err := goListPackageDirsUnderNearestGitRepo(ctx)
 	if err != nil {
 		return err
 	}
@@ -49,14 +38,9 @@ func runSpecStatus(ctx context.Context, out io.Writer) error {
 		}
 
 		moduleRoot := pkgDir.mod.AbsolutePath
-		db, ok := dbs[moduleRoot]
-		if !ok {
-			var err error
-			db, err = casReadDBForBaseDir(moduleRoot)
-			if err != nil {
-				return err
-			}
-			dbs[moduleRoot] = db
+		db, err := cachedCASReadDBForBaseDir(dbs, moduleRoot)
+		if err != nil {
+			return err
 		}
 
 		row := specStatusRow{
@@ -79,20 +63,7 @@ func runSpecStatus(ctx context.Context, out io.Writer) error {
 			}
 		}
 
-		relDir, err := filepath.Rel(moduleRoot, pkgDir.absDir)
-		if err != nil {
-			row.Conforms = "error"
-			rows = append(rows, row)
-			continue
-		}
-		if relDir == ".." || strings.HasPrefix(relDir, ".."+string(filepath.Separator)) {
-			// Shouldn't happen (go list should remain within the module graph),
-			// but treat as an error if it does.
-			row.Conforms = "error"
-			rows = append(rows, row)
-			continue
-		}
-		pkg, err := pkgDir.mod.LoadPackageByRelativeDir(relDir)
+		pkg, err := loadPackageFromRepoDir(pkgDir)
 		if err != nil {
 			row.Conforms = "error"
 			rows = append(rows, row)
@@ -146,60 +117,11 @@ func specMatchesPublicAPI(specPath string) (bool, error) {
 
 // writeSpecStatusTable writes rows as an aligned SPEC status table.
 func writeSpecStatusTable(w io.Writer, rows []specStatusRow) error {
-	cols := [][]string{
-		{"package"},
-		{"has_spec"},
-		{"api_match"},
-		{"conforms"},
-	}
+	tableRows := make([][]string, 0, len(rows))
 	for _, r := range rows {
-		cols[0] = append(cols[0], r.Package)
-		cols[1] = append(cols[1], r.HasSpec)
-		cols[2] = append(cols[2], r.APIMatch)
-		cols[3] = append(cols[3], r.Conforms)
+		tableRows = append(tableRows, []string{r.Package, r.HasSpec, r.APIMatch, r.Conforms})
 	}
-
-	widths := make([]int, len(cols))
-	for i := range cols {
-		for _, v := range cols[i] {
-			if n := len(v); n > widths[i] {
-				widths[i] = n
-			}
-		}
-	}
-
-	writeRow := func(values ...string) error {
-		for i, v := range values {
-			if i > 0 {
-				if _, err := io.WriteString(w, "  "); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintf(w, "%-*s", widths[i], v); err != nil {
-				return err
-			}
-		}
-		_, err := io.WriteString(w, "\n")
-		return err
-	}
-
-	if err := writeRow("package", "has_spec", "api_match", "conforms"); err != nil {
-		return err
-	}
-	if err := writeRow(
-		strings.Repeat("-", widths[0]),
-		strings.Repeat("-", widths[1]),
-		strings.Repeat("-", widths[2]),
-		strings.Repeat("-", widths[3]),
-	); err != nil {
-		return err
-	}
-	for _, r := range rows {
-		if err := writeRow(r.Package, r.HasSpec, r.APIMatch, r.Conforms); err != nil {
-			return err
-		}
-	}
-	return nil
+	return writeAlignedTable(w, []string{"package", "has_spec", "api_match", "conforms"}, tableRows)
 }
 
 func boolRankTrueFirst(v string) int {

@@ -119,6 +119,19 @@ func casReadDBForBaseDir(baseDir string) (*gocas.DB, error) {
 	return gocas.NewDBForBaseDir(baseDir)
 }
 
+func cachedCASReadDBForBaseDir(dbs map[string]*gocas.DB, baseDir string) (*gocas.DB, error) {
+	db, ok := dbs[baseDir]
+	if !ok {
+		var err error
+		db, err = casReadDBForBaseDir(baseDir)
+		if err != nil {
+			return nil, err
+		}
+		dbs[baseDir] = db
+	}
+	return db, nil
+}
+
 func casQDBForBaseDir(baseDir string) (*qcas.DB, error) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
