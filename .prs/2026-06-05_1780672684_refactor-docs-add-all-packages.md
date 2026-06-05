@@ -71,7 +71,22 @@ Latest review:
 
 ## Summary
 
-Pending.
+Adds missing documentation comments for all packages discovered with `docs_add` needed:
+- `internal/agentformatter`
+- `internal/applypatch`
+- `internal/cli`
+- `internal/docubot`
+- `internal/llmstream`
+- `internal/q/termformat`
+- `internal/tui`
+
+Also records SPEC conformance CAS entries for conforming changed packages.
+
+Validation:
+- `codalotl docs status` reports `docs_add` current for all discovered target packages.
+- Code review reported no findings and judged the patch correct.
+- Changed-package SPEC conformance passed after a documentation-only threshold wording fix in `internal/agentformatter`.
+- `go test ./...` passed.
 
 ## State
 
