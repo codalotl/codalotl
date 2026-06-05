@@ -397,17 +397,13 @@ Selected refactor flow: %s
 
 Discovery commands may return packages from multiple Go modules.
 
-For each discovered needed package:
-1. Identify the Go module containing the package.
-2. If the package is outside the current module, switch/restart from that package's module root, or convert the discovered package to a module-local package argument before invoking tools.
-3. refactor("name": "%s", "package": "<module-local-package>")
+For each discovered needed package, run refactor("name": "%s", "package": "<package>").
 
 Additional instructions:
 - Refactor only packages in the discovered needed package list.
 - If discovery finds no needed packages, note that in this PR file and stop.
-- Do not pass a cross-module discovered package string directly to refactor; make the package argument resolvable from the module where refactor is running.
 - Inspect each refactor result and diff before moving to the next package.
-- Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package or small package group.
+- Commit accepted changes with source changes and relevant CAS files. Prefer focused commits per package.
 - Skip no-op packages without a commit and add a note in this PR file.
 - If a package looks risky or outside scope, do not fix-forward aggressively; revert/skip it and add a note in this PR file explaining why.
 - %s
