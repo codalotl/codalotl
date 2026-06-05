@@ -12,12 +12,14 @@ import (
 	"github.com/codalotl/codalotl/internal/q/health"
 )
 
+// Role identifies the participant responsible for a conversational turn.
 type Role int
 
+// These consts identify participants in a conversation. The zero value is RoleUser.
 const (
-	RoleUser Role = iota
-	RoleSystem
-	RoleAssistant
+	RoleUser      Role = iota // RoleUser identifies a turn containing caller-supplied user input or tool results.
+	RoleSystem                // RoleSystem identifies conversation-level instructions.
+	RoleAssistant             // RoleAssistant identifies a model output turn, including text, reasoning, and tool-call requests.
 )
 
 func newTextTurn(role Role, content string) Turn {
@@ -28,10 +30,11 @@ func newTextTurn(role Role, content string) Turn {
 	}
 }
 
+// SendOptions configures provider-specific options for a model send.
 type SendOptions struct {
-	ReasoningEffort    string // ex: "minimal", "low", "medium", "high", "xhigh"
-	ReasoningSummary   string // ex: "auto", "concise", "detailed"
-	TemperaturePresent bool
+	ReasoningEffort    string  // ex: "minimal", "low", "medium", "high", "xhigh"
+	ReasoningSummary   string  // ex: "auto", "concise", "detailed"
+	TemperaturePresent bool    // TemperaturePresent is true when Temperature should be sent, allowing zero to be explicit.
 	Temperature        float64 // ex: 1.0
 
 	// ServiceTier may be "", "auto", "priority", or "flex". Provider behavior:
@@ -43,26 +46,51 @@ type SendOptions struct {
 	NoStore bool
 }
 
+// StreamingConversation is a mutable conversation that sends its current state to an LLM provider as a stream of events.
 type StreamingConversation interface {
+	// LastTurn returns the most recent conversation turn, or the zero Turn when the conversation is empty.
 	LastTurn() Turn
+
+	// Turns returns the conversation turns in chronological order.
+	//
+	// Treat the returned slice and its contents as read-only.
 	Turns() []Turn
+
+	// AddTools adds tools available to the model.
+	//
+	// It returns an error for an empty list or blank tool names. Adding a tool with an existing name replaces the previous tool.
 	AddTools(tools []Tool) error
+
+	// AddUserTurn appends a user text turn to the conversation.
+	//
+	// It returns an error when the previous assistant turn contains unresolved tool calls; add matching tool results first.
 	AddUserTurn(text string) error
+
+	// AddToolResults appends a user turn containing tool results.
+	//
+	// The previous turn must be an assistant turn with tool calls, and each result must match a prior call by call ID, name, and type.
 	AddToolResults(toolResults []ToolResult) error
+
+	// SendAsync starts a provider request and returns a channel of stream events.
+	//
+	// If options are supplied, only the first option is used. Errors are emitted as EventTypeError, retry attempts as EventTypeRetry, and the successful assistant turn
+	// is appended before the channel closes.
 	SendAsync(ctx context.Context, options ...SendOptions) <-chan Event
 }
 
+// toolCallResult pairs an assistant tool call with its matching result when one has been provided.
 type toolCallResult struct {
-	call   ToolCall
-	result *ToolResult
+	call   ToolCall    // Call is the assistant tool call being tracked.
+	result *ToolResult // Result is the matching tool result, or nil until the result is added.
 }
 
+// streamingConversation stores the mutable state for a provider-backed streaming conversation.
 type streamingConversation struct {
-	modelID   llmmodel.ModelID
-	turns     []Turn
-	tools     []Tool
-	toolCalls map[string]toolCallResult // toolCalls maps call_id to paired call/result. An entry can have a nil result (indicating it hasn't happened yet).
-	health.Ctx
+	modelID    llmmodel.ModelID          // The model ID selects the registered model and provider used for sends.
+	turns      []Turn                    // The turn list stores the conversation history in chronological order.
+	tools      []Tool                    // The tool list contains the current provider-visible tools available to the model.
+	toolCalls  map[string]toolCallResult // toolCalls maps call_id to paired call/result. An entry can have a nil result (indicating it hasn't happened yet).
+	health.Ctx                           // The embedded context provides health logging methods for conversation operations.
 
 	// conversationID is provider-specific. In the case of OpenAI's responses API, it's the ID received using the Conversations API.
 	providerConversationID string
@@ -75,6 +103,9 @@ type streamingConversation struct {
 	geminiContents []*geminiapi.Content
 }
 
+// NewConversation creates a streaming conversation for modelID with systemMessage as its initial system instructions.
+//
+// It does not contact the provider until SendAsync is called.
 func NewConversation(modelID llmmodel.ModelID, systemMessage string) StreamingConversation {
 	sc := streamingConversation{
 		modelID:   modelID,
@@ -86,6 +117,7 @@ func NewConversation(modelID llmmodel.ModelID, systemMessage string) StreamingCo
 	return &sc
 }
 
+// LastTurn returns the most recent conversation turn, or the zero Turn when the conversation is empty.
 func (sc *streamingConversation) LastTurn() Turn {
 	if len(sc.turns) == 0 {
 		return Turn{}
@@ -93,10 +125,14 @@ func (sc *streamingConversation) LastTurn() Turn {
 	return sc.turns[len(sc.turns)-1]
 }
 
+// Turns returns the conversation turns in chronological order.
+//
+// The returned slice aliases the conversation's internal storage and must be treated as read-only.
 func (sc *streamingConversation) Turns() []Turn {
 	return sc.turns
 }
 
+// AddTools adds tools to the conversation. It returns an error for an empty list or any tool with a blank name; tools with the same name replace earlier tools.
 func (sc *streamingConversation) AddTools(tools []Tool) error {
 	if len(tools) == 0 {
 		return errors.New("tools cannot be empty")
@@ -121,6 +157,9 @@ func (sc *streamingConversation) AddTools(tools []Tool) error {
 	return nil
 }
 
+// AddUserTurn appends text as a new user turn.
+//
+// It returns an error if the current last turn contains tool calls; add matching tool results with AddToolResults before adding another user message.
 func (sc *streamingConversation) AddUserTurn(text string) error {
 	lastTurn := sc.LastTurn()
 	if len(lastTurn.ToolCalls()) > 0 {
@@ -379,6 +418,7 @@ func trySendEvent(ctx context.Context, out chan<- Event, ev Event) bool {
 	}
 }
 
+// usesGeminiAPI reports whether the conversation's model is registered for the Gemini API.
 func (sc *streamingConversation) usesGeminiAPI() bool {
 	return modelSupportsAPIType(llmmodel.GetModelInfo(sc.modelID), llmmodel.ProviderTypeGemini)
 }
@@ -618,10 +658,12 @@ func debounceEvents(ctx context.Context, in <-chan Event, out chan<- Event) {
 // ErrRetryable marks an error as retryable by the caller.
 var ErrRetryable = errors.New("retryable")
 
+// retryableError marks an error as retryable while preserving the underlying error.
 type retryableError struct {
-	err error
+	err error // err is the underlying error being marked retryable.
 }
 
+// Error returns the wrapped error message, or ErrRetryable's message when no wrapped error is available.
 func (e *retryableError) Error() string {
 	if e == nil || e.err == nil {
 		return ErrRetryable.Error()
@@ -629,6 +671,7 @@ func (e *retryableError) Error() string {
 	return e.err.Error()
 }
 
+// Unwrap returns the underlying error.
 func (e *retryableError) Unwrap() error {
 	if e == nil {
 		return nil
@@ -636,6 +679,7 @@ func (e *retryableError) Unwrap() error {
 	return e.err
 }
 
+// Is reports whether target is ErrRetryable.
 func (e *retryableError) Is(target error) bool {
 	return target == ErrRetryable
 }

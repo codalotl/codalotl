@@ -16,6 +16,9 @@ import (
 
 const defaultAnthropicMaxTokens int64 = 32000
 
+// sendAsyncAnthropic sends the current conversation to the Anthropic Messages API and streams llmstream events to out. It requires a configured API key, honors
+// the model endpoint override, and returns the completed assistant turn for the caller to append. The method logs and wraps context, request-building, stream, and
+// event-conversion errors; stream receive failures and missing completion are marked retryable.
 func (sc *streamingConversation) sendAsyncAnthropic(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, error) {
 	if err := ctx.Err(); err != nil {
 		return Turn{}, sc.LogWrappedErr("anthropic_send_async.context", err)
@@ -87,6 +90,11 @@ func (sc *streamingConversation) sendAsyncAnthropic(ctx context.Context, out cha
 	resp.Role = RoleAssistant
 	return resp, nil
 }
+
+// buildAnthropicMessageRequest builds an Anthropic Messages API request for the current conversation.
+//
+// The request uses the conversation's system turn as System, converts non-system turns into Anthropic message blocks, includes configured tools, enables ephemeral
+// cache control, and applies model metadata and send options. It returns an error if the provider model ID is missing or a turn/tool cannot be encoded.
 func (sc *streamingConversation) buildAnthropicMessageRequest(modelInfo llmmodel.ModelInfo, opt *SendOptions) (anthropicapi.MessageRequest, error) {
 	modelID := strings.TrimSpace(modelInfo.ProviderModelID)
 	if modelID == "" {
@@ -130,6 +138,11 @@ func anthropicRequestMaxTokens(modelInfo llmmodel.ModelInfo) int64 {
 	}
 	return defaultAnthropicMaxTokens
 }
+
+// anthropicBuildMessageParam converts turn into an Anthropic Messages API input message.
+//
+// It supports user and assistant turns containing text, tool calls, tool results, and signed reasoning content. It returns include false for turns with no sendable
+// content, normalizes tool-call input JSON, and returns an error for unsupported roles or malformed parts.
 func anthropicBuildMessageParam(turn Turn) (anthropicapi.MessageParam, bool, error) {
 	role, ok := anthropicMapTurnRole(turn.Role)
 	if !ok {
@@ -222,6 +235,8 @@ func normalizeToolCallInputJSON(raw string) (string, error) {
 	}
 	return b.String(), nil
 }
+
+// anthropicApplySendOptions applies model metadata and send options to an Anthropic message request.
 func anthropicApplySendOptions(req *anthropicapi.MessageRequest, modelInfo llmmodel.ModelInfo, opt *SendOptions) error {
 	req.Thinking = &anthropicapi.ThinkingParam{Type: "adaptive"}
 	effort := ""
@@ -264,6 +279,9 @@ func anthropicMapReasoningEffort(effort string) string {
 		return strings.ToLower(strings.TrimSpace(effort))
 	}
 }
+
+// buildAnthropicToolParams converts package tools to Anthropic tool parameters. It accepts only function tools, requires each tool to have a name, and builds a
+// strict object input schema with sorted required keys.
 func buildAnthropicToolParams(tools []Tool) ([]anthropicapi.ToolParam, error) {
 	if len(tools) == 0 {
 		return nil, nil
@@ -309,23 +327,26 @@ func buildAnthropicToolParams(tools []Tool) ([]anthropicapi.ToolParam, error) {
 	return result, nil
 }
 
+// anthropicStreamState tracks accumulated state while processing an Anthropic message stream.
 type anthropicStreamState struct {
-	messageID    string
-	usage        anthropicapi.Usage
-	stopReason   string
-	stopSequence string
-	blocks       map[int]*anthropicBlockState
+	messageID    string                       // MessageID is the Anthropic message ID for the assistant turn.
+	usage        anthropicapi.Usage           // Usage accumulates token usage reported by Anthropic stream events.
+	stopReason   string                       // StopReason is the latest Anthropic stop_reason value.
+	stopSequence string                       // StopSequence is the stop sequence reported by Anthropic, when present.
+	blocks       map[int]*anthropicBlockState // Blocks maps Anthropic content block indexes to their accumulated state.
 }
+
+// anthropicBlockState accumulates one Anthropic content block while a stream is processed.
 type anthropicBlockState struct {
-	kind              string
-	providerID        string
-	text              strings.Builder
-	thinking          strings.Builder
-	thinkingSignature strings.Builder
-	toolName          string
-	toolCallID        string
-	toolInputJSON     string
-	sawInputJSONDelta bool
+	kind              string          // Kind is the Anthropic content block type.
+	providerID        string          // ProviderID is the stable provider ID exposed for the accumulated content part.
+	text              strings.Builder // Text accumulates text block content.
+	thinking          strings.Builder // Thinking accumulates reasoning content.
+	thinkingSignature strings.Builder // ThinkingSignature accumulates Anthropic's opaque thinking signature.
+	toolName          string          // ToolName is the function name for a tool_use block.
+	toolCallID        string          // ToolCallID is the Anthropic tool-use ID used to match tool results.
+	toolInputJSON     string          // ToolInputJSON accumulates the tool input JSON.
+	sawInputJSONDelta bool            // SawInputJSONDelta reports whether streamed input JSON deltas have begun.
 }
 
 func newAnthropicStreamState() *anthropicStreamState {
@@ -333,6 +354,11 @@ func newAnthropicStreamState() *anthropicStreamState {
 		blocks: make(map[int]*anthropicBlockState),
 	}
 }
+
+// processEvent applies one Anthropic stream event to s and returns the corresponding llmstream event, if any.
+//
+// It emits created, delta, tool-use, and completed events as stream state becomes available; updates usage and stop metadata; and reports done when the Anthropic
+// stream has reached a terminal success or error event. Malformed or inconsistent events are returned as errors.
 func (s *anthropicStreamState) processEvent(evt anthropicapi.Event) (*Event, bool, error) {
 	switch evt.Type {
 	case anthropicapi.EventTypeMessageStart:
@@ -396,6 +422,9 @@ func (s *anthropicStreamState) processEvent(evt anthropicapi.Event) (*Event, boo
 		return nil, false, nil
 	}
 }
+
+// onContentBlockStart records an Anthropic content block start event. It initializes block state, emits an initial text or reasoning delta when the start event
+// carries content, and records tool-use metadata for the final turn.
 func (s *anthropicStreamState) onContentBlockStart(index int, block *anthropicapi.ContentBlock) (*Event, bool, error) {
 	if block == nil {
 		return nil, false, errors.New("content_block_start missing content block")
@@ -445,6 +474,9 @@ func (s *anthropicStreamState) onContentBlockStart(index int, block *anthropicap
 		return nil, false, nil
 	}
 }
+
+// onContentBlockDelta applies an Anthropic content block delta to the matching block state. It emits cumulative text or reasoning deltas, accumulates streamed tool
+// input JSON and thinking signatures, and returns an error if a delta references an unknown block index.
 func (s *anthropicStreamState) onContentBlockDelta(index int, delta *anthropicapi.ContentBlockDelta) (*Event, bool, error) {
 	if delta == nil {
 		return nil, false, nil
@@ -502,6 +534,8 @@ func (s *anthropicStreamState) onContentBlockDelta(index int, delta *anthropicap
 		return nil, false, nil
 	}
 }
+
+// onContentBlockStop finalizes an Anthropic content block and returns its event, if any.
 func (s *anthropicStreamState) onContentBlockStop(index int) (*Event, bool, error) {
 	state, ok := s.blocks[index]
 	if !ok {
@@ -548,6 +582,8 @@ func (s *anthropicStreamState) onContentBlockStop(index int) (*Event, bool, erro
 		return nil, false, nil
 	}
 }
+
+// ensureBlock returns the accumulator for an Anthropic content block index.
 func (s *anthropicStreamState) ensureBlock(index int, kind string) *anthropicBlockState {
 	state, ok := s.blocks[index]
 	if !ok {
@@ -570,6 +606,9 @@ func anthropicContentProviderID(messageID, kind string, index int) string {
 	}
 	return fmt.Sprintf("%s:%s:%d", messageID, kind, index)
 }
+
+// buildTurn converts accumulated Anthropic stream blocks into the final assistant turn. It orders parts by Anthropic block index, validates tool-use input JSON,
+// copies usage and provider IDs, and maps the Anthropic stop reason to a FinishReason.
 func (s *anthropicStreamState) buildTurn() (Turn, error) {
 	indexes := make([]int, 0, len(s.blocks))
 	for idx := range s.blocks {
@@ -619,6 +658,8 @@ func (s *anthropicStreamState) buildTurn() (Turn, error) {
 		FinishReason: anthropicMapFinishReason(s.stopReason, hasToolCalls),
 	}, nil
 }
+
+// mergeAnthropicUsage merges non-zero Anthropic usage fields into base.
 func mergeAnthropicUsage(base, delta anthropicapi.Usage) anthropicapi.Usage {
 	if delta.InputTokens != 0 {
 		base.InputTokens = delta.InputTokens
@@ -654,6 +695,8 @@ func anthropicConvertUsage(usage anthropicapi.Usage) TokenUsage {
 		TotalOutputTokens:        usage.OutputTokens,
 	}
 }
+
+// anthropicMapFinishReason converts an Anthropic stop_reason value to a FinishReason.
 func anthropicMapFinishReason(stopReason string, hasToolCalls bool) FinishReason {
 	switch strings.ToLower(strings.TrimSpace(stopReason)) {
 	case "tool_use":

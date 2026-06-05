@@ -2,24 +2,28 @@ package llmstream
 
 import "context"
 
+// ToolKind identifies how a tool is exposed to a provider.
 type ToolKind string
 
+// Tool kind values describe how a tool is exposed to a provider.
 const (
-	ToolKindFunction ToolKind = "function"
-	ToolKindCustom   ToolKind = "custom"
+	ToolKindFunction ToolKind = "function" // ToolKindFunction exposes a tool as a structured function call.
+	ToolKindCustom   ToolKind = "custom"   // ToolKindCustom exposes a tool as a provider-specific custom tool.
 )
 
+// ToolGrammarSyntax identifies the grammar language used by a ToolGrammar definition. Supported values are ToolGrammarSyntaxLark and ToolGrammarSyntaxRegex.
 type ToolGrammarSyntax string
 
+// Tool grammar syntax values identify supported custom-tool grammar languages.
 const (
-	ToolGrammarSyntaxLark  ToolGrammarSyntax = "lark"
-	ToolGrammarSyntaxRegex ToolGrammarSyntax = "regex"
+	ToolGrammarSyntaxLark  ToolGrammarSyntax = "lark"  // ToolGrammarSyntaxLark selects Lark grammar syntax.
+	ToolGrammarSyntaxRegex ToolGrammarSyntax = "regex" // ToolGrammarSyntaxRegex selects regular-expression grammar syntax.
 )
 
 // ToolGrammar defines a grammar-based input format for custom tools. The syntax is currently limited to Lark or Regex.
 type ToolGrammar struct {
-	Syntax     ToolGrammarSyntax
-	Definition string
+	Syntax     ToolGrammarSyntax // Syntax identifies the grammar language used by Definition.
+	Definition string            // Definition is the grammar text sent to the provider.
 }
 
 // ToolInfo describes a tool exposed to the LLM. By default, tools are treated as function calls that accept an object as the top-level parameter. Set Kind to ToolKindCustom
@@ -31,7 +35,10 @@ type ToolGrammar struct {
 // When added to providers, we automatically handle adding `null` as types to optional parameters. All tools will be added in strict mode. The "additionalProperties":
 // false will automatically be added when appropriate.
 type ToolInfo struct {
-	Name        string
+	// Name is the provider-visible tool name and must be non-empty.
+	Name string
+
+	// Description tells the model what the tool does and when to use it.
 	Description string
 
 	// Parameters is just named arguments to a function. That is all that is supported. Each named argument is an obj. Example:
@@ -46,9 +53,15 @@ type ToolInfo struct {
 	Grammar  *ToolGrammar // Grammar configures a grammar input for ToolKindCustom tools. When nil, providers fall back to free-form text input.
 }
 
+// Tool is an executable capability that can be exposed to an LLM.
 type Tool interface {
+	// Info returns the provider-facing metadata used to describe the tool to the model.
 	Info() ToolInfo
+
+	// Name returns the provider-visible tool name. It should match Info().Name and is used to identify the tool.
 	Name() string
+
+	// Presenter returns the optional semantic presenter for this tool. A nil presenter means the tool has no custom presentation.
 	Presenter() Presenter
 
 	// Run runs the tool. If the tool call results in an error of any kind, the result.IsError will be true, with result.Result containing a message for the LLM. result.SourceErr
@@ -56,6 +69,7 @@ type Tool interface {
 	Run(ctx context.Context, params ToolCall) ToolResult
 }
 
+// NewErrorToolResult returns an error ToolResult for toolCall with errMsg as the model-visible result.
 func NewErrorToolResult(errMsg string, toolCall ToolCall) ToolResult {
 	return ToolResult{
 		CallID:  toolCall.CallID,

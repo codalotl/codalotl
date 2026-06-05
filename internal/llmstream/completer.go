@@ -13,7 +13,9 @@ type Completer interface {
 	Complete(ctx context.Context, modelID llmmodel.ModelID, systemMessage, userMessage string, options ...SendOptions) (Turn, error)
 }
 
+// completer is the default Completer implementation.
 type completer struct {
+	// The conversation factory creates new conversations; nil falls back to NewConversation.
 	newConversation func(llmmodel.ModelID, string) StreamingConversation
 }
 
@@ -22,6 +24,9 @@ func NewCompleter() Completer {
 	return completer{newConversation: NewConversation}
 }
 
+// Complete performs a single user-message completion and returns the successful assistant turn.
+//
+// It creates a conversation with systemMessage, appends userMessage, sends it with options, and consumes stream events until completion, cancellation, or error.
 func (c completer) Complete(ctx context.Context, modelID llmmodel.ModelID, systemMessage, userMessage string, options ...SendOptions) (Turn, error) {
 	newConversation := c.newConversation
 	if newConversation == nil {

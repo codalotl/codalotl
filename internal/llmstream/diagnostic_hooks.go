@@ -11,6 +11,7 @@ import (
 //
 // This method may be called eagerly as soon as we know the response object, but must be called before the channel returned by SendAsync closes.
 type DiagnosticHookReceiver interface {
+	// AddTurn records one provider turn with its request payload and completed response or error payload.
 	AddTurn(request map[string]any, response map[string]any)
 }
 
@@ -59,6 +60,7 @@ func emitDiagnosticTurn(request map[string]any, response map[string]any) {
 	}
 }
 
+// snapshotDiagnosticHooks returns a registration-ordered snapshot of diagnostic hook receivers.
 func snapshotDiagnosticHooks() []DiagnosticHookReceiver {
 	diagnosticHooksMu.RLock()
 	defer diagnosticHooksMu.RUnlock()
