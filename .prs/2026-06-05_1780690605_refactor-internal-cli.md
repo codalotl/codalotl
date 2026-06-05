@@ -38,7 +38,7 @@ Run the requested safe refactor sequence one refactor at a time. After each refa
 
 0. [DONE] Run `docs-improve-from-clarify` for `internal/cli` because `.codalotl/cas/clarify-public-api-1` is present. Result: no opportunities found; no source/CAS diff to commit.
 1. [DONE] `docs-add` for `internal/cli`. Result: refactor reported applied, but produced no workspace diff.
-2. `docs-fix` for `internal/cli`.
+2. [DONE] `docs-fix` for `internal/cli`. Result: committed documentation-only corrections with CAS artifact.
 3. `dry` for `internal/cli`.
 4. `test-cleanup` for `internal/cli`.
 5. `test-ensure-coverage` for `internal/cli`.
@@ -62,3 +62,4 @@ Not written yet.
 - `.codalotl/cas/clarify-public-api-1` exists; run `docs-improve-from-clarify` before the requested refactor sequence.
 - `docs-improve-from-clarify` on `internal/cli` returned `no_opportunity`.
 - `docs-add` on `internal/cli` reported applied but left the workspace clean.
+- `docs-fix` adjusted comments in `cli.go`, `config.go`, `iterate_command.go`, `monitoring.go`, and `pr_new.go`; committed as `a27b9dd`.
