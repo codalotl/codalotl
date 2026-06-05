@@ -13,6 +13,8 @@ import (
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 )
 
+// loadPackageArg resolves a single package CLI argument to a Go package and its containing module. It accepts import paths and package directories, rejects package
+// patterns, and gives import paths precedence over implicit CWD-relative directories.
 func loadPackageArg(arg string) (*gocode.Package, *gocode.Module, error) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
@@ -60,6 +62,7 @@ func loadPackageArg(arg string) (*gocode.Package, *gocode.Module, error) {
 	return nil, nil, qcli.UsageError{Message: fmt.Sprintf("package %q was not found as an import path or directory", arg)}
 }
 
+// resolveExistingDir resolves pathArg to an absolute directory path if it exists.
 func resolveExistingDir(pathArg string) (absDir string, ok bool, _ error) {
 	pathArg = strings.TrimSpace(pathArg)
 	if pathArg == "" {
@@ -112,6 +115,7 @@ func loadPackageDirArg(pathArg string) (*gocode.Package, *gocode.Module, error) 
 	return loadPackageDir(absDir)
 }
 
+// loadPackageDir loads the Go package rooted at absDir and returns it with its module.
 func loadPackageDir(absDir string) (*gocode.Package, *gocode.Module, error) {
 	mod, err := gocode.NewModule(absDir)
 	if err != nil {
@@ -136,14 +140,21 @@ func loadPackageDir(absDir string) (*gocode.Package, *gocode.Module, error) {
 	return pkg, mod, nil
 }
 
+// goListPackageInfo is the subset of go list -json output used to load a package.
 type goListPackageInfo struct {
-	Dir        string `json:"Dir"`
+	// Dir is the package directory reported by go list.
+	Dir string `json:"Dir"`
+
+	// ImportPath is the resolved package import path.
 	ImportPath string `json:"ImportPath"`
-	Module     *struct {
+
+	// Module is the containing module metadata, or nil when none is reported.
+	Module *struct {
 		Dir string `json:"Dir"`
 	} `json:"Module"`
 }
 
+// loadPackageImportWithoutModule loads an import-path package without requiring the current directory to be in a module.
 func loadPackageImportWithoutModule(arg string) (*gocode.Package, *gocode.Module, error) {
 	importPath := strings.TrimRight(strings.TrimSpace(arg), "/")
 	if importPath == "" {
@@ -202,6 +213,9 @@ func goListImportError(importPath string, out []byte, err error) error {
 	return fmt.Errorf("go list %q: %w: %s", importPath, err, msg)
 }
 
+// loadPackageImportArg resolves arg as an import-path package using resolver. It returns the loaded package and the module that contains it. Trailing slashes are
+// ignored, fully resolved import paths are preserved on the returned package, and packages without an enclosing module are loaded with a synthetic module rooted
+// at the package directory.
 func loadPackageImportArg(resolver *gocode.Module, arg string) (*gocode.Package, *gocode.Module, error) {
 	importPath := strings.TrimRight(strings.TrimSpace(arg), "/")
 	if importPath == "" {
@@ -268,6 +282,8 @@ func isPackageImportNotFound(err error) bool {
 		strings.Contains(msg, "no go.mod file found in parent directories")
 }
 
+// resolvePackagePathInsideCWD resolves a package argument to an absolute package directory under the current working directory. It returns a usage error if the
+// package resolves outside the current working directory.
 func resolvePackagePathInsideCWD(arg string) (string, error) {
 	pkg, _, err := loadPackageArg(arg)
 	if err != nil {

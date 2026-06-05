@@ -11,6 +11,8 @@ import (
 	"github.com/codalotl/codalotl/internal/specmd"
 )
 
+// specContextForPackage returns the package SPEC.md context to include in LLM prompts. It uses contextModule, or pkg.Module when nil, to locate SPEC.md, removes
+// Public API sections, and returns an empty string when no usable SPEC.md exists.
 func specContextForPackage(pkg *gocode.Package, contextModule *gocode.Module) (string, error) {
 	if contextModule == nil {
 		contextModule = pkg.Module

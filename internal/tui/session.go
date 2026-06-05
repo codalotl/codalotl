@@ -22,54 +22,62 @@ import (
 	"github.com/codalotl/codalotl/internal/tools/toolsetinterface"
 )
 
+// Session defaults and agent names used by the TUI.
 const (
-	defaultModelID       = llmmodel.DefaultModel
-	tuiAgentName         = "codalotl"
-	orchestrateAgentName = "pr-orchestrator"
+	defaultModelID       = llmmodel.DefaultModel // defaultModelID is the fallback model for sessions without an explicit model.
+	tuiAgentName         = "codalotl"            // tuiAgentName is the canonical name for the main Codalotl TUI agent.
+	orchestrateAgentName = "pr-orchestrator"     // orchestrateAgentName is the registry name for the built-in PR orchestrator agent.
 )
 
 var newRootAgentCreator = agent.NewAgentCreator
 
+// session represents one active TUI agent session and its associated resources.
 type session struct {
-	agent            *agent.Agent
-	queueUserMessage func(string) error
-	modelID          llmmodel.ModelID
-	sandboxDir       string
-	packagePath      string
-	packageAbsPath   string
-	availableSkills  []skills.Skill
-	invalidSkills    []skills.Skill
+	agent            *agent.Agent       // agent runs the conversation loop for this session.
+	queueUserMessage func(string) error // queueUserMessage queues user text for the next safe agent boundary during an active run.
+	modelID          llmmodel.ModelID   // modelID is the selected LLM model for this session.
+	sandboxDir       string             // sandboxDir is the normalized sandbox root used for authorization, tools, and skill discovery.
+	packagePath      string             // packagePath is the sandbox-relative package path for Package Mode, or empty outside Package Mode.
+	packageAbsPath   string             // packageAbsPath is the absolute package path for Package Mode, or empty outside Package Mode.
+	availableSkills  []skills.Skill     // availableSkills are valid skills discovered for this session and shown by /skills.
+	invalidSkills    []skills.Skill     // invalidSkills are discovered skills with validation problems shown by /skills.
 
 	// failedSkillLoads are errors returned by skills.LoadSkill when attempting to load a candidate skill dir (typically due to missing/invalid SKILL.md, IO errors,
 	// etc). skillsLoadErr is a fatal skills discovery error (rare); both are surfaced to the user via `/skills`.
 	failedSkillLoads []error
 
-	skillsLoadErr error
-	authorizer    authdomain.Authorizer
-	userRequests  <-chan authdomain.UserRequest
-	config        sessionConfig
+	skillsLoadErr error                         // skillsLoadErr is a skills discovery error that is non-fatal to session startup and shown by /skills.
+	authorizer    authdomain.Authorizer         // authorizer mediates tool permissions for this session and must be closed when the session ends.
+	userRequests  <-chan authdomain.UserRequest // userRequests receives permission prompts emitted by the session authorizer.
+	config        sessionConfig                 // config is the normalized configuration used to construct this session.
 }
 
+// sessionConfig configures construction and reset of a TUI agent session.
 type sessionConfig struct {
-	packagePath string
-	agentName   string
-	modelID     llmmodel.ModelID
-	lintSteps   []lints.Step
-	autoYes     bool
+	packagePath string           // Package path selects Package Mode when non-blank and is interpreted relative to the sandbox.
+	agentName   string           // Agent name selects a specialized non-package agent; Package Mode overrides it.
+	modelID     llmmodel.ModelID // Model ID selects the LLM model; an empty value uses the default model.
+	lintSteps   []lints.Step     // Lint steps configure package checks used by tools and package-context gathering.
+	autoYes     bool             // Auto yes approves permission requests through the session authorizer.
 
 	// sandboxDir, if set, overrides the default sandbox detection (os.Getwd). This is primarily to make tests independent of process-wide working directory and to avoid
 	// path aliasing issues (ex: /var vs /private/var on macOS).
 	sandboxDir string
 }
 
+// packageMode reports whether cfg selects Package Mode.
 func (cfg sessionConfig) packageMode() bool {
 	return strings.TrimSpace(cfg.packagePath) != ""
 }
 
+// orchestrateMode reports whether cfg selects the built-in orchestrator agent.
 func (cfg sessionConfig) orchestrateMode() bool {
 	return strings.TrimSpace(cfg.agentName) == orchestrateAgentName
 }
 
+// newSession constructs an agent session from cfg, including the authorizer, tools, skills, selected agent, and initial environment turn. It normalizes the sandbox
+// and package path, uses the default model when cfg.modelID is empty, and applies Package Mode code-unit restrictions when cfg.packagePath is set. The caller must
+// close the returned session when it is replaced or no longer needed.
 func newSession(cfg sessionConfig) (*session, error) {
 	sandboxDir := strings.TrimSpace(cfg.sandboxDir)
 	if sandboxDir == "" {
@@ -202,6 +210,7 @@ func (s *session) Close() {
 	}
 }
 
+// ID returns the agent session ID, or an empty string if no agent is available.
 func (s *session) ID() string {
 	if s == nil || s.agent == nil {
 		return ""
@@ -209,12 +218,15 @@ func (s *session) ID() string {
 	return s.agent.SessionID()
 }
 
+// SendMessage sends message to the agent and returns the resulting event stream.
 func (s *session) SendMessage(ctx context.Context, message string) <-chan agent.Event {
 	if s == nil || s.agent == nil {
 		return nil
 	}
 	return s.agent.SendUserMessage(ctx, message)
 }
+
+// QueueUserMessage queues message for delivery at the agent's next safe boundary.
 func (s *session) QueueUserMessage(message string) error {
 	if s == nil {
 		return agent.ErrNotRunning
@@ -228,6 +240,7 @@ func (s *session) QueueUserMessage(message string) error {
 	return s.agent.QueueUserMessage(message)
 }
 
+// AddGrantsFromUserMessage applies authorization grants found in message to the session authorizer.
 func (s *session) AddGrantsFromUserMessage(message string) error {
 	if s == nil || s.authorizer == nil {
 		return authdomain.ErrAuthorizerCannotAcceptGrants
@@ -235,10 +248,12 @@ func (s *session) AddGrantsFromUserMessage(message string) error {
 	return authdomain.AddGrantsFromUserMessage(s.authorizer, message)
 }
 
+// UserRequests returns the permission request channel for this session.
 func (s *session) UserRequests() <-chan authdomain.UserRequest {
 	return s.userRequests
 }
 
+// ModelName returns the selected model name, or the default model name if none is set.
 func (s *session) ModelName() string {
 	if s == nil {
 		return string(defaultModelID)
@@ -342,6 +357,7 @@ func normalizeSessionConfig(cfg sessionConfig, sandboxDir string) (sessionConfig
 	return cfg, absPkgPath, nil
 }
 
+// loadGoPackage loads the Go package at pkgAbsPath from its enclosing module.
 func loadGoPackage(pkgAbsPath string) (*gocode.Package, error) {
 	if pkgAbsPath == "" {
 		return nil, fmt.Errorf("empty package path")

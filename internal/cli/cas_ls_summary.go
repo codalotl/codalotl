@@ -19,17 +19,19 @@ import (
 	qcli "github.com/codalotl/codalotl/internal/q/cli"
 )
 
+// A casSummaryRow contains display and filter data for one CAS package status row.
 type casSummaryRow struct {
-	Package      string
-	UpToDate     string
-	Stale        string
-	Age          string
-	ChurnPercent string
-	state        casPackageState
-	age          *time.Duration
-	churn        *float64
+	Package      string          // Display package path.
+	UpToDate     string          // Up-to-date status, formatted as "yes" or "no".
+	Stale        string          // Stale status, formatted as "yes", "no", or "-".
+	Age          string          // Compact age of the relevant CAS record, or "-".
+	ChurnPercent string          // Approximate churn percentage since the prior CAS-covered state, or "-".
+	state        casPackageState // Canonical package state used for filtering.
+	age          *time.Duration  // Relevant CAS record age used for threshold filtering, or nil when unavailable.
+	churn        *float64        // Approximate churn percentage used for threshold filtering, or nil when unavailable.
 }
 
+// casPackageState identifies a CAS package status or status filter.
 type casPackageState string
 
 const (
@@ -40,14 +42,17 @@ const (
 	casPackageStateMissing  casPackageState = "missing"
 )
 
+// casLsPackagesOptions contains parsed options for the CAS package status listing.
 type casLsPackagesOptions struct {
-	OutputCSV     bool
-	State         casPackageState
-	StateExplicit bool
-	MinAge        *time.Duration
-	MinChurn      *float64
+	OutputCSV     bool            // OutputCSV selects CSV output instead of the terminal-oriented table.
+	State         casPackageState // State filters rows by CAS package status.
+	StateExplicit bool            // StateExplicit reports whether the user supplied a state filter.
+	MinAge        *time.Duration  // MinAge keeps rows whose relevant CAS record age is at least this duration, or nil to disable the filter.
+	MinChurn      *float64        // MinChurn keeps rows whose churn percentage is at least this value, or nil to disable the filter.
 }
 
+// parseCASLsPackagesOptions parses cas ls-packages flag values into options. State defaults to all unless age or churn thresholds are supplied without an explicit
+// state, in which case it defaults to stale.
 func parseCASLsPackagesOptions(outputCSV bool, state string, minAge string, minChurn string) (casLsPackagesOptions, error) {
 	opts := casLsPackagesOptions{
 		OutputCSV:     outputCSV,
@@ -103,6 +108,8 @@ func parseCASPackageState(state string) (casPackageState, error) {
 	}
 }
 
+// parseCASLsPackagesMinAge parses the --min-age threshold. It accepts Go durations and compact d, w, and y suffixes, where d is 24 hours, w is 7 days, and y is
+// 365 days. Empty, negative, invalid, or overflowing values return a qcli.UsageError.
 func parseCASLsPackagesMinAge(s string) (time.Duration, error) {
 	raw := strings.TrimSpace(s)
 	usageErr := func() error {
@@ -152,6 +159,8 @@ func parseCASLsPackagesMinChurn(s string) (float64, error) {
 	return churn, nil
 }
 
+// runCASLsPackages writes per-package CAS coverage for namespace across modules under the nearest Git repository. It applies opts' state and threshold filters,
+// sorts rows by package path, and emits either CSV or a terminal-oriented table.
 func runCASLsPackages(ctx context.Context, out io.Writer, namespace string, opts casLsPackagesOptions) error {
 	spec, err := resolveCASNamespaceSpec(namespace)
 	if err != nil {
@@ -206,6 +215,8 @@ func runCASLsPackages(ctx context.Context, out io.Writer, namespace string, opts
 	return writeCASSummaryTable(out, rows)
 }
 
+// casSummaryRowForPackage builds one CAS status row for absPkgDir. It returns ok=false when the package should not be displayed relative to displayBaseDir. The
+// row includes display text and filter state for current, stale, or missing CAS coverage, with age and churn populated when summary data is available.
 func casSummaryRowForPackage(displayBaseDir string, mod *gocode.Module, db *gocas.DB, spec gocas.NamespaceSpec, absPkgDir string, now time.Time) (casSummaryRow, bool, error) {
 	display, summary, ok, err := summarizeCASPackageFromBase(displayBaseDir, mod, db, spec, absPkgDir)
 	if err != nil || !ok {
@@ -242,6 +253,8 @@ func casSummaryRowForPackage(displayBaseDir string, mod *gocode.Module, db *goca
 	return row, true, nil
 }
 
+// casSummaryRowMatchesFilters reports whether row satisfies opts' state and threshold filters. MinAge and MinChurn require row age and churn data, except that explicit
+// --state=outdated keeps missing rows even when threshold filters are present.
 func casSummaryRowMatchesFilters(row casSummaryRow, opts casLsPackagesOptions) bool {
 	if !casPackageStateMatches(row.state, opts.State) {
 		return false
@@ -282,6 +295,8 @@ func casPackageStateMatches(rowState casPackageState, filterState casPackageStat
 	}
 }
 
+// summarizeCASPackageFromBase loads absPkgDir from mod and summarizes its CAS state. It returns the display path relative to displayBaseDir, the package summary
+// for spec, and ok=false when absPkgDir is outside displayBaseDir.
 func summarizeCASPackageFromBase(displayBaseDir string, mod *gocode.Module, db *gocas.DB, spec gocas.NamespaceSpec, absPkgDir string) (string, gocas.PackageSummary, bool, error) {
 	display, ok := displayPackagePath(displayBaseDir, absPkgDir)
 	if !ok {

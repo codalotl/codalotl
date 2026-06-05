@@ -110,6 +110,7 @@ func identifierNeedsDocs(group *gocodecontext.IdentifierGroup, id string, idents
 	return true
 }
 
+// identifierTrackedByIdentifiers reports whether id is a tracked package-level identifier.
 func identifierTrackedByIdentifiers(id string, idents *Identifiers) bool {
 	if id == gocode.PackageIdentifier {
 		return !idents.isTestPkg

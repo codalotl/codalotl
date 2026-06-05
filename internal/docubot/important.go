@@ -10,10 +10,11 @@ import (
 	"github.com/codalotl/codalotl/internal/updatedocs"
 )
 
+// importantIdentifierPolicy defines thresholds for selecting identifiers in important-only documentation mode.
 type importantIdentifierPolicy struct {
-	BigFunctionSourceLines int
-	GroupFanInThreshold    int
-	GroupFanOutThreshold   int
+	BigFunctionSourceLines int // BigFunctionSourceLines is the minimum source line count that makes a function or method important.
+	GroupFanInThreshold    int // GroupFanInThreshold is the minimum UsedByDeps count that makes an identifier group important.
+	GroupFanOutThreshold   int // GroupFanOutThreshold is the minimum DirectDeps count that makes an identifier group important.
 }
 
 var defaultImportantIdentifierPolicy = importantIdentifierPolicy{
@@ -22,6 +23,7 @@ var defaultImportantIdentifierPolicy = importantIdentifierPolicy{
 	GroupFanOutThreshold:   12,
 }
 
+// addDocsOnlyDocumentImportantIdentifiers documents important identifiers in a scratch package and applies only those docs to pkg.
 func addDocsOnlyDocumentImportantIdentifiers(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module, allowTokenBudgetExpansion bool) ([]*gopackagediff.Change, error) {
 	importantIDs, importantUndocumented, err := importantIdentifiersNeedingDocs(pkg, options.DocumentTestFiles, options, contextModule)
 	if err != nil {
@@ -151,6 +153,7 @@ func needsImportantDocs(pkg *gocode.Package, options AddDocsOptions) (bool, erro
 	return false, nil
 }
 
+// needsImportantDocsForPackage reports whether pkg has any important identifier that still needs documentation.
 func needsImportantDocsForPackage(pkg *gocode.Package, includeTest bool, options AddDocsOptions, contextModule *gocode.Module) (bool, error) {
 	ids := NewIdentifiersFromPackage(pkg)
 	markImportantStatusExclusionsDocumented(ids, pkg, options.ExcludeIdentifiers)
@@ -208,6 +211,7 @@ func markImportantStatusExclusionsDocumented(ids *Identifiers, pkg *gocode.Packa
 	}
 }
 
+// graphImportantCandidatesNeedingDocs returns undocumented top-level identifiers that still need graph-based importance analysis.
 func graphImportantCandidatesNeedingDocs(ids *Identifiers, staticImportant map[string]struct{}, includeTest bool) map[string]struct{} {
 	candidates := make(map[string]struct{})
 	addIfNeedsDocs := func(identifier string) {
@@ -239,6 +243,7 @@ func importantIdentifiersForPackage(pkg *gocode.Package, includeTest bool, conte
 	return defaultImportantIdentifierPolicy.identifiers(pkg, includeTest, contextModule, options)
 }
 
+// identifiers returns the identifiers selected by p, including static important identifiers and identifiers in important dependency groups.
 func (p importantIdentifierPolicy) identifiers(pkg *gocode.Package, includeTest bool, contextModule *gocode.Module, options BaseOptions) (map[string]struct{}, error) {
 	if contextModule == nil {
 		contextModule = pkg.Module
@@ -290,6 +295,7 @@ func (p importantIdentifierPolicy) identifiers(pkg *gocode.Package, includeTest 
 	return important, nil
 }
 
+// staticIdentifiersFromIDs returns identifiers that are important without dependency graph analysis and the generated identifiers excluded from that set.
 func (p importantIdentifierPolicy) staticIdentifiersFromIDs(pkg *gocode.Package, ids *Identifiers, includeTest bool) (map[string]struct{}, map[string]struct{}) {
 	generatedIDs := sliceToSet(appendExclusionForGeneratedFiles(nil, pkg))
 	important := make(map[string]struct{})
@@ -346,6 +352,7 @@ func (p importantIdentifierPolicy) staticIdentifiersFromIDs(pkg *gocode.Package,
 	return important, generatedIDs
 }
 
+// importantScratchExclusions returns exclusions that limit a scratch AddDocs run to important identifiers.
 func importantScratchExclusions(exclude []string, pkg *gocode.Package, importantIDs map[string]struct{}) []string {
 	excludeSet := sliceToSet(exclude)
 	ids := NewIdentifiersFromPackage(pkg)
@@ -385,6 +392,7 @@ func removeExcludedImportantIdentifiers(importantIDs map[string]struct{}, exclud
 	}
 }
 
+// importantGroup reports whether group meets the policy's fan-in or fan-out importance thresholds.
 func (p importantIdentifierPolicy) importantGroup(group *gocodecontext.IdentifierGroup) bool {
 	return len(group.UsedByDeps) >= p.GroupFanInThreshold ||
 		len(group.DirectDeps) >= p.GroupFanOutThreshold
@@ -407,6 +415,7 @@ func totalImportantUndocumented(ids *Identifiers, important map[string]struct{},
 	return count
 }
 
+// countImportantUndocumentedTopLevel counts important top-level identifiers that lack documentation.
 func (ids *Identifiers) countImportantUndocumentedTopLevel(identifiers []string, important map[string]struct{}, includeTest bool) int {
 	count := 0
 	for _, identifier := range identifiers {
@@ -423,6 +432,7 @@ func (ids *Identifiers) countImportantUndocumentedTopLevel(identifiers []string,
 	return count
 }
 
+// countImportantUndocumentedTypes counts important types that lack type documentation or any field documentation.
 func (ids *Identifiers) countImportantUndocumentedTypes(important map[string]struct{}, includeTest bool) int {
 	count := 0
 	for _, typ := range ids.allTypes {
@@ -448,6 +458,7 @@ func (ids *Identifiers) countImportantUndocumentedTypes(important map[string]str
 	return count
 }
 
+// applyImportantDocsFromScratchPackage applies documented important snippets from scratchPkg to pkg without replacing existing documentation.
 func applyImportantDocsFromScratchPackage(pkg *gocode.Package, scratchPkg *gocode.Package, importantIDs map[string]struct{}, options AddDocsOptions, includeTestSnippets bool, logContext string) (*gocode.Package, error) {
 	importantSnippets := importantDocumentationSnippets(scratchPkg, importantIDs, includeTestSnippets)
 	if len(importantSnippets) == 0 {
@@ -470,6 +481,7 @@ func applyImportantDocsFromScratchPackage(pkg *gocode.Package, scratchPkg *gocod
 	return pkg, nil
 }
 
+// importantDocumentationSnippets returns documented snippets from pkg that contain important identifiers.
 func importantDocumentationSnippets(pkg *gocode.Package, importantIDs map[string]struct{}, includeTestSnippets bool) []string {
 	var snippets []string
 	for _, snippet := range pkg.Snippets() {

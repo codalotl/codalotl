@@ -1,6 +1,10 @@
 package llmstream
 
+// ContentPart is a package-defined item that can appear in Turn.Parts.
+//
+// Only types in this package can implement ContentPart.
 type ContentPart interface {
+	// isPart marks package-defined values that can be stored in Turn.Parts.
 	isPart()
 }
 
@@ -15,6 +19,7 @@ type ReasoningContent struct {
 	// ProviderID is provider-specific (if the provider IDs its reasoning text).
 	ProviderID string `json:"provider_id"`
 
+	// Content is the reasoning text or summary.
 	Content string `json:"content"`
 
 	// ProviderState carries provider-specific opaque reasoning state needed to safely round-trip reasoning across turns. For Anthropic this stores the thinking signature;
@@ -22,9 +27,12 @@ type ReasoningContent struct {
 	ProviderState string `json:"provider_state,omitempty"`
 }
 
+// String returns c.Content.
 func (c ReasoningContent) String() string {
 	return c.Content
 }
+
+// isPart marks ReasoningContent as a ContentPart.
 func (c ReasoningContent) isPart() {}
 
 // TextContent represents the primary message response LLMs give.
@@ -34,24 +42,28 @@ func (c ReasoningContent) isPart() {}
 //   - There may be multiple TextContent per message.
 //   - There may be multiple TextContent per ProviderID.
 type TextContent struct {
-	ProviderID string `json:"provider_id"`
-	Content    string `json:"content"`
+	ProviderID string `json:"provider_id"` // ProviderID is the provider's identifier for this text item, when one exists.
+	Content    string `json:"content"`     // Content is the visible text.
 }
 
+// String returns c.Content.
 func (c TextContent) String() string {
 	return c.Content
 }
 
+// isPart marks TextContent as a ContentPart.
 func (c TextContent) isPart() {}
 
 // CompactionContent stores opaque provider compaction state for stateless replay.
 type CompactionContent struct {
-	ProviderID    string `json:"provider_id"`
-	ProviderState string `json:"provider_state,omitempty"`
+	ProviderID    string `json:"provider_id"`              // ProviderID is the provider's identifier for this compaction item, when one exists.
+	ProviderState string `json:"provider_state,omitempty"` // ProviderState is the opaque compaction payload to preserve for replay.
 }
 
+// isPart marks CompactionContent as a ContentPart.
 func (c CompactionContent) isPart() {}
 
+// ToolCall represents a tool invocation requested by an assistant turn.
 type ToolCall struct {
 	ProviderID string `json:"provider_id"` // Provider ID.
 	CallID     string `json:"call_id"`     // Ex: "call_EMPsaazgTBezpruyU2FkwCMC".
@@ -60,14 +72,15 @@ type ToolCall struct {
 	Input      string `json:"input"`       // Input to function. For functions, JSON-serialized params.
 }
 
+// isPart marks ToolCall as a ContentPart.
 func (ToolCall) isPart() {}
 
 // ToolResult is the result of a ToolCall. CallID/Name/Type should match the call.
 type ToolResult struct {
-	CallID string `json:"call_id"`
-	Name   string `json:"name"`
-	Type   string `json:"type"`   // Matches type of corresponding ToolCall (ex: "function_call").
-	Result string `json:"result"` // Can either be raw string (ex: markdown; some text; a bulleted list) or JSON-serialized string; depends on Tool.
+	CallID string `json:"call_id"` // CallID identifies the ToolCall this result answers.
+	Name   string `json:"name"`    // Name is the tool name and must match the corresponding ToolCall.Name.
+	Type   string `json:"type"`    // Matches type of corresponding ToolCall (ex: "function_call").
+	Result string `json:"result"`  // Can either be raw string (ex: markdown; some text; a bulleted list) or JSON-serialized string; depends on Tool.
 
 	// Did the tool call fail? NOTE: IsError should be false for things like failed tests, or shell commands which returned a non-zero error code (but which were otherwise
 	// successfully attempted).
@@ -79,4 +92,5 @@ type ToolResult struct {
 	SourceErr error `json:"-"`
 }
 
+// isPart marks ToolResult as a ContentPart.
 func (c ToolResult) isPart() {}

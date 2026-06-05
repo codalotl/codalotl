@@ -21,9 +21,9 @@ var Version = "0.15.2"
 // Note that if Stdout/Stderr are overridden, we will pass them to other package's functions if they accept them. However, not all will; some packages will probably
 // print to Stdout.
 type RunOptions struct {
-	In  io.Reader
-	Out io.Writer
-	Err io.Writer
+	In  io.Reader // In overrides standard input; nil uses os.Stdin.
+	Out io.Writer // Out overrides standard output; nil uses os.Stdout.
+	Err io.Writer // Err overrides standard error; nil uses os.Stderr.
 }
 
 // Run runs the CLI with args (typically you'd use os.Args).

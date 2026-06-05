@@ -217,6 +217,8 @@ func wrapParagraphText(width int, text string) []string {
 	return out
 }
 
+// wrapWords wraps words into terminal-cell-width lines no wider than width. It joins words with single spaces, splits over-wide words, and measures visible width
+// while ignoring ANSI escape codes.
 func wrapWords(width int, words []string) []string {
 	var out []string
 
@@ -249,6 +251,7 @@ func wrapWords(width int, words []string) []string {
 	return out
 }
 
+// breakWord splits word into terminal-cell-width chunks no wider than width.
 func breakWord(width int, word string) []string {
 	if width <= 0 || word == "" {
 		return nil
@@ -278,13 +281,15 @@ func breakWord(width int, word string) []string {
 	return chunks
 }
 
+// bannerSection stores normalized, styled banner art and its display dimensions.
 type bannerSection struct {
-	width  int
-	height int
-	block  string
-	lines  []string
+	width  int      // Width is the visible cell width of the normalized block.
+	height int      // Height is the number of lines in the normalized block.
+	block  string   // Block is the complete styled banner section.
+	lines  []string // Lines are the styled banner section split for layout.
 }
 
+// newBannerSection returns normalized, styled banner art and its display dimensions.
 func newBannerSection(block string, fg termformat.Color) bannerSection {
 	normalized := termformat.BlockNormalizeWidth(block, termformat.BlockNormalizeModeNaive)
 	width := termformat.BlockWidth(normalized)

@@ -57,6 +57,7 @@ func AddDocs(pkg *gocode.Package, options AddDocsOptions) ([]*gopackagediff.Chan
 	return addDocs(pkg, options, nil, options.TokenBudget == 0)
 }
 
+// addDocs documents the identifiers selected by options and returns the resulting documentation-only changes.
 func addDocs(pkg *gocode.Package, options AddDocsOptions, contextModule *gocode.Module, allowTokenBudgetExpansion bool) ([]*gopackagediff.Change, error) {
 	if options.TokenBudget == 0 {
 		options.TokenBudget = defaultTokenBudget
@@ -304,6 +305,7 @@ func addDocsOnlyDocumentExportedIdentifier(pkg *gocode.Package, options AddDocsO
 	return merged, nil
 }
 
+// applyPublicDocsFromScratchPackage applies documented public snippets from scratchPkg to pkg without replacing existing documentation.
 func applyPublicDocsFromScratchPackage(pkg *gocode.Package, scratchPkg *gocode.Package, options AddDocsOptions, includeTestSnippets bool, logContext string) (*gocode.Package, error) {
 	publicSnippets, err := publicDocumentationSnippets(scratchPkg, includeTestSnippets)
 	if err != nil {
@@ -474,6 +476,9 @@ func contextForAddDocsPartial(pkg *gocode.Package, idents *Identifiers, tokenBud
 	return contextForAddDocsPartialWithModule(pkg, idents, tokenBudget, documentTestFiles, nil, options)
 }
 
+// contextForAddDocsPartialWithModule builds a token-budgeted LLM context and target identifier list for one AddDocs pass. It uses contextModule, or pkg.Module when
+// nil, to resolve dependencies. If no target group fits tokenBudget, it attempts to prune the smallest viable group and returns a tokenBudgetExceededError when
+// that still cannot fit.
 func contextForAddDocsPartialWithModule(pkg *gocode.Package, idents *Identifiers, tokenBudget int, documentTestFiles bool, contextModule *gocode.Module, options BaseOptions) (*gocodecontext.Context, []string, error) {
 	if contextModule == nil {
 		contextModule = pkg.Module

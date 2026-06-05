@@ -19,12 +19,20 @@ import (
 
 const geminiEmptyStopMaxRetries = 3
 
+// geminiAttemptFunc performs one Gemini send attempt.
 type geminiAttemptFunc func(context.Context, chan Event, *SendOptions, llmmodel.ModelInfo) (Turn, *geminiapi.Content, error)
 
+// sendAsyncGemini sends the conversation through Gemini and streams events to out.
+//
+// It retries empty STOP responses and returns the completed assistant turn for SendAsync to append.
 func (sc *streamingConversation) sendAsyncGemini(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, error) {
 	return sc.sendAsyncGeminiWithAttempt(ctx, out, opt, modelInfo, sc.sendAsyncGeminiOnce)
 }
 
+// sendAsyncGeminiWithAttempt sends the conversation using attempt and retries empty Gemini STOP responses.
+//
+// attempt performs one provider request and streams events to out. Empty STOP responses are retried up to geminiEmptyStopMaxRetries, with each retry reported as
+// EventTypeRetry. On success, the method records the exact Gemini response content for future resends.
 func (sc *streamingConversation) sendAsyncGeminiWithAttempt(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo, attempt geminiAttemptFunc) (Turn, error) {
 	for retry := 0; retry <= geminiEmptyStopMaxRetries; retry++ {
 		if err := ctx.Err(); err != nil {
@@ -55,6 +63,9 @@ func (sc *streamingConversation) sendAsyncGeminiWithAttempt(ctx context.Context,
 	return Turn{}, sc.LogNewErr("gemini_send_async.unreachable")
 }
 
+// sendAsyncGeminiOnce performs one Gemini GenerateContentStream attempt for the current conversation and streams llmstream events to out. It requires a configured
+// API key and provider model ID, honors the model endpoint override, and returns the completed assistant turn with the exact Gemini model content to retain for
+// replay. Empty STOP responses are returned without an EventTypeCompletedSuccess event so the caller can retry; recognized retryable stream errors are marked retryable.
 func (sc *streamingConversation) sendAsyncGeminiOnce(ctx context.Context, out chan Event, opt *SendOptions, modelInfo llmmodel.ModelInfo) (Turn, *geminiapi.Content, error) {
 	if err := ctx.Err(); err != nil {
 		return Turn{}, nil, sc.LogWrappedErr("gemini_send_async.context", err)
@@ -170,6 +181,7 @@ func geminiIsEmptyStopTurn(turn Turn) bool {
 	return turn.FinishReason == FinishReasonEndTurn && len(turn.Parts) == 0
 }
 
+// geminiIsRetryableStreamError reports whether err is a retryable Gemini streaming error.
 func geminiIsRetryableStreamError(err error) bool {
 	if err == nil {
 		return false
@@ -193,6 +205,10 @@ func geminiIsRetryableStreamError(err error) bool {
 	return errors.Is(err, io.ErrUnexpectedEOF)
 }
 
+// geminiContentsForRequest returns the Gemini-native conversation contents to send for the current turn history.
+//
+// It returns clones of preserved Gemini contents when they are in sync with Turns, preserving provider state such as thought signatures. If preserved contents are
+// unavailable or out of sync, it rebuilds replayable content from Turns and returns any conversion error.
 func (sc *streamingConversation) geminiContentsForRequest() ([]*geminiapi.Content, error) {
 	if len(sc.geminiContents) == len(sc.turns)-1 {
 		return cloneGeminiContents(sc.geminiContents), nil
@@ -214,6 +230,10 @@ func (sc *streamingConversation) geminiContentsForRequest() ([]*geminiapi.Conten
 	return contents, nil
 }
 
+// buildGeminiGenerateContentConfig builds the GenerateContentStream configuration for modelInfo and opt.
+//
+// The config includes system instructions, max output tokens, explicit temperature, thinking settings, and configured tools when supported. It returns an error
+// if configured tools cannot be represented as Gemini function declarations.
 func (sc *streamingConversation) buildGeminiGenerateContentConfig(modelInfo llmmodel.ModelInfo, opt *SendOptions) (*geminiapi.GenerateContentConfig, error) {
 	config := &geminiapi.GenerateContentConfig{
 		CandidateCount: 1,
@@ -284,6 +304,9 @@ func geminiMapThinkingLevel(effort string) geminiapi.ThinkingLevel {
 	}
 }
 
+// buildGeminiToolParams converts tools into Gemini function declarations.
+//
+// It returns nil for an empty list, defaults blank tool kinds to ToolKindFunction, and returns an error for unnamed tools or non-function tool kinds.
 func buildGeminiToolParams(tools []Tool) ([]*geminiapi.Tool, error) {
 	if len(tools) == 0 {
 		return nil, nil
@@ -337,6 +360,8 @@ func buildGeminiToolParams(tools []Tool) ([]*geminiapi.Tool, error) {
 	return []*geminiapi.Tool{{FunctionDeclarations: declarations}}, nil
 }
 
+// geminiBuildContentFromTurn converts turn into a Gemini content message. It returns include false when the turn has no replayable Gemini parts. Unsupported roles,
+// unsupported content part types, invalid thought signatures, and invalid tool parts are returned as errors.
 func geminiBuildContentFromTurn(turn Turn) (*geminiapi.Content, bool, error) {
 	role, ok := geminiMapTurnRole(turn.Role)
 	if !ok {
@@ -401,6 +426,7 @@ func geminiMapTurnRole(role Role) (geminiapi.Role, bool) {
 	}
 }
 
+// geminiToolCallPart converts call into a Gemini function-call part.
 func geminiToolCallPart(call ToolCall) (*geminiapi.Part, error) {
 	if call.Name == "" {
 		return nil, errors.New("tool call name is required")
@@ -503,6 +529,8 @@ func geminiConvertUsage(usage *geminiapi.GenerateContentResponseUsageMetadata) T
 	}
 }
 
+// geminiMapFinishReason maps a Gemini finish reason to the generic FinishReason. When Gemini reports a normal stop after emitting tool calls, the result is FinishReasonToolUse
+// rather than FinishReasonEndTurn.
 func geminiMapFinishReason(reason geminiapi.FinishReason, hasToolCalls bool) FinishReason {
 	switch reason {
 	case geminiapi.FinishReasonStop:
@@ -526,35 +554,41 @@ func geminiMapFinishReason(reason geminiapi.FinishReason, hasToolCalls bool) Fin
 	}
 }
 
+// geminiTextAccumulator accumulates one contiguous Gemini text segment while streaming.
 type geminiTextAccumulator struct {
-	providerID string
-	text       strings.Builder
+	providerID string          // ProviderID is the stable ID exposed for the accumulated text.
+	text       strings.Builder // Text accumulates the segment content.
 }
 
+// geminiReasoningAccumulator accumulates one contiguous Gemini reasoning segment while streaming.
 type geminiReasoningAccumulator struct {
-	providerID string
-	text       strings.Builder
-	signature  []byte
+	providerID string          // ProviderID is the stable ID exposed for the accumulated reasoning.
+	text       strings.Builder // Text accumulates the reasoning content.
+	signature  []byte          // Signature accumulates Gemini thought signature bytes for replay.
 }
 
+// geminiStreamState tracks accumulated state while processing a Gemini streaming response.
 type geminiStreamState struct {
-	createdSent   bool
-	responseID    string
-	usage         *geminiapi.GenerateContentResponseUsageMetadata
-	finishReason  geminiapi.FinishReason
-	finishMessage string
-	promptBlocked string
-	exactContent  *geminiapi.Content
-	publicParts   []ContentPart
-	nextPartIndex int
-	openText      *geminiTextAccumulator
-	openReasoning *geminiReasoningAccumulator
+	createdSent   bool                                            // CreatedSent reports whether the created event has already been emitted.
+	responseID    string                                          // ResponseID is the latest Gemini response ID observed in the stream.
+	usage         *geminiapi.GenerateContentResponseUsageMetadata // Usage is the latest usage metadata reported by Gemini.
+	finishReason  geminiapi.FinishReason                          // FinishReason is the latest candidate finish reason reported by Gemini.
+	finishMessage string                                          // FinishMessage is the provider-supplied explanation for the finish reason, when present.
+	promptBlocked string                                          // PromptBlocked records the prompt block reason or message when Gemini rejects the prompt.
+	exactContent  *geminiapi.Content                              // ExactContent is the Gemini-native model content retained for replay, including thought signatures and tool calls.
+	publicParts   []ContentPart                                   // PublicParts are the content parts exposed on the final assistant turn.
+	nextPartIndex int                                             // NextPartIndex is the sequence number used to build synthetic provider IDs.
+	openText      *geminiTextAccumulator                          // OpenText is the currently streaming text segment, if any.
+	openReasoning *geminiReasoningAccumulator                     // OpenReasoning is the currently streaming reasoning segment, if any.
 }
 
 func newGeminiStreamState() *geminiStreamState {
 	return &geminiStreamState{}
 }
 
+// processResponse incorporates one Gemini stream response into the accumulated stream state.
+//
+// It may emit created, text, reasoning, or tool-use events, preserves Gemini-native content for replay, and returns any error encountered while converting parts.
 func (s *geminiStreamState) processResponse(resp *geminiapi.GenerateContentResponse) ([]Event, error) {
 	if resp == nil {
 		return nil, nil
@@ -623,6 +657,8 @@ func (s *geminiStreamState) processResponse(resp *geminiapi.GenerateContentRespo
 	return events, nil
 }
 
+// processPart converts a Gemini content part into public stream events and accumulated final-turn content. It closes incompatible open text or reasoning segments
+// when the part kind changes, emits tool-use, text, or reasoning events as appropriate, and ignores unsupported or empty parts.
 func (s *geminiStreamState) processPart(part *geminiapi.Part) ([]Event, error) {
 	switch {
 	case part.FunctionCall != nil:
@@ -671,6 +707,7 @@ func (s *geminiStreamState) processPart(part *geminiapi.Part) ([]Event, error) {
 	}
 }
 
+// toolCallFromPart converts a Gemini function call into a package tool call.
 func (s *geminiStreamState) toolCallFromPart(call *geminiapi.FunctionCall) (ToolCall, error) {
 	if call == nil {
 		return ToolCall{}, errors.New("missing function call")
@@ -702,6 +739,8 @@ func (s *geminiStreamState) toolCallFromPart(call *geminiapi.FunctionCall) (Tool
 	}, nil
 }
 
+// appendExactPart retains part in Gemini-native form for future replay. It clones tool parts, coalesces adjacent text and thought fragments, preserves thought signatures,
+// and skips empty parts that cannot be replayed.
 func (s *geminiStreamState) appendExactPart(part *geminiapi.Part) {
 	if s.exactContent == nil {
 		s.exactContent = &geminiapi.Content{Role: string(geminiapi.RoleModel)}
@@ -738,6 +777,7 @@ func (s *geminiStreamState) appendExactPart(part *geminiapi.Part) {
 	}
 }
 
+// lastExactPart returns the most recently retained Gemini-native part.
 func (s *geminiStreamState) lastExactPart() *geminiapi.Part {
 	if s.exactContent == nil || len(s.exactContent.Parts) == 0 {
 		return nil
@@ -745,6 +785,8 @@ func (s *geminiStreamState) lastExactPart() *geminiapi.Part {
 	return s.exactContent.Parts[len(s.exactContent.Parts)-1]
 }
 
+// finalize closes any open streamed parts and builds the final Gemini assistant turn. It returns done events, a cloned Gemini-native model content for replay, and
+// an error if the stream was blocked, invalid, or produced no response.
 func (s *geminiStreamState) finalize() ([]Event, Turn, *geminiapi.Content, error) {
 	events := s.closeOpenParts()
 	if s.promptBlocked != "" {
@@ -779,12 +821,14 @@ func (s *geminiStreamState) finalize() ([]Event, Turn, *geminiapi.Content, error
 	return events, turn, exactContent, nil
 }
 
+// closeOpenParts finalizes any open Gemini text and reasoning segments and returns their done events.
 func (s *geminiStreamState) closeOpenParts() []Event {
 	events := s.closeText()
 	events = append(events, s.closeReasoning()...)
 	return events
 }
 
+// closeText finalizes the open Gemini text segment and returns its done event.
 func (s *geminiStreamState) closeText() []Event {
 	if s.openText == nil {
 		return nil
@@ -802,6 +846,7 @@ func (s *geminiStreamState) closeText() []Event {
 	}}
 }
 
+// closeReasoning finalizes the open Gemini reasoning segment and returns its done event.
 func (s *geminiStreamState) closeReasoning() []Event {
 	if s.openReasoning == nil {
 		return nil
@@ -820,6 +865,7 @@ func (s *geminiStreamState) closeReasoning() []Event {
 	}}
 }
 
+// newProviderID returns a synthetic provider ID for the next Gemini content part of kind.
 func (s *geminiStreamState) newProviderID(kind string) string {
 	id := geminiContentProviderID(s.responseID, kind, s.nextPartIndex)
 	s.nextPartIndex++
@@ -867,6 +913,7 @@ func cloneGeminiContent(content *geminiapi.Content) *geminiapi.Content {
 	return cloned
 }
 
+// cloneGeminiPart returns a copy of part, including supported nested Gemini fields.
 func cloneGeminiPart(part *geminiapi.Part) *geminiapi.Part {
 	if part == nil {
 		return nil

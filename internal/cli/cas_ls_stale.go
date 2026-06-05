@@ -13,11 +13,13 @@ import (
 	"github.com/codalotl/codalotl/internal/gocode"
 )
 
+// casRepoPackageDir identifies a Go package directory discovered under a repo.
 type casRepoPackageDir struct {
-	absDir string
-	mod    *gocode.Module
+	absDir string         // Absolute directory of the package on disk.
+	mod    *gocode.Module // Module that contains the package directory.
 }
 
+// nearestGitRepoRoot returns the nearest enclosing Git repository root for start.
 func nearestGitRepoRoot(start string) (string, error) {
 	dir, err := filepath.Abs(start)
 	if err != nil {
@@ -48,6 +50,8 @@ func nearestGitRepoRoot(start string) (string, error) {
 	}
 }
 
+// goListPackageDirsUnderRepo returns the Go package directories in modules discovered under repoRoot. It omits packages outside repoRoot, deduplicates package directories
+// found through multiple modules, and returns results sorted by absolute directory. The context controls the underlying go list commands.
 func goListPackageDirsUnderRepo(ctx context.Context, repoRoot string) ([]casRepoPackageDir, error) {
 	mods, err := gocode.DiscoverModules(repoRoot)
 	if err != nil {
@@ -84,6 +88,8 @@ func goListPackageDirsUnderRepo(ctx context.Context, repoRoot string) ([]casRepo
 	return out, nil
 }
 
+// goListPackageDirsFromDir returns sorted unique package directories matching pattern from dir. It runs `go list -e -f {{.Dir}}` with dir as the command working
+// directory, with ctx controlling the command lifetime. If go list reports an error after producing no directories, the returned error includes stderr when available.
 func goListPackageDirsFromDir(ctx context.Context, dir string, pattern string) ([]string, error) {
 	cmd := exec.CommandContext(ctx, "go", "list", "-e", "-f", "{{.Dir}}", pattern)
 	cmd.Dir = dir

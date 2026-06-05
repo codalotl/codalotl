@@ -2,8 +2,10 @@ package llmstream
 
 import "strings"
 
+// EventType identifies the kind of streaming event.
 type EventType string
 
+// These consts identify event kinds emitted by a streaming send.
 const (
 	EventTypeQueued           EventType = "queued"            // Indicates request is accepted but queued. Event will only have this status. Optional.
 	EventTypeCreated          EventType = "created"           // Turn has been created and is in-progress. Event has Turn.
@@ -19,16 +21,18 @@ const (
 	// EventTypeReasoningDelta may be emitted at various times as the LLM reasons. The event will contain Delta and Reasoning.
 	EventTypeReasoningDelta EventType = "reasoning_delta"
 
+	// EventTypeToolUse reports an assistant tool-call request. Event has ToolCall set.
 	EventTypeToolUse EventType = "tool_use"
 
 	// A way to communicate warnings, invariant violations, or likely bugs, without stopping program execution or crashing. Event has Error set.
 	EventTypeWarning EventType = "warning"
 )
 
+// Event describes a single update emitted by a streaming send.
 type Event struct {
-	Type  EventType
-	Turn  *Turn
-	Error error
+	Type  EventType // Type identifies the event kind and determines which other fields are populated.
+	Turn  *Turn     // Turn is set for EventTypeCreated and EventTypeCompletedSuccess. Created turns are in progress; completed turns are final.
+	Error error     // Error is set for EventTypeError, EventTypeRetry, and EventTypeWarning.
 
 	// Delta is new content added to Text or Reasoning. The suffix of Text.Content or Reasoning.Content should be Delta. May be blank. Only sent in EventTypeTextDelta
 	// and EventTypeReasoningDelta.
@@ -94,16 +98,18 @@ type TokenUsage struct {
 	TotalOutputTokens int64
 }
 
+// FinishReason describes why a provider-created turn finished.
 type FinishReason string
 
+// Finish reason values describe provider-reported turn states and terminal conditions.
 const (
-	FinishReasonUnknown          FinishReason = ""
-	FinishReasonInProgress       FinishReason = "in_progress"
-	FinishReasonEndTurn          FinishReason = "end_turn"
-	FinishReasonMaxTokens        FinishReason = "max_tokens"
-	FinishReasonToolUse          FinishReason = "tool_use"
-	FinishReasonCanceled         FinishReason = "canceled"
-	FinishReasonError            FinishReason = "error"
+	FinishReasonUnknown          FinishReason = ""                  // FinishReasonUnknown indicates the provider did not report a recognizable finish reason.
+	FinishReasonInProgress       FinishReason = "in_progress"       // FinishReasonInProgress indicates generation is queued or still underway.
+	FinishReasonEndTurn          FinishReason = "end_turn"          // FinishReasonEndTurn indicates the assistant completed normally without requesting tool calls.
+	FinishReasonMaxTokens        FinishReason = "max_tokens"        // FinishReasonMaxTokens indicates generation stopped because an output token limit was reached.
+	FinishReasonToolUse          FinishReason = "tool_use"          // FinishReasonToolUse indicates the assistant stopped after requesting one or more tool calls.
+	FinishReasonCanceled         FinishReason = "canceled"          // FinishReasonCanceled indicates the provider reported that generation was canceled.
+	FinishReasonError            FinishReason = "error"             // FinishReasonError indicates generation failed because the provider reported an error.
 	FinishReasonPermissionDenied FinishReason = "permission_denied" // Ex: content rejection.
 )
 
@@ -130,6 +136,7 @@ type Turn struct {
 	FinishReason FinishReason  // Reason the turn is finished (unfinished turns: FinishReasonInProgress).
 }
 
+// ToolCalls returns the tool-call parts in r, in turn order. It returns nil when r contains no tool calls.
 func (r Turn) ToolCalls() []ToolCall {
 	if len(r.Parts) == 0 {
 		return nil
@@ -143,6 +150,7 @@ func (r Turn) ToolCalls() []ToolCall {
 	return toolCalls
 }
 
+// ToolResults returns the tool results contained in r, in turn order.
 func (r Turn) ToolResults() []ToolResult {
 	if len(r.Parts) == 0 {
 		return nil

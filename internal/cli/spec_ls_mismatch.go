@@ -16,6 +16,8 @@ import (
 	"strings"
 )
 
+// runSpecLsMismatch writes the packages in pattern whose SPEC.md public API differs from the implementation. Packages without a readable SPEC.md, packages with
+// diff errors, and packages without differences are omitted.
 func runSpecLsMismatch(ctx context.Context, out io.Writer, pattern string) error {
 	pattern = strings.TrimSpace(pattern)
 	if pattern == "" {
@@ -81,6 +83,9 @@ func displayPackagePath(moduleAbsDir, packageAbsDir string) (string, bool) {
 	}
 	return "./" + filepath.ToSlash(rel), true
 }
+
+// goListPackageDirs returns sorted unique package directories matching pattern from the current working directory. It runs `go list -e -f {{.Dir}}`, with ctx controlling
+// the command lifetime. If go list reports an error after producing no directories, the returned error includes stderr when available.
 func goListPackageDirs(ctx context.Context, pattern string) ([]string, error) {
 	cmd := exec.CommandContext(ctx, "go", "list", "-e", "-f", "{{.Dir}}", pattern)
 	var stdout bytes.Buffer

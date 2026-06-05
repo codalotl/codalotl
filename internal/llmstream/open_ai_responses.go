@@ -188,6 +188,8 @@ func (sc *streamingConversation) sendAsyncOpenAIResponses(ctx context.Context, o
 	return resp, nil
 }
 
+// openAIResponsesIsRetryableStreamDisconnect reports whether err looks like a retryable Responses streaming transport disconnect. It excludes caller cancellation,
+// deadline expiration, and provider API errors.
 func openAIResponsesIsRetryableStreamDisconnect(err error) bool {
 	if err == nil {
 		return false
@@ -225,6 +227,7 @@ func openAIResponsesIsRetryableStreamDisconnect(err error) bool {
 	return strings.Contains(msg, "internal_error") && strings.Contains(msg, "stream")
 }
 
+// openAIResponsesAuthMode identifies the credential source used for an OpenAI Responses request.
 type openAIResponsesAuthMode string
 
 const (
@@ -232,14 +235,17 @@ const (
 	openAIResponsesAuthModeProviderSubscription openAIResponsesAuthMode = "provider_subscription"
 )
 
+// openAIResponsesAuthConfig describes the credentials and endpoint for an OpenAI Responses request.
 type openAIResponsesAuthConfig struct {
-	mode            openAIResponsesAuthMode
-	apiKey          string
-	baseURL         string
-	accountID       string
-	requiresNoStore bool
+	mode            openAIResponsesAuthMode // Mode identifies the credential source.
+	apiKey          string                  // APIKey is the secret used for bearer or API-key authentication.
+	baseURL         string                  // BaseURL is the provider endpoint override, when one is required.
+	accountID       string                  // AccountID is the subscription account ID sent with the request, when one exists.
+	requiresNoStore bool                    // RequiresNoStore reports whether this auth source requires no-store request semantics.
 }
 
+// openAIResponsesResolveAuth resolves the credential and endpoint configuration for an OpenAI Responses request. It prefers eligible provider subscription auth,
+// fails when such auth is required but unusable, and otherwise falls back to the model's effective API key and endpoint.
 func openAIResponsesResolveAuth(modelID llmmodel.ModelID, modelInfo llmmodel.ModelInfo) (openAIResponsesAuthConfig, error) {
 	if sub, ok := llmmodel.GetProviderSubscription(modelInfo.ProviderID); ok && openAIResponsesSubscriptionEligible(modelInfo, sub) {
 		return openAIResponsesAuthConfig{
@@ -308,6 +314,7 @@ func openAIResponsesEffectiveSendOptionsForModel(modelInfo llmmodel.ModelInfo, o
 	return openAIResponsesEffectiveSendOptions(opt, openAIResponsesAuthConfig{requiresNoStore: true})
 }
 
+// debugMetadata returns non-secret authentication metadata for debug logging.
 func (a openAIResponsesAuthConfig) debugMetadata() map[string]any {
 	return map[string]any{
 		"auth_mode":      string(a.mode),
@@ -330,6 +337,9 @@ func openAIResponsesDebugRequestMiddleware(authMode openAIResponsesAuthMode) opt
 	}
 }
 
+// buildOpenAIResponsesRequestParams builds a complete OpenAI Responses create request for the current conversation using modelInfo and opt. It applies effective
+// send options, links to the previous response when stored linking is enabled, enables parallel tool calls, and returns any request-building or option-validation
+// error.
 func (sc *streamingConversation) buildOpenAIResponsesRequestParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
 	opt = openAIResponsesEffectiveSendOptionsForModel(modelInfo, opt)
 	params, err := sc.buildOpenAIResponsesParams(modelInfo, opt)
@@ -347,6 +357,10 @@ func (sc *streamingConversation) buildOpenAIResponsesRequestParams(modelInfo llm
 	return params, nil
 }
 
+// openAIResponsesApplySendOptions applies model defaults and send options to an OpenAI Responses request.
+//
+// It mutates params for storage, no-store, reasoning, temperature, service tier, encrypted reasoning, and context compaction settings, and returns an error for
+// an invalid service tier.
 func openAIResponsesApplySendOptions(params *responses.ResponseNewParams, modelInfo llmmodel.ModelInfo, opt *SendOptions) error {
 	params.Store = param.NewOpt(true)
 	params.Reasoning.Summary = responses.ReasoningSummaryAuto
@@ -437,6 +451,7 @@ func openAIResponsesUsesStoredLink(opt *SendOptions) bool {
 	return opt == nil || !opt.NoStore
 }
 
+// recordOpenAIResponseLink records or clears the OpenAI response ID used for future response linking.
 func (sc *streamingConversation) recordOpenAIResponseLink(resp Turn, opt *SendOptions) {
 	if openAIResponsesUsesStoredLink(opt) {
 		sc.providerConversationID = resp.ProviderID
@@ -459,6 +474,7 @@ func openAIResponsesPrepareCompletedSuccessEvent(event Event, opt *SendOptions) 
 	return event
 }
 
+// openAIResponsesScrubNoStoreTurn removes stored-provider identifiers while preserving no-store replay state.
 func openAIResponsesScrubNoStoreTurn(turn Turn) Turn {
 	turn.ProviderID = ""
 	if len(turn.Parts) == 0 {
@@ -522,20 +538,22 @@ func bestEffortJSONObject(value any) map[string]any {
 	return object
 }
 
+// openAIResponsesContentBuilders accumulates OpenAI Responses content observed while streaming.
 type openAIResponsesContentBuilders struct {
-	idToTextBuilder      map[string]*strings.Builder
-	idToReasoningBuilder map[string]*strings.Builder
-	idToTextDone         map[string]bool
-	idToReasoningDone    map[string]bool
-	streamedParts        []openAIResponsesStreamedPart
-	streamedPartIndex    map[string]int
+	idToTextBuilder      map[string]*strings.Builder   // idToTextBuilder maps provider output-text item IDs to cumulative streamed text.
+	idToReasoningBuilder map[string]*strings.Builder   // idToReasoningBuilder maps reasoning summary sub-item IDs to cumulative streamed reasoning text.
+	idToTextDone         map[string]bool               // idToTextDone records provider output-text item IDs that have received a done event.
+	idToReasoningDone    map[string]bool               // idToReasoningDone records reasoning summary sub-item IDs that have received a done event.
+	streamedParts        []openAIResponsesStreamedPart // streamedParts stores the latest streamed value for each content part, with ordering metadata.
+	streamedPartIndex    map[string]int                // streamedPartIndex maps streamed part keys to their indexes in streamedParts.
 }
 
+// openAIResponsesStreamedPart records a content part observed from OpenAI streaming events with ordering metadata.
 type openAIResponsesStreamedPart struct {
-	key         string
-	part        ContentPart
-	outputIndex int64
-	order       int
+	key         string      // Key is the logical de-duplication key for repeated updates to the same streamed part.
+	part        ContentPart // Part is the latest content part value for this streamed record.
+	outputIndex int64       // OutputIndex is the provider output index used to order parts in the final turn.
+	order       int         // Order is the first-seen sequence number used to preserve stable ordering when output indexes match.
 }
 
 func newOpenAIResponsesContentBuilders() *openAIResponsesContentBuilders {
@@ -548,6 +566,8 @@ func newOpenAIResponsesContentBuilders() *openAIResponsesContentBuilders {
 	}
 }
 
+// rememberStreamedPart records the latest streamed part for key, updating existing records and preserving first-seen order for ties. It does nothing when b is nil,
+// key is empty, or part is nil.
 func (b *openAIResponsesContentBuilders) rememberStreamedPart(key string, outputIndex int64, part ContentPart) {
 	if b == nil || key == "" || part == nil {
 		return
@@ -569,6 +589,7 @@ func (b *openAIResponsesContentBuilders) rememberStreamedPart(key string, output
 	})
 }
 
+// streamedTurnPartRecords returns a sorted copy of the streamed part records.
 func (b *openAIResponsesContentBuilders) streamedTurnPartRecords() []openAIResponsesStreamedPart {
 	if b == nil || len(b.streamedParts) == 0 {
 		return nil
@@ -584,6 +605,7 @@ func (b *openAIResponsesContentBuilders) streamedTurnPartRecords() []openAIRespo
 	return records
 }
 
+// streamedTurnParts returns streamed content parts in final turn order.
 func (b *openAIResponsesContentBuilders) streamedTurnParts() []ContentPart {
 	records := b.streamedTurnPartRecords()
 	if len(records) == 0 {
@@ -782,6 +804,11 @@ func openAIResponsesProcessEvent(evt responses.ResponseStreamEventUnion, builder
 	return nil, true, nil
 }
 
+// buildOpenAIResponsesParams builds the OpenAI Responses request body for the current conversation state.
+//
+// System instructions are sent through instructions, not as input items. The input history is minimized when a stored previous response can be linked, replayed
+// from the latest compaction item for no-store requests when available, and otherwise encoded from replayable local turns. It returns an error when model metadata,
+// tool definitions, or tool call/result parts cannot be encoded.
 func (sc *streamingConversation) buildOpenAIResponsesParams(modelInfo llmmodel.ModelInfo, opt *SendOptions) (responses.ResponseNewParams, error) {
 	modelID := modelInfo.ProviderModelID
 	if modelID == "" {
@@ -972,6 +999,9 @@ func openAIResponsesLatestCompactionPosition(turns []Turn) (turnIdx int, partIdx
 	return 0, 0, false
 }
 
+// openAIResponsesInstructions returns the conversation system instructions for OpenAI Responses.
+//
+// It prefers the first turn when it is a system turn, otherwise returns the first system turn found, or an empty string when none exists.
 func (sc *streamingConversation) openAIResponsesInstructions() string {
 	if len(sc.turns) == 0 {
 		return ""
@@ -1032,6 +1062,8 @@ func openAIResponsesBuildCompletedResponse(resp responses.Response, builders *op
 	return turn
 }
 
+// openAIResponsesMergeStreamedCompactions inserts streamed compaction parts that are missing from completedParts. It de-duplicates compactions by provider ID and
+// opaque state, preserves provider ordering where possible, and returns completedParts unchanged when there is nothing to merge.
 func openAIResponsesMergeStreamedCompactions(completedParts []ContentPart, streamedParts []openAIResponsesStreamedPart) []ContentPart {
 	if len(streamedParts) == 0 {
 		return completedParts
@@ -1095,6 +1127,7 @@ func openAIResponsesMergeStreamedCompactions(completedParts []ContentPart, strea
 	return parts
 }
 
+// openAIResponsesStreamedCompactionInsertIndex returns where a streamed compaction part belongs in completed parts.
 func openAIResponsesStreamedCompactionInsertIndex(parts []ContentPart, compactionOutputIndex int64, streamedOutputIndexByProviderID, completedOrdinalByProviderID map[string]int64) int {
 	for i, part := range parts {
 		if _, ok := part.(CompactionContent); ok {
@@ -1192,6 +1225,9 @@ func openaiResponesBuildResponse(resp responses.Response) *Turn {
 	}
 }
 
+// openaiResponesBuildToolParams converts tools into OpenAI Responses tool parameters.
+//
+// It returns nil for an empty list, defaults blank tool kinds to ToolKindFunction, and returns an error for unnamed tools or unsupported kinds.
 func openaiResponesBuildToolParams(tools []Tool) ([]responses.ToolUnionParam, error) {
 	if len(tools) == 0 {
 		return nil, nil
@@ -1229,6 +1265,8 @@ func openaiResponesBuildToolParams(tools []Tool) ([]responses.ToolUnionParam, er
 	return result, nil
 }
 
+// buildOpenAIFunctionToolParam converts info into a strict OpenAI Responses function tool parameter. Parameters not listed in info.Required are made nullable, then
+// all properties are listed as required to satisfy OpenAI strict-mode schema rules.
 func buildOpenAIFunctionToolParam(info ToolInfo) (responses.ToolUnionParam, error) {
 	// Build a JSON schema with parameters as properties. The provided Parameters map
 	// contains only parameter definitions, not a full schema.
@@ -1326,6 +1364,8 @@ func buildOpenAIFunctionToolParam(info ToolInfo) (responses.ToolUnionParam, erro
 	return responses.ToolUnionParam{OfFunction: &function}, nil
 }
 
+// buildOpenAICustomToolParam converts info into an OpenAI Responses custom tool parameter. A nil Grammar leaves the custom tool input free-form; a non-nil Grammar
+// must have a non-empty definition and use a supported syntax.
 func buildOpenAICustomToolParam(info ToolInfo) (responses.ToolUnionParam, error) {
 	custom := responses.CustomToolParam{
 		Name: info.Name,
@@ -1365,6 +1405,7 @@ func openaiResponesConvertUsage(usage responses.ResponseUsage) TokenUsage {
 	}
 }
 
+// openaiResponesMapFinishReason maps an OpenAI Responses status to a package finish reason.
 func openaiResponesMapFinishReason(resp responses.Response, hasToolCalls bool) FinishReason {
 	switch resp.Status {
 	case "completed":

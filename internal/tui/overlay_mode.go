@@ -18,13 +18,15 @@ const (
 	overlayCopyButtonCopiedLabel = "copied!"
 )
 
+// renderedBlock is a formatted message-viewport block with overlay metadata.
 type renderedBlock struct {
-	text         string
-	messageIndex int
-	copyable     bool
-	detailable   bool
+	text         string // text is the rendered block content.
+	messageIndex int    // messageIndex is the index in model.messages, or -1 for synthetic blocks.
+	copyable     bool   // copyable reports whether Overlay Mode should offer a copy action.
+	detailable   bool   // detailable reports whether Overlay Mode should offer a details action.
 }
 
+// overlayTargetKind classifies a clickable Overlay Mode target.
 type overlayTargetKind int
 
 const (
@@ -32,17 +34,19 @@ const (
 	overlayTargetDetails
 )
 
+// overlayTarget describes a clickable Overlay Mode target in the rendered message viewport.
 type overlayTarget struct {
-	kind         overlayTargetKind
-	contentLine  int
-	messageIndex int
-	xStart       int
-	xEnd         int
+	kind         overlayTargetKind // kind is the action performed when the target is clicked.
+	contentLine  int               // contentLine is the target's absolute line in the viewport content.
+	messageIndex int               // messageIndex is the index of the associated message in model.messages.
+	xStart       int               // xStart is the inclusive left cell of the clickable range.
+	xEnd         int               // xEnd is the inclusive right cell of the clickable range.
 }
 
 // overlayCopyExpiredMsg is scheduled after a copy action so the UI can clear the transient state.
 type overlayCopyExpiredMsg struct{}
 
+// nowOrTimeNow returns the injected clock time, or the current time when no clock is configured.
 func (m *model) nowOrTimeNow() time.Time {
 	if m != nil && m.now != nil {
 		return m.now()
@@ -50,6 +54,7 @@ func (m *model) nowOrTimeNow() time.Time {
 	return time.Now()
 }
 
+// toggleOverlayMode enters or exits Overlay Mode and refreshes the viewport without changing the scroll position.
 func (m *model) toggleOverlayMode() {
 	m.overlayMode = !m.overlayMode
 	// Clear click state so a rapid triple-click doesn't toggle twice.
@@ -59,6 +64,7 @@ func (m *model) toggleOverlayMode() {
 	m.refreshViewport(false)
 }
 
+// isDoubleClick reports whether ev is close enough to the last left click to count as a double-click.
 func (m *model) isDoubleClick(ev qtui.MouseEvent) bool {
 	if m.lastLeftClickAt.IsZero() {
 		return false
@@ -76,6 +82,7 @@ func (m *model) isDoubleClick(ev qtui.MouseEvent) bool {
 	return true
 }
 
+// TryHandleOverlayClick handles a mouse click on an Overlay Mode target in the messages viewport. It returns true when the click is consumed by a recognized target.
 func (m *model) tryHandleOverlayClick(ev qtui.MouseEvent) bool {
 	if m == nil || m.viewport == nil || !m.overlayMode {
 		return false
@@ -108,6 +115,7 @@ func (m *model) tryHandleOverlayClick(ev qtui.MouseEvent) bool {
 	return false
 }
 
+// isMessageCopyable reports whether msg should show a copy action in Overlay Mode. It returns false for nil messages and for the welcome banner.
 func (m *model) isMessageCopyable(msg *chatMessage) bool {
 	if msg == nil {
 		return false
@@ -116,6 +124,8 @@ func (m *model) isMessageCopyable(msg *chatMessage) bool {
 	return msg.kind != messageKindWelcome
 }
 
+// isMessageDetailable reports whether msg can open a Details dialog in Overlay Mode. Context-status messages are detailable, and agent messages are detailable when
+// they are associated with a tool call.
 func (m *model) isMessageDetailable(msg *chatMessage) bool {
 	if msg == nil {
 		return false
@@ -130,6 +140,8 @@ func (m *model) isMessageDetailable(msg *chatMessage) bool {
 	}
 }
 
+// copyMessageToClipboard copies the displayed text for the message at messageIndex. It uses both the OS clipboard and OSC52 clipboard best-effort, and shows transient
+// copy feedback when either clipboard mechanism succeeds.
 func (m *model) copyMessageToClipboard(messageIndex int) {
 	if m == nil {
 		return
@@ -178,6 +190,9 @@ func (m *model) copyMessageToClipboard(messageIndex int) {
 	m.refreshViewport(false)
 }
 
+// plainMessageTextForCopy returns the unstyled, wrapped text for the message at messageIndex. It formats the message at the current viewport width, strips ANSI
+// styling, removes trailing spaces from each line, and removes trailing blank lines. It returns an empty string for nil models, invalid indexes, or messages that
+// format to no visible text.
 func (m *model) plainMessageTextForCopy(messageIndex int) string {
 	if m == nil || messageIndex < 0 || messageIndex >= len(m.messages) {
 		return ""
@@ -202,6 +217,7 @@ func (m *model) plainMessageTextForCopy(messageIndex int) string {
 	return strings.Join(lines, "\n")
 }
 
+// clearExpiredOverlayCopyFeedback removes expired Overlay Mode copy feedback entries.
 func (m *model) clearExpiredOverlayCopyFeedback() {
 	if m == nil || len(m.overlayCopyFeedback) == 0 {
 		return
@@ -214,6 +230,8 @@ func (m *model) clearExpiredOverlayCopyFeedback() {
 	}
 }
 
+// joinRenderedBlocksWithOverlay joins rendered message blocks with separator rows and returns any Overlay Mode hit-test targets. When Overlay Mode is active, copyable
+// message blocks receive right-aligned copy controls, and detailable blocks also receive details controls, if the controls fit within width.
 func (m *model) joinRenderedBlocksWithOverlay(blocks []renderedBlock, width int) (string, []overlayTarget) {
 	if len(blocks) == 0 {
 		return "", nil
@@ -296,6 +314,8 @@ func (m *model) joinRenderedBlocksWithOverlay(blocks []renderedBlock, width int)
 	return b.String(), targets
 }
 
+// overlayButtonsRow renders a right-aligned overlay button row and returns its hit-test ranges. The returned x ranges are zero-based and inclusive; ok is false
+// when the buttons do not fit.
 func (m *model) overlayButtonsRow(width int, copyLabel string, showDetails bool) (row string, detailsXStart int, detailsXEnd int, copyXStart int, copyXEnd int, ok bool) {
 	detailsText := " " + overlayDetailsButtonLabel + " "
 	copyText := " " + copyLabel + " "

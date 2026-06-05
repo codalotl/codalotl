@@ -23,10 +23,15 @@ import (
 const iterateResumePrompt = "Please continue your work."
 const iterateDecisionPromptUnset = "__codalotl_iterate_decision_prompt_unset__"
 
+// A runWithConfigFunc adapts a configuration-aware command handler into a qcli.RunFunc.
 type runWithConfigFunc func(string, func(*qcli.Context, Config, *remotemonitor.Monitor) error, ...startupModelSelector) qcli.RunFunc
 
+// iterateSession is the session interface used to run one or more iterate steps.
 type iterateSession interface {
+	// SendUserMessage sends userPrompt to the session and returns the result metadata for that step.
 	SendUserMessage(ctx context.Context, userPrompt string) (noninteractive.Result, error)
+
+	// Close releases resources held by the session.
 	Close() error
 }
 
@@ -42,6 +47,8 @@ var newIterateInterruptContext = func(parent context.Context) (context.Context, 
 	return signal.NotifyContext(parent, os.Interrupt)
 }
 
+// newIterateCommand constructs the `codalotl iterate` command. The command runs repeated noninteractive agent steps from a positional prompt or prompt file until
+// iteration policy stops, and supports orchestrator startup, continuation mode, limits, model selection, output formatting, and auto-approval flags.
 func newIterateCommand(runWithConfig runWithConfigFunc) *qcli.Command {
 	iterateCmd := &qcli.Command{
 		Name:  "iterate",
@@ -207,6 +214,8 @@ func normalizeIterateSlashCommand(orchestrate bool, slashCommand string) (string
 	}
 }
 
+// resolveIteratePrompt returns the initial iterate prompt from args or promptFile. Positional args are joined with spaces and trimmed; prompt files are read whole
+// and returned unchanged. It rejects multiple prompt sources and rejects an empty prompt unless allowEmpty is true.
 func resolveIteratePrompt(args []string, promptFile string, allowEmpty bool) (string, error) {
 	argPrompt := strings.TrimSpace(strings.Join(args, " "))
 	promptFile = strings.TrimSpace(promptFile)
@@ -247,12 +256,14 @@ func slashCommandAllowsEmptyInitialPrompt(slashCommand string) bool {
 	}
 }
 
+// An iterateSessionRunner runs iterate steps through a managed noninteractive session.
 type iterateSessionRunner struct {
-	sessionOpts noninteractive.Options
-	session     iterateSession
-	lifecycle   iterateLifecycleWriter
+	sessionOpts noninteractive.Options // Options used to create new noninteractive sessions.
+	session     iterateSession         // Active session reused across resume-mode steps, or nil when no session is open.
+	lifecycle   iterateLifecycleWriter // Writer for user-visible iterate lifecycle events.
 }
 
+// RunStep sends one iterate step through the runner's managed noninteractive session.
 func (r *iterateSessionRunner) RunStep(ctx context.Context, step iterate.Step) (iterate.StepResult, error) {
 	reuseSession := step.Mode == iterate.ContinueModeResume && r.session != nil
 	if !reuseSession && (step.Mode == iterate.ContinueModeFresh || r.session == nil) {
@@ -297,6 +308,7 @@ func (r *iterateSessionRunner) RunStep(ctx context.Context, step iterate.Step) (
 	return stepResult, err
 }
 
+// ReplaceSession makes session active, closing any existing active session first.
 func (r *iterateSessionRunner) replaceSession(session iterateSession) error {
 	if r.session == nil {
 		r.session = session
@@ -312,6 +324,7 @@ func (r *iterateSessionRunner) replaceSession(session iterateSession) error {
 	return nil
 }
 
+// Close closes the active iterate session, if any.
 func (r *iterateSessionRunner) Close() error {
 	if r.session == nil {
 		return nil
@@ -321,11 +334,13 @@ func (r *iterateSessionRunner) Close() error {
 	return session.Close()
 }
 
+// iterateLifecycleWriter writes user-visible lifecycle events for an iterate run.
 type iterateLifecycleWriter struct {
-	out        io.Writer
-	outputJSON bool
+	out        io.Writer // Destination for lifecycle events.
+	outputJSON bool      // Emits lifecycle events as JSON when true.
 }
 
+// StepStart writes the lifecycle event for the start of an iterate step.
 func (w iterateLifecycleWriter) StepStart(step iterate.Step) error {
 	if w.outputJSON {
 		return w.writeJSON(iterateLifecycleEvent{
@@ -338,6 +353,9 @@ func (w iterateLifecycleWriter) StepStart(step iterate.Step) error {
 	return writeStringln(w.out, fmt.Sprintf("iterate: iteration %d %s starting (mode=%s)", step.Iteration, step.Kind, step.Mode))
 }
 
+// StepFinish writes the lifecycle event emitted after an iterate step completes. In JSON mode it emits an iterate_step_finish object that includes the iteration,
+// step kind, continue mode, terminal event type, and context usage percentage. Otherwise it writes a concise human-readable status line that omits the continue
+// mode.
 func (w iterateLifecycleWriter) StepFinish(step iterate.Step, result iterate.StepResult) error {
 	if w.outputJSON {
 		return w.writeJSON(iterateLifecycleEvent{
@@ -362,6 +380,8 @@ func (w iterateLifecycleWriter) StepFinish(step iterate.Step, result iterate.Ste
 	)
 }
 
+// Complete writes the final lifecycle event for an iterate run. In JSON mode it emits an iterate_complete object; otherwise it writes a concise status line. If
+// runErr is non-nil, Complete reports it in the event text, translating context cancellation to "interrupted".
 func (w iterateLifecycleWriter) Complete(result iterate.Result, runErr error) error {
 	if w.outputJSON {
 		event := iterateLifecycleEvent{
@@ -402,22 +422,24 @@ func (w iterateLifecycleWriter) Complete(result iterate.Result, runErr error) er
 	return writeStringln(w.out, strings.Join(parts, " "))
 }
 
+// Writes v as one newline-terminated JSON lifecycle event.
 func (w iterateLifecycleWriter) writeJSON(v iterateLifecycleEvent) error {
 	enc := json.NewEncoder(w.out)
 	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
 }
 
+// An iterateLifecycleEvent is a JSON-serializable iterate lifecycle event.
 type iterateLifecycleEvent struct {
-	Type                string `json:"type"`
-	Iteration           int    `json:"iteration,omitempty"`
-	StepKind            string `json:"step_kind,omitempty"`
-	Mode                string `json:"mode,omitempty"`
-	TerminalEventType   string `json:"terminal_event_type,omitempty"`
-	ContextUsagePercent int    `json:"context_usage_percent,omitempty"`
-	Iterations          int    `json:"iterations,omitempty"`
-	StopReason          string `json:"stop_reason,omitempty"`
-	Error               string `json:"error,omitempty"`
+	Type                string `json:"type"`                            // Event type, such as "iterate_step_start", "iterate_step_finish", or "iterate_complete".
+	Iteration           int    `json:"iteration,omitempty"`             // Iteration number for a step event.
+	StepKind            string `json:"step_kind,omitempty"`             // Kind of iterate step, such as a prompt or decision step.
+	Mode                string `json:"mode,omitempty"`                  // Continue mode used for the step.
+	TerminalEventType   string `json:"terminal_event_type,omitempty"`   // Terminal agent event type reported by the step.
+	ContextUsagePercent int    `json:"context_usage_percent,omitempty"` // Context usage percentage reported after the step.
+	Iterations          int    `json:"iterations,omitempty"`            // Total completed iterations for a completion event.
+	StopReason          string `json:"stop_reason,omitempty"`           // Reason the iterate loop stopped.
+	Error               string `json:"error,omitempty"`                 // Final run error for a completion event.
 }
 
 var _ iterate.Runner = (*iterateSessionRunner)(nil)

@@ -38,6 +38,7 @@ func summarizeTokenCounts(info llmmodel.ModelInfo, usage llmstream.TokenUsage) (
 	return
 }
 
+// formatContextUsage formats context-window usage as a user-visible remaining-context string.
 func formatContextUsage(percentUsed int, usedTokens int64) string {
 	switch {
 	case percentUsed < 0:
@@ -68,6 +69,7 @@ func formatCostLine(usage llmstream.TokenUsage, info llmmodel.ModelInfo) string 
 	return "unavailable"
 }
 
+// estimateUsageCostUSD estimates the total USD cost for usage using the model's pricing metadata.
 func estimateUsageCostUSD(usage llmstream.TokenUsage, info llmmodel.ModelInfo) (float64, bool) {
 	if info.ID == llmmodel.ModelIDUnknown {
 		return 0, false

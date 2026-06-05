@@ -8,13 +8,15 @@ import (
 	"github.com/codalotl/codalotl/internal/gocas/casconformance"
 )
 
+// specConformanceState tracks an asynchronous SPEC.md conformance check.
 type specConformanceState struct {
-	runID    int
-	checked  bool
-	found    bool
-	conforms bool
+	runID    int  // Run ID identifies this check and rejects stale results.
+	checked  bool // Checked reports whether the check has completed.
+	found    bool // Found reports whether conformance metadata was found.
+	conforms bool // Conforms reports whether the retrieved metadata indicates conformance.
 }
 
+// shouldShowSpecConformance reports whether the info panel should show SPEC.md conformance status.
 func (m *model) shouldShowSpecConformance() bool {
 	if m == nil || m.casDB == nil {
 		return false
@@ -30,6 +32,7 @@ func (m *model) shouldShowSpecConformance() bool {
 	return strings.TrimSpace(pkgPath) != ""
 }
 
+// specConformanceIndicator returns "✓" for confirmed SPEC.md conformance and "-" otherwise.
 func (m *model) specConformanceIndicator() string {
 	if m == nil || m.specConformance == nil {
 		return "-"
@@ -40,6 +43,7 @@ func (m *model) specConformanceIndicator() string {
 	return "-"
 }
 
+// startSpecConformanceCheck starts an asynchronous CAS-backed SPEC.md conformance lookup for the active Package Mode session.
 func (m *model) startSpecConformanceCheck() {
 	if m == nil || m.tui == nil {
 		return
@@ -95,6 +99,7 @@ func (m *model) startSpecConformanceCheck() {
 	}()
 }
 
+// handleSpecConformanceResult applies the active SPEC.md conformance check result.
 func (m *model) handleSpecConformanceResult(msg specConformanceResultMsg) {
 	if m == nil || m.specConformance == nil || m.specConformance.runID != msg.runID {
 		return

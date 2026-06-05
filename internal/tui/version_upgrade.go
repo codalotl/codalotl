@@ -7,11 +7,13 @@ import (
 	"github.com/codalotl/codalotl/internal/q/semver"
 )
 
+// latestVersionMsg delivers the result of a latest-version check.
 type latestVersionMsg struct {
-	latest string
-	err    error
+	latest string // latest is the newest version reported by the remote monitor.
+	err    error  // err is the version check error, if the check failed.
 }
 
+// versionUpgradeNoticeSection returns the Info Panel update notice, if one should be shown.
 func (m *model) versionUpgradeNoticeSection() string {
 	if m == nil || m.monitor == nil {
 		return ""
@@ -29,6 +31,9 @@ func infoPanelContentWidth(totalWidth int) int {
 	return contentWidth
 }
 
+// formatVersionUpgradeNotice returns the info-panel update notice for a newer latestVersion. It returns an empty string when either version cannot be compared,
+// currentVersion is empty or "dev", latestVersion is empty, or latestVersion is not greater than currentVersion. A positive contentWidth wraps the notice to that
+// width; a non-positive width leaves the notice unwrapped.
 func formatVersionUpgradeNotice(contentWidth int, currentVersion string, latestVersion string) string {
 	if strings.TrimSpace(latestVersion) == "" {
 		return ""

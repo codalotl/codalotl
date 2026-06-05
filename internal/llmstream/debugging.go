@@ -100,6 +100,8 @@ func init() {
 	debugEvents = eventsOutput
 }
 
+// debugPrint writes msg and a best-effort representation of obj to file when file is non-nil. It formats JSON-like values with indentation, prints errors and Stringers
+// by their text form, and treats nil obj as an explicit nil value.
 func debugPrint(file *os.File, msg string, obj any) {
 	if file != nil {
 		if obj == nil {
@@ -245,6 +247,8 @@ func debugFormatToolJSON(raw string) string {
 	return string(pretty)
 }
 
+// debugFormatToolResult formats raw as pretty JSON for tool-result debug output. If raw is a JSON object with a string content field, the formatted JSON replaces
+// that field with "V" and returns the original content separately.
 func debugFormatToolResult(raw string) (formatted string, content string, isJSON bool) {
 	if strings.TrimSpace(raw) == "" {
 		return "", "", false

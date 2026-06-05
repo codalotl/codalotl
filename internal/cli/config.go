@@ -20,18 +20,18 @@ import (
 // NOTE: internal/q/cascade matches keys to struct field names case-insensitively; it does not use json tags. The json tags are for `codalotl config` output and
 // for compatibility with typical config.json naming.
 type Config struct {
-	ProviderKeys          ProviderKeys       `json:"providerkeys"`
-	CustomModels          []CustomModel      `json:"custommodels,omitempty"`
-	ReflowWidth           int                `json:"reflowwidth"` // Max width when reflowing documentation. Defaults to 120.
-	ReflowWidthProvidence cascade.Providence `json:"-"`
-	AutoYes               bool               `json:"autoyes,omitempty"` // AutoYes auto-approves permission checks in TUI and as the default for noninteractive exec.
+	ProviderKeys          ProviderKeys       `json:"providerkeys"`           // ProviderKeys contains API keys for built-in LLM providers.
+	CustomModels          []CustomModel      `json:"custommodels,omitempty"` // CustomModels lists additional LLM models that can be selected by ID.
+	ReflowWidth           int                `json:"reflowwidth"`            // Max width when reflowing documentation. Defaults to 120.
+	ReflowWidthProvidence cascade.Providence `json:"-"`                      // ReflowWidthProvidence records the source that supplied ReflowWidth.
+	AutoYes               bool               `json:"autoyes,omitempty"`      // AutoYes auto-approves permission checks in TUI and as the default for noninteractive exec.
 
 	// Lints configures the lint pipeline used by `codalotl context initial`. See internal/lints/SPEC.md for full details.
 	Lints lints.Lints `json:"lints,omitempty"`
 
-	DisableTelemetry      bool   `json:"disabletelemetry,omitempty"`
-	DisableCrashReporting bool   `json:"disablecrashreporting,omitempty"`
-	Theme                 string `json:"theme"` // Theme selects the TUI color palette. Allowed values: "", "dark", "light".
+	DisableTelemetry      bool   `json:"disabletelemetry,omitempty"`      // DisableTelemetry opts out of anonymous usage metrics and error reporting.
+	DisableCrashReporting bool   `json:"disablecrashreporting,omitempty"` // DisableCrashReporting opts out of panic reporting.
+	Theme                 string `json:"theme"`                           // Theme selects the TUI color palette. Allowed values: "", "dark", "light".
 
 	// Optional. If set, use this provider if possible (lower precedence than PreferredModel, though). Allowed values are llmmodel's AllProviderIDs().
 	PreferredProvider string `json:"preferredprovider"`
@@ -50,27 +50,27 @@ type Config struct {
 
 // ProviderKeys is kept separate so tests can easily validate its zero value.
 type ProviderKeys struct {
-	OpenAI    string `json:"openai"`
-	Anthropic string `json:"anthropic"`
-	Gemini    string `json:"gemini"`
+	OpenAI    string `json:"openai"`    // OpenAI is the API key for OpenAI models.
+	Anthropic string `json:"anthropic"` // Anthropic is the API key for Anthropic models.
+	Gemini    string `json:"gemini"`    // Gemini is the API key for Gemini models.
 
 	// NOTE: in the future, we may add these:
 	// XAI       string `json:"xai"`
 }
 
+// CustomModel defines an additional LLM model made available through configuration.
 type CustomModel struct {
-	ID       string `json:"id"`
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-
-	APIKeyEnv      string `json:"apikeyenv"`
-	APIEndpointEnv string `json:"apiendpointenv"`
-	APIEndpointURL string `json:"apiendpointurl"`
-
-	ReasoningEffort string `json:"reasoningeffort"`
-	ServiceTier     string `json:"servicetier"`
+	ID              string `json:"id"`              // ID is the codalotl model ID used in configuration and command-line model selection.
+	Provider        string `json:"provider"`        // Provider is the llmmodel provider ID that serves the model.
+	Model           string `json:"model"`           // Model is the provider-specific model identifier.
+	APIKeyEnv       string `json:"apikeyenv"`       // APIKeyEnv names the environment variable that supplies the model's API key.
+	APIEndpointEnv  string `json:"apiendpointenv"`  // APIEndpointEnv names an environment variable that can supply the model endpoint URL.
+	APIEndpointURL  string `json:"apiendpointurl"`  // APIEndpointURL is a fixed model endpoint URL override.
+	ReasoningEffort string `json:"reasoningeffort"` // ReasoningEffort is an optional provider-specific reasoning effort override.
+	ServiceTier     string `json:"servicetier"`     // ServiceTier is an optional provider-specific service tier override.
 }
 
+// loadConfig loads, validates, and applies the effective codalotl configuration.
 func loadConfig() (Config, error) {
 	loader := cascade.New().WithDefaults(map[string]any{
 		"reflowwidth": 120,
@@ -127,6 +127,8 @@ func writeConfigJSON(w io.Writer, cfg Config) error {
 	return nil
 }
 
+// writeConfig writes the user-facing `codalotl config` report for cfg to w. The report includes redacted configuration JSON, contributing config locations, the
+// effective model, provider API key environment variables, and global and project config file locations. It returns any write or encoding error.
 func writeConfig(w io.Writer, cfg Config) error {
 	if err := writeStringln(w, "Current Configuration:"); err != nil {
 		return err
@@ -223,6 +225,8 @@ func effectiveModel(cfg Config) llmmodel.ModelID {
 	return llmmodel.ModelIDOrFallback("")
 }
 
+// configureCustomModelsFromConfig validates and registers custom LLM models from configuration. It updates llmmodel's process-global model registry, so repeated
+// calls are accepted only when an existing model ID has the same effective definition. APIEndpointEnv, when set and present in the environment, overrides APIEndpointURL.
 func configureCustomModelsFromConfig(models []CustomModel) error {
 	for i, m := range models {
 		id := llmmodel.ModelID(strings.TrimSpace(m.ID))
@@ -277,6 +281,7 @@ func configureCustomModelsFromConfig(models []CustomModel) error {
 	return nil
 }
 
+// llmProviderEnvVarsForDisplay returns API key environment variable names relevant to the effective configuration.
 func llmProviderEnvVarsForDisplay(cfg Config) []string {
 	// Prefer stable output order.
 	seen := map[string]bool{}
@@ -308,6 +313,8 @@ func llmProviderEnvVarsForDisplay(cfg Config) []string {
 	return out
 }
 
+// providerKeysForDisplay returns a copy of pk suitable for config output. Known provider keys are redacted, asterisk-only placeholders are treated as unset, and
+// unset keys are filled from their provider environment variables when present. Unknown or unsupported provider fields are cleared.
 func providerKeysForDisplay(pk ProviderKeys) ProviderKeys {
 	out := pk
 
@@ -354,6 +361,8 @@ func providerKeysForDisplay(pk ProviderKeys) ProviderKeys {
 	return out
 }
 
+// configureProviderKeysFromConfig applies configured provider API keys to llmmodel. It uses ProviderKeys json tags as provider IDs and ignores empty values, all-asterisk
+// placeholders, unknown providers, and providers not registered by llmmodel. Configured keys take precedence over default environment lookup.
 func configureProviderKeysFromConfig(pk ProviderKeys) {
 	// Use reflection so new providers added to ProviderKeys are automatically
 	// supported without touching this code again.
@@ -481,6 +490,8 @@ func configPathForPreferredModelPersistence(cfg Config) string {
 	return globalConfigPath()
 }
 
+// setPreferredModelInConfigFile updates the preferredmodel key in path. It creates the containing directory, preserves existing JSON object fields and file mode
+// when possible, deletes preferredmodel when newModelID is empty, and writes the file atomically.
 func setPreferredModelInConfigFile(path string, newModelID llmmodel.ModelID) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -511,6 +522,8 @@ func setPreferredModelInConfigFile(path string, newModelID llmmodel.ModelID) err
 	return nil
 }
 
+// readJSONObjectFile reads path as a JSON object. It returns an empty object when the file does not exist, is empty, or contains JSON null, and wraps open or parse
+// errors with path context.
 func readJSONObjectFile(path string) (map[string]any, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -536,6 +549,9 @@ func readJSONObjectFile(path string) (map[string]any, error) {
 	return obj, nil
 }
 
+// writeJSONObjectFileAtomic writes obj to path as indented JSON using a same-directory temporary file. It applies mode to the temporary and final file, disables
+// HTML escaping, and replaces the destination when the write succeeds. Replacement is atomic on platforms whose rename operation replaces existing files atomically;
+// on Windows an existing destination may be removed before rename.
 func writeJSONObjectFileAtomic(path string, obj map[string]any, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "config.*.json")

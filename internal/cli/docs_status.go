@@ -25,11 +25,12 @@ const (
 
 var runDocubotNeedsDocs = docubot.NeedsDocs
 
+// A docsStatusRow contains the documentation status for one package.
 type docsStatusRow struct {
-	Package string
-	DocsAdd string
-	DocsFix string
-	Reflow  string
+	Package string // Display package path.
+	DocsAdd string // Status of missing-documentation coverage.
+	DocsFix string // Status of material documentation correctness.
+	Reflow  string // Status of deterministic documentation reflow.
 }
 
 func newDocsStatusCommand(runWithConfig runWithConfigFunc) *qcli.Command {
@@ -49,6 +50,8 @@ codalotl docs status
 	return statusCmd
 }
 
+// runDocsStatus writes the per-package documentation status table for packages discovered under the nearest Git repository. It is read-only; package-specific failures
+// are reported as error statuses in their rows.
 func runDocsStatus(ctx context.Context, out io.Writer, reflowWidth int) error {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -122,6 +125,8 @@ func docsAddStatus(pkg *gocode.Package) string {
 	return docsStatusCurrent
 }
 
+// docsFixStatus reports the docs-fix status for pkg from the module CAS database. It reuses and populates dbs by module root. It returns docsStatusCurrent only
+// for a whole-package docs-fix record for the package's current contents; identifier-limited records count as docsStatusNeeded, and database errors return docsStatusError.
 func docsFixStatus(moduleRoot string, pkg *gocode.Package, dbs map[string]*gocas.DB) string {
 	db, ok := dbs[moduleRoot]
 	if !ok {
@@ -163,6 +168,7 @@ func docsReflowStatus(pkg *gocode.Package, reflowWidth int) string {
 	return docsStatusCurrent
 }
 
+// writeDocsStatusTable writes rows as an aligned docs status table.
 func writeDocsStatusTable(w io.Writer, rows []docsStatusRow) error {
 	cols := [][]string{
 		{"package"},

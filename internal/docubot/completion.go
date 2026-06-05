@@ -10,6 +10,7 @@ import (
 
 var emitExternalLLMUsage = agent.EmitExternalLLMUsage
 
+// completionContext returns the context used for LLM completion calls, defaulting to context.Background.
 func (o BaseOptions) completionContext() context.Context {
 	if o.Context != nil {
 		return o.Context

@@ -15,11 +15,15 @@ import (
 
 const defaultCASPruneDays = 30
 
+// casPrunePackageGroup groups packages that share one module CAS database.
 type casPrunePackageGroup struct {
-	mod      *gocode.Module
-	packages []*gocode.Package
+	mod      *gocode.Module    // Module is the module whose CAS database is pruned.
+	packages []*gocode.Package // Packages are the module packages included in the prune operation.
 }
 
+// runCASPrune deletes obsolete CAS records for packages in modules under the nearest Git repository. It removes prior namespace versions and superseded package
+// records older than days, writes a deletion summary to out, and returns an error for invalid days, package discovery, CAS, or output failures. A days value of
+// zero uses gocas's default retention period.
 func runCASPrune(ctx context.Context, out io.Writer, days int) error {
 	if err := validateCASPruneDays(days); err != nil {
 		return err

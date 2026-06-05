@@ -50,6 +50,7 @@ func (o BaseOptions) updatedocsOptions(rejectUpdates bool) updatedocs.Options {
 	return updatedocs.Options{Reflow: true, ReflowMaxWidth: o.effectiveReflowMaxWidth(), RejectUpdates: rejectUpdates}
 }
 
+// userMessageWriter returns the writer for user-facing progress messages, defaulting to stdout.
 func (o *BaseOptions) userMessageWriter() io.Writer {
 	if o != nil && o.Out != nil {
 		return o.Out
