@@ -41,7 +41,7 @@ Run the requested safe refactor sequence one refactor at a time. After each refa
 2. [DONE] `docs-fix` for `internal/cli`. Result: committed documentation-only corrections with CAS artifact.
 3. [DONE] `dry` for `internal/cli`. Result: committed helper extraction/deduplication with CAS artifact; `go test ./internal/cli` passed.
 4. [DONE] `test-cleanup` for `internal/cli`. Result: committed test helper cleanup with CAS artifact; `go test ./internal/cli` passed.
-5. `test-ensure-coverage` for `internal/cli`.
+5. [DONE] `test-ensure-coverage` for `internal/cli`. Result: committed CAS formatting coverage with CAS artifact; `go test ./internal/cli` passed.
 6. Run `codalotl cas recertify internal/cli --namespaces="docs-fix,refactor-dry,refactor-test-cleanup,refactor-test-ensure-coverage"`.
 7. Inspect and commit recertification CAS artifacts.
 
@@ -65,3 +65,4 @@ Not written yet.
 - `docs-fix` adjusted comments in `cli.go`, `config.go`, `iterate_command.go`, `monitoring.go`, and `pr_new.go`; committed as `a27b9dd`.
 - `dry` introduced `writeAlignedTable`, shared CAS package discovery / DB helpers, and reused package loading; committed as `8c39bc9`.
 - `test-cleanup` deduplicated docs reflow and PR scaffold test setup; committed as `0cb751e`.
+- `test-ensure-coverage` added tests for CAS summary duration/churn formatting; committed as `ed2621d`.
