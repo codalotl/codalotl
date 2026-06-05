@@ -999,6 +999,7 @@ codalotl docs reflow --width=100 --check internal/mypkg pkg/foo.go
 	return reflowCmd
 }
 
+// writeStringln writes s to w, appending a newline when needed, and returns any write error.
 func writeStringln(w io.Writer, s string) error {
 	if !strings.HasSuffix(s, "\n") {
 		s += "\n"
