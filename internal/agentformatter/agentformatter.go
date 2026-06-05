@@ -20,7 +20,7 @@ import (
 	gmtext "github.com/yuin/goldmark/text"
 )
 
-// MinTerminalWidth is the minimum width at which the formatter uses TUI wrapping.
+// MinTerminalWidth is the threshold above which the formatter uses TUI wrapping.
 const MinTerminalWidth = 30
 
 const sanitizeTabWidth = 4
