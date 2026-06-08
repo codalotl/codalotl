@@ -131,7 +131,7 @@ Common controls:
 
 ## Copying and Details
 
-The TUI should provide a practical way to copy visible messages even when mouse capture interferes with normal terminal selection.
+Because the TUI is in full alt mode, normal mouse capture is disabled, making it otherwise impossible to select and copy text. The TUI should therefore provide a way to copy text.
 
 When details are available for tool calls, tool results, generated package context, or similar structured events, the user can inspect the underlying data without leaving the TUI.
 
