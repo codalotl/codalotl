@@ -8,11 +8,7 @@ The TUI is the primary interactive agent experience: a persistent chat-like sess
 
 ### codalotl
 
-Launches the TUI in the sandbox dir.
-
-### codalotl .
-
-Alias for `codalotl`, supported for editor-like muscle memory. Other path-like root arguments are not TUI launch aliases.
+Launches the TUI in the sandbox dir. `codalotl .` is a alias (only goal: conform to muscle memory of folks typing things like `code .`).
 
 Startup loads configuration, validates required Go/git tools, and validates that at least one usable LLM model is available. Configuration can select the preferred model, auto-approval behavior, and TUI color theme.
 
@@ -21,7 +17,7 @@ Startup loads configuration, validates required Go/git tools, and validates that
 The TUI has:
 - Messages area: chat history, assistant output, tool calls, tool output, warnings, errors, and system messages.
 - Input area: where the user types messages and slash commands.
-- Permission area: shown when the agent needs interactive approval.
+- Permission area: only shown when the agent needs interactive approval.
 - Info panel: shown when terminal width permits, with session/model/token/cost/status details.
 
 The UI works in ordinary terminals on supported OSes. It responds to resize events and should remain usable on narrower terminals by hiding optional panels and wrapping content.
