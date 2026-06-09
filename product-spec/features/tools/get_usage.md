@@ -11,8 +11,6 @@
 
 The tool returns an agent-facing usage summary with references to packages, files, line numbers, source lines, and selected code snippets when helpful.
 
-The output is intentionally usage-oriented rather than a raw repository search dump. It should preserve enough caller context for the agent to understand how the identifier is used and what could break if it changes.
-
 Errors include invalid parameters, unresolved packages, package load failures, authorization failures for sandbox packages, and identifiers that are not defined by the target package.
 
 ## Behavior
@@ -32,17 +30,8 @@ Example display:
 
 ```text
 • Read Usage path/or/import/pkg Identifier
-  └ Found N results.
+  └ Found 2 results.
 ```
-
-For a single usage result, the body uses the singular form:
-
-```text
-• Read Usage path/or/import/pkg Identifier
-  └ Found 1 result.
-```
-
-The presentation should not dump the returned usage summary into the progress line.
 
 ## Permissions
 
