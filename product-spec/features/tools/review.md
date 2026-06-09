@@ -1,26 +1,8 @@
 # `review`
 
-`review` lets the PR Orchestrator delegate a full code review of the current branch against a base branch or ref.
+`review` delegates a code review of the current branch against a base branch or ref.
 
 It is for validating the committed implementation state of a PR-style branch, not for reviewing package `SPEC.md` edits or making changes directly.
-
-## Availability
-
-- Available to the PR Orchestrator.
-- Not available as a general-purpose package-mode tool.
-- Used after implementation work is far enough along to review the branch against its intended base.
-
-## Behavior
-
-- The orchestrator supplies the base branch or ref to review against.
-- The tool launches a dedicated review subagent.
-- The review subagent receives enough git context to understand the branch:
-    - commit log from the base ref to `HEAD`;
-    - diff stat against the base ref;
-    - full diff against the base ref, including rename-aware diff output and submodule diff details when present.
-- The review subagent may inspect the repository as needed, but it does not edit files or commit.
-- Review findings are limited to actionable bugs introduced by the reviewed diff. The review should not report ordinary style comments, pre-existing issues, or speculative risks without a concrete affected path.
-- The review result is advisory. The orchestrator sanity-checks it, records it in the PR file, and decides whether each finding should be fixed, rejected, deferred, or treated as out of scope.
 
 ## Inputs
 
@@ -39,17 +21,26 @@ An empty findings list is valid when the review found no actionable bugs.
 
 Errors include invalid parameters, an unavailable or invalid base ref, git command failures while collecting review context, subagent failures, and review output that cannot be returned as the expected JSON result.
 
+## Behavior
+
+- The orchestrator supplies the base branch or ref to review against.
+- The tool launches a dedicated review subagent.
+- The review subagent receives enough git context to understand the branch, including commit log, diff stat, and full diff from the base ref to `HEAD`.
+- The review subagent may inspect the repository as needed.
+- The review subagent does not edit files or commit.
+- Review findings are limited to actionable bugs introduced by the reviewed diff.
+- The review should not report ordinary style comments, pre-existing issues, or speculative risks without a concrete affected path.
+- The review result is advisory. The orchestrator decides whether each finding should be fixed, rejected, deferred, or treated as out of scope.
+
 ## Presentation
 
-Human-facing output presents review as a long-running delegated operation.
-
-When the review starts:
+Example display while running:
 
 ```text
 • Reviewing origin/main
 ```
 
-When the review completes with findings:
+Example display with findings:
 
 ```text
 • Reviewed origin/main
@@ -65,8 +56,6 @@ When the review completes without findings:
 ```
 
 The presentation should show concise finding titles rather than dumping the full diff, commit log, or raw JSON into the human transcript. Large finding sets may be summarized after the first several titles.
-
-The review subagent's final answer should not appear as a separate duplicate message; the tool result is the visible review completion.
 
 ## Permissions
 

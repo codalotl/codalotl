@@ -1,21 +1,6 @@
 # `read_file`
 
-`read_file` lets an agent inspect the contents of one file in the sandbox or in another user-authorized location.
-
-## Availability
-
-- Available in generic agents.
-- Available in package-mode agents, where ordinary reads are scoped by the selected package code unit.
-- Available to read-only helper agents such as `clarify_public_api`.
-
-## Behavior
-
-- The agent supplies one file path.
-- Relative paths are resolved from the sandbox dir.
-- The path must resolve to an existing file.
-- The tool returns text contents, not a binary payload.
-- The tool may truncate very large files, very long files, very long lines, invalid UTF-8, or otherwise unsuitable file contents. Truncation should be visible in the result rather than silently changing meaning.
-- The agent can ask for line numbers when it needs stable references, such as matching compiler or test failures. Ordinary reads should not include line numbers.
+`read_file` reads one text file.
 
 ## Inputs
 
@@ -29,15 +14,25 @@ The tool returns the readable file content with enough metadata for the agent to
 
 Errors include invalid parameters, missing files, directory paths, unreadable files, denied permissions, and unsupported binary-style content.
 
+## Behavior
+
+- The agent supplies one file path.
+- Relative paths are resolved from the sandbox dir.
+- The path must resolve to an existing file.
+- The tool returns text contents, not a binary payload.
+- Very large files, very long files, very long lines, invalid UTF-8, or otherwise unsuitable file contents may be truncated.
+- Truncation is visible in the result rather than silently changing meaning.
+- The agent can ask for line numbers when it needs stable references. Ordinary reads should not include line numbers.
+
 ## Presentation
 
-Human-facing output presents a successful read as:
+Example display:
 
 ```text
 • Read path/to/file.go
 ```
 
-The presentation should show the path the user can recognize. It should not dump the file body into the chat-style progress line; the file contents belong to the agent-facing result.
+The presentation should show the path the user can recognize. It should not dump the file body into the progress line.
 
 ## Permissions
 

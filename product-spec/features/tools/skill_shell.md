@@ -1,25 +1,8 @@
 # `skill_shell`
 
-`skill_shell` lets an agent run a shell command that is specifically directed by an active skill or package workflow.
+`skill_shell` runs a shell command directed by an active skill or package workflow.
 
 It is not a general-purpose shell exploration tool. Agents use it when a skill references a command, script, or workflow step that cannot be expressed through a more specific Codalotl tool.
-
-## Availability
-
-- Available to agents whose toolset includes skill-backed command execution.
-- Available in package-mode agents for commands provided by skills and package workflows.
-- Not a replacement for package-mode tools such as `run_tests`, `diagnostics`, `fix_lints`, or other purpose-built Go tools when those tools are available and fit the task.
-
-## Behavior
-
-- The agent supplies an argv-style command and the name of the skill that directed the command.
-- The command should come from a skill instruction, a script located in or referenced by a skill, or a package-mode workflow that explicitly allows skill-backed commands.
-- Relative working directories are resolved from the sandbox dir.
-- An empty working directory uses the sandbox dir.
-- The command runs with a timeout. If the agent does not supply one, Codalotl uses a default timeout.
-- The tool returns combined stdout and stderr together with command metadata.
-- The tool limits very large output by preserving head and tail content around a visible elision marker.
-- Failed commands, timeouts, spawn failures, denied authorization, and invalid parameters are reported as tool failures.
 
 ## Inputs
 
@@ -38,17 +21,26 @@ On failure, the tool returns enough information for the agent to understand whet
 
 Output may be byte-limited. When output is limited, the result should make the elision visible rather than silently changing meaning.
 
+## Behavior
+
+- The agent supplies an argv-style command and the name of the skill that directed the command.
+- The command should come from a skill instruction, a script located in or referenced by a skill, or a package-mode workflow that explicitly allows skill-backed commands.
+- Relative working directories are resolved from the sandbox dir.
+- An empty working directory uses the sandbox dir.
+- The command runs with a timeout. If the agent does not supply one, Codalotl uses a default timeout.
+- The tool returns combined stdout and stderr together with command metadata.
+- The tool limits very large output by preserving head and tail content around a visible elision marker.
+- Purpose-built Go tools such as `run_tests`, `diagnostics`, and `fix_lints` should be used when they fit the task.
+
 ## Presentation
 
-Human-facing output uses the same replace presentation as `shell`.
-
-While the command is running:
+Example display while running:
 
 ```text
 • Running go tool cover -func=coverage.out
 ```
 
-After completion:
+Example display after completion:
 
 ```text
 • Ran go tool cover -func=coverage.out

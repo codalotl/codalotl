@@ -1,20 +1,6 @@
 # `diagnostics`
 
-`diagnostics` lets a package-mode agent inspect Go build and type-check diagnostics for a package path.
-
-## Availability
-
-- Available in package-mode agents.
-- Available to delegated package agents when they need to verify or investigate the selected package.
-
-## Behavior
-
-- The agent supplies one package path.
-- Relative paths are resolved from the sandbox dir.
-- The path must resolve to a Go package directory or package-like directory inside the current authorization boundary.
-- The tool runs Go diagnostics for that package, roughly equivalent to building the package without producing a user-visible binary.
-- Build and type-check failures are returned as diagnostic status for the agent to act on.
-- A package with no diagnostics returns a successful diagnostic status rather than an empty or missing result.
+`diagnostics` inspects Go build and type-check diagnostics for a package.
 
 ## Inputs
 
@@ -26,21 +12,24 @@ The tool returns diagnostic status for the requested package, including enough b
 
 Errors include invalid parameters, missing paths, non-directory paths, denied permissions, missing or unusable Go module context, command execution failures, and diagnostics runner failures.
 
+## Behavior
+
+- The agent supplies one package path.
+- Relative paths are resolved from the sandbox dir.
+- The path must resolve to a Go package directory or package-like directory.
+- The tool runs Go diagnostics for that package, roughly equivalent to building the package without producing a user-visible binary.
+- Build and type-check failures are returned as diagnostic status for the agent to act on.
+- A package with no diagnostics returns a successful diagnostic status rather than an empty or missing result.
+
 ## Presentation
 
-Human-facing output presents the diagnostic run as:
+Example display:
 
 ```text
 • Ran Diagnostics path/to/package
 ```
 
-While the tool is still running, human-facing output may present:
-
-```text
-• Run Diagnostics path/to/package
-```
-
-If the run itself fails, the presentation should show a compact error owned by the diagnostics presenter rather than dumping raw tool JSON.
+If the run fails, the presentation should show a compact error rather than raw tool JSON.
 
 ## Permissions
 

@@ -1,26 +1,6 @@
 # `review_spec_changes`
 
-`review_spec_changes` lets the PR orchestrator get focused feedback on recent `SPEC.md` edits for one Go package before implementation starts.
-
-## Availability
-
-- Available to the PR orchestrator.
-- Intended for planning and design steps where the orchestrator is editing package `SPEC.md` files.
-- Delegates to a limited package-mode agent for the selected package.
-
-## Behavior
-
-- The orchestrator supplies one package selector and a message with review context.
-- The package selector resolves like other package-mode package inputs: it may be a Go package directory, a current-module relative package path, or a Go import path.
-- The tool launches a `limited_package_mode` subagent for that package.
-- The subagent receives package-mode context and the orchestrator's message.
-- The subagent uses the `$spec-md` guidance to review the latest `SPEC.md` changes in that package.
-- The changes under review may be uncommitted edits, a newly created `SPEC.md`, or recent committed edits identified from git history and the orchestrator's message.
-- Review focuses on whether the `SPEC.md` edits are coherent, implementable, correctly located, appropriately terse, timeless, and at the right level of detail.
-- Review considers the edited `SPEC.md` together with the orchestrator's message. The message can contain motivation, PR-file references, and details that are intentionally outside the `SPEC.md`.
-- The tool is advisory. The orchestrator remains responsible for judging the feedback, revising the spec when useful, and deciding when the spec is good enough.
-- The delegated review agent should not edit files and should not implement the planned change.
-- The delegated review agent should not complain that package code does not yet implement the edited `SPEC.md`; these reviews usually happen before implementation.
+`review_spec_changes` gets focused feedback on recent `SPEC.md` edits for one Go package.
 
 ## Inputs
 
@@ -35,25 +15,36 @@ The feedback should answer the configured review questions at a product level ra
 
 Errors include invalid parameters, package-resolution failures, subagent startup failures, and delegated review failures.
 
+## Behavior
+
+- The orchestrator supplies one package selector and a message with review context.
+- The package selector may be a Go package directory, a current-module relative package path, or a Go import path.
+- The tool launches a limited package-mode review agent for that package.
+- The review agent receives package-mode context and the orchestrator's message.
+- The review agent uses the `$spec-md` guidance to review the latest `SPEC.md` changes in that package.
+- The changes under review may be uncommitted edits, a newly created `SPEC.md`, or recent committed edits identified from git history and the orchestrator's message.
+- Review focuses on whether the `SPEC.md` edits are coherent, implementable, correctly located, appropriately terse, timeless, and at the right level of detail.
+- The review agent should not edit files or implement the planned change.
+- The review agent should not complain that package code does not yet implement the edited `SPEC.md`; these reviews usually happen before implementation.
+- The tool is advisory. The orchestrator decides whether to revise the spec and when the spec is good enough.
+
 ## Presentation
 
-Human-facing output uses an append-style subagent Q-and-A presentation.
-
-In progress:
+Example display while running:
 
 ```text
 • Reviewing SPEC changes in internal/foo
   └ Background: See @.prs/example.md for context.
 ```
 
-Completion:
+Example display after completion:
 
 ```text
 • Reviewed SPEC changes in internal/foo
   └ Do you understand the changes to SPEC.md and the user's context? Yes...
 ```
 
-Nested subagent activity may be shown between the in-progress and completion lines. The delegated agent's final assistant message is surfaced as the tool result body rather than repeated as a separate chat message.
+Nested subagent activity may be shown between the in-progress and completion lines.
 
 ## Permissions
 

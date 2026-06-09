@@ -1,19 +1,6 @@
 # `run_project_tests`
 
-`run_project_tests` lets an agent run the broader Go project test suite when it needs confidence beyond the currently selected package.
-
-## Availability
-
-- Available in package-mode agents.
-- Available to package agents as a broader project test check when package-level tests are not enough.
-
-## Behavior
-
-- The tool runs the repository's project-wide Go tests, equivalent to `go test ./...`.
-- When the agent is working in package mode, the tests run from the Go module containing the selected package.
-- If no package path is available, the tests run from the sandbox dir.
-- The tool is intended for use after the selected package's own tests pass.
-- The tool returns project test status and enough output to identify failures.
+`run_project_tests` runs the broader Go project test suite.
 
 ## Inputs
 
@@ -27,9 +14,17 @@ On success, the result indicates that project tests passed. On failure, the resu
 
 Errors include invalid project paths, missing or unusable Go module context, command execution failures, and test failures.
 
+## Behavior
+
+- The tool runs the repository's project-wide Go tests, equivalent to `go test ./...`.
+- In package mode, tests run from the Go module containing the selected package.
+- If no package path is available, tests run from the sandbox dir.
+- The tool is intended for use after the selected package's own tests pass.
+- The tool returns enough output to identify project test failures.
+
 ## Presentation
 
-Human-facing output presents the project test run as:
+Example display:
 
 ```text
 • Ran Tests ./...
