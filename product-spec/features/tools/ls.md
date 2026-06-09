@@ -23,6 +23,7 @@ go.mod
 go.sum
 internal/
 main.go
+</ls>
 ```
 
 ## Behavior
