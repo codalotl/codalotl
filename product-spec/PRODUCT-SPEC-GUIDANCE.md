@@ -32,6 +32,10 @@ We still allow and want high-level statements like "when the user issues X comma
 
 NOTE: the lack of imprecision language does NOT mean a statement in the spec should necessarily be interpreted as a fully precise statement with no nuance. One must still use judgement.
 
+## Orthogonality
+
+Each document's information should be ~80% orthogonal to other documents' information. The product spec is meant to be understood in totality, and should be mostly factored so that we don't repeat ourselves. That being said, it's helpful to refer to other product features and concerns and have some overlap when it helps a document read easier.
+
 ## Future
 
 Some ideas may be added to the product spec that are not intended to be implemented yet. These are indicated with the word "future" in some way. For instance, either a section called `## Future`, or a bullet like `- FUTURE: do xyz`.
