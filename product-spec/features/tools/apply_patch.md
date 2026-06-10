@@ -21,8 +21,6 @@ The tool input is patch text:
 *** End Patch
 ```
 
-- `request_permission`: optional boolean; asks the user for approval when the patch targets material access outside the normal authorization boundary.
-
 ## Output
 
 The tool returns a structured result indicating whether the patch was applied and listing changed files.
