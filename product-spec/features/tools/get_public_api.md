@@ -15,6 +15,25 @@ The output is intentionally documentation-oriented rather than source-oriented. 
 
 Errors include invalid parameters, unresolved packages, package load failures, authorization failures for sandbox packages, test-package targets when unsupported, and unknown or invalid requested identifiers.
 
+Example output:
+
+```go
+// catalog.go:
+
+// Catalog is an in-memory product index keyed by SKU.
+type Catalog struct {
+	// contains filtered or unexported fields
+}
+
+// Lookup returns a defensive copy of the product for sku.
+func (c *Catalog) Lookup(sku string) (Product, bool)
+
+// query.go:
+
+// ProductsWithTag returns all products with tag, sorted by SKU.
+func (c *Catalog) ProductsWithTag(tag string) []Product
+```
+
 ## Behavior
 
 - The agent supplies one Go package target.

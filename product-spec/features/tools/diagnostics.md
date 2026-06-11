@@ -12,6 +12,14 @@ The tool returns diagnostic status for the requested package, including enough b
 
 Errors include invalid parameters, missing paths, non-directory paths, denied permissions, missing or unusable Go module context, command execution failures, and diagnostics runner failures.
 
+Example output:
+
+```text
+<diagnostics-status ok="true" message="build succeeded">
+$ go build -o /dev/null ./pricing
+</diagnostics-status>
+```
+
 ## Behavior
 
 - The agent supplies one package path.

@@ -14,6 +14,27 @@ In fix mode, a successful result means all enabled lint steps either found no is
 
 Errors include invalid parameters, missing paths, non-directory paths, denied permissions, command failures, and unfixable lint issues.
 
+Example output:
+
+```text
+<lint-status ok="false">
+<command ok="true" message="no issues found" mode="fix">
+$ gofmt -l -w catalog
+</command>
+<command ok="true" message="no issues found" mode="fix">
+$ codalotl spec fmt catalog
+</command>
+<command ok="false" mode="check">
+$ codalotl spec diff catalog
+DIFF 1/1
+type: impl-missing
+ids: *Catalog.Count
+spec: SPEC.md:29
+impl: <missing>
+</command>
+</lint-status>
+```
+
 ## Behavior
 
 - The agent supplies one package directory path.

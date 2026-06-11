@@ -15,6 +15,20 @@ The tool returns the final result written by the delegated package agent after i
 
 Errors include invalid parameters, unresolved package paths or import paths, targets outside the sandbox, standard-library or dependency-cache targets, targets that are not direct imports of the current package, denied reads or writes, package-loading failures, unavailable subagent execution, and delegated-agent failures.
 
+Example output:
+
+```text
+I updated `catalog.ProductsWithTag` to return `nil` immediately when `tag == ""`, keeping the rest of the filtering behavior unchanged for non-empty tags.
+
+What changed:
+- In `catalog/query.go`, added an early return for the empty-tag case.
+- In `catalog/catalog_test.go`, added `TestProductsWithTagEmptyTagReturnsNil`.
+
+Verification:
+- `go test ./catalog` passed
+- `go test ./...` passed
+```
+
 ## Behavior
 
 - The agent supplies a target package and instructions for the requested change.

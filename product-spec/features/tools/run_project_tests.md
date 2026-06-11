@@ -14,6 +14,18 @@ On success, the result indicates that project tests passed. On failure, the resu
 
 Errors include invalid project paths, missing or unusable Go module context, command execution failures, and test failures.
 
+Example output:
+
+```text
+<test-status ok="true">
+$ go test ./...
+ok  	example.com/clarifyintegration	0.002s
+ok  	example.com/clarifyintegration/catalog	(cached)
+ok  	example.com/clarifyintegration/inventory	0.002s
+ok  	example.com/clarifyintegration/pricing	(cached)
+</test-status>
+```
+
 ## Behavior
 
 - The tool runs the repository's project-wide Go tests, equivalent to `go test ./...`.

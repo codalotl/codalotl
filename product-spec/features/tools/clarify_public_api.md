@@ -16,6 +16,22 @@ The tool returns the clarification answer written by the read-only subagent.
 
 Errors include invalid parameters, unresolved package paths or import paths, denied target-package reads, subagent setup or invocation failures, and clarify CAS recording failures.
 
+Example output:
+
+```text
+`catalog.New` normalizes each product's `Tags` by calling `normalizedTags`.
+
+Exactly what it does:
+
+- Does not trim whitespace.
+- Does not lowercase tags.
+- Removes empty string tags.
+- Deduplicates exact string matches.
+- Sorts the remaining tags lexicographically.
+
+If the input tag slice is empty or nil, the stored `Tags` becomes `nil`.
+```
+
 ## Behavior
 
 - The agent supplies a package path, an identifier, and a specific question.

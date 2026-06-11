@@ -17,6 +17,21 @@ The result is plain text. It usually summarizes the implementation outcome, chan
 
 Errors include invalid parameters, unresolved package paths or import paths, targets outside the sandbox, denied reads or writes, package-loading failures, unavailable subagent execution, and delegated-agent failures.
 
+Example output:
+
+```text
+Fixed the OpenAI Responses post-completion drain handling.
+
+What changed:
+- `internal/llmstream/open_ai_responses.go`
+  - After `response.completed`, only retryable transport disconnects are suppressed as success.
+  - `context.Canceled`, `context.DeadlineExceeded`, and other non-retryable errors after completion are returned normally.
+
+Verification:
+- `go test ./internal/llmstream` passed
+- `go test ./...` passed
+```
+
 ## Behavior
 
 - The orchestrator supplies one target package and implementation instructions.

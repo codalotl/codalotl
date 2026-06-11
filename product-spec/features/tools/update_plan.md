@@ -17,6 +17,12 @@ On success, the tool accepts the plan update and returns a short confirmation fo
 
 Errors include malformed parameters, a missing `plan` field, blank steps, blank statuses, unsupported statuses, and more than one `in_progress` item.
 
+Example output:
+
+```text
+Plan updated
+```
+
 ## Behavior
 
 - The agent supplies an ordered list of plan items.

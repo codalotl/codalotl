@@ -32,6 +32,23 @@ Non-zero command exits are ordinary command results rather than tool infrastruct
 
 Errors include malformed tool parameters, command-tree construction failures, and rejected commands outside the whitelist.
 
+Example output:
+
+```json
+{
+  "command": [
+    "codalotl",
+    "docs",
+    "add",
+    "internal/gotypes"
+  ],
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "Everything is already documented\nApplied 0 documentation change(s).\n",
+  "success": true
+}
+```
+
 ## Behavior
 
 - The agent supplies a `subcommand` string and an `argv` array.

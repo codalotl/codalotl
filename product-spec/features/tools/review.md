@@ -21,6 +21,17 @@ An empty findings list is valid when the review found no actionable bugs.
 
 Errors include invalid parameters, an unavailable or invalid base ref, git command failures while collecting review context, subagent failures, and review output that cannot be returned as the expected JSON result.
 
+Example output:
+
+```json
+{
+  "findings": [],
+  "overall_confidence_score": 0.84,
+  "overall_correctness": "patch is correct",
+  "overall_explanation": "No actionable bugs introduced by the diff were identified."
+}
+```
+
 ## Behavior
 
 - The orchestrator supplies the base branch or ref to review against.

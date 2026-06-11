@@ -22,6 +22,23 @@ On success, the tool returns a structured result with:
 
 Errors include invalid parameters, unknown refactor names, package resolution failures, authorization failures, delegated CLI failures, subagent failures, and CAS read/write failures.
 
+Example output:
+
+```json
+{
+  "edited-files": [
+    "doc.go",
+    "json_output.go",
+    "noninteractive.go",
+    "session.go"
+  ],
+  "message": "successfully applied refactor",
+  "name": "docs-add",
+  "package": "internal/noninteractive",
+  "status": "applied"
+}
+```
+
 ## Behavior
 
 - The agent supplies a refactor name and a target Go package.

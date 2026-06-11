@@ -15,6 +15,22 @@ The feedback should answer the configured review questions at a product level ra
 
 Errors include invalid parameters, package-resolution failures, subagent startup failures, and delegated review failures.
 
+Example output:
+
+```text
+- Do you understand the changes to SPEC.md and the user's context? Are the changes logically coherent with the rest of the SPEC?
+
+Yes. The SPEC edit adds one provider behavior and fits coherently with the surrounding streaming bullets.
+
+- Are the changes implementable? Do you have any concerns about implementing them in this package?
+
+Yes, implementable. This package already owns the relevant streaming and retry behavior.
+
+- Is there significant ambiguity where you don't know of any reasonable solution?
+
+No. There is ambiguity in exact error classification, but a reasonable implementation can classify common transport disconnects while leaving provider semantic failures non-retryable.
+```
+
 ## Behavior
 
 - The orchestrator supplies one package selector and a message with review context.

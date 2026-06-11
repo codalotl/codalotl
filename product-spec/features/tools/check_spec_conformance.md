@@ -28,6 +28,27 @@ If no packages are eligible after filtering, the tool returns an empty JSON obje
 
 Errors include invalid parameters, invalid explicit packages, packages without `SPEC.md` when explicitly requested, module-loading failures, git-baseline failures, authorization failures, and other pre-launch or global failures.
 
+Example output:
+
+```json
+{
+  "internal/llmstream": {
+    "conforms": true
+  },
+  "internal/example": {
+    "conforms": false,
+    "nonconformances": [
+      {
+        "severity": "minor",
+        "latent": false,
+        "message": "SPEC.md says Parser.Parse accepts empty input, but Parse returns an error for empty input.",
+        "analysis": "The implementation should either accept empty input or the SPEC should be revised before this package is recertified."
+      }
+    ]
+  }
+}
+```
+
 ## Behavior
 
 - The tool checks Go packages in the current module.

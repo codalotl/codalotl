@@ -17,6 +17,18 @@ When possible, output separates test status from lint status so the agent can te
 
 Errors include invalid parameters, missing or non-directory paths, denied permissions, invalid environment assignments, command execution failures, test failures, and lint failures.
 
+Example output:
+
+```text
+<test-status ok="true">
+$ go test ./catalog
+ok  	example.com/clarifyintegration/catalog	0.002s
+</test-status>
+<lint-status ok="true" message="no issues found" mode="check">
+$ gofmt -l catalog
+</lint-status>
+```
+
 ## Behavior
 
 - The agent supplies one Go package path to test.

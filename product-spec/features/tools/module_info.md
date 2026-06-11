@@ -15,6 +15,26 @@ The result may also include compact package-list context when available, so the 
 
 Errors include invalid parameters, invalid package search expressions, missing or unusable Go module context, denied permissions, and failures while reading module or package information.
 
+Example output:
+
+```text
+Go module information (from go.mod):
+module example.com/pmdependencycase
+
+go 1.24
+
+require github.com/creack/pty v1.1.24
+
+Packages (1) matching "^github\\.com/creack/pty$" (including direct dependency modules):
+- github.com/creack/pty
+
+Package list context:
+These packages are defined in the current module (example.com/pmdependencycase):
+
+Defined in github.com/creack/pty:
+- github.com/creack/pty
+```
+
 ## Behavior
 
 - The tool discovers the Go module from the package-mode sandbox context.

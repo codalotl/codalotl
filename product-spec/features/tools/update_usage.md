@@ -17,6 +17,23 @@ When no downstream packages import the selected package, the tool reports that t
 
 Errors include invalid parameters, empty paths, unresolved package targets, targets outside the sandbox or current module, targets that do not import the selected package, denied write authorization, package-loading or usage-discovery failures, and delegated agent failures.
 
+Example output:
+
+```text
+example.com/clarifyintegration:
+I checked the assigned package at `.` and there are no `.HasTag(...)` call sites, so I made no code changes.
+
+example.com/clarifyintegration/inventory:
+I checked `inventory` and there are no `.HasTag(...)` call sites in this package, so no code changes were required.
+
+example.com/clarifyintegration/pricing:
+Updated `pricing/quote.go` to use `product.MatchesTag(...)` instead of the renamed `product.HasTag(...)`.
+
+Result:
+- Build issue is resolved.
+- Package tests pass: `go test ./pricing`
+```
+
 ## Behavior
 
 - The agent supplies update instructions and one or more downstream package targets.

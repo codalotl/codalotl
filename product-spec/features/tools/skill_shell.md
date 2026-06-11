@@ -21,6 +21,22 @@ On failure, the tool returns enough information for the agent to understand whet
 
 Output may be byte-limited. When output is limited, the result should make the elision visible rather than silently changing meaning.
 
+Example output:
+
+```text
+{
+  "content": "V",
+  "success": true
+}
+Command: go tool cover -func=coverage.out
+Process State: exit status 0
+Timeout: false
+Duration: 18.421ms
+Output:
+github.com/example/project/internal/foo/foo.go:12:	Parse		88.9%
+total:						(statements)	83.2%
+```
+
 ## Behavior
 
 - The agent supplies an argv-style command and the name of the skill that directed the command.

@@ -18,6 +18,22 @@ Output is combined stdout and stderr, subject to the configured byte limit. When
 
 Errors include invalid parameters, denied permissions, invalid working directories, process start failures, non-zero command exits, and timeouts.
 
+Example output:
+
+```text
+{
+  "content": "V",
+  "success": true
+}
+Command: git status --short
+Process State: exit status 0
+Timeout: false
+Duration: 5.706194ms
+Output:
+ M internal/example/example.go
+?? internal/example/example_test.go
+```
+
 ## Behavior
 
 - The agent supplies a command as an argv array, preserving argument boundaries without shell-parsing a single command string.
