@@ -14,6 +14,18 @@ The tool returns the readable file content with enough metadata for the agent to
 
 Errors include invalid parameters, missing files, directory paths, unreadable files, denied permissions, and unsupported binary-style content.
 
+Example output:
+
+```text
+<file name="some.go" line-count="5" byte-count="123" any-line-truncated="false" file-truncated="false">
+package foo
+
+func f() int {
+    return 0
+}
+</file>
+```
+
 ## Behavior
 
 - The agent supplies one file path.
@@ -22,7 +34,7 @@ Errors include invalid parameters, missing files, directory paths, unreadable fi
 - The tool returns text contents, not a binary payload.
 - Very large files, very long files, very long lines, invalid UTF-8, or otherwise unsuitable file contents may be truncated.
 - Truncation is visible in the result rather than silently changing meaning.
-- The agent can ask for line numbers when it needs stable references. Ordinary reads should not include line numbers.
+- The agent can ask for line numbers when it needs stable references. Ordinary reads do not include line numbers.
 
 ## Presentation
 
@@ -31,8 +43,6 @@ Example display:
 ```text
 • Read path/to/file.go
 ```
-
-The presentation should show the path the user can recognize. It should not dump the file body into the progress line.
 
 ## Permissions
 
