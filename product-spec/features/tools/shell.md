@@ -12,7 +12,7 @@
 
 ## Output
 
-The tool returns a structured command result with command details, process state, timeout status, duration, and output.
+The tool returns the command result with command details, process state, timeout status, duration, and output.
 
 Output is combined stdout and stderr, subject to the configured byte limit. When output is truncated, the result keeps visible head and tail context around an elision marker.
 
@@ -22,16 +22,9 @@ Example output:
 
 ```text
 {
-  "content": "V",
+  "content": "Command: git status --short\nProcess State: exit status 0\nTimeout: false\nDuration: 5.706194ms\nOutput:\n M internal/example/example.go\n?? internal/example/example_test.go",
   "success": true
 }
-Command: git status --short
-Process State: exit status 0
-Timeout: false
-Duration: 5.706194ms
-Output:
- M internal/example/example.go
-?? internal/example/example_test.go
 ```
 
 ## Behavior
