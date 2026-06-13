@@ -1,8 +1,8 @@
 # `update_usage`
 
-`update_usage` updates downstream Go packages that use the selected package.
+`update_usage` spawns new agent(s) that updates downstream Go packages that use the selected package (in package mode). It allows a package-mode-like agent to change the public API of the selected package, then update callsites to conform to it.
 
-It is the cross-package editing tool for keeping package users aligned when the selected package's API or expected usage changes.
+Each spawned agent has a new context, so clear instructions need to be provided. Each agent will operate in a package-mode-like jail against the package it is intended to update.
 
 ## Inputs
 
@@ -38,17 +38,18 @@ Result:
 
 - The agent supplies update instructions and one or more downstream package targets.
 - Each target may be a sandbox-relative package directory or a Go import path.
-- The tool resolves each target to a Go package in the sandbox and current module.
+- The tool resolves each target to a Go package in the sandbox and current module and are de-duplicated.
 - Each target package must be a downstream package that imports the selected package.
-- Duplicate targets that resolve to the same package are updated once.
-- The tool delegates edits to package agents for packages using the selected package or API.
-- Each delegated agent is scoped to its target package and receives the caller's instructions as its task.
-- Delegated package agents use package-mode tools and package post-checks where available.
-- Delegated agent reports are returned as the completed `update_usage` result.
+    - This tool cannot be used to create new dependencies to the originating package.
+- The tool spawns agent(s) in ~package-mode (one per target package):
+    - The agent is locked to its package and has typical tools like `apply_patch`, `run_tests`, etc.
+    - It has access to read-only cross-package tools like `get_public_api` and `clarify_public_api`.
+    - But it cannot spawn mutative agents like `change_api` or recursively call `update_usage`.
+- Delegated agent reports are aggregated and returned as the completed `update_usage` result.
 
 ## Presentation
 
-Example display while running:
+Example display (NOTE: text/instructions are simplified, and will be more detailed in real-world uses):
 
 ```text
 • Updating Usage in pkg/a, pkg/b, pkg/c (N more)
@@ -66,8 +67,4 @@ Example display after completion:
     no changes reported
 ```
 
-## Permissions
-
-The selected package is authorized for read before usage discovery runs.
-
-Each downstream target package is authorized for write before its delegated package agent runs. The delegated agent is scoped to that downstream package's code unit, so ordinary reads and edits stay centered on the package using the selected package.
+The spawned agents emit events, which are indented and displayed between the `Updating` and `Updated` lines.
