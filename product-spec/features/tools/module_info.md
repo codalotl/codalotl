@@ -61,9 +61,3 @@ When the agent supplies options, the presentation shows a compact option summary
 ```
 
 The presentation should not dump the full module information or package list into the progress line.
-
-## Permissions
-
-Module information is authorized before it is read.
-
-In package mode, `module_info` intentionally provides module-level discovery even though ordinary file access is scoped to the selected package code unit. Including dependency packages may require broader read authorization because it inspects package information outside the current module.

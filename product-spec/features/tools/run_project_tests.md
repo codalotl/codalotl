@@ -31,7 +31,6 @@ ok  	example.com/clarifyintegration/pricing	(cached)
 - The tool runs the repository's project-wide Go tests, equivalent to `go test ./...`.
 - In package mode, tests run from the Go module containing the selected package.
 - If no package path is available, tests run from the sandbox dir.
-- The tool is intended for use after the selected package's own tests pass.
 - The tool returns enough output to identify project test failures.
 
 ## Presentation
@@ -52,9 +51,3 @@ If the run fails, the presentation should show a compact failure summary:
 ```
 
 The presentation should not dump the full `go test ./...` output when failing package or test lines can communicate the result clearly.
-
-## Permissions
-
-The project test base path is authorized before tests run.
-
-In package mode, `run_project_tests` gives the package agent a project-level verification lever without granting a general-purpose shell.

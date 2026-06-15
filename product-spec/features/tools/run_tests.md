@@ -11,9 +11,7 @@
 
 ## Output
 
-The tool returns the package test result and the configured lint-check result.
-
-When possible, output separates test status from lint status so the agent can tell whether a failure came from tests, lint checks, or both. More detailed command output may be included when needed to diagnose failures.
+The tool returns the package test result and any configured lint-check result.
 
 Errors include invalid parameters, missing or non-directory paths, denied permissions, invalid environment assignments, command execution failures, test failures, and lint failures.
 
@@ -21,11 +19,22 @@ Example output:
 
 ```text
 <test-status ok="true">
-$ go test ./catalog
-ok  	example.com/clarifyintegration/catalog	0.002s
+$ go test ./internal/lints
+ok  	github.com/codalotl/codalotl/internal/lints	(cached)
 </test-status>
-<lint-status ok="true" message="no issues found" mode="check">
-$ gofmt -l catalog
+<lint-status ok="true">
+<command ok="true" message="no issues found" mode="check">
+$ gofmt -l internal/lints
+</command>
+<command ok="true" message="no issues found" mode="check">
+$ codalotl spec diff internal/lints
+</command>
+<command ok="true" message="no issues found" mode="check" instructions="never manually fix these unless asked; fixing is automatic on apply_patch">
+$ codalotl docs reflow --check internal/lints
+</command>
+<command ok="true" message="no issues found" mode="check">
+$ staticcheck ./internal/lints
+</command>
 </lint-status>
 ```
 
@@ -55,11 +64,3 @@ If tests or lints fail, the presentation should still stay compact and show the 
 • Ran Tests path/to/pkg
   └ Tests: fail | Lints: pass
 ```
-
-When status sections are unavailable, the presentation may show a short summary of command output.
-
-## Permissions
-
-The package path is authorized before tests and test-time lint checks run.
-
-In package mode, `run_tests` gives the agent a package-scoped verification tool without granting a general-purpose shell.
