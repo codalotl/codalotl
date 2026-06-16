@@ -36,11 +36,3 @@ Example display:
 ```text
 • Ran Diagnostics path/to/package
 ```
-
-If the run fails, the presentation should show a compact error rather than raw tool JSON.
-
-## Permissions
-
-Diagnostic reads are authorized before the Go diagnostic command runs.
-
-In package mode, `diagnostics` reinforces the selected package boundary: the agent can directly inspect diagnostics for the selected package code unit, while diagnostics for other locations require authorization or a package-aware workflow that grants access.
