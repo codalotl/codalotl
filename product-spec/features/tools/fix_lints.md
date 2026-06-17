@@ -10,7 +10,7 @@
 
 The tool returns the lint pipeline result for the requested path, including which checks ran and whether issues were fixed or remain.
 
-In fix mode, a successful result means all enabled lint steps either found no issues or fixed the issues they are able to fix. A failure may mean a command failed, or that a check-only lint found issues that cannot be fixed automatically.
+A successful result means all enabled lint steps either found no issues or fixed the issues they are able to fix. A failure may mean a command failed, or that a check-only lint found issues that cannot be fixed automatically.
 
 Errors include invalid parameters, missing paths, non-directory paths, denied permissions, command failures, and unfixable lint issues.
 
@@ -60,11 +60,3 @@ When there is useful lint output, the presentation may include a compact summary
   └ $ gofmt -w internal/example
     internal/example/foo.go
 ```
-
-The presentation should summarize output rather than dump the full structured lint status.
-
-## Permissions
-
-Writes are authorized before lint fixes run.
-
-In package mode, `fix_lints` gives the agent a package-aware cleanup tool that can apply configured mechanical fixes while preserving the selected package boundary.

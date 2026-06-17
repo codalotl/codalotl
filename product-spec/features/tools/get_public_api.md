@@ -44,8 +44,7 @@ func (c *Catalog) ProductsWithTag(tag string) []Product
 - The result excludes package-private declarations and function bodies.
 - The agent may request specific identifiers to narrow the output.
 - When a requested identifier is an exported type, the output includes that type's public methods.
-- Method identifiers may use Go-style forms such as `T.M` or `*T.M`.
-- When public API docs are insufficient, the agent should use `clarify_public_api` rather than broad source reads.
+- Method identifiers use forms such as `T.M` or `*T.M`.
 
 ## Presentation
 
@@ -61,11 +60,3 @@ When identifiers are requested, the presentation may include them as a compact b
 • Read Public API path/or/import/pkg
   └ TypeName, FuncName, *TypeName.MethodName
 ```
-
-The presentation should not dump the returned documentation into the progress line.
-
-## Permissions
-
-Reads of packages inside the sandbox are authorized before package documentation is generated.
-
-Packages outside the sandbox that are resolved through Go's standard library or module dependency graph may be read as dependency context. The tool does not grant write access to those packages.
