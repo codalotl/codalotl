@@ -1,6 +1,6 @@
 # `change_api`
 
-`change_api` requests a public API or public behavior change in an imported Go package.
+`change_api` requests a public API or public behavior change in an imported Go package. The target package must be an existing direct dep inside the sandbox.
 
 It is the package-mode tool for changing an imported package without having the current package agent directly edit across package boundaries.
 
@@ -49,19 +49,9 @@ Example display while running:
 ```text
 • Changing API in some/pkg
   └ Add a method needed by the current package.
-```
-
-Example display after completion:
-
-```text
+  • [...]
+  • [... subagent working ...]
+  • [...]
 • Changed API in some/pkg
   └ Updated the target package and verified its package tests.
 ```
-
-## Permissions
-
-The current package is authorized for read access before imports are checked.
-
-The target package is authorized for write access before delegated editing begins.
-
-The delegated package agent is scoped to the resolved target package code unit. This preserves package-mode boundaries while still letting the overall task coordinate a necessary upstream API or behavior change.

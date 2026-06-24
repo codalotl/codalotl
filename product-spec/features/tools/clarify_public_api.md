@@ -1,8 +1,8 @@
 # `clarify_public_api`
 
-`clarify_public_api` asks a focused read-only agent a specific question about a Go package's public API.
+`clarify_public_api` is a package-mode tool which asks a focused read-only agent a specific question about a Go package's public API. It is for cases where `get_public_api` is not enough and the agent needs a grounded explanation of an identifier before changing the selected package.
 
-It is for cases where `get_public_api` is not enough and the agent needs a grounded explanation of an identifier before changing the selected package.
+While mostly read-only, it does write CAS entries to record the question and answer. These CAS entries can then be analyzed to improve documentation of the target package, so that the same clarifying questions might not need to be asked next time.
 
 ## Inputs
 
@@ -47,24 +47,14 @@ If the input tag slice is empty or nil, the stored `Tags` becomes `nil`.
 
 ## Presentation
 
-Example display while running:
+Example display:
 
 ```text
 • Clarifying API SomeIdentifier in some/pkg
   └ What does this option control?
-```
-
-Example display after completion:
-
-```text
+  • [...]
+  • [... subagent working ...]
+  • [...]
 • Clarified API SomeIdentifier in some/pkg
   └ The option controls ...
 ```
-
-## Permissions
-
-Sandbox-package reads are authorized before the clarification subagent runs.
-
-The clarification subagent is read-only and scoped to the resolved target package. For dependency and standard-library packages, the tool may run the subagent with the dependency or standard-library root as its effective sandbox so ordinary reads remain confined to the target code unit.
-
-Clarify CAS writes are authorized separately from target-package reads.

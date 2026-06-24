@@ -71,20 +71,24 @@ Example display while running:
 
 ```text
 • Checking SPEC conformance
+  • internal/foo
+    • Read internal/foo/file.go
+  • internal/bar
+    • Analyzing whether ...
 ```
 
 Example display after completion:
 
 ```text
+• Checking SPEC conformance
+  • internal/foo
+    • Conforms
+  • internal/bar
+    • Conforms
 • Checked SPEC conformance
-  └ 2 conforming, 1 non-conforming, 1 error
+  └ 2 conforming, 0 non-conforming, 0 errors
 ```
 
-The TUI may show stable per-package slots under the in-progress line while subagents run. Direct package-check subagent final JSON is formatted into package-level status, not printed raw. Human presentation should summarize counts and visible errors, including `postcheck_error` lines, but it should not display the hidden `analysis` text by default.
-
-## Permissions
-
-- The tool reads module, package, SPEC, git, and CAS state needed to select packages and prepare package checks.
-- Package-check subagents receive package-scoped authorization.
-- CAS writes are authorized before records are written.
-- CAS storage may live outside the sandbox according to the CAS feature rules.
+- Each package runs its own subagent. Only the last event for that subagent (including subagent's subagents) is displayed for its package.
+- When the subagent finishes, it's replaced with text like `Conforms` or `Does not conform`.
+- When all targeted packages are finished, a summary line is printed with the counts of conforming, non-conforming, and errored checks.
