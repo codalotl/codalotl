@@ -329,39 +329,37 @@ func TestFormatGoCodeBlocks_ReflowWidth(t *testing.T) {
 		"```",
 		"",
 	}, "\n")
-	t.Run("reflowWidth=0 does not reflow docs", func(t *testing.T) {
-		dir := t.TempDir()
-		p := filepath.Join(dir, "SPEC.md")
-		require.NoError(t, os.WriteFile(p, []byte(orig), 0o644))
-		s, err := Read(p)
-		require.NoError(t, err)
-		_, err = s.FormatGoCodeBlocks(0)
-		require.NoError(t, err)
-		code := getSingleGoFence(t, s)
-		assert.Equal(t, 1, countDocLinesAbove(code, "func Foo"))
-	})
-	t.Run("reflowWidth>0 reflows docs", func(t *testing.T) {
-		dir := t.TempDir()
-		p := filepath.Join(dir, "SPEC.md")
-		require.NoError(t, os.WriteFile(p, []byte(orig), 0o644))
-		s, err := Read(p)
-		require.NoError(t, err)
-		_, err = s.FormatGoCodeBlocks(40)
-		require.NoError(t, err)
-		code := getSingleGoFence(t, s)
-		assert.Greater(t, countDocLinesAbove(code, "func Foo"), 1)
-	})
+	cases := []struct {
+		name        string
+		reflowWidth int
+		wantWrapped bool
+	}{
+		{
+			name:        "disabled",
+			reflowWidth: 0,
+		},
+		{
+			name:        "enabled",
+			reflowWidth: 40,
+			wantWrapped: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := writeAndReadSpec(t, orig)
+			_, err := s.FormatGoCodeBlocks(c.reflowWidth)
+			require.NoError(t, err)
+			code := getSingleGoFence(t, s)
+			lines := countDocLinesAbove(code, "func Foo")
+			if c.wantWrapped {
+				assert.Greater(t, lines, 1)
+			} else {
+				assert.Equal(t, 1, lines)
+			}
+		})
+	}
 }
 func TestImplementationDiffs(t *testing.T) {
-	modDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(modDir, "go.mod"), []byte(strings.Join([]string{
-		"module example.com/tmp",
-		"",
-		"go 1.24.4",
-		"",
-	}, "\n")), 0o644))
-	pkgDir := filepath.Join(modDir, "mypkg")
-	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
 	impl := strings.Join([]string{
 		"package mypkg",
 		"",
@@ -375,7 +373,6 @@ func TestImplementationDiffs(t *testing.T) {
 		"var B int",
 		"",
 	}, "\n")
-	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "impl.go"), []byte(impl), 0o644))
 	specBody := strings.Join([]string{
 		"# mypkg",
 		"",
@@ -396,37 +393,18 @@ func TestImplementationDiffs(t *testing.T) {
 		"```",
 		"",
 	}, "\n")
-	specPath := filepath.Join(pkgDir, "SPEC.md")
-	require.NoError(t, os.WriteFile(specPath, []byte(specBody), 0o644))
-	s, err := Read(specPath)
-	require.NoError(t, err)
+	s := writePackageWithSpec(t, impl, specBody)
 	diffs, err := s.ImplementationDiffs()
 	require.NoError(t, err)
 	require.NotNil(t, diffs)
 	require.Len(t, diffs, 4)
-	byID := map[string]SpecDiff{}
-	for _, d := range diffs {
-		if len(d.IDs) == 0 {
-			continue
-		}
-		byID[d.IDs[0]] = d
-	}
-	require.Equal(t, DiffTypeCodeMismatch, byID["Foo"].DiffType)
-	require.Equal(t, DiffTypeDocWhitespace, byID["DocWS"].DiffType)
-	require.Equal(t, DiffTypeIDMismatch, byID["A"].DiffType)
-	require.Equal(t, DiffTypeImplMissing, byID["Missing"].DiffType)
+	assert.Equal(t, DiffTypeCodeMismatch, diffByID(t, diffs, "Foo").DiffType)
+	assert.Equal(t, DiffTypeDocWhitespace, diffByID(t, diffs, "DocWS").DiffType)
+	assert.Equal(t, DiffTypeIDMismatch, diffByID(t, diffs, "A").DiffType)
+	assert.Equal(t, DiffTypeImplMissing, diffByID(t, diffs, "Missing").DiffType)
 }
 
 func TestImplementationDiffs_ConformanceAllowsExtraElements(t *testing.T) {
-	modDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(modDir, "go.mod"), []byte(strings.Join([]string{
-		"module example.com/tmp",
-		"",
-		"go 1.24.4",
-		"",
-	}, "\n")), 0o644))
-	pkgDir := filepath.Join(modDir, "mypkg")
-	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
 	impl := strings.Join([]string{
 		"package mypkg",
 		"",
@@ -442,7 +420,6 @@ func TestImplementationDiffs_ConformanceAllowsExtraElements(t *testing.T) {
 		")",
 		"",
 	}, "\n")
-	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "impl.go"), []byte(impl), 0o644))
 	specBody := strings.Join([]string{
 		"# mypkg",
 		"",
@@ -459,11 +436,47 @@ func TestImplementationDiffs_ConformanceAllowsExtraElements(t *testing.T) {
 		"```",
 		"",
 	}, "\n")
+	s := writePackageWithSpec(t, impl, specBody)
+	diffs, err := s.ImplementationDiffs()
+	require.NoError(t, err)
+	require.Nil(t, diffs)
+}
+
+func writeAndReadSpec(t *testing.T, body string) *Spec {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "SPEC.md")
+	require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
+	s, err := Read(p)
+	require.NoError(t, err)
+	return s
+}
+
+func writePackageWithSpec(t *testing.T, impl, specBody string) *Spec {
+	t.Helper()
+	modDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(modDir, "go.mod"), []byte(strings.Join([]string{
+		"module example.com/tmp",
+		"",
+		"go 1.24.4",
+		"",
+	}, "\n")), 0o644))
+	pkgDir := filepath.Join(modDir, "mypkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "impl.go"), []byte(impl), 0o644))
 	specPath := filepath.Join(pkgDir, "SPEC.md")
 	require.NoError(t, os.WriteFile(specPath, []byte(specBody), 0o644))
 	s, err := Read(specPath)
 	require.NoError(t, err)
-	diffs, err := s.ImplementationDiffs()
-	require.NoError(t, err)
-	require.Nil(t, diffs)
+	return s
+}
+
+func diffByID(t *testing.T, diffs []SpecDiff, id string) SpecDiff {
+	t.Helper()
+	for _, d := range diffs {
+		if len(d.IDs) > 0 && d.IDs[0] == id {
+			return d
+		}
+	}
+	require.Fail(t, "missing diff for id "+id)
+	return SpecDiff{}
 }
