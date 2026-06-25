@@ -18,9 +18,9 @@ On success, the tool returns a structured result with:
 - `status`: one of `applied`, `no_opportunity`, or `already_applied`.
 - `message`: human-readable status message.
 - `edited-files`: package-relative files changed by the refactor.
-- `saved-cas-record`: refactor-owned CAS record path, when the refactor wrote one.
+- `saved-cas-record`: CAS record path, when this run saved one.
 
-Errors include invalid parameters, unknown refactor names, package resolution failures, authorization failures, delegated CLI failures, subagent failures, and CAS read/write failures.
+Errors include invalid parameters, unknown refactor names, package resolution failures, authorization failures, refactor workflow failures, subagent failures, and CAS read/write failures.
 
 Example output:
 
@@ -54,8 +54,8 @@ Example output:
 
 Available refactors:
 
-- `docs-add`: adds missing important Go documentation by delegating to `codalotl docs add --important <package>`.
-- `docs-fix`: fixes materially false Go documentation by delegating to `codalotl docs fix <package>`.
+- `docs-add`: adds missing important Go documentation.
+- `docs-fix`: fixes materially false Go documentation.
 - `docs-improve-from-clarify`: uses in-play `clarify_public_api` Q/A CAS records to improve public Go documentation when the clarification naturally belongs in the target package's docs.
 - `dry`: asks a limited package-mode subagent to share helpers and combine similar helper logic while preserving behavior and public API.
 - `test-cleanup`: asks a limited package-mode subagent to clean up existing tests without adding missing coverage.
@@ -67,31 +67,34 @@ The result status distinguishes:
 
 - `applied`: the refactor completed and made edits.
 - `no_opportunity`: the refactor ran successfully but found no worthwhile edits.
-- `already_applied`: a CAS-backed refactor was skipped because the current package code unit already has a matching refactor CAS record.
+- `already_applied`: a CAS-backed refactor was skipped because the current package code unit already has a matching CAS record for that refactor.
 - error: the refactor could not run or did not complete successfully.
 
 Human-facing messages use ordinary phrasing such as `Successfully applied refactor`, `No refactoring opportunities found`, and `Refactor already applied`.
 
 ## CAS
 
-- `docs-add`, `docs-fix`, and `docs-improve-from-clarify` do not write refactor-owned CAS records.
-- `dry`, `test-cleanup`, and `test-ensure-coverage` check and write refactor-owned CAS records for the package code unit.
-- A CAS hit returns `already_applied` without running the refactor again.
-- After a successful CAS-backed run, the tool writes a refactor-owned CAS record even when no edits were needed.
-- If a refactor fails, it does not write a refactor-owned CAS record.
+Some refactors use CAS so the user can see which packages are already current and so repeated broad refactor runs can skip packages that do not need work.
+
+- `docs-fix`, `dry`, `test-cleanup`, and `test-ensure-coverage` record successful package runs in CAS.
+    - NOTE: the tool itself may own CAS, or it may delegate to something it calls. But from user POV, CAS is written.
+- `docs-add` does not have a CAS record; missing-doc status is computed from current code.
+- `docs-improve-from-clarify` uses `clarify-public-api` CAS records as workflow input and may consume those records, but it does not certify the target package as already refactored.
+- `dry`, `test-cleanup`, and `test-ensure-coverage` return `already_applied` without running when the current package code unit already has a matching CAS record for that refactor.
+- `docs-fix` status is visible through documentation status and CAS package status. Running `refactor` with `docs-fix` may still run the docs-fix workflow even when a current `docs-fix` CAS record exists.
+- After a successful CAS-backed run, the tool writes a CAS record even when no edits were needed.
+- If a refactor fails, it does not write a new CAS record for that run.
 - If writing the CAS record fails after edits were made, the tool reports an error and leaves the filesystem edits in place.
 
 ## Presentation
 
-Example display while running:
+Example display:
 
 ```text
 • Refactoring test-cleanup in internal/foo
-```
-
-Example display after completion:
-
-```text
+  • [...]
+  • [... subagent working ...]
+  • [...]
 • Refactored test-cleanup in internal/foo
   └ Successfully applied refactor
 ```
@@ -109,9 +112,3 @@ When skipped by CAS:
 • Refactored test-ensure-coverage in internal/foo
   └ Refactor already applied
 ```
-
-## Permissions
-
-Package reads and writes are authorized before the workflow runs.
-
-The resolved package must be in the current module and inside the sandbox. Prompt-style refactors use package-mode authorization for the selected package code unit. CAS-backed refactors also require authorized access to the CAS database root, which may be outside the sandbox according to the product CAS rules.

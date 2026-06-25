@@ -45,22 +45,14 @@ Verification:
 
 ## Presentation
 
-Example display while running:
+Example display:
 
 ```text
 • Implementing some/pkg
   └ Add the new behavior and verify package tests.
-```
-
-Example display after completion:
-
-```text
+  • [...]
+  • [... subagent working ...]
+  • [...]
 • Implemented some/pkg
   └ Updated the package and verified its tests.
 ```
-
-## Permissions
-
-The target package is resolved and authorized before delegated editing begins.
-
-The delegated package agent is scoped to the resolved target package code unit. This keeps the implementation centered on the selected package while still allowing package-mode coordination tools for cross-package work when the instructions require it.

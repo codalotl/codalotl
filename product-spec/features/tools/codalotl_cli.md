@@ -1,8 +1,11 @@
 # `codalotl_cli`
 
-`codalotl_cli` runs selected `codalotl` CLI commands without using a raw shell.
+`codalotl_cli` runs selected `codalotl` CLI commands without using a raw shell. This lets us build CLI-first functionality, and then expose it directly to the agent.
 
-It is meant for agent-safe product workflows such as documentation, SPEC status, and CAS maintenance, where the agent needs the same behavior a user would get from the CLI but only for a whitelisted command set.
+This has a number of benefits:
+- Reduces the number of miscellaneous tools we need to expose to the LLM.
+- Lets us implement once as a CLI command, then re-use that functionality.
+- Works even when `codalotl` is being run via `go run .`.
 
 ## Inputs
 
@@ -32,6 +35,8 @@ Non-zero command exits are ordinary command results rather than tool infrastruct
 
 Errors include malformed tool parameters, command-tree construction failures, and rejected commands outside the whitelist.
 
+While the end-user-visible output may be sanitized in various ways, the stdout field that the LLM seems should be ~complete and unaltered.
+
 Example output:
 
 ```json
@@ -56,8 +61,7 @@ Example output:
 - `argv` contains flags and positional arguments for that subcommand.
 - Argument boundaries are preserved. The tool does not shell-parse one combined command string.
 - The tool runs an in-process Codalotl command tree rather than execing a `codalotl` binary.
-- The supplied command tree is the whitelist. Commands outside that tree are rejected as CLI usage errors.
-- The whitelisted product command set includes:
+- Only certain commands are exposed. The whitelisted product command set includes:
     - `codalotl docs add`
     - `codalotl docs fix`
     - `codalotl docs status`
@@ -66,31 +70,17 @@ Example output:
     - `codalotl cas recertify`
 - `subcommand: "help"` and `subcommand: "--help"` print a catalog of whitelisted leaf commands.
 - Passing `--help` in `argv` prints detailed help for the selected command.
-- Help output presents commands as `codalotl ...`.
-- Command stdout and stderr are captured separately.
-- Command stdout is also streamed as visible tool output while the command runs when the agent runtime supports display-only tool output.
-- Command stderr is captured for the agent result; it is not streamed as visible output.
 
 ## Presentation
 
-Example display while running:
+Example display:
 
 ```text
 • Running codalotl docs add --public-only internal/cli
-```
-
-Example display after completion:
-
-```text
+  • Need docs for 12 identifiers
+  • > Requesting docs for 12 identifiers: Builder, Config, NewRunner ...
+    Got 12 snippets. 12/12 successful.
 • Ran codalotl docs add --public-only internal/cli
 ```
 
-The summary shows the `codalotl` command assembled from `subcommand` and `argv`. Arguments are shell-quoted when needed for readable presentation.
-
-The presenter does not duplicate full captured stdout or stderr in the completion body. Visible stdout streaming, when available, owns user-facing command output while the command runs.
-
-## Permissions
-
-`codalotl_cli` does not expose arbitrary shell access. It can only invoke commands in its whitelisted Codalotl command tree.
-
-The effects of a command follow the underlying command's product behavior. For example, documentation commands may edit Go files, status commands may inspect repository state, and CAS commands may read or write CAS files according to the CAS feature rules.
+Streamed output appears beneath the running command. A streamed chunk is one nested tool-output message. The chunks can be based on newlines and time. For instance, if a CLI command outputs text every few seeonds, each will get its own `•`. But if a CLI command outputs several lines instantaneously, they'll be in the same `•`.
