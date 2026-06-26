@@ -2,6 +2,8 @@
 
 `review_spec_changes` gets focused feedback on recent `SPEC.md` edits for one Go package.
 
+LLMs by default tend to over-specify in `SPEC.md` files. They're too verbose. They don't think about the end-user. They get lost in irrelevant details. By giving feedback on these changes, we can force better behavior.
+
 ## Inputs
 
 - `package`: required string. A Go package directory, current-module relative package path, or Go import path.
@@ -10,8 +12,6 @@
 ## Output
 
 The tool returns the delegated agent's plain-text feedback.
-
-The feedback should answer the configured review questions at a product level rather than returning raw tool data. It may identify concerns, suggest concise `SPEC.md` edits, or say that the edits are coherent enough to proceed.
 
 Errors include invalid parameters, package-resolution failures, subagent startup failures, and delegated review failures.
 
@@ -46,24 +46,14 @@ No. There is ambiguity in exact error classification, but a reasonable implement
 
 ## Presentation
 
-Example display while running:
+Example display:
 
 ```text
 • Reviewing SPEC changes in internal/foo
   └ Background: See @.prs/example.md for context.
-```
-
-Example display after completion:
-
-```text
+  • [...]
+  • [... subagent working ...]
+  • [...]
 • Reviewed SPEC changes in internal/foo
   └ Do you understand the changes to SPEC.md and the user's context? Yes...
 ```
-
-Nested subagent activity may be shown between the in-progress and completion lines.
-
-## Permissions
-
-The tool resolves the target package before launching the delegated package-mode review.
-
-The delegated agent receives limited package-mode access for the selected package. Its intended work is read-only review of `SPEC.md` changes and supporting package context, even though the limited package-mode toolset may include ordinary package tools needed for package-aware investigation.

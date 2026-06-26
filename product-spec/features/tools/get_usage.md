@@ -78,9 +78,3 @@ Example display:
 • Read Usage path/or/import/pkg Identifier
   └ Found 2 results.
 ```
-
-## Permissions
-
-Reads of packages inside the sandbox are authorized before usage information is generated.
-
-Packages outside the sandbox that are resolved through Go's standard library or module dependency graph may be read as dependency context.

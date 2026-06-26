@@ -45,31 +45,14 @@ Example output:
 
 ## Presentation
 
-Example display while running:
+Example display:
 
 ```text
 • Reviewing origin/main
-```
-
-Example display with findings:
-
-```text
+  • [...]
+  • [... subagent working ...]
+  • [...]
 • Reviewed origin/main
   └ [P1] Preserve machine-readable review output
     [P2] Avoid stale diff context after follow-up commits
 ```
-
-When the review completes without findings:
-
-```text
-• Reviewed origin/main
-  └ No actionable findings.
-```
-
-The presentation should show concise finding titles rather than dumping the full diff, commit log, or raw JSON into the human transcript. Large finding sets may be summarized after the first several titles.
-
-## Permissions
-
-The tool reads git history and repository contents needed for review. It does not write files, apply patches, or commit.
-
-Repository reads remain subject to the ordinary sandbox and authorization rules of the orchestrator and the review subagent.
