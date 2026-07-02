@@ -30,7 +30,7 @@ We still allow and want high-level statements like "when the user issues X comma
 - `might` indicates one possibility or example. The possibility given should at least be possible with the product.
 - (This list is not exhaustive. Similar language can also be used.)
 
-NOTE: the lack of imprecision language does NOT mean a statement in the spec should necessarily be interpreted as a fully precise statement with no nuance. One must still use judgement.
+NOTE: the lack of imprecise language does NOT mean a statement in the spec should necessarily be interpreted as a fully precise statement with no nuance. One must still use judgement.
 
 ## Orthogonality
 
