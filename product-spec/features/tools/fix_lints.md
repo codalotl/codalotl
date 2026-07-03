@@ -12,7 +12,7 @@ The tool returns the lint pipeline result for the requested path, including whic
 
 A successful result means all enabled lint steps either found no issues or fixed the issues they are able to fix. A failure may mean a command failed, or that a check-only lint found issues that cannot be fixed automatically.
 
-Errors include invalid parameters, missing paths, non-directory paths, denied permissions, command failures, and unfixable lint issues.
+Errors include invalid parameters, missing paths, denied permissions, command failures, and unfixable lint issues.
 
 Example output:
 

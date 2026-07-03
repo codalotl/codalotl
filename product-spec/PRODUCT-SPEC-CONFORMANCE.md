@@ -58,9 +58,13 @@ Keep in mind:
 
 ### Checking Conformance
 
-
 - Consider each product spec document seperately. For instance, `feature_a.md`.
 - Given the document above, consider it in the **context** of the rest of the documents. Some requirements are "factored" across multiple documents.
+    - Read the tree of the `product-spec` directory (or whatever dir contains the overall spec).
+    - Read what looks like important and related files.
+    - Read any "governing" documents in higher-level directories. For example, read documents like `OVERVIEW.md` and `PHILOSOPHY.md` and similar.
+    - Read any documents that might have pieces of the spec factored into them. For eample, given `product-spec/features/foo/a.md`, read files like `product-spec/features/foo/foo.md` or `product-spec/features/foo/common.md`.
+    - Generally, it's more benefitial than not to get a complete picture from the product spec.
 - Form an internal list of features and requirements that the spec describes.
 - Validate each one according to the norms described above.
 - If all requirements are met, the product conforms to the spec.
