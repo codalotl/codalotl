@@ -25,7 +25,7 @@ Plan updated
 
 - The agent supplies an ordered list of plan items.
 - At most one should be `in_progress`.
-- Zero or more `completed` items are first; then the optional `in_progress` item; then then zero or more pending items.
+- Zero or more `completed` items are first; then the optional `in_progress` item; then zero or more pending items.
 - The agent should call `update_plan` multiple times over the course of a session to keep track of its work.
 - Besides being shown to the user, nothing is done with this data.
 

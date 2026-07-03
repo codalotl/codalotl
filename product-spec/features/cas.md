@@ -107,7 +107,7 @@ Recertify asserts that a package's current files wrt the namespace are compliant
 - Writes a new CAS entry with the ~same content as the most recent one, but with some updated metadata/additional_info, when appropriate (ex: updated git SHAs; updated file lists).
     - New CAS entry has extra metadata indicating it's a recertification: `"recertified": true, "recertified_from_hash": "...", "recertified_from_record": "..."`
 - Never deletes or mutates existing CAS entries.
-- Before recertification, check invariants (things like same version, hash mode, package name, etc), raising errors as approprate. Display warnings if high-risk things are being done (ex: recertification done in different branches; large churn %; recertifying very old record; etc).
+- Before recertification, check invariants (things like same version, hash mode, package name, etc), raising errors as appropriate. Display warnings if high-risk things are being done (ex: recertification done in different branches; large churn %; recertifying very old record; etc).
 
 Problem this solves: agent runs multiple refactors on a package in a row: `dry`, `test-cleanup`, `test-ensure-coverage`, `docs-fix`. Each one writes a CAS entry, and each one invalidates the previous entry. We need a way for the agent to say, "all these refactors are still valid." In theory, a refactor could break a previous refactor. In practice, that's rare. For refactors where that matters a lot, just don't recertify it.
 

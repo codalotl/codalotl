@@ -35,7 +35,7 @@ Non-zero command exits are ordinary command results rather than tool infrastruct
 
 Errors include malformed tool parameters, command-tree construction failures, and rejected commands outside the whitelist.
 
-While the end-user-visible output may be sanitized in various ways, the stdout field that the LLM seems should be ~complete and unaltered.
+While the end-user-visible output may be sanitized in various ways, the stdout field that the LLM sees should be ~complete and unaltered.
 
 Example output:
 
@@ -60,7 +60,7 @@ Example output:
 - `subcommand` is the command path after `codalotl`, such as `docs add` or `cas ls-packages`.
 - `argv` contains flags and positional arguments for that subcommand.
 - Argument boundaries are preserved. The tool does not shell-parse one combined command string.
-- The tool runs an in-process Codalotl command tree rather than execing a `codalotl` binary.
+- The tool runs an in-process Codalotl command tree rather than executing a `codalotl` binary.
 - Only certain commands are exposed. The whitelisted product command set includes:
     - `codalotl docs add`
     - `codalotl docs fix`
@@ -83,4 +83,4 @@ Example display:
 • Ran codalotl docs add --public-only internal/cli
 ```
 
-Streamed output appears beneath the running command. A streamed chunk is one nested tool-output message. The chunks can be based on newlines and time. For instance, if a CLI command outputs text every few seeonds, each will get its own `•`. But if a CLI command outputs several lines instantaneously, they'll be in the same `•`.
+Streamed output appears beneath the running command. A streamed chunk is one nested tool-output message. The chunks can be based on newlines and time. For instance, if a CLI command outputs text every few seconds, each will get its own `•`. But if a CLI command outputs several lines instantaneously, they'll be in the same `•`.

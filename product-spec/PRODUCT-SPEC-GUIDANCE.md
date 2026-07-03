@@ -19,7 +19,7 @@ Read the $spec-md skill: it provides many of the foundational elements that gove
 
 Actual software has edge cases, caveats, and nuances. We do not attempt to specify software in this product spec that fully captures all of that. We keep it higher-level, and capability based.
 
-This means that it's exceptionally difficult to state requirements that are both high level AND 100% mathematically true. For instance, "when the user issues X command, they log into OpenAI." However, that might not always be true: what happens they're already logged in? What happens if we cannot establish a connection? What happens if they overrode the OpenAI auth URL? What happens if OpenAI returns error Y?
+This means that it's exceptionally difficult to state requirements that are both high level AND 100% mathematically true. For instance, "when the user issues X command, they log into OpenAI." However, that might not always be true: what happens if they're already logged in? What happens if we cannot establish a connection? What happens if they overrode the OpenAI auth URL? What happens if OpenAI returns error Y?
 
 We still allow and want high-level statements like "when the user issues X command, they log into OpenAI". But it must be interpreted with human common sense. Edge cases are going to be present in nearly all requirements, and they don't need to be specified. When this happens, it doesn't mean the product doesn't conform to the product spec.
 

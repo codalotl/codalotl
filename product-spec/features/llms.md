@@ -33,7 +33,7 @@ Login starts a device login flow, has the user approve access in a browser or by
 - Status reports whether saved credentials are present and usable.
 - Startup and status checks may refresh saved credentials when possible.
 - When the subscription auth file exists, Codalotl uses subscription auth instead of the API key, even if saved auth is expired or invalid. The user must log out explicitly to return to API-key auth for that provider. Reason: if the user logged in with subscription auth, silently falling back to API-key billing is surprising.
-    - FUTURE: we may want to fall back to key API key when the subscription usage has been exceeded.
+    - FUTURE: we may want to fall back to API key when the subscription usage has been exceeded.
 - The TUI indicates a subscription is active (for an appropriate model).
 
 ## Model Selection

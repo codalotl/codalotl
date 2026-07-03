@@ -2,9 +2,9 @@
 
 Codalotl allows users to find and fix documentation errors in their codebase:
 - Documentation is just godoc-style comments on top-level identifiers (not internal function comments) - see `features/docs.md`.
-- Documentation errors are detected per-package. Running it on a package finds/fixes errors in the non-test code, the test code, and any `_test` blackbox package.
+- Documentation errors are detected per-package. Running it on a package finds/fixes errors in the non-test code, the test code, and any `_test` black-box package.
 - Each found documentation error is automatically fixed.
-- It is incredibly important that this does NOT triggle false positives. If users find it annoying, it's useless.
+- It is incredibly important that this does NOT trigger false positives. If users find it annoying, it's useless.
     - Documentation errors are ONLY saying something that is materially false.
     - It does NOT flag omissions.
     - It permits imprecise language.

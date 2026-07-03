@@ -36,7 +36,7 @@ An identifier is documented when the comment is attached to that identifier in t
 - Interface methods use `Doc`.
 - Short field/spec docs may become end-of-line comments.
 - Long field/spec docs usually become `Doc`.
-- We sometimes chose `Doc` even if a field/spec's comment is short in order to imprive uniformity (ex: a list of 5 fields with a single EOL in the middle would look weird).
+- We sometimes choose `Doc` even if a field/spec's comment is short in order to improve uniformity (ex: a list of 5 fields with a single EOL in the middle would look weird).
 
 Package docs count as public documentation. They are represented as package identifier, usually a comment above `package`, preferably in `doc.go`.
 

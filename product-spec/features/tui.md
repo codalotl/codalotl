@@ -8,7 +8,7 @@ The TUI is the primary interactive agent experience: a persistent chat-like sess
 
 ### codalotl
 
-Launches the TUI in the sandbox dir. `codalotl .` is a alias (only goal: conform to muscle memory of folks typing things like `code .`).
+Launches the TUI in the sandbox dir. `codalotl .` is an alias (only goal: conform to muscle memory of folks typing things like `code .`).
 
 Startup loads configuration, validates required Go/git tools, and validates that at least one usable LLM model is available. Configuration can select the preferred model, auto-approval behavior, and TUI color theme.
 
@@ -145,4 +145,4 @@ Theme selection comes from configuration:
 - `light`: force light theme.
 - `plain`: disable colors.
 
-Color should improve scanability but must not be required for understanding status, errors, permission prompts, or agent output.
+Color should improve scannability but must not be required for understanding status, errors, permission prompts, or agent output.

@@ -1,6 +1,6 @@
 # PR Orchestrator
 
-The PR Orchestrator is an agent and workflow that takes implements a PR (pull request) from user summary to reviewed, final product. It does not deal with actual pull requests in Github - instead, it builds the commits for one in a local branch.
+The PR Orchestrator is an agent and workflow that implements a PR (pull request) from user summary to reviewed, final product. It does not deal with actual pull requests in GitHub - instead, it builds the commits for one in a local branch.
 
 Typical Workflow (example):
 - User types `codalotl pr new my-feature`
@@ -29,7 +29,7 @@ Initial template:
 
 ```
 
-(It just has 2 sections, with a couple blank lines for the user to easy type their text).
+(It just has 2 sections, with a couple blank lines for the user to easily type their text).
 
 ## CLI
 

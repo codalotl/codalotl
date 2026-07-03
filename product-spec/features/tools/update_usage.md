@@ -1,6 +1,6 @@
 # `update_usage`
 
-`update_usage` spawns new agent(s) that updates downstream Go packages that use the selected package (in package mode). It allows a package-mode-like agent to change the public API of the selected package, then update callsites to conform to it.
+`update_usage` spawns new agent(s) that updates downstream Go packages that use the selected package (in package mode). It allows a package-mode-like agent to change the public API of the selected package, then update call sites to conform to it.
 
 Each spawned agent has a new context, so clear instructions need to be provided. Each agent will operate in a package-mode-like jail against the package it is intended to update.
 
@@ -38,7 +38,7 @@ Result:
 
 - The agent supplies update instructions and one or more downstream package targets.
 - Each target may be a sandbox-relative package directory or a Go import path.
-- The tool resolves each target to a Go package in the sandbox and current module and are de-duplicated.
+- The tool resolves each target to a Go package in the sandbox and current module and de-duplicates them.
 - Each target package must be a downstream package that imports the selected package.
     - This tool cannot be used to create new dependencies to the originating package.
 - The tool spawns agent(s) in ~package-mode (one per target package):

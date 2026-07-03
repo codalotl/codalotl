@@ -10,6 +10,6 @@ Codalotl has a subcommand in the `refactor` tool to clean up test code: `test-cl
      - Increase test maintainability.
      - Add testing helpers/abstractions.
 - It's NOT intended to add missing tests or increase coverage.
-- It's NOT intended to radically refactor tests. Instead, its meant to simply apply some hygiene to existing tests.
+- It's NOT intended to radically refactor tests. Instead, it's meant to simply apply some hygiene to existing tests.
 - It WEAKLY converts tests to table-driven. Weakly meaning: not strongly prompted to do so, but not prohibited.
 - It saves its results in a CAS record.

@@ -4,7 +4,7 @@ This document contains philosophies and principles that can guide product decisi
 
 ## Direction: user defines goals
 
-The direction we're heading is that the user can be nontechnical, and simply inputs their goals. "Build me a system to X, that has properties Y and Z." The user is welcome to supply their opinions at any step or layer in the process. From the goals, we build layers specs and actual software. We test and validate the software works.
+The direction we're heading is that the user can be nontechnical, and simply inputs their goals. "Build me a system to X, that has properties Y and Z." The user is welcome to supply their opinions at any step or layer in the process. From the goals, we build layered specs and actual software. We test and validate the software works.
 
 ## Go-optimal; Opinionated
 
@@ -13,8 +13,8 @@ We prioritize optimal tooling, specifically tuned for Go projects, and opinionat
     - package mode
     - optimized Go LLM context
     - special tools that only work in go projects, like clarify_public_api
-    - documentation generation that rely on parsing the AST
-- Examples of opinionated workfow:
+    - documentation generation that relies on parsing the AST
+- Examples of opinionated workflow:
     - Each package should have a SPEC.md file, which code is based on.
     - An /orchestrate command runs an opinionated workflow.
 
@@ -45,9 +45,9 @@ Modules:
 - QA: 
 - Product Spec: 
 
-These layers are respected abstraction points. For instance, the orchestrator knows about SPEC.md, but not vise versa.
+These layers are respected abstraction points. For instance, the orchestrator knows about SPEC.md, but not vice versa.
 
-Likewise, the Product Spec module can be swapped out for a different product system system in some way (for instance, by editing markdown files, or by implementing it to an interface - either Go or MCP, as examples).
+Likewise, the Product Spec module can be swapped out for a different product system in some way (for instance, by editing markdown files, or by implementing it to an interface - either Go or MCP, as examples).
 
 ## Security & Safety
 

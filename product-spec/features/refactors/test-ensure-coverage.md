@@ -1,4 +1,4 @@
-# Test Cleanup Refactor
+# Test Ensure Coverage Refactor
 
 Codalotl has a subcommand in the `refactor` tool to ensure test coverage is adequate: `test-ensure-coverage`.
 - This is a package-mode subagent.
@@ -6,8 +6,8 @@ Codalotl has a subcommand in the `refactor` tool to ensure test coverage is adeq
 - This refactor is intended to be able to run regularly.
 - Top things it's intended to do:
      - Ensure the public API of a package is tested.
-     - Ensure test coverage is adequate. Instructs agent to use `go test -coverprofile` or simlar to measure.
+     - Ensure test coverage is adequate. Instructs agent to use `go test -coverprofile` or similar to measure.
      - Adds coverage for edge cases.
 - It's intended to be run after, and supplement, `test-cleanup`.
-- It does NOT primarily refactor test.
+- It does NOT primarily refactor tests.
 - It saves its results in a CAS record.

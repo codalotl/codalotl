@@ -14,7 +14,7 @@ This document defines how product specs work - their norms, meanings, convention
 
 Actual software has edge cases, caveats, and nuances. We do not attempt to specify software in this product spec that fully captures all of that. We keep it higher-level, and capability based.
 
-This means that it's exceptionally difficult to state requirements that are both high level AND 100% mathematically true. For instance, "when the user issues X command, they log into OpenAI." However, that might not always be true: what happens they're already logged in? What happens if we cannot establish a connection? What happens if they overrode the OpenAI auth URL? What happens if OpenAI returns error Y?
+This means that it's exceptionally difficult to state requirements that are both high level AND 100% mathematically true. For instance, "when the user issues X command, they log into OpenAI." However, that might not always be true: what happens if they're already logged in? What happens if we cannot establish a connection? What happens if they overrode the OpenAI auth URL? What happens if OpenAI returns error Y?
 
 We still allow and want high-level statements like "when the user issues X command, they log into OpenAI". But it must be interpreted with human common sense. Edge cases are going to be present in nearly all requirements, and they don't need to be specified. When this happens, it doesn't mean the product doesn't conform to the product spec.
 
@@ -43,28 +43,28 @@ Second, when the spec describes a feature, the actual feature may be a superset 
 For example, a spec might say, "The user can enter their email into the Email field, press Submit, which sends a password reset to the inbox". The actual product might:
 - Validate the email is valid and display an error to the user.
 - Rate limit resets in various ways.
-- Allow the input of a username instead of an email, and sends to the corresponding email.
+- Allow the input of a username instead of an email, and send to the corresponding email.
     - This allowed implementation may be surprising to you, but is very important. It's an example of doing "essentially" what is specified, but is fundamentally more complex. In other words, it is absolutely true that the user can enter their email. But also, the user can enter other things as well. The product "covers" what is specified, but goes further. This is fine.
 
 ## Conformance
 
-A product **conforms** to the spec if the product covers all use cases and requirementions mentioned in the spec.
+A product **conforms** to the spec if the product covers all use cases and requirements mentioned in the spec.
 
 Keep in mind:
 - The product may be a superset.
-- Not all edge cases need be mentioned.
+- Not all edge cases need to be mentioned.
 - Use human judgement. Would a human think that the product conforms?
     - Don't be a pedantic nit.
 
 ### Checking Conformance
 
-- Consider each product spec document seperately. For instance, `feature_a.md`.
+- Consider each product spec document separately. For instance, `feature_a.md`.
 - Given the document above, consider it in the **context** of the rest of the documents. Some requirements are "factored" across multiple documents.
     - Read the tree of the `product-spec` directory (or whatever dir contains the overall spec).
     - Read what looks like important and related files.
     - Read any "governing" documents in higher-level directories. For example, read documents like `OVERVIEW.md` and `PHILOSOPHY.md` and similar.
-    - Read any documents that might have pieces of the spec factored into them. For eample, given `product-spec/features/foo/a.md`, read files like `product-spec/features/foo/foo.md` or `product-spec/features/foo/common.md`.
-    - Generally, it's more benefitial than not to get a complete picture from the product spec.
+    - Read any documents that might have pieces of the spec factored into them. For example, given `product-spec/features/foo/a.md`, read files like `product-spec/features/foo/foo.md` or `product-spec/features/foo/common.md`.
+    - Generally, it's more beneficial than not to get a complete picture from the product spec.
 - Form an internal list of features and requirements that the spec describes.
 - Validate each one according to the norms described above.
 - If all requirements are met, the product conforms to the spec.
