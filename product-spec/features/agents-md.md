@@ -6,28 +6,14 @@ These files let users put coding-agent guidance near the code it applies to: bui
 
 ## Discovery
 
-Codalotl looks for `AGENTS.md` from current working context upward to the sandbox dir.
+In package-mode, Codalotl looks for `AGENTS.md` in the current package, and upward to the sandbox dir, choosing the first `AGENTS.md` it finds.
 
-Generic sessions use sandbox context.
+In non-package-mode, Codalotl only looks in the sandbox dir.
 
-Package-mode sessions use selected package context.
-
-When multiple files are found, nearer files are more specific. The agent receives enough path metadata to understand where each instruction came from.
+Tools that execute subagents should usually also include `AGENTS.md` in their subagent context, except for certain focused/narrow cases like `clarify_public_api`.
 
 Empty or whitespace-only `AGENTS.md` files are ignored.
 
 ## Usage
 
-`AGENTS.md` content is added to agent context before the agent works.
-
-Package-mode context includes applicable `AGENTS.md` instructions alongside generated package context.
-
-Users can rely on `AGENTS.md` for durable project instructions that should not be repeated in every prompt.
-
-## Boundaries
-
-`AGENTS.md` is instruction context, not code.
-
-It can guide agent behavior, but it does not grant filesystem permissions or override tool authorization.
-
-Conflicting instructions should be resolved by normal instruction precedence and locality: more specific project instructions can refine broader project guidance.
+`AGENTS.md` content is added to agent context before the agent works, along with brief instructions about what `AGENTS.md` files are.
