@@ -48,4 +48,4 @@ Example display:
 
 Directory reads are authorized before listing the directory.
 
-In package mode, `ls` reinforces the selected package boundary: the agent can directly list directories in the selected package code unit, while outside listings require explicit authorization or context supplied through other Go-aware tools.
+In package mode, `ls` reinforces the selected package boundary: the agent can only directly list directories in the selected package code unit and `@mentioned` paths.

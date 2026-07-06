@@ -48,4 +48,4 @@ Example display:
 
 Reads are authorized before opening the file.
 
-In package mode, `read_file` reinforces the selected package boundary: the agent can directly read files in the selected package code unit, while outside reads require explicit authorization or context supplied through other Go-aware tools.
+In package mode, `read_file` reinforces the selected package boundary: the agent can only directly list directories in the selected package code unit and `@mentioned` paths.

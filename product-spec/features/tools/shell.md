@@ -70,6 +70,6 @@ The full agent-facing result may contain more command output than the human-faci
 
 Shell commands are authorized before they run.
 
-In the normal sandbox policy, the working directory must be inside the sandbox root. Safe commands may run automatically, blocked commands are denied, and dangerous or inscrutable commands may require user approval.
+In the normal sandbox policy, the working directory must be inside the sandbox root unless the user authorizes otherwise.
 
-Package mode does not expose this generic raw shell tool. Package-mode command execution should use Go-aware tools or skill-backed command execution when those tools are available.
+Package mode exposes `skill_shell`, which enforces that the shell's working directory is inside the code unit boundary.
