@@ -8,7 +8,7 @@ The current product impl has a concept of command whitelist/blacklist, and thing
 
 ## Plan
 
-### Package `internal/tools/authdomain`
+### Package `internal/tools/authdomain` [DONE]
 
 - Remove shell-command classification, matcher lists, and related public APIs.
 - Authorize shell execution using only sandbox working-directory policy and explicit permission requests:
@@ -19,10 +19,11 @@ The current product impl has a concept of command whitelist/blacklist, and thing
 - Simplify authorizer constructors so callers no longer supply shell-command policy.
 - Update focused authorization tests and delete obsolete classifier tests.
 
-### Callsites
+### Callsites [DONE]
 
 - Update TUI, noninteractive, skills, and test callsites for simplified authorizer constructors.
 - Run package and project tests, including replay-backed noninteractive integration tests.
+- Validation passed: `go test ./...`; focused authdomain, coretools, skills, noninteractive, and TUI tests also pass.
 
 ## Review
 
@@ -38,6 +39,7 @@ Pending.
 
 ## State
 
-- Planning and SPEC.md review complete; implementation is next.
+- Planning, SPEC.md review, and implementation complete; review is next.
 - Primary package: `internal/tools/authdomain`.
 - Existing `coretools` shell execution already states that it has no allowlist/blacklist and delegates authorization to `authdomain`.
+- Implementation commit: `3a26edf`.
