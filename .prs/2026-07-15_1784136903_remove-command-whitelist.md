@@ -38,7 +38,10 @@ The current product impl has a concept of command whitelist/blacklist, and thing
 
 ## Summary
 
-Pending.
+- Remove shell argv allowlist, blocklist, dangerous, and inscrutable command classification from authorization.
+- Base shell authorization solely on sandbox cwd scope and explicit permission requests while retaining argv as prompt context.
+- Simplify authorizer constructors and update TUI, noninteractive, skills, and test callsites.
+- Validate the change with the full Go test suite, a clean formal review, and changed-package SPEC conformance.
 
 ## Decisions
 
@@ -46,7 +49,7 @@ Pending.
 
 ## State
 
-- Planning, SPEC.md review, implementation, and required review gates complete.
+- Complete.
 - Required clarify-public-api documentation processing completed with no changes.
 - Primary package: `internal/tools/authdomain`.
 - Existing `coretools` shell execution already states that it has no allowlist/blacklist and delegates authorization to `authdomain`.
