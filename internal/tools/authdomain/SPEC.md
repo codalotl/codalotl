@@ -4,7 +4,7 @@ This package defines and builds `Authorizer`s, which implement policies to allow
 to tool creation functions (ex: `coretools.NewReadFileTool`), so that the tool can check authorization before it (for instance) reads a file.
 
 There are two layers:
-- Regular sandbox authorizer (limits reads/writes to a specified sandbox dir). Also limits which shell commands can be run.
+- Regular sandbox authorizer (limits reads/writes and shell working directories to a specified sandbox dir).
 - Code unit authorization - additionally blocks reads/writes except for code unit directories (ex: a Go package). Falls back to the regular sandbox authorizer.
 
 ## Domains
@@ -19,6 +19,8 @@ There are two layers:
 
 ## Policies
 
+Shell authorization does not classify command argv.
+
 ### Sandbox
 
 - Allow sandbox reads/writes.
@@ -26,7 +28,7 @@ There are two layers:
 - Deny anything outside the sandbox root, even if requestPermission.
 - Shell:
     - The working directory must be inside the sandbox root (deny otherwise).
-    - Consults `ShellAllowedCommands`: allow safe commands (unless requestPermission, then prompt), block blocked commands, and prompt for dangerous/inscrutable/none commands.
+    - Prompt when requestPermission is true; otherwise allow.
 
 ### Permissive Sandbox
 
@@ -34,12 +36,11 @@ There are two layers:
 - Ask user any time requestPermission is true.
 - Ask user about operating outside the sandbox root.
 - Shell:
-    - If cwd is outside the sandbox, always prompt (even if the command is otherwise safe).
-    - Consults `ShellAllowedCommands`: allow safe/none commands when requestPermission is false and cwd is inside the sandbox; block blocked commands; prompt for dangerous/inscrutable commands.
+    - Prompt when cwd is outside the sandbox or requestPermission is true; otherwise allow.
 
 ### AutoApprove
 
-- Allow everything, no matter what. The user is asked nothing. No shell commands are blocked.
+- Allow everything, no matter what. The user is asked nothing.
 
 ### CodeUnit
 
@@ -92,7 +93,7 @@ only returns once the user has answered or Close runs.
 Example usage:
 
 ```go
-authorizer, userRequests, err := NewSandboxAuthorizer(sandboxDir, commands)
+authorizer, userRequests, err := NewSandboxAuthorizer(sandboxDir)
 // pass `authorizer` to new tool creation
 // ...
 
@@ -120,10 +121,10 @@ for {
 
 ```go
 // NewSandboxAuthorizer constructs an Authorizer implementing the Sandbox policy.
-func NewSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error)
+func NewSandboxAuthorizer(sandboxDir string) (Authorizer, <-chan UserRequest, error)
 
 // NewPermissiveSandboxAuthorizer constructs an Authorizer implementing the Permissive Sandbox policy.
-func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error)
+func NewPermissiveSandboxAuthorizer(sandboxDir string) (Authorizer, <-chan UserRequest, error)
 
 // NewAutoApproveAuthorizer constructs the AutoApprove policy Authorizer.
 func NewAutoApproveAuthorizer(sandboxDir string) Authorizer
@@ -149,7 +150,7 @@ func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authori
 // bad glob format).
 func AddGrantsFromUserMessage(authorizer Authorizer, userMessage string) error
 
-// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same ShellAllowedCommands, request channel, grants, etc.
+// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same request channel, grants, etc.
 //
 // This can be used to run subagents in other directories outside the sandbox (e.g., investigating a shared library).
 //
@@ -162,82 +163,6 @@ func AddGrantsFromUserMessage(authorizer Authorizer, userMessage string) error
 //
 //	updated, err := WithUpdatedSandbox(authorizer.WithoutCodeUnit(), otherDir)
 func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, error)
-
-// ShellAllowedCommands keeps track of blocked, dangerous, and safe shell commands. All methods are thread-safe.
-//
-// The zero value ShellAllowedCommands{} has empty lists.
-type ShellAllowedCommands struct {
-	mu        sync.RWMutex
-	blocked   map[string]CommandMatcher
-	dangerous map[string]CommandMatcher
-	safe      map[string]CommandMatcher
-}
-
-type CommandMatcher struct {
-	// main command. ex: "go"
-	Command string
-
-	// exact matches for the rest of argv. ex: []string{"test"} matches `go test .`, provided Command is "go", but does not match `go help test`.
-	CommandArgsPrefix []string
-
-	// ex: "--global" matches any of argv being "--global" or being prefixed with "--global=" or "--global "
-	Flags []string
-}
-
-// NewShellAllowedCommands creates a new ShellAllowedCommands with default blocked/dangerous/safe lists.
-func NewShellAllowedCommands() *ShellAllowedCommands
-
-// Hard-coded list of BlockedCommandMatchers that are blocked. Automatically added in NewShellAllowedCommands. Might contain things like {"brew", nil, nil} to disallow
-// homebrew access.
-func (s *ShellAllowedCommands) DefaultBlockedCommandMatchers() []CommandMatcher
-
-// DefaultDangerousCommandMatchers returns a copy of the built-in dangerous matchers.
-func (s *ShellAllowedCommands) DefaultDangerousCommandMatchers() []CommandMatcher
-
-// DefaultSafeCommandMatchers returns a copy of the built-in safe matchers.
-func (s *ShellAllowedCommands) DefaultSafeCommandMatchers() []CommandMatcher
-
-// Returns all currently blocked command matchers.
-func (s *ShellAllowedCommands) BlockedCommandMatchers() []CommandMatcher
-
-// DangerousCommandMatchers returns the currently registered dangerous matchers.
-func (s *ShellAllowedCommands) DangerousCommandMatchers() []CommandMatcher
-
-// SafeCommandMatchers returns the currently registered safe matchers.
-func (s *ShellAllowedCommands) SafeCommandMatchers() []CommandMatcher
-
-// Filters currently blocked command matchers by those commands that are just completely blocked regardless of arguments. ex: "brew", "apt". If args or flags are
-// set in the matcher, the command is NOT blocked here. This is here specifically so we can give an LLM a simple list of blocked commands.
-func (s *ShellAllowedCommands) BlockedCommands() []string
-
-// Block blocks m. No-op if m is already blocked.
-func (s *ShellAllowedCommands) AddBlocked(m CommandMatcher)
-
-// RemoveBlocked unblocks m.
-func (s *ShellAllowedCommands) RemoveBlocked(m CommandMatcher) error
-
-// AddDangerous adds a matcher to the dangerous set.
-func (s *ShellAllowedCommands) AddDangerous(m CommandMatcher)
-
-// RemoveDangerous removes a matcher from the dangerous set.
-func (s *ShellAllowedCommands) RemoveDangerous(m CommandMatcher) error
-
-// AddSafe adds a matcher to the safe set.
-func (s *ShellAllowedCommands) AddSafe(m CommandMatcher)
-
-// RemoveSafe removes a matcher from the safe set.
-func (s *ShellAllowedCommands) RemoveSafe(m CommandMatcher) error
-
-// Check checks argv lexically against the blocked/dangerous/safe commands. It returns a CommandCheckResult (eg, blocked, safe, dangerous, inscrutable, none), or
-// an error.
-//   - Precedence: safe > blocked > dangerous. So a match on the safe list overrules everything.
-//   - This implies there's no super-clean way to specify "allow go commands, except for go install". You'd need to either explicitly enumerate safe go commands,
-//     or not add go to the safe list.
-//   - inscrutable is returned if we detect argv contains a set of pipes, subshells, xargs, or various other non-simple elements, which we don't support reasoning
-//     about.
-//   - a command is marked as dangerous if it does not match any list and argv[0] lexically looks outside the current tree (absolute or uses "..").
-//   - a scrutable command that is on no list is 'none'.
-func (s *ShellAllowedCommands) Check(argv []string) (CommandCheckResult, error)
 
 // Allow/Disallow should be invoked exactly once; they are internally guarded so extra calls are cheap no-ops. The caller choosing neither leaves the underlying
 // authorization call blocked until Close is invoked.
