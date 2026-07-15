@@ -464,7 +464,7 @@ func NewSession(opts Options) (*Session, error) {
 	modelID := effectiveModelID(opts)
 	prompt.SetModel(modelID)
 
-	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, nil, opts.AutoYes)
+	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, opts.AutoYes)
 	if err != nil {
 		return nil, err
 	}

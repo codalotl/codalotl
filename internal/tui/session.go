@@ -103,7 +103,7 @@ func newSession(cfg sessionConfig) (*session, error) {
 	}
 	prompt.SetModel(modelID)
 
-	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, nil, cfg.autoYes)
+	sandboxAuthorizer, userRequests, err := authdomain.NewSessionAuthorizer(sandboxDir, cfg.autoYes)
 	if err != nil {
 		return nil, err
 	}

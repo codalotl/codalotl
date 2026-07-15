@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -25,9 +24,8 @@ func TestSandboxAuthorizerDomainMetadata(t *testing.T) {
 
 	base := t.TempDir()
 	sandboxArg := filepath.Join(base, "child", "..")
-	commands := &ShellAllowedCommands{}
 
-	auth, requests, err := NewSandboxAuthorizer(sandboxArg, commands)
+	auth, requests, err := NewSandboxAuthorizer(sandboxArg)
 	require.NoError(t, err)
 	require.NotNil(t, requests)
 
@@ -44,7 +42,7 @@ func TestSandboxAuthorizerDomainMetadata(t *testing.T) {
 func TestNewSandboxAuthorizerRejectsEmptySandbox(t *testing.T) {
 	t.Parallel()
 
-	auth, requests, err := NewSandboxAuthorizer("", nil)
+	auth, requests, err := NewSandboxAuthorizer("")
 	require.Error(t, err)
 	require.Nil(t, auth)
 	require.Nil(t, requests)
@@ -53,7 +51,7 @@ func TestNewSandboxAuthorizerRejectsEmptySandbox(t *testing.T) {
 func TestNewPermissiveSandboxAuthorizerRejectsEmptySandbox(t *testing.T) {
 	t.Parallel()
 
-	auth, requests, err := NewPermissiveSandboxAuthorizer("", nil)
+	auth, requests, err := NewPermissiveSandboxAuthorizer("")
 	require.Error(t, err)
 	require.Nil(t, auth)
 	require.Nil(t, requests)
@@ -63,7 +61,7 @@ func TestNewSessionAuthorizer_PermissiveWhenAutoApproveDisabled(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSessionAuthorizer(sandbox, nil, false)
+	auth, requests, err := NewSessionAuthorizer(sandbox, false)
 	require.NoError(t, err)
 	require.NotNil(t, requests)
 	require.False(t, auth.IsCodeUnitDomain())
@@ -77,7 +75,7 @@ func TestNewSessionAuthorizer_AutoApproveWhenEnabled(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSessionAuthorizer(sandbox, nil, true)
+	auth, requests, err := NewSessionAuthorizer(sandbox, true)
 	require.NoError(t, err)
 	require.Nil(t, requests)
 
@@ -91,8 +89,7 @@ func TestSandboxReadInsideNoRequest(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	commands := &ShellAllowedCommands{}
-	auth, requests, err := NewSandboxAuthorizer(sandbox, commands)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	target := filepath.Join(sandbox, "example.txt")
@@ -117,8 +114,7 @@ func TestSandboxReadOutsideDenied(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	commands := &ShellAllowedCommands{}
-	auth, requests, err := NewSandboxAuthorizer(sandbox, commands)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	outside := filepath.Join(t.TempDir(), "outside.txt")
@@ -143,7 +139,7 @@ func TestSandboxReadEmptyPathReturnsError(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	err = auth.IsAuthorizedForRead(false, "", "reader", "")
@@ -159,8 +155,7 @@ func TestSandboxReadRequestPermissionPrompts(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	commands := &ShellAllowedCommands{}
-	auth, requests, err := NewSandboxAuthorizer(sandbox, commands)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	target := filepath.Join(sandbox, "notes.md")
@@ -192,47 +187,35 @@ func TestSandboxReadRequestPermissionPrompts(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestSandboxShellDangerousRequests(t *testing.T) {
+func TestSandboxShellArgvDoesNotInfluenceAuthorization(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	commands := &ShellAllowedCommands{}
-	commands.AddDangerous(CommandMatcher{Command: "npm"})
-
-	auth, requests, err := NewSandboxAuthorizer(sandbox, commands)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
-	command := []string{"npm", "install"}
-
-	done := make(chan struct{})
-	var callErr error
-
-	go func() {
-		callErr = auth.IsShellAuthorized(false, "", sandbox, command)
-		close(done)
-	}()
-
-	req := <-requests
-	require.Empty(t, req.ToolName)
-	require.Equal(t, command, req.Argv)
-	require.Contains(t, req.Prompt, "dangerous)")
-	require.Contains(t, req.Prompt, strings.Join(command, " "))
-
-	req.Disallow()
-	<-done
-
-	require.ErrorIs(t, callErr, ErrAuthorizationDenied)
+	commands := [][]string{
+		nil,
+		{},
+		{"curl", "https://example.com"},
+		{"git", "checkout", "."},
+		{"rm", "-rf", "/"},
+		{"sh", "-c", "echo hi | xargs rm"},
+	}
+	for _, command := range commands {
+		require.NoError(t, auth.IsShellAuthorized(false, "", sandbox, command))
+	}
 
 	auth.Close()
 	_, ok := <-requests
 	require.False(t, ok)
 }
 
-func TestSandboxShellUsesDefaultCommandsWhenNil(t *testing.T) {
+func TestSandboxShellExplicitPermissionPromptsWithArgvContext(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	command := []string{"git", "push"}
@@ -241,15 +224,17 @@ func TestSandboxShellUsesDefaultCommandsWhenNil(t *testing.T) {
 	var callErr error
 
 	go func() {
-		callErr = auth.IsShellAuthorized(false, "", sandbox, command)
+		callErr = auth.IsShellAuthorized(true, "publish changes", sandbox, command)
 		close(done)
 	}()
 
 	req := <-requests
 	require.Empty(t, req.ToolName)
 	require.Equal(t, command, req.Argv)
-	require.Contains(t, req.Prompt, "dangerous)")
 	require.Contains(t, req.Prompt, strings.Join(command, " "))
+	require.Contains(t, req.Prompt, "explicit permission requested")
+	require.Contains(t, req.Prompt, "Reason: publish changes")
+	require.NotContains(t, req.Prompt, "dangerous")
 
 	req.Disallow()
 	<-done
@@ -265,8 +250,7 @@ func TestPermissiveReadOutsideRequests(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	commands := &ShellAllowedCommands{}
-	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox, commands)
+	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	outsideRoot := t.TempDir()
@@ -300,8 +284,7 @@ func TestPermissiveShellNoneAllows(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	commands := &ShellAllowedCommands{}
-	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox, commands)
+	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	command := []string{"customcmd", "--flag"}
@@ -327,7 +310,7 @@ func TestPermissiveShellCwdOutsidePrompts(t *testing.T) {
 
 	sandbox := t.TempDir()
 	outside := t.TempDir()
-	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	command := []string{"ls"}
@@ -342,8 +325,8 @@ func TestPermissiveShellCwdOutsidePrompts(t *testing.T) {
 
 	req := <-requests
 	require.Equal(t, command, req.Argv)
-	require.Contains(t, req.Prompt, "safe")
 	require.Contains(t, req.Prompt, "cwd outside sandbox")
+	require.NotContains(t, req.Prompt, "flagged as")
 
 	req.Disallow()
 	<-done
@@ -355,38 +338,24 @@ func TestPermissiveShellCwdOutsidePrompts(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestPermissiveShellGitCheckoutPrompts(t *testing.T) {
+func TestPermissiveShellArgvDoesNotInfluenceAuthorization(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
-	command := []string{"git", "checkout", "."}
-
-	done := make(chan struct{})
-	var callErr error
-
-	go func() {
-		callErr = auth.IsShellAuthorized(false, "", sandbox, command)
-		close(done)
-	}()
-
-	var req UserRequest
-	select {
-	case req = <-requests:
-	case <-time.After(time.Second):
-		t.Fatal("expected authorization prompt for git checkout")
+	commands := [][]string{
+		nil,
+		{},
+		{"curl", "https://example.com"},
+		{"git", "checkout", "."},
+		{"rm", "-rf", "/"},
+		{"sh", "-c", "echo hi | xargs rm"},
 	}
-	require.Empty(t, req.ToolName)
-	require.Equal(t, command, req.Argv)
-	require.Contains(t, req.Prompt, "dangerous)")
-	require.Contains(t, req.Prompt, strings.Join(command, " "))
-
-	req.Disallow()
-	<-done
-
-	require.ErrorIs(t, callErr, ErrAuthorizationDenied)
+	for _, command := range commands {
+		require.NoError(t, auth.IsShellAuthorized(false, "", sandbox, command))
+	}
 
 	auth.Close()
 	_, ok := <-requests
@@ -426,8 +395,7 @@ func TestSandboxCloseDeniesPending(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	commands := &ShellAllowedCommands{}
-	auth, requests, err := NewSandboxAuthorizer(sandbox, commands)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	target := filepath.Join(sandbox, "secret.txt")
@@ -459,7 +427,7 @@ func TestSandboxClosedAuthorizerRejectsCalls(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	auth.Close()
