@@ -9,34 +9,6 @@
   "default_model_id": "gpt-5.6-sol",
   "models": [
     {
-      "id": "gpt-5.3-codex",
-      "cost_per_1m_in": 1.75,
-      "cost_per_1m_out": 14,
-      "cost_per_1m_in_cached": 0.175,
-      "cost_per_1m_out_cached": 0,
-      "cost_per_1m_in_save_to_cache": 0,
-      "context_window": 400000,
-      "max_output": 128000,
-      "can_reason": true,
-      "has_reasoning_effort": true,
-      "supports_images": true
-    },
-    {
-      "id": "gpt-5.5",
-      "cost_per_1m_in": 5,
-      "cost_per_1m_out": 30,
-      "cost_per_1m_in_cached": 0.5,
-      "cost_per_1m_out_cached": 0,
-      "cost_per_1m_in_save_to_cache": 0,
-      "context_window": 1050000,
-      "max_output": 128000,
-      "can_reason": true,
-      "has_reasoning_effort": true,
-      "supports_autocompaction": true,
-      "supports_images": true,
-      "is_legacy": true
-    },
-    {
       "id": "gpt-5.6-sol",
       "cost_per_1m_in": 5,
       "cost_per_1m_out": 30,
@@ -77,49 +49,6 @@
       "has_reasoning_effort": true,
       "supports_autocompaction": true,
       "supports_images": true
-    },
-    {
-      "id": "gpt-5.4",
-      "cost_per_1m_in": 2.5,
-      "cost_per_1m_out": 15,
-      "cost_per_1m_in_cached": 0.25,
-      "cost_per_1m_out_cached": 0,
-      "cost_per_1m_in_save_to_cache": 0,
-      "context_window": 1050000,
-      "max_output": 128000,
-      "can_reason": true,
-      "has_reasoning_effort": true,
-      "supports_autocompaction": true,
-      "supports_images": true,
-      "is_legacy": true
-    },
-    {
-      "id": "gpt-5-mini",
-      "cost_per_1m_in": 0.25,
-      "cost_per_1m_out": 2,
-      "cost_per_1m_in_cached": 0.025,
-      "cost_per_1m_out_cached": 0.025,
-      "cost_per_1m_in_save_to_cache": 0,
-      "context_window": 400000,
-      "max_output": 128000,
-      "can_reason": true,
-      "has_reasoning_effort": true,
-      "supports_images": true,
-      "is_legacy": true
-    },
-    {
-      "id": "gpt-5-nano",
-      "cost_per_1m_in": 0.05,
-      "cost_per_1m_out": 0.4,
-      "cost_per_1m_in_cached": 0.005,
-      "cost_per_1m_out_cached": 0.005,
-      "cost_per_1m_in_save_to_cache": 0,
-      "context_window": 400000,
-      "max_output": 128000,
-      "can_reason": true,
-      "has_reasoning_effort": true,
-      "supports_images": true,
-      "is_legacy": true
     }
   ]
 }

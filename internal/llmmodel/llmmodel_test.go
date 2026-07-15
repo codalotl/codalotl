@@ -192,25 +192,18 @@ func TestDefaultModelsLoaded(t *testing.T) {
 		require.Equal(t, ProviderIDXAI, grokInfo.ProviderID)
 	}
 
-	require.False(t, ModelID("gpt-5-codex").Valid())
-	require.False(t, ModelID("gpt-5.5").Valid())
-	require.False(t, ModelID("gpt-5.3-codex").Valid())
-	require.False(t, ModelID("gpt-5.1-codex").Valid())
-	require.False(t, ModelID("gpt-5.3-codex-minimal").Valid())
-	require.False(t, ModelID("gpt-5.5-minimal").Valid())
-	require.False(t, ModelID("gpt-5.4").Valid())
-	require.False(t, ModelID("gpt-5-mini").Valid())
-	require.False(t, ModelID("gpt-5-nano").Valid())
-
-	codexHigh := ModelID("gpt-5.3-codex-high")
-	require.True(t, codexHigh.Valid())
-	codexHighInfo := GetModelInfo(codexHigh)
-	require.Equal(t, ProviderIDOpenAI, codexHighInfo.ProviderID)
-	require.Equal(t, "gpt-5.3-codex", codexHighInfo.ProviderModelID)
-	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, codexHighInfo.SupportedTypes)
-	require.Equal(t, "high", codexHighInfo.ReasoningEffort)
-	require.False(t, ModelID("gpt-5.3-codex-medium").Valid())
-	require.False(t, ModelID("gpt-5.3-codex-xhigh").Valid())
+	removedOpenAIModels := []ModelID{
+		"gpt-5.3-codex-high",
+		"gpt-5.4-high",
+		"gpt-5.5-high",
+		"gpt-5-mini-high",
+		"gpt-5-nano-high",
+	}
+	for _, id := range removedOpenAIModels {
+		t.Run(string(id), func(t *testing.T) {
+			require.False(t, id.Valid())
+		})
+	}
 
 	gptXhigh := ModelID("gpt-5.6-sol-xhigh")
 	require.True(t, gptXhigh.Valid())
@@ -305,9 +298,9 @@ func TestGPT56OpenAIModelsLoaded(t *testing.T) {
 	require.Equal(t, DefaultModel, ProviderIDOpenAI.DefaultModel())
 }
 
-func TestAddCustomModelCopiesLegacyOpenAIMetadata(t *testing.T) {
-	legacyModels := []string{"gpt-5.4", "gpt-5.5", "gpt-5-mini", "gpt-5-nano"}
-	for _, providerModelID := range legacyModels {
+func TestAddCustomModelCopiesOpenAIMetadata(t *testing.T) {
+	providerModels := []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}
+	for _, providerModelID := range providerModels {
 		t.Run(providerModelID, func(t *testing.T) {
 			customID := ModelID("custom-" + providerModelID)
 			err := AddCustomModel(customID, ProviderIDOpenAI, providerModelID, ModelOverrides{ReasoningEffort: "high"})
@@ -370,13 +363,13 @@ func TestGetAPIKeyPrecedence(t *testing.T) {
 
 	customEnvID := ModelID("custom-openai-env")
 	t.Setenv("ALT_OPENAI_KEY", "")
-	err := AddCustomModel(customEnvID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$ALT_OPENAI_KEY"})
+	err := AddCustomModel(customEnvID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIEnvKey: "$ALT_OPENAI_KEY"})
 	require.NoError(t, err)
 	t.Setenv("ALT_OPENAI_KEY", "alt")
 	require.Equal(t, "alt", GetAPIKey(customEnvID))
 
 	customActualID := ModelID("custom-openai-actual")
-	err = AddCustomModel(customActualID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIActualKey: "literal"})
+	err = AddCustomModel(customActualID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIActualKey: "literal"})
 	require.NoError(t, err)
 	ConfigureProviderKey(ProviderIDOpenAI, "configured2")
 	t.Setenv("ALT_OPENAI_KEY", "alt2")
@@ -560,21 +553,21 @@ func TestProviderSubscriptionRequiredPreservesPerModelOverrides(t *testing.T) {
 	SetProviderSubscriptionRequired(ProviderIDOpenAI, true)
 
 	actualKeyID := ModelID("custom-openai-required-actual-key")
-	err := AddCustomModel(actualKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIActualKey: "literal"})
+	err := AddCustomModel(actualKeyID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIActualKey: "literal"})
 	require.NoError(t, err)
 
 	envKeyID := ModelID("custom-openai-required-env-key")
 	t.Setenv("CUSTOM_REQUIRED_OPENAI_API_KEY", "alt")
-	err = AddCustomModel(envKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_REQUIRED_OPENAI_API_KEY"})
+	err = AddCustomModel(envKeyID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIEnvKey: "$CUSTOM_REQUIRED_OPENAI_API_KEY"})
 	require.NoError(t, err)
 
 	unsetEnvKeyID := ModelID("custom-openai-required-unset-env-key")
 	t.Setenv("CUSTOM_REQUIRED_UNSET_OPENAI_API_KEY", "")
-	err = AddCustomModel(unsetEnvKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_REQUIRED_UNSET_OPENAI_API_KEY"})
+	err = AddCustomModel(unsetEnvKeyID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIEnvKey: "$CUSTOM_REQUIRED_UNSET_OPENAI_API_KEY"})
 	require.NoError(t, err)
 
 	endpointID := ModelID("custom-openai-required-endpoint")
-	err = AddCustomModel(endpointID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEndpointURL: "http://localhost:1234/v1"})
+	err = AddCustomModel(endpointID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIEndpointURL: "http://localhost:1234/v1"})
 	require.NoError(t, err)
 
 	require.Equal(t, "literal", GetAPIKey(actualKeyID))
@@ -613,25 +606,25 @@ func TestAvailableModelIDsWithAuthUsesSubscriptionEligibility(t *testing.T) {
 	SetProviderSubscription(ProviderIDOpenAI, validProviderSubscription(ProviderIDOpenAI))
 
 	noOverrideID := ModelID("custom-openai-subscription-no-override")
-	err := AddCustomModel(noOverrideID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{})
+	err := AddCustomModel(noOverrideID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{})
 	require.NoError(t, err)
 
 	actualKeyID := ModelID("custom-openai-subscription-actual-key")
-	err = AddCustomModel(actualKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIActualKey: "literal"})
+	err = AddCustomModel(actualKeyID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIActualKey: "literal"})
 	require.NoError(t, err)
 
 	usableEnvKeyID := ModelID("custom-openai-subscription-env-key")
 	t.Setenv("CUSTOM_SUBSCRIPTION_OPENAI_API_KEY", "alt")
-	err = AddCustomModel(usableEnvKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_OPENAI_API_KEY"})
+	err = AddCustomModel(usableEnvKeyID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_OPENAI_API_KEY"})
 	require.NoError(t, err)
 
 	unsetEnvKeyID := ModelID("custom-openai-subscription-unset-env-key")
 	t.Setenv("CUSTOM_SUBSCRIPTION_UNSET_OPENAI_API_KEY", "")
-	err = AddCustomModel(unsetEnvKeyID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_UNSET_OPENAI_API_KEY"})
+	err = AddCustomModel(unsetEnvKeyID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIEnvKey: "$CUSTOM_SUBSCRIPTION_UNSET_OPENAI_API_KEY"})
 	require.NoError(t, err)
 
 	endpointID := ModelID("custom-openai-subscription-endpoint")
-	err = AddCustomModel(endpointID, ProviderIDOpenAI, "gpt-5.5", ModelOverrides{APIEndpointURL: "http://localhost:1234/v1"})
+	err = AddCustomModel(endpointID, ProviderIDOpenAI, "gpt-5.6-sol", ModelOverrides{APIEndpointURL: "http://localhost:1234/v1"})
 	require.NoError(t, err)
 
 	require.True(t, modelHasEligibleProviderSubscription(DefaultModel))
