@@ -34,6 +34,7 @@ The current product impl has a concept of command whitelist/blacklist, and thing
   - `internal/skills`: one latent minor filename-strictness issue; predates and is unrelated to this PR.
   - `internal/tui`: one latent minor Details-dialog rendering issue; predates and is unrelated to this PR.
 - No non-latent conformance failures. Latent unrelated findings are not actioned.
+- Processed all pending clarify-public-api documentation records; the documentation refactor found no material improvements.
 
 ## Summary
 
@@ -46,6 +47,7 @@ Pending.
 ## State
 
 - Planning, SPEC.md review, implementation, and required review gates complete.
+- Required clarify-public-api documentation processing completed with no changes.
 - Primary package: `internal/tools/authdomain`.
 - Existing `coretools` shell execution already states that it has no allowlist/blacklist and delegates authorization to `authdomain`.
 - Implementation commit: `3a26edf`.
