@@ -295,7 +295,7 @@ type ModelInfo struct {
 	CostPer1MIn            float64 // CostPer1MIn is the price per 1M input tokens.
 	CostPer1MOut           float64 // CostPer1MOut is the price per 1M output tokens.
 	CostPer1MInCached      float64 // CostPer1MInCached is the price per 1M input tokens when caching applies.
-	CostPer1MInSaveToCache float64 // Cost to SAVE 1M tokens to cache. As of 2025-10-22, applies only to Anthropic.
+	CostPer1MInSaveToCache float64 // Cost to SAVE 1M input tokens to a provider cache.
 	ContextWindow          int64   // ContextWindow is the maximum token capacity supported by the model.
 	MaxOutput              int64   // MaxOutput is the max number of output tokens the model can generate per request.
 	CanReason              bool    // CanReason reports whether the model supports reasoning modes/capabilities.

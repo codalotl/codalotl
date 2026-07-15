@@ -235,6 +235,68 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.True(t, EnvHasDefaultKey(ProviderIDAnthropic))
 }
 
+func TestGPT56OpenAIModelsLoaded(t *testing.T) {
+	tests := []struct {
+		id                     ModelID
+		costPer1MIn            float64
+		costPer1MOut           float64
+		costPer1MInCached      float64
+		costPer1MInSaveToCache float64
+	}{
+		{
+			id:                     "gpt-5.6-sol",
+			costPer1MIn:            5,
+			costPer1MOut:           30,
+			costPer1MInCached:      0.5,
+			costPer1MInSaveToCache: 6.25,
+		},
+		{
+			id:                     "gpt-5.6-terra",
+			costPer1MIn:            2.5,
+			costPer1MOut:           15,
+			costPer1MInCached:      0.25,
+			costPer1MInSaveToCache: 3.125,
+		},
+		{
+			id:                     "gpt-5.6-luna",
+			costPer1MIn:            1,
+			costPer1MOut:           6,
+			costPer1MInCached:      0.1,
+			costPer1MInSaveToCache: 1.25,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.id), func(t *testing.T) {
+			require.True(t, tt.id.Valid())
+
+			info := GetModelInfo(tt.id)
+			require.Equal(t, tt.id, info.ID)
+			require.Equal(t, ProviderIDOpenAI, info.ProviderID)
+			require.Equal(t, string(tt.id), info.ProviderModelID)
+			require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses, ProviderTypeOpenAICompletions}, info.SupportedTypes)
+			require.False(t, info.IsDefault)
+			require.Empty(t, info.ReasoningEffort)
+			require.InDelta(t, tt.costPer1MIn, info.CostPer1MIn, 0)
+			require.InDelta(t, tt.costPer1MOut, info.CostPer1MOut, 0)
+			require.InDelta(t, tt.costPer1MInCached, info.CostPer1MInCached, 0)
+			require.InDelta(t, tt.costPer1MInSaveToCache, info.CostPer1MInSaveToCache, 0)
+			require.Equal(t, int64(1050000), info.ContextWindow)
+			require.Equal(t, int64(128000), info.MaxOutput)
+			require.True(t, info.CanReason)
+			require.True(t, info.HasReasoningEffort)
+			require.True(t, info.SupportsAutocompaction)
+			require.True(t, info.SupportsImages)
+
+			require.False(t, ModelID(fmt.Sprintf("%s-medium", tt.id)).Valid())
+			require.False(t, ModelID(fmt.Sprintf("%s-high", tt.id)).Valid())
+			require.False(t, ModelID(fmt.Sprintf("%s-xhigh", tt.id)).Valid())
+		})
+	}
+
+	require.Equal(t, DefaultModel, ProviderIDOpenAI.DefaultModel())
+}
+
 func TestAddCustomModelCopiesProviderData(t *testing.T) {
 	customID := ModelID("custom-anthropic-claude-opus")
 	require.False(t, customID.Valid())
