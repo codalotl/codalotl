@@ -113,7 +113,7 @@ func TestRun_Exec_SlashCommand_ForwardsPromptAndExistingFlags(t *testing.T) {
 		"--yes",
 		"--no-color",
 		"--json",
-		"--model=gpt-5.5-high",
+		"--model=gpt-5.6-sol-high",
 		"--slash-command=orchestrate",
 		"hello",
 		"world",
@@ -126,6 +126,6 @@ func TestRun_Exec_SlashCommand_ForwardsPromptAndExistingFlags(t *testing.T) {
 	require.True(t, gotOpts.AutoYes)
 	require.True(t, gotOpts.NoFormatting)
 	require.True(t, gotOpts.OutputJSON)
-	require.Equal(t, "gpt-5.5-high", string(gotOpts.ModelID))
+	require.Equal(t, "gpt-5.6-sol-high", string(gotOpts.ModelID))
 	require.Empty(t, errOut.String())
 }

@@ -18,13 +18,15 @@ func (contextErrCompleter) Complete(ctx context.Context, _ llmmodel.ModelID, _, 
 }
 
 type staticCompleter struct {
-	turn llmstream.Turn
-	err  error
-	ctx  context.Context
+	turn  llmstream.Turn
+	err   error
+	ctx   context.Context
+	model llmmodel.ModelID
 }
 
-func (c *staticCompleter) Complete(ctx context.Context, _ llmmodel.ModelID, _, _ string, _ ...llmstream.SendOptions) (llmstream.Turn, error) {
+func (c *staticCompleter) Complete(ctx context.Context, model llmmodel.ModelID, _, _ string, _ ...llmstream.SendOptions) (llmstream.Turn, error) {
 	c.ctx = ctx
+	c.model = model
 	return c.turn, c.err
 }
 
@@ -40,6 +42,14 @@ func TestCompleteText_UsesOptionsContext(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestCompleteText_UsesDefaultModel(t *testing.T) {
+	completer := &staticCompleter{}
+
+	_, err := completeText("system", "user", BaseOptions{Completer: completer})
+	require.NoError(t, err)
+	assert.Equal(t, llmmodel.ModelID("gpt-5.6-sol-high"), completer.model)
 }
 
 func TestCompleteText_EmitsExternalLLMUsageOnSuccess(t *testing.T) {

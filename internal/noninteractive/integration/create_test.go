@@ -19,7 +19,7 @@ func TestBuildExpectedEventsOmitsUnstableFields(t *testing.T) {
 			"type":         "start",
 			"cwd":          "/tmp/work",
 			"package_path": ".",
-			"model_id":     "gpt-5.5-high",
+			"model_id":     "gpt-5.6-sol-high",
 		},
 		{
 			"type": "assistant_reasoning",
@@ -123,7 +123,7 @@ func TestBuildGeneratedCaseNormalizesPromptAbsolutePaths(t *testing.T) {
 	turns := []recordedTurn{
 		{
 			Request: map[string]any{
-				"model": "gpt-5.5-high",
+				"model": "gpt-5.6-sol",
 				"input": []any{
 					map[string]any{
 						"type": "message",
@@ -168,7 +168,7 @@ func TestBuildHTTPFixturePrunesNestedFirstTurnInputText(t *testing.T) {
 	turns := []recordedTurn{
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.5-high",
+				"model": "gpt-5.6-sol",
 				"input": [
 					{
 						"type": "message",
@@ -191,7 +191,7 @@ func TestBuildHTTPFixturePrunesNestedFirstTurnInputText(t *testing.T) {
 		},
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.5-high",
+				"model": "gpt-5.6-sol",
 				"input": [
 					{
 						"type": "message",
@@ -259,8 +259,8 @@ func TestBuildHTTPFixturePrunesInstructionsToReplayModelMatcher(t *testing.T) {
 	turns := []recordedTurn{
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.5-high",
-				"instructions": "You are an advanced coding LLM based on gpt-5.5-high. Volatile full system prompt content.",
+				"model": "gpt-5.6-sol",
+				"instructions": "You are an advanced coding LLM based on gpt-5.6-sol-high. Volatile full system prompt content.",
 				"input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "first"}]}]
 			}`),
 			Response: mustJSONObject(t, `{
@@ -272,8 +272,8 @@ func TestBuildHTTPFixturePrunesInstructionsToReplayModelMatcher(t *testing.T) {
 		},
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.5-high",
-				"instructions": "You are an advanced coding LLM based on gpt-5.5-high. Different volatile full system prompt content.",
+				"model": "gpt-5.6-sol",
+				"instructions": "You are an advanced coding LLM based on gpt-5.6-sol-high. Different volatile full system prompt content.",
 				"previous_response_id": "resp_1",
 				"input": [{"type": "function_call_output", "call_id": "call_1", "output": "done"}]
 			}`),
@@ -378,7 +378,7 @@ func TestBuildHTTPFixtureRequestPreservesStructuredRequestAndNormalizesPaths(t *
 	repoRoot := filepath.Join(string(os.PathSeparator), "tmp", "case-root")
 	turn := recordedTurn{
 		Request: map[string]any{
-			"model":               "gpt-5.5-high",
+			"model":               "gpt-5.6-sol",
 			"temperature":         float64(0),
 			"prompt_cache_key":    "cache-key",
 			"reasoning":           map[string]any{"effort": "medium"},
@@ -482,7 +482,7 @@ func TestBuildHTTPFixtureRequestPreservesStructuredRequestAndNormalizesPaths(t *
 func TestBuildHTTPFixtureRequestOmitTextKeysFromFirstTwoMessagesOnly(t *testing.T) {
 	turn := recordedTurn{
 		Request: map[string]any{
-			"model": "gpt-5.5-high",
+			"model": "gpt-5.6-sol",
 			"input": []any{
 				map[string]any{
 					"type": "message",
@@ -550,7 +550,7 @@ func TestBuildHTTPFixtureRequestOmitTextKeysFromFirstTwoMessagesOnly(t *testing.
 func TestBuildHTTPFixtureRequestDoesNotPruneLaterTurnInput(t *testing.T) {
 	turn := recordedTurn{
 		Request: map[string]any{
-			"model": "gpt-5.5-high",
+			"model": "gpt-5.6-sol",
 			"input": []any{
 				map[string]any{"type": "message", "role": "system"},
 				map[string]any{"type": "message", "role": "system"},
@@ -821,7 +821,7 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 			"type":         "start",
 			"cwd":          workDir,
 			"package_path": "",
-			"model_id":     "gpt-5.5-high",
+			"model_id":     "gpt-5.6-sol-high",
 		},
 		{
 			"type": "user_message",
@@ -877,7 +877,7 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 	turns := []recordedTurn{
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.5-high",
+				"model": "gpt-5.6-sol",
 				"input": [
 					{
 						"type": "message",
@@ -915,7 +915,7 @@ func TestBuildGeneratedCaseReplaysMutation(t *testing.T) {
 		},
 		{
 			Request: mustJSONObject(t, `{
-				"model": "gpt-5.5-high",
+				"model": "gpt-5.6-sol",
 				"previous_response_id": "resp_real_1",
 				"input": [
 					{

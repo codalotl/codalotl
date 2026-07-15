@@ -96,7 +96,9 @@ Initialization happens in two phases:
 
 Construction of `modelsByID` during initialization:
 - OpenAI:
-	- Provider default large GPT-5 model and `gpt-5.3-codex`: Add {`-medium`, `-high`, `-xhigh`} variants (and don't add the non-reasoning-effort version).
+	- Provider default flagship model: Add {`-medium`, `-high`, `-xhigh`} variants.
+	- Other models: Add only `-high`.
+	- Don't add versions without a reasoning level.
 - Anthropic:
 	- Strip any timestamp (ex: `claude-sonnet-4-5-20250929` has `-20250929` suffix).
 	- Strip `claude-` prefix.

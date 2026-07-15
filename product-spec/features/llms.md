@@ -48,6 +48,16 @@ If `preferredprovider` is set (and `preferredmodel` is not set), we use that as 
 
 Only models with usable credentials should be offered in model pickers or accepted by startup validation.
 
+Generally, only the latest generation of models is available for a provider. For instance, if gpt-5.9 is out, we don't need to keep gpt-5.8 around.
+
+## Reasoning Levels
+
+From a user perspective, the reasoning is baked into the model identifier (when reasoning level is a relevant lever). Ex: `gpt-5.3-high` might be a model they can select with `/model`.
+- The provider's flaghsip model gets {`-medium`, `-high`, `-xhigh`}, but not `-low` or `-none`.
+    - "Flagship" means a provider's ~best model. For instance, OpenAI often releases a family of models at once: "flagship", "medium", and "fast/cheap"
+- The provider's non-flagship models only get {`-high`}.
+- For custom models (via the config file's `custommodels`): user can use the `reasoningeffort` key to configure the reasoning level.
+
 ## Custom Models
 
 Config may define `custommodels` for model aliases, custom provider model IDs, custom API key env vars, custom endpoints, and model-specific parameters.

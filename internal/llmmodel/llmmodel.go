@@ -15,10 +15,11 @@ import (
 // and consumers alias long/awkward IDs with nicer ones (ex: "claude-sonnet-4-5" vs "claude-sonnet-4-5-20250929").
 type ModelID string
 
-// DefaultModel is a good default model. It can be used in tests or in production code.
+// DefaultModel is the built-in OpenAI default model. With the built-in registry, it is also the value returned by ModelIDOrFallback for an invalid or empty ID.
+// It can be used in tests or in production code.
 //
 // Applications probably want to define their own default model.
-const DefaultModel ModelID = "gpt-5.5-high"
+const DefaultModel ModelID = "gpt-5.6-sol-high"
 
 // ProviderID returns id's provider.
 func (id ModelID) ProviderID() ProviderID {
@@ -611,8 +612,8 @@ func registerPrimaryModels() {
 		{suffix: "xhigh", effort: "xhigh"},
 	}
 
-	registerOpenAIReasoningVariants := func(provider providerData, m providerModelPayload, firstModel *ModelID) {
-		for _, variant := range reasoningVariants {
+	registerOpenAIReasoningVariants := func(provider providerData, m providerModelPayload, variants []reasoningVariant, firstModel *ModelID) {
+		for _, variant := range variants {
 			candidate := ModelID(fmt.Sprintf("%s-%s", m.ID, variant.suffix))
 			unique := ensureUniqueModelIDLocked(provider.ID, candidate, m.ID)
 			if *firstModel == ModelIDUnknown {
@@ -666,8 +667,12 @@ func registerPrimaryModels() {
 				continue
 			}
 
-			if pid == ProviderIDOpenAI && (m.ID == provider.DefaultProviderModel || m.ID == "gpt-5.3-codex") {
-				registerOpenAIReasoningVariants(provider, m, &firstModel)
+			if pid == ProviderIDOpenAI {
+				variants := reasoningVariants[1:2]
+				if m.ID == provider.DefaultProviderModel {
+					variants = reasoningVariants
+				}
+				registerOpenAIReasoningVariants(provider, m, variants, &firstModel)
 				continue // don't register the base id; force selection of a reasoning variant.
 			}
 
