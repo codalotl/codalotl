@@ -15,7 +15,7 @@ Examples:
 ```bash
 codalotl exec "Summarize this repository"
 codalotl exec -p ./internal/cli "fix the failing test"
-codalotl exec --json --model gpt-5.5-high "explain recent changes"
+codalotl exec --json --model gpt-5.6-sol-high "explain recent changes"
 codalotl exec --yes --slash-command="/orchestrate" "implement the PR file"
 ```
 
