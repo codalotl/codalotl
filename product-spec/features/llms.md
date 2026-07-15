@@ -48,6 +48,15 @@ If `preferredprovider` is set (and `preferredmodel` is not set), we use that as 
 
 Only models with usable credentials should be offered in model pickers or accepted by startup validation.
 
+Generally, only the latest generation of models is available for a provider. For instance, if gpt-5.9 is out, we don't need to keep gpt-5.8 around.
+
+## Reasoning Levels
+
+From a user perspective, the reasoning level is baked into the model identifier.
+- Ex: `gpt-5.3-high` might be a model they can select with `/model`.
+    - These apply to the built-in models when the reasoning level is an important distinction.
+- For custom models (via the config file's `custommodels`): the `reasoningeffort` key configures the reasoning level.
+
 ## Custom Models
 
 Config may define `custommodels` for model aliases, custom provider model IDs, custom API key env vars, custom endpoints, and model-specific parameters.
