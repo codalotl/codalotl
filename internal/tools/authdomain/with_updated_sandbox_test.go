@@ -35,7 +35,7 @@ func TestWithUpdatedSandboxSandboxAuthorizerSharesRequestsAndGrants(t *testing.T
 	sandbox1 := t.TempDir()
 	sandbox2 := t.TempDir()
 
-	auth1, requests, err := NewSandboxAuthorizer(sandbox1, nil)
+	auth1, requests, err := NewSandboxAuthorizer(sandbox1)
 	require.NoError(t, err)
 	defer auth1.Close()
 
@@ -91,7 +91,7 @@ func TestWithUpdatedSandboxPermissiveSandboxAuthorizerUsesUpdatedRoot(t *testing
 	sandbox1 := t.TempDir()
 	sandbox2 := t.TempDir()
 
-	auth1, requests, err := NewPermissiveSandboxAuthorizer(sandbox1, nil)
+	auth1, requests, err := NewPermissiveSandboxAuthorizer(sandbox1)
 	require.NoError(t, err)
 	defer auth1.Close()
 
@@ -130,7 +130,7 @@ func TestWithUpdatedSandboxCodeUnitUpdatesFallbackSandboxAndSharesGrants(t *test
 	unit, err := codeunit.NewCodeUnit("unit", unitDir)
 	require.NoError(t, err)
 
-	fallback, requests, err := NewSandboxAuthorizer(sandbox1, nil)
+	fallback, requests, err := NewSandboxAuthorizer(sandbox1)
 	require.NoError(t, err)
 
 	auth := NewCodeUnitAuthorizer(unit, fallback)
@@ -145,10 +145,10 @@ func TestWithUpdatedSandboxCodeUnitUpdatesFallbackSandboxAndSharesGrants(t *test
 	require.Error(t, auth.IsShellAuthorized(false, "", sandbox2, []string{"ls"}))
 	require.NoError(t, updated.IsShellAuthorized(false, "", sandbox2, []string{"ls"}))
 
-	// Verify the fallback request channel is shared by causing a dangerous command prompt from the updated authorizer.
+	// Verify the fallback request channel is shared by explicitly requesting shell permission.
 	done := make(chan error, 1)
 	go func() {
-		done <- updated.IsShellAuthorized(false, "", sandbox2, []string{"git", "push"})
+		done <- updated.IsShellAuthorized(true, "", sandbox2, []string{"git", "push"})
 	}()
 
 	var req UserRequest

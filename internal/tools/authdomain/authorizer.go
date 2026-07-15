@@ -89,11 +89,7 @@ type Authorizer interface {
 }
 
 // NewSandboxAuthorizer constructs an Authorizer implementing the Sandbox policy.
-func NewSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error) {
-	if commands == nil {
-		commands = NewShellAllowedCommands()
-	}
-
+func NewSandboxAuthorizer(sandboxDir string) (Authorizer, <-chan UserRequest, error) {
 	sandbox, err := normalizeSandboxDir(sandboxDir)
 	if err != nil {
 		return nil, nil, err
@@ -103,17 +99,12 @@ func NewSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Au
 	auth := &sandboxAuthorizer{
 		baseAuthorizer: base,
 		sandboxDir:     sandbox,
-		commands:       commands,
 	}
 	return auth, base.requests, nil
 }
 
 // NewPermissiveSandboxAuthorizer constructs an Authorizer implementing the Permissive Sandbox policy.
-func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCommands) (Authorizer, <-chan UserRequest, error) {
-	if commands == nil {
-		commands = NewShellAllowedCommands()
-	}
-
+func NewPermissiveSandboxAuthorizer(sandboxDir string) (Authorizer, <-chan UserRequest, error) {
 	sandbox, err := normalizeSandboxDir(sandboxDir)
 	if err != nil {
 		return nil, nil, err
@@ -123,7 +114,6 @@ func NewPermissiveSandboxAuthorizer(sandboxDir string, commands *ShellAllowedCom
 	auth := &permissiveSandboxAuthorizer{
 		baseAuthorizer: base,
 		sandboxDir:     sandbox,
-		commands:       commands,
 	}
 	return auth, base.requests, nil
 }
@@ -141,7 +131,7 @@ func NewAutoApproveAuthorizer(sandboxDir string) Authorizer {
 //
 // When autoApprove is false, this uses the permissive sandbox policy and returns the user request channel for interactive approvals. When autoApprove is true, this
 // uses the auto-approve policy and returns a nil request channel because no approval prompts can be emitted.
-func NewSessionAuthorizer(sandboxDir string, commands *ShellAllowedCommands, autoApprove bool) (Authorizer, <-chan UserRequest, error) {
+func NewSessionAuthorizer(sandboxDir string, autoApprove bool) (Authorizer, <-chan UserRequest, error) {
 	if autoApprove {
 		sandbox, err := normalizeSandboxDir(sandboxDir)
 		if err != nil {
@@ -149,7 +139,7 @@ func NewSessionAuthorizer(sandboxDir string, commands *ShellAllowedCommands, aut
 		}
 		return autoApproveAuthorizer{sandboxDir: sandbox}, nil, nil
 	}
-	return NewPermissiveSandboxAuthorizer(sandboxDir, commands)
+	return NewPermissiveSandboxAuthorizer(sandboxDir)
 }
 
 // NewCodeUnitAuthorizer constructs an Authorizer that enforces membership in unit before delegating to fallback.
@@ -173,7 +163,7 @@ func NewCodeUnitAuthorizer(unit *codeunit.CodeUnit, fallback Authorizer) Authori
 	}
 }
 
-// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same ShellAllowedCommands, request channel, grants, etc.
+// WithUpdatedSandbox returns a duplicate of authorizer except with a different sandboxDir. It re-uses the same request channel, grants, etc.
 //
 // This can be used to run subagents in other directories outside the sandbox (e.g., investigating a shared library).
 //
@@ -200,13 +190,11 @@ func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, e
 		return &sandboxAuthorizer{
 			baseAuthorizer: a.baseAuthorizer,
 			sandboxDir:     sandbox,
-			commands:       a.commands,
 		}, nil
 	case *permissiveSandboxAuthorizer:
 		return &permissiveSandboxAuthorizer{
 			baseAuthorizer: a.baseAuthorizer,
 			sandboxDir:     sandbox,
-			commands:       a.commands,
 		}, nil
 	case autoApproveAuthorizer:
 		return autoApproveAuthorizer{sandboxDir: sandbox}, nil
@@ -229,9 +217,8 @@ func WithUpdatedSandbox(authorizer Authorizer, sandboxDir string) (Authorizer, e
 
 // The sandboxAuthorizer type implements strict sandbox authorization.
 type sandboxAuthorizer struct {
-	*baseAuthorizer                       // Embedded base authorizer manages approval requests, read grants, and close state.
-	sandboxDir      string                // Normalized sandbox root for filesystem paths and shell working directories.
-	commands        *ShellAllowedCommands // Shell command policy used by IsShellAuthorized.
+	*baseAuthorizer        // Embedded base authorizer manages approval requests, read grants, and close state.
+	sandboxDir      string // Normalized sandbox root for filesystem paths and shell working directories.
 }
 
 // SandboxDir returns the normalized sandbox root used by this authorizer.
@@ -309,9 +296,8 @@ func (a *sandboxAuthorizer) IsAuthorizedForWrite(requestPermission bool, request
 	return nil
 }
 
-// IsShellAuthorized reports whether command may run from cwd under the strict sandbox policy. A non-empty cwd is normalized and must be inside SandboxDir. The command
-// is classified with ShellAllowedCommands: safe commands are allowed unless requestPermission asks the user, blocked commands are denied, and dangerous, inscrutable,
-// or unmatched commands require user approval.
+// IsShellAuthorized reports whether command may run from cwd under the strict sandbox policy. A non-empty cwd is normalized and must be inside SandboxDir. Commands
+// inside the sandbox are allowed unless requestPermission asks the user; command is retained only as prompt context.
 func (a *sandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -328,24 +314,10 @@ func (a *sandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestRea
 		}
 	}
 
-	result, err := a.commands.Check(command)
-	if err != nil {
-		return err
+	if requestPermission {
+		return a.promptForCommand(command, requestReason, true, false)
 	}
-
-	switch result {
-	case CommandCheckResultSafe:
-		if requestPermission {
-			return a.promptForCommand(cwd, command, requestReason, result, true, false)
-		}
-		return nil
-	case CommandCheckResultBlocked:
-		return fmt.Errorf("command %q is blocked by policy", strings.Join(command, " "))
-	case CommandCheckResultDangerous, CommandCheckResultInscrutable, CommandCheckResultNone:
-		return a.promptForCommand(cwd, command, requestReason, result, requestPermission, false)
-	default:
-		return fmt.Errorf("unknown command check result %d", result)
-	}
+	return nil
 }
 
 // Close releases shared authorizer resources and unblocks pending user requests. It delegates to baseAuthorizer.Close and is idempotent.
@@ -355,9 +327,8 @@ func (a *sandboxAuthorizer) Close() {
 
 // The permissiveSandboxAuthorizer type implements permissive sandbox authorization.
 type permissiveSandboxAuthorizer struct {
-	*baseAuthorizer                       // Embedded base authorizer manages approval requests, read grants, and close state.
-	sandboxDir      string                // Normalized sandbox root used to classify filesystem paths and shell working directories.
-	commands        *ShellAllowedCommands // Shell command policy used by IsShellAuthorized.
+	*baseAuthorizer        // Embedded base authorizer manages approval requests, read grants, and close state.
+	sandboxDir      string // Normalized sandbox root used to classify filesystem paths and shell working directories.
 }
 
 // SandboxDir returns the normalized sandbox root used by this authorizer.
@@ -439,8 +410,8 @@ func (a *permissiveSandboxAuthorizer) IsAuthorizedForWrite(requestPermission boo
 }
 
 // IsShellAuthorized reports whether command may run from cwd under the permissive sandbox policy. A non-empty cwd is normalized; an outside-sandbox cwd requires
-// user approval rather than immediate denial. The command is classified with ShellAllowedCommands: safe and unmatched commands are allowed inside the sandbox unless
-// requestPermission asks the user, blocked commands are denied, and dangerous or inscrutable commands require user approval.
+// user approval rather than immediate denial. Commands inside the sandbox are allowed unless requestPermission asks the user; command is retained only as prompt
+// context.
 func (a *permissiveSandboxAuthorizer) IsShellAuthorized(requestPermission bool, requestReason string, cwd string, command []string) error {
 	if err := a.baseAuthorizer.checkOpen(); err != nil {
 		return err
@@ -455,35 +426,13 @@ func (a *permissiveSandboxAuthorizer) IsShellAuthorized(requestPermission bool, 
 		}
 		if !withinSandbox(sandbox, cleanCwd) {
 			cwdOutside = true
-			cwd = cleanCwd
-		} else {
-			cwd = cleanCwd
 		}
 	}
 
-	result, err := a.commands.Check(command)
-	if err != nil {
-		return err
+	if requestPermission || cwdOutside {
+		return a.promptForCommand(command, requestReason, requestPermission, cwdOutside)
 	}
-
-	switch result {
-	case CommandCheckResultSafe:
-		if requestPermission || cwdOutside {
-			return a.promptForCommand(cwd, command, requestReason, result, requestPermission, cwdOutside)
-		}
-		return nil
-	case CommandCheckResultBlocked:
-		return fmt.Errorf("command %q is blocked by policy", strings.Join(command, " "))
-	case CommandCheckResultDangerous, CommandCheckResultInscrutable:
-		return a.promptForCommand(cwd, command, requestReason, result, requestPermission, cwdOutside)
-	case CommandCheckResultNone:
-		if requestPermission || cwdOutside {
-			return a.promptForCommand(cwd, command, requestReason, result, requestPermission, cwdOutside)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unknown command check result %d", result)
-	}
+	return nil
 }
 
 // Close releases shared authorizer resources and unblocks pending user requests. It delegates to baseAuthorizer.Close and is idempotent.
@@ -749,13 +698,10 @@ func (b *baseAuthorizer) promptForPaths(toolName string, operation string, scope
 	return b.requestApproval(prompt, toolName, nil)
 }
 
-// The promptForCommand method requests user approval for a shell command.
-//
-// The prompt includes the command classification, explicit permission request, outside-sandbox working-directory status, and request reason. The request carries
-// command in UserRequest.Argv and returns nil only when approved.
-func (b *baseAuthorizer) promptForCommand(cwd string, command []string, requestReason string, result CommandCheckResult, requestPermission bool, cwdOutside bool) error {
+// The promptForCommand method requests user approval for a shell command. The request carries command in UserRequest.Argv and returns nil only when approved.
+func (b *baseAuthorizer) promptForCommand(command []string, requestReason string, requestPermission bool, cwdOutside bool) error {
 	commandString := strings.Join(command, " ")
-	prompt := buildCommandPrompt(commandString, requestReason, result, requestPermission, cwdOutside)
+	prompt := buildCommandPrompt(commandString, requestReason, requestPermission, cwdOutside)
 	return b.requestApproval(prompt, "", command)
 }
 
@@ -959,18 +905,12 @@ func buildPathPrompt(toolName string, operation string, scope pathScope, reason 
 
 // The buildCommandPrompt function formats the user-facing approval prompt for a shell command.
 //
-// The prompt includes the command, any command classification, outside-sandbox working-directory context, explicit permission marker, and request reason.
-func buildCommandPrompt(command string, reason string, result CommandCheckResult, requestPermission bool, cwdOutside bool) string {
+// The prompt includes the command, outside-sandbox working-directory context, explicit permission marker, and request reason.
+func buildCommandPrompt(command string, reason string, requestPermission bool, cwdOutside bool) string {
 	var builder strings.Builder
 	builder.WriteString("Allow execution of `")
 	builder.WriteString(command)
-
-	if result != CommandCheckResultNone {
-		classification := commandCheckResultString(result)
-		builder.WriteString("` (flagged as ")
-		builder.WriteString(classification)
-		builder.WriteString(")")
-	}
+	builder.WriteByte('`')
 
 	if cwdOutside {
 		builder.WriteString(" with cwd outside sandbox")
@@ -986,23 +926,6 @@ func buildCommandPrompt(command string, reason string, result CommandCheckResult
 	}
 
 	return builder.String()
-}
-
-func commandCheckResultString(result CommandCheckResult) string {
-	switch result {
-	case CommandCheckResultSafe:
-		return "safe"
-	case CommandCheckResultBlocked:
-		return "blocked"
-	case CommandCheckResultDangerous:
-		return "dangerous"
-	case CommandCheckResultInscrutable:
-		return "inscrutable"
-	case CommandCheckResultNone:
-		return "none"
-	default:
-		return "unknown"
-	}
 }
 
 func classifyPaths(sandbox string, paths []string) (inside []string, outside []string, err error) {

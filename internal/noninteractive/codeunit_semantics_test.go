@@ -43,7 +43,7 @@ func TestBuildAuthorizerForTools_CodeUnitSemanticsMatchTUI(t *testing.T) {
 	require.NoError(t, os.MkdirAll(otherDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(otherDir, "outside.txt"), []byte("outside\n"), 0o644))
 
-	sandboxAuthorizer, _, err := authdomain.NewPermissiveSandboxAuthorizer(sandbox, nil)
+	sandboxAuthorizer, _, err := authdomain.NewPermissiveSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 
 	a, err := buildAuthorizerForTools(true, pkgRelPath, pkgAbsPath, sandboxAuthorizer, "", nil)

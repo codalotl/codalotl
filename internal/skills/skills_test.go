@@ -514,7 +514,7 @@ func TestAuthorize_CodeUnitGrantsSkillDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(skillDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: alpha\ndescription: x\n---\n"), 0o644))
 
-	fallback, _, err := authdomain.NewSandboxAuthorizer(sandboxDir, authdomain.NewShellAllowedCommands())
+	fallback, _, err := authdomain.NewSandboxAuthorizer(sandboxDir)
 	require.NoError(t, err)
 
 	unit, err := codeunit.NewCodeUnit("unit", unitDir)
@@ -551,7 +551,7 @@ func TestAuthorize_CodeUnitGrantsSkillDir(t *testing.T) {
 
 func TestAuthorize_Errors(t *testing.T) {
 	tmp := t.TempDir()
-	sandbox, _, err := authdomain.NewSandboxAuthorizer(tmp, authdomain.NewShellAllowedCommands())
+	sandbox, _, err := authdomain.NewSandboxAuthorizer(tmp)
 	require.NoError(t, err)
 
 	t.Run("nil authorizer", func(t *testing.T) {

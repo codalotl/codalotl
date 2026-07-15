@@ -22,7 +22,7 @@ func TestSandboxReadFileGrantSkipsRequestPermissionPrompt(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 	defer auth.Close()
 
@@ -50,7 +50,7 @@ func TestSandboxReadFileGrantInBackticksSkipsRequestPermissionPrompt(t *testing.
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 	defer auth.Close()
 
@@ -79,7 +79,7 @@ func TestSandboxReadFileGrantDoesNotAuthorizeOutsideSandbox(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 	defer auth.Close()
 
@@ -103,7 +103,7 @@ func TestPermissiveReadFileGrantAuthorizesOutsideSandboxWithoutPrompt(t *testing
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 	defer auth.Close()
 
@@ -132,7 +132,7 @@ func TestSandboxLsGlobGrantSkipsRequestPermissionPrompt(t *testing.T) {
 	t.Parallel()
 
 	sandbox := t.TempDir()
-	auth, requests, err := NewSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 	defer auth.Close()
 
@@ -191,7 +191,7 @@ func TestCodeUnitGrantsReadOnlyToolsTableDriven(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			fallback, requests, err := NewPermissiveSandboxAuthorizer(sandbox, nil)
+			fallback, requests, err := NewPermissiveSandboxAuthorizer(sandbox)
 			require.NoError(t, err)
 
 			auth := NewCodeUnitAuthorizer(unit, fallback)
@@ -319,7 +319,7 @@ func TestPermissiveGrantForHiddenPathDoesNotAllowSiblingRead(t *testing.T) {
 	//
 	// We use a temp dir instead of writing to "/" during tests.
 	sandbox := t.TempDir()
-	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox, nil)
+	auth, requests, err := NewPermissiveSandboxAuthorizer(sandbox)
 	require.NoError(t, err)
 	defer auth.Close()
 

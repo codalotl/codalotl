@@ -1,0 +1,56 @@
+# PR
+
+## User Summary (do not modify)
+
+See product-spec/features/permissions.md
+
+The current product impl has a concept of command whitelist/blacklist, and things like inscruitible commands, etc. I want to remove that to align with the spec.
+
+## Plan
+
+### Package `internal/tools/authdomain` [DONE]
+
+- Remove shell-command classification, matcher lists, and related public APIs.
+- Authorize shell execution using only sandbox working-directory policy and explicit permission requests:
+  - strict sandbox denies an outside-sandbox cwd;
+  - permissive sandbox prompts for an outside-sandbox cwd;
+  - either prompts when the tool explicitly requests permission;
+  - otherwise shell execution is allowed without inspecting command argv.
+- Simplify authorizer constructors so callers no longer supply shell-command policy.
+- Update focused authorization tests and delete obsolete classifier tests.
+
+### Callsites [DONE]
+
+- Update TUI, noninteractive, skills, and test callsites for simplified authorizer constructors.
+- Run package and project tests, including replay-backed noninteractive integration tests.
+- Validation passed: `go test ./...`; focused authdomain, coretools, skills, noninteractive, and TUI tests also pass.
+
+## Review
+
+- Formal review against `main`: patch is correct (0 findings, 0.98 confidence).
+- Changed-package SPEC conformance:
+  - `internal/tools/authdomain`: conforms.
+  - `internal/noninteractive`: conforms.
+  - `internal/skills`: one latent minor filename-strictness issue; predates and is unrelated to this PR.
+  - `internal/tui`: one latent minor Details-dialog rendering issue; predates and is unrelated to this PR.
+- No non-latent conformance failures. Latent unrelated findings are not actioned.
+- Processed all pending clarify-public-api documentation records; the documentation refactor found no material improvements.
+
+## Summary
+
+- Remove shell argv allowlist, blocklist, dangerous, and inscrutable command classification from authorization.
+- Base shell authorization solely on sandbox cwd scope and explicit permission requests while retaining argv as prompt context.
+- Simplify authorizer constructors and update TUI, noninteractive, skills, and test callsites.
+- Validate the change with the full Go test suite, a clean formal review, and changed-package SPEC conformance.
+
+## Decisions
+
+- This PR removes shell argv classification from `authdomain`. It does not broaden the `codalotl_cli` tool's intentionally selected in-process command tree, which controls the product APIs exposed as that tool rather than classifying shell commands.
+
+## State
+
+- Complete.
+- Required clarify-public-api documentation processing completed with no changes.
+- Primary package: `internal/tools/authdomain`.
+- Existing `coretools` shell execution already states that it has no allowlist/blacklist and delegates authorization to `authdomain`.
+- Implementation commit: `3a26edf`.
