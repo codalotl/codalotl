@@ -27,7 +27,13 @@ The current product impl has a concept of command whitelist/blacklist, and thing
 
 ## Review
 
-Pending.
+- Formal review against `main`: patch is correct (0 findings, 0.98 confidence).
+- Changed-package SPEC conformance:
+  - `internal/tools/authdomain`: conforms.
+  - `internal/noninteractive`: conforms.
+  - `internal/skills`: one latent minor filename-strictness issue; predates and is unrelated to this PR.
+  - `internal/tui`: one latent minor Details-dialog rendering issue; predates and is unrelated to this PR.
+- No non-latent conformance failures. Latent unrelated findings are not actioned.
 
 ## Summary
 
@@ -39,7 +45,7 @@ Pending.
 
 ## State
 
-- Planning, SPEC.md review, and implementation complete; review is next.
+- Planning, SPEC.md review, implementation, and required review gates complete.
 - Primary package: `internal/tools/authdomain`.
 - Existing `coretools` shell execution already states that it has no allowlist/blacklist and delegates authorization to `authdomain`.
 - Implementation commit: `3a26edf`.
