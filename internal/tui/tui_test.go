@@ -1720,7 +1720,7 @@ func TestNewSessionBlock_GenericMode_ShowsOrchestrateHelpWithoutInternalAgentNam
 	plain := stripAnsi(block)
 	require.Contains(t, plain, "/package")
 	require.Contains(t, plain, "/orchestrate")
-	require.Contains(t, plain, "/model gpt-5.5-high")
+	require.Contains(t, plain, "/model gpt-5.6-sol-high")
 	require.Contains(t, plain, "/quit")
 	require.NotContains(t, plain, "/session")
 	require.NotContains(t, plain, "pr-orchestrator")

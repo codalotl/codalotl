@@ -105,12 +105,12 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	// OpenAI is expected to always be usable in this repo (it's our default codepath),
 	// so keep stronger assertions for it.
 	gpt5 := DefaultModel
-	require.Equal(t, ModelID("gpt-5.5-high"), gpt5)
+	require.Equal(t, ModelID("gpt-5.6-sol-high"), gpt5)
 	require.True(t, gpt5.Valid())
 
 	gptInfo := GetModelInfo(gpt5)
 	require.Equal(t, ProviderIDOpenAI, gptInfo.ProviderID)
-	require.Equal(t, "gpt-5.5", gptInfo.ProviderModelID)
+	require.Equal(t, "gpt-5.6-sol", gptInfo.ProviderModelID)
 	require.Equal(t, "high", gptInfo.ReasoningEffort)
 	require.True(t, gptInfo.IsDefault)
 	require.True(t, gptInfo.SupportsAutocompaction)
@@ -198,27 +198,25 @@ func TestDefaultModelsLoaded(t *testing.T) {
 	require.False(t, ModelID("gpt-5.1-codex").Valid())
 	require.False(t, ModelID("gpt-5.3-codex-minimal").Valid())
 	require.False(t, ModelID("gpt-5.5-minimal").Valid())
-	require.True(t, ModelID("gpt-5.4").Valid())
-	require.True(t, ModelID("gpt-5-mini").Valid())
-	require.True(t, ModelID("gpt-5-nano").Valid())
+	require.False(t, ModelID("gpt-5.4").Valid())
+	require.False(t, ModelID("gpt-5-mini").Valid())
+	require.False(t, ModelID("gpt-5-nano").Valid())
 
-	codexXhigh := ModelID("gpt-5.3-codex-xhigh")
 	codexHigh := ModelID("gpt-5.3-codex-high")
-	require.True(t, codexXhigh.Valid())
-	codexXhighInfo := GetModelInfo(codexXhigh)
-	require.Equal(t, ProviderIDOpenAI, codexXhighInfo.ProviderID)
-	require.Equal(t, "gpt-5.3-codex", codexXhighInfo.ProviderModelID)
-	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, codexXhighInfo.SupportedTypes)
-	require.Equal(t, "xhigh", codexXhighInfo.ReasoningEffort)
-
 	require.True(t, codexHigh.Valid())
-	require.Equal(t, "high", GetModelInfo(codexHigh).ReasoningEffort)
+	codexHighInfo := GetModelInfo(codexHigh)
+	require.Equal(t, ProviderIDOpenAI, codexHighInfo.ProviderID)
+	require.Equal(t, "gpt-5.3-codex", codexHighInfo.ProviderModelID)
+	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, codexHighInfo.SupportedTypes)
+	require.Equal(t, "high", codexHighInfo.ReasoningEffort)
+	require.False(t, ModelID("gpt-5.3-codex-medium").Valid())
+	require.False(t, ModelID("gpt-5.3-codex-xhigh").Valid())
 
-	gptXhigh := ModelID("gpt-5.5-xhigh")
+	gptXhigh := ModelID("gpt-5.6-sol-xhigh")
 	require.True(t, gptXhigh.Valid())
 	gptXhighInfo := GetModelInfo(gptXhigh)
 	require.Equal(t, ProviderIDOpenAI, gptXhighInfo.ProviderID)
-	require.Equal(t, "gpt-5.5", gptXhighInfo.ProviderModelID)
+	require.Equal(t, "gpt-5.6-sol", gptXhighInfo.ProviderModelID)
 	require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, gptXhighInfo.SupportedTypes)
 	require.Equal(t, "xhigh", gptXhighInfo.ReasoningEffort)
 	require.True(t, gptXhighInfo.SupportsAutocompaction)
@@ -237,28 +235,32 @@ func TestDefaultModelsLoaded(t *testing.T) {
 
 func TestGPT56OpenAIModelsLoaded(t *testing.T) {
 	tests := []struct {
-		id                     ModelID
+		providerModelID        string
+		reasoningLevels        []string
 		costPer1MIn            float64
 		costPer1MOut           float64
 		costPer1MInCached      float64
 		costPer1MInSaveToCache float64
 	}{
 		{
-			id:                     "gpt-5.6-sol",
+			providerModelID:        "gpt-5.6-sol",
+			reasoningLevels:        []string{"medium", "high", "xhigh"},
 			costPer1MIn:            5,
 			costPer1MOut:           30,
 			costPer1MInCached:      0.5,
 			costPer1MInSaveToCache: 6.25,
 		},
 		{
-			id:                     "gpt-5.6-terra",
+			providerModelID:        "gpt-5.6-terra",
+			reasoningLevels:        []string{"high"},
 			costPer1MIn:            2.5,
 			costPer1MOut:           15,
 			costPer1MInCached:      0.25,
 			costPer1MInSaveToCache: 3.125,
 		},
 		{
-			id:                     "gpt-5.6-luna",
+			providerModelID:        "gpt-5.6-luna",
+			reasoningLevels:        []string{"high"},
 			costPer1MIn:            1,
 			costPer1MOut:           6,
 			costPer1MInCached:      0.1,
@@ -267,34 +269,58 @@ func TestGPT56OpenAIModelsLoaded(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(tt.id), func(t *testing.T) {
-			require.True(t, tt.id.Valid())
+		t.Run(tt.providerModelID, func(t *testing.T) {
+			require.False(t, ModelID(tt.providerModelID).Valid())
 
-			info := GetModelInfo(tt.id)
-			require.Equal(t, tt.id, info.ID)
-			require.Equal(t, ProviderIDOpenAI, info.ProviderID)
-			require.Equal(t, string(tt.id), info.ProviderModelID)
-			require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses, ProviderTypeOpenAICompletions}, info.SupportedTypes)
-			require.False(t, info.IsDefault)
-			require.Empty(t, info.ReasoningEffort)
-			require.InDelta(t, tt.costPer1MIn, info.CostPer1MIn, 0)
-			require.InDelta(t, tt.costPer1MOut, info.CostPer1MOut, 0)
-			require.InDelta(t, tt.costPer1MInCached, info.CostPer1MInCached, 0)
-			require.InDelta(t, tt.costPer1MInSaveToCache, info.CostPer1MInSaveToCache, 0)
-			require.Equal(t, int64(1050000), info.ContextWindow)
-			require.Equal(t, int64(128000), info.MaxOutput)
-			require.True(t, info.CanReason)
-			require.True(t, info.HasReasoningEffort)
-			require.True(t, info.SupportsAutocompaction)
-			require.True(t, info.SupportsImages)
+			for _, level := range tt.reasoningLevels {
+				id := ModelID(fmt.Sprintf("%s-%s", tt.providerModelID, level))
+				require.True(t, id.Valid())
 
-			require.False(t, ModelID(fmt.Sprintf("%s-medium", tt.id)).Valid())
-			require.False(t, ModelID(fmt.Sprintf("%s-high", tt.id)).Valid())
-			require.False(t, ModelID(fmt.Sprintf("%s-xhigh", tt.id)).Valid())
+				info := GetModelInfo(id)
+				require.Equal(t, id, info.ID)
+				require.Equal(t, ProviderIDOpenAI, info.ProviderID)
+				require.Equal(t, tt.providerModelID, info.ProviderModelID)
+				require.Equal(t, []ProviderAPIType{ProviderTypeOpenAIResponses}, info.SupportedTypes)
+				require.Equal(t, id == DefaultModel, info.IsDefault)
+				require.Equal(t, level, info.ReasoningEffort)
+				require.InDelta(t, tt.costPer1MIn, info.CostPer1MIn, 0)
+				require.InDelta(t, tt.costPer1MOut, info.CostPer1MOut, 0)
+				require.InDelta(t, tt.costPer1MInCached, info.CostPer1MInCached, 0)
+				require.InDelta(t, tt.costPer1MInSaveToCache, info.CostPer1MInSaveToCache, 0)
+				require.Equal(t, int64(1050000), info.ContextWindow)
+				require.Equal(t, int64(128000), info.MaxOutput)
+				require.True(t, info.CanReason)
+				require.True(t, info.HasReasoningEffort)
+				require.True(t, info.SupportsAutocompaction)
+				require.True(t, info.SupportsImages)
+			}
+
+			for _, level := range []string{"medium", "high", "xhigh"} {
+				id := ModelID(fmt.Sprintf("%s-%s", tt.providerModelID, level))
+				require.Equal(t, level == "high" || tt.providerModelID == "gpt-5.6-sol", id.Valid())
+			}
 		})
 	}
 
 	require.Equal(t, DefaultModel, ProviderIDOpenAI.DefaultModel())
+}
+
+func TestAddCustomModelCopiesLegacyOpenAIMetadata(t *testing.T) {
+	legacyModels := []string{"gpt-5.4", "gpt-5.5", "gpt-5-mini", "gpt-5-nano"}
+	for _, providerModelID := range legacyModels {
+		t.Run(providerModelID, func(t *testing.T) {
+			customID := ModelID("custom-" + providerModelID)
+			err := AddCustomModel(customID, ProviderIDOpenAI, providerModelID, ModelOverrides{ReasoningEffort: "high"})
+			require.NoError(t, err)
+
+			info := GetModelInfo(customID)
+			require.Equal(t, providerModelID, info.ProviderModelID)
+			require.Equal(t, "high", info.ReasoningEffort)
+			require.True(t, info.CanReason)
+			require.NotZero(t, info.ContextWindow)
+			require.NotZero(t, info.MaxOutput)
+		})
+	}
 }
 
 func TestAddCustomModelCopiesProviderData(t *testing.T) {

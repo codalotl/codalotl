@@ -776,7 +776,7 @@ func TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer(t *test
 					"id":"resp_compacted",
 					"object":"response",
 					"created_at":0,
-					"model":"gpt-5.5-high",
+					"model":"gpt-5.6-sol",
 					"status":"completed",
 					"output":[
 						{
@@ -811,7 +811,7 @@ func TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer(t *test
 				"id":"resp_second",
 				"object":"response",
 				"created_at":0,
-				"model":"gpt-5.5-high",
+				"model":"gpt-5.6-sol",
 				"status":"completed",
 				"output":[
 					{
@@ -875,6 +875,12 @@ func TestSendAsyncOpenAIResponses_NoStoreReplaysCompactionWithMockServer(t *test
 	require.NotNil(t, secondTurn)
 	assert.Equal(t, "second answer", secondTurn.TextContent())
 	require.Len(t, requests, 2)
+	for _, request := range requests {
+		assert.Equal(t, "gpt-5.6-sol", request["model"])
+		reasoning, ok := request["reasoning"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "high", reasoning["effort"])
+	}
 
 	secondRequest := requests[1]
 	assert.Equal(t, false, secondRequest["store"])

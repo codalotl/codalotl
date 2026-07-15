@@ -132,7 +132,7 @@ JSON mode is a structured log, not a 1:1 dump of every internal `agent.Event`. I
 Example Output:
 
 ```json
-{"type": "start", "cwd": "/some/path", "package_path": "internal/somepkg", "model_id": "gpt-5.5-high"}
+{"type": "start", "cwd": "/some/path", "package_path": "internal/somepkg", "model_id": "gpt-5.6-sol-high"}
 {"type": "user_message", "text": "fix failing test"}
 {"type": "tool_call", "agent": {"id": "root", "depth": 0}, "tool": {"call_id": "call_1", "name": "read_file", "type": "function_call", "input": "{\"path\":\"foo.go\"}"}}
 {"type": "tool_complete", "agent": {"id": "root", "depth": 0}, "tool": {"call_id": "call_1", "name": "read_file", "type": "function_call"}, "result": {"output": "package foo\n...", "is_error": false}}
