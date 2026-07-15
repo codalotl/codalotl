@@ -52,10 +52,11 @@ Generally, only the latest generation of models is available for a provider. For
 
 ## Reasoning Levels
 
-From a user perspective, the reasoning level is baked into the model identifier.
-- Ex: `gpt-5.3-high` might be a model they can select with `/model`.
-    - These apply to the built-in models when the reasoning level is an important distinction.
-- For custom models (via the config file's `custommodels`): the `reasoningeffort` key configures the reasoning level.
+From a user perspective, the reasoning is baked into the model identifier (when reasoning level is a relevant lever). Ex: `gpt-5.3-high` might be a model they can select with `/model`.
+- The provider's flaghsip model gets {`-medium`, `-high`, `-xhigh`}, but not `-low` or `-none`.
+    - "Flagship" means a provider's ~best model. For instance, OpenAI often releases a family of models at once: "flagship", "medium", and "fast/cheap"
+- The provider's non-flagship models only get {`-high`}.
+- For custom models (via the config file's `custommodels`): user can use the `reasoningeffort` key to configure the reasoning level.
 
 ## Custom Models
 
