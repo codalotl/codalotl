@@ -67,6 +67,10 @@ Presentation: semantic `Diff`
 
 - Authorizes every source and destination path before applying any filesystem change.
 - Authorization uses `applypatch` parsing and path interpretation.
+- With post-checks configured:
+    - Runs fix-mode lints against configured target after every successful patch.
+    - Runs diagnostics against configured target first when patch changes Go source.
+    - Appends diagnostic and lint output to tool result.
 
 ### edit
 

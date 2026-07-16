@@ -181,6 +181,7 @@ Toolsets are just a device used in this SPEC.md to factor the file (and may be u
 - toolset_edit_files:
     - when the model provider is openai: {`apply_patch`}
     - otherwise: {`write`, `edit`, `delete`}
+    - In package mode, `apply_patch` post-edit diagnostics and fix-mode lints target selected Go package regardless of changed file locations.
 - toolset_spec:
     - {`check_spec_conformance`}
 - toolset_clarify_read_only:
