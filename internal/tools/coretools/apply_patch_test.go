@@ -536,3 +536,178 @@ func TestApplyPatch_Run_Authorization(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyPatch_Run_AuthorizesAllAffectedPaths(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "deleted.txt"), []byte("old\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "updated.txt"), []byte("old\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "moved.txt"), []byte("before\n"), 0o644))
+
+	expectedPaths := []string{
+		filepath.Join(sandbox, "added.txt"),
+		filepath.Join(sandbox, "deleted.txt"),
+		filepath.Join(sandbox, "updated.txt"),
+		filepath.Join(sandbox, "moved.txt"),
+		filepath.Join(sandbox, "destination.txt"),
+	}
+	auth := &stubAuthorizer{sandboxDir: sandbox}
+	auth.writeResp = func(requestPermission bool, _ string, toolName string, absPath ...string) error {
+		assert.False(t, requestPermission)
+		assert.Equal(t, ToolNameApplyPatch, toolName)
+		assert.Equal(t, expectedPaths, absPath)
+		return nil
+	}
+
+	patch := strings.Join([]string{
+		"  ",
+		"  *** Begin Patch  ",
+		"  *** Add File: added.txt  ",
+		"+new",
+		"  *** Delete File: deleted.txt  ",
+		"  *** Update File: updated.txt  ",
+		"@@",
+		"-old",
+		"+new",
+		"  *** Update File: moved.txt  ",
+		"  *** Move to: destination.txt  ",
+		"@@",
+		"-before",
+		"+after",
+		"  *** End Patch  ",
+		"",
+	}, "\n")
+	call := llmstream.ToolCall{
+		CallID: "auth-all-affected-paths",
+		Name:   ToolNameApplyPatch,
+		Type:   "custom_tool_call",
+		Input:  patch,
+	}
+	res := NewApplyPatchTool(auth, true, nil).Run(context.Background(), call)
+	require.False(t, res.IsError)
+	require.Len(t, auth.writeCalls, 1)
+
+	data, err := os.ReadFile(filepath.Join(sandbox, "added.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "new\n", string(data))
+	data, err = os.ReadFile(filepath.Join(sandbox, "updated.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "new\n", string(data))
+	data, err = os.ReadFile(filepath.Join(sandbox, "destination.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "after\n", string(data))
+
+	_, err = os.Stat(filepath.Join(sandbox, "deleted.txt"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(filepath.Join(sandbox, "moved.txt"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestApplyPatch_Run_AuthorizesLeadingWhitespaceInPath(t *testing.T) {
+	sandbox := t.TempDir()
+	expectedPath := filepath.Join(sandbox, " leading.txt")
+	auth := &stubAuthorizer{sandboxDir: sandbox}
+	auth.writeResp = func(_ bool, _ string, _ string, absPath ...string) error {
+		assert.Equal(t, []string{expectedPath}, absPath)
+		return nil
+	}
+
+	patch := `*** Begin Patch
+*** Add File:  leading.txt
++new
+*** End Patch
+`
+	call := llmstream.ToolCall{
+		CallID: "auth-leading-whitespace",
+		Name:   ToolNameApplyPatch,
+		Type:   "custom_tool_call",
+		Input:  patch,
+	}
+	res := NewApplyPatchTool(auth, true, nil).Run(context.Background(), call)
+	require.False(t, res.IsError)
+	require.Len(t, auth.writeCalls, 1)
+
+	data, err := os.ReadFile(expectedPath)
+	require.NoError(t, err)
+	assert.Equal(t, "new\n", string(data))
+	_, err = os.Stat(filepath.Join(sandbox, "leading.txt"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestApplyPatch_Run_AuthorizesResolvedPathOnce(t *testing.T) {
+	sandbox := t.TempDir()
+	target := filepath.Join(sandbox, "same.txt")
+	auth := &stubAuthorizer{sandboxDir: sandbox}
+	auth.writeResp = func(_ bool, _ string, _ string, absPath ...string) error {
+		assert.Equal(t, []string{target}, absPath)
+		return nil
+	}
+
+	patch := fmt.Sprintf(`*** Begin Patch
+*** Add File: same.txt
++first
+*** Add File: ./same.txt
++second
+*** Add File: %s
++third
+*** End Patch
+`, filepath.ToSlash(target))
+	call := llmstream.ToolCall{
+		CallID: "auth-path-aliases",
+		Name:   ToolNameApplyPatch,
+		Type:   "custom_tool_call",
+		Input:  patch,
+	}
+	res := NewApplyPatchTool(auth, true, nil).Run(context.Background(), call)
+	require.False(t, res.IsError)
+	require.Len(t, auth.writeCalls, 1)
+
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "third\n", string(data))
+}
+
+func TestApplyPatch_Run_DeniedLaterTargetDoesNotMutate(t *testing.T) {
+	sandbox := t.TempDir()
+	firstPath := filepath.Join(sandbox, "first.txt")
+	secondPath := filepath.Join(sandbox, "second.txt")
+	destinationPath := filepath.Join(sandbox, "destination.txt")
+	require.NoError(t, os.WriteFile(firstPath, []byte("first before\n"), 0o644))
+	require.NoError(t, os.WriteFile(secondPath, []byte("second before\n"), 0o644))
+
+	auth := &stubAuthorizer{sandboxDir: sandbox}
+	auth.writeResp = func(_ bool, _ string, _ string, absPath ...string) error {
+		assert.Equal(t, []string{firstPath, secondPath, destinationPath}, absPath)
+		return fmt.Errorf("destination authorization denied")
+	}
+	patch := `*** Begin Patch
+*** Update File: first.txt
+@@
+-first before
++first after
+*** Update File: second.txt
+*** Move to: destination.txt
+@@
+-second before
++second after
+*** End Patch
+`
+	call := llmstream.ToolCall{
+		CallID: "auth-denied-later-target",
+		Name:   ToolNameApplyPatch,
+		Type:   "custom_tool_call",
+		Input:  patch,
+	}
+	res := NewApplyPatchTool(auth, true, nil).Run(context.Background(), call)
+	require.True(t, res.IsError)
+	assert.Contains(t, res.Result, "destination authorization denied")
+	require.Len(t, auth.writeCalls, 1)
+
+	data, err := os.ReadFile(firstPath)
+	require.NoError(t, err)
+	assert.Equal(t, "first before\n", string(data))
+	data, err = os.ReadFile(secondPath)
+	require.NoError(t, err)
+	assert.Equal(t, "second before\n", string(data))
+	_, err = os.Stat(destinationPath)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}

@@ -92,34 +92,11 @@ func invalidPatchError(err error) error {
 //   - Can hunks touch or overlap? Adjacent is fine; overlapping is invalid—merge into one hunk instead.
 //   - What if the context matches in multiple places? ApplyPatch uses the first matching span; choose context that makes the anchor unique.
 func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error) {
-	if !filepath.IsAbs(cwdAbsPath) {
-		return nil, fmt.Errorf("cwdAbsPath must be absolute: %q", cwdAbsPath)
-	}
-	root := filepath.Clean(cwdAbsPath)
-
-	parsed, err := parsePatch(patch)
+	root, parsed, err := preparePatch(cwdAbsPath, patch)
 	if err != nil {
-		return nil, invalidPatchError(err)
+		return nil, err
 	}
 	var changes []FileChange
-	for idx := range parsed.Hunks {
-		h := &parsed.Hunks[idx]
-		origPath := h.Path
-		relPath, err := resolvePatchPath(root, origPath)
-		if err != nil {
-			return nil, invalidPatchError(fmt.Errorf("hunk %d path %q: %w", idx+1, origPath, err))
-		}
-		h.Path = relPath
-
-		if h.MoveTo != "" {
-			origMove := h.MoveTo
-			relMove, err := resolvePatchPath(root, origMove)
-			if err != nil {
-				return nil, invalidPatchError(fmt.Errorf("hunk %d move %q: %w", idx+1, origMove, err))
-			}
-			h.MoveTo = relMove
-		}
-	}
 
 	for idx, h := range parsed.Hunks {
 		switch h.Kind {
@@ -150,6 +127,63 @@ func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error) {
 		}
 	}
 	return changes, nil
+}
+
+// AffectedPaths returns the unique absolute paths ApplyPatch can mutate, in first-seen order. It accepts and interprets patches identically to ApplyPatch.
+func AffectedPaths(cwdAbsPath string, patch string) ([]string, error) {
+	root, parsed, err := preparePatch(cwdAbsPath, patch)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{})
+	paths := make([]string, 0, len(parsed.Hunks))
+	add := func(relPath string) {
+		absPath := filepath.Join(root, filepath.FromSlash(relPath))
+		if _, ok := seen[absPath]; ok {
+			return
+		}
+		seen[absPath] = struct{}{}
+		paths = append(paths, absPath)
+	}
+
+	for _, h := range parsed.Hunks {
+		add(h.Path)
+		if h.MoveTo != "" {
+			add(h.MoveTo)
+		}
+	}
+	return paths, nil
+}
+
+// preparePatch fully parses and resolves a patch before callers inspect or mutate any target.
+func preparePatch(cwdAbsPath string, patch string) (string, *patchFile, error) {
+	if !filepath.IsAbs(cwdAbsPath) {
+		return "", nil, fmt.Errorf("cwdAbsPath must be absolute: %q", cwdAbsPath)
+	}
+	root := filepath.Clean(cwdAbsPath)
+
+	parsed, err := parsePatch(patch)
+	if err != nil {
+		return "", nil, invalidPatchError(err)
+	}
+	for idx := range parsed.Hunks {
+		h := &parsed.Hunks[idx]
+		origPath := h.Path
+		h.Path, err = resolvePatchPath(root, origPath)
+		if err != nil {
+			return "", nil, invalidPatchError(fmt.Errorf("hunk %d path %q: %w", idx+1, origPath, err))
+		}
+
+		if h.MoveTo != "" {
+			origMove := h.MoveTo
+			h.MoveTo, err = resolvePatchPath(root, origMove)
+			if err != nil {
+				return "", nil, invalidPatchError(fmt.Errorf("hunk %d move %q: %w", idx+1, origMove, err))
+			}
+		}
+	}
+	return root, parsed, nil
 }
 
 // ---------- Patch data structures ----------

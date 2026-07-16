@@ -1,12 +1,10 @@
 package coretools
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/applypatch"
@@ -95,7 +93,7 @@ func (t *toolApplyPatch) Run(ctx context.Context, call llmstream.ToolCall) llmst
 		return NewToolErrorResult(call, err.Error(), err)
 	}
 
-	paths, err := t.collectPatchPaths(patch)
+	paths, err := applypatch.AffectedPaths(t.sandboxAbsDir, patch)
 	if err != nil {
 		return NewToolErrorResult(call, err.Error(), err)
 	}
@@ -184,60 +182,6 @@ func formatFileChangeKind(kind applypatch.FileChangeKind) string {
 	default:
 		return "?"
 	}
-}
-
-// The collectPatchPaths method returns the unique absolute paths named by an ApplyPatch document in first-seen order. It recognizes add, delete, update, and move-to
-// headers and returns an error for missing paths or scan failures.
-func (t *toolApplyPatch) collectPatchPaths(patch string) ([]string, error) {
-	scanner := bufio.NewScanner(strings.NewReader(patch))
-	paths := make(map[string]struct{})
-	result := make([]string, 0, 8)
-	for scanner.Scan() {
-		line := scanner.Text()
-		var raw string
-		switch {
-		case strings.HasPrefix(line, "*** Add File: "):
-			raw = strings.TrimSpace(strings.TrimPrefix(line, "*** Add File: "))
-		case strings.HasPrefix(line, "*** Delete File: "):
-			raw = strings.TrimSpace(strings.TrimPrefix(line, "*** Delete File: "))
-		case strings.HasPrefix(line, "*** Update File: "):
-			raw = strings.TrimSpace(strings.TrimPrefix(line, "*** Update File: "))
-		case strings.HasPrefix(line, "*** Move to: "):
-			raw = strings.TrimSpace(strings.TrimPrefix(line, "*** Move to: "))
-		default:
-			continue
-		}
-		if raw == "" {
-			return nil, fmt.Errorf("path is required")
-		}
-		abs, err := t.resolvePatchPath(raw)
-		if err != nil {
-			return nil, err
-		}
-		if _, exists := paths[abs]; exists {
-			continue
-		}
-		paths[abs] = struct{}{}
-		result = append(result, abs)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-// The resolvePatchPath method converts an ApplyPatch path to an absolute filesystem path. Empty paths are rejected; absolute paths are cleaned, and relative slash-separated
-// paths are resolved from the sandbox root.
-func (t *toolApplyPatch) resolvePatchPath(raw string) (string, error) {
-	if strings.TrimSpace(raw) == "" {
-		return "", fmt.Errorf("path is required")
-	}
-
-	path := filepath.FromSlash(raw)
-	if filepath.IsAbs(path) {
-		return filepath.Clean(path), nil
-	}
-	return filepath.Join(t.sandboxAbsDir, path), nil
 }
 
 // The runPostApplyChecks method runs configured post-change checks for files changed by apply_patch. It passes changed file paths to the shared post-check runner
