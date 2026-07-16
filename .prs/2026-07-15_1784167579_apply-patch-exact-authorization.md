@@ -26,7 +26,9 @@ Fix `apply_patch` so every source and destination path it will actually mutate i
 
 ## Review
 
-Pending.
+- Full review against `main`: no findings; patch correct (confidence 0.95).
+- SPEC conformance: `internal/applypatch` and `internal/tools/coretools` conform.
+- Validation: focused package tests, `go test ./...`, and `git diff main --check` pass.
 
 ## Summary
 
@@ -39,3 +41,4 @@ Pending.
 - Design: add `applypatch.AffectedPaths`; share parsing/resolution preparation with `ApplyPatch`; have coretools authorize its absolute paths before applying.
 - Implementation: `0751f24`; focused package tests and `go test ./...` pass.
 - Test cleanup: `53059ab` preserves whitespace-sensitive inputs without source-level trailing whitespace.
+- Review complete with no findings; changed packages conform to their SPECs.
