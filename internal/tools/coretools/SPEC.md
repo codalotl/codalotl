@@ -65,6 +65,9 @@ Presentation:
 
 Presentation: semantic `Diff`
 
+- Authorizes every source and destination path before applying any filesystem change.
+- Authorization uses `applypatch` parsing and path interpretation.
+
 ### edit
 
 Presentation: semantic `Diff`

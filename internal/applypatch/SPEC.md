@@ -29,6 +29,12 @@ func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error)
 ```
 
 ```go
+// AffectedPaths returns the unique absolute paths ApplyPatch can mutate, in first-seen order.
+// It accepts and interprets patches identically to ApplyPatch.
+func AffectedPaths(cwdAbsPath string, patch string) ([]string, error)
+```
+
+```go
 // Replace replaces findText with replacementText in absPath (which must be an absolute path). It edits the file in place. If edits are made, the new file's contents
 // are returned. If replaceAll is true, multiple replacements are made.
 //
