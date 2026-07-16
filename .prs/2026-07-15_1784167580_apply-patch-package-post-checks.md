@@ -43,7 +43,12 @@ Fix package-mode `apply_patch` so configured post-edit lints run against the sel
 
 ## Summary
 
-Pending.
+- Target package-mode `apply_patch` post-checks at the selected Go package instead of changed-file parent directories.
+- Run package diagnostics when a patch changes Go source and configured fix-mode lints after every successful patch, preserving diagnostic/lint feedback in the tool result.
+- Keep `edit` and `write` post-check targeting unchanged and update the `pm-lints` integration replay for lint-only non-Go patches.
+- Add focused coverage for multi-directory, nested supporting-file, Go-source, selected-target, and lint-configuration behavior.
+
+Tests: `go test ./...`
 
 ## State
 
