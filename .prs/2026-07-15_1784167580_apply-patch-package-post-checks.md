@@ -12,7 +12,7 @@ Fix package-mode `apply_patch` so configured post-edit lints run against the sel
 
 ## Plan
 
-### Package `internal/tools/coretools`
+### Package `internal/tools/coretools` [DONE]
 
 - Give `apply_patch` post-check configuration an explicit target directory instead of inferring one from changed paths.
 - After every successful patch, run configured fix-mode lints for that target.
@@ -21,11 +21,16 @@ Fix package-mode `apply_patch` so configured post-edit lints run against the sel
 - Keep single-file `edit` and `write` post-check behavior unchanged.
 - Implement the contract documented in `internal/tools/coretools/SPEC.md`.
 
-### Package `internal/agentbuilder`
+### Package `internal/agentbuilder` [DONE]
 
 - Configure package-mode `apply_patch` post-checks with the selected `GoPkgAbsDir`, including default lint steps.
 - Verify `apply_patch` checks use the selected package for multi-directory and nested supporting-file patches.
 - Implement the contract documented in `internal/agentbuilder/SPEC.md`.
+
+### Package `internal/noninteractive/integration`
+
+- Update the `pm-lints` HTTP replay to expect lint-only post-check output for its `SPEC.md`-only patch.
+- Run the full project test suite.
 
 ## Review
 
@@ -41,3 +46,5 @@ Pending.
 - Root cause: shared `coretools.runPostChecks` derives parent directories from changed paths and skips checks when more than one directory is present.
 - Package-mode selected target is available as `toolsetinterface.Options.GoPkgAbsDir`.
 - `edit`/`write` use the same shared post-check helper; this PR intentionally changes only `apply_patch` targeting semantics.
+- Implementation commit `10cee73` adds explicit `ApplyPatchPostChecks.TargetDir`, conditional Go diagnostics, unconditional configured lints, package-mode wiring, and focused tests.
+- `go test ./...` only fails because `pm-lints` still expects diagnostics for a `SPEC.md`-only patch; its replay needs the intentional output update.
