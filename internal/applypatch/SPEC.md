@@ -29,8 +29,7 @@ func ApplyPatch(cwdAbsPath string, patch string) ([]FileChange, error)
 ```
 
 ```go
-// AffectedPaths returns the unique absolute paths ApplyPatch can mutate, in first-seen order.
-// It accepts and interprets patches identically to ApplyPatch.
+// AffectedPaths returns the unique absolute paths ApplyPatch can mutate, in first-seen order. It accepts and interprets patches identically to ApplyPatch.
 func AffectedPaths(cwdAbsPath string, patch string) ([]string, error)
 ```
 
