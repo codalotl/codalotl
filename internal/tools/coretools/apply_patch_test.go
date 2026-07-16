@@ -558,22 +558,24 @@ func TestApplyPatch_Run_AuthorizesAllAffectedPaths(t *testing.T) {
 		return nil
 	}
 
-	patch := `  
-  *** Begin Patch  
-  *** Add File: added.txt  
-+new
-  *** Delete File: deleted.txt  
-  *** Update File: updated.txt  
-@@
--old
-+new
-  *** Update File: moved.txt  
-  *** Move to: destination.txt  
-@@
--before
-+after
-  *** End Patch  
-`
+	patch := strings.Join([]string{
+		"  ",
+		"  *** Begin Patch  ",
+		"  *** Add File: added.txt  ",
+		"+new",
+		"  *** Delete File: deleted.txt  ",
+		"  *** Update File: updated.txt  ",
+		"@@",
+		"-old",
+		"+new",
+		"  *** Update File: moved.txt  ",
+		"  *** Move to: destination.txt  ",
+		"@@",
+		"-before",
+		"+after",
+		"  *** End Patch  ",
+		"",
+	}, "\n")
 	call := llmstream.ToolCall{
 		CallID: "auth-all-affected-paths",
 		Name:   ToolNameApplyPatch,

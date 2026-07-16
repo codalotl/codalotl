@@ -3,6 +3,7 @@ package applypatch
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,22 +11,24 @@ import (
 
 func TestAffectedPaths_AllOperationsInFirstSeenOrder(t *testing.T) {
 	root := t.TempDir()
-	patch := `  
-  *** Begin Patch  
-  *** Add File: added.txt  
-+new
-  *** Delete File: deleted.txt  
-  *** Update File: updated.txt  
-@@
--old
-+new
-  *** Update File: moved.txt  
-  *** Move to: destination.txt  
-@@
--before
-+after
-  *** End Patch  
-`
+	patch := strings.Join([]string{
+		"  ",
+		"  *** Begin Patch  ",
+		"  *** Add File: added.txt  ",
+		"+new",
+		"  *** Delete File: deleted.txt  ",
+		"  *** Update File: updated.txt  ",
+		"@@",
+		"-old",
+		"+new",
+		"  *** Update File: moved.txt  ",
+		"  *** Move to: destination.txt  ",
+		"@@",
+		"-before",
+		"+after",
+		"  *** End Patch  ",
+		"",
+	}, "\n")
 
 	paths, err := AffectedPaths(root, patch)
 	require.NoError(t, err)
