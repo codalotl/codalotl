@@ -12,13 +12,13 @@ Fix `apply_patch` so every source and destination path it will actually mutate i
 
 ## Plan
 
-### Package `internal/applypatch`
+### Package `internal/applypatch` [DONE]
 
 - Add path discovery backed by the same complete parse and path-resolution logic used by patch application.
 - Return every resolved source and move destination before filesystem mutation, preserving first-seen order and avoiding duplicate authorization targets.
 - Cover accepted compatibility whitespace and all operation types.
 
-### Package `internal/tools/coretools`
+### Package `internal/tools/coretools` [DONE]
 
 - Authorize `apply_patch` paths returned by `internal/applypatch` before applying any hunk.
 - Remove the independent header scanner and path resolver.
@@ -37,3 +37,5 @@ Pending.
 - Branch: `jn/apply-patch-exact-authorization`, based on `main` at `f07bcdd`.
 - Existing bug: `coretools.collectPatchPaths` scans raw lines and trims paths independently, while `applypatch.parsePatch` accepts whitespace around headers and preserves leading path whitespace after the required delimiter.
 - Design: add `applypatch.AffectedPaths`; share parsing/resolution preparation with `ApplyPatch`; have coretools authorize its absolute paths before applying.
+- Implementation: `0751f24`; focused package tests and `go test ./...` pass.
+- Follow-up before review: encode intentional compatibility-test whitespace without source-level trailing whitespace.
