@@ -6839,7 +6839,7 @@
         "input": [
           {
             "call_id": "call_uw15zG3oEpEEBWN0yb8mW3nb",
-            "output": "<apply-patch ok=\"true\">\nUpdated the following files:\nM catalog/SPEC.md\n</apply-patch>\n<diagnostics-status ok=\"true\" message=\"build succeeded\">\n$ go build -o /dev/null ./catalog\n</diagnostics-status>\n<lint-status ok=\"true\">\n<command ok=\"true\" message=\"no issues found\" mode=\"fix\">\n$ gofmt -l -w catalog\n</command>\n<command ok=\"true\" mode=\"fix\">\n$ codalotl spec fmt catalog\ncatalog/SPEC.md\n</command>\n</lint-status>",
+            "output": "<apply-patch ok=\"true\">\nUpdated the following files:\nM catalog/SPEC.md\n</apply-patch>\n<lint-status ok=\"true\">\n<command ok=\"true\" message=\"no issues found\" mode=\"fix\">\n$ gofmt -l -w catalog\n</command>\n<command ok=\"true\" mode=\"fix\">\n$ codalotl spec fmt catalog\ncatalog/SPEC.md\n</command>\n</lint-status>",
             "type": "custom_tool_call_output"
           }
         ],
