@@ -38,4 +38,4 @@ Pending.
 - Existing bug: `coretools.collectPatchPaths` scans raw lines and trims paths independently, while `applypatch.parsePatch` accepts whitespace around headers and preserves leading path whitespace after the required delimiter.
 - Design: add `applypatch.AffectedPaths`; share parsing/resolution preparation with `ApplyPatch`; have coretools authorize its absolute paths before applying.
 - Implementation: `0751f24`; focused package tests and `go test ./...` pass.
-- Follow-up before review: encode intentional compatibility-test whitespace without source-level trailing whitespace.
+- Test cleanup: `53059ab` preserves whitespace-sensitive inputs without source-level trailing whitespace.
