@@ -10,7 +10,7 @@ The current implementation determines authorization paths separately from the pa
 
 Fix `apply_patch` so every source and destination path it will actually mutate is authorized first, using the same path interpretation as patch application. If any required path is denied, the patch must not modify the filesystem. This must hold for all supported patch operations and accepted patch syntax, including moves and compatibility forms with surrounding whitespace.
 
-## Plan
+## Plan [DONE]
 
 ### Package `internal/applypatch` [DONE]
 
@@ -32,7 +32,14 @@ Fix `apply_patch` so every source and destination path it will actually mutate i
 
 ## Summary
 
-Pending.
+- Add parser-backed `applypatch.AffectedPaths`, sharing complete parsing and path resolution with `ApplyPatch`.
+- Preflight every patch target before mutation and authorize the full unique path set, including move sources and destinations.
+- Remove coretools' divergent header scanner and cover compatibility whitespace, intentional path whitespace, aliases, moves, and denied multi-target patches.
+
+Tests:
+- `go test ./internal/applypatch ./internal/tools/coretools`
+- `go test ./...`
+- `git diff main --check`
 
 ## State
 
@@ -42,3 +49,4 @@ Pending.
 - Implementation: `0751f24`; focused package tests and `go test ./...` pass.
 - Test cleanup: `53059ab` preserves whitespace-sensitive inputs without source-level trailing whitespace.
 - Review complete with no findings; changed packages conform to their SPECs.
+- PR complete; summary written after review and conformance gates passed.
