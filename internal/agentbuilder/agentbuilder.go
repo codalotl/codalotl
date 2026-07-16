@@ -124,7 +124,7 @@ func genericTools() map[string]toolsetinterface.Tool {
 func builtinTools() map[string]toolsetinterface.Tool {
 	return map[string]toolsetinterface.Tool{
 		coretools.ToolNameApplyPatch: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
-			return coretools.NewApplyPatchTool(opts.Authorizer, true, packageModePostChecks(opts)), nil
+			return coretools.NewApplyPatchTool(opts.Authorizer, true, packageModeApplyPatchPostChecks(opts)), nil
 		},
 		coretools.ToolNameEdit: func(opts toolsetinterface.Options) (llmstream.Tool, error) {
 			postChecks := packageModePostChecks(opts)
@@ -231,7 +231,22 @@ func clarifyReadOnlyToolNames() []string {
 	}
 }
 
-func packageModePostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchPostChecks {
+func packageModeApplyPatchPostChecks(opts toolsetinterface.Options) *coretools.ApplyPatchPostChecks {
+	if !isPackageModeAgent(opts.AgentName) {
+		return nil
+	}
+	lintSteps := opts.LintSteps
+	if lintSteps == nil {
+		lintSteps = lints.DefaultSteps()
+	}
+	return &coretools.ApplyPatchPostChecks{
+		TargetDir:      opts.GoPkgAbsDir,
+		RunDiagnostics: packageRunDiagnostics,
+		FixLints:       packageFixLints(lintSteps),
+	}
+}
+
+func packageModePostChecks(opts toolsetinterface.Options) *coretools.ToolPostChecks {
 	if !isPackageModeAgent(opts.AgentName) {
 		return nil
 	}
@@ -318,14 +333,20 @@ func buildTools(opts toolsetinterface.Options, toolNames []string) ([]llmstream.
 	return tools, nil
 }
 
-func packagePostChecks(lintSteps []lints.Step) *coretools.ApplyPatchPostChecks {
-	return &coretools.ApplyPatchPostChecks{
-		RunDiagnostics: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
-			return exttools.RunDiagnostics(ctx, sandboxDir, postCheckTargetPath(sandboxDir, targetDir))
-		},
-		FixLints: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
-			return lints.Run(ctx, sandboxDir, postCheckTargetPath(sandboxDir, targetDir), lintSteps, lints.SituationPatch)
-		},
+func packagePostChecks(lintSteps []lints.Step) *coretools.ToolPostChecks {
+	return &coretools.ToolPostChecks{
+		RunDiagnostics: packageRunDiagnostics,
+		FixLints:       packageFixLints(lintSteps),
+	}
+}
+
+func packageRunDiagnostics(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+	return exttools.RunDiagnostics(ctx, sandboxDir, postCheckTargetPath(sandboxDir, targetDir))
+}
+
+func packageFixLints(lintSteps []lints.Step) func(context.Context, string, string) (string, error) {
+	return func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+		return lints.Run(ctx, sandboxDir, postCheckTargetPath(sandboxDir, targetDir), lintSteps, lints.SituationPatch)
 	}
 }
 

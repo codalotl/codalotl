@@ -615,6 +615,80 @@ func TestBuildRegistry_PackageModeOpenAIApplyPatchRunsPostChecks(t *testing.T) {
 	require.Contains(t, result.Result, "custom-fix")
 }
 
+func TestBuiltinTools_PackageModePostCheckTargets(t *testing.T) {
+	t.Setenv("CODALOTL_AGENTBUILDER_LINTS_HELPER_PROCESS", "1")
+
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.22\n"), 0o644))
+
+	pkgDir := filepath.Join(sandbox, "selected")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "selected.go"), []byte("package selected\n\nfunc Selected() {}\n"), 0o644))
+
+	changedDir := filepath.Join(sandbox, "changed")
+	require.NoError(t, os.MkdirAll(changedDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(changedDir, "changed.go"), []byte("package changed\n\nfunc Changed() {}\n"), 0o644))
+
+	steps := []lints.Step{
+		{
+			ID:         "target-dir",
+			Situations: []lints.Situation{lints.SituationPatch},
+			Fix:        agentbuilderHelperTargetDirCmd(),
+		},
+	}
+	opts := toolsetinterface.Options{
+		AgentName:   AgentPackageModeNoContext,
+		Authorizer:  authdomain.NewAutoApproveAuthorizer(sandbox),
+		SandboxDir:  sandbox,
+		GoPkgAbsDir: pkgDir,
+		LintSteps:   steps,
+	}
+	builders := builtinTools()
+
+	applyTool, err := builders[coretools.ToolNameApplyPatch](opts)
+	require.NoError(t, err)
+	applyResult := applyTool.Run(context.Background(), llmstream.ToolCall{
+		Name: coretools.ToolNameApplyPatch,
+		Type: "custom_tool_call",
+		Input: `*** Begin Patch
+*** Update File: changed/changed.go
+@@
+-func Changed() {}
++func Changed() { println("patched") }
+*** End Patch`,
+	})
+	require.False(t, applyResult.IsError)
+	assert.Contains(t, applyResult.Result, "$ go build -o /dev/null ./selected")
+	assert.Contains(t, applyResult.Result, "lint-target="+pkgDir)
+
+	editTool, err := builders[coretools.ToolNameEdit](opts)
+	require.NoError(t, err)
+	editResult := editTool.Run(context.Background(), llmstream.ToolCall{
+		Name:  coretools.ToolNameEdit,
+		Type:  "function_call",
+		Input: `{"path":"changed/changed.go","old_text":"println(\"patched\")","new_text":"println(\"edited\")"}`,
+	})
+	require.False(t, editResult.IsError)
+	assert.Contains(t, editResult.Result, "$ go build -o /dev/null ./changed")
+	assert.Contains(t, editResult.Result, "lint-target="+changedDir)
+
+	writeTool, err := builders[coretools.ToolNameWrite](opts)
+	require.NoError(t, err)
+	writeInput, err := json.Marshal(map[string]string{
+		"path":    "changed/written.go",
+		"content": "package changed\n\nfunc Written() {}\n",
+	})
+	require.NoError(t, err)
+	writeResult := writeTool.Run(context.Background(), llmstream.ToolCall{
+		Name:  coretools.ToolNameWrite,
+		Type:  "function_call",
+		Input: string(writeInput),
+	})
+	require.False(t, writeResult.IsError)
+	assert.Contains(t, writeResult.Result, "$ go build -o /dev/null ./changed")
+	assert.Contains(t, writeResult.Result, "lint-target="+changedDir)
+}
+
 func TestBuildRegistry_PackageModeNonOpenAIEditAndWriteRunPostChecks(t *testing.T) {
 	t.Setenv("CODALOTL_AGENTBUILDER_LINTS_HELPER_PROCESS", "1")
 
@@ -701,6 +775,39 @@ func TestBuildRegistry_PackageModeOpenAIApplyPatchUsesDefaultLintStepsWhenUnset(
 	content, err := os.ReadFile(filepath.Join(pkgDir, "pkg.go"))
 	require.NoError(t, err)
 	assert.Equal(t, "package pkg\n\nfunc F() {\n}\n", string(content))
+}
+
+func TestBuildRegistry_PackageModeOpenAIApplyPatchKeepsExplicitlyEmptyLintSteps(t *testing.T) {
+	sandbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sandbox, "go.mod"), []byte("module example.com/test\n\ngo 1.22\n"), 0o644))
+
+	pkgDir := filepath.Join(sandbox, "pkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "pkg.go"), []byte("package pkg\n\nfunc F() {}\n"), 0o644))
+
+	tools := invokeAgentTools(t, AgentPackageModeNoContext, llmmodel.ProviderIDOpenAI.DefaultModel(), sandbox, pkgDir, []lints.Step{})
+	applyTool := requireTool(t, tools, coretools.ToolNameApplyPatch)
+
+	patch := `*** Begin Patch
+*** Update File: pkg/pkg.go
+@@
+-func F() {}
++func F( ) {}
+*** End Patch`
+
+	result := applyTool.Run(context.Background(), llmstream.ToolCall{
+		CallID: "apply-empty-post-checks",
+		Name:   coretools.ToolNameApplyPatch,
+		Type:   "custom_tool_call",
+		Input:  patch,
+	})
+
+	require.False(t, result.IsError)
+	assert.Contains(t, result.Result, `message="no linters"`)
+
+	content, err := os.ReadFile(filepath.Join(pkgDir, "pkg.go"))
+	require.NoError(t, err)
+	assert.Equal(t, "package pkg\n\nfunc F( ) {}\n", string(content))
 }
 
 func TestBuildRegistry_PackageModeNonOpenAIEditAndWriteUseDefaultLintStepsWhenUnset(t *testing.T) {
@@ -1269,6 +1376,18 @@ func agentbuilderHelperCmd(stdout string, exitCode int) *cmdrunner.Command {
 			"--",
 			"stdout=" + stdout,
 			"exit=" + strconv.Itoa(exitCode),
+		},
+		OutcomeFailIfAnyOutput: false,
+	}
+}
+
+func agentbuilderHelperTargetDirCmd() *cmdrunner.Command {
+	return &cmdrunner.Command{
+		Command: os.Args[0],
+		Args: []string{
+			"-test.run=^TestAgentbuilderLintsHelperProcess$",
+			"--",
+			"stdout=lint-target={{ .path }}",
 		},
 		OutcomeFailIfAnyOutput: false,
 	}

@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/codalotl/codalotl/internal/applypatch"
@@ -136,7 +137,7 @@ type applyPatchFunctionParams struct {
 
 // The shouldRunPostChecks method reports whether the apply_patch tool has any post-change hooks configured.
 func (t *toolApplyPatch) shouldRunPostChecks() bool {
-	return shouldRunPostChecks(t.postChecks)
+	return shouldRunApplyPatchPostChecks(t.postChecks)
 }
 
 // The extractPatch method parses an apply_patch call and returns the patch text and request-permission flag. In freeform mode, call.Input is used directly and request
@@ -184,14 +185,35 @@ func formatFileChangeKind(kind applypatch.FileChangeKind) string {
 	}
 }
 
-// The runPostApplyChecks method runs configured post-change checks for files changed by apply_patch. It passes changed file paths to the shared post-check runner
-// and returns any check output or error.
+// The runPostApplyChecks method runs configured post-change checks against the explicit apply_patch target. Diagnostics run first when any changed path is Go source,
+// followed by configured fix-mode lints.
 func (t *toolApplyPatch) runPostApplyChecks(ctx context.Context, changes []applypatch.FileChange) ([]string, error) {
-	changedPaths := make([]string, 0, len(changes))
+	var outputs []string
+	hasGoChange := false
 	for _, change := range changes {
-		changedPaths = append(changedPaths, change.Path)
+		if filepath.Ext(change.Path) == ".go" {
+			hasGoChange = true
+			break
+		}
 	}
-	return runPostChecks(ctx, t.sandboxAbsDir, t.postChecks, changedPaths)
+
+	if hasGoChange && t.postChecks.RunDiagnostics != nil {
+		diagnosticsOutput, err := t.postChecks.RunDiagnostics(ctx, t.sandboxAbsDir, t.postChecks.TargetDir)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, diagnosticsOutput)
+	}
+
+	if t.postChecks.FixLints != nil {
+		lintOutput, err := t.postChecks.FixLints(ctx, t.sandboxAbsDir, t.postChecks.TargetDir)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, lintOutput)
+	}
+
+	return outputs, nil
 }
 
 var applyPatchPresenterInstance llmstream.Presenter = applyPatchPresenter{}

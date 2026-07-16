@@ -21,8 +21,17 @@ type ToolPostChecks struct {
 	FixLints func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
 }
 
-// ApplyPatchPostChecks is an alias for ToolPostChecks that names optional post-change hooks for the apply_patch tool.
-type ApplyPatchPostChecks = ToolPostChecks
+// ApplyPatchPostChecks configures package-targeted post-change hooks for the apply_patch tool.
+type ApplyPatchPostChecks struct {
+	// TargetDir is the directory checked after every successful patch.
+	TargetDir string
+
+	// RunDiagnostics checks TargetDir after patches that change Go source.
+	RunDiagnostics func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
+
+	// FixLints runs lint fixes against TargetDir after every successful patch.
+	FixLints func(ctx context.Context, sandboxDir string, targetDir string) (string, error)
+}
 
 // EditPostChecks is an alias for ToolPostChecks that names optional post-change hooks for the edit tool.
 type EditPostChecks = ToolPostChecks
@@ -31,6 +40,10 @@ type EditPostChecks = ToolPostChecks
 type WritePostChecks = ToolPostChecks
 
 func shouldRunPostChecks(postChecks *ToolPostChecks) bool {
+	return postChecks != nil && (postChecks.RunDiagnostics != nil || postChecks.FixLints != nil)
+}
+
+func shouldRunApplyPatchPostChecks(postChecks *ApplyPatchPostChecks) bool {
 	return postChecks != nil && (postChecks.RunDiagnostics != nil || postChecks.FixLints != nil)
 }
 

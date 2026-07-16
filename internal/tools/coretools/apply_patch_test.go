@@ -169,17 +169,19 @@ func TestApplyPatch_Run_CheckErrors(t *testing.T) {
 	}, func(pkg *gocode.Package) {
 		const diagnosticsOutput = "<diagnostics-status ok=\"true\">diag</diagnostics-status>"
 		const lintOutput = "<lint-status ok=\"true\">lint</lint-status>"
+		selectedTargetDir := filepath.Join(pkg.Module.AbsolutePath, "mypkg")
 
 		postChecks := &ApplyPatchPostChecks{
-			RunDiagnostics: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			TargetDir: selectedTargetDir,
+			RunDiagnostics: func(ctx context.Context, sandboxDir string, gotTargetDir string) (string, error) {
 				assert.Equal(t, pkg.Module.AbsolutePath, sandboxDir)
-				assert.Equal(t, filepath.Join(pkg.Module.AbsolutePath, "mypkg"), targetDir)
+				assert.Equal(t, selectedTargetDir, gotTargetDir)
 				return diagnosticsOutput, nil
 			},
-			FixLints: func(ctx context.Context, sandboxDir string, targetDir string) (string, error) {
+			FixLints: func(ctx context.Context, sandboxDir string, gotTargetDir string) (string, error) {
 				assert.Equal(t, pkg.Module.AbsolutePath, sandboxDir)
-				assert.Equal(t, filepath.Join(pkg.Module.AbsolutePath, "mypkg"), targetDir)
-				mainFile := filepath.Join(targetDir, "main.go")
+				assert.Equal(t, selectedTargetDir, gotTargetDir)
+				mainFile := filepath.Join(gotTargetDir, "main.go")
 				data, err := os.ReadFile(mainFile)
 				if err != nil {
 					return "", err
@@ -236,6 +238,88 @@ M mypkg/main.go
 		expectedContents := "package mypkg\n\nfunc main() {\n\tprintln(\"hi\")\n}\n"
 		assert.Equal(t, expectedContents, string(contents))
 	})
+}
+
+func TestApplyPatch_Run_PackageTargetedPostChecks(t *testing.T) {
+	tests := []struct {
+		name            string
+		patch           string
+		expectedChecks  []string
+		wantDiagnostics bool
+	}{
+		{
+			name: "multi-directory supporting changes",
+			patch: `*** Begin Patch
+*** Add File: selected/README.txt
++docs
+*** Add File: selected/testdata/input.txt
++fixture
+*** End Patch
+`,
+			expectedChecks: []string{"lint"},
+		},
+		{
+			name: "nested supporting-only change",
+			patch: `*** Begin Patch
+*** Add File: selected/testdata/input.txt
++fixture
+*** End Patch
+`,
+			expectedChecks: []string{"lint"},
+		},
+		{
+			name: "Go change",
+			patch: `*** Begin Patch
+*** Add File: selected/main.go
++package selected
+*** End Patch
+`,
+			expectedChecks:  []string{"diagnostics", "lint"},
+			wantDiagnostics: true,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			sandbox := t.TempDir()
+			targetDir := filepath.Join(sandbox, "selected")
+			var checks []string
+			postChecks := &ApplyPatchPostChecks{
+				TargetDir: targetDir,
+				RunDiagnostics: func(ctx context.Context, sandboxDir string, gotTargetDir string) (string, error) {
+					assert.Equal(t, sandbox, sandboxDir)
+					assert.Equal(t, targetDir, gotTargetDir)
+					checks = append(checks, "diagnostics")
+					return "<diagnostics-status>diagnostics</diagnostics-status>", nil
+				},
+				FixLints: func(ctx context.Context, sandboxDir string, gotTargetDir string) (string, error) {
+					assert.Equal(t, sandbox, sandboxDir)
+					assert.Equal(t, targetDir, gotTargetDir)
+					checks = append(checks, "lint")
+					return "<lint-status>lint</lint-status>", nil
+				},
+			}
+
+			auth := authdomain.NewAutoApproveAuthorizer(sandbox)
+			call := llmstream.ToolCall{
+				CallID: "package-post-checks",
+				Name:   ToolNameApplyPatch,
+				Type:   "custom_tool_call",
+				Input:  tc.patch,
+			}
+			result := NewApplyPatchTool(auth, true, postChecks).Run(context.Background(), call)
+
+			require.False(t, result.IsError)
+			assert.Equal(t, tc.expectedChecks, checks)
+			if tc.wantDiagnostics {
+				assert.Contains(t, result.Result, "<diagnostics-status>diagnostics</diagnostics-status>")
+			} else {
+				assert.NotContains(t, result.Result, "<diagnostics-status>")
+			}
+			assert.Contains(t, result.Result, "<lint-status>lint</lint-status>")
+		})
+	}
 }
 
 func TestApplyPatch_Run_AcceptsAbsolutePaths(t *testing.T) {
