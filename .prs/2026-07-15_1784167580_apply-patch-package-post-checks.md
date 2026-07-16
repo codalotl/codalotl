@@ -34,7 +34,12 @@ Fix package-mode `apply_patch` so configured post-edit lints run against the sel
 
 ## Review
 
-Pending.
+- Full review against `main`: no findings; patch assessed correct with 0.95 confidence.
+- Changed-package SPEC conformance:
+    - `internal/tools/coretools`: conforms.
+    - `internal/agentbuilder`: conforms.
+    - `internal/noninteractive/integration`: conforms.
+- No review or conformance follow-up is required.
 
 ## Summary
 
@@ -49,3 +54,4 @@ Pending.
 - Implementation commit `10cee73` adds explicit `ApplyPatchPostChecks.TargetDir`, conditional Go diagnostics, unconditional configured lints, package-mode wiring, and focused tests.
 - Integration commit `9c2c2a4` updates `pm-lints` request and event replays for lint-only output after a `SPEC.md` patch.
 - `go test ./...` passes after the replay update.
+- Review found no issues; all changed packages passed SPEC conformance.
