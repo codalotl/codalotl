@@ -10,7 +10,7 @@ The current implementation infers the check target from the parent directories o
 
 Fix package-mode `apply_patch` so configured post-edit lints run against the selected package after every successful patch, regardless of how many included directories changed. Diagnostics should compile the selected package when the patch changes Go code. The tool result should continue to include the resulting diagnostic and lint output for the agent.
 
-## Plan
+## Plan [DONE]
 
 ### Package `internal/tools/coretools` [DONE]
 
@@ -27,7 +27,7 @@ Fix package-mode `apply_patch` so configured post-edit lints run against the sel
 - Verify `apply_patch` checks use the selected package for multi-directory and nested supporting-file patches.
 - Implement the contract documented in `internal/agentbuilder/SPEC.md`.
 
-### Package `internal/noninteractive/integration`
+### Package `internal/noninteractive/integration` [DONE]
 
 - Update the `pm-lints` HTTP replay to expect lint-only post-check output for its `SPEC.md`-only patch.
 - Run the full project test suite.
@@ -47,4 +47,5 @@ Pending.
 - Package-mode selected target is available as `toolsetinterface.Options.GoPkgAbsDir`.
 - `edit`/`write` use the same shared post-check helper; this PR intentionally changes only `apply_patch` targeting semantics.
 - Implementation commit `10cee73` adds explicit `ApplyPatchPostChecks.TargetDir`, conditional Go diagnostics, unconditional configured lints, package-mode wiring, and focused tests.
-- `go test ./...` only fails because `pm-lints` still expects diagnostics for a `SPEC.md`-only patch; its replay needs the intentional output update.
+- Integration commit `9c2c2a4` updates `pm-lints` request and event replays for lint-only output after a `SPEC.md` patch.
+- `go test ./...` passes after the replay update.
